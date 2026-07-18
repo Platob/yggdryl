@@ -673,6 +673,78 @@ impl Uri {
         Uri::parse_str(text)
     }
 
+    /// A **portable, relocatable** string form for pickling / cross-environment transport: a
+    /// `file://` URI addressing a path under the **current user's home** directory is emitted
+    /// with a leading `~`, and one under the system **temp** directory with a leading `$TMP`, so
+    /// [`from_portable_str`](Uri::from_portable_str) rebuilds it against *another* machine's home
+    /// / temp roots (a file written to `~/data` on one host resolves to that host's home). The
+    /// **most specific** (longest) matching root wins, so on platforms whose temp dir lives under
+    /// home (Windows' `%USERPROFILE%\AppData\Local\Temp`) a temp path still relocates as `$TMP`.
+    /// Any other URI — a different scheme, or a file path outside both roots — is its exact
+    /// [`to_string`](std::string::ToString::to_string), so the round-trip is always lossless.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    /// if home.is_some() {
+    ///     let uri = Uri::from_file_path(&format!(
+    ///         "{}/notes/today.txt",
+    ///         std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap()
+    ///     ));
+    ///     assert_eq!(uri.to_portable_str(), "~/notes/today.txt");
+    ///     assert_eq!(Uri::from_portable_str("~/notes/today.txt").unwrap(), uri);
+    /// }
+    /// let web = Uri::parse_str("https://h/p").unwrap();
+    /// assert_eq!(web.to_portable_str(), "https://h/p"); // other schemes are unchanged
+    /// ```
+    pub fn to_portable_str(&self) -> String {
+        let full = self.to_string();
+        if self.scheme() != Some("file") {
+            return full; // only local file addresses relocate; everything else is already portable
+        }
+        // Prefer the longest matching root so a temp dir nested under home relocates as `$TMP`.
+        let mut best: Option<(usize, String)> = None;
+        for (token, root) in [("$TMP", portable_temp_root()), ("~", portable_home_root())] {
+            let Some(root) = root else { continue };
+            let root = root.trim_end_matches('/');
+            if let Some(rest) = full.strip_prefix(root) {
+                if rest.is_empty() || rest.starts_with('/') {
+                    let longer = best.as_ref().is_none_or(|(len, _)| root.len() > *len);
+                    if longer {
+                        best = Some((root.len(), format!("{token}{rest}")));
+                    }
+                }
+            }
+        }
+        best.map_or(full, |(_, portable)| portable)
+    }
+
+    /// Rebuilds a URI from the [`to_portable_str`](Uri::to_portable_str) form, expanding a leading
+    /// `~` against **this** environment's home directory and `$TMP` against its temp directory —
+    /// the reconstruction half of portable pickling. A string with neither token parses as an
+    /// ordinary URI, so it is the exact inverse of `to_portable_str` in every environment.
+    ///
+    /// # Errors
+    /// Any [`parse_str`](Uri::parse_str) error from the reconstructed URI string.
+    pub fn from_portable_str(s: &str) -> Result<Uri, UriError> {
+        if let Some(rest) = s.strip_prefix('~') {
+            if rest.is_empty() || rest.starts_with('/') {
+                if let Some(root) = portable_home_root() {
+                    return Uri::parse_str(&format!("{}{rest}", root.trim_end_matches('/')));
+                }
+            }
+        }
+        if let Some(rest) = s.strip_prefix("$TMP") {
+            if rest.is_empty() || rest.starts_with('/') {
+                if let Some(root) = portable_temp_root() {
+                    return Uri::parse_str(&format!("{}{rest}", root.trim_end_matches('/')));
+                }
+            }
+        }
+        Uri::parse_str(s)
+    }
+
     /// Converts into a [`Url`], failing if this URI has no scheme.
     ///
     /// # Errors
@@ -1279,4 +1351,26 @@ impl crate::io::Serializable for Uri {
     fn deserialize_bytes(bytes: &[u8]) -> Result<Self, UriError> {
         Uri::deserialize_bytes(bytes)
     }
+}
+
+/// The current user's **home** directory as a `file://…` URI string, or `None` when neither
+/// `$HOME` nor `%USERPROFILE%` is set. Built through [`Uri::from_file_path`] so it carries the
+/// exact same POSIX-slash normalization and percent-encoding a rendered `file://` URI does, and
+/// therefore prefix-matches one by plain string comparison — the root that
+/// [`Uri::to_portable_str`] / [`Uri::from_portable_str`] fold to/from `~`.
+fn portable_home_root() -> Option<String> {
+    let home = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .or_else(|| std::env::var_os("USERPROFILE").filter(|value| !value.is_empty()))?;
+    Some(Uri::from_file_path(&home.to_string_lossy()).to_string())
+}
+
+/// The system **temp** directory as a `file://…` URI string — the root
+/// [`Uri::to_portable_str`] / [`Uri::from_portable_str`] fold to/from `$TMP`.
+fn portable_temp_root() -> Option<String> {
+    let tmp = std::env::temp_dir();
+    if tmp.as_os_str().is_empty() {
+        return None;
+    }
+    Some(Uri::from_file_path(&tmp.to_string_lossy()).to_string())
 }

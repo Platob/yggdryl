@@ -59,6 +59,96 @@ fn unremovable(uri: &Uri, method: &str) -> IoError {
     }
 }
 
+/// Emits the three **bulk numeric** trait methods (array read, array write, repeat fill) for
+/// one little-endian numeric type, each a 1-line delegation to the matching stack-staged
+/// [`stage_*`] kernel — so every width (`u16`/`u32`/`u64`/`f32`/`f64`, alongside the
+/// hand-written `i32`/`i64`) shares one vectorizable implementation and every source inherits
+/// it. Overriding sources (`Heap`, `Mmap`) replace these with a direct contiguous conversion.
+macro_rules! bulk_numeric_methods {
+    ($t:ty, $read:ident, $write:ident, $repeat:ident, $sread:path, $swrite:path, $srepeat:path) => {
+        #[doc = concat!("**Bulk typed read** of little-endian `", stringify!($t),
+            "`s — the `", stringify!($t), "` counterpart of [`pread_i32_array`](IOBase::pread_i32_array). \
+             Fills all of `dst` or errors with [`IoError::UnexpectedEof`]; stack-staged (zero heap) \
+             and vectorizable.")]
+        fn $read(&self, offset: u64, dst: &mut [$t]) -> Result<(), IoError> {
+            $sread(self, offset, dst)
+        }
+        #[doc = concat!("**Bulk typed write** of little-endian `", stringify!($t),
+            "`s — the `", stringify!($t), "` counterpart of [`pwrite_i32_array`](IOBase::pwrite_i32_array).")]
+        fn $write(&mut self, offset: u64, src: &[$t]) -> Result<(), IoError> {
+            $swrite(self, offset, src)
+        }
+        #[doc = concat!("**Repeated-value fill** of `count` little-endian `", stringify!($t),
+            "` copies of `value` — the `", stringify!($t), "` counterpart of \
+             [`pwrite_i32_repeat`](IOBase::pwrite_i32_repeat); no full array is materialized.")]
+        fn $repeat(&mut self, offset: u64, value: $t, count: usize) -> Result<(), IoError> {
+            $srepeat(self, offset, value, count)
+        }
+    };
+}
+
+/// Emits the three stack-staged **bulk numeric** kernels (the trait-default source of truth)
+/// for one little-endian numeric type — each stages through one fixed stack chunk (zero heap)
+/// and converts in a dense, branch-free loop the compiler auto-vectorizes on stable Rust.
+macro_rules! stage_numeric_kernels {
+    ($t:ty, $width:literal, $read:ident, $write:ident, $repeat:ident) => {
+        pub(crate) fn $read<S: IOBase>(
+            src: &S,
+            offset: u64,
+            dst: &mut [$t],
+        ) -> Result<(), IoError> {
+            let mut bytes = [0u8; BULK_CHUNK * $width];
+            let mut position = offset;
+            for chunk in dst.chunks_mut(BULK_CHUNK) {
+                let staged = &mut bytes[..chunk.len() * $width];
+                src.pread_exact(position, staged)?;
+                for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact($width)) {
+                    *value = <$t>::from_le_bytes(raw.try_into().expect("chunks_exact width"));
+                }
+                position += staged.len() as u64;
+            }
+            Ok(())
+        }
+        pub(crate) fn $write<S: IOBase>(
+            dst: &mut S,
+            offset: u64,
+            src: &[$t],
+        ) -> Result<(), IoError> {
+            let mut bytes = [0u8; BULK_CHUNK * $width];
+            let mut position = offset;
+            for chunk in src.chunks(BULK_CHUNK) {
+                let staged = &mut bytes[..chunk.len() * $width];
+                for (raw, value) in staged.chunks_exact_mut($width).zip(chunk) {
+                    raw.copy_from_slice(&value.to_le_bytes());
+                }
+                dst.pwrite_all(position, staged)?;
+                position += staged.len() as u64;
+            }
+            Ok(())
+        }
+        pub(crate) fn $repeat<S: IOBase>(
+            dst: &mut S,
+            offset: u64,
+            value: $t,
+            count: usize,
+        ) -> Result<(), IoError> {
+            let mut chunk = [0u8; BULK_CHUNK * $width];
+            for raw in chunk.chunks_exact_mut($width) {
+                raw.copy_from_slice(&value.to_le_bytes());
+            }
+            let mut position = offset;
+            let mut remaining = count;
+            while remaining > 0 {
+                let take = remaining.min(BULK_CHUNK);
+                dst.pwrite_all(position, &chunk[..take * $width])?;
+                position += (take * $width) as u64;
+                remaining -= take;
+            }
+            Ok(())
+        }
+    };
+}
+
 /// Random-access byte storage addressed by absolute offset — no cursor. This is the base
 /// every I/O **source** shares: [`IOCursor`](super::IOCursor) adds a moving position on top, and
 /// [`IOSlice`](super::IOSlice) adds bounded sub-views.
@@ -362,6 +452,26 @@ pub trait IOBase: Sized {
         inferred
     }
 
+    /// This source's content length in bytes, **preferring the cached `Content-Length`
+    /// [`header`](IOBase::headers)** when present and falling back to the live
+    /// [`byte_size`](IOBase::byte_size). For a source whose true size is an expensive probe (an
+    /// object-store prefix summing a subtree, a network body sized by a prior `HEAD`) the header
+    /// short-circuits it; for an in-memory source with no such header it is exactly `byte_size`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut h = Heap::from_slice(b"abc");
+    /// assert_eq!(h.content_length(), 3); // no header — falls back to byte_size
+    /// h.headers_mut().set_content_length(999); // a cheap probe cached the size
+    /// assert_eq!(h.content_length(), 999); // now served straight from the header
+    /// ```
+    fn content_length(&self) -> u64 {
+        self.headers()
+            .content_length()
+            .unwrap_or_else(|| self.byte_size())
+    }
+
     // ---------------------------------------------------------------------------------
     // Magic inference — read the head with a positioned read, never moving the cursor.
     // ---------------------------------------------------------------------------------
@@ -460,6 +570,143 @@ pub trait IOBase: Sized {
                  `compression` feature for gzip/zstd/xz/zlib)",
             )),
         }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Content mutation — resize, in-place (de)compress, cross-source copy — each keeping
+    // the size/media/mtime headers in sync (only the headers already declared).
+    // ---------------------------------------------------------------------------------
+
+    /// Sets this source's byte length to exactly `len` — shrinking (dropping the tail) or
+    /// extending (zero-filling) — then syncs its size headers. The default reports that a
+    /// fixed source (a bare wrapper/view) cannot be resized; the growable sources
+    /// (`Heap` / `Mmap` / `LocalIO`) override it.
+    fn truncate(&mut self, len: u64) -> Result<(), IoError> {
+        let _ = len;
+        Err(IoError::FileIo {
+            op: "truncate",
+            path: self.uri().to_string(),
+            detail: "this source cannot be resized; truncate a Heap, Mmap, or LocalIO instead"
+                .to_string(),
+        })
+    }
+
+    /// Syncs the size + timestamp headers after a content-mutating op — updates
+    /// `Content-Length` to the current [`byte_size`](IOBase::byte_size) and `mtime` to now,
+    /// but only the headers the source **already declares** (a bare source stays bare). The
+    /// `set_*` renders are allocation-free.
+    fn sync_size_headers(&mut self) {
+        if self.headers().contains(Headers::CONTENT_LENGTH) {
+            let size = self.byte_size();
+            self.headers_mut().set_content_length(size);
+        }
+        if self.headers().contains(Headers::MTIME) {
+            self.headers_mut().touch_mtime();
+        }
+    }
+
+    /// **Compresses this source in place** — replaces its bytes with the compressed form and
+    /// updates `Content-Type` to the codec, `Content-Length`, and `mtime`. `codec` defaults to
+    /// the codec of the source's own [media type](IOBase::media_type) (so a `.gz`-addressed
+    /// source packs itself gzip); pass an explicit one to override. Zero-copy on the read side.
+    fn compress_in_place(&mut self, codec: Option<&dyn Compression>) -> Result<(), IoError> {
+        let owned = codec.is_none().then(|| self.compression()).flatten();
+        let codec =
+            match codec.or(owned.as_deref()) {
+                Some(c) => c,
+                None => return Err(compression_err(
+                    self.mime_type().essence(),
+                    "compress",
+                    "no codec: the source's media type is not a compression — pass an explicit \
+                     codec, or address it as .gz/.zst/.xz/.zz",
+                )),
+            };
+        let essence = codec.essence();
+        let packed = self.compressed_with(codec)?;
+        self.overwrite_with(&packed)?;
+        self.headers_mut().set_content_type(essence);
+        Ok(())
+    }
+
+    /// **Decompresses this source in place** — replaces its compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates `Content-Type` to the recovered
+    /// inner type, `Content-Length`, and `mtime`. Errors when the source is not a supported
+    /// compression.
+    fn decompress_in_place(&mut self) -> Result<(), IoError> {
+        let plain = self.decompress()?;
+        let inner = MimeType::from_magic(&plain).map(|m| m.essence().to_string());
+        self.overwrite_with(&plain)?;
+        match inner {
+            Some(essence) => self.headers_mut().set_content_type(&essence),
+            None => {
+                self.headers_mut().remove(Headers::CONTENT_TYPE);
+            }
+        }
+        Ok(())
+    }
+
+    /// Replaces this source's whole content with `data` (write, then truncate to length) and
+    /// syncs the size headers — the shared overwrite the in-place ops and [`copy_from`](IOBase::copy_from)
+    /// use.
+    fn overwrite_with(&mut self, data: &[u8]) -> Result<(), IoError> {
+        self.pwrite_all(0, data)?;
+        self.truncate(data.len() as u64)?; // drop any old tail past the new content
+        if self.headers().contains(Headers::CONTENT_LENGTH) {
+            let size = self.byte_size();
+            self.headers_mut().set_content_length(size);
+        }
+        if self.headers().contains(Headers::MTIME) {
+            self.headers_mut().touch_mtime();
+        }
+        Ok(())
+    }
+
+    /// Overwrites this source with **all of `src`'s bytes** (truncating to match) — a
+    /// cross-source copy, zero-copy on the read side via [`as_bytes`](IOBase::as_bytes) when
+    /// `src` has a contiguous view, else one buffered read. Returns the byte count.
+    fn copy_from<S: IOBase>(&mut self, src: &S) -> Result<u64, IoError> {
+        match src.as_bytes() {
+            Some(bytes) => {
+                self.overwrite_with(bytes)?;
+                Ok(bytes.len() as u64)
+            }
+            None => {
+                let bytes = src.pread_vec(0, src.byte_size() as usize);
+                self.overwrite_with(&bytes)?;
+                Ok(bytes.len() as u64)
+            }
+        }
+    }
+
+    /// **Positioned cross-source write**: copies `len` bytes of `src` starting at `src_offset`
+    /// into this source at `offset`. Zero-copy when `src` exposes a contiguous slice; otherwise
+    /// **streamed** through one reused buffer (no full materialization of a large transfer).
+    /// Returns the number of bytes actually transferred (short at the end of `src`).
+    fn pwrite_from<S: IOBase>(
+        &mut self,
+        offset: u64,
+        src: &S,
+        src_offset: u64,
+        len: u64,
+    ) -> Result<u64, IoError> {
+        if let Some(bytes) = src.as_bytes() {
+            let start = (src_offset as usize).min(bytes.len());
+            let end = start.saturating_add(len as usize).min(bytes.len());
+            self.pwrite_all(offset, &bytes[start..end])?;
+            return Ok((end - start) as u64);
+        }
+        let mut buf = vec![0u8; (len as usize).clamp(1, 64 * 1024)];
+        let mut done = 0u64;
+        while done < len {
+            let want = ((len - done) as usize).min(buf.len());
+            let got = src.pread_byte_array(src_offset + done, &mut buf[..want]);
+            if got == 0 {
+                break; // end of src
+            }
+            self.pwrite_all(offset + done, &buf[..got])?;
+            done += got as u64;
+        }
+        Ok(done)
     }
 
     // ---------------------------------------------------------------------------------
@@ -563,22 +810,28 @@ pub trait IOBase: Sized {
     }
 
     /// Removes **whatever exists** at this node — a file is unlinked, a directory removed
-    /// with its subtree, a missing node is a no-op. The default is the guided refusal of a
-    /// source with no removable backing; filesystem families override it.
-    fn rm(&self) -> Result<(), IoError> {
+    /// with its subtree. `exist_ok` (default `true` in the bindings) governs a **missing**
+    /// node: `true` skips it (a no-op), `false` raises a guided [`IoError::FileIo`]. The
+    /// default is the guided refusal of a source with no removable backing; filesystem
+    /// families override it.
+    fn rm(&self, exist_ok: bool) -> Result<(), IoError> {
+        let _ = exist_ok;
         Err(unremovable(&self.uri(), "rm"))
     }
 
     /// Removes this node **as a file** — a guided error when it is a directory (use
-    /// [`rmdir`](IOBase::rmdir)), a no-op when missing. Default: the guided refusal.
-    fn rmfile(&self) -> Result<(), IoError> {
+    /// [`rmdir`](IOBase::rmdir)); a missing node is skipped when `exist_ok`, else raises.
+    /// Default: the guided refusal.
+    fn rmfile(&self, exist_ok: bool) -> Result<(), IoError> {
+        let _ = exist_ok;
         Err(unremovable(&self.uri(), "rmfile"))
     }
 
-    /// Removes this node **as a directory**, recursively — a guided error when it is a
-    /// file (use [`rmfile`](IOBase::rmfile)), a no-op when missing. Default: the guided
-    /// refusal.
-    fn rmdir(&self) -> Result<(), IoError> {
+    /// Removes this node **as a directory**, recursively — a guided error when it is a file
+    /// (use [`rmfile`](IOBase::rmfile)); a missing node is skipped when `exist_ok`, else
+    /// raises. Default: the guided refusal.
+    fn rmdir(&self, exist_ok: bool) -> Result<(), IoError> {
+        let _ = exist_ok;
         Err(unremovable(&self.uri(), "rmdir"))
     }
 
@@ -1009,6 +1262,54 @@ pub trait IOBase: Sized {
         stage_pwrite_i64_repeat(self, offset, value, count)
     }
 
+    // The unsigned + floating widths — same stack-staged, auto-vectorized kernels as the signed
+    // pair above, so every numeric bulk op is one dense loop and every source inherits all of them.
+    bulk_numeric_methods!(
+        u16,
+        pread_u16_array,
+        pwrite_u16_array,
+        pwrite_u16_repeat,
+        stage_pread_u16_array,
+        stage_pwrite_u16_array,
+        stage_pwrite_u16_repeat
+    );
+    bulk_numeric_methods!(
+        u32,
+        pread_u32_array,
+        pwrite_u32_array,
+        pwrite_u32_repeat,
+        stage_pread_u32_array,
+        stage_pwrite_u32_array,
+        stage_pwrite_u32_repeat
+    );
+    bulk_numeric_methods!(
+        u64,
+        pread_u64_array,
+        pwrite_u64_array,
+        pwrite_u64_repeat,
+        stage_pread_u64_array,
+        stage_pwrite_u64_array,
+        stage_pwrite_u64_repeat
+    );
+    bulk_numeric_methods!(
+        f32,
+        pread_f32_array,
+        pwrite_f32_array,
+        pwrite_f32_repeat,
+        stage_pread_f32_array,
+        stage_pwrite_f32_array,
+        stage_pwrite_f32_repeat
+    );
+    bulk_numeric_methods!(
+        f64,
+        pread_f64_array,
+        pwrite_f64_array,
+        pwrite_f64_repeat,
+        stage_pread_f64_array,
+        stage_pwrite_f64_array,
+        stage_pwrite_f64_repeat
+    );
+
     /// Wraps this source in an [`IOCursor`] positioned at the start — the standard way to add a
     /// moving read/write position to any source. Consumes the source (zero-copy); wrap a clone to
     /// keep the original.
@@ -1185,3 +1486,41 @@ pub(crate) fn stage_pwrite_i64_repeat<S: IOBase>(
     }
     Ok(())
 }
+
+// The remaining little-endian widths (u16/u32/u64/f32/f64) share one generated kernel each —
+// i32/i64 stay hand-written above as the readable reference the macro mirrors.
+stage_numeric_kernels!(
+    u16,
+    2,
+    stage_pread_u16_array,
+    stage_pwrite_u16_array,
+    stage_pwrite_u16_repeat
+);
+stage_numeric_kernels!(
+    u32,
+    4,
+    stage_pread_u32_array,
+    stage_pwrite_u32_array,
+    stage_pwrite_u32_repeat
+);
+stage_numeric_kernels!(
+    u64,
+    8,
+    stage_pread_u64_array,
+    stage_pwrite_u64_array,
+    stage_pwrite_u64_repeat
+);
+stage_numeric_kernels!(
+    f32,
+    4,
+    stage_pread_f32_array,
+    stage_pwrite_f32_array,
+    stage_pwrite_f32_repeat
+);
+stage_numeric_kernels!(
+    f64,
+    8,
+    stage_pread_f64_array,
+    stage_pwrite_f64_array,
+    stage_pwrite_f64_repeat
+);

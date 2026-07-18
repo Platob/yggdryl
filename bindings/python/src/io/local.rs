@@ -35,7 +35,7 @@ use pyo3::types::PyBytes;
 
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
-use crate::io::memory::{NoChildren, Whence};
+use crate::io::memory::{Heap, NoChildren, Whence};
 use crate::io::mode::IOMode;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
@@ -46,6 +46,17 @@ use yggdryl_core::io::memory::{IOBase, IoError};
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
+}
+
+/// The fail-fast bounds check shared by every bulk `pread_*_array` binding: the guided
+/// [`IoError::UnexpectedEof`] when `count` elements of `width` bytes each would run past the
+/// `available` bytes, else `None` — checked **before** the result list is allocated.
+fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<IoError> {
+    (count.saturating_mul(width) as u64 > available).then(|| IoError::UnexpectedEof {
+        offset: offset + available,
+        requested: count.saturating_mul(width),
+        available: available as usize,
+    })
 }
 
 /// The one local-filesystem handle — a **lazy** node over any path (file, folder, or nothing
@@ -66,9 +77,11 @@ fn ioerr(error: IoError) -> PyErr {
 /// [`rm`](LocalIO::rm) / [`rmfile`](LocalIO::rmfile) / [`rmdir`](LocalIO::rmdir).
 ///
 /// A `LocalIO` is a **live handle, not a value**: it compares by path (`==`), copies to a
-/// fresh **lazy** handle (`copy()` / `copy.copy` — the mapping is deliberately never
-/// shared), and is unhashable and unpicklable (no byte codec — the path value lives in
-/// [`uri`](LocalIO::uri)).
+/// fresh **lazy** handle (`copy()` / `copy.copy` — the mapping is deliberately never shared),
+/// and is unhashable. It **pickles by its portable address** — its `file://` URI with a home /
+/// temp path folded to a `~` / `$TMP` token ([`to_portable_str`](LocalIO::to_portable_str)) —
+/// so a handle survives transport to another environment and reopens under that machine's home /
+/// temp roots (the mapping and cursor are transient and not part of the pickled value).
 #[pyclass(module = "yggdryl.local")]
 #[derive(Clone)]
 pub struct LocalIO {
@@ -124,6 +137,16 @@ impl LocalIO {
         }
     }
 
+    /// Alias of [`tmpfolder`](LocalIO::tmpfolder) under the familiar `tmpdir` name (mirroring
+    /// Python's `tempfile` vocabulary) — a **lazy** handle to a temporary folder.
+    #[staticmethod]
+    #[pyo3(signature = (name = None))]
+    fn tmpdir(name: Option<&str>) -> LocalIO {
+        LocalIO {
+            inner: local::LocalIO::tmpdir(name),
+        }
+    }
+
     // ---- lifecycle: close / is_mapped / flush / mkdir / path ---------------------------
 
     /// Releases the mapped backing eagerly (truncating the file to its logical length) —
@@ -172,10 +195,56 @@ impl LocalIO {
         self.inner.mkdir().map_err(ioerr)
     }
 
+    /// A standalone [`Mmap`] over this node's file, **reusing this handle's own parameters** —
+    /// its path, its [`IOMode`] (a read-only handle maps read-only; a read-write one maps
+    /// read-write and auto-creates the missing parents + file), and its
+    /// [`headers`](LocalIO::headers) (copied onto the mapping). Independent of this handle's
+    /// own lazy [`is_mapped`](LocalIO::is_mapped) backing — the direct front door to the
+    /// memory-mapped source when the caller wants to hold it.
+    fn mmap(&self) -> PyResult<Mmap> {
+        self.inner
+            .mmap()
+            .map(|inner| Mmap { inner: Some(inner) })
+            .map_err(ioerr)
+    }
+
     /// The underlying filesystem path as a `str`.
     #[getter]
     fn path(&self) -> String {
         self.inner.as_std_path().to_string_lossy().into_owned()
+    }
+
+    /// The `os.PathLike` protocol — the filesystem path as a `str`, so a `LocalIO` can be
+    /// passed straight to `open(...)`, `os.stat(...)`, `pathlib.Path(...)`, and the rest of the
+    /// standard library.
+    fn __fspath__(&self) -> String {
+        self.inner.as_std_path().to_string_lossy().into_owned()
+    }
+
+    /// io-file-like: whether the handle's [`mode`](LocalIO::mode) permits reading
+    /// (`Read` / `ReadWrite`).
+    fn readable(&self) -> bool {
+        self.inner.mode().is_readable()
+    }
+
+    /// io-file-like: whether the handle's [`mode`](LocalIO::mode) permits writing (everything
+    /// except `Read`).
+    fn writable(&self) -> bool {
+        self.inner.mode().is_writable()
+    }
+
+    /// io-file-like: a `LocalIO` is always seekable (its positioned/cursor access reaches any
+    /// offset).
+    fn seekable(&self) -> bool {
+        true
+    }
+
+    /// io-file-like: a `LocalIO` handle is **never** truly closed — [`close`](LocalIO::close)
+    /// only releases the optimized mapped backing and the handle stays usable — so this is
+    /// always `False` (use [`is_mapped`](LocalIO::is_mapped) to see the mapping state).
+    #[getter]
+    fn closed(&self) -> bool {
+        false
     }
 
     // ---- size + capacity ---------------------------------------------------------------
@@ -255,6 +324,19 @@ impl LocalIO {
     /// no-op while lazy.
     fn shrink_to(&mut self, min_capacity: u64) {
         self.inner.shrink_to(min_capacity);
+    }
+
+    /// Sets the file's byte length to exactly `length` — shrinking (dropping the tail) or
+    /// extending (zero-filling), auto-creating + mapping the file — then syncs the size
+    /// headers. Raises the guided `ValueError` on a read-only handle or a directory node.
+    fn truncate(&mut self, length: u64) -> PyResult<()> {
+        self.inner.truncate(length).map_err(ioerr)
+    }
+
+    /// The content length in bytes, **preferring the cached `Content-Length` header** when
+    /// present and falling back to the live `byte_size()`.
+    fn content_length(&self) -> u64 {
+        self.inner.content_length()
     }
 
     /// Whether the node holds no bytes (`byte_size() == 0`) — `True` for a missing node, and
@@ -437,11 +519,168 @@ impl LocalIO {
             .map_err(ioerr)
     }
 
+    // ---- bulk unsigned + floating widths (u16/u32/u64/f32/f64) --------------------------
+
+    /// **Bulk typed read** of `count` little-endian `u16`s — the `u16` counterpart of
+    /// [`pread_i32_array`](LocalIO::pread_i32_array), with the same fail-fast bounds check.
+    fn pread_u16_array(&self, offset: u64, count: usize) -> PyResult<Vec<u16>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 2) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u16; count];
+        self.inner
+            .pread_u16_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u16`s at `offset`, growing as needed.
+    fn pwrite_u16_array(&mut self, offset: u64, values: Vec<u16>) -> PyResult<()> {
+        self.inner.pwrite_u16_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u16` copies of `value` at `offset`.
+    fn pwrite_u16_repeat(&mut self, offset: u64, value: u16, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_u16_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u32`s (fail-fast bounds check).
+    fn pread_u32_array(&self, offset: u64, count: usize) -> PyResult<Vec<u32>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 4) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u32; count];
+        self.inner
+            .pread_u32_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u32`s at `offset`, growing as needed.
+    fn pwrite_u32_array(&mut self, offset: u64, values: Vec<u32>) -> PyResult<()> {
+        self.inner.pwrite_u32_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u32` copies of `value` at `offset`.
+    fn pwrite_u32_repeat(&mut self, offset: u64, value: u32, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_u32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u64`s (fail-fast bounds check).
+    fn pread_u64_array(&self, offset: u64, count: usize) -> PyResult<Vec<u64>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 8) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u64; count];
+        self.inner
+            .pread_u64_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u64`s at `offset`, growing as needed.
+    fn pwrite_u64_array(&mut self, offset: u64, values: Vec<u64>) -> PyResult<()> {
+        self.inner.pwrite_u64_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u64` copies of `value` at `offset`.
+    fn pwrite_u64_repeat(&mut self, offset: u64, value: u64, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_u64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f32`s (fail-fast bounds check).
+    fn pread_f32_array(&self, offset: u64, count: usize) -> PyResult<Vec<f32>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 4) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0f32; count];
+        self.inner
+            .pread_f32_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `f32`s at `offset`, growing as needed.
+    fn pwrite_f32_array(&mut self, offset: u64, values: Vec<f32>) -> PyResult<()> {
+        self.inner.pwrite_f32_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f32` copies of `value` at `offset`.
+    fn pwrite_f32_repeat(&mut self, offset: u64, value: f32, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_f32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f64`s (fail-fast bounds check).
+    fn pread_f64_array(&self, offset: u64, count: usize) -> PyResult<Vec<f64>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 8) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0f64; count];
+        self.inner
+            .pread_f64_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `f64`s at `offset`, growing as needed.
+    fn pwrite_f64_array(&mut self, offset: u64, values: Vec<f64>) -> PyResult<()> {
+        self.inner.pwrite_f64_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f64` copies of `value` at `offset`.
+    fn pwrite_f64_repeat(&mut self, offset: u64, value: f64, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_f64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    // ---- cross-source copy -------------------------------------------------------------
+
+    /// Overwrites this node with **all of `src`'s bytes** (a `yggdryl.memory.Heap`),
+    /// truncating to match — a cross-source copy. Returns the byte count.
+    fn copy_from(&mut self, src: &Heap) -> PyResult<u64> {
+        self.inner.copy_from(&src.inner).map_err(ioerr)
+    }
+
+    /// **Positioned cross-source write**: copies `length` bytes of `src` (a
+    /// `yggdryl.memory.Heap`) starting at `src_offset` into this node at `offset`. Returns
+    /// the number of bytes transferred (short at the end of `src`).
+    fn pwrite_from(
+        &mut self,
+        offset: u64,
+        src: &Heap,
+        src_offset: u64,
+        length: u64,
+    ) -> PyResult<u64> {
+        self.inner
+            .pwrite_from(offset, &src.inner, src_offset, length)
+            .map_err(ioerr)
+    }
+
     // ---- cursor ------------------------------------------------------------------------
 
     /// The current cursor position (bytes from the start). May sit past the end after a seek.
     #[getter]
     fn position(&self) -> u64 {
+        self.inner.position()
+    }
+
+    /// io-file-like: the current cursor position — the same value as the
+    /// [`position`](LocalIO::position) getter, under the `io` object's method name.
+    fn tell(&self) -> u64 {
         self.inner.position()
     }
 
@@ -541,6 +780,19 @@ impl LocalIO {
         })?;
         self.inner.set_position(self.inner.byte_size());
         Ok(bytes)
+    }
+
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — advancing the cursor past it. Returns `""`
+    /// **only** at the true end (a blank line keeps its `\n`).
+    fn readline(&mut self) -> PyResult<String> {
+        self.inner.readline().map_err(ioerr)
+    }
+
+    /// **Reads every remaining line** from the cursor into a list, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    fn readlines(&mut self) -> PyResult<Vec<String>> {
+        self.inner.readlines().map_err(ioerr)
     }
 
     // ---- address (uri) -----------------------------------------------------------------
@@ -703,6 +955,29 @@ impl LocalIO {
     // ergonomic mirror of the core's compress/decompress family; the generic `compress_into` /
     // `decompress_into` (source-to-source) and `as_bytes` are deliberately not exposed.
 
+    /// **Compresses this node in place** — replaces the file's bytes with the compressed form
+    /// and updates the `Content-Type` / `Content-Length` / `mtime` headers. `codec` (a
+    /// `yggdryl.compression` codec) defaults to the codec of the node's own media type (so a
+    /// `.gz`-addressed file packs itself gzip); pass an explicit one to override. Raises a
+    /// guided `ValueError` when no codec applies.
+    #[pyo3(signature = (codec = None))]
+    fn compress_in_place(&mut self, codec: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        match codec {
+            Some(codec) => {
+                crate::compression::with_codec(codec, |c| self.inner.compress_in_place(Some(c)))?
+                    .map_err(ioerr)
+            }
+            None => self.inner.compress_in_place(None).map_err(ioerr),
+        }
+    }
+
+    /// **Decompresses this node in place** — replaces the compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates the size/media/mtime headers.
+    /// Raises a guided `ValueError` when the node is not a supported compression.
+    fn decompress_in_place(&mut self) -> PyResult<()> {
+        self.inner.decompress_in_place().map_err(ioerr)
+    }
+
     // ---- graph: navigation + discovery + CRUD --------------------------------------------
 
     /// The last path segment — the node's own name (empty for a root).
@@ -766,22 +1041,28 @@ impl LocalIO {
     }
 
     /// Removes **whatever exists** at this node — a file is unlinked, a directory is removed
-    /// with its whole subtree; a missing node is a no-op. The generic form of
-    /// [`rmfile`](LocalIO::rmfile) / [`rmdir`](LocalIO::rmdir).
-    fn rm(&self) -> PyResult<()> {
-        self.inner.rm().map_err(ioerr)
+    /// with its whole subtree. `exist_ok` (default `True`) governs a **missing** node:
+    /// `True` skips it (a no-op), `exist_ok=False` raises the guided `ValueError`. The
+    /// generic form of [`rmfile`](LocalIO::rmfile) / [`rmdir`](LocalIO::rmdir).
+    #[pyo3(signature = (exist_ok = true))]
+    fn rm(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rm(exist_ok).map_err(ioerr)
     }
 
     /// Removes this node **as a file** — raises the guided `ValueError` when it is a
-    /// directory (use [`rmdir`](LocalIO::rmdir)); a no-op when missing.
-    fn rmfile(&self) -> PyResult<()> {
-        self.inner.rmfile().map_err(ioerr)
+    /// directory (use [`rmdir`](LocalIO::rmdir)). `exist_ok` (default `True`) skips a
+    /// missing node; `exist_ok=False` raises on one.
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmfile(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmfile(exist_ok).map_err(ioerr)
     }
 
     /// Removes this node **as a directory**, recursively — raises the guided `ValueError`
-    /// when it is a file (use [`rmfile`](LocalIO::rmfile)); a no-op when missing.
-    fn rmdir(&self) -> PyResult<()> {
-        self.inner.rmdir().map_err(ioerr)
+    /// when it is a file (use [`rmfile`](LocalIO::rmfile)). `exist_ok` (default `True`) skips
+    /// a missing node; `exist_ok=False` raises on one.
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmdir(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmdir(exist_ok).map_err(ioerr)
     }
 
     // ---- live-handle dunders -----------------------------------------------------------
@@ -806,8 +1087,51 @@ impl LocalIO {
         self.inner == other.inner
     }
 
-    // DESIGN: no `__reduce__` / pickle and no `serialize_bytes` — a live handle carries no
-    // byte codec (the path value lives in `uri`); mirror of the Mmap precedent.
+    /// Line iteration — `for line in node:` yields each line from the cursor (like an open
+    /// file object), via [`readline`](LocalIO::readline). Streamed *child* discovery stays on
+    /// [`ls`](LocalIO::ls) / [`children`](LocalIO::children).
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// The next line from the cursor, or `StopIteration` at the true end.
+    fn __next__(&mut self) -> PyResult<Option<String>> {
+        let line = self.inner.readline().map_err(ioerr)?;
+        Ok((!line.is_empty()).then_some(line))
+    }
+
+    /// This handle's **portable** address string — its `file://` URI with a home / temp path
+    /// folded to a `~` / `$TMP` token (see [`yggdryl.uri.Uri.to_portable_str`](crate::uri::Uri)),
+    /// so it relocates across environments. The form [`from_portable`](LocalIO::from_portable)
+    /// and pickle use.
+    fn to_portable_str(&self) -> String {
+        self.inner.uri().to_portable_str()
+    }
+
+    /// Reconstructs a **lazy** handle from the [`to_portable_str`](LocalIO::to_portable_str)
+    /// form — expanding a `~` / `$TMP` token against **this** environment's home / temp roots.
+    /// The unpickling half: a handle addressing `~/data` on one machine reopens under this
+    /// machine's home. The result is lazy (no mapping), like `copy()`.
+    #[staticmethod]
+    fn from_portable(portable: &str) -> PyResult<LocalIO> {
+        let uri = yggdryl_core::uri::Uri::from_portable_str(portable)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        local::LocalIO::from_uri(&uri)
+            .map(|inner| LocalIO { inner })
+            .map_err(ioerr)
+    }
+
+    /// Pickles the handle by its **portable address** (`from_portable(to_portable_str())`), so a
+    /// handle addressing a home / temp path is reconstructed against the receiving environment's
+    /// home / temp roots — a live handle *is* its path identity (the mapping and cursor are
+    /// transient and are not part of the pickled value).
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
+        let ctor = py
+            .get_type_bound::<LocalIO>()
+            .getattr("from_portable")?
+            .unbind();
+        Ok((ctor, (self.inner.uri().to_portable_str(),)))
+    }
 
     fn __repr__(&self) -> String {
         format!(
@@ -1110,6 +1434,19 @@ impl Mmap {
         Ok(())
     }
 
+    /// Sets the mapped file's byte length to exactly `length` — shrinking (dropping the tail)
+    /// or extending (zero-filling) — then syncs the size headers. Raises the guided
+    /// `ValueError` on a read-only mapping.
+    fn truncate(&mut self, length: u64) -> PyResult<()> {
+        self.io_mut()?.truncate(length).map_err(ioerr)
+    }
+
+    /// The content length in bytes, **preferring the cached `Content-Length` header** when
+    /// present and falling back to the live `byte_size()`.
+    fn content_length(&self) -> PyResult<u64> {
+        Ok(self.io()?.content_length())
+    }
+
     /// Whether the file holds no bytes (`byte_size() == 0`).
     fn is_empty(&self) -> PyResult<bool> {
         Ok(self.io()?.is_empty())
@@ -1279,6 +1616,157 @@ impl Mmap {
     fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> PyResult<()> {
         self.io_mut()?
             .pwrite_i64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    // ---- bulk unsigned + floating widths (u16/u32/u64/f32/f64) --------------------------
+
+    /// **Bulk typed read** of `count` little-endian `u16`s — the `u16` counterpart of
+    /// [`pread_i32_array`](Mmap::pread_i32_array), with the same fail-fast bounds check.
+    fn pread_u16_array(&self, offset: u64, count: usize) -> PyResult<Vec<u16>> {
+        let io = self.io()?;
+        if let Some(e) = bulk_eof(offset, io.byte_size().saturating_sub(offset), count, 2) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u16; count];
+        io.pread_u16_array(offset, &mut values).map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u16`s at `offset`, growing as needed.
+    fn pwrite_u16_array(&mut self, offset: u64, values: Vec<u16>) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_u16_array(offset, &values)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u16` copies of `value` at `offset`.
+    fn pwrite_u16_repeat(&mut self, offset: u64, value: u16, count: usize) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_u16_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u32`s (fail-fast bounds check).
+    fn pread_u32_array(&self, offset: u64, count: usize) -> PyResult<Vec<u32>> {
+        let io = self.io()?;
+        if let Some(e) = bulk_eof(offset, io.byte_size().saturating_sub(offset), count, 4) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u32; count];
+        io.pread_u32_array(offset, &mut values).map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u32`s at `offset`, growing as needed.
+    fn pwrite_u32_array(&mut self, offset: u64, values: Vec<u32>) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_u32_array(offset, &values)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u32` copies of `value` at `offset`.
+    fn pwrite_u32_repeat(&mut self, offset: u64, value: u32, count: usize) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_u32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u64`s (fail-fast bounds check).
+    fn pread_u64_array(&self, offset: u64, count: usize) -> PyResult<Vec<u64>> {
+        let io = self.io()?;
+        if let Some(e) = bulk_eof(offset, io.byte_size().saturating_sub(offset), count, 8) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u64; count];
+        io.pread_u64_array(offset, &mut values).map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u64`s at `offset`, growing as needed.
+    fn pwrite_u64_array(&mut self, offset: u64, values: Vec<u64>) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_u64_array(offset, &values)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u64` copies of `value` at `offset`.
+    fn pwrite_u64_repeat(&mut self, offset: u64, value: u64, count: usize) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_u64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f32`s (fail-fast bounds check).
+    fn pread_f32_array(&self, offset: u64, count: usize) -> PyResult<Vec<f32>> {
+        let io = self.io()?;
+        if let Some(e) = bulk_eof(offset, io.byte_size().saturating_sub(offset), count, 4) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0f32; count];
+        io.pread_f32_array(offset, &mut values).map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `f32`s at `offset`, growing as needed.
+    fn pwrite_f32_array(&mut self, offset: u64, values: Vec<f32>) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_f32_array(offset, &values)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f32` copies of `value` at `offset`.
+    fn pwrite_f32_repeat(&mut self, offset: u64, value: f32, count: usize) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_f32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f64`s (fail-fast bounds check).
+    fn pread_f64_array(&self, offset: u64, count: usize) -> PyResult<Vec<f64>> {
+        let io = self.io()?;
+        if let Some(e) = bulk_eof(offset, io.byte_size().saturating_sub(offset), count, 8) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0f64; count];
+        io.pread_f64_array(offset, &mut values).map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `f64`s at `offset`, growing as needed.
+    fn pwrite_f64_array(&mut self, offset: u64, values: Vec<f64>) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_f64_array(offset, &values)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f64` copies of `value` at `offset`.
+    fn pwrite_f64_repeat(&mut self, offset: u64, value: f64, count: usize) -> PyResult<()> {
+        self.io_mut()?
+            .pwrite_f64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    // ---- cross-source copy -------------------------------------------------------------
+
+    /// Overwrites this mapping with **all of `src`'s bytes** (a `yggdryl.memory.Heap`),
+    /// truncating to match — a cross-source copy. Returns the byte count.
+    fn copy_from(&mut self, src: &Heap) -> PyResult<u64> {
+        self.io_mut()?.copy_from(&src.inner).map_err(ioerr)
+    }
+
+    /// **Positioned cross-source write**: copies `length` bytes of `src` (a
+    /// `yggdryl.memory.Heap`) starting at `src_offset` into this mapping at `offset`. Returns
+    /// the number of bytes transferred (short at the end of `src`).
+    fn pwrite_from(
+        &mut self,
+        offset: u64,
+        src: &Heap,
+        src_offset: u64,
+        length: u64,
+    ) -> PyResult<u64> {
+        self.io_mut()?
+            .pwrite_from(offset, &src.inner, src_offset, length)
             .map_err(ioerr)
     }
 
@@ -1540,6 +2028,29 @@ impl Mmap {
         Ok(PyBytes::new_bound(py, &out))
     }
 
+    /// **Compresses this mapping in place** — replaces the file's bytes with the compressed
+    /// form and updates the `Content-Type` / `Content-Length` / `mtime` headers. `codec` (a
+    /// `yggdryl.compression` codec) defaults to the codec of the file's own media type; pass
+    /// an explicit one to override. Raises a guided `ValueError` when no codec applies.
+    #[pyo3(signature = (codec = None))]
+    fn compress_in_place(&mut self, codec: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        match codec {
+            Some(codec) => {
+                let io = self.io_mut()?;
+                crate::compression::with_codec(codec, |c| io.compress_in_place(Some(c)))?
+                    .map_err(ioerr)
+            }
+            None => self.io_mut()?.compress_in_place(None).map_err(ioerr),
+        }
+    }
+
+    /// **Decompresses this mapping in place** — replaces the compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates the size/media/mtime headers.
+    /// Raises a guided `ValueError` when the file is not a supported compression.
+    fn decompress_in_place(&mut self) -> PyResult<()> {
+        self.io_mut()?.decompress_in_place().map_err(ioerr)
+    }
+
     // ---- graph: navigation + discovery + CRUD (a mapping is a leaf) ---------------------
 
     /// The node's own name — the mapped **file name** (the last path segment).
@@ -1590,21 +2101,26 @@ impl Mmap {
 
     /// Removes the mapped file — [`rmfile`](Mmap::rmfile). Removing an **open** mapping is
     /// OS-dependent (Windows refuses to delete a mapped file, Unix unlinks it); close the
-    /// writing mapping first for portable removal.
-    fn rm(&self) -> PyResult<()> {
-        self.io()?.rm().map_err(ioerr)
+    /// writing mapping first for portable removal. `exist_ok` (default `True`) skips a
+    /// missing file; `exist_ok=False` raises on one.
+    #[pyo3(signature = (exist_ok = true))]
+    fn rm(&self, exist_ok: bool) -> PyResult<()> {
+        self.io()?.rm(exist_ok).map_err(ioerr)
     }
 
-    /// Removes the mapped file from disk — really unlinks it; a no-op when it is already
-    /// missing. Raises the OS's guided `ValueError` when the file cannot be removed.
-    fn rmfile(&self) -> PyResult<()> {
-        self.io()?.rmfile().map_err(ioerr)
+    /// Removes the mapped file from disk — really unlinks it. `exist_ok` (default `True`)
+    /// skips an already-missing file; `exist_ok=False` raises on one. Raises the OS's guided
+    /// `ValueError` when the file cannot be removed.
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmfile(&self, exist_ok: bool) -> PyResult<()> {
+        self.io()?.rmfile(exist_ok).map_err(ioerr)
     }
 
     /// A mapping is never a directory — raises the guided `ValueError` naming the fix (use
     /// [`rmfile`](Mmap::rmfile)).
-    fn rmdir(&self) -> PyResult<()> {
-        self.io()?.rmdir().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmdir(&self, exist_ok: bool) -> PyResult<()> {
+        self.io()?.rmdir(exist_ok).map_err(ioerr)
     }
 
     // DESIGN: no `cursor()` / `window()` / `slice()` here — the binding's `Cursor` / `Slice`

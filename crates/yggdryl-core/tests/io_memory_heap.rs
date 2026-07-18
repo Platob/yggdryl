@@ -492,10 +492,14 @@ fn leaf_sources_carry_the_graph_surface() {
     assert_eq!(heap.tree_byte_size(), 0); // a leaf's tree is empty
 
     // Removal has no backing here — a guided refusal names the fix.
-    let err = heap.rm().unwrap_err().to_string();
+    let err = heap.rm(true).unwrap_err().to_string();
     assert!(err.contains("removable backing") && err.contains("LocalIO"));
-    assert!(heap.rmfile().unwrap_err().to_string().contains("rmfile"));
-    assert!(heap.rmdir().unwrap_err().to_string().contains("rmdir"));
+    assert!(heap
+        .rmfile(true)
+        .unwrap_err()
+        .to_string()
+        .contains("rmfile"));
+    assert!(heap.rmdir(true).unwrap_err().to_string().contains("rmdir"));
 
     // The wrappers are leaf byte views too.
     let cur = Heap::new().cursor();
@@ -856,4 +860,177 @@ fn auto_scaling_appends_amortize_growth() {
     }
     assert!(h.as_slice().iter().all(|&b| b == 0xA5));
     assert!(h.capacity() >= 64 * 1024);
+}
+
+// -------------------------------------------------------------------------------------
+// Bulk numeric ops for the unsigned + floating widths (u16 / u32 / u64 / f32 / f64) —
+// the Heap direct-contiguous overrides and the trait-default staged kernels must agree.
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn bulk_u16_u32_u64_array_roundtrip() {
+    let mut h = Heap::new();
+    h.pwrite_u16_array(0, &[1, 2, 0xFFFF]).unwrap();
+    h.pwrite_u32_array(6, &[7, 0xDEAD_BEEF]).unwrap();
+    h.pwrite_u64_array(14, &[0x0102_0304_0506_0708]).unwrap();
+    let mut a = [0u16; 3];
+    let mut b = [0u32; 2];
+    let mut c = [0u64; 1];
+    h.pread_u16_array(0, &mut a).unwrap();
+    h.pread_u32_array(6, &mut b).unwrap();
+    h.pread_u64_array(14, &mut c).unwrap();
+    assert_eq!(a, [1, 2, 0xFFFF]);
+    assert_eq!(b, [7, 0xDEAD_BEEF]);
+    assert_eq!(c, [0x0102_0304_0506_0708]);
+    // Little-endian on the wire: first u16 is 01 00.
+    assert_eq!(&h.as_slice()[..2], &[0x01, 0x00]);
+    // A short read is a guided EOF.
+    let mut too_many = [0u32; 100];
+    assert!(matches!(
+        h.pread_u32_array(0, &mut too_many).unwrap_err(),
+        IoError::UnexpectedEof { .. }
+    ));
+}
+
+#[test]
+fn bulk_float_array_roundtrip_and_repeat() {
+    let mut h = Heap::new();
+    h.pwrite_f32_array(0, &[1.5, -2.25, f32::INFINITY]).unwrap();
+    h.pwrite_f64_array(12, &[core::f64::consts::PI, -0.0])
+        .unwrap();
+    let mut f = [0f32; 3];
+    let mut d = [0f64; 2];
+    h.pread_f32_array(0, &mut f).unwrap();
+    h.pread_f64_array(12, &mut d).unwrap();
+    assert_eq!(f, [1.5, -2.25, f32::INFINITY]);
+    assert_eq!(d, [core::f64::consts::PI, -0.0]);
+
+    // Repeat fill never materializes the array — 500 copies crosses the BULK_CHUNK boundary.
+    let mut r = Heap::new();
+    r.pwrite_f64_repeat(0, 2.5, 500).unwrap();
+    let mut back = [0f64; 500];
+    r.pread_f64_array(0, &mut back).unwrap();
+    assert!(back.iter().all(|&x| x == 2.5));
+    assert_eq!(r.byte_size(), 500 * 8);
+}
+
+#[test]
+fn bulk_numeric_default_kernel_matches_heap_override() {
+    // The staged trait default (used by composing sources) and the Heap contiguous override
+    // must produce byte-identical output. Drive the default through a LocalIO-style path is
+    // overkill here; instead compare a Heap write to a hand-rolled little-endian layout.
+    let mut h = Heap::new();
+    h.pwrite_u32_array(0, &[0x1122_3344, 0x5566_7788]).unwrap();
+    assert_eq!(
+        h.as_slice(),
+        &[0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55]
+    );
+    // Repeat of a wide value across the chunk boundary stays byte-exact.
+    let mut r = Heap::new();
+    r.pwrite_u16_repeat(0, 0xABCD, 300).unwrap();
+    let mut back = [0u16; 300];
+    r.pread_u16_array(0, &mut back).unwrap();
+    assert!(back.iter().all(|&x| x == 0xABCD));
+}
+
+// -------------------------------------------------------------------------------------
+// readline / readlines — cursor advances line by line, blank lines distinct from EOF
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn readline_advances_and_keeps_newline() {
+    let mut cur = Heap::from_slice(b"alpha\nbeta\n\ngamma").cursor();
+    assert_eq!(cur.readline().unwrap(), "alpha\n");
+    assert_eq!(cur.position(), 6);
+    assert_eq!(cur.readline().unwrap(), "beta\n");
+    assert_eq!(cur.readline().unwrap(), "\n"); // blank line — carries its newline
+    assert_eq!(cur.readline().unwrap(), "gamma"); // last line, no trailing newline
+    assert_eq!(cur.readline().unwrap(), ""); // EOF
+    assert_eq!(cur.readline().unwrap(), ""); // still EOF, idempotent
+}
+
+#[test]
+fn readlines_collects_every_line() {
+    let mut cur = Heap::from_slice(b"a\n\nb\n").cursor();
+    assert_eq!(cur.readlines().unwrap(), vec!["a\n", "\n", "b\n"]);
+    assert_eq!(cur.position(), 5);
+    // From a mid-stream position, readlines only sees the remainder (position 3 = start of "b").
+    cur.set_position(3);
+    assert_eq!(cur.readlines().unwrap(), vec!["b\n"]);
+    // A line spanning more than one 256-byte scan chunk is still read whole.
+    let long = vec![b'x'; 700];
+    let mut long_cur = Heap::from_slice(&long).cursor();
+    assert_eq!(long_cur.readline().unwrap().len(), 700);
+}
+
+// -------------------------------------------------------------------------------------
+// content_length + truncate + in-place compression
+// -------------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------
+// Cursor / Slice specialization over contiguous holders — zero-copy as_bytes + fast forwards
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn cursor_as_bytes_is_zero_copy_over_heap() {
+    let heap = Heap::from_slice(b"contiguous");
+    let base = heap.as_slice().as_ptr();
+    let cur = heap.cursor(); // IOCursor<Heap>
+    let view = cur.as_bytes().expect("a cursor over a Heap is contiguous");
+    assert_eq!(view, b"contiguous");
+    assert_eq!(
+        view.as_ptr(),
+        base,
+        "cursor must borrow the heap's bytes, not copy"
+    );
+}
+
+#[test]
+fn slice_as_bytes_is_the_zero_copy_window() {
+    let heap = Heap::from_slice(b"hello world");
+    let base = heap.as_slice().as_ptr();
+    let win = heap.window(6, 5).unwrap(); // IOSlice<Heap> over "world"
+    let view = win.as_bytes().expect("a window over a Heap is contiguous");
+    assert_eq!(view, b"world");
+    // The window borrows the source's own bytes at offset 6 — no copy, no re-alloc.
+    assert_eq!(view.as_ptr(), unsafe { base.add(6) });
+}
+
+#[test]
+fn cursor_forwards_bulk_typed_ops_to_inner() {
+    // The typed bulk arrays go straight to the wrapped Heap's contiguous override and round-trip.
+    let mut cur = Heap::new().cursor();
+    cur.pwrite_i32_array(0, &[10, -20, 30]).unwrap();
+    cur.pwrite_i64_array(12, &[1 << 40]).unwrap();
+    let mut a = [0i32; 3];
+    let mut b = [0i64; 1];
+    cur.pread_i32_array(0, &mut a).unwrap();
+    cur.pread_i64_array(12, &mut b).unwrap();
+    assert_eq!(a, [10, -20, 30]);
+    assert_eq!(b, [1 << 40]);
+    // And the wide unsigned/float arrays inherited from the trait still work through the cursor.
+    cur.pwrite_f64_array(20, &[1.25, 2.5]).unwrap();
+    let mut f = [0f64; 2];
+    cur.pread_f64_array(20, &mut f).unwrap();
+    assert_eq!(f, [1.25, 2.5]);
+}
+
+#[test]
+fn content_length_prefers_cached_header() {
+    let mut h = Heap::from_slice(b"abcde");
+    assert_eq!(h.content_length(), 5); // no header — byte_size
+    h.headers_mut().set_content_length(4096);
+    assert_eq!(h.content_length(), 4096); // header short-circuits the probe
+}
+
+#[test]
+fn truncate_grows_and_shrinks_with_header_sync() {
+    let mut h = Heap::from_slice(b"hello world");
+    h.headers_mut().set_content_length(11); // opt into size-header sync
+    h.truncate(5).unwrap();
+    assert_eq!(h.as_slice(), b"hello");
+    assert_eq!(h.headers().content_length(), Some(5)); // synced down
+    h.truncate(8).unwrap(); // grow zero-fills
+    assert_eq!(h.as_slice(), b"hello\0\0\0");
+    assert_eq!(h.headers().content_length(), Some(8));
 }

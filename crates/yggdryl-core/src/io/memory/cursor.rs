@@ -158,6 +158,63 @@ macro_rules! cursor_methods {
             self.position = self.byte_size();
             out
         }
+
+        /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or to
+        /// the end if none), decoded as UTF-8 — and advances the cursor past it (leaving it put on a
+        /// UTF-8 error). Returns `""` **only** at the true end, so a blank line (which still carries
+        /// its `\n`) is distinct from EOF; this is the [`readlines`](Self::readlines) /
+        /// Python-`readline` semantics. The scan stages through a fixed stack buffer — no per-line
+        /// heap churn beyond the returned string.
+        ///
+        /// ```
+        /// use yggdryl_core::io::memory::{Heap, IOBase};
+        ///
+        /// let mut cur = Heap::from_slice(b"first\nsecond").cursor();
+        /// assert_eq!(cur.readline().unwrap(), "first\n");
+        /// assert_eq!(cur.readline().unwrap(), "second"); // no trailing newline at the end
+        /// assert_eq!(cur.readline().unwrap(), "");        // now at EOF
+        /// ```
+        pub fn readline(&mut self) -> Result<String, IoError> {
+            let start = self.position;
+            let mut scan = [0u8; 256];
+            let mut end = start;
+            loop {
+                let read = self.pread_byte_array(end, &mut scan);
+                if read == 0 {
+                    break; // end of source — the line is everything scanned so far
+                }
+                if let Some(at) = scan[..read].iter().position(|&byte| byte == b'\n') {
+                    end += (at + 1) as u64; // include the newline, like Python's readline
+                    break;
+                }
+                end += read as u64;
+            }
+            let text = self.pread_utf8(start, (end - start) as usize)?;
+            self.position = end;
+            Ok(text)
+        }
+
+        /// **Reads every remaining line** from the cursor into a `Vec`, advancing it to the end —
+        /// each element keeps its trailing `\n` except possibly the last (see
+        /// [`readline`](Self::readline)). The eager counterpart of looping `readline` line by line.
+        ///
+        /// ```
+        /// use yggdryl_core::io::memory::{Heap, IOBase};
+        ///
+        /// let mut cur = Heap::from_slice(b"a\n\nb\n").cursor();
+        /// assert_eq!(cur.readlines().unwrap(), vec!["a\n", "\n", "b\n"]); // blank line kept
+        /// ```
+        pub fn readlines(&mut self) -> Result<Vec<String>, IoError> {
+            let mut lines = Vec::new();
+            loop {
+                let line = self.readline()?;
+                if line.is_empty() {
+                    break;
+                }
+                lines.push(line);
+            }
+            Ok(lines)
+        }
     };
 }
 pub(crate) use cursor_methods;
@@ -261,6 +318,35 @@ impl<T: IOBase> IOBase for IOCursor<T> {
 
     fn pwrite_byte_array(&mut self, offset: u64, data: &[u8]) -> usize {
         self.inner.pwrite_byte_array(offset, data)
+    }
+
+    // A cursor addresses its source 1:1 (only the *position* differs), so every positioned op
+    // forwards straight to the wrapped source — inheriting its **fast contiguous overrides**
+    // (a cursor over a `Heap`/`Mmap` reads/writes through the same direct-slice path, not the
+    // staged fallback) and its zero-copy `as_bytes`.
+    #[inline]
+    fn as_bytes(&self) -> Option<&[u8]> {
+        self.inner.as_bytes()
+    }
+
+    fn pread_exact(&self, offset: u64, buf: &mut [u8]) -> Result<(), IoError> {
+        self.inner.pread_exact(offset, buf)
+    }
+
+    fn pread_i32_array(&self, offset: u64, dst: &mut [i32]) -> Result<(), IoError> {
+        self.inner.pread_i32_array(offset, dst)
+    }
+
+    fn pwrite_i32_array(&mut self, offset: u64, src: &[i32]) -> Result<(), IoError> {
+        self.inner.pwrite_i32_array(offset, src)
+    }
+
+    fn pread_i64_array(&self, offset: u64, dst: &mut [i64]) -> Result<(), IoError> {
+        self.inner.pread_i64_array(offset, dst)
+    }
+
+    fn pwrite_i64_array(&mut self, offset: u64, src: &[i64]) -> Result<(), IoError> {
+        self.inner.pwrite_i64_array(offset, src)
     }
 
     fn uri(&self) -> crate::uri::Uri {

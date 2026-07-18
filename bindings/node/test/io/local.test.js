@@ -10,8 +10,9 @@ const yggdryl = require('../..')
 const io = yggdryl.io
 const { Headers } = yggdryl.headers
 const { LocalEntries, LocalIO, Mmap } = yggdryl.local
-const { NoChildren, Whence } = yggdryl.memory
+const { Heap, NoChildren, Whence } = yggdryl.memory
 const { Uri } = yggdryl.uri
+const { Gzip } = yggdryl.compression
 
 /** A unique temp directory per test; the test closes its handles, then removes it. */
 function tmpDir() {
@@ -925,4 +926,245 @@ test('Mmap.close is deterministic and idempotent; use-after-close throws the gui
   // succeeding is itself the proof the mapping was released deterministically.
   fs.rmSync(file)
   assert.ok(!fs.existsSync(file))
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO — new IOBase surface: truncate / contentLength / in-place codecs / copy / bulk
+// -------------------------------------------------------------------------------------
+
+test('LocalIO.truncate resizes the file (shrink drops the tail, grow zero-fills)', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 't.bin'))
+  f.pwriteUtf8(0, 'hello world')
+  f.truncate(5)
+  assert.equal(f.byteSize(), 5)
+  assert.equal(f.preadUtf8(0, 5), 'hello')
+  f.truncate(8) // grow zero-fills
+  assert.equal(f.byteSize(), 8)
+  assert.equal(f.preadByte(7), 0)
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO.contentLength prefers the cached header, else the size', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'c.bin'))
+  f.pwriteUtf8(0, 'abcd')
+  assert.equal(f.contentLength(), 4) // no header — the live size
+  f.setHeaders(new Headers().with('Content-Length', '99'))
+  assert.equal(f.contentLength(), 99) // the cached header short-circuits
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO.compressInPlace + decompressInPlace round-trip a file', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'data.bin'))
+  const original = Buffer.from('file payload '.repeat(40))
+  f.pwriteByteArray(0, original)
+
+  f.compressInPlace(new Gzip())
+  assert.ok(f.byteSize() < original.length)
+  assert.equal(f.headers.contentType(), 'application/gzip')
+
+  f.decompressInPlace()
+  assert.deepEqual(f.preadByteArray(0, original.length), original)
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO.copyFrom + pwriteFrom copy from a Heap source', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'copy.bin'))
+  f.pwriteUtf8(0, 'old contents')
+
+  assert.equal(f.copyFrom(new Heap(Buffer.from('fresh'))), 5)
+  assert.equal(f.byteSize(), 5)
+  assert.equal(f.preadUtf8(0, 5), 'fresh')
+
+  assert.equal(f.pwriteFrom(1, new Heap(Buffer.from('ABCDEF')), 2, 3), 3) // 'CDE' at offset 1
+  assert.equal(f.preadUtf8(0, 5), 'fCDEh')
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO bulk u16/u32/u64/f64 arrays + repeats round-trip through the file', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'nums.bin'))
+
+  const u16s = Array.from({ length: 300 }, (_, i) => (i * 13) % 65536)
+  f.pwriteU16Array(0, u16s)
+  assert.deepEqual(f.preadU16Array(0, 300), u16s)
+
+  const u64s = Array.from({ length: 10 }, (_, i) => i * 2 ** 40 + i)
+  f.pwriteU64Array(0, u64s)
+  assert.deepEqual(f.preadU64Array(0, 10), u64s)
+
+  const f64s = [1.5, -2.25, 3.75, 100.5]
+  f.pwriteF64Array(0, f64s)
+  assert.deepEqual(f.preadF64Array(0, 4), f64s)
+
+  f.pwriteU16Repeat(0, 0x1234, 300)
+  assert.ok(f.preadU16Array(0, 300).every((v) => v === 0x1234))
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO.readLine / readLines stream the file line by line', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'lines.txt'))
+  f.pwriteUtf8(0, 'alpha\nbeta\ngamma')
+  f.rewind()
+  assert.equal(f.readLine(), 'alpha\n')
+  assert.deepEqual(f.readLines(), ['beta\n', 'gamma'])
+  f.close()
+  rmTree(dir)
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO — mmap(), tmpdir alias, dispose, and existOk on the rm family
+// -------------------------------------------------------------------------------------
+
+test('LocalIO.mmap materializes the memory-mapped backing as an Mmap', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'm.bin'))
+  const m = f.mmap()
+  assert.ok(m instanceof Mmap)
+  m.pwriteUtf8(0, 'mapped')
+  assert.equal(m.preadUtf8(0, 6), 'mapped')
+  m.close()
+
+  // The bytes are persisted on disk.
+  assert.equal(new LocalIO(nodePath.join(dir, 'm.bin')).preadUtf8(0, 6), 'mapped')
+  rmTree(dir)
+})
+
+test('LocalIO.tmpdir is the filesystem alias of tmpfolder (a lazy temp folder)', () => {
+  const d = LocalIO.tmpdir(`yggdryl-node-tmpdir-${process.pid}-${Date.now()}`)
+  assert.ok(d instanceof LocalIO)
+  assert.equal(d.exists(), false) // lazy — nothing created yet
+
+  const child = d.join('inside.txt')
+  child.pwriteUtf8(0, 'hi')
+  assert.ok(d.isDir())
+  child.close()
+  d.rmdir()
+  assert.ok(!d.exists())
+})
+
+test('dispose releases the mapping like close (the resource-management alias)', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'd.bin'))
+  f.pwriteUtf8(0, 'bye')
+  assert.equal(f.isMapped, true)
+  f.dispose()
+  assert.equal(f.isMapped, false)
+  assert.equal(f.preadUtf8(0, 3), 'bye') // still usable, back to lazy
+  rmTree(dir)
+})
+
+test('rm / rmfile / rmdir honor existOk on a missing node', () => {
+  const dir = tmpDir()
+  const ghost = new LocalIO(nodePath.join(dir, 'ghost.bin'))
+
+  // Default existOk=true — a missing node is a no-op.
+  ghost.rm()
+  ghost.rmfile()
+  ghost.rmdir()
+
+  // existOk=false throws the guided error naming the fix.
+  assert.throws(() => ghost.rm(false), /nothing exists here to remove/)
+  assert.throws(() => ghost.rmfile(false), /pass exist_ok=true/)
+  assert.throws(() => ghost.rmdir(false), /nothing exists here to remove/)
+  rmTree(dir)
+})
+
+// -------------------------------------------------------------------------------------
+// Mmap — new IOBase surface: truncate / contentLength / copyFrom / bulk / in-place / lines
+// -------------------------------------------------------------------------------------
+
+test('Mmap.truncate / contentLength / copyFrom / bulk arrays over a file', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.pwriteUtf8(0, 'hello world')
+
+  m.truncate(5)
+  assert.equal(m.byteSize(), 5)
+  assert.equal(m.preadUtf8(0, 5), 'hello')
+  assert.equal(m.contentLength(), 5) // no header — the logical size
+
+  assert.equal(m.copyFrom(new Heap(Buffer.from('fresh bytes'))), 11)
+  assert.equal(m.preadUtf8(0, 11), 'fresh bytes')
+
+  const u32s = Array.from({ length: 300 }, (_, i) => i * 100000)
+  m.pwriteU32Array(0, u32s)
+  assert.deepEqual(m.preadU32Array(0, 300), u32s)
+  m.pwriteF64Repeat(0, 2.5, 10)
+  assert.ok(m.preadF64Array(0, 10).every((v) => v === 2.5))
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.compressInPlace + decompressInPlace round-trip over a file', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  const original = Buffer.from('mmap payload '.repeat(40))
+  m.pwriteByteArray(0, original)
+
+  m.compressInPlace(new Gzip())
+  assert.ok(m.byteSize() < original.length)
+  m.decompressInPlace()
+  assert.deepEqual(m.preadByteArray(0, original.length), original)
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.readLine / readLines stream lines over a file', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.writeUtf8('one\ntwo\nthree')
+  m.rewind()
+  assert.equal(m.readLine(), 'one\n')
+  assert.deepEqual(m.readLines(), ['two\n', 'three'])
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.dispose releases the mapping like close', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.writeUtf8('bye')
+  m.dispose()
+  assert.equal(m.closed, true)
+  assert.throws(() => m.byteSize(), /the mapping is closed/)
+  fs.rmSync(file) // unmapped, so deletable even on Windows
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO — file-object duck methods: fsPath / tell / readable / writable / seekable / lines
+// -------------------------------------------------------------------------------------
+
+test('LocalIO fsPath / tell / readable / writable / seekable / lines', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'duck.txt'))
+
+  assert.equal(f.fsPath(), f.path) // the method form of the path getter
+  assert.equal(f.seekable(), true)
+  assert.equal(f.readable(), true) // ReadWrite by default
+  assert.equal(f.writable(), true)
+
+  f.setMode(io.IOMode.Read)
+  assert.equal(f.readable(), true)
+  assert.equal(f.writable(), false)
+  f.setMode(io.IOMode.ReadWrite)
+
+  f.pwriteUtf8(0, 'line1\nline2\n')
+  f.setPosition(0)
+  assert.equal(f.tell(), 0) // the position alias
+  assert.deepEqual(f.lines(), ['line1\n', 'line2\n'])
+  assert.equal(f.tell(), f.byteSize()) // lines() drained the cursor to the end
+  f.close()
+  rmTree(dir)
 })

@@ -260,6 +260,26 @@ impl Headers {
         self.get(Self::CONTENT_LENGTH)?.trim().parse().ok()
     }
 
+    /// Sets `Content-Length` to `len` — a compact decimal rendered into a stack buffer (no
+    /// `String` temporary), the alloc-free counterpart of [`content_length`](Headers::content_length).
+    /// The size half of the content-mutation header sync.
+    pub fn set_content_length(&mut self, len: u64) {
+        let mut buf = [0u8; 20];
+        let text = write_u64(&mut buf, len);
+        self.insert_bytes(Self::CONTENT_LENGTH.as_bytes(), text);
+    }
+
+    /// Sets [`mtime`](Headers::mtime) to **now** (epoch microseconds from the system clock) —
+    /// the timestamp half of the content-mutation header sync. Best-effort: a clock before the
+    /// epoch stores `0`.
+    pub fn touch_mtime(&mut self) {
+        let micros = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros().min(i64::MAX as u128) as i64)
+            .unwrap_or(0);
+        self.set_mtime(micros);
+    }
+
     // ---- media type: the one place Content-Type / Content-Encoding are interpreted ------
 
     /// The **primary [`MimeType`]** of `Content-Type`, if present and valid — the single most
@@ -466,6 +486,22 @@ impl Serializable for Headers {
     fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
         Headers::deserialize_bytes(bytes)
     }
+}
+
+/// Formats an unsigned `value` as decimal into `buf` — the alloc-free render for
+/// `set_content_length`.
+fn write_u64(buf: &mut [u8; 20], value: u64) -> &[u8] {
+    let mut i = buf.len();
+    let mut mag = value;
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (mag % 10) as u8;
+        mag /= 10;
+        if mag == 0 {
+            break;
+        }
+    }
+    &buf[i..]
 }
 
 /// Formats `value` as decimal into `buf` and returns the written slice — an allocation-free

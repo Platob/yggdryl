@@ -443,6 +443,27 @@ impl IOBase for Mmap {
         Some(self.mapped()) // the live mapping — zero-copy for the compression helpers
     }
 
+    fn truncate(&mut self, len: u64) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(readonly_err(&self.path));
+        }
+        let old = self.len;
+        if len > old {
+            // Growing: zero the re-exposed region [old, len) so it never shows stale bytes left
+            // by a prior larger length (a shrink is purely logical). `grown_to` extends the
+            // file + mapping when needed; the brand-new file tail is already OS-zeroed, and this
+            // fill additionally clears any bytes re-exposed within the existing mapping.
+            let region = self.grown_to(len)?;
+            region[old as usize..len as usize].fill(0);
+        }
+        self.len = len; // shrink is purely logical; the file is truncated to `len` on drop
+        if self.position > len {
+            self.position = len;
+        }
+        self.sync_size_headers();
+        Ok(())
+    }
+
     // A raw mapped file is a **leaf** node of the IO graph — the tree surface lives on
     // `LocalIO`, the family's access point.
     type Children = crate::io::memory::NoChildren<Mmap>;
@@ -466,19 +487,25 @@ impl IOBase for Mmap {
     /// DESIGN: removing an OPEN mapping is OS-dependent (Windows refuses to delete a mapped
     /// file, Unix unlinks it) — the error, when any, is the OS's own guided `FileIo`. Drop
     /// or close the mapping first for portable removal.
-    fn rm(&self) -> Result<(), IoError> {
-        self.rmfile()
+    fn rm(&self, exist_ok: bool) -> Result<(), IoError> {
+        self.rmfile(exist_ok)
     }
 
-    fn rmfile(&self) -> Result<(), IoError> {
+    fn rmfile(&self, exist_ok: bool) -> Result<(), IoError> {
         match std::fs::remove_file(&self.path) {
             Ok(()) => Ok(()),
-            Err(_) if !self.path.exists() => Ok(()), // already gone — removing is idempotent
+            Err(_) if !self.path.exists() && exist_ok => Ok(()), // already gone — skipped
+            Err(_) if !self.path.exists() => Err(IoError::FileIo {
+                op: "remove",
+                path: self.path.to_string_lossy().into_owned(),
+                detail: "nothing exists here to remove; pass exist_ok=true to skip a missing node"
+                    .to_string(),
+            }),
             Err(e) => Err(file_err("remove", &self.path, &e)),
         }
     }
 
-    fn rmdir(&self) -> Result<(), IoError> {
+    fn rmdir(&self, _exist_ok: bool) -> Result<(), IoError> {
         Err(IoError::FileIo {
             op: "remove",
             path: self.path.to_string_lossy().into_owned(),

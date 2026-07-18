@@ -29,7 +29,9 @@
 //! text accessors. Every failing typed read, seek, slice, or UTF-8 decode surfaces as a thrown
 //! `Error` carrying the core's guided text unchanged.
 
-use napi::bindgen_prelude::{Buffer, Either4, Generator, ToNapiValue, Unknown};
+use napi::bindgen_prelude::{
+    Buffer, Either3, Either4, Generator, ToNapiValue, Uint8Array, Unknown,
+};
 use napi_derive::napi;
 
 use crate::compression::{as_dyn, wrap_codec, Gzip, Lzma, Zlib, Zstd};
@@ -195,6 +197,20 @@ impl Heap {
         Self {
             inner: core::Heap::with_capacity(capacity as usize),
         }
+    }
+
+    /// The **type-inferring** entry — builds a heap by reading `source`'s bytes into a fresh
+    /// buffer, inferring the runtime type: a **string** is taken as its UTF-8 bytes, any
+    /// **`Uint8Array`** (a Node `Buffer` included) is copied byte-for-byte, and another
+    /// **`Heap`** is cloned (its stored bytes).
+    #[napi(factory)]
+    pub fn from_io(source: Either3<String, Uint8Array, &Heap>) -> Heap {
+        let inner = match source {
+            Either3::A(text) => core::Heap::from_slice(text.as_bytes()),
+            Either3::B(bytes) => core::Heap::from_slice(bytes.as_ref()),
+            Either3::C(heap) => heap.inner.clone(),
+        };
+        Heap { inner }
     }
 
     // ---- size + capacity ---------------------------------------------------------------
@@ -823,23 +839,31 @@ impl Heap {
     }
 
     /// Removing a heap — always the guided refusal: an in-memory source has no removable
-    /// backing; address a filesystem node (e.g. `LocalIO`) instead.
+    /// backing; address a filesystem node (e.g. `LocalIO`) instead. `existOk` (default `true`)
+    /// governs a **missing** node on a filesystem source — `false` throws on a missing node;
+    /// it changes nothing on a heap, which has no backing to remove.
     #[napi]
-    pub fn rm(&self) -> napi::Result<()> {
-        self.inner.rm().map_err(to_error)
+    pub fn rm(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rm(exist_ok).map_err(to_error)
     }
 
     /// Removing a heap **as a file** — always the guided refusal (no removable backing).
+    /// `existOk` (default `true`) governs a missing node on a filesystem source; `false`
+    /// throws on a missing node.
     #[napi]
-    pub fn rmfile(&self) -> napi::Result<()> {
-        self.inner.rmfile().map_err(to_error)
+    pub fn rmfile(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmfile(exist_ok).map_err(to_error)
     }
 
     /// Removing a heap **as a directory** — always the guided refusal (no removable
-    /// backing).
+    /// backing). `existOk` (default `true`) governs a missing node on a filesystem source;
+    /// `false` throws on a missing node.
     #[napi]
-    pub fn rmdir(&self) -> napi::Result<()> {
-        self.inner.rmdir().map_err(to_error)
+    pub fn rmdir(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmdir(exist_ok).map_err(to_error)
     }
 
     // ---- cursor / window views ---------------------------------------------------------
@@ -898,6 +922,253 @@ impl Heap {
             .map_err(to_error)
     }
 
+    // ---- size / content-length / truncate ----------------------------------------------
+
+    /// Truncates the storage to exactly `len` bytes — shrinking drops the tail, growing
+    /// zero-fills — and keeps the size headers in sync. The cursor is clamped back if it sat
+    /// past the new end.
+    #[napi]
+    pub fn truncate(&mut self, len: u32) -> napi::Result<()> {
+        self.inner.truncate(len as u64).map_err(to_error)
+    }
+
+    /// The **content length** in bytes — the `Content-Length` its `headers` declare when
+    /// present (authoritative and free), else the live `byteSize`. An `i64` (a JS number,
+    /// exact to 2^53).
+    #[napi]
+    pub fn content_length(&self) -> i64 {
+        self.inner.content_length() as i64
+    }
+
+    // ---- in-place compression ----------------------------------------------------------
+
+    /// **Compresses this heap in place** — replaces its bytes with the compressed form and
+    /// updates `Content-Type` / `Content-Length` / `mtime`. `codec` defaults to the codec of
+    /// the heap's own media type (a `.gz`-addressed heap packs itself gzip); pass one of the
+    /// four codec classes to override. Throws the guided `Error` when no codec resolves.
+    #[napi]
+    pub fn compress_in_place(
+        &mut self,
+        codec: Option<Either4<&Gzip, &Zlib, &Zstd, &Lzma>>,
+    ) -> napi::Result<()> {
+        self.inner
+            .compress_in_place(codec.map(as_dyn))
+            .map_err(to_error)
+    }
+
+    /// **Decompresses this heap in place** — replaces its compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates `Content-Type` /
+    /// `Content-Length` / `mtime`. Throws the guided `Error` when the media type is not a
+    /// supported compression.
+    #[napi]
+    pub fn decompress_in_place(&mut self) -> napi::Result<()> {
+        self.inner.decompress_in_place().map_err(to_error)
+    }
+
+    // ---- cross-source copy -------------------------------------------------------------
+
+    /// Overwrites this heap with **all of `src`'s bytes** (truncating to match) and returns
+    /// the byte count — a cross-source copy, zero-copy on the read side. An `i64` (a JS
+    /// number, exact to 2^53).
+    #[napi]
+    pub fn copy_from(&mut self, src: &Heap) -> napi::Result<i64> {
+        self.inner
+            .copy_from(&src.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Positioned cross-source write**: copies `length` bytes of `src` from `srcOffset`
+    /// into this heap at `offset`, growing as needed; returns the number of bytes actually
+    /// transferred (short at the end of `src`). An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn pwrite_from(
+        &mut self,
+        offset: u32,
+        src: &Heap,
+        src_offset: u32,
+        length: u32,
+    ) -> napi::Result<i64> {
+        self.inner
+            .pwrite_from(offset as u64, &src.inner, src_offset as u64, length as u64)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    // ---- bulk typed arrays: u16 / u32 / u64 / f32 / f64 --------------------------------
+
+    /// **Bulk typed read** of `count` little-endian `u16`s at `offset` — the `u16` counterpart
+    /// of `preadI32Array`, checked before allocating.
+    #[napi]
+    pub fn pread_u16_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u16>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 2)?;
+        let mut values = vec![0u16; count as usize];
+        self.inner
+            .pread_u16_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u16`s at `offset`.
+    #[napi]
+    pub fn pwrite_u16_array(&mut self, offset: u32, values: Vec<u16>) -> napi::Result<()> {
+        self.inner
+            .pwrite_u16_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u16` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_u16_repeat(&mut self, offset: u32, value: u16, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u16_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u32`s at `offset` — the `u32` counterpart
+    /// of `preadI32Array`, checked before allocating.
+    #[napi]
+    pub fn pread_u32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u32>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 4)?;
+        let mut values = vec![0u32; count as usize];
+        self.inner
+            .pread_u32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u32`s at `offset`.
+    #[napi]
+    pub fn pwrite_u32_array(&mut self, offset: u32, values: Vec<u32>) -> napi::Result<()> {
+        self.inner
+            .pwrite_u32_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u32` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_u32_repeat(&mut self, offset: u32, value: u32, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u32_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u64`s at `offset` — the `u64` counterpart
+    /// of `preadI64Array`; each value crosses as an `i64` (a JS number, exact to ±2^53) so the
+    /// full 64-bit value is carried without truncation. Checked before allocating.
+    #[napi]
+    pub fn pread_u64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 8)?;
+        let mut values = vec![0u64; count as usize];
+        self.inner
+            .pread_u64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values.into_iter().map(|v| v as i64).collect())
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u64`s at `offset`. Values
+    /// cross as `i64` (a JS number); keep each below ±2^53 so it stays exact.
+    #[napi]
+    pub fn pwrite_u64_array(&mut self, offset: u32, values: Vec<i64>) -> napi::Result<()> {
+        let src: Vec<u64> = values.into_iter().map(|v| v as u64).collect();
+        self.inner
+            .pwrite_u64_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u64` copies of `value` at `offset`
+    /// (`value` crosses as an `i64`).
+    #[napi]
+    pub fn pwrite_u64_repeat(&mut self, offset: u32, value: i64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u64_repeat(offset as u64, value as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f32`s at `offset` — each widened to an
+    /// `f64` (a JS number) on the way out. Checked before allocating.
+    #[napi]
+    pub fn pread_f32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<f64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 4)?;
+        let mut values = vec![0f32; count as usize];
+        self.inner
+            .pread_f32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values.into_iter().map(|v| v as f64).collect())
+    }
+
+    /// **Bulk typed write** of all of `values` (JS `f64`s) narrowed to little-endian `f32`s
+    /// at `offset`.
+    #[napi]
+    pub fn pwrite_f32_array(&mut self, offset: u32, values: Vec<f64>) -> napi::Result<()> {
+        let src: Vec<f32> = values.into_iter().map(|v| v as f32).collect();
+        self.inner
+            .pwrite_f32_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f32` copies of `value` (a JS `f64`
+    /// narrowed to `f32`) at `offset`.
+    #[napi]
+    pub fn pwrite_f32_repeat(&mut self, offset: u32, value: f64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_f32_repeat(offset as u64, value as f32, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f64`s at `offset`. Checked before
+    /// allocating.
+    #[napi]
+    pub fn pread_f64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<f64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 8)?;
+        let mut values = vec![0f64; count as usize];
+        self.inner
+            .pread_f64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `f64`s at `offset`.
+    #[napi]
+    pub fn pwrite_f64_array(&mut self, offset: u32, values: Vec<f64>) -> napi::Result<()> {
+        self.inner
+            .pwrite_f64_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f64` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_f64_repeat(&mut self, offset: u32, value: f64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_f64_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    // ---- line-oriented reads -----------------------------------------------------------
+
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
+    /// **only** at the true end, so a blank line (which still carries its `\n`) is distinct
+    /// from EOF.
+    #[napi]
+    pub fn read_line(&mut self) -> napi::Result<String> {
+        self.inner.readline().map_err(to_error)
+    }
+
+    /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    #[napi]
+    pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner.readlines().map_err(to_error)
+    }
+
+    /// The remaining lines from the cursor as an array — the JS-idiomatic alias of
+    /// [`readLines`](Heap::read_lines) (the file-object `lines()` shape).
+    #[napi]
+    pub fn lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner.readlines().map_err(to_error)
+    }
+
     /// A short debug string of the form `Heap(len=N)`.
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
@@ -936,6 +1207,24 @@ impl Cursor {
         Cursor {
             inner: heap.inner.clone().cursor(),
         }
+    }
+
+    /// The **type-inferring** entry — builds a cursor over a fresh buffer of `source`'s bytes,
+    /// inferring the runtime type: a **string** is taken as its UTF-8 bytes, any **`Uint8Array`**
+    /// (a Node `Buffer` included) is copied, and another **`Heap`** is cloned — carrying that
+    /// heap's cursor position across as the new cursor's start (the source's `tell`).
+    #[napi(factory)]
+    pub fn from_io(source: Either3<String, Uint8Array, &Heap>) -> Cursor {
+        let inner = match source {
+            Either3::A(text) => core::Heap::from_slice(text.as_bytes()).cursor(),
+            Either3::B(bytes) => core::Heap::from_slice(bytes.as_ref()).cursor(),
+            Either3::C(heap) => {
+                let mut cursor = heap.inner.clone().cursor();
+                cursor.set_position(heap.inner.position());
+                cursor
+            }
+        };
+        Cursor { inner }
     }
 
     // ---- position / seek ---------------------------------------------------------------
@@ -1313,22 +1602,30 @@ impl Cursor {
     }
 
     /// Removing a cursor view — always the guided refusal: an in-memory source has no
-    /// removable backing; address a filesystem node (e.g. `LocalIO`) instead.
+    /// removable backing; address a filesystem node (e.g. `LocalIO`) instead. `existOk`
+    /// (default `true`) governs a missing node on a filesystem source; `false` throws on a
+    /// missing node.
     #[napi]
-    pub fn rm(&self) -> napi::Result<()> {
-        self.inner.rm().map_err(to_error)
+    pub fn rm(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rm(exist_ok).map_err(to_error)
     }
 
-    /// Removing a cursor view **as a file** — always the guided refusal.
+    /// Removing a cursor view **as a file** — always the guided refusal. `existOk` (default
+    /// `true`) governs a missing node on a filesystem source; `false` throws on a missing node.
     #[napi]
-    pub fn rmfile(&self) -> napi::Result<()> {
-        self.inner.rmfile().map_err(to_error)
+    pub fn rmfile(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmfile(exist_ok).map_err(to_error)
     }
 
-    /// Removing a cursor view **as a directory** — always the guided refusal.
+    /// Removing a cursor view **as a directory** — always the guided refusal. `existOk`
+    /// (default `true`) governs a missing node on a filesystem source; `false` throws on a
+    /// missing node.
     #[napi]
-    pub fn rmdir(&self) -> napi::Result<()> {
-        self.inner.rmdir().map_err(to_error)
+    pub fn rmdir(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmdir(exist_ok).map_err(to_error)
     }
 
     /// A copy of the wrapped [`Heap`] source (the position is not carried).
@@ -1343,6 +1640,35 @@ impl Cursor {
     #[napi]
     pub fn to_bytes(&self) -> Buffer {
         self.inner.inner().as_slice().to_vec().into()
+    }
+
+    /// The **content length** in bytes — the `Content-Length` the wrapped source's `headers`
+    /// declare when present, else its live `byteSize`. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn content_length(&self) -> i64 {
+        self.inner.content_length() as i64
+    }
+
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
+    /// **only** at the true end (a blank line still carries its `\n`).
+    #[napi]
+    pub fn read_line(&mut self) -> napi::Result<String> {
+        self.inner.readline().map_err(to_error)
+    }
+
+    /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    #[napi]
+    pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner.readlines().map_err(to_error)
+    }
+
+    /// The remaining lines from the cursor as an array — the JS-idiomatic alias of
+    /// [`readLines`](Cursor::read_lines).
+    #[napi]
+    pub fn lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner.readlines().map_err(to_error)
     }
 
     /// A short debug string of the form `Cursor(pos=P, len=N)`.
@@ -1606,22 +1932,30 @@ impl Slice {
     }
 
     /// Removing a slice window — always the guided refusal: an in-memory source has no
-    /// removable backing; address a filesystem node (e.g. `LocalIO`) instead.
+    /// removable backing; address a filesystem node (e.g. `LocalIO`) instead. `existOk`
+    /// (default `true`) governs a missing node on a filesystem source; `false` throws on a
+    /// missing node.
     #[napi]
-    pub fn rm(&self) -> napi::Result<()> {
-        self.inner.rm().map_err(to_error)
+    pub fn rm(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rm(exist_ok).map_err(to_error)
     }
 
-    /// Removing a slice window **as a file** — always the guided refusal.
+    /// Removing a slice window **as a file** — always the guided refusal. `existOk` (default
+    /// `true`) governs a missing node on a filesystem source; `false` throws on a missing node.
     #[napi]
-    pub fn rmfile(&self) -> napi::Result<()> {
-        self.inner.rmfile().map_err(to_error)
+    pub fn rmfile(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmfile(exist_ok).map_err(to_error)
     }
 
-    /// Removing a slice window **as a directory** — always the guided refusal.
+    /// Removing a slice window **as a directory** — always the guided refusal. `existOk`
+    /// (default `true`) governs a missing node on a filesystem source; `false` throws on a
+    /// missing node.
     #[napi]
-    pub fn rmdir(&self) -> napi::Result<()> {
-        self.inner.rmdir().map_err(to_error)
+    pub fn rmdir(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmdir(exist_ok).map_err(to_error)
     }
 
     /// A copy of the wrapped [`Heap`] source (the whole source, not just the window).
@@ -1637,6 +1971,14 @@ impl Slice {
     pub fn to_bytes(&self) -> Buffer {
         let length = self.inner.byte_size() as usize;
         self.inner.pread_vec(0, length).into()
+    }
+
+    /// The **content length** in bytes — the `Content-Length` the wrapped source's `headers`
+    /// declare when present, else the window's live `byteSize`. An `i64` (a JS number, exact
+    /// to 2^53).
+    #[napi]
+    pub fn content_length(&self) -> i64 {
+        self.inner.content_length() as i64
     }
 
     /// A short debug string of the form `Slice(offset=O, len=N)`.

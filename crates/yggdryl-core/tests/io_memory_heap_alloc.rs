@@ -148,6 +148,29 @@ fn allocation_budgets() {
         "bulk i32 array ops must stage on the stack (got {bulk} allocs)"
     );
 
+    // The wider unsigned + floating bulk ops (u16/u32/u64/f32/f64) share the same stack-staged
+    // (Heap: direct-contiguous) kernels — so they too are zero heap allocation across the chunk
+    // boundary once the sink is sized.
+    let mut wide_sink = Heap::with_capacity(16_000);
+    let u32s = vec![0x1122_3344u32; 1000];
+    let f64s = vec![2.5f64; 1000];
+    let mut u32_back = vec![0u32; 1000];
+    let mut f64_back = vec![0f64; 1000];
+    wide_sink.pwrite_u32_array(0, &u32s).unwrap(); // pre-size once
+    wide_sink.pwrite_f64_array(4000, &f64s).unwrap();
+    let wide = allocs_over(iters, || {
+        wide_sink.pwrite_u32_array(0, &u32s).unwrap();
+        wide_sink.pread_u32_array(0, &mut u32_back).unwrap();
+        wide_sink.pwrite_f64_array(4000, &f64s).unwrap();
+        wide_sink.pread_f64_array(4000, &mut f64_back).unwrap();
+        wide_sink.pwrite_u16_repeat(0, 0xABCD, 2000).unwrap();
+        wide_sink.pwrite_u64_repeat(0, 7, 1000).unwrap();
+    });
+    assert_eq!(
+        wide, 0,
+        "wide bulk numeric ops must stage on the stack (got {wide} allocs)"
+    );
+
     // Repeated-value fills never materialize the full array — zero heap allocation once the
     // sink is sized.
     let mut fill_sink = Heap::with_capacity(8000);

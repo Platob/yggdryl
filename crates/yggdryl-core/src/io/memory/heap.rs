@@ -272,6 +272,49 @@ impl Heap {
     }
 }
 
+/// Emits `Heap`'s **direct contiguous** overrides of the bulk numeric ops for one width —
+/// one dense conversion pass straight off (or into) the stored `Vec<u8>`, no stack staging.
+/// Mirrors the hand-written `i32`/`i64` overrides for `u16`/`u32`/`u64`/`f32`/`f64`.
+macro_rules! heap_numeric_bulk {
+    ($t:ty, $width:literal, $read:ident, $write:ident, $repeat:ident) => {
+        fn $read(&self, offset: u64, dst: &mut [$t]) -> Result<(), IoError> {
+            let start = offset as usize;
+            let need = dst.len() * $width;
+            let Some(src) = self.data.get(start..start.saturating_add(need)) else {
+                return Err(self.eof(offset, need));
+            };
+            for (value, raw) in dst.iter_mut().zip(src.chunks_exact($width)) {
+                *value = <$t>::from_le_bytes(raw.try_into().expect("chunks_exact width"));
+            }
+            Ok(())
+        }
+        fn $write(&mut self, offset: u64, src: &[$t]) -> Result<(), IoError> {
+            let start = offset as usize;
+            let Some(end) = start.checked_add(src.len() * $width) else {
+                return Err(self.eof(offset, src.len() * $width));
+            };
+            if !self.grow_for_write(start, end) {
+                self.data.resize(end, 0);
+            }
+            for (raw, value) in self.data[start..end].chunks_exact_mut($width).zip(src) {
+                raw.copy_from_slice(&value.to_le_bytes());
+            }
+            Ok(())
+        }
+        fn $repeat(&mut self, offset: u64, value: $t, count: usize) -> Result<(), IoError> {
+            let start = offset as usize;
+            let Some(end) = start.checked_add(count * $width) else {
+                return Err(self.eof(offset, count * $width));
+            };
+            if !self.grow_for_write(start, end) {
+                self.data.resize(end, 0);
+            }
+            self.fill_repeat(start, end, &value.to_le_bytes());
+            Ok(())
+        }
+    };
+}
+
 impl IOBase for Heap {
     #[inline]
     fn byte_size(&self) -> u64 {
@@ -356,6 +399,17 @@ impl IOBase for Heap {
     #[inline]
     fn as_bytes(&self) -> Option<&[u8]> {
         Some(&self.data) // contiguous owned buffer — zero-copy for the compression helpers
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), IoError> {
+        // Resize to exactly `len` — shrink drops the tail, grow zero-fills.
+        self.data
+            .resize(usize::try_from(len).unwrap_or(usize::MAX), 0);
+        if self.position > len {
+            self.position = len; // keep the cursor within the data
+        }
+        self.sync_size_headers();
+        Ok(())
     }
 
     // `exists()` is not overridden: the default is `kind().exists()`, and `Heap` (never
@@ -539,6 +593,13 @@ impl IOBase for Heap {
         self.fill_repeat(start, end, &value.to_le_bytes());
         Ok(())
     }
+
+    // The unsigned + floating widths — same direct-off-the-Vec conversion as the signed pair.
+    heap_numeric_bulk!(u16, 2, pread_u16_array, pwrite_u16_array, pwrite_u16_repeat);
+    heap_numeric_bulk!(u32, 4, pread_u32_array, pwrite_u32_array, pwrite_u32_repeat);
+    heap_numeric_bulk!(u64, 8, pread_u64_array, pwrite_u64_array, pwrite_u64_repeat);
+    heap_numeric_bulk!(f32, 4, pread_f32_array, pwrite_f32_array, pwrite_f32_repeat);
+    heap_numeric_bulk!(f64, 8, pread_f64_array, pwrite_f64_array, pwrite_f64_repeat);
 }
 
 // Value equality over the stored bytes only — the cursor, address `Uri`, `Headers`, and `IOMode`

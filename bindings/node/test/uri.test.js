@@ -104,6 +104,25 @@ test('byte codec round-trips and is the exact inverse', () => {
   assert.throws(() => Uri.deserializeBytes(Buffer.from([0xff, 0xfe])), /not valid UTF-8/)
 })
 
+test('toPortableString / fromPortableString round-trip a URI and a URL', () => {
+  // A non-file address is already portable — it passes through unchanged.
+  const uri = Uri.parse('https://example.com/a/b.txt?q=1')
+  assert.equal(uri.toPortableString(), 'https://example.com/a/b.txt?q=1')
+  assert.ok(Uri.fromPortableString(uri.toPortableString()).equals(uri))
+
+  // A file address that is not under the home root passes through and round-trips.
+  const file = Uri.parse('file:///tmp/data/report.csv')
+  assert.ok(Uri.fromPortableString(file.toPortableString()).equals(file))
+
+  // Url mirrors the same pair.
+  const url = Url.parse('https://example.com/x')
+  assert.equal(url.toPortableString(), 'https://example.com/x')
+  assert.ok(Url.fromPortableString(url.toPortableString()).equals(url))
+
+  // fromPortableString surfaces the guided parse error (a URL requires a scheme).
+  assert.throws(() => Url.fromPortableString('/no/scheme'), /requires a scheme/)
+})
+
 test('Authority byte codec round-trips and is the exact inverse', () => {
   const auth = new Authority('example.com', 'user', 'pw', 8080)
   const raw = auth.serializeBytes()

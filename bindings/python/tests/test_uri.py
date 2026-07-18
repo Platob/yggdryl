@@ -1,12 +1,14 @@
 """Tests for the ``yggdryl.uri`` URIs, URLs, and authorities."""
 
 import copy
+import os
 import pickle
 from urllib.parse import urlparse
 
 import pytest
 
 import yggdryl.uri
+from yggdryl.local import LocalIO
 from yggdryl.mediatype import MediaType
 from yggdryl.mimetype import MimeType
 from yggdryl.uri import Authority, Uri, UriParts, Url, default_port
@@ -99,6 +101,56 @@ def test_bytes_and_pickle_round_trip():
     auth = Authority("h", user="u", password="p", port=42)
     assert pickle.loads(pickle.dumps(auth)) == auth
     assert Authority.from_host("h").host == "h"
+
+
+# -------------------------------------------------------------------------------------
+# Portable (relocatable) string form + portable pickling
+# -------------------------------------------------------------------------------------
+
+
+def _home():
+    """The home directory the core's portable folding uses (HOME, else USERPROFILE)."""
+    return os.environ.get("HOME") or os.environ.get("USERPROFILE")
+
+
+def test_portable_str_leaves_non_file_uris_unchanged():
+    web = Uri.parse("https://h/p?q=1#f")
+    assert web.to_portable_str() == "https://h/p?q=1#f"  # other schemes are already portable
+    assert Uri.from_portable_str("https://h/p?q=1#f") == web
+
+    url = Url.parse("https://h/p")
+    assert url.to_portable_str() == "https://h/p"
+    assert Url.from_portable_str("https://h/p") == url
+
+
+def test_portable_str_folds_home_and_round_trips():
+    home = _home()
+    if not home:
+        pytest.skip("no HOME / USERPROFILE in this environment")
+    uri = LocalIO(home + "/notes/today.txt").uri  # a file:// URI under the home root
+    assert uri.scheme == "file"
+    portable = uri.to_portable_str()
+    assert portable.startswith("~/")  # folded to the home token
+    assert portable.endswith("/notes/today.txt")
+    # from_portable_str expands ~ against THIS environment's home -> the same uri.
+    assert Uri.from_portable_str(portable) == uri
+
+
+def test_uri_and_url_pickle_through_the_portable_form():
+    home = _home()
+    if not home:
+        pytest.skip("no HOME / USERPROFILE in this environment")
+    uri = LocalIO(home + "/data/x.bin").uri
+    # __reduce__ now goes through the portable ~ form; in the same environment it round-trips.
+    restored = pickle.loads(pickle.dumps(uri))
+    assert restored == uri
+    assert restored.to_portable_str().startswith("~/")
+
+    url = uri.to_url()  # a file:// URL folds and pickles the same way
+    assert isinstance(url, Url)
+    restored_url = pickle.loads(pickle.dumps(url))
+    assert restored_url == url
+    assert restored_url.to_portable_str().startswith("~/")
 
 
 def test_authority_byte_codec_round_trip():

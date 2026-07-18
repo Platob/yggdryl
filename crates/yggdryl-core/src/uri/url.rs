@@ -387,6 +387,24 @@ impl Url {
         Url::try_from(Uri::deserialize_bytes(bytes)?)
     }
 
+    /// The **portable, relocatable** string form for pickling / cross-environment transport —
+    /// see [`Uri::to_portable_str`]. A `file://` URL under the current home / temp root folds to
+    /// a `~` / `$TMP` token; every other URL is its exact string.
+    pub fn to_portable_str(&self) -> String {
+        self.inner.to_portable_str()
+    }
+
+    /// Rebuilds a [`Url`] from the [`to_portable_str`](Url::to_portable_str) form, expanding `~` /
+    /// `$TMP` against **this** environment's home / temp roots — see
+    /// [`Uri::from_portable_str`]. The exact inverse in every environment.
+    ///
+    /// # Errors
+    /// [`UriError::MissingScheme`] if the reconstructed URI has no scheme, or any
+    /// [`Uri::parse_str`] error.
+    pub fn from_portable_str(s: &str) -> Result<Url, UriError> {
+        Url::try_from(Uri::from_portable_str(s)?)
+    }
+
     /// Borrows the wrapped [`Uri`].
     pub fn as_uri(&self) -> &Uri {
         &self.inner

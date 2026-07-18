@@ -63,7 +63,7 @@ use crate::uri::Uri;
 /// assert_eq!(root.byte_size(), 5);
 /// assert_eq!(root.pread_utf8(0, 5).unwrap(), "hello");
 ///
-/// root.rmdir().unwrap();
+/// root.rmdir(true).unwrap();
 /// assert!(!root.exists());
 /// ```
 #[derive(Debug)]
@@ -110,7 +110,7 @@ impl LocalIO {
     /// scratch.pwrite_utf8(0, "temp data"); // now created + mapped
     /// assert_eq!(scratch.pread_utf8(0, 9).unwrap(), "temp data");
     /// scratch.close();
-    /// scratch.rmfile().unwrap();
+    /// scratch.rmfile(true).unwrap();
     /// ```
     pub fn tmpfile(name: Option<&str>) -> LocalIO {
         let name = name
@@ -133,13 +133,19 @@ impl LocalIO {
     /// file.pwrite_byte_array(0, b"x");
     /// assert!(work.is_dir());
     /// file.close();
-    /// work.rmdir().unwrap();
+    /// work.rmdir(true).unwrap();
     /// ```
     pub fn tmpfolder(name: Option<&str>) -> LocalIO {
         let name = name
             .map(str::to_string)
             .unwrap_or_else(Self::unique_tmp_name);
         LocalIO::from_path(std::env::temp_dir().join(name))
+    }
+
+    /// Alias of [`tmpfolder`](LocalIO::tmpfolder) under the familiar `tmpdir` name (mirrors
+    /// Python's `tempfile` vocabulary) — a **lazy** handle to a temporary folder.
+    pub fn tmpdir(name: Option<&str>) -> LocalIO {
+        Self::tmpfolder(name)
     }
 
     /// A process-unique base name (`yggdryl-<pid>-<counter>`) for the temp builders — no
@@ -199,6 +205,40 @@ impl LocalIO {
         self.map.is_some()
     }
 
+    /// Builds a **standalone [`Mmap`]** over this node's file, **reusing the handle's own
+    /// parameters** — its path, its [`IOMode`] (a read-only handle maps read-only, a
+    /// read-write one maps read-write and auto-creates the missing parents + file, exactly
+    /// like the first write), and its [`headers`](IOBase::headers), which are copied onto the
+    /// returned mapping so a known `Content-Type` / cached size travels with it. The mapping is
+    /// independent of this handle's own lazy [`is_mapped`](LocalIO::is_mapped) backing — the
+    /// direct front door to the memory-mapped source when a caller wants to hold it itself.
+    ///
+    /// ```
+    /// use yggdryl_core::io::local::LocalIO;
+    /// use yggdryl_core::io::memory::IOBase;
+    ///
+    /// let node = LocalIO::tmpfile(None);
+    /// let mut map = node.mmap().unwrap(); // creates + maps the file, read-write
+    /// map.pwrite_utf8(0, "mapped");
+    /// assert_eq!(map.pread_utf8(0, 6).unwrap(), "mapped");
+    /// drop(map); // releasing the mapping writes back + lets the file be removed
+    /// node.rmfile(true).unwrap();
+    /// ```
+    pub fn mmap(&self) -> Result<Mmap, IoError> {
+        let mut map = if self.mode.is_writable() {
+            if let Some(parent) = self.path.parent() {
+                if !parent.as_os_str().is_empty() && !parent.exists() {
+                    fs::create_dir_all(parent).map_err(|e| file_err("create", parent, &e))?;
+                }
+            }
+            Mmap::create_path(&self.path)?
+        } else {
+            Mmap::open_path_readonly(&self.path)?
+        };
+        *map.headers_mut() = self.headers.clone(); // known headers travel with the mapping
+        Ok(map)
+    }
+
     /// Sets the access [`IOMode`] label in place (writes check it before touching the disk).
     pub fn set_mode(&mut self, mode: IOMode) {
         self.mode = mode;
@@ -209,6 +249,21 @@ impl LocalIO {
         File::open(&self.path)
             .ok()
             .filter(|f| f.metadata().map(|m| m.is_file()).unwrap_or(false))
+    }
+
+    /// `Ok(())` when removing a **missing** node is allowed (`exist_ok`), else the guided
+    /// "nothing here to remove" error naming the `exist_ok` fix.
+    fn missing_ok(&self, exist_ok: bool) -> Result<(), IoError> {
+        if exist_ok {
+            Ok(())
+        } else {
+            Err(IoError::FileIo {
+                op: "remove",
+                path: self.path.to_string_lossy().into_owned(),
+                detail: "nothing exists here to remove; pass exist_ok=true to skip a missing node"
+                    .to_string(),
+            })
+        }
     }
 
     /// The guided error for a write-shaped call on a read-only handle.
@@ -326,6 +381,23 @@ impl IOBase for LocalIO {
     fn as_bytes(&self) -> Option<&[u8]> {
         // Zero-copy only when self-optimized (mapped); an ad-hoc read has no contiguous view.
         self.map.as_ref().and_then(Mmap::as_bytes)
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(self.read_only_err());
+        }
+        if self.map.is_none() && self.is_dir() {
+            return Err(IoError::FileIo {
+                op: "truncate",
+                path: self.path.to_string_lossy().into_owned(),
+                detail: "the node is a directory; truncate a file, not a folder".to_string(),
+            });
+        }
+        // Auto-create + map, then resize the mapping (its own header sync is a harmless no-op).
+        self.ensure_map()?.truncate(len)?;
+        self.sync_size_headers();
+        Ok(())
     }
 
     fn kind(&self) -> IOKind {
@@ -565,17 +637,17 @@ impl IOBase for LocalIO {
         }
     }
 
-    fn rm(&self) -> Result<(), IoError> {
+    fn rm(&self, exist_ok: bool) -> Result<(), IoError> {
         match self.kind() {
             IOKind::Directory => {
                 fs::remove_dir_all(&self.path).map_err(|e| file_err("remove", &self.path, &e))
             }
-            IOKind::Missing => Ok(()), // already gone — removing is idempotent
+            IOKind::Missing => self.missing_ok(exist_ok),
             _ => fs::remove_file(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
         }
     }
 
-    fn rmfile(&self) -> Result<(), IoError> {
+    fn rmfile(&self, exist_ok: bool) -> Result<(), IoError> {
         match self.kind() {
             IOKind::Directory => Err(IoError::FileIo {
                 op: "remove",
@@ -583,19 +655,19 @@ impl IOBase for LocalIO {
                 detail: "the node is a directory; use rmdir (recursive) instead of rmfile"
                     .to_string(),
             }),
-            IOKind::Missing => Ok(()),
+            IOKind::Missing => self.missing_ok(exist_ok),
             _ => fs::remove_file(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
         }
     }
 
-    fn rmdir(&self) -> Result<(), IoError> {
+    fn rmdir(&self, exist_ok: bool) -> Result<(), IoError> {
         match self.kind() {
             IOKind::File => Err(IoError::FileIo {
                 op: "remove",
                 path: self.path.to_string_lossy().into_owned(),
                 detail: "the node is a file; use rmfile instead of rmdir".to_string(),
             }),
-            IOKind::Missing => Ok(()),
+            IOKind::Missing => self.missing_ok(exist_ok),
             _ => fs::remove_dir_all(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
         }
     }

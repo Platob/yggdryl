@@ -189,3 +189,66 @@ fn mtime_epoch_micros_round_trips_including_negatives() {
     headers.set_mtime(7);
     assert_eq!(headers.get_all(Headers::MTIME), vec!["7"]);
 }
+
+#[test]
+fn content_length_renders_replaces_and_trims() {
+    let mut headers = Headers::new();
+    assert!(headers.content_length().is_none());
+
+    headers.set_content_length(0);
+    assert_eq!(headers.get(Headers::CONTENT_LENGTH), Some("0"));
+    assert_eq!(headers.content_length(), Some(0));
+
+    // Replaces (single value), never appends, and renders the decimal directly.
+    headers.set_content_length(4096);
+    headers.set_content_length(1_048_576);
+    assert_eq!(headers.get_all(Headers::CONTENT_LENGTH), vec!["1048576"]);
+    assert_eq!(headers.content_length(), Some(1_048_576));
+
+    // The reader trims surrounding whitespace and rejects a non-numeric value.
+    headers.insert(Headers::CONTENT_LENGTH, "  512  ");
+    assert_eq!(headers.content_length(), Some(512));
+    headers.insert(Headers::CONTENT_LENGTH, "not-a-number");
+    assert_eq!(headers.content_length(), None);
+
+    // The full u64 range round-trips.
+    headers.set_content_length(u64::MAX);
+    assert_eq!(headers.content_length(), Some(u64::MAX));
+}
+
+#[test]
+fn touch_mtime_stamps_a_recent_positive_epoch() {
+    let mut headers = Headers::new();
+    headers.touch_mtime();
+    let stamped = headers.mtime().expect("touch_mtime sets the header");
+    // A microsecond epoch after 2000-01-01 (946684800_000000) and non-negative.
+    assert!(stamped > 946_684_800_000_000, "mtime {stamped} looks unset");
+    // It replaces rather than appends.
+    headers.touch_mtime();
+    assert_eq!(headers.get_all(Headers::MTIME).len(), 1);
+}
+
+#[test]
+fn lookup_is_correct_across_a_large_ordered_set() {
+    // The ordered-vector layout must still find any key in a large set, at any position.
+    let mut headers = Headers::new();
+    for i in 0..64u32 {
+        headers.insert(&format!("X-Header-{i}"), &format!("v{i}"));
+    }
+    assert_eq!(headers.len(), 64);
+    assert_eq!(headers.get("x-header-0"), Some("v0")); // first
+    assert_eq!(headers.get("X-HEADER-63"), Some("v63")); // last, case-folded
+    assert_eq!(headers.get("x-header-64"), None); // absent
+                                                  // Insertion order is preserved end to end.
+    let first = headers.iter().next().unwrap();
+    assert_eq!(first.0, b"X-Header-0");
+}
+
+#[test]
+fn empty_value_is_distinct_from_absent() {
+    let mut headers = Headers::new();
+    headers.insert("X-Empty", "");
+    assert_eq!(headers.get("x-empty"), Some("")); // present, empty
+    assert!(headers.contains("X-Empty"));
+    assert_eq!(headers.get("x-missing"), None); // absent
+}

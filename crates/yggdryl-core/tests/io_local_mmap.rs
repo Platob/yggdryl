@@ -78,15 +78,19 @@ fn mmap_is_a_leaf_node_of_the_graph_that_really_unlinks() {
 
     // Unlike an in-memory leaf, a file has a removable backing — but as a file it refuses
     // rmdir with the guided fix.
-    assert!(map.rmdir().unwrap_err().to_string().contains("use rmfile"));
+    assert!(map
+        .rmdir(true)
+        .unwrap_err()
+        .to_string()
+        .contains("use rmfile"));
     // Drop the mapping before removal (Windows cannot delete a mapped file).
     drop(map);
     let handle = Mmap::open_uri(&tmp.uri()).unwrap();
     drop(handle); // no live view over the (now non-empty) file
     let fresh = Mmap::open_uri(&tmp.uri()).unwrap();
-    fresh.rmfile().unwrap();
+    fresh.rmfile(true).unwrap();
     assert!(!tmp.0.exists());
-    fresh.rmfile().unwrap(); // idempotent on missing
+    fresh.rmfile(true).unwrap(); // idempotent on missing
 }
 
 // -------------------------------------------------------------------------------------

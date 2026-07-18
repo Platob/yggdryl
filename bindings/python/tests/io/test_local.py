@@ -27,12 +27,13 @@ import tempfile
 import pytest
 
 import yggdryl.local
+from yggdryl.compression import Gzip
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
 from yggdryl.local import LocalEntries, LocalIO, Mmap
 from yggdryl.mediatype import MediaType
 from yggdryl.mimetype import MimeType
-from yggdryl.memory import NoChildren, Whence
+from yggdryl.memory import Heap, NoChildren, Whence
 from yggdryl.uri import Uri
 
 
@@ -555,12 +556,12 @@ def test_localio_is_a_live_handle_not_a_value(root):
     node = root / "live.bin"
     with pytest.raises(TypeError):
         hash(node)  # defining equality leaves the mutable handle unhashable
-    with pytest.raises(TypeError):
-        pickle.dumps(node)  # a live handle carries no byte codec
+    # A live handle pickles by its PORTABLE ADDRESS (not a byte codec): it reconstructs a lazy
+    # handle addressing the same path, relocated against the receiving environment's roots.
+    assert pickle.loads(pickle.dumps(node)) == node
     for absent in (
         "serialize_bytes",
         "deserialize_bytes",
-        "closed",
         "with_headers",
         "with_mode",
         "cursor",
@@ -568,6 +569,9 @@ def test_localio_is_a_live_handle_not_a_value(root):
         "slice",
     ):
         assert not hasattr(node, absent)
+    # A LocalIO is io-file-like: `closed` exists but a handle is never truly closed (close()
+    # only releases the mapping and the handle stays usable), so it is always False.
+    assert node.closed is False
     assert repr(node) == f"LocalIO({node.path}, <0 bytes>)"
 
 
@@ -1120,3 +1124,283 @@ def test_mmap_mime_type_from_file_name(root):
         assert m.ensure_content_type().essence == "image/png"
     finally:
         m.close()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: truncate + content_length
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_truncate_shrinks_and_extends(root):
+    node = root / "t.bin"
+    node.pwrite_utf8(0, "hello world")
+    node.truncate(5)
+    assert node.pread_utf8(0, 5) == "hello"
+    assert node.byte_size() == 5
+    node.truncate(8)  # extend, zero-filled
+    assert node.byte_size() == 8
+    assert node.pread_byte_array(5, 3) == b"\x00\x00\x00"
+    node.close()
+
+
+def test_localio_content_length_falls_back_to_byte_size(root):
+    node = root / "cl.bin"
+    node.pwrite_utf8(0, "hello")
+    assert node.content_length() == 5  # no header — falls back to byte_size
+    node.close()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: bulk unsigned + float arrays / repeats + cross-source copy
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_bulk_unsigned_and_float(root):
+    node = root / "ubulk.bin"
+    node.pwrite_u16_array(0, [1, 2, 65535])
+    assert node.pread_u16_array(0, 3) == [1, 2, 65535]
+    node.pwrite_u32_array(8, [1, 2**31, 2**32 - 1])
+    assert node.pread_u32_array(8, 3) == [1, 2**31, 2**32 - 1]
+    node.pwrite_u64_array(24, [2**63])
+    assert node.pread_u64_array(24, 1) == [2**63]
+    node.pwrite_f32_array(40, [1.5, -2.25])
+    assert node.pread_f32_array(40, 2) == [1.5, -2.25]
+    node.pwrite_f64_array(52, [1.5, 1e300])
+    assert node.pread_f64_array(52, 2) == [1.5, 1e300]
+    node.pwrite_u16_repeat(80, 7, 4)
+    assert node.pread_u16_array(80, 4) == [7] * 4
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        node.pread_u32_array(0, 2_000_000_000)  # fail-fast bounds check
+    node.close()
+
+
+def test_localio_copy_from_and_pwrite_from_a_heap(root):
+    node = root / "copy.bin"
+    node.pwrite_utf8(0, "original longer content")
+    assert node.copy_from(Heap(b"short")) == 5  # overwrite + truncate to the source length
+    assert node.pread_byte_array(0, 99) == b"short"
+    node.close()
+
+    pf = root / "pfrom.bin"
+    pf.pwrite_byte_array(0, b"..........")
+    assert pf.pwrite_from(2, Heap(b"ABCDEF"), 1, 3) == 3  # src[1:4] = "BCD" at offset 2
+    assert pf.pread_byte_array(0, 10) == b"..BCD....."
+    pf.close()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: readline / readlines
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_readline_and_readlines(root):
+    node = root / "lines.txt"
+    node.pwrite_utf8(0, "line1\nline2\n")
+    node.rewind()
+    assert node.readline() == "line1\n"
+    assert node.readlines() == ["line2\n"]
+    node.close()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: mmap() front door + tmpdir alias
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_mmap_builds_a_standalone_mapping(root):
+    node = root / "mapped.bin"
+    m = node.mmap()  # creates + maps the file read-write, reusing the handle's params
+    assert isinstance(m, Mmap)
+    try:
+        assert m.pwrite_utf8(0, "via mmap") == 8
+        assert m.pread_utf8(0, 8) == "via mmap"
+    finally:
+        m.close()
+    # The bytes persisted to the file the lazy handle addresses.
+    assert (root / "mapped.bin").pread_utf8(0, 8) == "via mmap"
+
+
+def test_localio_tmpdir_is_an_alias_of_tmpfolder():
+    work = LocalIO.tmpdir("yggdryl-py-tmpdir-test")
+    child = work / "out.bin"
+    try:
+        assert isinstance(work, LocalIO)
+        assert not work.exists()  # lazy alias of tmpfolder
+        assert os.path.dirname(work.path) == tempfile.gettempdir()
+        assert child.pwrite_byte_array(0, b"x") == 1  # writing a child auto-creates work
+        assert work.is_dir()
+        child.close()
+    finally:
+        child.close()
+        gc.collect()
+        work.rmdir()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: in-place (de)compression
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_compress_and_decompress_in_place(root):
+    node = root / "comp.bin"
+    payload = b"compress this file in place " * 30
+    node.pwrite_byte_array(0, payload)
+    node.compress_in_place(Gzip())  # explicit codec
+    assert node.byte_size() < len(payload)
+    assert node.headers.content_type() == "application/gzip"
+    node.decompress_in_place()  # codec inferred from the media type
+    assert node.pread_byte_array(0, len(payload)) == payload
+    node.close()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: rm family exist_ok argument
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_rm_family_exist_ok(root):
+    missing = root / "ghost.bin"
+    missing.rm(exist_ok=True)  # default — a missing node is a no-op
+    with pytest.raises(ValueError, match="nothing exists here to remove"):
+        missing.rm(exist_ok=False)  # ...but exist_ok=False raises on a missing node
+    with pytest.raises(ValueError, match="exist_ok=true"):
+        missing.rmfile(exist_ok=False)
+    with pytest.raises(ValueError, match="exist_ok=true"):
+        missing.rmdir(exist_ok=False)
+
+
+# -------------------------------------------------------------------------------------
+# Mmap: truncate + content_length + bulk widths + cross-source copy + in-place codecs
+# -------------------------------------------------------------------------------------
+
+
+def test_mmap_truncate_and_content_length(tmp_path):
+    m = Mmap.create(str(tmp_path / "trunc.bin"))
+    m.pwrite_utf8(0, "hello world")
+    assert m.content_length() == 11  # falls back to byte_size
+    m.truncate(5)
+    assert m.pread_utf8(0, 5) == "hello"
+    assert m.byte_size() == 5
+    m.truncate(8)
+    assert m.byte_size() == 8
+    m.close()
+
+
+def test_mmap_bulk_unsigned_and_float(tmp_path):
+    m = Mmap.create(str(tmp_path / "ubulk.bin"))
+    m.pwrite_u16_array(0, [1, 2, 65535])
+    assert m.pread_u16_array(0, 3) == [1, 2, 65535]
+    m.pwrite_u32_array(8, [1, 2**32 - 1])
+    assert m.pread_u32_array(8, 2) == [1, 2**32 - 1]
+    m.pwrite_u64_array(16, [2**63])
+    assert m.pread_u64_array(16, 1) == [2**63]
+    m.pwrite_f32_array(24, [1.5, -2.25])
+    assert m.pread_f32_array(24, 2) == [1.5, -2.25]
+    m.pwrite_f64_array(32, [1.5, 1e300])
+    assert m.pread_f64_array(32, 2) == [1.5, 1e300]
+    m.pwrite_u64_repeat(48, 9, 4)
+    assert m.pread_u64_array(48, 4) == [9] * 4
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        m.pread_u16_array(0, 2_000_000_000)
+    m.close()
+
+
+def test_mmap_copy_from_and_pwrite_from_a_heap(tmp_path):
+    m = Mmap.create(str(tmp_path / "cp.bin"))
+    m.pwrite_utf8(0, "original longer content")
+    assert m.copy_from(Heap(b"short")) == 5
+    assert m.pread_byte_array(0, 99) == b"short"
+    assert m.pwrite_from(0, Heap(b"XYZ"), 0, 2) == 2  # "XY" over the head
+    assert m.pread_byte_array(0, 5) == b"XYort"
+    m.close()
+
+
+def test_mmap_compress_and_decompress_in_place(tmp_path):
+    p = tmp_path / "comp.bin"
+    m = Mmap.create(str(p))
+    payload = b"compress the mapping in place " * 30
+    m.pwrite_byte_array(0, payload)
+    m.compress_in_place(Gzip())
+    assert m.byte_size() < len(payload)
+    assert m.headers.content_type() == "application/gzip"
+    m.decompress_in_place()
+    assert m.pread_byte_array(0, len(payload)) == payload
+    m.close()
+
+
+def test_mmap_rmfile_accepts_exist_ok(tmp_path):
+    p = tmp_path / "rmk.bin"
+    w = Mmap.create(str(p))
+    w.pwrite_utf8(0, "d")
+    w.close()  # release the writer first (portable removal on Windows)
+    m = Mmap.open(str(p))
+    m.rmfile(exist_ok=False)  # the file exists — removes it fine
+    assert not p.exists()
+    m.rmfile(exist_ok=True)  # idempotent when already missing
+    m.close()
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: os.PathLike + io-file-like duck typing
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_is_os_pathlike(root):
+    node = root / "fspath.bin"
+    assert node.__fspath__() == node.path
+    assert os.fspath(node) == node.path  # accepted by the os.PathLike protocol
+    node.pwrite_utf8(0, "hi")
+    node.close()
+    assert os.path.getsize(node) == 2  # a stdlib call takes the handle straight
+
+
+def test_localio_io_duck_methods(root):
+    node = root / "duck.bin"
+    node.write(b"line1\nline2\n")
+    assert node.tell() == 12  # == position, under the io method name
+    assert node.tell() == node.position
+    assert node.seekable() is True
+    assert node.readable() is True and node.writable() is True
+    node.set_mode(IOMode.Read)
+    assert node.readable() is True and node.writable() is False
+    node.set_mode(IOMode.ReadWrite)
+    assert node.closed is False  # a handle is never truly closed
+    node.close()
+    assert node.closed is False  # ...even after close() (it stays usable)
+
+
+def test_localio_line_iteration(root):
+    node = root / "lines2.txt"
+    node.pwrite_utf8(0, "alpha\nbeta\ngamma")
+    node.rewind()
+    assert iter(node) is node
+    assert list(node) == ["alpha\n", "beta\n", "gamma"]  # lines, not children
+    node.close()
+
+
+def test_localio_pickles_by_portable_address(root):
+    # A LocalIO under the temp root pickles to a portable form and reconstructs a lazy handle
+    # addressing the same file — reopened against THIS environment's temp root.
+    node = root / "pickled.bin"
+    node.pwrite_utf8(0, "persist me")
+    node.close()
+
+    revived = pickle.loads(pickle.dumps(node))
+    assert isinstance(revived, LocalIO)
+    assert revived == node  # same path identity
+    assert revived.pread_utf8(0, 10) == "persist me"
+
+    # to_portable_str folds the temp/home path to a $TMP / ~ token; from_portable expands it.
+    portable = node.to_portable_str()
+    assert portable.startswith("$TMP") or portable.startswith("~")
+    assert LocalIO.from_portable(portable) == node
+
+
+def test_localio_pickle_round_trips_a_path_outside_the_roots():
+    # A handle outside the home/temp roots keeps a full file:// portable form (lossless
+    # fallback) and still pickles to an equal handle.
+    node = LocalIO(os.path.join(tempfile.gettempdir(), "ygg_pickle_probe.bin"))
+    revived = pickle.loads(pickle.dumps(node))
+    assert revived == node
+    # from_portable is the exact inverse of to_portable_str in this environment.
+    assert LocalIO.from_portable(node.to_portable_str()) == node

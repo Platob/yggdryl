@@ -92,6 +92,19 @@ impl<T: IOBase> IOBase for IOSlice<T> {
             .pwrite_byte_array(self.offset + offset, &data[..n])
     }
 
+    /// The window's bytes as a borrowed slice **when the wrapped source is contiguous** (a
+    /// `Heap`, a mapped file) — zero-copy: the exact `[offset, offset + len)` sub-slice of the
+    /// source's own backing, so the compression / copy helpers read a window without a
+    /// materializing copy. `None` when the source has no contiguous view.
+    #[inline]
+    fn as_bytes(&self) -> Option<&[u8]> {
+        let start = self.offset as usize;
+        let end = start + self.len as usize;
+        self.inner
+            .as_bytes()
+            .and_then(|bytes| bytes.get(start..end))
+    }
+
     fn uri(&self) -> crate::uri::Uri {
         self.inner.uri()
     }

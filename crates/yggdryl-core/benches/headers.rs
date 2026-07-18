@@ -132,4 +132,85 @@ fn main() {
             ins.insert("Host", "example.org");
         }),
     );
+
+    println!("\n  edge cases & scaling (probe for optimization opportunities)\n");
+
+    // Case-insensitive lookup vs an exact-case one — the ASCII-fold match must not cost extra.
+    row(
+        "get (case-folded key: HOST)",
+        measure(1, iters, || {
+            let _ = declared.get("HOST");
+        }),
+    );
+    // A miss over the same set — the lookup scans every entry and finds nothing (worst case).
+    row(
+        "get (absent key: miss)",
+        measure(1, iters, || {
+            let _ = declared.get("X-Absent-Header");
+        }),
+    );
+    // Byte-valued read — no UTF-8 validation on the path (black-boxed so it is not elided).
+    row(
+        "get_bytes (present)",
+        measure(1, iters, || {
+            std::hint::black_box(declared.get_bytes(b"host"));
+        }),
+    );
+
+    // Multi-value: a header appended several times, read back as the ordered list.
+    let mut multi = Headers::new();
+    for host in ["a.example", "b.example", "c.example", "d.example"] {
+        multi.append("X-Forwarded-For", host);
+    }
+    row(
+        "get_all (4 values, ordered)",
+        measure(1, iters, || {
+            let _ = multi.get_all("x-forwarded-for");
+        }),
+    );
+
+    // Scaling: lookup of the LAST key in a 64-entry set — reveals the linear-scan cost the
+    // ordered-vector layout trades for insertion-order fidelity.
+    let mut big = Headers::new();
+    for i in 0..64u32 {
+        big.insert(&format!("X-Header-{i}"), "v");
+    }
+    row(
+        "get (last of 64 entries)",
+        measure(1, iters, || {
+            let _ = big.get("X-Header-63");
+        }),
+    );
+
+    // The new size/mtime sync helpers — alloc-free decimal renders into the entry storage.
+    let mut sized = declared.clone();
+    row(
+        "set_content_length (render)",
+        measure(1, iters, || {
+            sized.set_content_length(1_048_576);
+        }),
+    );
+    let mut touched = declared.clone();
+    row(
+        "touch_mtime (now → decimal)",
+        measure(1, iters, || {
+            touched.touch_mtime();
+        }),
+    );
+
+    // Round-trips: the canonical byte codec and the HTTP text form over the small set.
+    row(
+        "serialize_bytes → deserialize",
+        measure(1, iters, || {
+            let bytes = declared.serialize_bytes();
+            let _ = Headers::deserialize_bytes(&bytes).unwrap();
+        }),
+    );
+    let http = declared.to_http_bytes();
+    row(
+        "parse_http (small set)",
+        measure(1, iters, || {
+            let _ = Headers::parse_http(&http);
+        }),
+    );
 }

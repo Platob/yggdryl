@@ -18,6 +18,7 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::sync::GILOnceCell;
 use pyo3::types::PyBytes;
 
 use crate::mimetype::MimeType;
@@ -29,11 +30,23 @@ fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
+// The process-wide **cached default-level codec singletons** — one shared Python object per
+// format, resolved once and handed back by reference (`Py::clone_ref` is a refcount bump, not a
+// new object). So neither the module [`codec_for`] resolver nor any `IOBase` source's
+// `compression()` accessor constructs a codec per call (the "resolve shared instances once"
+// rule; these mirror the core's `codec_ref_for` shared `'static` codecs). Each codec is
+// immutable (a fixed level, no setters), so sharing one instance is safe.
+static GZIP_CODEC: GILOnceCell<Py<Gzip>> = GILOnceCell::new();
+static ZLIB_CODEC: GILOnceCell<Py<Zlib>> = GILOnceCell::new();
+static ZSTD_CODEC: GILOnceCell<Py<Zstd>> = GILOnceCell::new();
+static LZMA_CODEC: GILOnceCell<Py<Lzma>> = GILOnceCell::new();
+
 /// Builds the concrete `yggdryl.compression` codec object for a core codec (resolved by
 /// [`codec_for`] or a source's `compression()`), routing on the codec's own
-/// [`name`](Compression::name), or `None` when nothing resolved. The single place the boxed
-/// core codec becomes one of the four typed Python classes, shared by the module resolver and
-/// every `IOBase` source's `compression()` accessor.
+/// [`name`](Compression::name), or `None` when nothing resolved. Returns the **shared cached
+/// singleton** for the format (built once, then cloned by reference) — the single place the
+/// boxed core codec becomes one of the four typed Python classes, shared by the module resolver
+/// and every `IOBase` source's `compression()` accessor.
 pub(crate) fn codec_to_object(
     py: Python<'_>,
     codec: Option<Box<dyn Compression>>,
@@ -42,34 +55,50 @@ pub(crate) fn codec_to_object(
         return Ok(None);
     };
     let object = match codec.name() {
-        "gzip" => Py::new(
-            py,
-            Gzip {
-                inner: core::Gzip::new(),
-            },
-        )?
-        .into_any(),
-        "zlib" => Py::new(
-            py,
-            Zlib {
-                inner: core::Zlib::new(),
-            },
-        )?
-        .into_any(),
-        "zstd" => Py::new(
-            py,
-            Zstd {
-                inner: core::Zstd::new(),
-            },
-        )?
-        .into_any(),
-        "xz" => Py::new(
-            py,
-            Lzma {
-                inner: core::Lzma::new(),
-            },
-        )?
-        .into_any(),
+        "gzip" => GZIP_CODEC
+            .get_or_try_init(py, || {
+                Py::new(
+                    py,
+                    Gzip {
+                        inner: core::Gzip::new(),
+                    },
+                )
+            })?
+            .clone_ref(py)
+            .into_any(),
+        "zlib" => ZLIB_CODEC
+            .get_or_try_init(py, || {
+                Py::new(
+                    py,
+                    Zlib {
+                        inner: core::Zlib::new(),
+                    },
+                )
+            })?
+            .clone_ref(py)
+            .into_any(),
+        "zstd" => ZSTD_CODEC
+            .get_or_try_init(py, || {
+                Py::new(
+                    py,
+                    Zstd {
+                        inner: core::Zstd::new(),
+                    },
+                )
+            })?
+            .clone_ref(py)
+            .into_any(),
+        "xz" => LZMA_CODEC
+            .get_or_try_init(py, || {
+                Py::new(
+                    py,
+                    Lzma {
+                        inner: core::Lzma::new(),
+                    },
+                )
+            })?
+            .clone_ref(py)
+            .into_any(),
         _ => return Ok(None),
     };
     Ok(Some(object))

@@ -958,3 +958,190 @@ test('Cursor and Slice inherit the compression surface from their source', () =>
   assert.deepEqual(slice.decompressWith(new Gzip()), payload)
 })
 
+// -------------------------------------------------------------------------------------
+// truncate + contentLength
+// -------------------------------------------------------------------------------------
+
+test('truncate shrinks (drops the tail) and grows (zero-fills)', () => {
+  const h = new Heap(Buffer.from('hello world'))
+  h.truncate(5)
+  assert.deepEqual(h.toBytes(), Buffer.from('hello'))
+  h.truncate(8) // grow zero-fills
+  assert.deepEqual(h.toBytes(), Buffer.from([0x68, 0x65, 0x6c, 0x6c, 0x6f, 0, 0, 0]))
+  h.truncate(0)
+  assert.ok(h.isEmpty())
+})
+
+test('contentLength reads the header when present, else falls back to byteSize', () => {
+  const h = new Heap(Buffer.from('abcd'))
+  assert.equal(h.contentLength(), 4) // no header — the live byteSize
+  h.setHeaders(new Headers().with('Content-Length', '99'))
+  assert.equal(h.contentLength(), 99) // the cached header is authoritative
+
+  // Cursor and Slice delegate to the wrapped source.
+  const src = new Heap(Buffer.from('abcdef'))
+  assert.equal(src.cursor().contentLength(), 6)
+  assert.equal(src.window(0, 2).contentLength(), 2)
+})
+
+// -------------------------------------------------------------------------------------
+// In-place compression (compressInPlace / decompressInPlace)
+// -------------------------------------------------------------------------------------
+
+test('compressInPlace + decompressInPlace round-trip and sync the content-type header', () => {
+  const original = Buffer.from('in-place payload '.repeat(40))
+  const h = new Heap(original)
+
+  // An explicit codec packs the whole source and stamps the Content-Type.
+  h.compressInPlace(new Gzip())
+  assert.ok(h.byteSize() < original.length)
+  assert.equal(h.headers.contentType(), 'application/gzip')
+
+  // decompressInPlace infers the codec from the (now gzip) media type and restores the bytes.
+  h.decompressInPlace()
+  assert.deepEqual(h.toBytes(), original)
+
+  // With no codec and a non-compression media type, compressInPlace throws the guided error.
+  assert.throws(() => new Heap(Buffer.from('x')).compressInPlace(), /codec/)
+})
+
+// -------------------------------------------------------------------------------------
+// Cross-source copy (copyFrom / pwriteFrom)
+// -------------------------------------------------------------------------------------
+
+test('copyFrom overwrites with all of the source bytes (truncating to match)', () => {
+  const dst = new Heap(Buffer.from('old data here'))
+  const src = new Heap(Buffer.from('new'))
+  assert.equal(dst.copyFrom(src), 3)
+  assert.deepEqual(dst.toBytes(), Buffer.from('new')) // truncated to the source length
+})
+
+test('pwriteFrom copies a positioned window of the source into this heap', () => {
+  const dst = new Heap(Buffer.from('....'))
+  const src = new Heap(Buffer.from('ABCDEF'))
+  assert.equal(dst.pwriteFrom(1, src, 2, 3), 3) // src[2..5] = 'CDE' at offset 1
+  assert.deepEqual(dst.toBytes(), Buffer.from('.CDE'))
+
+  // A length past the source's end transfers only what remains.
+  assert.equal(dst.pwriteFrom(0, src, 4, 10), 2) // only 'EF' remain from offset 4
+  assert.deepEqual(dst.toBytes(), Buffer.from('EFDE'))
+})
+
+// -------------------------------------------------------------------------------------
+// Bulk typed arrays for the unsigned + floating widths (u16/u32/u64/f32/f64) + repeats
+// -------------------------------------------------------------------------------------
+
+test('u16 / u32 / u64 / f32 / f64 bulk arrays round-trip 300 values (crossing the chunk)', () => {
+  const h = new Heap()
+
+  const u16s = Array.from({ length: 300 }, (_, i) => (i * 7) % 65536)
+  h.pwriteU16Array(0, u16s)
+  assert.deepEqual(h.preadU16Array(0, 300), u16s)
+
+  const u32s = Array.from({ length: 300 }, (_, i) => i * 100000)
+  h.pwriteU32Array(0, u32s)
+  assert.deepEqual(h.preadU32Array(0, 300), u32s)
+
+  // u64 crosses as a JS number (i64) — the full value is carried without truncation (< 2^53).
+  const u64s = Array.from({ length: 300 }, (_, i) => i * 2 ** 40 + i)
+  h.pwriteU64Array(0, u64s)
+  assert.deepEqual(h.preadU64Array(0, 300), u64s)
+
+  // f32 values are f32-exact (multiples of 0.5), so the f64 round-trip is lossless.
+  const f32s = Array.from({ length: 300 }, (_, i) => (i % 2 ? -1 : 1) * (i * 0.5))
+  h.pwriteF32Array(0, f32s)
+  assert.deepEqual(h.preadF32Array(0, 300), f32s)
+
+  const f64s = Array.from({ length: 300 }, (_, i) => i * 0.1 - 5)
+  h.pwriteF64Array(0, f64s)
+  assert.deepEqual(h.preadF64Array(0, 300), f64s)
+
+  // Hostile counts fail fast (the shared guard), before allocating.
+  assert.throws(() => new Heap(Buffer.from('t')).preadU64Array(0, 2_000_000_000), /unexpected end of data/)
+  assert.throws(() => new Heap(Buffer.from('t')).preadF32Array(0, 2_000_000_000), /unexpected end of data/)
+})
+
+test('u16 / u32 / u64 / f32 / f64 repeat fills run past the staging chunk', () => {
+  const h = new Heap()
+  h.pwriteU16Repeat(0, 0xabcd, 300)
+  assert.ok(h.preadU16Array(0, 300).every((v) => v === 0xabcd))
+
+  h.pwriteU32Repeat(0, 4000000000, 300)
+  assert.ok(h.preadU32Array(0, 300).every((v) => v === 4000000000))
+
+  h.pwriteU64Repeat(0, 2 ** 40 + 7, 10)
+  assert.equal(h.preadU64Array(0, 1)[0], 2 ** 40 + 7)
+
+  h.pwriteF32Repeat(0, -2.25, 10)
+  assert.ok(h.preadF32Array(0, 10).every((v) => v === -2.25))
+
+  h.pwriteF64Repeat(0, 3.5, 10)
+  assert.ok(h.preadF64Array(0, 10).every((v) => v === 3.5))
+})
+
+// -------------------------------------------------------------------------------------
+// Line-oriented reads (readLine / readLines)
+// -------------------------------------------------------------------------------------
+
+test('readLine / readLines split on newlines (inclusive); EOF is the empty string', () => {
+  const h = new Heap(Buffer.from('first\nsecond'))
+  assert.equal(h.readLine(), 'first\n')
+  assert.equal(h.readLine(), 'second') // no trailing newline at the end
+  assert.equal(h.readLine(), '') // now at EOF
+  h.rewind()
+  assert.deepEqual(h.readLines(), ['first\n', 'second'])
+
+  // A blank line still carries its newline, so it is distinct from EOF.
+  const blank = new Heap(Buffer.from('a\n\nb\n'))
+  assert.deepEqual(blank.readLines(), ['a\n', '\n', 'b\n'])
+
+  // Cursor mirrors the same line stream.
+  const cur = new Cursor(Buffer.from('x\ny\n'))
+  assert.equal(cur.readLine(), 'x\n')
+  assert.deepEqual(cur.readLines(), ['y\n'])
+})
+
+// -------------------------------------------------------------------------------------
+// The rm family accepts existOk (a heap always refuses regardless)
+// -------------------------------------------------------------------------------------
+
+test('rm accepts an existOk flag; a heap still refuses either way', () => {
+  const h = new Heap()
+  assert.throws(() => h.rm(), /removable backing/)
+  assert.throws(() => h.rm(false), /removable backing/)
+  assert.throws(() => h.rm(true), /removable backing/)
+})
+
+// -------------------------------------------------------------------------------------
+// Type-inference constructors (fromIo) + the lines() alias
+// -------------------------------------------------------------------------------------
+
+test('Heap.fromIo infers the input type: string, Uint8Array/Buffer, or another Heap', () => {
+  assert.deepEqual(Heap.fromIo('héllo').toBytes(), Buffer.from('héllo')) // UTF-8 bytes
+  assert.deepEqual(Heap.fromIo(Buffer.from([1, 2, 3])).toBytes(), Buffer.from([1, 2, 3]))
+  assert.deepEqual(Heap.fromIo(Uint8Array.of(4, 5, 6)).toBytes(), Buffer.from([4, 5, 6]))
+
+  const src = new Heap(Buffer.from('clone me'))
+  const dup = Heap.fromIo(src)
+  assert.ok(dup.equals(src))
+  dup.pwriteByte(0, 0x5a) // independent copy
+  assert.deepEqual(src.toBytes(), Buffer.from('clone me'))
+})
+
+test('Cursor.fromIo infers the input type and carries a source heap position', () => {
+  assert.deepEqual(Cursor.fromIo('abc').toBytes(), Buffer.from('abc'))
+  assert.deepEqual(Cursor.fromIo(Uint8Array.of(7, 8)).toBytes(), Buffer.from([7, 8]))
+
+  // A source Heap's cursor position becomes the new cursor's start (the source's tell).
+  const src = new Heap(Buffer.from('hello world'))
+  src.setPosition(6)
+  const cur = Cursor.fromIo(src)
+  assert.equal(cur.position, 6)
+  assert.deepEqual(cur.readToEnd(), Buffer.from('world'))
+})
+
+test('lines() is the array alias of readLines() on Heap and Cursor', () => {
+  assert.deepEqual(new Heap(Buffer.from('a\nb\n')).lines(), ['a\n', 'b\n'])
+  assert.deepEqual(new Cursor(Buffer.from('x\ny')).lines(), ['x\n', 'y'])
+})
+

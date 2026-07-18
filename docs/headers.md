@@ -121,3 +121,53 @@ rendered compactly with no intermediate string.
     h.set_mtime(1_600_000_000_000_000); // epoch microseconds
     assert_eq!(h.mtime(), Some(1_600_000_000_000_000));
     ```
+
+## Size and mtime sync
+
+Any write that changes a source's bytes keeps its metadata in step in the same pass:
+`set_content_length` renders the new byte length as a decimal straight into the `Content-Length`
+entry (alloc-free, no `String` temporary), `content_length` reads it back (whitespace-trimmed,
+absent when the value is non-numeric), and `touch_mtime` stamps the current time as total epoch
+microseconds into the `mtime` header — the size and timestamp halves of the same header sync.
+
+=== "Python"
+
+    ```python
+    from yggdryl.headers import Headers
+
+    h = Headers()
+    h.set_content_length(1024)                    # decimal rendered into Content-Length
+    assert h.get("content-length") == "1024"
+    assert h.content_length() == 1024             # read back, whitespace-trimmed
+
+    h.touch_mtime()                               # stamp now as epoch microseconds
+    assert h.mtime() > 0
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Headers } = require('yggdryl').headers
+
+    const h = new Headers()
+    h.setContentLength(1024)                       // decimal rendered into Content-Length
+    console.assert(h.get('content-length') === '1024')
+    console.assert(h.contentLength() === 1024)     // read back, whitespace-trimmed
+
+    h.touchMtime()                                 // stamp now as epoch microseconds
+    console.assert(h.mtime() > 0)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::headers::Headers;
+
+    let mut h = Headers::new();
+    h.set_content_length(1024); // decimal rendered in-place
+    assert_eq!(h.get("content-length"), Some("1024"));
+    assert_eq!(h.content_length(), Some(1024)); // read back, whitespace-trimmed
+
+    h.touch_mtime(); // stamp now as epoch microseconds
+    assert!(h.mtime().unwrap() > 0);
+    ```

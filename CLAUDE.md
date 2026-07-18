@@ -130,6 +130,36 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   branch-free loops over contiguous slices** so LLVM auto-vectorizes them on stable Rust (no
   SIMD dependency) — and a fill never materializes the full array. New sources inherit these
   from `IOBase`'s default methods; override only with something measurably faster.
+- **Cross-platform first, platform-optimized underneath.** Every public API behaves
+  **identically on every OS**; the same code runs on Windows, macOS, and Linux. Where a
+  platform offers a faster route, **redirect to it behind `#[cfg(...)]`** (as `Mmap` does —
+  `mmap`/`munmap` on unix, `CreateFileMappingW`/`MapViewOfFile` on windows — under one
+  cross-platform surface), never fork the public behavior. A `#[cfg]` block always has an arm
+  for **every** target (a portable `std` fallback is the last arm), and CI cross-checks unix on
+  `x86_64-unknown-linux-gnu`. Paths are POSIX-normalized (`uri`), temp/home roots resolved from
+  the environment — nothing hardcodes a separator or an absolute root.
+- **Resolve shared instances once — never construct per call.** A registry, catalog, codec, or
+  parsed constant that does not depend on the call's inputs is built **once** into a
+  process-wide `LazyLock` static and reused (the `default_catalog()` mime registry, the
+  `DEFAULT_URI`, the `stage_*` kernels). In the **bindings** this matters most: expose module
+  singletons / cached factories so Python and Node do not re-instantiate a codec or re-seed a
+  catalog on every call — resolve from the shared static and hand back a thin handle.
+- **Content-changing io keeps its metadata in sync — optimally.** Any operation that changes a
+  source's bytes (write past the end, `truncate`, in-place `compress`/`decompress`, a
+  cross-source copy) **updates the affected `Headers`** in the same pass: `Content-Length` to
+  the new byte size, `Content-Type` when the media changes (compress/decompress), and
+  `mtime` (epoch µs) to now. Do it **without extra passes or allocations** — set the small
+  header values inline (the alloc-free `set_mtime` render), only when the value actually
+  changed, and never re-read the source to recompute what the operation already knows.
+- **Metadata reads prefer the cached header.** Size / media-type / mtime accessors read the
+  `Headers` value when present (it is authoritative and free) before probing the backing —
+  a mapped `byte_size` is cheap, but a directory tree sum or a network `HEAD` is not, so a
+  populated `Content-Length` short-circuits it.
+- **Every error names the fix.** An `IoError` (or any guided error) states the offending value,
+  the expected range/tokens, **and** a short, concrete next step to fix it ("read fewer bytes
+  or extend the data first", "enable the `compression` feature", "seek to a non-negative
+  position"). Keep the fix hint short and imperative; the **same text** surfaces as a Python
+  `ValueError` and a Node `Error`, so it must read well with no code around it.
 - **`IOBase` is the central access path — bytes, address, and graph in one contract.** There
   is no separate path/graph trait: `IOBase` itself carries the graph surface — `ls` /
   `ls_recursive` **stream children of the same source type** (`Children` / `Walk` associated

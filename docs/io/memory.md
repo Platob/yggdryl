@@ -275,6 +275,61 @@ slice.
     assert_eq!(h.pread_vec(256, 4), b"\xab\xab\xab\xab");
     ```
 
+Beyond `i32` / `i64`, the same three-method shape — `pread_*_array` / `pwrite_*_array` /
+`pwrite_*_repeat` — covers the wider numeric widths **`u16`, `u32`, `u64`, `f32`, and `f64`**,
+each little-endian and driven by the **identical** stack-staged, auto-vectorized kernels (zero
+heap, and a repeat never materializes the full array). A whole `f64` array round-trips, and a
+`u32` fill runs as one `memset`-style write:
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    h = Heap()
+    h.pwrite_f64_array(0, [1.5, -2.5, 3.5])        # wide float array
+    assert h.pread_f64_array(0, 3) == [1.5, -2.5, 3.5]
+
+    h.pwrite_u32_repeat(64, 7, 1000)               # fill — no 1000-element list is built
+    assert h.pread_u32_array(64, 3) == [7, 7, 7]
+
+    h.pwrite_u16_array(256, [10, 20, 30])          # the narrow + unsigned widths too
+    assert h.pread_u16_array(256, 3) == [10, 20, 30]
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap()
+    h.pwriteF64Array(0, [1.5, -2.5, 3.5])                 // wide float array
+    console.assert(h.preadF64Array(0, 3).join() === '1.5,-2.5,3.5')
+
+    h.pwriteU32Repeat(64, 7, 1000)                        // fill — no array is built
+    console.assert(h.preadU32Array(64, 3).join() === '7,7,7')
+
+    h.pwriteU16Array(256, [10, 20, 30])                   // the narrow + unsigned widths too
+    console.assert(h.preadU16Array(256, 3).join() === '10,20,30')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut h = Heap::new();
+    h.pwrite_f64_array(0, &[1.5, -2.5, 3.5]).unwrap();     // wide float array
+    let mut back = [0f64; 3];
+    h.pread_f64_array(0, &mut back).unwrap();
+    assert_eq!(back, [1.5, -2.5, 3.5]);
+
+    h.pwrite_u32_repeat(64, 7, 1000).unwrap();             // fill — no array is built
+    let mut fill = [0u32; 3];
+    h.pread_u32_array(64, &mut fill).unwrap();
+    assert_eq!(fill, [7, 7, 7]);
+    ```
+
 The [`io_memory_heap` benchmark](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/memory/heap.md)
 pins the claims: bulk arrays run allocation-free at multi-Gelem/s, and `pwrite_i32_repeat` is
 ~3.5× the build-a-full-array path.
@@ -365,6 +420,70 @@ would trigger.
     h.shrink_to_fit();                       // release the spare back to the allocator
     ```
 
+## Resizing and cached size
+
+`truncate(len)` resizes a growable source in place — **shrinking** drops the tail, **growing**
+zero-fills the new bytes — and keeps the size headers (`Content-Length`, `mtime`) in sync in the
+same pass; the built-in cursor is clamped back if it sat past the new end. `content_length()` is
+the size accessor that **prefers a cached `Content-Length` header** over probing `byte_size()`:
+authoritative and free when a prior probe stored it (a network `HEAD`, a directory-tree sum),
+falling back to the live byte size otherwise.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    h = Heap(b"hello")
+    h.truncate(3)                          # shrink — drops the tail
+    assert bytes(h) == b"hel"
+    h.truncate(6)                          # grow — zero-fills the new bytes
+    assert bytes(h) == b"hel\x00\x00\x00"
+
+    # content_length prefers a cached Content-Length header over probing byte_size().
+    assert h.content_length() == 6         # no header — falls back to the live size
+    meta = h.headers
+    meta.insert("Content-Length", "999")   # a cheap prior probe cached the size
+    h.set_headers(meta)
+    assert h.content_length() == 999       # now served straight from the header
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap(Buffer.from('hello'))
+    h.truncate(3)                          // shrink — drops the tail
+    console.assert(h.toBytes().toString() === 'hel')
+    h.truncate(6)                          // grow — zero-fills the new bytes
+    console.assert(h.byteSize() === 6)
+
+    // contentLength prefers a cached Content-Length header over probing byteSize().
+    console.assert(h.contentLength() === 6)   // no header — falls back to the live size
+    const meta = h.headers
+    meta.insert('Content-Length', '999')      // a cheap prior probe cached the size
+    h.setHeaders(meta)
+    console.assert(h.contentLength() === 999) // now served straight from the header
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut h = Heap::from_slice(b"hello");
+    h.truncate(3).unwrap();                     // shrink — drops the tail
+    assert_eq!(h.as_slice(), b"hel");
+    h.truncate(6).unwrap();                     // grow — zero-fills the new bytes
+    assert_eq!(h.as_slice(), b"hel\0\0\0");
+
+    // content_length prefers a cached Content-Length header over probing byte_size().
+    assert_eq!(h.content_length(), 6);          // no header — falls back to the live size
+    h.headers_mut().set_content_length(999);    // a cheap prior probe cached the size
+    assert_eq!(h.content_length(), 999);        // now served straight from the header
+    ```
+
 ## Cursors and windows
 
 `Heap` has a built-in cursor and a materialized `slice` (a copy), but the cursor and window are also
@@ -433,6 +552,67 @@ a cursor over a window. In the bindings these are the `Cursor` and `Slice` class
     let win = Heap::from_slice(b"hello world").window(6, 5).unwrap(); // IOSlice<Heap>
     assert_eq!(win.pread_vec(0, 5), b"world");
     assert_eq!(win.byte_size(), 5);
+    ```
+
+## Reading lines
+
+The built-in cursor reads text a line at a time, exactly like a Python file object.
+`readline()` returns the bytes through the next `\n` **inclusive** (or to the end when none) and
+advances past them, decoding UTF-8; it returns `""` **only** at the true end, so a blank line —
+which keeps its `\n` — is distinct from EOF. `readlines()` drains the rest into a list. In Python
+the buffer is itself line-iterable (`for line in heap:` / `for line in cursor:`); in Node the same
+capability is `readLine()` / `readLines()` (with the `lines()` alias).
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    h = Heap(b"a\nb\n\nc")                # a blank line, and a newline-less last line
+    assert h.readline() == "a\n"          # through the newline, inclusive
+    assert h.readline() == "b\n"
+    assert h.readline() == "\n"           # a blank line keeps its newline...
+    assert h.readline() == "c"            # ...the final line has none
+    assert h.readline() == ""             # "" only at the true end (never a blank line)
+
+    h.rewind()
+    assert h.readlines() == ["a\n", "b\n", "\n", "c"]
+    h.rewind()
+    assert [line for line in h] == ["a\n", "b\n", "\n", "c"]   # `for line in heap:`
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap(Buffer.from('a\nb\n\nc'))   // a blank line, and a newline-less last line
+    console.assert(h.readLine() === 'a\n')         // through the newline, inclusive
+    console.assert(h.readLine() === 'b\n')
+    console.assert(h.readLine() === '\n')          // a blank line keeps its newline...
+    console.assert(h.readLine() === 'c')           // ...the final line has none
+    console.assert(h.readLine() === '')            // '' only at the true end
+
+    h.rewind()
+    console.assert(h.readLines().join('|') === 'a\n|b\n|\n|c')
+    h.rewind()
+    console.assert(h.lines().join('|') === 'a\n|b\n|\n|c')   // lines() is the readLines() alias
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut cur = Heap::from_slice(b"a\nb\n\nc").cursor();
+    assert_eq!(cur.readline().unwrap(), "a\n");    // through the newline, inclusive
+    assert_eq!(cur.readline().unwrap(), "b\n");
+    assert_eq!(cur.readline().unwrap(), "\n");     // a blank line keeps its newline...
+    assert_eq!(cur.readline().unwrap(), "c");      // ...the final line has none
+    assert_eq!(cur.readline().unwrap(), "");       // "" only at the true end
+
+    let mut all = Heap::from_slice(b"a\nb\n\nc").cursor();
+    assert_eq!(all.readlines().unwrap(), vec!["a\n", "b\n", "\n", "c"]);
     ```
 
 ## Addressing
@@ -650,6 +830,169 @@ Like the address, all three are metadata — excluded from a heap's value equali
     assert_eq!(h.mode(), IOMode::ReadWrite);
     assert_eq!(h.kind(), IOKind::Heap);
     assert_eq!(h.with_mode(IOMode::Read).mode(), IOMode::Read);
+    ```
+
+## Cross-source transfers
+
+Two methods move bytes between sources without a manual read-then-write. `copy_from(src)`
+**overwrites** a sink with another source's whole content (truncating the sink to match), zero-copy
+on the read side when `src` has a contiguous backing. `pwrite_from(offset, src, src_offset, length)`
+**splices** a positioned range of one source into another at `offset` — zero-copy when contiguous,
+otherwise streamed through one reused buffer so a large transfer never fully materializes. Both
+work across any source pair; the examples move `Heap` → `Heap`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    src = Heap(b"hello world")
+    sink = Heap(b"OLD DATA HERE")
+    assert sink.copy_from(src) == 11           # overwrite the sink with all of src
+    assert bytes(sink) == b"hello world"
+
+    dst = Heap(b"____")
+    moved = dst.pwrite_from(0, src, 6, 5)      # splice 5 bytes of src from offset 6 ("world")
+    assert moved == 5 and bytes(dst) == b"world"
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const src = new Heap(Buffer.from('hello world'))
+    const sink = new Heap(Buffer.from('OLD DATA HERE'))
+    console.assert(sink.copyFrom(src) === 11)         // overwrite the sink with all of src
+    console.assert(sink.toBytes().toString() === 'hello world')
+
+    const dst = new Heap(Buffer.from('____'))
+    const moved = dst.pwriteFrom(0, src, 6, 5)        // splice 5 bytes of src from offset 6
+    console.assert(moved === 5 && dst.toBytes().toString() === 'world')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let src = Heap::from_slice(b"hello world");
+    let mut sink = Heap::from_slice(b"OLD DATA HERE");
+    assert_eq!(sink.copy_from(&src).unwrap(), 11);       // overwrite the sink with all of src
+    assert_eq!(sink.as_slice(), b"hello world");
+
+    let mut dst = Heap::from_slice(b"____");
+    let moved = dst.pwrite_from(0, &src, 6, 5).unwrap(); // splice 5 bytes of src from offset 6
+    assert_eq!(moved, 5);
+    assert_eq!(dst.as_slice(), b"world");
+    ```
+
+## In-place compression
+
+`compress_in_place(codec=None)` and `decompress_in_place()` rewrite a source's **own** bytes
+through a codec and update the media/size headers (`Content-Type` to the codec's essence,
+`Content-Length`, `mtime`) in the same pass. The codec **defaults to the source's media-type
+codec**, so a `.gz`-addressed source packs itself gzip; pass an explicit codec to override. These
+live on the growable sinks — `Heap` (and the on-disk `LocalIO` / `Mmap`) — **not** on the
+`Cursor` / `Slice` views, which have no resizable backing of their own.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    h = Heap().join("logs/app.log.gz")             # a .gz address — its media type is gzip
+    h.pwrite_utf8(0, "many repeated log lines\n" * 50)
+    plain = len(h)
+
+    h.compress_in_place()                          # pack: codec defaults from the .gz media type
+    assert len(h) < plain                          # smaller now; the media/size headers follow
+    h.decompress_in_place()                        # and back to the plain text
+    assert h.pread_utf8(0, plain) == "many repeated log lines\n" * 50
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap().join('logs/app.log.gz')   // a .gz address — its media type is gzip
+    h.pwriteUtf8(0, 'many repeated log lines\n'.repeat(50))
+    const plain = h.byteSize()
+
+    h.compressInPlace()                            // pack: codec defaults from the .gz media type
+    console.assert(h.byteSize() < plain)           // smaller now; the media/size headers follow
+    h.decompressInPlace()                          // and back to the plain text
+    console.assert(h.preadUtf8(0, plain) === 'many repeated log lines\n'.repeat(50))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut h = Heap::new().join("logs/app.log.gz").unwrap(); // a .gz address — media type gzip
+    let text = "many repeated log lines\n".repeat(50);
+    h.pwrite_utf8(0, &text);
+    let plain = h.byte_size();
+
+    h.compress_in_place(None).unwrap();            // pack: codec defaults from the .gz media type
+    assert!(h.byte_size() < plain);                // smaller now; the media/size headers follow
+    h.decompress_in_place().unwrap();              // and back to the plain text
+    assert_eq!(h.pread_utf8(0, plain as usize).unwrap(), text);
+    ```
+
+## Context managers, indexing, and file-like construction
+
+In Python the buffers are **context managers** (`with Heap() as h:`) and index like `bytes` —
+`h[0]` is one byte as an `int`, `h[2:5]` a `bytes` slice — and they build from any file-like via
+`Heap.from_io(...)` / `Cursor.from_io(...)`, which reads the object's contents and grabs its
+`tell()` position. Node has no `with` or indexing operators, so it offers the same construction as
+`Heap.fromIo(...)` (a `Buffer`, a string, or another `Heap`). Rust has neither concept — the
+ordinary constructors plus a `window` / `cursor` cover the same ground.
+
+=== "Python"
+
+    ```python
+    import io
+    from yggdryl.memory import Heap, Cursor
+
+    # Context manager — `with` binds the buffer, releasing it on exit.
+    with Heap(b"abcdef") as h:
+        assert h[0] == ord("a")          # integer indexing — one byte as an int
+        assert h[2:5] == b"cde"          # slice indexing — a bytes copy
+
+    # Build from a file-like, carrying its current tell() position.
+    bio = io.BytesIO(b"streamed")
+    bio.read(4)                          # advance it — tell() is now 4
+    cur = Cursor.from_io(bio)            # a cursor starting at that position
+    assert cur.read(4) == b"amed"
+    assert bytes(Heap.from_io(io.BytesIO(b"xyz"))) == b"xyz"
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    // No `with` or indexing operators — build from a Buffer, a string, or another Heap.
+    const h = Heap.fromIo(Buffer.from('abcdef'))
+    console.assert(h.preadByte(0) === 0x61)                 // one byte (0x61 == 'a')
+    console.assert(h.slice(2, 3).toBytes().toString() === 'cde')
+    console.assert(Heap.fromIo('xyz').toBytes().toString() === 'xyz')   // a string → its UTF-8 bytes
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    // No context-manager or indexing operators — the ordinary constructors plus a window/cursor.
+    let h = Heap::from_slice(b"abcdef");
+    assert_eq!(h.as_slice()[0], b'a');           // index the borrowed bytes directly
+    assert_eq!(&h.as_slice()[2..5], b"cde");     // a sub-range
+    let win = h.window(2, 3).unwrap();           // or a bounded window over the range
+    assert_eq!(win.pread_vec(0, 3), b"cde");
     ```
 
 ## One identity — equality and the byte codec

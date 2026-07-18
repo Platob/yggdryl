@@ -13,6 +13,7 @@ sources are leaves of the IO graph). The on-disk sources moved to ``yggdryl.loca
 """
 
 import copy
+import io
 import pickle
 
 import pytest
@@ -1002,3 +1003,299 @@ def test_cursor_and_slice_compression_delegate():
     # The explicit-codec path works over the views too.
     assert Cursor(payload).compress_with(Zstd())  # non-empty compressed bytes
     assert Heap(packed).cursor().decompress_with(Zstd()) == payload
+
+
+# -------------------------------------------------------------------------------------
+# truncate + content_length
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_truncate_shrinks_and_extends():
+    h = Heap(b"hello world")
+    h.truncate(5)
+    assert h.to_bytes() == b"hello"  # tail dropped
+    h.truncate(8)
+    assert h.to_bytes() == b"hello\x00\x00\x00"  # extended, zero-filled
+    assert h.byte_size() == 8
+
+
+def test_heap_content_length_falls_back_to_byte_size_then_prefers_header():
+    h = Heap(b"abcde")
+    assert h.content_length() == 5  # no header — falls back to byte_size
+    h.set_headers(Headers().with_("Content-Length", "999"))
+    assert h.content_length() == 999  # now served from the cached header
+
+
+def test_cursor_and_slice_truncate_is_the_guided_view_refusal():
+    h = Heap(b"hello world")
+    cur = Cursor.over(h)
+    assert cur.content_length() == 11
+    with pytest.raises(ValueError, match="cannot be resized"):
+        cur.truncate(3)  # a view has no resizable backing of its own
+    win = Slice(h, 0, 5)
+    assert win.content_length() == 5
+    with pytest.raises(ValueError, match="cannot be resized"):
+        win.truncate(2)
+
+
+# -------------------------------------------------------------------------------------
+# Bulk unsigned + floating arrays (u16 / u32 / u64 / f32 / f64) + repeats
+# -------------------------------------------------------------------------------------
+
+
+def test_bulk_unsigned_arrays_round_trip():
+    h = Heap()
+    h.pwrite_u16_array(0, [0, 1, 2, 65535])
+    assert h.pread_u16_array(0, 4) == [0, 1, 2, 65535]
+
+    h.pwrite_u32_array(8, [0, 2**31, 2**32 - 1])
+    assert h.pread_u32_array(8, 3) == [0, 2**31, 2**32 - 1]
+
+    h.pwrite_u64_array(20, [0, 2**63, 2**64 - 1])
+    assert h.pread_u64_array(20, 3) == [0, 2**63, 2**64 - 1]
+
+
+def test_bulk_float_arrays_round_trip():
+    h = Heap()
+    h.pwrite_f32_array(0, [1.5, -2.25, 3.0])  # exactly representable in f32
+    assert h.pread_f32_array(0, 3) == [1.5, -2.25, 3.0]
+
+    wide = Heap()
+    wide.pwrite_f64_array(0, [1.5, -2.5, 1e300])
+    assert wide.pread_f64_array(0, 3) == [1.5, -2.5, 1e300]
+
+
+def test_bulk_unsigned_and_float_repeats_cross_chunks():
+    h = Heap()
+    h.pwrite_u16_repeat(0, 7, 1000)  # crosses the 256-element stack chunk
+    assert h.pread_u16_array(0, 1000) == [7] * 1000
+    h2 = Heap()
+    h2.pwrite_u32_repeat(0, 2**32 - 1, 500)
+    assert h2.pread_u32_array(0, 500) == [2**32 - 1] * 500
+    h3 = Heap()
+    h3.pwrite_u64_repeat(0, 2**64 - 1, 300)
+    assert h3.pread_u64_array(0, 300) == [2**64 - 1] * 300
+    h4 = Heap()
+    h4.pwrite_f32_repeat(0, 1.25, 300)
+    assert h4.pread_f32_array(0, 300) == [1.25] * 300
+    h5 = Heap()
+    h5.pwrite_f64_repeat(0, 2.5, 300)
+    assert h5.pread_f64_array(0, 300) == [2.5] * 300
+
+
+def test_bulk_unsigned_read_hostile_count_fails_fast():
+    tiny = Heap(b"tiny")
+    for reader in ("pread_u16_array", "pread_u32_array", "pread_u64_array",
+                   "pread_f32_array", "pread_f64_array"):
+        with pytest.raises(ValueError, match="unexpected end of data"):
+            getattr(tiny, reader)(0, 2_000_000_000)
+
+
+# -------------------------------------------------------------------------------------
+# Cross-source copy: copy_from / pwrite_from
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_copy_from_overwrites_and_truncates():
+    dst = Heap(b"old and longer data")
+    src = Heap(b"new")
+    assert dst.copy_from(src) == 3
+    assert dst.to_bytes() == b"new"  # overwritten and truncated to match
+
+
+def test_heap_pwrite_from_positioned_slice():
+    dst = Heap(b"..........")  # 10 dots
+    src = Heap(b"ABCDEF")
+    assert dst.pwrite_from(2, src, 1, 3) == 3  # src[1:4] = "BCD" at offset 2
+    assert dst.to_bytes() == b"..BCD....."
+    # A length past the end of src is short (transfers only what remains).
+    assert dst.pwrite_from(0, src, 4, 100) == 2  # src[4:] = "EF"
+    assert dst.to_bytes() == b"EFBCD....."
+
+
+# -------------------------------------------------------------------------------------
+# readline / readlines
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_readline_and_readlines():
+    h = Heap(b"first\nsecond")
+    assert h.readline() == "first\n"
+    assert h.readline() == "second"  # no trailing newline at the end
+    assert h.readline() == ""  # now at EOF
+    h2 = Heap(b"a\n\nb\n")
+    assert h2.readlines() == ["a\n", "\n", "b\n"]  # a blank line keeps its \n
+
+
+def test_cursor_readline_and_readlines():
+    cur = Cursor(b"one\ntwo\n")
+    assert cur.readline() == "one\n"
+    assert cur.readlines() == ["two\n"]  # continues from the cursor
+
+
+# -------------------------------------------------------------------------------------
+# In-place (de)compression
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_compress_in_place_explicit_codec_round_trip():
+    payload = b"compress me in place " * 50
+    h = Heap(payload)
+    h.compress_in_place(Gzip())  # explicit codec
+    assert h.to_bytes() != payload
+    assert len(h) < len(payload)
+    assert h.headers.content_type() == "application/gzip"  # Content-Type synced to the codec
+    h.decompress_in_place()  # codec inferred from the media type
+    assert h.to_bytes() == payload
+
+
+def test_heap_compress_in_place_default_codec_from_media_type():
+    payload = b"gzip via the declared media type " * 30
+    h = Heap(payload)
+    h.set_headers(Headers().with_("Content-Type", "application/gzip"))
+    h.compress_in_place()  # None -> the codec of the heap's own media type (gzip)
+    assert h.to_bytes() != payload
+    h.decompress_in_place()
+    assert h.to_bytes() == payload
+
+
+def test_heap_compress_in_place_without_a_codec_is_guided():
+    with pytest.raises(ValueError, match="no codec"):
+        Heap(b"plain octet-stream bytes").compress_in_place()  # nothing to infer
+
+
+# -------------------------------------------------------------------------------------
+# rm family: the new exist_ok argument
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_rm_family_accepts_exist_ok_and_still_refuses():
+    h = Heap(b"x")
+    # A heap has no removable backing, so it refuses regardless of exist_ok, but the
+    # argument is accepted (mirrors the changed core signature).
+    with pytest.raises(ValueError, match="removable backing"):
+        h.rm(exist_ok=True)
+    with pytest.raises(ValueError, match="removable backing"):
+        h.rm(exist_ok=False)
+    with pytest.raises(ValueError, match="removable backing"):
+        h.rmfile(exist_ok=False)
+    with pytest.raises(ValueError, match="removable backing"):
+        h.rmdir(exist_ok=True)
+
+
+# -------------------------------------------------------------------------------------
+# Context managers (Heap / Cursor / Slice)
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_context_manager_returns_self_and_propagates():
+    with Heap(b"data") as h:
+        assert isinstance(h, Heap)
+        assert h.to_bytes() == b"data"
+    with pytest.raises(RuntimeError, match="boom"):  # __exit__ propagates exceptions
+        with Heap(b"x"):
+            raise RuntimeError("boom")
+
+
+def test_cursor_and_slice_context_managers():
+    with Cursor(b"abc") as c:
+        assert isinstance(c, Cursor)
+        assert c.read(3) == b"abc"
+    h = Heap(b"hello world")
+    with Slice(h, 0, 5) as w:
+        assert isinstance(w, Slice)
+        assert w.to_bytes() == b"hello"
+
+
+# -------------------------------------------------------------------------------------
+# from_io: type-inferring constructor over a Python file-like object
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_from_io_bytesio_transfers_position():
+    buf = io.BytesIO(b"hello world")
+    assert buf.read(6) == b"hello "  # partially consume it
+    assert buf.tell() == 6
+    h = Heap.from_io(buf)
+    assert h.to_bytes() == b"hello world"  # the full contents are copied in
+    assert h.position == 6  # ...and the consumed position transfers
+    assert h.read_to_end() == b"world"
+
+
+def test_heap_from_io_stringio_encodes_utf8():
+    h = Heap.from_io(io.StringIO("héllo"))
+    assert h.to_bytes() == "héllo".encode("utf-8")
+
+
+def test_heap_from_io_read_only_object():
+    class Reader:
+        def __init__(self, data):
+            self._data = data
+
+        def read(self):
+            return self._data
+
+    h = Heap.from_io(Reader(b"raw reader bytes"))  # no getvalue()/tell() -> read(), pos 0
+    assert h.to_bytes() == b"raw reader bytes"
+    assert h.position == 0
+
+
+def test_heap_from_io_rejects_a_non_file_like():
+    with pytest.raises(TypeError):
+        Heap.from_io(123)
+
+
+def test_cursor_from_io_positions_at_tell():
+    buf = io.BytesIO(b"abcdef")
+    buf.read(2)
+    cur = Cursor.from_io(buf)
+    assert isinstance(cur, Cursor)
+    assert cur.position == 2  # the cursor starts where the BytesIO was
+    assert cur.read(4) == b"cdef"
+
+
+# -------------------------------------------------------------------------------------
+# Line iteration (Heap / Cursor behave like a file object)
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_line_iteration():
+    h = Heap(b"a\nb\nc")
+    assert iter(h) is h  # the iterator protocol
+    assert list(h) == ["a\n", "b\n", "c"]  # lines from the cursor, last without a newline
+    assert [line for line in Heap(b"x\ny\n")] == ["x\n", "y\n"]
+
+
+def test_cursor_line_iteration():
+    cur = Cursor(b"one\ntwo\n")
+    assert list(cur) == ["one\n", "two\n"]
+
+
+# -------------------------------------------------------------------------------------
+# __getitem__ (int AND slice) on the buffer types
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_getitem_int_and_slice():
+    h = Heap(b"hello world")
+    assert h[0] == ord("h")  # int index -> the byte as an int
+    assert h[-1] == ord("d")  # negative index wraps
+    assert h[0:5] == b"hello"  # slice -> bytes
+    assert h[6:] == b"world"
+    assert h[::-1] == b"dlrow olleh"  # step (delegated to bytes' own __getitem__)
+    with pytest.raises(IndexError):
+        h[100]
+
+
+def test_cursor_and_slice_getitem():
+    cur = Cursor(b"abcdef")
+    assert cur[0] == ord("a")
+    assert cur[1:4] == b"bcd"
+    assert cur.position == 0  # indexing never moves the cursor
+
+    win = Slice(Heap(b"hello world"), 6, 5)  # the "world" window
+    assert win[0] == ord("w")  # indices are within the window
+    assert win[-1] == ord("d")
+    assert win[:] == b"world"
+    with pytest.raises(IndexError):
+        win[5]  # past the window's end

@@ -836,6 +836,85 @@ pickles through its four components in Python.)
     assert!(Uri::deserialize_bytes(&[0xff, 0xfe]).is_err());
     ```
 
+## Portable addresses (relocatable pickling)
+
+A `file://` address is machine-specific — a path under your home or temp directory need not
+exist on another host. `to_portable_str()` rewrites such an address relative to a well-known
+root: one under the **current user's home** directory folds to a leading `~`, and one under the
+**system temp** directory folds to a leading `$TMP` (the **longest** matching root wins, so a
+temp dir nested under home — as on Windows — still folds to `$TMP`). Every other URI — a
+different scheme, or a file path outside both roots — is its exact string. `from_portable_str(s)`
+is the exact inverse: it expands `~` / `$TMP` against **this** environment's home / temp roots,
+so a URI addressing `~/data` on one machine reconstructs under another machine's home. In Python
+this is the form `Uri` / `Url` pickling reduces through, so `pickle.loads(pickle.dumps(uri))`
+relocates the same way. `Url` mirrors both methods.
+
+=== "Python"
+
+    ```python
+    import pickle
+    from yggdryl.uri import Uri, Url
+
+    # A file:// address under HOME folds to a leading ~, and round-trips through it.
+    home_file = Uri.from_portable_str("~/data/report.csv")   # expands ~ against this machine's home
+    assert home_file.scheme == "file"
+    assert home_file.to_portable_str() == "~/data/report.csv"    # folds back to ~
+
+    # A temp path folds to $TMP (the longest matching root wins).
+    tmp_file = Uri.from_portable_str("$TMP/cache.bin")
+    assert tmp_file.to_portable_str() == "$TMP/cache.bin"
+
+    # Every other URI is its exact string — nothing to relocate.
+    assert Uri.parse("https://h/p").to_portable_str() == "https://h/p"
+    assert Url.parse("https://h/p").to_portable_str() == "https://h/p"   # Url mirrors it
+
+    # Pickling reduces through the portable form, so a home path reconstructs
+    # under the receiving machine's home.
+    assert pickle.loads(pickle.dumps(home_file)) == home_file
+    ```
+
+=== "Node"
+
+    ```js
+    const { Uri, Url } = require('yggdryl').uri
+
+    // A file:// address under HOME folds to a leading ~, and round-trips through it.
+    const homeFile = Uri.fromPortableString('~/data/report.csv')   // expands ~ against this machine's home
+    console.assert(homeFile.scheme === 'file')
+    console.assert(homeFile.toPortableString() === '~/data/report.csv')   // folds back to ~
+
+    // A temp path folds to $TMP (the longest matching root wins).
+    const tmpFile = Uri.fromPortableString('$TMP/cache.bin')
+    console.assert(tmpFile.toPortableString() === '$TMP/cache.bin')
+
+    // Every other URI is its exact string — nothing to relocate.
+    console.assert(Uri.parse('https://h/p').toPortableString() === 'https://h/p')
+    console.assert(Url.parse('https://h/p').toPortableString() === 'https://h/p')  // Url mirrors it
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::uri::{Uri, Url};
+
+    // A file:// address under HOME folds to a leading ~, and round-trips through it.
+    let home_file = Uri::from_portable_str("~/data/report.csv").unwrap();
+    assert_eq!(home_file.scheme(), Some("file"));
+    assert_eq!(home_file.to_portable_str(), "~/data/report.csv"); // folds back to ~
+
+    // A temp path folds to $TMP (the longest matching root wins).
+    let tmp_file = Uri::from_portable_str("$TMP/cache.bin").unwrap();
+    assert_eq!(tmp_file.to_portable_str(), "$TMP/cache.bin");
+
+    // Every other URI is its exact string — nothing to relocate.
+    assert_eq!(Uri::parse_str("https://h/p").unwrap().to_portable_str(), "https://h/p");
+    assert_eq!(Url::parse_str("https://h/p").unwrap().to_portable_str(), "https://h/p"); // Url mirrors it
+
+    // A local file path can be built straight from disk, then relocated.
+    let f = Uri::from_file_path("/tmp/out.log");
+    assert_eq!(Uri::from_portable_str(&f.to_portable_str()).unwrap(), f);
+    ```
+
 ## Guided errors
 
 A malformed scheme, an out-of-range port, non-UTF-8 bytes, or a scheme-less string handed

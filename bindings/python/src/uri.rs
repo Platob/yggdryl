@@ -27,7 +27,7 @@ use std::hash::{Hash, Hasher};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyTuple};
+use pyo3::types::{PyBytes, PyDict, PyString, PyTuple};
 
 use yggdryl_core::uri::{self, UriError};
 
@@ -669,6 +669,24 @@ impl Uri {
             .map_err(uri_err)
     }
 
+    /// The **portable** string form: a `file://` URI (or bare path) under the current home /
+    /// temp root folds to a `~` / `$TMP` prefix so it can be rebuilt against *another*
+    /// machine's roots with [`from_portable_str`](Uri::from_portable_str); other schemes are
+    /// unchanged. This is the form pickling reduces through.
+    fn to_portable_str(&self) -> String {
+        self.inner.to_portable_str()
+    }
+
+    /// Rebuilds a URI from the [`to_portable_str`](Uri::to_portable_str) form, expanding a
+    /// leading `~` / `$TMP` against **this** environment's home / temp roots — the exact
+    /// inverse of `to_portable_str` in every environment.
+    #[staticmethod]
+    fn from_portable_str(s: &str) -> PyResult<Self> {
+        uri::Uri::from_portable_str(s)
+            .map(|inner| Self { inner })
+            .map_err(uri_err)
+    }
+
     /// Converts to a [`Url`], raising a guided `ValueError` if this URI has no scheme.
     fn to_url(&self) -> PyResult<Url> {
         self.inner
@@ -915,12 +933,15 @@ impl Uri {
         hasher.finish()
     }
 
+    /// Pickles through the **portable** string form ([`to_portable_str`](Uri::to_portable_str)
+    /// / [`from_portable_str`](Uri::from_portable_str)), so a URI addressing a home / temp path
+    /// reconstructs against the *receiving* environment's home / temp roots.
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
         let ctor = py
             .get_type_bound::<Uri>()
-            .getattr("deserialize_bytes")?
+            .getattr("from_portable_str")?
             .unbind();
-        let state = PyBytes::new_bound(py, &self.inner.serialize_bytes())
+        let state = PyString::new_bound(py, &self.inner.to_portable_str())
             .into_any()
             .unbind();
         Ok((ctor, (state,)))
@@ -1230,6 +1251,25 @@ impl Url {
             .map_err(uri_err)
     }
 
+    /// The **portable** string form: a `file://` URL under the current home / temp root folds
+    /// to a `~` / `$TMP` prefix so it can be rebuilt against *another* machine's roots with
+    /// [`from_portable_str`](Url::from_portable_str); other schemes are unchanged. This is the
+    /// form pickling reduces through.
+    fn to_portable_str(&self) -> String {
+        self.inner.to_portable_str()
+    }
+
+    /// Rebuilds a URL from the [`to_portable_str`](Url::to_portable_str) form, expanding a
+    /// leading `~` / `$TMP` against **this** environment's home / temp roots — the exact
+    /// inverse of `to_portable_str` in every environment. Raises a guided `ValueError` if the
+    /// result has no scheme.
+    #[staticmethod]
+    fn from_portable_str(s: &str) -> PyResult<Self> {
+        uri::Url::from_portable_str(s)
+            .map(|inner| Self { inner })
+            .map_err(uri_err)
+    }
+
     /// The underlying [`Uri`] (infallible — a URL is always a URI).
     fn as_uri(&self) -> Uri {
         Uri {
@@ -1473,12 +1513,15 @@ impl Url {
         hasher.finish()
     }
 
+    /// Pickles through the **portable** string form ([`to_portable_str`](Url::to_portable_str)
+    /// / [`from_portable_str`](Url::from_portable_str)), so a URL addressing a home / temp path
+    /// reconstructs against the *receiving* environment's home / temp roots.
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
         let ctor = py
             .get_type_bound::<Url>()
-            .getattr("deserialize_bytes")?
+            .getattr("from_portable_str")?
             .unbind();
-        let state = PyBytes::new_bound(py, &self.inner.serialize_bytes())
+        let state = PyString::new_bound(py, &self.inner.to_portable_str())
             .into_any()
             .unbind();
         Ok((ctor, (state,)))

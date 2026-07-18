@@ -678,6 +678,25 @@ impl Uri {
             .map_err(to_error)
     }
 
+    /// The **portable** string form — a relocatable rendering that abbreviates a local
+    /// `file://` address under the home directory to a leading `~` (everything else is already
+    /// portable and passes through). The inverse of [`fromPortableString`](Uri::from_portable_string);
+    /// the JS counterpart of Python pickling.
+    #[napi]
+    pub fn to_portable_string(&self) -> String {
+        self.inner.to_portable_str()
+    }
+
+    /// Rebuilds a [`Uri`] from the [`toPortableString`](Uri::to_portable_string) form, expanding a
+    /// leading `~` back to the current home directory — throwing a guided `Error` on any parse
+    /// failure.
+    #[napi(factory)]
+    pub fn from_portable_string(s: String) -> napi::Result<Self> {
+        core::Uri::from_portable_str(&s)
+            .map(|inner| Self { inner })
+            .map_err(to_error)
+    }
+
     // ---- combinators (copy / joinpath / merge) -----------------------------------------
 
     /// An explicit copy of this URI, optionally overriding components via `copy({ scheme, user,
@@ -1216,6 +1235,25 @@ impl Url {
         Uri {
             inner: self.inner.as_uri().clone(),
         }
+    }
+
+    /// The **portable** string form — a relocatable rendering that abbreviates a local
+    /// `file://` address under the home directory to a leading `~` (everything else passes
+    /// through). The inverse of [`fromPortableString`](Url::from_portable_string); the JS
+    /// counterpart of Python pickling.
+    #[napi]
+    pub fn to_portable_string(&self) -> String {
+        self.inner.to_portable_str()
+    }
+
+    /// Rebuilds a [`Url`] from the [`toPortableString`](Url::to_portable_string) form, expanding a
+    /// leading `~` back to the current home directory — throwing a guided `Error` if the decoded
+    /// URI is not absolute (or on any parse failure).
+    #[napi(factory)]
+    pub fn from_portable_string(s: String) -> napi::Result<Self> {
+        core::Url::from_portable_str(&s)
+            .map(|inner| Self { inner })
+            .map_err(to_error)
     }
 
     // ---- combinators (copy / joinpath / merge) -----------------------------------------

@@ -421,3 +421,45 @@ fn authority_byte_codec_roundtrips() {
     ));
     assert!(Authority::deserialize_bytes(b"host:99999").is_err()); // port out of range
 }
+
+// -------------------------------------------------------------------------------------
+// Portable pickling — home / temp roots fold to ~ / $TMP and reconstruct per-environment
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn portable_str_folds_home_and_temp_and_round_trips() {
+    // A file path under the temp root folds to `$TMP` and reconstructs to *this* env's temp.
+    let tmp = std::env::temp_dir();
+    let tmp_uri = Uri::from_file_path(&format!("{}/ygg/portable.bin", tmp.to_string_lossy()));
+    let portable = tmp_uri.to_portable_str();
+    assert!(
+        portable.starts_with("$TMP/") || portable.starts_with('~'),
+        "temp path should relocate, got {portable}"
+    );
+    assert_eq!(Uri::from_portable_str(&portable).unwrap(), tmp_uri); // exact inverse
+
+    // A non-file URI is unchanged and still round-trips.
+    let web = Uri::parse_str("https://host/a/b?q=1#f").unwrap();
+    assert_eq!(web.to_portable_str(), "https://host/a/b?q=1#f");
+    assert_eq!(Uri::from_portable_str(&web.to_portable_str()).unwrap(), web);
+
+    // A file path outside both roots stays a full file URI (lossless fallback).
+    let outside = Uri::from_file_path("/definitely/not/home/x.txt");
+    let p = outside.to_portable_str();
+    assert_eq!(Uri::from_portable_str(&p).unwrap(), outside);
+}
+
+#[test]
+fn portable_str_reconstructs_across_environments() {
+    // Simulate transport: a `~/data/x` token produced elsewhere resolves against THIS home.
+    let rebuilt = Uri::from_portable_str("~/data/x.bin").unwrap();
+    assert_eq!(rebuilt.scheme(), Some("file"));
+    assert!(rebuilt.path().ends_with("/data/x.bin"));
+    // Re-folding it yields the same token (idempotent on this machine's home).
+    assert_eq!(rebuilt.to_portable_str(), "~/data/x.bin");
+
+    // Url mirrors the Uri behavior.
+    let url = Url::from_portable_str("~/data/x.bin").unwrap();
+    assert_eq!(url.scheme(), "file");
+    assert_eq!(url.to_portable_str(), "~/data/x.bin");
+}

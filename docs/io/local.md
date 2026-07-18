@@ -168,6 +168,8 @@ as the `/` operator.
 in the system temp directory; the default name is process-unique (the file name ends in
 `.tmp`). Both stay lazy — a `tmpfile` is created on the first write, and a `tmpfolder` is
 created by `mkdir()` or, as here, by writing a child that auto-creates it as a parent.
+`LocalIO.tmpdir(name?)` is an alias of `tmpfolder` under the filesystem-idiomatic name
+(mirroring Python's `tempfile` vocabulary) — the same lazy temporary folder.
 
 === "Python"
 
@@ -187,6 +189,8 @@ created by `mkdir()` or, as here, by writing a child that auto-creates it as a p
     assert work.is_dir()
     out.close()
     work.rmdir()
+
+    assert LocalIO.tmpdir("build").name == "build"   # tmpdir is an alias of tmpfolder
     ```
 
 === "Node"
@@ -207,6 +211,8 @@ created by `mkdir()` or, as here, by writing a child that auto-creates it as a p
     console.assert(work.isDir());
     out.close();
     work.rmdir();
+
+    console.assert(local.LocalIO.tmpdir('build').name === 'build'); // tmpdir == tmpfolder
     ```
 
 === "Rust"
@@ -228,6 +234,8 @@ created by `mkdir()` or, as here, by writing a child that auto-creates it as a p
     assert!(work.is_dir());
     out.close();
     work.rmdir().unwrap();
+
+    assert_eq!(LocalIO::tmpdir(Some("build")).name(), "build");    // tmpdir == tmpfolder
     ```
 
 ## A directory is a memory tree
@@ -517,6 +525,167 @@ file the handle has written: on Windows a mapped file cannot be deleted.
     root.rm().unwrap();                                 // removes whatever remains
     ```
 
+## Resizing, cached size, and safe removal
+
+`truncate(len)` sets the file to exactly `len` bytes — shrinking drops the tail, growing
+zero-fills — auto-creating + mapping the file and keeping the size headers in sync (it raises
+the guided error on a read-only handle or a directory). `content_length()` prefers the cached
+`Content-Length` header when present — authoritative and free, so it short-circuits a
+directory-tree sum — and otherwise falls back to the live `byte_size()`. The `rm` / `rmfile` /
+`rmdir` family takes an `exist_ok` flag (default **true**): a missing node is silently skipped,
+while `exist_ok=false` turns a missing node into the guided *nothing exists here to remove*
+error.
+
+=== "Python"
+
+    ```python
+    from yggdryl.local import LocalIO
+
+    f = LocalIO.tmpfile()
+    f.pwrite_utf8(0, "hello world")            # 11 bytes, created + mapped
+    f.truncate(5)                              # drop the tail
+    assert f.byte_size() == 5 and f.pread_utf8(0, 5) == "hello"
+    f.truncate(8)                              # extend, zero-filling the gap
+    assert f.byte_size() == 8
+    assert f.content_length() == 8             # cached Content-Length, no re-probe
+
+    f.close()
+    f.rmfile(exist_ok=False)                   # the file is there — removed
+
+    gone = LocalIO.tmpfile()                   # a lazy handle to nothing
+    try:
+        gone.rm(exist_ok=False)                # a missing node is an error here
+    except ValueError as e:
+        assert "nothing exists here to remove" in str(e)
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { local } = require('yggdryl');
+
+    const f = local.LocalIO.tmpfile();
+    f.pwriteUtf8(0, 'hello world');                    // 11 bytes, created + mapped
+    f.truncate(5);                                     // drop the tail
+    console.assert(f.byteSize() === 5 && f.preadUtf8(0, 5) === 'hello');
+    f.truncate(8);                                     // extend, zero-filling the gap
+    console.assert(f.byteSize() === 8);
+    console.assert(f.contentLength() === 8);           // cached Content-Length, no re-probe
+
+    f.close();
+    f.rmfile(false);                                   // the file is there — removed
+
+    const gone = local.LocalIO.tmpfile();              // a lazy handle to nothing
+    try {
+      gone.rm(false);                                  // a missing node is an error here
+    } catch (e) {
+      console.assert(/nothing exists here to remove/.test(e.message));
+    }
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::local::LocalIO;
+    use yggdryl_core::io::memory::IOBase;
+
+    let mut f = LocalIO::tmpfile(None);
+    f.pwrite_utf8(0, "hello world");                    // 11 bytes, created + mapped
+    f.truncate(5).unwrap();                             // drop the tail
+    assert_eq!(f.byte_size(), 5);
+    assert_eq!(f.pread_utf8(0, 5).unwrap(), "hello");
+    f.truncate(8).unwrap();                             // extend, zero-filling the gap
+    assert_eq!(f.byte_size(), 8);
+    assert_eq!(f.content_length(), 8);                  // cached Content-Length, no re-probe
+
+    f.close();
+    f.rmfile(false).unwrap();                           // the file is there — removed
+
+    let gone = LocalIO::tmpfile(None);                  // a lazy handle to nothing
+    assert!(gone.rm(false).is_err());                   // a missing node is an error here
+    ```
+
+## Portable handles: os.PathLike, file-like, and pickle
+
+A `LocalIO` doubles as an open-file object *and* a path. In Python it implements `os.PathLike`
+(`__fspath__`), so `os.fspath(node)` — and `open(node)`, `pathlib.Path(node)`, `os.stat(node)`
+— take the handle directly; it answers the io duck methods `tell()` / `readable()` /
+`writable()` / `seekable()`, iterates its lines (`for line in node:`, backed by `readline()` /
+`readlines()`), and **pickles by its portable address**: `to_portable_str()` folds a home /
+temp path to a `~` / `$TMP` token and `from_portable()` (which pickle calls) rebuilds the
+handle against the *receiving* machine's home / temp roots. Node mirrors the file-like surface
+as `fsPath()` / `tell()` / `readable()` / `writable()` / `seekable()` with the line reads
+`readLine()` / `readLines()`; the portable address lives on `Uri` (`toPortableString()` /
+`Uri.fromPortableString`), so a handle round-trips through
+`new LocalIO(Uri.fromPortableString(s))`.
+
+=== "Python"
+
+    ```python
+    import os
+    import pickle
+
+    from yggdryl.local import LocalIO
+
+    node = LocalIO.tmpfile()
+    node.pwrite_utf8(0, "line one\nline two\n")
+
+    assert os.fspath(node) == node.path        # os.PathLike — open(node) / Path(node) work
+    assert node.readable() and node.writable() and node.seekable()
+    assert node.tell() == 0                     # the cursor, file-object style
+
+    assert [line for line in node] == ["line one\n", "line two\n"]  # iterate lines
+    assert LocalIO.from_portable(node.to_portable_str()) == node    # portable round-trip
+    assert pickle.loads(pickle.dumps(node)) == node                 # pickle uses that address
+
+    node.close()
+    node.rmfile()
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { local } = require('yggdryl');
+    const { Uri } = require('yggdryl').uri;
+
+    const node = local.LocalIO.tmpfile();
+    node.pwriteUtf8(0, 'line one\nline two\n');
+
+    console.assert(node.fsPath() === node.path);       // path string — PathLike-style
+    console.assert(node.readable() && node.writable() && node.seekable());
+    console.assert(node.tell() === 0);                 // the cursor, file-object style
+
+    console.assert(node.readLine() === 'line one\n');  // one line from the cursor
+    console.assert(node.readLines().join('') === 'line two\n');
+
+    const portable = node.uri.toPortableString();      // the portable address lives on Uri
+    const reopened = new local.LocalIO(Uri.fromPortableString(portable));
+    console.assert(reopened.equals(node));             // rebuilt against this machine's roots
+
+    node.close();
+    node.rmfile();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::local::LocalIO;
+    use yggdryl_core::io::memory::IOBase;
+    use yggdryl_core::uri::Uri;
+
+    let mut node = LocalIO::tmpfile(None);
+    node.pwrite_utf8(0, "line one\nline two\n");
+    assert_eq!(node.readline().unwrap(), "line one\n"); // one line from the cursor
+    assert_eq!(node.readlines().unwrap(), vec!["line two\n"]);
+
+    let portable = node.uri().to_portable_str();         // the portable address lives on Uri
+    let reopened = LocalIO::from_uri(&Uri::from_portable_str(&portable).unwrap()).unwrap();
+    assert_eq!(reopened, node);                          // rebuilt against this machine's roots
+
+    node.close();
+    node.rmfile().unwrap();
+    ```
+
 ## Surface parity
 
 Both bindings mirror the whole surface: the generic `LocalIO(path_or_uri)` constructor and the
@@ -528,6 +697,72 @@ generic `ls(recursive=…)` entry **streaming** the core iterators (`children()`
 convenience), the shape-checked `rm()` / `rmfile()` / `rmdir()`, and `mkdir()` / `flush()` /
 `close()` / `is_mapped`. A `copy()` is a fresh lazy handle to the same path; handles compare
 equal by path.
+
+## Building a mapping from a handle
+
+`mmap()` materializes a standalone [`Mmap`](#mmap-the-memory-mapped-file) over the handle's
+path, **reusing the handle's own parameters** — its access mode (a read-write handle
+auto-creates the missing parents + the file and maps read-write; a read-only handle maps
+read-only) and its headers, copied onto the mapping. It is independent of the handle's own
+lazy backing: the direct front door to the memory-mapped source when the caller wants to hold
+and drive it as an `Mmap`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.io import IOMode
+    from yggdryl.local import LocalIO
+
+    node = LocalIO.tmpfile()
+    mapping = node.mmap()                      # read-write handle → auto-creates + maps the file
+    mapping.pwrite_utf8(0, "mapped")           # a standalone Mmap over the same path
+    assert mapping.pread_utf8(0, 6) == "mapped"
+    mapping.close()
+
+    node.set_mode(IOMode.Read)                 # a read-only handle...
+    ro = node.mmap()                           # ...maps read-only, reusing the handle's mode
+    assert ro.pread_utf8(0, 6) == "mapped"
+    ro.close()
+    node.rmfile()
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { local, io } = require('yggdryl');
+
+    const node = local.LocalIO.tmpfile();
+    const mapping = node.mmap();                       // read-write handle → auto-creates + maps
+    mapping.pwriteUtf8(0, 'mapped');                   // a standalone Mmap over the same path
+    console.assert(mapping.preadUtf8(0, 6) === 'mapped');
+    mapping.close();
+
+    node.setMode(io.IOMode.Read);                      // a read-only handle...
+    const ro = node.mmap();                            // ...maps read-only, reusing the mode
+    console.assert(ro.preadUtf8(0, 6) === 'mapped');
+    ro.close();
+    node.rmfile();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::local::LocalIO;
+    use yggdryl_core::io::memory::IOBase;
+    use yggdryl_core::io::IOMode;
+
+    let mut node = LocalIO::tmpfile(None);
+    let mut mapping = node.mmap().unwrap();             // read-write → auto-creates + maps the file
+    mapping.pwrite_utf8(0, "mapped");                   // a standalone Mmap over the same path
+    assert_eq!(mapping.pread_utf8(0, 6).unwrap(), "mapped");
+    drop(mapping);                                      // unmaps + truncates the padding
+
+    node.set_mode(IOMode::Read);                        // a read-only handle...
+    let ro = node.mmap().unwrap();                      // ...maps read-only, reusing the mode
+    assert_eq!(ro.pread_utf8(0, 6).unwrap(), "mapped");
+    drop(ro);
+    node.rmfile().unwrap();
+    ```
 
 ## `Mmap` — the memory-mapped file
 

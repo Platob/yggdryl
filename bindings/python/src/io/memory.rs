@@ -36,7 +36,7 @@
 // `From`.
 #![allow(clippy::useless_conversion)]
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -52,6 +52,68 @@ use yggdryl_core::io::Serializable;
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
+}
+
+/// The fail-fast bounds check shared by every bulk `pread_*_array` binding: the guided
+/// [`IoError::UnexpectedEof`] when `count` elements of `width` bytes each would run past the
+/// `available` bytes, else `None`. Checked **before** the result list is allocated, so a
+/// hostile `count` raises instead of attempting a giant allocation (mirrors the inline check
+/// the hand-written `i32`/`i64` array readers use).
+fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<IoError> {
+    (count.saturating_mul(width) as u64 > available).then(|| IoError::UnexpectedEof {
+        offset: offset + available,
+        requested: count.saturating_mul(width),
+        available: available as usize,
+    })
+}
+
+/// Resolves a Python `int` index against a `len`-byte buffer — wrapping a negative index and
+/// raising `IndexError` when it falls outside — then reads that single byte via `read` (the
+/// source's positioned read). Shared by the byte-buffer `__getitem__` int fast path (a slice
+/// key is delegated to `bytes`' own `__getitem__` for exact step/negative semantics).
+fn index_one(len: u64, index: isize, read: impl FnOnce(u64, &mut [u8]) -> usize) -> PyResult<u8> {
+    let len_i = len as isize;
+    let real = if index < 0 { index + len_i } else { index };
+    if real < 0 || real >= len_i {
+        return Err(PyIndexError::new_err("index out of range"));
+    }
+    let mut one = [0u8; 1];
+    read(real as u64, &mut one);
+    Ok(one[0])
+}
+
+/// Reads a Python **file-like** object's full contents into a fresh [`memory::Heap`] — the
+/// shared type-inferring reader behind [`Heap::from_io`] and [`Cursor::from_io`]. Defensive:
+/// tries `getvalue()` (a `io.BytesIO` / `io.StringIO`) first, then `read()` (a `io.FileIO` or
+/// any reader), accepting either `bytes` or `str` (encoded UTF-8). When the object exposes
+/// `tell()`, the returned heap's cursor is set to that position, so a partially-consumed
+/// `BytesIO` transfers its position.
+fn heap_from_io(obj: &Bound<'_, PyAny>) -> PyResult<memory::Heap> {
+    let raw = match obj.call_method0("getvalue") {
+        Ok(value) => value,
+        Err(_) => obj.call_method0("read").map_err(|_| {
+            PyTypeError::new_err(
+                "from_io expects a file-like object with getvalue() or read() (e.g. io.BytesIO, \
+                 io.StringIO, io.FileIO)",
+            )
+        })?,
+    };
+    let bytes = if let Ok(b) = raw.extract::<Vec<u8>>() {
+        b
+    } else if let Ok(s) = raw.extract::<String>() {
+        s.into_bytes()
+    } else {
+        return Err(PyTypeError::new_err(
+            "from_io: the object's getvalue()/read() must return bytes or str",
+        ));
+    };
+    let mut heap = memory::Heap::from_vec(bytes);
+    if let Ok(pos) = obj.call_method0("tell") {
+        if let Ok(position) = pos.extract::<u64>() {
+            heap.set_position(position);
+        }
+    }
+    Ok(heap)
 }
 
 /// Where a seek offset is measured from — the POSIX `lseek` `whence`. Mirrors
@@ -111,6 +173,18 @@ impl Heap {
         Self {
             inner: memory::Heap::with_capacity(capacity),
         }
+    }
+
+    /// A buffer owning a **copy** of a Python **file-like** object's full contents — the
+    /// type-inferring constructor for a `io.BytesIO` / `io.StringIO` / `io.FileIO` (or anything
+    /// with `getvalue()` / `read()`). `str` content (a `StringIO`) is encoded UTF-8; when the
+    /// object exposes `tell()`, the resulting cursor is set to that position, so a
+    /// partially-consumed `BytesIO` transfers its position.
+    #[staticmethod]
+    fn from_io(obj: &Bound<'_, PyAny>) -> PyResult<Heap> {
+        Ok(Heap {
+            inner: heap_from_io(obj)?,
+        })
     }
 
     // ---- size + capacity ---------------------------------------------------------------
@@ -184,6 +258,19 @@ impl Heap {
     /// Shrinks the allocation toward `min_capacity` (never below `byte_size()`).
     fn shrink_to(&mut self, min_capacity: u64) {
         self.inner.shrink_to(min_capacity);
+    }
+
+    /// Sets the byte length to exactly `length` — shrinking (dropping the tail) or extending
+    /// (zero-filling) — then syncs the size headers. The cursor is clamped to stay within the
+    /// data.
+    fn truncate(&mut self, length: u64) -> PyResult<()> {
+        self.inner.truncate(length).map_err(ioerr)
+    }
+
+    /// The content length in bytes, **preferring the cached `Content-Length` header** when
+    /// present and falling back to the live `byte_size()`.
+    fn content_length(&self) -> u64 {
+        self.inner.content_length()
     }
 
     /// Whether the buffer holds no bytes (`byte_size() == 0`).
@@ -358,6 +445,157 @@ impl Heap {
             .map_err(ioerr)
     }
 
+    // ---- bulk unsigned + floating widths (u16/u32/u64/f32/f64) --------------------------
+
+    /// **Bulk typed read** of `count` little-endian `u16`s — the `u16` counterpart of
+    /// [`pread_i32_array`](Heap::pread_i32_array), with the same fail-fast bounds check.
+    fn pread_u16_array(&self, offset: u64, count: usize) -> PyResult<Vec<u16>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 2) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u16; count];
+        self.inner
+            .pread_u16_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u16`s at `offset`, growing as needed.
+    fn pwrite_u16_array(&mut self, offset: u64, values: Vec<u16>) -> PyResult<()> {
+        self.inner.pwrite_u16_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u16` copies of `value` at `offset`.
+    fn pwrite_u16_repeat(&mut self, offset: u64, value: u16, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_u16_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u32`s (fail-fast bounds check).
+    fn pread_u32_array(&self, offset: u64, count: usize) -> PyResult<Vec<u32>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 4) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u32; count];
+        self.inner
+            .pread_u32_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u32`s at `offset`, growing as needed.
+    fn pwrite_u32_array(&mut self, offset: u64, values: Vec<u32>) -> PyResult<()> {
+        self.inner.pwrite_u32_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u32` copies of `value` at `offset`.
+    fn pwrite_u32_repeat(&mut self, offset: u64, value: u32, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_u32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u64`s (fail-fast bounds check).
+    fn pread_u64_array(&self, offset: u64, count: usize) -> PyResult<Vec<u64>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 8) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0u64; count];
+        self.inner
+            .pread_u64_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `u64`s at `offset`, growing as needed.
+    fn pwrite_u64_array(&mut self, offset: u64, values: Vec<u64>) -> PyResult<()> {
+        self.inner.pwrite_u64_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u64` copies of `value` at `offset`.
+    fn pwrite_u64_repeat(&mut self, offset: u64, value: u64, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_u64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f32`s (fail-fast bounds check).
+    fn pread_f32_array(&self, offset: u64, count: usize) -> PyResult<Vec<f32>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 4) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0f32; count];
+        self.inner
+            .pread_f32_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `f32`s at `offset`, growing as needed.
+    fn pwrite_f32_array(&mut self, offset: u64, values: Vec<f32>) -> PyResult<()> {
+        self.inner.pwrite_f32_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f32` copies of `value` at `offset`.
+    fn pwrite_f32_repeat(&mut self, offset: u64, value: f32, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_f32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f64`s (fail-fast bounds check).
+    fn pread_f64_array(&self, offset: u64, count: usize) -> PyResult<Vec<f64>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if let Some(e) = bulk_eof(offset, available, count, 8) {
+            return Err(ioerr(e));
+        }
+        let mut values = vec![0f64; count];
+        self.inner
+            .pread_f64_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `f64`s at `offset`, growing as needed.
+    fn pwrite_f64_array(&mut self, offset: u64, values: Vec<f64>) -> PyResult<()> {
+        self.inner.pwrite_f64_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f64` copies of `value` at `offset`.
+    fn pwrite_f64_repeat(&mut self, offset: u64, value: f64, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_f64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    // ---- cross-source copy -------------------------------------------------------------
+
+    /// Overwrites this heap with **all of `src`'s bytes** (truncating to match) — a
+    /// cross-source copy. Returns the byte count.
+    fn copy_from(&mut self, src: &Heap) -> PyResult<u64> {
+        self.inner.copy_from(&src.inner).map_err(ioerr)
+    }
+
+    /// **Positioned cross-source write**: copies `length` bytes of `src` starting at
+    /// `src_offset` into this heap at `offset`. Returns the number of bytes transferred
+    /// (short at the end of `src`).
+    fn pwrite_from(
+        &mut self,
+        offset: u64,
+        src: &Heap,
+        src_offset: u64,
+        length: u64,
+    ) -> PyResult<u64> {
+        self.inner
+            .pwrite_from(offset, &src.inner, src_offset, length)
+            .map_err(ioerr)
+    }
+
     // ---- cursor ------------------------------------------------------------------------
 
     /// The current cursor position (bytes from the start). May sit past the end after a seek.
@@ -461,6 +699,19 @@ impl Heap {
         })?;
         self.inner.set_position(self.inner.byte_size());
         Ok(bytes)
+    }
+
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — advancing the cursor past it. Returns `""`
+    /// **only** at the true end, so a blank line (which keeps its `\n`) is distinct from EOF.
+    fn readline(&mut self) -> PyResult<String> {
+        self.inner.readline().map_err(ioerr)
+    }
+
+    /// **Reads every remaining line** from the cursor into a list, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    fn readlines(&mut self) -> PyResult<Vec<String>> {
+        self.inner.readlines().map_err(ioerr)
     }
 
     // ---- slice -------------------------------------------------------------------------
@@ -648,6 +899,29 @@ impl Heap {
     // ergonomic mirror of the core's compress/decompress family; the generic `compress_into` /
     // `decompress_into` (source-to-source) and `as_bytes` are deliberately not exposed.
 
+    /// **Compresses this heap in place** — replaces its bytes with the compressed form and
+    /// updates the `Content-Type` / `Content-Length` / `mtime` headers. `codec` (a
+    /// `yggdryl.compression` codec) defaults to the codec of the heap's own media type, so a
+    /// `.gz`-addressed heap packs itself gzip; pass an explicit one to override. Raises a
+    /// guided `ValueError` when no codec applies.
+    #[pyo3(signature = (codec = None))]
+    fn compress_in_place(&mut self, codec: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        match codec {
+            Some(codec) => {
+                crate::compression::with_codec(codec, |c| self.inner.compress_in_place(Some(c)))?
+                    .map_err(ioerr)
+            }
+            None => self.inner.compress_in_place(None).map_err(ioerr),
+        }
+    }
+
+    /// **Decompresses this heap in place** — replaces its compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates the size/media/mtime headers.
+    /// Raises a guided `ValueError` when the heap is not a supported compression.
+    fn decompress_in_place(&mut self) -> PyResult<()> {
+        self.inner.decompress_in_place().map_err(ioerr)
+    }
+
     // ---- graph: navigation + discovery + CRUD (a heap is a leaf) -------------------------
 
     /// The node's own name — the last (percent-decoded) segment of its address's path: empty
@@ -712,19 +986,24 @@ impl Heap {
     }
 
     /// A heap has no removable backing — raises the guided `ValueError` naming the fix
-    /// (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead).
-    fn rm(&self) -> PyResult<()> {
-        self.inner.rm().map_err(ioerr)
+    /// (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead). `exist_ok` governs
+    /// a **missing** node (`exist_ok=False` raises on a missing one); a heap has no backing at
+    /// all, so it always raises the same guided refusal regardless.
+    #[pyo3(signature = (exist_ok = true))]
+    fn rm(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rm(exist_ok).map_err(ioerr)
     }
 
     /// A heap has no removable backing — the same guided refusal as [`rm`](Heap::rm).
-    fn rmfile(&self) -> PyResult<()> {
-        self.inner.rmfile().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmfile(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmfile(exist_ok).map_err(ioerr)
     }
 
     /// A heap has no removable backing — the same guided refusal as [`rm`](Heap::rm).
-    fn rmdir(&self) -> PyResult<()> {
-        self.inner.rmdir().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmdir(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmdir(exist_ok).map_err(ioerr)
     }
 
     // ---- cursor / window views ---------------------------------------------------------
@@ -758,6 +1037,23 @@ impl Heap {
     /// The stored bytes as a `bytes` copy (so `bytes(heap)` works).
     fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.as_slice())
+    }
+
+    /// Indexing like `bytes` — `heap[i]` is the byte at `i` as an `int` (negative indices wrap;
+    /// out of range raises `IndexError`), and `heap[a:b:step]` is the selected `bytes`.
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        if let Ok(index) = key.extract::<isize>() {
+            let byte = index_one(self.inner.byte_size(), index, |offset, buf| {
+                self.inner.pread_byte_array(offset, buf)
+            })?;
+            Ok(byte.to_object(py))
+        } else {
+            // A slice (or a bad key): delegate to `bytes`' own `__getitem__` for exact semantics.
+            Ok(PyBytes::new_bound(py, self.inner.as_slice())
+                .as_any()
+                .get_item(key)?
+                .unbind())
+        }
     }
 
     /// The heap's value form — its stored bytes (the cursor, address, headers, and mode are
@@ -805,6 +1101,34 @@ impl Heap {
         self.inner == other.inner
     }
 
+    /// Context-manager entry — returns the heap itself, so `with Heap(data) as h:` binds it.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Context-manager exit — a no-op for an in-memory buffer (nothing to release); returns
+    /// `False` so exceptions propagate.
+    fn __exit__(
+        &self,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> bool {
+        false
+    }
+
+    /// Line iteration — `for line in heap:` yields each line from the cursor (like a file
+    /// object), via [`readline`](Heap::readline).
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// The next line from the cursor, or `StopIteration` at the true end.
+    fn __next__(&mut self) -> PyResult<Option<String>> {
+        let line = self.inner.readline().map_err(ioerr)?;
+        Ok((!line.is_empty()).then_some(line))
+    }
+
     fn __repr__(&self) -> String {
         format!("Heap(<{} bytes>)", self.inner.byte_size())
     }
@@ -843,6 +1167,20 @@ impl Cursor {
         Self {
             inner: heap.inner.clone().cursor(),
         }
+    }
+
+    /// A cursor over a fresh [`Heap`] owning a copy of a Python **file-like** object's full
+    /// contents (a `io.BytesIO` / `io.StringIO` / `io.FileIO`, or anything with `getvalue()` /
+    /// `read()`) — the type-inferring constructor. `str` content is encoded UTF-8; when the
+    /// object exposes `tell()`, the cursor starts at that position (a partially-consumed
+    /// `BytesIO` transfers its position).
+    #[staticmethod]
+    fn from_io(obj: &Bound<'_, PyAny>) -> PyResult<Cursor> {
+        let heap = heap_from_io(obj)?;
+        let position = heap.position();
+        Ok(Cursor {
+            inner: memory::IOCursor::with_position(heap, position),
+        })
     }
 
     // ---- cursor stream -----------------------------------------------------------------
@@ -950,6 +1288,19 @@ impl Cursor {
         Ok(bytes)
     }
 
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — advancing the cursor past it. Returns `""`
+    /// **only** at the true end (a blank line keeps its `\n`).
+    fn readline(&mut self) -> PyResult<String> {
+        self.inner.readline().map_err(ioerr)
+    }
+
+    /// **Reads every remaining line** from the cursor into a list, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    fn readlines(&mut self) -> PyResult<Vec<String>> {
+        self.inner.readlines().map_err(ioerr)
+    }
+
     // ---- positioned (delegates to the wrapped source) ----------------------------------
 
     /// The total length in bytes of the wrapped source.
@@ -965,6 +1316,19 @@ impl Cursor {
     /// The total length in bits — `byte_size() * 8`.
     fn bit_size(&self) -> u64 {
         self.inner.bit_size()
+    }
+
+    /// Resizes the wrapped source to exactly `length` bytes. A cursor is a byte **view** with
+    /// no resizable backing of its own, so this raises the core's guided `ValueError` (truncate
+    /// a `Heap`, `Mmap`, or `LocalIO` instead).
+    fn truncate(&mut self, length: u64) -> PyResult<()> {
+        self.inner.truncate(length).map_err(ioerr)
+    }
+
+    /// The wrapped source's content length in bytes, preferring the cached `Content-Length`
+    /// header when present and falling back to `byte_size()`.
+    fn content_length(&self) -> u64 {
+        self.inner.content_length()
     }
 
     /// Reads the single byte at `offset`, raising `ValueError` if it is past the end. Never
@@ -1188,21 +1552,25 @@ impl Cursor {
     }
 
     /// A cursor view has no removable backing — raises the guided `ValueError` naming the
-    /// fix (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead).
-    fn rm(&self) -> PyResult<()> {
-        self.inner.rm().map_err(ioerr)
+    /// fix (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead). `exist_ok`
+    /// governs a **missing** node (`exist_ok=False` raises on a missing one).
+    #[pyo3(signature = (exist_ok = true))]
+    fn rm(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rm(exist_ok).map_err(ioerr)
     }
 
     /// A cursor view has no removable backing — the same guided refusal as
     /// [`rm`](Cursor::rm).
-    fn rmfile(&self) -> PyResult<()> {
-        self.inner.rmfile().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmfile(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmfile(exist_ok).map_err(ioerr)
     }
 
     /// A cursor view has no removable backing — the same guided refusal as
     /// [`rm`](Cursor::rm).
-    fn rmdir(&self) -> PyResult<()> {
-        self.inner.rmdir().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmdir(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmdir(exist_ok).map_err(ioerr)
     }
 
     /// An independent copy of the wrapped [`Heap`] source (the cursor position is discarded).
@@ -1220,6 +1588,52 @@ impl Cursor {
     /// The wrapped source's bytes as a `bytes` copy (so `bytes(cursor)` works).
     fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.inner().as_slice())
+    }
+
+    /// Indexing like `bytes` — `cursor[i]` is the byte at `i` as an `int` (negative indices
+    /// wrap; out of range raises `IndexError`), `cursor[a:b:step]` the selected `bytes`. Never
+    /// moves the cursor.
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        if let Ok(index) = key.extract::<isize>() {
+            let byte = index_one(self.inner.byte_size(), index, |offset, buf| {
+                self.inner.pread_byte_array(offset, buf)
+            })?;
+            Ok(byte.to_object(py))
+        } else {
+            Ok(PyBytes::new_bound(py, self.inner.inner().as_slice())
+                .as_any()
+                .get_item(key)?
+                .unbind())
+        }
+    }
+
+    /// Context-manager entry — returns the cursor itself, so `with Cursor(data) as c:` binds
+    /// it.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Context-manager exit — a no-op for an in-memory cursor; returns `False` so exceptions
+    /// propagate.
+    fn __exit__(
+        &self,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> bool {
+        false
+    }
+
+    /// Line iteration — `for line in cursor:` yields each line from the current position (like
+    /// a file object), via [`readline`](Cursor::readline).
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// The next line from the cursor, or `StopIteration` at the true end.
+    fn __next__(&mut self) -> PyResult<Option<String>> {
+        let line = self.inner.readline().map_err(ioerr)?;
+        Ok((!line.is_empty()).then_some(line))
     }
 
     fn __repr__(&self) -> String {
@@ -1275,6 +1689,19 @@ impl Slice {
     #[getter]
     fn offset(&self) -> u64 {
         self.inner.offset()
+    }
+
+    /// Resizes the wrapped source to exactly `length` bytes. A window is a fixed-length byte
+    /// **view** with no resizable backing of its own, so this raises the core's guided
+    /// `ValueError` (truncate a `Heap`, `Mmap`, or `LocalIO` instead).
+    fn truncate(&mut self, length: u64) -> PyResult<()> {
+        self.inner.truncate(length).map_err(ioerr)
+    }
+
+    /// The window's content length in bytes, preferring the cached `Content-Length` header
+    /// when present and falling back to `byte_size()`.
+    fn content_length(&self) -> u64 {
+        self.inner.content_length()
     }
 
     /// **Positioned read.** Returns up to `length` bytes starting at `offset` **within the
@@ -1491,21 +1918,25 @@ impl Slice {
     }
 
     /// A window view has no removable backing — raises the guided `ValueError` naming the
-    /// fix (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead).
-    fn rm(&self) -> PyResult<()> {
-        self.inner.rm().map_err(ioerr)
+    /// fix (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead). `exist_ok`
+    /// governs a **missing** node (`exist_ok=False` raises on a missing one).
+    #[pyo3(signature = (exist_ok = true))]
+    fn rm(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rm(exist_ok).map_err(ioerr)
     }
 
     /// A window view has no removable backing — the same guided refusal as
     /// [`rm`](Slice::rm).
-    fn rmfile(&self) -> PyResult<()> {
-        self.inner.rmfile().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmfile(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmfile(exist_ok).map_err(ioerr)
     }
 
     /// A window view has no removable backing — the same guided refusal as
     /// [`rm`](Slice::rm).
-    fn rmdir(&self) -> PyResult<()> {
-        self.inner.rmdir().map_err(ioerr)
+    #[pyo3(signature = (exist_ok = true))]
+    fn rmdir(&self, exist_ok: bool) -> PyResult<()> {
+        self.inner.rmdir(exist_ok).map_err(ioerr)
     }
 
     /// An independent copy of the wrapped [`Heap`] source (the window bounds are discarded).
@@ -1529,6 +1960,43 @@ impl Slice {
             py,
             &self.inner.pread_vec(0, self.inner.byte_size() as usize),
         )
+    }
+
+    /// Indexing like `bytes` — `window[i]` is the byte at `i` **within the window** as an `int`
+    /// (negative indices wrap; out of range raises `IndexError`), `window[a:b:step]` the
+    /// selected `bytes`.
+    fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        if let Ok(index) = key.extract::<isize>() {
+            let byte = index_one(self.inner.byte_size(), index, |offset, buf| {
+                self.inner.pread_byte_array(offset, buf)
+            })?;
+            Ok(byte.to_object(py))
+        } else {
+            Ok(PyBytes::new_bound(
+                py,
+                &self.inner.pread_vec(0, self.inner.byte_size() as usize),
+            )
+            .as_any()
+            .get_item(key)?
+            .unbind())
+        }
+    }
+
+    /// Context-manager entry — returns the window itself, so `with Slice(h, o, n) as w:` binds
+    /// it.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Context-manager exit — a no-op for an in-memory window; returns `False` so exceptions
+    /// propagate.
+    fn __exit__(
+        &self,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> bool {
+        false
     }
 
     fn __repr__(&self) -> String {

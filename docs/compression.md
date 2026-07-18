@@ -86,6 +86,17 @@ Each codec takes an optional level and round-trips a byte buffer losslessly.
     assert_eq!(codec_for_mime(&gz).unwrap().name(), "gzip");
     ```
 
+## Shared codec instances
+
+Resolving a **default-level** codec never rebuilds it. In Python, `codec_for` and every
+source's `compression()` hand back a **cached singleton** per format — one shared object,
+returned by reference — so neither the resolver nor a source's accessor constructs a codec per
+call. The Rust core exposes the same as `codec_ref_for` / `codec_ref_for_mime`, which return a
+`&'static` default-level codec (the zero-allocation counterpart of `codec_for` /
+`codec_for_mime`). Build a codec with an explicit level (`Zstd(level=9)`, `new Zstd(9)`,
+`Zstd::with_level(9)`) only when you need a non-default one; the balanced defaults cost nothing
+to reuse.
+
 ## Decompress a source (codec inferred from its media type)
 
 A source addressed as a compression — a `.gz` file, or a heap whose `Content-Type` says so —
@@ -131,6 +142,60 @@ to the codec.
     let mut src = Heap::from_slice(&packed);
     src.headers_mut().set_content_type("application/gzip");
     assert_eq!(src.decompress().unwrap(), b"payload ".repeat(500)); // codec inferred
+    ```
+
+## In-place (self-overwriting) codecs
+
+A source can rewrite **its own** bytes: `compress_in_place` swaps its content for the
+compressed form and `decompress_in_place` swaps it back — each keeping `Content-Type`,
+`Content-Length`, and `mtime` in sync in the **same pass**. They complement the byte-returning
+`compress_with` / `decompress_with` above, which leave the source untouched. With no codec,
+`compress_in_place` uses the one inferred from the source's media type (address the heap as
+`.gz` / set its `Content-Type`); pass an explicit codec to override.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    src = Heap(b"payload " * 500)
+    hdrs = src.headers                          # a copy; write it back to store
+    hdrs.set_content_type("application/gzip")   # address the heap as gzip
+    src.set_headers(hdrs)
+
+    src.compress_in_place()                     # codec=None → inferred from the media type
+    assert len(src) < 500                       # the heap now holds its own packed bytes
+    src.decompress_in_place()                   # peel it back — codec inferred again
+    assert bytes(src) == b"payload " * 500      # round-trips to the original
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Heap } = require('yggdryl').memory
+    const { Headers } = require('yggdryl').headers
+
+    const src = new Heap(Buffer.from('payload '.repeat(500)))
+    src.setHeaders(new Headers().with('Content-Type', 'application/gzip')) // address as gzip
+
+    src.compressInPlace()                                      // codec inferred from the type
+    console.assert(src.toBytes().length < 500)                 // the heap now holds packed bytes
+    src.decompressInPlace()                                    // peel it back — codec inferred
+    console.assert(src.toBytes().equals(Buffer.from('payload '.repeat(500))))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut src = Heap::from_slice(&b"payload ".repeat(500));
+    src.headers_mut().set_content_type("application/gzip"); // address the heap as gzip
+
+    src.compress_in_place(None).unwrap();                   // codec inferred from the media type
+    assert!(src.byte_size() < 500);                         // the heap now holds packed bytes
+    src.decompress_in_place().unwrap();                     // peel it back — codec inferred again
+    assert_eq!(src.pread_vec(0, src.byte_size() as usize), b"payload ".repeat(500));
     ```
 
 ## Sniff a type by magic, then peel it

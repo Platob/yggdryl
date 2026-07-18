@@ -147,3 +147,23 @@ def test_codec_for_rejects_other_types():
         codec_for(123)
     with pytest.raises(TypeError):
         codec_for(None)
+
+
+# -------------------------------------------------------------------------------------
+# codec_for: cached module-level singletons (resolve shared instances once)
+# -------------------------------------------------------------------------------------
+
+
+def test_default_codecs_are_cached_singletons():
+    # Each default codec resolves to one shared process-wide instance, never a new object
+    # per call (the "resolve shared instances once" rule).
+    for essence in ("application/gzip", "application/zlib", "application/zstd", "application/x-xz"):
+        assert codec_for(essence) is codec_for(essence)
+
+    # A source's compression() accessor shares the very same singleton as the module resolver.
+    from yggdryl.headers import Headers
+    from yggdryl.memory import Heap
+
+    h = Heap()
+    h.set_headers(Headers().with_("Content-Type", "application/gzip"))
+    assert h.compression() is codec_for("application/gzip")

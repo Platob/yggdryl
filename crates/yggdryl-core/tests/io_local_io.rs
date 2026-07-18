@@ -518,13 +518,13 @@ fn tmpfile_and_tmpfolder_builders() {
     // A named tmpfile is lazy (nothing on disk), created on first write, and reads back.
     let mut f = LocalIO::tmpfile(Some("yggdryl_test_tmpfile.bin"));
     assert!(f.as_std_path().starts_with(std::env::temp_dir()));
-    f.rmfile().ok(); // clean any leftover from a previous run
+    f.rmfile(true).ok(); // clean any leftover from a previous run
     assert!(!f.exists());
     f.pwrite_utf8(0, "scratch");
     assert!(f.is_file());
     assert_eq!(f.pread_utf8(0, 7).unwrap(), "scratch");
     f.close();
-    f.rmfile().unwrap();
+    f.rmfile(true).unwrap();
 
     // Two unnamed tmpfiles get distinct (unique) paths.
     let a = LocalIO::tmpfile(None);
@@ -534,13 +534,13 @@ fn tmpfile_and_tmpfolder_builders() {
 
     // A tmpfolder is lazy; writing a child auto-creates it, then rmdir cleans up.
     let work = LocalIO::tmpfolder(Some("yggdryl_test_tmpfolder"));
-    work.rmdir().ok();
+    work.rmdir(true).ok();
     assert!(!work.exists());
     let mut child = work.join_str("out.bin");
     child.pwrite_byte_array(0, b"x");
     assert!(work.is_dir());
     child.close();
-    work.rmdir().unwrap();
+    work.rmdir(true).unwrap();
     assert!(!work.exists());
 }
 
@@ -585,20 +585,33 @@ fn rm_family_with_guided_mismatch_errors() {
     let d = root.join_str("d");
     d.mkdir().unwrap();
 
-    assert!(d.rmfile().unwrap_err().to_string().contains("use rmdir"));
-    assert!(f.rmdir().unwrap_err().to_string().contains("use rmfile"));
+    assert!(d
+        .rmfile(true)
+        .unwrap_err()
+        .to_string()
+        .contains("use rmdir"));
+    assert!(f
+        .rmdir(true)
+        .unwrap_err()
+        .to_string()
+        .contains("use rmfile"));
 
-    f.rmfile().unwrap();
+    f.rmfile(true).unwrap();
     assert!(!f.exists());
-    f.rmfile().unwrap(); // idempotent on missing
-    d.rmdir().unwrap();
+    f.rmfile(true).unwrap(); // idempotent on missing (exist_ok = true, the default)
+                             // With exist_ok = false, removing a missing node is a guided error naming the fix.
+    let err = f.rmfile(false).unwrap_err().to_string();
+    assert!(err.contains("nothing exists here") && err.contains("exist_ok=true"));
+    assert!(root.join_str("nope").rm(false).is_err());
+    d.rmdir(true).unwrap();
     assert!(!d.exists());
+    assert!(d.rmdir(false).is_err()); // now missing → raises
 
     // rm removes whatever exists (file or whole tree).
     root.join_str("g.txt").pwrite_utf8(0, "y");
     root.join_str("h/i.txt").pwrite_utf8(0, "z");
-    root.join_str("g.txt").rm().unwrap();
-    root.join_str("h").rm().unwrap();
+    root.join_str("g.txt").rm(true).unwrap();
+    root.join_str("h").rm(true).unwrap();
     assert_eq!(root.children().unwrap().len(), 0);
 }
 
@@ -617,4 +630,53 @@ fn persistence_across_handles() {
     assert_eq!(fresh.byte_size(), 8);
     assert_eq!(fresh.pread_i64(0).unwrap(), 1 << 40);
     assert_eq!(std::fs::metadata(fresh.as_std_path()).unwrap().len(), 8);
+}
+
+// -------------------------------------------------------------------------------------
+// mmap() builder + tmpdir alias + truncate
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn mmap_builder_reuses_path_mode_and_headers() {
+    let tmp = TempDir::new("mmapb");
+    let mut node = tmp.root().join_str("mapped/data.bin");
+    node.headers_mut()
+        .set_content_type("application/octet-stream");
+
+    // Read-write handle: mmap() auto-creates parents + file and copies the handle's headers.
+    let mut map = node.mmap().unwrap();
+    assert_eq!(
+        map.headers().content_type(),
+        Some("application/octet-stream")
+    );
+    map.pwrite_utf8(0, "mapped bytes");
+    assert_eq!(map.pread_utf8(0, 12).unwrap(), "mapped bytes");
+    map.flush().unwrap();
+    drop(map); // releasing the mapping writes back + lets Windows re-open the file
+
+    // A read-only handle maps read-only (writes are inert), and requires the file to exist.
+    let mut ro = tmp.root().join_str("mapped/data.bin");
+    ro.set_mode(yggdryl_core::io::IOMode::Read);
+    let ro_map = ro.mmap().unwrap();
+    assert_eq!(ro_map.pread_utf8(0, 12).unwrap(), "mapped bytes");
+}
+
+#[test]
+fn tmpdir_is_tmpfolder_and_truncate_resizes() {
+    // tmpdir aliases tmpfolder — a lazy temp folder handle, nothing on disk yet.
+    let dir = LocalIO::tmpdir(Some("yggdryl_tmpdir_alias_test"));
+    dir.rmdir(true).ok(); // clean any leftover from an earlier run of this fixed-name test
+    assert!(!dir.exists());
+    let mut file = dir.join_str("t.bin");
+    file.pwrite_byte_array(0, b"0123456789");
+    assert!(dir.is_dir());
+
+    // truncate shrinks then grows (zero-filling) the mapped file.
+    file.truncate(4).unwrap();
+    assert_eq!(file.byte_size(), 4);
+    assert_eq!(file.pread_vec(0, 8), b"0123");
+    file.truncate(6).unwrap();
+    assert_eq!(file.pread_vec(0, 6), b"0123\0\0");
+    file.close();
+    dir.rmdir(true).unwrap();
 }

@@ -80,6 +80,30 @@ pub fn codec_for_mime(mime: &MimeType) -> Option<Box<dyn Compression>> {
     codec_for(mime.essence())
 }
 
+/// Resolves a **shared, `'static` default-level** codec for a mime essence — the
+/// zero-allocation counterpart of [`codec_for`] for callers that only need the balanced
+/// defaults. Each format resolves to one process-wide instance, so the bindings can expose
+/// their codec singletons over these without constructing a codec per call (the "resolve
+/// shared instances once" rule). For a non-default level, build a codec via its `with_level`
+/// constructor instead. `None` for an unsupported essence, or with the feature off.
+pub fn codec_ref_for(essence: &str) -> Option<&'static dyn Compression> {
+    #[cfg(feature = "compression")]
+    {
+        codecs::codec_ref(essence)
+    }
+    #[cfg(not(feature = "compression"))]
+    {
+        let _ = essence;
+        None
+    }
+}
+
+/// [`codec_ref_for`] keyed by a [`MimeType`] — its essence. The shared-instance counterpart of
+/// [`codec_for_mime`].
+pub fn codec_ref_for_mime(mime: &MimeType) -> Option<&'static dyn Compression> {
+    codec_ref_for(mime.essence())
+}
+
 // -------------------------------------------------------------------------------------
 // Concrete codecs — behind the `compression` feature (the native codec cores).
 // -------------------------------------------------------------------------------------
@@ -97,6 +121,25 @@ mod codecs {
             "application/zlib" => Some(Box::new(Zlib::new())),
             "application/zstd" => Some(Box::new(Zstd::new())),
             "application/x-xz" | "application/x-lzma" => Some(Box::new(Lzma::new())),
+            _ => None,
+        }
+    }
+
+    // The process-wide default-level codec instances — one each, shared by reference through
+    // [`super::codec_ref_for`] so no default codec is ever allocated per call. Const-constructed
+    // (the balanced default levels), matching each type's `new()`.
+    static GZIP: Gzip = Gzip { level: 6 };
+    static ZLIB: Zlib = Zlib { level: 6 };
+    static ZSTD: Zstd = Zstd { level: 3 };
+    static LZMA: Lzma = Lzma { preset: 6 };
+
+    /// Resolves the shared `'static` default-level codec for a mime essence.
+    pub(super) fn codec_ref(essence: &str) -> Option<&'static dyn Compression> {
+        match essence {
+            "application/gzip" => Some(&GZIP),
+            "application/zlib" => Some(&ZLIB),
+            "application/zstd" => Some(&ZSTD),
+            "application/x-xz" | "application/x-lzma" => Some(&LZMA),
             _ => None,
         }
     }

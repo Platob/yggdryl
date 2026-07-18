@@ -42,7 +42,7 @@ use napi_derive::napi;
 use crate::compression::{as_dyn, wrap_codec, Gzip, Lzma, Zlib, Zstd};
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
-use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, NoChildren, Whence};
+use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, Heap, NoChildren, Whence};
 use crate::io::mode::IOMode;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
@@ -125,12 +125,59 @@ impl LocalIO {
         }
     }
 
+    /// A **lazy** handle to a temporary **folder** in the system temp directory — the
+    /// filesystem-idiomatic alias of [`tmpfolder`](LocalIO::tmpfolder) (mirrors the core
+    /// `LocalIO::tmpdir`). `name` sets the folder name; the default (omitted) is a
+    /// process-unique name.
+    #[napi(factory, ts_return_type = "LocalIO")]
+    pub fn tmpdir(name: Option<String>) -> LocalIO {
+        LocalIO {
+            inner: core::LocalIO::tmpdir(name.as_deref()),
+        }
+    }
+
     // ---- lifecycle: path / mkdir / flush / close ---------------------------------------
 
     /// The underlying filesystem path.
     #[napi(getter)]
     pub fn path(&self) -> String {
         self.inner.as_std_path().to_string_lossy().into_owned()
+    }
+
+    /// The underlying filesystem path as a string — the method (`PathLike`-style) form of the
+    /// [`path`](LocalIO::path) getter (core `as_std_path`), for callers that pass a handle
+    /// where a path string is expected.
+    #[napi]
+    pub fn fs_path(&self) -> String {
+        self.inner.as_std_path().to_string_lossy().into_owned()
+    }
+
+    /// The current cursor position (bytes from the start) — the file-object `tell()` alias of
+    /// the [`position`](LocalIO::position) getter. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn tell(&self) -> i64 {
+        self.inner.position() as i64
+    }
+
+    /// Whether this handle's [`mode`](LocalIO::mode) permits reading (`Read` / `ReadWrite`) —
+    /// the file-object `readable()` predicate.
+    #[napi]
+    pub fn readable(&self) -> bool {
+        self.inner.mode().is_readable()
+    }
+
+    /// Whether this handle's [`mode`](LocalIO::mode) permits writing (everything except
+    /// `Read`) — the file-object `writable()` predicate.
+    #[napi]
+    pub fn writable(&self) -> bool {
+        self.inner.mode().is_writable()
+    }
+
+    /// Whether this handle supports seeking — always `true`: a local file (and its
+    /// memory-tree directory view) is fully positioned/seekable.
+    #[napi]
+    pub fn seekable(&self) -> bool {
+        true
     }
 
     /// Whether the handle currently holds its optimized memory-mapped backing (it does from
@@ -162,6 +209,23 @@ impl LocalIO {
     #[napi]
     pub fn close(&mut self) {
         self.inner.close();
+    }
+
+    /// The JS explicit-resource-management disposer — an alias of [`close`](LocalIO::close)
+    /// so a `using io = new LocalIO(path)` (or an explicit `io.dispose()`) releases the
+    /// mapped backing. napi-rs cannot register the `Symbol.dispose` well-known method itself,
+    /// so this named method is the portable equivalent.
+    #[napi]
+    pub fn dispose(&mut self) {
+        self.inner.close();
+    }
+
+    /// Materializes and returns the raw memory-mapped [`Mmap`] backing this path — creating
+    /// the missing parent folders + the file on a writable handle (mirrors the core
+    /// `LocalIO::mmap`). Throws the guided `Error` when the file cannot be opened/created.
+    #[napi(ts_return_type = "Mmap")]
+    pub fn mmap(&self) -> napi::Result<Mmap> {
+        Mmap::from_core(self.inner.mmap())
     }
 
     // ---- predicates (probes, not states) -----------------------------------------------
@@ -781,25 +845,31 @@ impl LocalIO {
     }
 
     /// Removes **whatever exists** at this node — a file is unlinked, a directory is
-    /// removed with its whole subtree; a missing node is a no-op. The generic form of
-    /// `rmfile` / `rmdir`.
+    /// removed with its whole subtree. The generic form of `rmfile` / `rmdir`. `existOk`
+    /// (default `true`) governs a **missing** node: `true` skips it (a no-op), `false`
+    /// throws the guided `Error` on a missing node.
     #[napi]
-    pub fn rm(&self) -> napi::Result<()> {
-        self.inner.rm().map_err(to_error)
+    pub fn rm(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rm(exist_ok).map_err(to_error)
     }
 
     /// Removes this node **as a file** — throws the guided `Error` when the node is a
-    /// directory (use `rmdir`) and is a no-op when missing.
+    /// directory (use `rmdir`). `existOk` (default `true`) governs a **missing** node: `true`
+    /// skips it, `false` throws the guided `Error` on a missing node.
     #[napi]
-    pub fn rmfile(&self) -> napi::Result<()> {
-        self.inner.rmfile().map_err(to_error)
+    pub fn rmfile(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmfile(exist_ok).map_err(to_error)
     }
 
     /// Removes this node **as a directory**, recursively — throws the guided `Error` when
-    /// the node is a file (use `rmfile`) and is a no-op when missing.
+    /// the node is a file (use `rmfile`). `existOk` (default `true`) governs a **missing**
+    /// node: `true` skips it, `false` throws the guided `Error` on a missing node.
     #[napi]
-    pub fn rmdir(&self) -> napi::Result<()> {
-        self.inner.rmdir().map_err(to_error)
+    pub fn rmdir(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner.rmdir(exist_ok).map_err(to_error)
     }
 
     // ---- live-handle value mirrors -----------------------------------------------------
@@ -818,6 +888,253 @@ impl LocalIO {
         LocalIO {
             inner: self.inner.clone(),
         }
+    }
+
+    // ---- size / content-length / truncate ----------------------------------------------
+
+    /// Truncates the file to exactly `len` bytes — shrinking drops the tail, growing
+    /// zero-fills — and keeps the size headers in sync. Throws the guided `Error` on a
+    /// read-only handle (or a directory node).
+    #[napi]
+    pub fn truncate(&mut self, len: u32) -> napi::Result<()> {
+        self.inner.truncate(len as u64).map_err(to_error)
+    }
+
+    /// The **content length** in bytes — the `Content-Length` its `headers` declare when
+    /// present (authoritative and free — it short-circuits a directory-tree sum), else the
+    /// live `byteSize`. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn content_length(&self) -> i64 {
+        self.inner.content_length() as i64
+    }
+
+    // ---- in-place compression ----------------------------------------------------------
+
+    /// **Compresses this node in place** — replaces its bytes with the compressed form and
+    /// updates `Content-Type` / `Content-Length` / `mtime`. `codec` defaults to the codec of
+    /// the node's own media type (a `.gz`-addressed file packs itself gzip); pass one of the
+    /// four codec classes to override. Throws the guided `Error` when no codec resolves.
+    #[napi]
+    pub fn compress_in_place(
+        &mut self,
+        codec: Option<Either4<&Gzip, &Zlib, &Zstd, &Lzma>>,
+    ) -> napi::Result<()> {
+        self.inner
+            .compress_in_place(codec.map(as_dyn))
+            .map_err(to_error)
+    }
+
+    /// **Decompresses this node in place** — replaces its compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates `Content-Type` /
+    /// `Content-Length` / `mtime`. Throws the guided `Error` when the media type is not a
+    /// supported compression.
+    #[napi]
+    pub fn decompress_in_place(&mut self) -> napi::Result<()> {
+        self.inner.decompress_in_place().map_err(to_error)
+    }
+
+    // ---- cross-source copy -------------------------------------------------------------
+
+    /// Overwrites this node with **all of `src`'s bytes** (truncating to match) and returns
+    /// the byte count — a cross-source copy from a [`Heap`](crate::io::memory::Heap). An
+    /// `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn copy_from(&mut self, src: &Heap) -> napi::Result<i64> {
+        self.inner
+            .copy_from(&src.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Positioned cross-source write**: copies `length` bytes of `src` (a
+    /// [`Heap`](crate::io::memory::Heap)) from `srcOffset` into this node at `offset`, growing
+    /// as needed; returns the number of bytes actually transferred (short at the end of
+    /// `src`). An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn pwrite_from(
+        &mut self,
+        offset: u32,
+        src: &Heap,
+        src_offset: u32,
+        length: u32,
+    ) -> napi::Result<i64> {
+        self.inner
+            .pwrite_from(offset as u64, &src.inner, src_offset as u64, length as u64)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    // ---- bulk typed arrays: u16 / u32 / u64 / f32 / f64 --------------------------------
+
+    /// **Bulk typed read** of `count` little-endian `u16`s at `offset` — the `u16` counterpart
+    /// of `preadI32Array`, checked before allocating.
+    #[napi]
+    pub fn pread_u16_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u16>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 2)?;
+        let mut values = vec![0u16; count as usize];
+        self.inner
+            .pread_u16_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u16`s at `offset`.
+    #[napi]
+    pub fn pwrite_u16_array(&mut self, offset: u32, values: Vec<u16>) -> napi::Result<()> {
+        self.inner
+            .pwrite_u16_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u16` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_u16_repeat(&mut self, offset: u32, value: u16, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u16_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u32`s at `offset` — the `u32` counterpart
+    /// of `preadI32Array`, checked before allocating.
+    #[napi]
+    pub fn pread_u32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u32>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 4)?;
+        let mut values = vec![0u32; count as usize];
+        self.inner
+            .pread_u32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u32`s at `offset`.
+    #[napi]
+    pub fn pwrite_u32_array(&mut self, offset: u32, values: Vec<u32>) -> napi::Result<()> {
+        self.inner
+            .pwrite_u32_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u32` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_u32_repeat(&mut self, offset: u32, value: u32, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u32_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u64`s at `offset` — the `u64` counterpart
+    /// of `preadI64Array`; each value crosses as an `i64` (a JS number, exact to ±2^53) so the
+    /// full 64-bit value is carried without truncation. Checked before allocating.
+    #[napi]
+    pub fn pread_u64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 8)?;
+        let mut values = vec![0u64; count as usize];
+        self.inner
+            .pread_u64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values.into_iter().map(|v| v as i64).collect())
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u64`s at `offset`. Values
+    /// cross as `i64` (a JS number); keep each below ±2^53 so it stays exact.
+    #[napi]
+    pub fn pwrite_u64_array(&mut self, offset: u32, values: Vec<i64>) -> napi::Result<()> {
+        let src: Vec<u64> = values.into_iter().map(|v| v as u64).collect();
+        self.inner
+            .pwrite_u64_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u64` copies of `value` at `offset`
+    /// (`value` crosses as an `i64`).
+    #[napi]
+    pub fn pwrite_u64_repeat(&mut self, offset: u32, value: i64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u64_repeat(offset as u64, value as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f32`s at `offset` — each widened to an
+    /// `f64` (a JS number) on the way out. Checked before allocating.
+    #[napi]
+    pub fn pread_f32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<f64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 4)?;
+        let mut values = vec![0f32; count as usize];
+        self.inner
+            .pread_f32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values.into_iter().map(|v| v as f64).collect())
+    }
+
+    /// **Bulk typed write** of all of `values` (JS `f64`s) narrowed to little-endian `f32`s
+    /// at `offset`.
+    #[napi]
+    pub fn pwrite_f32_array(&mut self, offset: u32, values: Vec<f64>) -> napi::Result<()> {
+        let src: Vec<f32> = values.into_iter().map(|v| v as f32).collect();
+        self.inner
+            .pwrite_f32_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f32` copies of `value` (a JS `f64`
+    /// narrowed to `f32`) at `offset`.
+    #[napi]
+    pub fn pwrite_f32_repeat(&mut self, offset: u32, value: f64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_f32_repeat(offset as u64, value as f32, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f64`s at `offset`. Checked before
+    /// allocating.
+    #[napi]
+    pub fn pread_f64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<f64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 8)?;
+        let mut values = vec![0f64; count as usize];
+        self.inner
+            .pread_f64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `f64`s at `offset`.
+    #[napi]
+    pub fn pwrite_f64_array(&mut self, offset: u32, values: Vec<f64>) -> napi::Result<()> {
+        self.inner
+            .pwrite_f64_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f64` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_f64_repeat(&mut self, offset: u32, value: f64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_f64_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    // ---- line-oriented reads -----------------------------------------------------------
+
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
+    /// **only** at the true end (a blank line still carries its `\n`).
+    #[napi]
+    pub fn read_line(&mut self) -> napi::Result<String> {
+        self.inner.readline().map_err(to_error)
+    }
+
+    /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    #[napi]
+    pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner.readlines().map_err(to_error)
+    }
+
+    /// The remaining lines from the cursor as an array — the JS-idiomatic alias of
+    /// [`readLines`](LocalIO::read_lines).
+    #[napi]
+    pub fn lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner.readlines().map_err(to_error)
     }
 
     /// A short debug string of the form `LocalIO(<path>, <N bytes>)`.
@@ -1024,6 +1341,15 @@ impl Mmap {
     // eagerly.
     #[napi]
     pub fn close(&mut self) {
+        self.inner = None;
+    }
+
+    /// The JS explicit-resource-management disposer — an alias of [`close`](Mmap::close) so a
+    /// `using m = Mmap.create(path)` (or an explicit `m.dispose()`) unmaps deterministically.
+    /// napi-rs cannot register the `Symbol.dispose` well-known method itself, so this named
+    /// method is the portable equivalent.
+    #[napi]
+    pub fn dispose(&mut self) {
         self.inner = None;
     }
 
@@ -1626,26 +1952,32 @@ impl Mmap {
     }
 
     /// Removes **whatever exists** at this node — for a mapping that is the file itself
-    /// (delegates to `rmfile`); a missing file is a no-op. On Windows a file with a live
-    /// mapped view cannot be deleted — `close()` this mapping's view first.
+    /// (delegates to `rmfile`). `existOk` (default `true`) governs a **missing** file:
+    /// `true` skips it (a no-op), `false` throws the guided `Error`. On Windows a file with a
+    /// live mapped view cannot be deleted — `close()` this mapping's view first.
     #[napi]
-    pub fn rm(&self) -> napi::Result<()> {
-        self.inner()?.rm().map_err(to_error)
+    pub fn rm(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner()?.rm(exist_ok).map_err(to_error)
     }
 
-    /// Removes this node **as a file** — really unlinks the mapped file (idempotent when
-    /// already missing). On Windows a file with a live mapped view cannot be deleted —
+    /// Removes this node **as a file** — really unlinks the mapped file. `existOk` (default
+    /// `true`) governs a **missing** file: `true` skips it (idempotent), `false` throws the
+    /// guided `Error`. On Windows a file with a live mapped view cannot be deleted —
     /// `close()` this mapping's view first.
     #[napi]
-    pub fn rmfile(&self) -> napi::Result<()> {
-        self.inner()?.rmfile().map_err(to_error)
+    pub fn rmfile(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner()?.rmfile(exist_ok).map_err(to_error)
     }
 
     /// Removes this node **as a directory** — always the guided `Error` "the node is a
-    /// file; use rmfile instead of rmdir": a mapping is by construction a file.
+    /// file; use rmfile instead of rmdir": a mapping is by construction a file. `existOk`
+    /// (default `true`) is accepted for the uniform CRUD shape.
     #[napi]
-    pub fn rmdir(&self) -> napi::Result<()> {
-        self.inner()?.rmdir().map_err(to_error)
+    pub fn rmdir(&self, exist_ok: Option<bool>) -> napi::Result<()> {
+        let exist_ok = exist_ok.unwrap_or(true);
+        self.inner()?.rmdir(exist_ok).map_err(to_error)
     }
 
     // ---- predicates (isFile / isDir / exists) ------------------------------------------
@@ -1667,6 +1999,245 @@ impl Mmap {
     #[napi]
     pub fn exists(&self) -> napi::Result<bool> {
         Ok(self.inner()?.exists())
+    }
+
+    // ---- size / content-length / truncate ----------------------------------------------
+
+    /// Truncates the mapped file to exactly `len` bytes — shrinking drops the tail, growing
+    /// zero-fills — and keeps the size headers in sync. Throws the guided `Error` on a
+    /// read-only mapping.
+    #[napi]
+    pub fn truncate(&mut self, len: u32) -> napi::Result<()> {
+        self.inner_mut()?.truncate(len as u64).map_err(to_error)
+    }
+
+    /// The **content length** in bytes — the `Content-Length` its `headers` declare when
+    /// present, else the live `byteSize`. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn content_length(&self) -> napi::Result<i64> {
+        Ok(self.inner()?.content_length() as i64)
+    }
+
+    // ---- in-place compression ----------------------------------------------------------
+
+    /// **Compresses this mapping in place** — replaces its bytes with the compressed form and
+    /// updates `Content-Type` / `Content-Length` / `mtime`. `codec` defaults to the codec of
+    /// the mapping's own media type; pass one of the four codec classes to override. Throws
+    /// the guided `Error` when no codec resolves (or the mapping is read-only).
+    #[napi]
+    pub fn compress_in_place(
+        &mut self,
+        codec: Option<Either4<&Gzip, &Zlib, &Zstd, &Lzma>>,
+    ) -> napi::Result<()> {
+        self.inner_mut()?
+            .compress_in_place(codec.map(as_dyn))
+            .map_err(to_error)
+    }
+
+    /// **Decompresses this mapping in place** — replaces its compressed bytes with the plain
+    /// content (codec inferred from its media type) and updates `Content-Type` /
+    /// `Content-Length` / `mtime`. Throws the guided `Error` when the media type is not a
+    /// supported compression.
+    #[napi]
+    pub fn decompress_in_place(&mut self) -> napi::Result<()> {
+        self.inner_mut()?.decompress_in_place().map_err(to_error)
+    }
+
+    // ---- cross-source copy -------------------------------------------------------------
+
+    /// Overwrites this mapping with **all of `src`'s bytes** (truncating to match) and returns
+    /// the byte count — a cross-source copy from a [`Heap`](crate::io::memory::Heap). An
+    /// `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn copy_from(&mut self, src: &Heap) -> napi::Result<i64> {
+        self.inner_mut()?
+            .copy_from(&src.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Positioned cross-source write**: copies `length` bytes of `src` (a
+    /// [`Heap`](crate::io::memory::Heap)) from `srcOffset` into this mapping at `offset`,
+    /// growing as needed; returns the number of bytes actually transferred (short at the end
+    /// of `src`). An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn pwrite_from(
+        &mut self,
+        offset: u32,
+        src: &Heap,
+        src_offset: u32,
+        length: u32,
+    ) -> napi::Result<i64> {
+        self.inner_mut()?
+            .pwrite_from(offset as u64, &src.inner, src_offset as u64, length as u64)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    // ---- bulk typed arrays: u16 / u32 / u64 / f32 / f64 --------------------------------
+
+    /// **Bulk typed read** of `count` little-endian `u16`s at `offset` — the `u16` counterpart
+    /// of `preadI32Array`, checked before allocating.
+    #[napi]
+    pub fn pread_u16_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u16>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 2)?;
+        let mut values = vec![0u16; count as usize];
+        self.inner()?
+            .pread_u16_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u16`s at `offset`.
+    #[napi]
+    pub fn pwrite_u16_array(&mut self, offset: u32, values: Vec<u16>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u16_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u16` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_u16_repeat(&mut self, offset: u32, value: u16, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u16_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u32`s at `offset` — the `u32` counterpart
+    /// of `preadI32Array`, checked before allocating.
+    #[napi]
+    pub fn pread_u32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u32>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 4)?;
+        let mut values = vec![0u32; count as usize];
+        self.inner()?
+            .pread_u32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u32`s at `offset`.
+    #[napi]
+    pub fn pwrite_u32_array(&mut self, offset: u32, values: Vec<u32>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u32_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u32` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_u32_repeat(&mut self, offset: u32, value: u32, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u32_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u64`s at `offset` — the `u64` counterpart
+    /// of `preadI64Array`; each value crosses as an `i64` (a JS number, exact to ±2^53) so the
+    /// full 64-bit value is carried without truncation. Checked before allocating.
+    #[napi]
+    pub fn pread_u64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i64>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 8)?;
+        let mut values = vec![0u64; count as usize];
+        self.inner()?
+            .pread_u64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values.into_iter().map(|v| v as i64).collect())
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `u64`s at `offset`. Values
+    /// cross as `i64` (a JS number); keep each below ±2^53 so it stays exact.
+    #[napi]
+    pub fn pwrite_u64_array(&mut self, offset: u32, values: Vec<i64>) -> napi::Result<()> {
+        let src: Vec<u64> = values.into_iter().map(|v| v as u64).collect();
+        self.inner_mut()?
+            .pwrite_u64_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u64` copies of `value` at `offset`
+    /// (`value` crosses as an `i64`).
+    #[napi]
+    pub fn pwrite_u64_repeat(&mut self, offset: u32, value: i64, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u64_repeat(offset as u64, value as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f32`s at `offset` — each widened to an
+    /// `f64` (a JS number) on the way out. Checked before allocating.
+    #[napi]
+    pub fn pread_f32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<f64>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 4)?;
+        let mut values = vec![0f32; count as usize];
+        self.inner()?
+            .pread_f32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values.into_iter().map(|v| v as f64).collect())
+    }
+
+    /// **Bulk typed write** of all of `values` (JS `f64`s) narrowed to little-endian `f32`s
+    /// at `offset`.
+    #[napi]
+    pub fn pwrite_f32_array(&mut self, offset: u32, values: Vec<f64>) -> napi::Result<()> {
+        let src: Vec<f32> = values.into_iter().map(|v| v as f32).collect();
+        self.inner_mut()?
+            .pwrite_f32_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f32` copies of `value` (a JS `f64`
+    /// narrowed to `f32`) at `offset`.
+    #[napi]
+    pub fn pwrite_f32_repeat(&mut self, offset: u32, value: f64, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_f32_repeat(offset as u64, value as f32, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `f64`s at `offset`. Checked before
+    /// allocating.
+    #[napi]
+    pub fn pread_f64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<f64>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 8)?;
+        let mut values = vec![0f64; count as usize];
+        self.inner()?
+            .pread_f64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `f64`s at `offset`.
+    #[napi]
+    pub fn pwrite_f64_array(&mut self, offset: u32, values: Vec<f64>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_f64_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `f64` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_f64_repeat(&mut self, offset: u32, value: f64, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_f64_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    // ---- line-oriented reads -----------------------------------------------------------
+
+    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
+    /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
+    /// **only** at the true end (a blank line still carries its `\n`).
+    #[napi]
+    pub fn read_line(&mut self) -> napi::Result<String> {
+        self.inner_mut()?.readline().map_err(to_error)
+    }
+
+    /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
+    /// each element keeps its trailing `\n` except possibly the last.
+    #[napi]
+    pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
+        self.inner_mut()?.readlines().map_err(to_error)
     }
 
     // DESIGN: no `cursor()` / `window()` — the binding `Cursor` and `Slice` classes are
