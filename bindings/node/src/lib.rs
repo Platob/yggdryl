@@ -16,6 +16,7 @@
 #[macro_use]
 extern crate napi_derive;
 
+pub mod builders;
 pub mod compression;
 pub mod headers;
 pub mod io;

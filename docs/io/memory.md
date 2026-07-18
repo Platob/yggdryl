@@ -1061,6 +1061,82 @@ with `is_memory()` / `is_local()` to test the backing and `into_local()` to reac
     let _local = disk.into_local().unwrap();            // reach the concrete LocalIO when needed
     ```
 
+## Generic builders — `buffer` / `array` / `device_buffer`
+
+Alongside `open()`, the bindings expose module-level **generic builders** that hide the concrete
+class and its setup behind one ergonomic call, **inferring the runtime type** and redirecting to the
+right underlying constructor (the same "one generic entry point that infers and redirects" pattern):
+
+- **`buffer(data, …)`** — a `Heap` with its bytes, `capacity`, `headers` (a `Headers` *or* a plain
+  `{key: value}` map), and `mode` all set in **one** call.
+- **`array(values, dtype=None)`** — a `Heap` holding a packed numeric array, writing through the
+  matching vectorized `pwrite_<dtype>_array`. With no `dtype` it **infers**: all-integer values →
+  `i64`, any fractional value → `f64`. Read it back with the Heap's `pread_<dtype>_array`.
+- **`device_buffer(data, device=None)`** — the **best available device-memory buffer**: an
+  `AmdBuffer` when a real GPU is present (or `device="amd"`), else a `Heap` (the CPU device-memory
+  type). Both share the byte I/O surface.
+
+In Rust these are just the explicit constructors the generic builders redirect to.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    # buffer(): bytes + metadata in one call
+    buf = yggdryl.buffer(b"payload", headers={"Content-Type": "application/octet-stream"})
+    assert buf.pread_utf8(0, 7) == "payload"
+    assert buf.headers().content_type() == "application/octet-stream"
+
+    # array(): dtype inferred (all ints -> i64), redirected to pwrite_i64_array
+    nums = yggdryl.array([4, 8, 15, 16, 23, 42])
+    assert nums.pread_i64_array(0, 6) == [4, 8, 15, 16, 23, 42]
+    floats = yggdryl.array([1.5, 2.5], "f32")          # explicit dtype
+    assert floats.pread_f32_array(0, 2) == [1.5, 2.5]
+
+    # device_buffer(): AmdBuffer if a GPU is present, else a Heap — same byte surface either way
+    dev = yggdryl.device_buffer(b"x")
+    assert dev.byte_size() == 1
+    ```
+
+=== "Node"
+
+    ```js
+    const yggdryl = require('yggdryl')
+
+    // buffer(): bytes + metadata in one call (options object)
+    const buf = yggdryl.buffer(Buffer.from('payload'), { headers: { 'Content-Type': 'application/octet-stream' } })
+    console.assert(buf.preadUtf8(0, 7) === 'payload')
+
+    // array(): dtype inferred (all ints -> i64), redirected to pwriteI64Array
+    const nums = yggdryl.array([4, 8, 15, 16, 23, 42])
+    console.assert(nums.preadI64Array(0, 6).join() === '4,8,15,16,23,42')
+    const floats = yggdryl.array([1.5, 2.5], 'f32')     // explicit dtype
+    console.assert(floats.preadF32Array(0, 2).join() === '1.5,2.5')
+
+    // deviceBuffer(): AmdBuffer if a GPU is present, else a Heap
+    const dev = yggdryl.deviceBuffer(Buffer.from('x'))
+    console.assert(dev.byteSize() === 1)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+    use yggdryl_core::headers::Headers;
+
+    // The Rust core uses the explicit builders the bindings' generic ones redirect to.
+    let buf = Heap::from_slice(b"payload")
+        .with_headers(Headers::new().with("Content-Type", "application/octet-stream"));
+    assert_eq!(buf.headers().content_type(), Some("application/octet-stream"));
+
+    let mut nums = Heap::new();
+    nums.pwrite_i64_array(0, &[4, 8, 15, 16, 23, 42]).unwrap(); // the concrete typed builder
+    let mut back = [0i64; 6];
+    nums.pread_i64_array(0, &mut back).unwrap();
+    assert_eq!(back, [4, 8, 15, 16, 23, 42]);
+    ```
+
 ## In-place compression
 
 `compress_in_place(codec=None)` and `decompress_in_place()` rewrite a source's **own** bytes

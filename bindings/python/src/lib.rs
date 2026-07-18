@@ -22,6 +22,7 @@
 
 use pyo3::prelude::*;
 
+mod builders;
 mod compression;
 mod headers;
 mod io;
@@ -67,6 +68,7 @@ fn add_submodule(
 fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
     module.add_function(wrap_pyfunction!(open, module)?)?;
+    builders::register(module)?;
     add_submodule(py, module, "compression", compression::register)?;
     add_submodule(py, module, "gpu", io::gpu::register)?;
     add_submodule(py, module, "headers", |m| m.add_class::<headers::Headers>())?;
