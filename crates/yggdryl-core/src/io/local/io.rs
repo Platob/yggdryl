@@ -795,3 +795,13 @@ impl Iterator for LocalWalk {
         }
     }
 }
+
+/// A **streamed cursor over a [`LocalIO`]** — the local-file instantiation of the shared
+/// [`IOCursor`](crate::io::memory::IOCursor). Over a memory-mapped `LocalIO` (after its first
+/// write) it reads on the **zero-copy** mapped fast path; over a still-lazy handle a read of a
+/// missing node returns empty, never an error — the same laziness the source has.
+pub type LocalCursor = crate::io::memory::IOCursor<LocalIO>;
+
+/// A **bounded window over a [`LocalIO`]** — the local-file instantiation of the shared
+/// [`IOSlice`](crate::io::memory::IOSlice), addressed from its own `0`, on the same fast path.
+pub type LocalSlice = crate::io::memory::IOSlice<LocalIO>;

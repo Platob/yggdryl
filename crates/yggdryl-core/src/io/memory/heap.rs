@@ -642,3 +642,31 @@ impl crate::io::Serializable for Heap {
         Ok(Heap::from_slice(bytes))
     }
 }
+
+/// A **streamed cursor over a [`Heap`]** — the in-heap instantiation of the shared
+/// [`IOCursor`](super::IOCursor). Because `Heap` returns its contiguous bytes from
+/// [`as_bytes`](IOBase::as_bytes), every read/write and the vectorized bulk kernels stay on the
+/// **zero-copy** fast path. One shared optimization across every memory type, not a
+/// per-type reimplementation.
+///
+/// ```
+/// use yggdryl_core::io::memory::{Heap, HeapCursor};
+///
+/// let mut cur = HeapCursor::new(Heap::from_slice(b"heap bytes"));
+/// let mut head = [0u8; 4];
+/// assert_eq!(cur.read(&mut head), 4);
+/// assert_eq!(&head, b"heap");
+/// ```
+pub type HeapCursor = super::IOCursor<Heap>;
+
+/// A **bounded window over a [`Heap`]** — the in-heap instantiation of the shared
+/// [`IOSlice`](super::IOSlice), addressed from its own `0`, on the same zero-copy fast path.
+///
+/// ```
+/// use yggdryl_core::io::memory::{Heap, HeapSlice, IOBase};
+///
+/// let win = HeapSlice::new(Heap::from_slice(b"heap bytes"), 5, 5).unwrap();
+/// assert_eq!(win.byte_size(), 5);
+/// assert_eq!(win.pread_vec(0, 5), b"bytes");
+/// ```
+pub type HeapSlice = super::IOSlice<Heap>;

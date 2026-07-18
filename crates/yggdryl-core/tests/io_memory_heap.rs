@@ -5,7 +5,9 @@
 //! windows, and [`Whence`](yggdryl_core::io::memory::Whence) seeks. Doctests cover the happy paths;
 //! this file hammers the edges (EOF, bit addressing, capacity reuse, content equality).
 
-use yggdryl_core::io::memory::{Heap, IOBase, IOCursor, IOSlice, IoError, Whence};
+use yggdryl_core::io::memory::{
+    Heap, HeapCursor, HeapSlice, IOBase, IOCursor, IOSlice, IoError, Whence,
+};
 use yggdryl_core::uri::Uri;
 
 // -------------------------------------------------------------------------------------
@@ -1270,4 +1272,23 @@ fn mask_filter_selects_elements_by_bitmask() {
     // No element type -> guided error.
     let mut raw = Heap::from_slice(b"raw");
     assert!(raw.mask_filter_in_place(&mask).is_err());
+}
+
+#[test]
+fn heap_cursor_and_slice_named_aliases() {
+    // HeapCursor / HeapSlice are the named per-type instantiations of the shared cursor/window.
+    let mut cur: HeapCursor = HeapCursor::new(Heap::from_slice(b"heap bytes"));
+    let mut head = [0u8; 4];
+    assert_eq!(cur.read(&mut head), 4);
+    assert_eq!(&head, b"heap");
+    cur.seek(Whence::Start, 5).unwrap();
+    assert_eq!(cur.read(&mut head), 4);
+    assert_eq!(&head, b"byte");
+
+    let win: HeapSlice = HeapSlice::new(Heap::from_slice(b"heap bytes"), 5, 5).unwrap();
+    assert_eq!(win.byte_size(), 5);
+    assert_eq!(win.pread_vec(0, 5), b"bytes");
+    // The alias is exactly the generic instantiation.
+    let _: IOCursor<Heap> = cur;
+    let _: IOSlice<Heap> = win;
 }

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use yggdryl_core::io::local::Mmap;
+use yggdryl_core::io::local::{Mmap, MmapCursor, MmapSlice};
 use yggdryl_core::io::memory::{IOBase, IoError};
 use yggdryl_core::io::{IOKind, IOMode};
 use yggdryl_core::uri::Uri;
@@ -298,4 +298,23 @@ fn readonly_reads_but_never_writes() {
     assert!(err.to_string().contains("read-only"));
     assert!(ro.try_reserve(1024).is_err());
     assert_eq!(ro.pread_utf8(0, 6).unwrap(), "locked"); // untouched
+}
+
+#[test]
+fn mmap_cursor_and_slice_named_aliases() {
+    // MmapCursor / MmapSlice are the named per-type instantiations over a memory-mapped file —
+    // zero-copy views into the mapped pages (Mmap overrides as_bytes).
+    let tmp = TempPath::new("cursor_alias");
+    let mut map = Mmap::create_uri(&tmp.uri()).unwrap();
+    map.pwrite_byte_array(0, b"mmap bytes");
+
+    let mut cur = MmapCursor::new(map);
+    let mut head = [0u8; 4];
+    assert_eq!(cur.read(&mut head), 4);
+    assert_eq!(&head, b"mmap");
+
+    let map2 = Mmap::open_uri(&tmp.uri()).unwrap();
+    let win = MmapSlice::new(map2, 5, 5).unwrap();
+    assert_eq!(win.byte_size(), 5);
+    assert_eq!(win.pread_vec(0, 5), b"bytes");
 }

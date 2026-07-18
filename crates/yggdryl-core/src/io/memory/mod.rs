@@ -41,5 +41,5 @@ pub use crate::io::{IoError, Whence};
 pub use aggregate::Aggregate;
 pub use base::{IOBase, NoChildren};
 pub use cursor::IOCursor;
-pub use heap::Heap;
+pub use heap::{Heap, HeapCursor, HeapSlice};
 pub use slice::IOSlice;

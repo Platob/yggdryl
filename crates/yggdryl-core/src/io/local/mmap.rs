@@ -843,3 +843,13 @@ mod sys {
         }
     }
 }
+
+/// A **streamed cursor over a [`Mmap`]** — the memory-mapped instantiation of the shared
+/// [`IOCursor`](crate::io::memory::IOCursor). Because `Mmap` returns the mapped region from
+/// [`as_bytes`](crate::io::memory::IOBase::as_bytes), the cursor reads are **zero-copy** views
+/// into OS pages — one shared optimization across every memory type.
+pub type MmapCursor = crate::io::memory::IOCursor<Mmap>;
+
+/// A **bounded window over a [`Mmap`]** — the memory-mapped instantiation of the shared
+/// [`IOSlice`](crate::io::memory::IOSlice), addressed from its own `0`, over the same mapped pages.
+pub type MmapSlice = crate::io::memory::IOSlice<Mmap>;

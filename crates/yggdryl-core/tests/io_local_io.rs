@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use yggdryl_core::io::local::LocalIO;
+use yggdryl_core::io::local::{LocalCursor, LocalIO, LocalSlice};
 use yggdryl_core::io::memory::{Heap, IOBase};
 use yggdryl_core::io::IOKind;
 
@@ -761,4 +761,22 @@ fn move_into_of_a_missing_source_materializes_no_file() {
     assert_eq!(missing.move_into(&mut dst).unwrap(), 0);
     assert!(!missing.exists());
     dst.close();
+}
+
+#[test]
+fn local_cursor_and_slice_named_aliases() {
+    // LocalCursor / LocalSlice are the named per-type instantiations over a LocalIO.
+    let tmp = TempDir::new("cursor_alias");
+    let mut file = tmp.root().join_str("stream.bin");
+    file.pwrite_utf8(0, "local bytes");
+    file.close();
+
+    let mut cur = LocalCursor::new(LocalIO::from_path(file.as_std_path()));
+    let mut head = [0u8; 5];
+    assert_eq!(cur.read(&mut head), 5);
+    assert_eq!(&head, b"local");
+
+    let win = LocalSlice::new(LocalIO::from_path(file.as_std_path()), 6, 5).unwrap();
+    assert_eq!(win.byte_size(), 5);
+    assert_eq!(win.pread_vec(0, 5), b"bytes");
 }

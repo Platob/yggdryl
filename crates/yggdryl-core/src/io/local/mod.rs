@@ -13,8 +13,8 @@
 mod io;
 mod mmap;
 
-pub use io::{LocalChildren, LocalIO, LocalWalk};
-pub use mmap::Mmap;
+pub use io::{LocalChildren, LocalCursor, LocalIO, LocalSlice, LocalWalk};
+pub use mmap::{Mmap, MmapCursor, MmapSlice};
 
 use std::fs::File;
 use std::path::{Path as StdPath, PathBuf};
