@@ -175,6 +175,56 @@ extension, no dot), and `extensions` (every extension of a multi-dot name, outer
     assert_eq!(Uri::parse_str("http://[::1]:9000/p").unwrap().host(), Some("[::1]"));
     ```
 
+## Parts and media type
+
+`parts()` bundles the RFC 3986 top-level components into one value (`scheme` / `authority` /
+`path` / `query` / `fragment`) for destructuring, and `mime_type()` / `media_type()` infer the
+resource's [media type](mediatype.md) from the path — the primary type (with the
+`application/octet-stream` fallback), or the layered list a multi-extension name implies. `Url`
+mirrors both.
+
+=== "Python"
+
+    ```python
+    from yggdryl.uri import Uri
+
+    parts = Uri.parse("https://h:8080/a/b?q=1#f").parts()
+    assert parts.scheme == "https" and parts.authority == "h:8080"
+    assert parts.path == "/a/b" and parts.query == "q=1"
+    assert str(parts) == "https://h:8080/a/b?q=1#f"    # re-renders
+
+    assert Uri.from_path("/x/report.pdf").mime_type().essence == "application/pdf"
+    assert Uri.from_path("/x/data.tar.gz").media_type().essences() == \
+        ["application/x-tar", "application/gzip"]
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Uri } = require('yggdryl').uri
+
+    const parts = Uri.parse('https://h:8080/a/b?q=1#f').parts()
+    console.assert(parts.scheme === 'https' && parts.authority === 'h:8080')
+    console.assert(parts.path === '/a/b' && parts.query === 'q=1')
+    console.assert(parts.toString() === 'https://h:8080/a/b?q=1#f') // re-renders
+
+    console.assert(Uri.fromPath('/x/report.pdf').mimeType().essence === 'application/pdf')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::uri::Uri;
+
+    let parts = Uri::parse_str("https://h:8080/a/b?q=1#f").unwrap().parts();
+    assert_eq!(parts.scheme.as_deref(), Some("https"));
+    assert_eq!(parts.authority.as_deref(), Some("h:8080"));
+    assert_eq!(parts.path, "/a/b");
+    assert_eq!(parts.to_string(), "https://h:8080/a/b?q=1#f"); // re-renders
+
+    assert_eq!(Uri::from_path("/x/report.pdf").mime_type().essence(), "application/pdf");
+    ```
+
 ## Default ports and IPv6 hosts
 
 Two derived helpers answer *"what host and port would this URI actually dial?"* — both

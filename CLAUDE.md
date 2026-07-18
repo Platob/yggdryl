@@ -34,7 +34,9 @@ crates/yggdryl-core/src/             # the core (no external dependencies)
       io.rs                          #     LocalIO — the single access point (lazy, self-optimizing)
       mmap.rs                        #     the raw memory-mapped file LocalIO builds on
   headers.rs                         # Headers — the one metadata map (root module)
-  uri/                               # addressing (root module): Uri/Url/Authority + scheme/percent
+  mimetype.rs                        # MimeType + MimeRegistry/MimeCatalog (root module)
+  mediatype.rs                       # MediaType — an ordered MimeType list (root module)
+  uri/                               # addressing (root module): Uri/Url/Authority/UriParts + scheme/percent
 ```
 
 **The same folder tree is mirrored in code, tests, and benchmarks — in the core and in both

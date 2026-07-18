@@ -65,3 +65,59 @@ methods.
 
 Every byte source carries one — see
 [`headers()` on the memory contract](io/memory.md#metadata-mode-and-kind).
+
+## Media type and modification time
+
+`Headers` is the one place `Content-Type` / `Content-Encoding` are interpreted, so the io layer
+and [`Uri`](uri.md) share one reading. `mime_type()` is the primary [`MimeType`](mediatype.md)
+of `Content-Type`; `media_type()` folds the `Content-Encoding` layers in (`application/x-tar` +
+`gzip` → `[application/x-tar, application/gzip]`); the `set_*` mutators write them back.
+`mtime()` / `set_mtime()` carry the modification time as **total epoch microseconds** (signed),
+rendered compactly with no intermediate string.
+
+=== "Python"
+
+    ```python
+    from yggdryl.headers import Headers
+
+    h = Headers()
+    h.set_content_type("application/x-tar")
+    h.set_content_encoding("gzip")
+    assert h.mime_type().essence == "application/x-tar"          # primary
+    assert h.media_type().essences() == ["application/x-tar", "application/gzip"]
+
+    h.set_mtime(1_600_000_000_000_000)                           # epoch microseconds
+    assert h.mtime() == 1_600_000_000_000_000
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Headers } = require('yggdryl').headers
+
+    const h = new Headers()
+    h.setContentType('application/x-tar')
+    h.setContentEncoding('gzip')
+    console.assert(h.mimeType().essence === 'application/x-tar')  // primary
+    console.assert(JSON.stringify(h.mediaType().essences()) ===
+      '["application/x-tar","application/gzip"]')
+
+    h.setMtime(1600000000000000)                                 // epoch microseconds
+    console.assert(h.mtime() === 1600000000000000)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::headers::Headers;
+
+    let mut h = Headers::new();
+    h.set_content_type("application/x-tar");
+    h.set_content_encoding("gzip");
+    assert_eq!(h.mime_type().unwrap().essence(), "application/x-tar"); // primary
+    assert_eq!(h.media_type().unwrap().essences(),
+               vec!["application/x-tar", "application/gzip"]);
+
+    h.set_mtime(1_600_000_000_000_000); // epoch microseconds
+    assert_eq!(h.mtime(), Some(1_600_000_000_000_000));
+    ```
