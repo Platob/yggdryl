@@ -92,10 +92,21 @@ impl Encoder for Decimal256 {
         Self::encode_slice(dst, index, &[value])
     }
     fn encode_slice<W: IOBase>(dst: &mut W, start: u64, values: &[I256]) -> Result<(), IoError> {
-        // Write each element's 32 LE bytes straight into the (pre-sized) destination — no flat
-        // temporary buffer, so a build allocates only its data buffer.
-        for (offset, value) in values.iter().enumerate() {
-            dst.pwrite_byte_array((start + offset as u64) * 32, &value.to_le_bytes());
+        #[cfg(target_endian = "little")]
+        {
+            // `I256` is `#[repr(C)] { lo, hi }`, so on little-endian its 32 bytes ARE its wire bytes:
+            // the whole slice is one `memcpy`, no per-element write, no temporary. SAFETY: `values`
+            // is `values.len() * 32` contiguous bytes of plain data (no padding).
+            let bytes = unsafe {
+                core::slice::from_raw_parts(values.as_ptr().cast::<u8>(), values.len() * 32)
+            };
+            dst.pwrite_byte_array(start * 32, bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            for (offset, value) in values.iter().enumerate() {
+                dst.pwrite_byte_array((start + offset as u64) * 32, &value.to_le_bytes());
+            }
         }
         Ok(())
     }
@@ -108,12 +119,24 @@ impl Decoder for Decimal256 {
         Ok(out[0])
     }
     fn decode_slice<R: IOBase>(src: &R, start: u64, out: &mut [I256]) -> Result<(), IoError> {
-        for (offset, slot) in out.iter_mut().enumerate() {
-            let mut bytes = [0u8; 32];
-            src.pread_exact((start + offset as u64) * 32, &mut bytes)?;
-            *slot = I256::from_le_bytes(bytes);
+        #[cfg(target_endian = "little")]
+        {
+            // SAFETY: read the wire bytes straight into the `I256` slice's memory — `out` is
+            // `out.len() * 32` contiguous bytes of plain data.
+            let need = out.len() * 32;
+            let bytes =
+                unsafe { core::slice::from_raw_parts_mut(out.as_mut_ptr().cast::<u8>(), need) };
+            src.pread_exact(start * 32, bytes)
         }
-        Ok(())
+        #[cfg(target_endian = "big")]
+        {
+            for (offset, slot) in out.iter_mut().enumerate() {
+                let mut bytes = [0u8; 32];
+                src.pread_exact((start + offset as u64) * 32, &mut bytes)?;
+                *slot = I256::from_le_bytes(bytes);
+            }
+            Ok(())
+        }
     }
 }
 

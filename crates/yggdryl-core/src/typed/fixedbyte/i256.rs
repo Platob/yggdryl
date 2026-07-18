@@ -8,13 +8,16 @@
 use core::cmp::Ordering;
 use core::fmt;
 
-/// A 256-bit signed integer (the `Decimal256` backing value).
+/// A 256-bit signed integer (the `Decimal256` backing value). `#[repr(C)]` with `lo` first, so on a
+/// little-endian target its 32 in-memory bytes are exactly its [`to_le_bytes`](I256::to_le_bytes)
+/// form — a `&[I256]` is the wire bytes, letting `Decimal256` encode/decode as one `memcpy`.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct I256 {
-    /// The signed high 128 bits.
-    hi: i128,
     /// The unsigned low 128 bits.
     lo: u128,
+    /// The signed high 128 bits.
+    hi: i128,
 }
 
 impl I256 {

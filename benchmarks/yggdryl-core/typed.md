@@ -36,7 +36,10 @@ cargo test  -p yggdryl-core --test typed
 | `from_values` i128 / u128 (16 B) | ~80–120 | 1 | **allocation-bound** (see below) |
 | `from_values` `Bit` (bool) | **~630–930** | 2 | bit-packed (was ~167) |
 | `from_values` `Decimal128` | ~65–90 | 1 | i128 array, allocation-bound |
-| `from_values` `Decimal256` (`I256`) | ~27 | 1 | 32 B/element |
+| `from_values` `Decimal256` (`I256`) | **~52** | 1 | whole-slice memcpy (was ~27) |
+| `to_options` i64 (null-aware bulk decode) | ~85–95 | 1 | allocation-bound (`Vec<Option>`) |
+| **decode kernel** i64 → reused `Vec` | **~2 300** | **0** | memcpy speed |
+| **decode kernel** i128 → reused `Vec` | **~1 000** | **0** | ~16 GB/s (the read fast path) |
 | `push` loop i64 (streaming) | ~45 | 1 | per-element call overhead |
 | **`extend`** i64 (batch) | **~560** | 1 | one bulk write (was `push` ~45) |
 | `from_options` i64 (nullable) | **~74** | **4** | bulk data + packed validity (was ~27, 12 allocs) |
@@ -63,6 +66,9 @@ cargo test  -p yggdryl-core --test typed
   validity write.
 - **`extend` for batch append (~11× over `push`).** A new bulk counterpart of `push` — one
   `encode_slice` for a whole slice instead of a call per element.
+- **`Decimal256` whole-slice memcpy (~2×).** `I256` is `#[repr(C)]` with `lo` before `hi`, so on
+  little-endian a `&[I256]` is already its wire bytes — `Decimal256` encode/decode is one `memcpy`
+  (`27 → ~52 Melem/s`) instead of a 32-byte write per element, with no temporary buffer.
 
 **The large-buffer builds are allocation-bound, not kernel-bound.** A fresh `i128`/decimal column
 allocates a 1–2 MB data buffer, which the allocator serves via `mmap`; the encode then first-touches

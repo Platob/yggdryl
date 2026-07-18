@@ -17,7 +17,7 @@ use yggdryl_core::typed::fixedbit::Bit;
 use yggdryl_core::typed::fixedbyte::{
     Decimal128, Decimal256, Float64, Int128, Int32, Int64, Int8, UInt128, I256,
 };
-use yggdryl_core::typed::{Encoder, FixedScalar, FixedSerie, Scalar};
+use yggdryl_core::typed::{Decoder, Encoder, FixedScalar, FixedSerie, Scalar, Serie};
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);
@@ -232,6 +232,38 @@ fn main() {
         measure(n, iters, || {
             Int128::encode_slice(&mut reuse128, 0, black_box(&i128s)).unwrap();
             black_box(&reuse128);
+        }),
+    );
+
+    // -- Decode paths: null-aware bulk (to_options) + the isolated decode kernel --
+    println!("\n  -- decode: to_options + kernel (reused Vec) --");
+    let nullable = FixedSerie::<Int64>::from_options(&opts);
+    row(
+        "to_options i64 (non-null)",
+        measure(n, iters, || {
+            black_box(column.to_options());
+        }),
+    );
+    row(
+        "to_options i64 (nullable)",
+        measure(n, iters, || {
+            black_box(nullable.to_options());
+        }),
+    );
+    let mut out64 = vec![0i64; n];
+    let mut out128 = vec![0i128; n];
+    row(
+        "decode_slice i64  -> reused Vec",
+        measure(n, iters, || {
+            Int64::decode_slice(&reuse64, 0, black_box(&mut out64)).unwrap();
+            black_box(&out64);
+        }),
+    );
+    row(
+        "decode_slice i128 -> reused Vec",
+        measure(n, iters, || {
+            Int128::decode_slice(&reuse128, 0, black_box(&mut out128)).unwrap();
+            black_box(&out128);
         }),
     );
 }
