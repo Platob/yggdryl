@@ -15,6 +15,7 @@
 
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::PyBytes;
 
 use crate::dtype::DataTypeId;
@@ -116,7 +117,7 @@ impl Headers {
     /// Parses an HTTP header block (bytes / bytearray): one `Name: Value` per line (`\r\n` or
     /// `\n`). **Lenient** — a blank line stops parsing and a line with no colon is skipped.
     #[staticmethod]
-    fn parse_http(data: Vec<u8>) -> Self {
+    fn parse_http(data: PyBackedBytes) -> Self {
         Self {
             inner: headers::Headers::parse_http(&data),
         }
@@ -140,14 +141,14 @@ impl Headers {
     }
 
     /// The raw value of the **first** entry whose name matches `name` (case-insensitively).
-    fn get_bytes<'py>(&self, py: Python<'py>, name: Vec<u8>) -> Option<Bound<'py, PyBytes>> {
+    fn get_bytes<'py>(&self, py: Python<'py>, name: PyBackedBytes) -> Option<Bound<'py, PyBytes>> {
         self.inner
             .get_bytes(&name)
             .map(|value| PyBytes::new_bound(py, value))
     }
 
     /// Every raw value for `name`, in insertion order.
-    fn get_all_bytes<'py>(&self, py: Python<'py>, name: Vec<u8>) -> Vec<Bound<'py, PyBytes>> {
+    fn get_all_bytes<'py>(&self, py: Python<'py>, name: PyBackedBytes) -> Vec<Bound<'py, PyBytes>> {
         self.inner
             .get_all_bytes(&name)
             .into_iter()
@@ -187,7 +188,7 @@ impl Headers {
     }
 
     /// [`append`](Headers::append) with raw byte-string arguments.
-    fn append_bytes(&mut self, name: Vec<u8>, value: Vec<u8>) {
+    fn append_bytes(&mut self, name: PyBackedBytes, value: PyBackedBytes) {
         self.inner.append_bytes(&name, &value);
     }
 
@@ -198,7 +199,7 @@ impl Headers {
     }
 
     /// [`insert`](Headers::insert) with raw byte-string arguments.
-    fn insert_bytes(&mut self, name: Vec<u8>, value: Vec<u8>) {
+    fn insert_bytes(&mut self, name: PyBackedBytes, value: PyBackedBytes) {
         self.inner.insert_bytes(&name, &value);
     }
 
@@ -219,7 +220,7 @@ impl Headers {
 
     /// [`remove`](Headers::remove) with a raw byte-string name — reaches entries whose name
     /// is not valid UTF-8.
-    fn remove_bytes(&mut self, name: Vec<u8>) -> usize {
+    fn remove_bytes(&mut self, name: PyBackedBytes) -> usize {
         self.inner.remove_bytes(&name)
     }
 

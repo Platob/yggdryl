@@ -31,6 +31,7 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::PyBytes;
 
 use crate::headers::Headers;
@@ -541,7 +542,7 @@ impl LocalIO {
     /// its memory-tree blocks: a write inside a block stays capped at that block's end (a
     /// middle block never grows), bytes past the end grow the **last** block, and an empty
     /// directory writes nothing (the full/typed writes report the guided fix).
-    fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> usize {
+    fn pwrite_byte_array(&mut self, offset: u64, data: PyBackedBytes) -> usize {
         self.inner.pwrite_byte_array(offset, &data)
     }
 
@@ -880,7 +881,7 @@ impl LocalIO {
     /// **Cursor write.** Writes `data` (bytes / bytearray) at the current position, advancing
     /// the cursor by the number written (auto-creating + growing the file as needed); returns
     /// that count.
-    fn write(&mut self, data: Vec<u8>) -> usize {
+    fn write(&mut self, data: PyBackedBytes) -> usize {
         self.inner.write(&data)
     }
 
@@ -1714,7 +1715,7 @@ impl Mmap {
     /// **Positioned write.** Copies `data` (bytes / bytearray) in at `offset`, growing the
     /// file and zero-filling any gap; returns the number of bytes written (`0` on a
     /// read-only mapping).
-    fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> PyResult<usize> {
+    fn pwrite_byte_array(&mut self, offset: u64, data: PyBackedBytes) -> PyResult<usize> {
         Ok(self.io_mut()?.pwrite_byte_array(offset, &data))
     }
 
@@ -2047,7 +2048,7 @@ impl Mmap {
 
     /// **Cursor write.** Writes `data` (bytes / bytearray) at the current position, advancing
     /// the cursor by the number written (growing the file as needed); returns that count.
-    fn write(&mut self, data: Vec<u8>) -> PyResult<usize> {
+    fn write(&mut self, data: PyBackedBytes) -> PyResult<usize> {
         Ok(self.io_mut()?.write(&data))
     }
 

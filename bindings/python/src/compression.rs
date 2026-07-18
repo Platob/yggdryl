@@ -18,6 +18,7 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::pybacked::PyBackedBytes;
 use pyo3::sync::GILOnceCell;
 use pyo3::types::PyBytes;
 
@@ -160,14 +161,18 @@ impl Gzip {
     }
 
     /// Compresses `data` (bytes / bytearray) into a new `bytes`.
-    fn compress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn compress<'py>(&self, py: Python<'py>, data: PyBackedBytes) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.compress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
 
     /// Decompresses `data` (a gzip stream) into a new `bytes`, raising a guided `ValueError`
     /// on a corrupt stream.
-    fn decompress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn decompress<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyBackedBytes,
+    ) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.decompress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
@@ -210,14 +215,18 @@ impl Zlib {
     }
 
     /// Compresses `data` (bytes / bytearray) into a new `bytes`.
-    fn compress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn compress<'py>(&self, py: Python<'py>, data: PyBackedBytes) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.compress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
 
     /// Decompresses `data` (a zlib stream) into a new `bytes`, raising a guided `ValueError`
     /// on a corrupt stream.
-    fn decompress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn decompress<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyBackedBytes,
+    ) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.decompress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
@@ -260,14 +269,18 @@ impl Zstd {
     }
 
     /// Compresses `data` (bytes / bytearray) into a new `bytes`.
-    fn compress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn compress<'py>(&self, py: Python<'py>, data: PyBackedBytes) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.compress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
 
     /// Decompresses `data` (a zstd stream) into a new `bytes`, raising a guided `ValueError`
     /// on a corrupt stream.
-    fn decompress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn decompress<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyBackedBytes,
+    ) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.decompress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
@@ -310,14 +323,18 @@ impl Lzma {
     }
 
     /// Compresses `data` (bytes / bytearray) into a new `bytes`.
-    fn compress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn compress<'py>(&self, py: Python<'py>, data: PyBackedBytes) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.compress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }
 
     /// Decompresses `data` (an xz stream) into a new `bytes`, raising a guided `ValueError`
     /// on a corrupt stream.
-    fn decompress<'py>(&self, py: Python<'py>, data: Vec<u8>) -> PyResult<Bound<'py, PyBytes>> {
+    fn decompress<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyBackedBytes,
+    ) -> PyResult<Bound<'py, PyBytes>> {
         let out = self.inner.decompress(&data).map_err(ioerr)?;
         Ok(PyBytes::new_bound(py, &out))
     }

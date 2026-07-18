@@ -62,6 +62,13 @@ gpu-cuda = ["gpu"]
 # Dependency-free by default: the core is the abstract memory-access traits (with an in-heap
 # `Heap` source), the RFC 3986 URI/URL family, and the media-type layer — all on `std` alone.
 # The compression codecs are the sole opt-in native dependencies (behind `--features compression`).
-flate2 = { version = "1", optional = true }
+#
+# `flate2` runs on the **`zlib-rs`** backend (a pure-Rust port of the SIMD-tuned zlib-ng): it beats
+# both the default `miniz_oxide` and the C `zlib` that Python's `gzip`/`zlib` link — with **no C
+# toolchain** (stays cross-platform, no cmake), so gzip/zlib stay dependency-light and portable
+# while out-running the language-native codecs (see `benchmarks/yggdryl-core/compression.md`).
+flate2 = { version = "1.1", optional = true, default-features = false, features = [
+    "zlib-rs",
+] }
 zstd = { version = "0.13", optional = true }
 xz2 = { version = "0.1", optional = true }

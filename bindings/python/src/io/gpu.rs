@@ -24,6 +24,7 @@ use std::hash::{Hash, Hasher};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::PyBytes;
 
 use crate::io::meminfo::MemoryInfo;
@@ -148,7 +149,7 @@ impl AmdBuffer {
 
     /// A buffer initialized by **uploading** `data` (bytes / bytearray) — host → device.
     #[staticmethod]
-    fn from_host(data: Vec<u8>) -> Self {
+    fn from_host(data: PyBackedBytes) -> Self {
         Self {
             inner: gpu::AmdBuffer::from_host(&data),
         }
@@ -158,7 +159,7 @@ impl AmdBuffer {
 
     /// **Uploads** `host` (bytes / bytearray) into device memory, replacing the whole content
     /// (and syncing the size headers). The "copy this array to the GPU" entry point.
-    fn upload(&mut self, host: Vec<u8>) -> PyResult<()> {
+    fn upload(&mut self, host: PyBackedBytes) -> PyResult<()> {
         self.inner.upload(&host).map_err(ioerr)
     }
 
@@ -247,7 +248,7 @@ impl AmdBuffer {
 
     /// **Positioned write.** Copies `data` (bytes / bytearray) in at `offset`, growing the
     /// buffer and zero-filling any gap; returns the number of bytes written.
-    fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> usize {
+    fn pwrite_byte_array(&mut self, offset: u64, data: PyBackedBytes) -> usize {
         self.inner.pwrite_byte_array(offset, &data)
     }
 

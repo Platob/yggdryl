@@ -5,6 +5,13 @@ Four codecs — **Gzip**, **Zlib**, **Zstd**, **Lzma** (xz) — over their nativ
 from a source's [media type](mediatype.md). The core is dependency-free; the codecs are behind
 the **`compression`** cargo feature (the extensions enable it by default).
 
+Gzip/zlib run on flate2's **`zlib-rs`** backend — a pure-Rust port of the SIMD-tuned zlib-ng that
+needs **no C toolchain** yet **out-compresses** the C `zlib` that Python's `gzip` and Node's
+`node:zlib` link. The binding takes a byte input as a **borrowed buffer** (Python `bytes`/
+`bytearray`, Node `Buffer`) — never copied element by element — so that codec speed reaches the
+caller. Measured throughput vs. the language-native codecs is in
+[`benchmarks/yggdryl-core/compression.md`](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/compression.md).
+
 ## Compress and decompress bytes
 
 Each codec takes an optional level and round-trips a byte buffer losslessly.

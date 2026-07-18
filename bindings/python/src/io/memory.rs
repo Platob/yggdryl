@@ -38,6 +38,7 @@
 
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::PyBytes;
 
 use crate::dtype::DataTypeId;
@@ -448,7 +449,7 @@ impl Heap {
 
     /// **Positioned write.** Copies `data` (bytes / bytearray) in at `offset`, growing the
     /// buffer and zero-filling any gap; returns the number of bytes written.
-    fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> usize {
+    fn pwrite_byte_array(&mut self, offset: u64, data: PyBackedBytes) -> usize {
         self.inner.pwrite_byte_array(offset, &data)
     }
 
@@ -839,7 +840,7 @@ impl Heap {
 
     /// **Cursor write.** Writes `data` (bytes / bytearray) at the current position, advancing
     /// the cursor by the number written (growing the buffer as needed); returns that count.
-    fn write(&mut self, data: Vec<u8>) -> usize {
+    fn write(&mut self, data: PyBackedBytes) -> usize {
         self.inner.write(&data)
     }
 
@@ -1569,7 +1570,7 @@ impl Cursor {
 
     /// **Cursor write.** Writes `data` (bytes / bytearray) at the current position, advancing
     /// the cursor by the number written (growing the source as needed); returns that count.
-    fn write(&mut self, data: Vec<u8>) -> usize {
+    fn write(&mut self, data: PyBackedBytes) -> usize {
         self.inner.write(&data)
     }
 
@@ -2129,7 +2130,7 @@ impl Slice {
 
     /// **Positioned write**, clamped to the window. Copies `data` (bytes / bytearray) in at
     /// `offset`, writing only as far as the window's end; returns the number of bytes written.
-    fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> usize {
+    fn pwrite_byte_array(&mut self, offset: u64, data: PyBackedBytes) -> usize {
         self.inner.pwrite_byte_array(offset, &data)
     }
 

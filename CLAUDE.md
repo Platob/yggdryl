@@ -132,6 +132,14 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   caller knows it (`with_capacity` on every growable type, including via the `IOBase` trait).
   When a change claims a performance win, **prove it** — a benchmark on both time and memory,
   plus a deterministic allocation test.
+- **A binding byte input is a borrowed buffer — never an owned `Vec<u8>`.** A method that takes
+  bytes from Python/Node borrows the caller's buffer: Python **`PyBackedBytes`** (zero-copy for
+  `bytes`, one copy for the mutable `bytearray`; both accepted), Node **`Buffer`** — each derefs
+  to `&[u8]` and forwards it straight to the core. Never type a byte parameter `data: Vec<u8>`:
+  pyo3 re-extracts a `bytes` **element by element** into an owned `Vec`, which alone cost ~5× on
+  a 4.7 MiB compress before it was fixed, and silently crippled every bulk byte write. The core
+  already takes `&[u8]`; the binding must not add a copy in front of it. (The native-codec speed
+  the `zlib-rs` gzip/zlib backend buys is only visible once this boundary is zero-copy.)
 - **Bulk operations are vectorized.** Typed bulk reads/writes (`pread_i32_array` /
   `pwrite_i64_array`, …) and repeated-value fills (`pwrite_i32_repeat`, …) run as **dense,
   branch-free loops over contiguous slices** so LLVM auto-vectorizes them on stable Rust (no
