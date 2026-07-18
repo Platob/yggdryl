@@ -17,25 +17,15 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 #[test]
 fn get_is_case_insensitive_and_first_wins() {
     let mut headers = Headers::new();
-    // A non-promoted key is multi-value: every append is kept, and `get` returns the first.
-    headers.append("X-Trace", "text/plain");
-    headers.append("x-trace", "application/json");
-    assert_eq!(headers.get("X-TRACE").as_deref(), Some("text/plain")); // first occurrence
-    assert_eq!(
-        headers.get_all("X-Trace"),
-        vec!["text/plain", "application/json"]
-    );
-    assert!(headers.contains("x-TrAcE"));
-    assert_eq!(headers.get("missing"), None);
-
-    // A PROMOTED key (Content-Type) is single-valued: append replaces (last wins).
     headers.append("Content-Type", "text/plain");
     headers.append("content-type", "application/json");
+    assert_eq!(headers.get("CONTENT-TYPE"), Some("text/plain")); // first occurrence
     assert_eq!(
-        headers.get("CONTENT-TYPE").as_deref(),
-        Some("application/json")
+        headers.get_all("Content-Type"),
+        vec!["text/plain", "application/json"]
     );
-    assert_eq!(headers.get_all("content-type").len(), 1);
+    assert!(headers.contains("cOnTeNt-TyPe"));
+    assert_eq!(headers.get("missing"), None);
 }
 
 #[test]
@@ -64,10 +54,7 @@ fn remove_reports_count_and_clear_empties() {
 fn bytes_surface_roundtrips_non_utf8() {
     let mut headers = Headers::new();
     headers.append_bytes(b"X-Raw", &[0xff, 0xfe]);
-    assert_eq!(
-        headers.get_bytes(b"x-raw").as_deref(),
-        Some(&[0xff, 0xfe][..])
-    );
+    assert_eq!(headers.get_bytes(b"x-raw"), Some(&[0xff, 0xfe][..]));
     assert_eq!(headers.get("X-Raw"), None); // not UTF-8 -> the &str view skips it
     assert_eq!(headers.get_all_bytes(b"x-raw").len(), 1);
 }
@@ -97,7 +84,7 @@ fn merge_with_overlays_other() {
     patch.append("Replace", "new1");
     patch.append("Replace", "new2");
     let merged = base.merge_with(&patch);
-    assert_eq!(merged.get("Keep").as_deref(), Some("1"));
+    assert_eq!(merged.get("Keep"), Some("1"));
     assert_eq!(merged.get_all("Replace"), vec!["new1", "new2"]);
 }
 
@@ -110,7 +97,7 @@ fn http_text_form_roundtrips() {
     assert_eq!(Headers::parse_http(&wire), headers);
     // Lenient parse: blank line stops, colon-less lines skipped.
     let partial = Headers::parse_http(b"A: 1\r\n\r\nB: ignored-after-blank\r\n");
-    assert_eq!(partial.get("A").as_deref(), Some("1"));
+    assert_eq!(partial.get("A"), Some("1"));
     assert!(!partial.contains("B"));
 }
 
@@ -197,7 +184,7 @@ fn mtime_epoch_micros_round_trips_including_negatives() {
     }
     // The stored form is a compact decimal under the MTIME header.
     headers.set_mtime(-42);
-    assert_eq!(headers.get(Headers::MTIME).as_deref(), Some("-42"));
+    assert_eq!(headers.get(Headers::MTIME), Some("-42"));
     // set_mtime replaces (single value), never appends.
     headers.set_mtime(7);
     assert_eq!(headers.get_all(Headers::MTIME), vec!["7"]);
@@ -209,7 +196,7 @@ fn content_length_renders_replaces_and_trims() {
     assert!(headers.content_length().is_none());
 
     headers.set_content_length(0);
-    assert_eq!(headers.get(Headers::CONTENT_LENGTH).as_deref(), Some("0"));
+    assert_eq!(headers.get(Headers::CONTENT_LENGTH), Some("0"));
     assert_eq!(headers.content_length(), Some(0));
 
     // Replaces (single value), never appends, and renders the decimal directly.
@@ -249,8 +236,8 @@ fn lookup_is_correct_across_a_large_ordered_set() {
         headers.insert(&format!("X-Header-{i}"), &format!("v{i}"));
     }
     assert_eq!(headers.len(), 64);
-    assert_eq!(headers.get("x-header-0").as_deref(), Some("v0")); // first
-    assert_eq!(headers.get("X-HEADER-63").as_deref(), Some("v63")); // last, case-folded
+    assert_eq!(headers.get("x-header-0"), Some("v0")); // first
+    assert_eq!(headers.get("X-HEADER-63"), Some("v63")); // last, case-folded
     assert_eq!(headers.get("x-header-64"), None); // absent
                                                   // Insertion order is preserved end to end.
     let first = headers.iter().next().unwrap();
@@ -261,7 +248,18 @@ fn lookup_is_correct_across_a_large_ordered_set() {
 fn empty_value_is_distinct_from_absent() {
     let mut headers = Headers::new();
     headers.insert("X-Empty", "");
-    assert_eq!(headers.get("x-empty").as_deref(), Some("")); // present, empty
+    assert_eq!(headers.get("x-empty"), Some("")); // present, empty
     assert!(headers.contains("X-Empty"));
     assert_eq!(headers.get("x-missing"), None); // absent
+}
+
+#[test]
+fn nullable_flag_defaults_false_and_round_trips() {
+    let mut h = Headers::new();
+    assert!(!h.nullable()); // unset -> non-nullable (the safe default)
+    h.set_nullable(true);
+    assert!(h.nullable());
+    assert_eq!(h.get(Headers::NULLABLE), Some("true"));
+    h.set_nullable(false);
+    assert!(!h.nullable());
 }

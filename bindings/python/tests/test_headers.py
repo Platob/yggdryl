@@ -179,61 +179,6 @@ def test_content_type_and_content_length():
     assert h.content_length() is None
 
 
-def test_promoted_http_typed_accessors():
-    h = Headers()
-    # Absent until set.
-    assert h.host() is None
-    assert h.user_agent() is None
-    assert h.accept() is None
-    assert h.accept_encoding() is None
-    assert h.authorization() is None
-    assert h.location() is None
-    assert h.connection() is None
-    assert h.cache_control() is None
-    assert h.last_modified() is None
-
-    # Round-trip each typed setter/getter pair.
-    h.set_host("example.com")
-    h.set_user_agent("yggdryl/1.0")
-    h.set_accept("application/json")
-    h.set_accept_encoding("gzip")
-    h.set_authorization("Bearer token")
-    h.set_location("/next")
-    h.set_connection("keep-alive")
-    h.set_cache_control("no-cache")
-    h.set_last_modified("Wed, 21 Oct 2015 07:28:00 GMT")
-    assert h.host() == "example.com"
-    assert h.user_agent() == "yggdryl/1.0"
-    assert h.accept() == "application/json"
-    assert h.accept_encoding() == "gzip"
-    assert h.authorization() == "Bearer token"
-    assert h.location() == "/next"
-    assert h.connection() == "keep-alive"
-    assert h.cache_control() == "no-cache"
-    assert h.last_modified() == "Wed, 21 Oct 2015 07:28:00 GMT"
-
-
-def test_promoted_accessors_are_single_valued_and_visible_via_get():
-    h = Headers()
-    h.set_host("first.example.com")
-    h.set_host("second.example.com")  # single-valued: setting twice replaces
-    assert h.host() == "second.example.com"
-    assert h.get_all("host") == ["second.example.com"]
-    assert len(h) == 1
-
-    # Visible through the generic (case-insensitive) map view.
-    assert h.get("host") == "second.example.com"
-    assert h.get("Host") == "second.example.com"
-    assert h["host"] == "second.example.com"
-    assert Headers.HOST in h
-
-    # An append to a promoted name also replaces (it is unique in HTTP).
-    h.append("User-Agent", "a")
-    h.append("user-agent", "b")
-    assert h.user_agent() == "b"
-    assert h.get_all("user-agent") == ["b"]
-
-
 # -------------------------------------------------------------------------------------
 # HTTP round-trip + byte codec
 # -------------------------------------------------------------------------------------
@@ -426,3 +371,15 @@ def test_mtime_round_trip_and_absent():
     # A non-integer value reads back as None.
     h.insert(Headers.MTIME, "not-a-number")
     assert h.mtime() is None
+
+
+def test_nullable_flag():
+    from yggdryl.headers import Headers
+
+    h = Headers()
+    assert h.nullable() is False  # unset -> non-nullable default
+    h.set_nullable(True)
+    assert h.nullable() is True
+    assert h.get(Headers.NULLABLE) == "true"
+    h.set_nullable(False)
+    assert h.nullable() is False

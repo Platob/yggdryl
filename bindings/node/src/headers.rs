@@ -78,7 +78,7 @@ impl Headers {
     /// UTF-8. Use `getBytes` for the raw bytes.
     #[napi]
     pub fn get(&self, name: String) -> Option<String> {
-        self.inner.get(&name).map(|value| value.into_owned())
+        self.inner.get(&name).map(str::to_string)
     }
 
     /// Every value for `name` as a string, in insertion order (non-UTF-8 values are skipped).
@@ -87,7 +87,7 @@ impl Headers {
         self.inner
             .get_all(&name)
             .into_iter()
-            .map(|value| value.into_owned())
+            .map(str::to_string)
             .collect()
     }
 
@@ -244,116 +244,6 @@ impl Headers {
         self.inner.set_content_encoding(&value);
     }
 
-    // ---- promoted single-valued HTTP request/response headers --------------------------
-
-    /// The `Host` value, if present and UTF-8.
-    #[napi]
-    pub fn host(&self) -> Option<String> {
-        self.inner.host().map(str::to_string)
-    }
-
-    /// Sets the `Host` header (replace semantics).
-    #[napi]
-    pub fn set_host(&mut self, value: String) {
-        self.inner.set_host(&value);
-    }
-
-    /// The `User-Agent` value, if present and UTF-8.
-    #[napi]
-    pub fn user_agent(&self) -> Option<String> {
-        self.inner.user_agent().map(str::to_string)
-    }
-
-    /// Sets the `User-Agent` header (replace semantics).
-    #[napi]
-    pub fn set_user_agent(&mut self, value: String) {
-        self.inner.set_user_agent(&value);
-    }
-
-    /// The `Accept` value, if present and UTF-8.
-    #[napi]
-    pub fn accept(&self) -> Option<String> {
-        self.inner.accept().map(str::to_string)
-    }
-
-    /// Sets the `Accept` header (replace semantics).
-    #[napi]
-    pub fn set_accept(&mut self, value: String) {
-        self.inner.set_accept(&value);
-    }
-
-    /// The `Accept-Encoding` value, if present and UTF-8.
-    #[napi]
-    pub fn accept_encoding(&self) -> Option<String> {
-        self.inner.accept_encoding().map(str::to_string)
-    }
-
-    /// Sets the `Accept-Encoding` header (replace semantics).
-    #[napi]
-    pub fn set_accept_encoding(&mut self, value: String) {
-        self.inner.set_accept_encoding(&value);
-    }
-
-    /// The `Authorization` value, if present and UTF-8.
-    #[napi]
-    pub fn authorization(&self) -> Option<String> {
-        self.inner.authorization().map(str::to_string)
-    }
-
-    /// Sets the `Authorization` header (replace semantics).
-    #[napi]
-    pub fn set_authorization(&mut self, value: String) {
-        self.inner.set_authorization(&value);
-    }
-
-    /// The `Location` value, if present and UTF-8.
-    #[napi]
-    pub fn location(&self) -> Option<String> {
-        self.inner.location().map(str::to_string)
-    }
-
-    /// Sets the `Location` header (replace semantics).
-    #[napi]
-    pub fn set_location(&mut self, value: String) {
-        self.inner.set_location(&value);
-    }
-
-    /// The `Connection` value, if present and UTF-8.
-    #[napi]
-    pub fn connection(&self) -> Option<String> {
-        self.inner.connection().map(str::to_string)
-    }
-
-    /// Sets the `Connection` header (replace semantics).
-    #[napi]
-    pub fn set_connection(&mut self, value: String) {
-        self.inner.set_connection(&value);
-    }
-
-    /// The `Cache-Control` value, if present and UTF-8.
-    #[napi]
-    pub fn cache_control(&self) -> Option<String> {
-        self.inner.cache_control().map(str::to_string)
-    }
-
-    /// Sets the `Cache-Control` header (replace semantics).
-    #[napi]
-    pub fn set_cache_control(&mut self, value: String) {
-        self.inner.set_cache_control(&value);
-    }
-
-    /// The `Last-Modified` value (RFC HTTP-date form), if present and UTF-8.
-    #[napi]
-    pub fn last_modified(&self) -> Option<String> {
-        self.inner.last_modified().map(str::to_string)
-    }
-
-    /// Sets the `Last-Modified` header (replace semantics).
-    #[napi]
-    pub fn set_last_modified(&mut self, value: String) {
-        self.inner.set_last_modified(&value);
-    }
-
     // ---- element data type + resource name ---------------------------------------------
 
     /// The storage **element [`DataTypeId`]** declared under `X-Type-Id`, or
@@ -397,6 +287,19 @@ impl Headers {
     #[napi]
     pub fn set_name(&mut self, name: String) {
         self.inner.set_name(&name);
+    }
+
+    /// Whether the field/column this metadata describes **admits nulls** — the `X-Nullable`
+    /// flag, `false` when unset (the safe non-nullable default).
+    #[napi]
+    pub fn nullable(&self) -> bool {
+        self.inner.nullable()
+    }
+
+    /// Sets the `X-Nullable` flag.
+    #[napi]
+    pub fn set_nullable(&mut self, nullable: bool) {
+        self.inner.set_nullable(nullable);
     }
 
     // ---- media type: the one place Content-Type / Content-Encoding are interpreted ------

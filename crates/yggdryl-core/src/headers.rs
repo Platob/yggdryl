@@ -2,104 +2,32 @@
 //! **byte-string** values, with `&str` conveniences, following HTTP header conventions.
 
 use core::fmt;
-use std::borrow::Cow;
 
-use crate::datatype_id::DataTypeId;
 use crate::io::{IoError, Serializable};
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 
-/// One `name: value` entry in the overflow map — both stored as owned byte strings.
+/// One `name: value` entry — both stored as owned byte strings.
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Entry {
     name: Box<[u8]>,
     value: Box<[u8]>,
 }
 
-/// The **promoted** keys that live in a hard-typed [`Headers`] field rather than the overflow map.
-/// Matched case-insensitively; each is single-valued (see the type docs).
-#[derive(Clone, Copy)]
-enum Promoted {
-    ContentType,
-    ContentEncoding,
-    ContentLength,
-    Host,
-    UserAgent,
-    Accept,
-    AcceptEncoding,
-    Authorization,
-    Location,
-    Connection,
-    CacheControl,
-    LastModified,
-    TypeId,
-    Name,
-    Mtime,
-}
-
-/// The **canonical iteration/serialization order** of the promoted fields — a fixed order so the
-/// wire form is deterministic (equal maps serialize to equal bytes).
-const PROMOTED_ORDER: [Promoted; 15] = [
-    Promoted::ContentType,
-    Promoted::ContentEncoding,
-    Promoted::ContentLength,
-    Promoted::Host,
-    Promoted::UserAgent,
-    Promoted::Accept,
-    Promoted::AcceptEncoding,
-    Promoted::Authorization,
-    Promoted::Location,
-    Promoted::Connection,
-    Promoted::CacheControl,
-    Promoted::LastModified,
-    Promoted::TypeId,
-    Promoted::Name,
-    Promoted::Mtime,
-];
-
-/// Generates the `&str` typed accessor pair (getter + `set_*`) for a promoted **string** header
-/// field — a direct borrow on read, a direct field store on write (no parse, no re-alloc beyond
-/// the one stored `Box<str>`).
-macro_rules! str_header_accessor {
-    ($field:ident, $get:ident, $set:ident, $const:ident, $label:literal) => {
-        #[doc = concat!("The `", $label, "` value, if present — a direct borrow of the typed field.")]
-        pub fn $get(&self) -> Option<&str> {
-            self.$field.as_deref()
-        }
-
-        #[doc = concat!("Sets the `", $label, "` header — a direct typed-field store (no parse).")]
-        pub fn $set(&mut self, value: &str) {
-            self.$field = Some(value.into());
-            self.clear_other_named(Self::$const.as_bytes());
-        }
-    };
-}
-
-/// The project's **one** metadata map. The common single-valued keys — the content headers
-/// (`Content-Type`/`-Encoding`/`-Length`), the most-used HTTP request/response headers (`Host`,
-/// `User-Agent`, `Accept`, `Accept-Encoding`, `Authorization`, `Location`, `Connection`,
-/// `Cache-Control`, `Last-Modified`), and the storage keys (`X-Type-Id`, `X-Name`, `X-Mtime-Us`) —
-/// are stored in **hard-typed fields** (`Option<Box<str>>` / `Option<u64>` / `Option<i64>` /
-/// [`DataTypeId`]), so their typed accessors ([`content_length`](Headers::content_length) → `u64`,
-/// [`content_type`](Headers::content_type) → `&str`, …) read and write with **no parse and no
-/// per-value allocation**. Every **other** name (and the multi-value ones like `Set-Cookie`) lives
-/// in an insertion-ordered, case-insensitive, multi-value overflow map (`other`).
-///
-/// The generic map view still sees **everything**: [`get`](Headers::get) /
-/// [`get_bytes`](Headers::get_bytes) / [`iter`](Headers::iter) return a [`Cow`] — a **borrow** for
-/// the string keys and the overflow entries, a small **rendered** buffer for the numeric keys
-/// (`Content-Length`, `X-Mtime-Us`, `X-Type-Id`) on demand. HTTP headers, schema/field metadata,
-/// source annotations — all of it is a `Headers`; every [`IOBase`](crate::io::memory::IOBase)
-/// source carries one ([`headers`](crate::io::memory::IOBase::headers) /
+/// The project's **one** metadata map: byte-string keys → byte-string values, kept in
+/// **insertion order**, **case-insensitive** on the name (ASCII, per HTTP), and **multi-value**
+/// (a name may repeat). `&str` accessors sit over the byte storage for the common textual case,
+/// while `*_bytes` accessors reach the raw bytes for anything that is not UTF-8. HTTP headers,
+/// schema/field metadata, source annotations — all of them are a `Headers`; every
+/// [`IOBase`](crate::io::memory::IOBase) source carries one
+/// ([`headers`](crate::io::memory::IOBase::headers) /
 /// [`headers_mut`](crate::io::memory::IOBase::headers_mut)).
 ///
-/// DESIGN: the promoted keys are **single-valued** (they are unique in HTTP), so `append` on one
-/// behaves as `insert` (replace). They render **first**, in a fixed order, ahead of the overflow
-/// entries — reordering a unique field relative to other names is RFC 7230 §3.2.2 compliant. A
-/// value that does not fit its typed field (a non-UTF-8 `Content-Type`, a non-numeric
-/// `Content-Length`) **falls back** to the overflow map under its name, so no data is lost.
-/// Equality is by this canonical content (the typed fields plus the ordered overflow), and equal
-/// maps hash equal.
+/// DESIGN: entries live in one insertion-ordered `Vec`, scanned linearly. For the small `n` of
+/// a real header set (typically well under 30) a linear scan is faster and more cache-friendly
+/// than hashing, and it preserves order and duplicates exactly — the two things HTTP requires.
+/// Names are compared with [`eq_ignore_ascii_case`](slice::eq_ignore_ascii_case), so matching
+/// allocates nothing.
 ///
 /// ```
 /// use yggdryl_core::headers::Headers;
@@ -109,35 +37,13 @@ macro_rules! str_header_accessor {
 /// headers.append("Set-Cookie", "a=1");
 /// headers.append("Set-Cookie", "b=2");
 ///
-/// assert_eq!(headers.get("content-type").as_deref(), Some("application/json")); // case-insensitive
-/// let cookies = headers.get_all("set-cookie");
-/// assert_eq!(cookies.iter().map(|c| c.as_ref()).collect::<Vec<&str>>(), ["a=1", "b=2"]); // multi-value
+/// assert_eq!(headers.get("content-type"), Some("application/json")); // case-insensitive
+/// assert_eq!(headers.get_all("set-cookie"), vec!["a=1", "b=2"]);      // multi-value
 /// assert!(headers.contains("Content-Type"));
 /// ```
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Headers {
-    content_type: Option<Box<str>>,
-    content_encoding: Option<Box<str>>,
-    content_length: Option<u64>,
-    host: Option<Box<str>>,
-    user_agent: Option<Box<str>>,
-    accept: Option<Box<str>>,
-    accept_encoding: Option<Box<str>>,
-    authorization: Option<Box<str>>,
-    location: Option<Box<str>>,
-    connection: Option<Box<str>>,
-    cache_control: Option<Box<str>>,
-    last_modified: Option<Box<str>>,
-    type_id: DataTypeId,
-    name: Option<Box<str>>,
-    mtime: Option<i64>,
-    other: Vec<Entry>,
-}
-
-impl Default for Headers {
-    fn default() -> Self {
-        Self::new()
-    }
+    entries: Vec<Entry>,
 }
 
 impl Headers {
@@ -174,313 +80,99 @@ impl Headers {
     /// The modification-time header this map uses for the **epoch-microseconds** form —
     /// [`mtime`](Headers::mtime) / [`set_mtime`](Headers::set_mtime).
     pub const MTIME: &'static str = "X-Mtime-Us";
-    /// The storage **element data type** header — a [`DataTypeId`](crate::datatype_id::DataTypeId) as
-    /// its `u16` id ([`type_id`](Headers::type_id) / [`set_type_id`](Headers::set_type_id)).
+    /// The storage **element data type** header — a [`DataTypeId`](crate::datatype_id::DataTypeId) as its
+    /// `u16` id ([`type_id`](Headers::type_id) / [`set_type_id`](Headers::set_type_id)).
     pub const TYPE_ID: &'static str = "X-Type-Id";
     /// The resource **name** header ([`name`](Headers::name) / [`set_name`](Headers::set_name)).
     pub const NAME: &'static str = "X-Name";
+    /// The **nullable** flag header — whether a typed field/column admits nulls
+    /// ([`nullable`](Headers::nullable) / [`set_nullable`](Headers::set_nullable)).
+    pub const NULLABLE: &'static str = "X-Nullable";
 
     // ---- construction -------------------------------------------------------------------
 
     /// An empty header map (no allocation — `const`, so it can back a `static` empty map).
     pub const fn new() -> Self {
         Self {
-            content_type: None,
-            content_encoding: None,
-            content_length: None,
-            host: None,
-            user_agent: None,
-            accept: None,
-            accept_encoding: None,
-            authorization: None,
-            location: None,
-            connection: None,
-            cache_control: None,
-            last_modified: None,
-            type_id: DataTypeId::Unknown,
-            name: None,
-            mtime: None,
-            other: Vec::new(),
+            entries: Vec::new(),
         }
     }
 
-    /// An empty map with room for `capacity` **overflow** entries before its first reallocation
-    /// (the promoted keys never allocate the overflow map).
+    /// An empty map with room for `capacity` entries before its first reallocation.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            other: Vec::with_capacity(capacity),
-            ..Self::new()
-        }
-    }
-
-    // ---- promoted-key routing (internal) ------------------------------------------------
-
-    /// The `Box<str>` slot for a **string** promoted key, or `None` for a numeric key.
-    fn string_field(&self, key: Promoted) -> Option<&Option<Box<str>>> {
-        Some(match key {
-            Promoted::ContentType => &self.content_type,
-            Promoted::ContentEncoding => &self.content_encoding,
-            Promoted::Host => &self.host,
-            Promoted::UserAgent => &self.user_agent,
-            Promoted::Accept => &self.accept,
-            Promoted::AcceptEncoding => &self.accept_encoding,
-            Promoted::Authorization => &self.authorization,
-            Promoted::Location => &self.location,
-            Promoted::Connection => &self.connection,
-            Promoted::CacheControl => &self.cache_control,
-            Promoted::LastModified => &self.last_modified,
-            Promoted::Name => &self.name,
-            Promoted::ContentLength | Promoted::TypeId | Promoted::Mtime => return None,
-        })
-    }
-
-    /// The mutable `Box<str>` slot for a **string** promoted key, or `None` for a numeric key.
-    fn string_field_mut(&mut self, key: Promoted) -> Option<&mut Option<Box<str>>> {
-        Some(match key {
-            Promoted::ContentType => &mut self.content_type,
-            Promoted::ContentEncoding => &mut self.content_encoding,
-            Promoted::Host => &mut self.host,
-            Promoted::UserAgent => &mut self.user_agent,
-            Promoted::Accept => &mut self.accept,
-            Promoted::AcceptEncoding => &mut self.accept_encoding,
-            Promoted::Authorization => &mut self.authorization,
-            Promoted::Location => &mut self.location,
-            Promoted::Connection => &mut self.connection,
-            Promoted::CacheControl => &mut self.cache_control,
-            Promoted::LastModified => &mut self.last_modified,
-            Promoted::Name => &mut self.name,
-            Promoted::ContentLength | Promoted::TypeId | Promoted::Mtime => return None,
-        })
-    }
-
-    /// Whether a promoted field currently holds a value.
-    fn promoted_present(&self, key: Promoted) -> bool {
-        match key {
-            Promoted::ContentLength => self.content_length.is_some(),
-            Promoted::Mtime => self.mtime.is_some(),
-            Promoted::TypeId => self.type_id != DataTypeId::Unknown,
-            other => self.string_field(other).is_some_and(|slot| slot.is_some()),
-        }
-    }
-
-    /// Clears a promoted field to its absent state.
-    fn clear_promoted(&mut self, key: Promoted) {
-        match key {
-            Promoted::ContentLength => self.content_length = None,
-            Promoted::Mtime => self.mtime = None,
-            Promoted::TypeId => self.type_id = DataTypeId::Unknown,
-            other => {
-                if let Some(slot) = self.string_field_mut(other) {
-                    *slot = None;
-                }
-            }
-        }
-    }
-
-    /// The canonical name of a promoted key.
-    fn promoted_name(key: Promoted) -> &'static str {
-        match key {
-            Promoted::ContentType => Self::CONTENT_TYPE,
-            Promoted::ContentEncoding => Self::CONTENT_ENCODING,
-            Promoted::ContentLength => Self::CONTENT_LENGTH,
-            Promoted::Host => Self::HOST,
-            Promoted::UserAgent => Self::USER_AGENT,
-            Promoted::Accept => Self::ACCEPT,
-            Promoted::AcceptEncoding => Self::ACCEPT_ENCODING,
-            Promoted::Authorization => Self::AUTHORIZATION,
-            Promoted::Location => Self::LOCATION,
-            Promoted::Connection => Self::CONNECTION,
-            Promoted::CacheControl => Self::CACHE_CONTROL,
-            Promoted::LastModified => Self::LAST_MODIFIED,
-            Promoted::TypeId => Self::TYPE_ID,
-            Promoted::Name => Self::NAME,
-            Promoted::Mtime => Self::MTIME,
-        }
-    }
-
-    /// The promoted field's value rendered to bytes — a **borrow** for the string keys, a small
-    /// **owned** decimal for the numeric keys; `None` when the field is absent.
-    fn promoted_bytes(&self, key: Promoted) -> Option<Cow<'_, [u8]>> {
-        match key {
-            Promoted::ContentLength => self.content_length.map(|n| Cow::Owned(render_u64(n))),
-            Promoted::Mtime => self.mtime.map(|n| Cow::Owned(render_i64(n))),
-            Promoted::TypeId => (self.type_id != DataTypeId::Unknown)
-                .then(|| Cow::Owned(render_u64(u64::from(self.type_id.as_u16())))),
-            other => self
-                .string_field(other)
-                .and_then(|slot| slot.as_ref())
-                .map(|s| Cow::Borrowed(s.as_bytes())),
-        }
-    }
-
-    /// Stores `value` into the promoted field for `key`, or — when it does not fit the typed field
-    /// (non-UTF-8 string, non-numeric number, foreign type id) — **falls back** to the overflow map
-    /// under `name` so no data is lost. The field/overflow entries for the key must already be
-    /// cleared by the caller.
-    fn store_promoted(&mut self, key: Promoted, name: &[u8], value: &[u8]) {
-        let push_raw = |this: &mut Self| {
-            this.other.push(Entry {
-                name: name.into(),
-                value: value.into(),
-            });
-        };
-        match key {
-            Promoted::ContentLength => {
-                match core::str::from_utf8(value)
-                    .ok()
-                    .and_then(|s| s.trim().parse::<u64>().ok())
-                {
-                    Some(n) => self.content_length = Some(n),
-                    None => push_raw(self),
-                }
-            }
-            Promoted::Mtime => {
-                match core::str::from_utf8(value)
-                    .ok()
-                    .and_then(|s| s.trim().parse::<i64>().ok())
-                {
-                    Some(n) => self.mtime = Some(n),
-                    None => push_raw(self),
-                }
-            }
-            Promoted::TypeId => {
-                match core::str::from_utf8(value)
-                    .ok()
-                    .and_then(|s| s.trim().parse::<u16>().ok())
-                    .map(DataTypeId::from_u16)
-                {
-                    Some(dt) if dt != DataTypeId::Unknown => self.type_id = dt,
-                    _ => push_raw(self), // non-numeric or a foreign id — keep the raw value
-                }
-            }
-            other => match core::str::from_utf8(value) {
-                Ok(s) => {
-                    if let Some(slot) = self.string_field_mut(other) {
-                        *slot = Some(s.into());
-                    }
-                }
-                Err(_) => push_raw(self),
-            },
-        }
-    }
-
-    /// Removes every overflow entry whose name matches `name` (case-insensitively) — the cheap
-    /// no-op when the overflow map is empty (the common case for a promoted-only set).
-    fn clear_other_named(&mut self, name: &[u8]) {
-        if !self.other.is_empty() {
-            self.other
-                .retain(|entry| !entry.name.eq_ignore_ascii_case(name));
+            entries: Vec::with_capacity(capacity),
         }
     }
 
     // ---- read (bytes + str) -------------------------------------------------------------
 
-    /// The number of entries (the present promoted keys plus the overflow entries; a repeated
-    /// overflow name counts once per occurrence).
+    /// The number of entries (a repeated name counts once per occurrence).
     pub fn len(&self) -> usize {
-        let promoted = PROMOTED_ORDER
-            .iter()
-            .filter(|&&key| self.promoted_present(key))
-            .count();
-        promoted + self.other.len()
+        self.entries.len()
     }
 
     /// Whether the map has no entries.
     pub fn is_empty(&self) -> bool {
-        self.other.is_empty() && !PROMOTED_ORDER.iter().any(|&key| self.promoted_present(key))
+        self.entries.is_empty()
     }
 
-    /// The raw value of the **first** entry whose name matches `name` (case-insensitively) — a
-    /// borrow for a string/overflow value, a small rendered buffer for a numeric promoted key.
-    pub fn get_bytes(&self, name: &[u8]) -> Option<Cow<'_, [u8]>> {
-        if let Some(key) = promoted_key(name) {
-            if let Some(value) = self.promoted_bytes(key) {
-                return Some(value);
-            }
-        }
-        self.other
+    /// The raw value of the **first** entry whose name matches `name` (case-insensitively).
+    pub fn get_bytes(&self, name: &[u8]) -> Option<&[u8]> {
+        self.entries
             .iter()
             .find(|entry| entry.name.eq_ignore_ascii_case(name))
-            .map(|entry| Cow::Borrowed(&*entry.value))
+            .map(|entry| &*entry.value)
     }
 
-    /// The **first** value for `name` as text, or `None` if absent or not valid UTF-8. Use
+    /// The **first** value for `name` as `&str`, or `None` if absent or not valid UTF-8. Use
     /// [`get_bytes`](Headers::get_bytes) for the raw bytes.
-    pub fn get(&self, name: &str) -> Option<Cow<'_, str>> {
-        match self.get_bytes(name.as_bytes())? {
-            Cow::Borrowed(bytes) => core::str::from_utf8(bytes).ok().map(Cow::Borrowed),
-            Cow::Owned(bytes) => String::from_utf8(bytes).ok().map(Cow::Owned),
-        }
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.get_bytes(name.as_bytes())
+            .and_then(|value| core::str::from_utf8(value).ok())
     }
 
-    /// Every raw value for `name`, in insertion order (a promoted key yields at most one).
-    pub fn get_all_bytes(&self, name: &[u8]) -> Vec<Cow<'_, [u8]>> {
-        if let Some(key) = promoted_key(name) {
-            if let Some(value) = self.promoted_bytes(key) {
-                return vec![value]; // single-valued promoted key
-            }
-        }
-        self.other
+    /// Every raw value for `name`, in insertion order.
+    pub fn get_all_bytes(&self, name: &[u8]) -> Vec<&[u8]> {
+        self.entries
             .iter()
             .filter(|entry| entry.name.eq_ignore_ascii_case(name))
-            .map(|entry| Cow::Borrowed(&*entry.value))
+            .map(|entry| &*entry.value)
             .collect()
     }
 
-    /// Every value for `name` as text, in insertion order (non-UTF-8 values are skipped).
-    pub fn get_all(&self, name: &str) -> Vec<Cow<'_, str>> {
-        self.get_all_bytes(name.as_bytes())
-            .into_iter()
-            .filter_map(|value| match value {
-                Cow::Borrowed(bytes) => core::str::from_utf8(bytes).ok().map(Cow::Borrowed),
-                Cow::Owned(bytes) => String::from_utf8(bytes).ok().map(Cow::Owned),
-            })
+    /// Every value for `name` as `&str`, in insertion order (non-UTF-8 values are skipped).
+    pub fn get_all(&self, name: &str) -> Vec<&str> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.name.eq_ignore_ascii_case(name.as_bytes()))
+            .filter_map(|entry| core::str::from_utf8(&entry.value).ok())
             .collect()
     }
 
     /// Whether any entry matches `name` (case-insensitively).
     pub fn contains(&self, name: &str) -> bool {
-        let name = name.as_bytes();
-        if let Some(key) = promoted_key(name) {
-            if self.promoted_present(key) {
-                return true;
-            }
-        }
-        self.other
+        self.entries
             .iter()
-            .any(|entry| entry.name.eq_ignore_ascii_case(name))
+            .any(|entry| entry.name.eq_ignore_ascii_case(name.as_bytes()))
     }
 
-    /// The `(name, value)` entries as raw bytes, in canonical order — the present promoted keys
-    /// first (fixed order), then the overflow entries in insertion order. A numeric promoted value
-    /// is rendered on demand (an owned [`Cow`]); everything else borrows.
-    pub fn iter(&self) -> impl Iterator<Item = (&[u8], Cow<'_, [u8]>)> {
-        let promoted = PROMOTED_ORDER.iter().filter_map(move |&key| {
-            self.promoted_bytes(key)
-                .map(|value| (Self::promoted_name(key).as_bytes(), value))
-        });
-        let overflow = self
-            .other
+    /// The `(name, value)` entries as raw bytes, in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = (&[u8], &[u8])> {
+        self.entries
             .iter()
-            .map(|entry| (&*entry.name, Cow::Borrowed(&*entry.value)));
-        promoted.chain(overflow)
+            .map(|entry| (&*entry.name, &*entry.value))
     }
 
     // ---- write (bytes + str) ------------------------------------------------------------
 
     /// Appends a `name: value` entry, **keeping** any existing entries with the same name
-    /// (multi-value append). A **promoted** key is single-valued, so append replaces it.
+    /// (multi-value append).
     pub fn append_bytes(&mut self, name: &[u8], value: &[u8]) {
-        if let Some(key) = promoted_key(name) {
-            self.clear_promoted(key);
-            self.clear_other_named(name);
-            self.store_promoted(key, name, value);
-        } else {
-            self.other.push(Entry {
-                name: name.into(),
-                value: value.into(),
-            });
-        }
+        self.entries.push(Entry {
+            name: name.into(),
+            value: value.into(),
+        });
     }
 
     /// [`append_bytes`](Headers::append_bytes) with `&str` arguments.
@@ -489,19 +181,10 @@ impl Headers {
     }
 
     /// **Sets** `name` to a single `value` — removes every existing entry with that name,
-    /// then stores one (HTTP "replace" semantics).
+    /// then appends one (HTTP "replace" semantics).
     pub fn insert_bytes(&mut self, name: &[u8], value: &[u8]) {
-        if let Some(key) = promoted_key(name) {
-            self.clear_promoted(key);
-            self.clear_other_named(name);
-            self.store_promoted(key, name, value);
-        } else {
-            self.clear_other_named(name);
-            self.other.push(Entry {
-                name: name.into(),
-                value: value.into(),
-            });
-        }
+        self.remove_bytes(name);
+        self.append_bytes(name, value);
     }
 
     /// [`insert_bytes`](Headers::insert_bytes) with `&str` arguments.
@@ -518,17 +201,10 @@ impl Headers {
 
     /// Removes **every** entry matching `name`; returns how many were removed.
     pub fn remove_bytes(&mut self, name: &[u8]) -> usize {
-        let mut removed = 0;
-        if let Some(key) = promoted_key(name) {
-            if self.promoted_present(key) {
-                self.clear_promoted(key);
-                removed += 1;
-            }
-        }
-        let before = self.other.len();
-        self.other
+        let before = self.entries.len();
+        self.entries
             .retain(|entry| !entry.name.eq_ignore_ascii_case(name));
-        removed + (before - self.other.len())
+        before - self.entries.len()
     }
 
     /// [`remove_bytes`](Headers::remove_bytes) with a `&str` name.
@@ -538,7 +214,7 @@ impl Headers {
 
     /// Removes all entries.
     pub fn clear(&mut self) {
-        *self = Self::new();
+        self.entries.clear();
     }
 
     /// An explicit copy of this map — the cross-language name for a clone.
@@ -550,89 +226,36 @@ impl Headers {
     /// that name here (all occurrences), and names only this map carries are kept.
     pub fn merge_with(&self, other: &Headers) -> Headers {
         let mut merged = self.clone();
-        // Drop every name `other` carries, then append all of `other`'s entries (preserving its
-        // multi-value overflow keys and its promoted keys).
-        for (name, _) in other.iter() {
-            merged.remove_bytes(name);
+        for entry in &other.entries {
+            merged.remove_bytes(&entry.name);
         }
-        for (name, value) in other.iter() {
-            merged.append_bytes(name, &value);
-        }
+        merged.entries.extend(other.entries.iter().cloned());
         merged
     }
 
     // ---- typed conveniences for common headers -----------------------------------------
 
-    /// The `Content-Type` value, if present — a direct borrow of the typed field.
+    /// The `Content-Type` value, if present and UTF-8.
     pub fn content_type(&self) -> Option<&str> {
-        self.content_type.as_deref()
+        self.get(Self::CONTENT_TYPE)
     }
 
-    /// Sets the `Content-Type` header — a direct typed-field store (no parse).
+    /// Sets the `Content-Type` header (replace semantics).
     pub fn set_content_type(&mut self, value: &str) {
-        self.content_type = Some(value.into());
-        self.clear_other_named(Self::CONTENT_TYPE.as_bytes());
+        self.insert(Self::CONTENT_TYPE, value);
     }
 
-    /// The `Content-Encoding` value, if present (e.g. `"gzip"`).
+    /// The `Content-Encoding` value, if present and UTF-8 (e.g. `"gzip"`).
     pub fn content_encoding(&self) -> Option<&str> {
-        self.content_encoding.as_deref()
+        self.get(Self::CONTENT_ENCODING)
     }
 
-    /// Sets the `Content-Encoding` header.
+    /// Sets the `Content-Encoding` header (replace semantics).
     pub fn set_content_encoding(&mut self, value: &str) {
-        self.content_encoding = Some(value.into());
-        self.clear_other_named(Self::CONTENT_ENCODING.as_bytes());
+        self.insert(Self::CONTENT_ENCODING, value);
     }
 
-    // The most-used single-valued HTTP request/response headers — promoted to typed fields.
-    str_header_accessor!(host, host, set_host, HOST, "Host");
-    str_header_accessor!(
-        user_agent,
-        user_agent,
-        set_user_agent,
-        USER_AGENT,
-        "User-Agent"
-    );
-    str_header_accessor!(accept, accept, set_accept, ACCEPT, "Accept");
-    str_header_accessor!(
-        accept_encoding,
-        accept_encoding,
-        set_accept_encoding,
-        ACCEPT_ENCODING,
-        "Accept-Encoding"
-    );
-    str_header_accessor!(
-        authorization,
-        authorization,
-        set_authorization,
-        AUTHORIZATION,
-        "Authorization"
-    );
-    str_header_accessor!(location, location, set_location, LOCATION, "Location");
-    str_header_accessor!(
-        connection,
-        connection,
-        set_connection,
-        CONNECTION,
-        "Connection"
-    );
-    str_header_accessor!(
-        cache_control,
-        cache_control,
-        set_cache_control,
-        CACHE_CONTROL,
-        "Cache-Control"
-    );
-    str_header_accessor!(
-        last_modified,
-        last_modified,
-        set_last_modified,
-        LAST_MODIFIED,
-        "Last-Modified"
-    );
-
-    /// The `Content-Length` value as a `u64`, if present — the hard-typed field, **no parse**.
+    /// The `Content-Length` value parsed as a `u64`, if present and numeric.
     ///
     /// ```
     /// use yggdryl_core::headers::Headers;
@@ -642,18 +265,21 @@ impl Headers {
     /// assert_eq!(headers.content_length(), Some(1024));
     /// ```
     pub fn content_length(&self) -> Option<u64> {
-        self.content_length
+        self.get(Self::CONTENT_LENGTH)?.trim().parse().ok()
     }
 
-    /// Sets `Content-Length` to `len` — a **direct `u64` store**: no decimal render, no value
-    /// allocation. The size half of the content-mutation header sync.
+    /// Sets `Content-Length` to `len` — a compact decimal rendered into a stack buffer (no
+    /// `String` temporary), the alloc-free counterpart of [`content_length`](Headers::content_length).
+    /// The size half of the content-mutation header sync.
     pub fn set_content_length(&mut self, len: u64) {
-        self.content_length = Some(len);
-        self.clear_other_named(Self::CONTENT_LENGTH.as_bytes());
+        let mut buf = [0u8; 20];
+        let text = write_u64(&mut buf, len);
+        self.insert_bytes(Self::CONTENT_LENGTH.as_bytes(), text);
     }
 
-    /// The storage **element data type** — the [`DataTypeId`](crate::datatype_id::DataTypeId) in the
-    /// typed field, or [`DataTypeId::Unknown`](crate::datatype_id::DataTypeId::Unknown) when none is set.
+    /// The storage **element data type** — the [`DataTypeId`](crate::datatype_id::DataTypeId) declared
+    /// under [`TYPE_ID`](Headers::TYPE_ID), or [`DataTypeId::Unknown`](crate::datatype_id::DataTypeId::Unknown)
+    /// when none is set. Total (never fails — an unrecognized id reads as `Unknown`).
     ///
     /// ```
     /// use yggdryl_core::headers::Headers;
@@ -665,38 +291,66 @@ impl Headers {
     /// assert_eq!(h.type_id(), DataTypeId::I64);
     /// assert_eq!(h.type_byte_size(), 8);
     /// ```
-    pub fn type_id(&self) -> DataTypeId {
-        self.type_id
+    pub fn type_id(&self) -> crate::datatype_id::DataTypeId {
+        match self.get(Self::TYPE_ID).and_then(|v| v.trim().parse().ok()) {
+            Some(id) => crate::datatype_id::DataTypeId::from_u16(id),
+            None => crate::datatype_id::DataTypeId::Unknown,
+        }
     }
 
-    /// Sets the storage [`DataTypeId`](crate::datatype_id::DataTypeId) — a direct field store;
-    /// [`Unknown`](crate::datatype_id::DataTypeId::Unknown) clears it (no declared type).
-    pub fn set_type_id(&mut self, type_id: DataTypeId) {
-        self.type_id = type_id;
-        self.clear_other_named(Self::TYPE_ID.as_bytes());
+    /// Sets the storage [`DataTypeId`](crate::datatype_id::DataTypeId) (its `u16` id, alloc-free decimal
+    /// render). [`Unknown`](crate::datatype_id::DataTypeId::Unknown) **removes** the header (no declared type).
+    pub fn set_type_id(&mut self, dtype: crate::datatype_id::DataTypeId) {
+        if dtype == crate::datatype_id::DataTypeId::Unknown {
+            self.remove(Self::TYPE_ID);
+            return;
+        }
+        let mut buf = [0u8; 20];
+        let text = write_u64(&mut buf, dtype.as_u16() as u64);
+        self.insert_bytes(Self::TYPE_ID.as_bytes(), text);
     }
 
     /// The **element storage width** in bytes derived from [`type_id`](Headers::type_id)
     /// (`i64` → 8), or `0` when the type is unknown.
     pub fn type_byte_size(&self) -> u64 {
-        self.type_id.byte_size()
+        self.type_id().byte_size()
     }
 
     /// The **element bit width** derived from [`type_id`](Headers::type_id) (`bool` → 1),
     /// or `0` when the type is unknown.
     pub fn type_bit_size(&self) -> u64 {
-        self.type_id.bit_size()
+        self.type_id().bit_size()
     }
 
     /// The resource **name** declared under [`NAME`](Headers::NAME), if any.
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.get(Self::NAME)
     }
 
-    /// Sets the resource **name**.
+    /// Sets the resource **name** (replaces).
     pub fn set_name(&mut self, name: &str) {
-        self.name = Some(name.into());
-        self.clear_other_named(Self::NAME.as_bytes());
+        self.insert(Self::NAME, name);
+    }
+
+    /// Whether the field/column this metadata describes **admits nulls** — the
+    /// [`NULLABLE`](Headers::NULLABLE) flag, `false` when unset (the safe default: a column with no
+    /// declared nullability is treated as non-nullable).
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    ///
+    /// let mut h = Headers::new();
+    /// assert!(!h.nullable()); // unset -> non-nullable
+    /// h.set_nullable(true);
+    /// assert!(h.nullable());
+    /// ```
+    pub fn nullable(&self) -> bool {
+        matches!(self.get(Self::NULLABLE), Some("true" | "1"))
+    }
+
+    /// Sets the [`NULLABLE`](Headers::NULLABLE) flag (`"true"` / `"false"`).
+    pub fn set_nullable(&mut self, nullable: bool) {
+        self.insert(Self::NULLABLE, if nullable { "true" } else { "false" });
     }
 
     /// Sets [`mtime`](Headers::mtime) to **now** (epoch microseconds from the system clock) —
@@ -771,7 +425,7 @@ impl Headers {
     // ---- modification time (epoch microseconds) -----------------------------------------
 
     /// The modification time as **total epoch microseconds** (signed — before 1970 is
-    /// negative), from the typed field, if set.
+    /// negative), from the [`MTIME`](Headers::MTIME) header, if present and an integer.
     ///
     /// ```
     /// use yggdryl_core::headers::Headers;
@@ -781,20 +435,22 @@ impl Headers {
     /// assert_eq!(headers.mtime(), Some(1_600_000_000_000_000));
     /// ```
     pub fn mtime(&self) -> Option<i64> {
-        self.mtime
+        self.get(Self::MTIME)?.trim().parse().ok()
     }
 
-    /// Sets the modification time to `micros` total epoch microseconds — a **direct `i64` store**
-    /// (no decimal render, no allocation).
+    /// Sets the modification time to `micros` total epoch microseconds — written as a compact
+    /// decimal into the [`MTIME`](Headers::MTIME) header (one small allocation via `itoa`-free
+    /// integer formatting).
     pub fn set_mtime(&mut self, micros: i64) {
-        self.mtime = Some(micros);
-        self.clear_other_named(Self::MTIME.as_bytes());
+        let mut buf = [0u8; 20]; // enough for i64::MIN's decimal digits + sign
+        let text = write_i64(&mut buf, micros);
+        self.insert_bytes(Self::MTIME.as_bytes(), text);
     }
 
     // ---- HTTP text form -----------------------------------------------------------------
 
     /// Renders the header block in HTTP wire form — `Name: Value\r\n` per entry (no trailing
-    /// blank line), in canonical order. One pre-sized allocation.
+    /// blank line). One pre-sized allocation.
     ///
     /// ```
     /// use yggdryl_core::headers::Headers;
@@ -804,16 +460,16 @@ impl Headers {
     /// assert_eq!(headers.to_http_bytes(), b"Host: example.com\r\n");
     /// ```
     pub fn to_http_bytes(&self) -> Vec<u8> {
-        let pairs: Vec<(&[u8], Cow<'_, [u8]>)> = self.iter().collect();
-        let size: usize = pairs
+        let size: usize = self
+            .entries
             .iter()
-            .map(|(name, value)| name.len() + value.len() + 4) // ": " + "\r\n"
+            .map(|entry| entry.name.len() + entry.value.len() + 4) // ": " + "\r\n"
             .sum();
         let mut out = Vec::with_capacity(size);
-        for (name, value) in &pairs {
-            out.extend_from_slice(name);
+        for entry in &self.entries {
+            out.extend_from_slice(&entry.name);
             out.extend_from_slice(b": ");
-            out.extend_from_slice(value);
+            out.extend_from_slice(&entry.value);
             out.extend_from_slice(b"\r\n");
         }
         out
@@ -828,8 +484,8 @@ impl Headers {
     /// use yggdryl_core::headers::Headers;
     ///
     /// let headers = Headers::parse_http(b"Host: example.com\r\nAccept: */*\r\n");
-    /// assert_eq!(headers.get("host").as_deref(), Some("example.com"));
-    /// assert_eq!(headers.get("accept").as_deref(), Some("*/*"));
+    /// assert_eq!(headers.get("host"), Some("example.com"));
+    /// assert_eq!(headers.get("accept"), Some("*/*"));
     /// ```
     pub fn parse_http(bytes: &[u8]) -> Self {
         let mut headers = Self::new();
@@ -852,10 +508,10 @@ impl Headers {
     // ---- binary codec (the Serializable value form) -------------------------------------
 
     /// The map as a length-prefixed binary frame —
-    /// `[count: u32][ (name_len: u32) name (value_len: u32) value ]*`, little-endian, in canonical
-    /// order — built in **one pre-sized allocation**. Unlike the HTTP text form this round-trips
-    /// **arbitrary** bytes (names/values may contain `:` or `\r\n`) and multi-value overflow
-    /// entries; [`deserialize_bytes`](Headers::deserialize_bytes) is the exact inverse.
+    /// `[count: u32][ (name_len: u32) name (value_len: u32) value ]*`, little-endian — built in
+    /// **one pre-sized allocation**. Unlike the HTTP text form this round-trips **arbitrary**
+    /// bytes (names/values may contain `:` or `\r\n`), insertion order, and multi-value entries;
+    /// [`deserialize_bytes`](Headers::deserialize_bytes) is the exact inverse.
     ///
     /// ```
     /// use yggdryl_core::headers::Headers;
@@ -866,18 +522,18 @@ impl Headers {
     /// assert_eq!(Headers::deserialize_bytes(&headers.serialize_bytes()).unwrap(), headers);
     /// ```
     pub fn serialize_bytes(&self) -> Vec<u8> {
-        let pairs: Vec<(&[u8], Cow<'_, [u8]>)> = self.iter().collect();
-        let size: usize = 4 + pairs
+        let size: usize = 4 + self
+            .entries
             .iter()
-            .map(|(name, value)| 8 + name.len() + value.len())
+            .map(|entry| 8 + entry.name.len() + entry.value.len())
             .sum::<usize>();
         let mut out = Vec::with_capacity(size);
-        out.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
-        for (name, value) in &pairs {
-            out.extend_from_slice(&(name.len() as u32).to_le_bytes());
-            out.extend_from_slice(name);
-            out.extend_from_slice(&(value.len() as u32).to_le_bytes());
-            out.extend_from_slice(value);
+        out.extend_from_slice(&(self.entries.len() as u32).to_le_bytes());
+        for entry in &self.entries {
+            out.extend_from_slice(&(entry.name.len() as u32).to_le_bytes());
+            out.extend_from_slice(&entry.name);
+            out.extend_from_slice(&(entry.value.len() as u32).to_le_bytes());
+            out.extend_from_slice(&entry.value);
         }
         out
     }
@@ -887,24 +543,18 @@ impl Headers {
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
         let mut offset = 0usize;
         let count = take_u32(bytes, &mut offset)? as usize;
+        // Cap the pre-size by what the frame could possibly hold (2 u32s per entry minimum),
+        // so a corrupt count cannot trigger a runaway allocation.
         let mut headers = Self::with_capacity(count.min(bytes.len() / 8));
         for _ in 0..count {
             let name_len = take_u32(bytes, &mut offset)? as usize;
             let name = take_bytes(bytes, &mut offset, name_len)?;
             let value_len = take_u32(bytes, &mut offset)? as usize;
             let value = take_bytes(bytes, &mut offset, value_len)?;
-            // Route by name: a promoted key lands in its typed field (or the overflow fallback);
-            // every other name is pushed directly, preserving order and duplicates.
-            if let Some(key) = promoted_key(name) {
-                headers.clear_promoted(key);
-                headers.clear_other_named(name);
-                headers.store_promoted(key, name, value);
-            } else {
-                headers.other.push(Entry {
-                    name: name.into(),
-                    value: value.into(),
-                });
-            }
+            headers.entries.push(Entry {
+                name: name.into(),
+                value: value.into(),
+            });
         }
         Ok(headers)
     }
@@ -922,27 +572,8 @@ impl Serializable for Headers {
     }
 }
 
-/// Matches `name` (case-insensitively) against the promoted keys.
-fn promoted_key(name: &[u8]) -> Option<Promoted> {
-    PROMOTED_ORDER
-        .into_iter()
-        .find(|&key| name.eq_ignore_ascii_case(Headers::promoted_name(key).as_bytes()))
-}
-
-/// Renders an unsigned `value` as a fresh decimal byte buffer (for the numeric map view).
-fn render_u64(value: u64) -> Vec<u8> {
-    let mut buf = [0u8; 20];
-    write_u64(&mut buf, value).to_vec()
-}
-
-/// Renders a signed `value` as a fresh decimal byte buffer (for the numeric map view).
-fn render_i64(value: i64) -> Vec<u8> {
-    let mut buf = [0u8; 20];
-    write_i64(&mut buf, value).to_vec()
-}
-
-/// Formats an unsigned `value` as decimal into `buf` and returns the written slice — the
-/// allocation-free integer render.
+/// Formats an unsigned `value` as decimal into `buf` — the alloc-free render for
+/// `set_content_length`.
 fn write_u64(buf: &mut [u8; 20], value: u64) -> &[u8] {
     let mut i = buf.len();
     let mut mag = value;
@@ -958,7 +589,7 @@ fn write_u64(buf: &mut [u8; 20], value: u64) -> &[u8] {
 }
 
 /// Formats `value` as decimal into `buf` and returns the written slice — an allocation-free
-/// integer render (no `format!`/`String`).
+/// integer render (no `format!`/`String`), for the hot `set_mtime` path.
 fn write_i64(buf: &mut [u8; 20], value: i64) -> &[u8] {
     let mut i = buf.len();
     let negative = value < 0;
@@ -1033,10 +664,10 @@ impl fmt::Debug for Headers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Header sets are small; render name -> value with lossy UTF-8 for readability.
         f.debug_map()
-            .entries(self.iter().map(|(name, value)| {
+            .entries(self.entries.iter().map(|entry| {
                 (
-                    String::from_utf8_lossy(name).into_owned(),
-                    String::from_utf8_lossy(&value).into_owned(),
+                    String::from_utf8_lossy(&entry.name),
+                    String::from_utf8_lossy(&entry.value),
                 )
             }))
             .finish()

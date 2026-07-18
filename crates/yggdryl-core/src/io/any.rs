@@ -13,17 +13,13 @@ use super::{IOKind, IOMode};
 use crate::headers::Headers;
 use crate::uri::Uri;
 
-/// The concrete source behind an [`AnyIO`] — selected by [`open`] from the address scheme. Each
-/// backing is **boxed**: a source handle carries a full `Headers` (many typed fields), so an inline
-/// variant would make `AnyIO` hundreds of bytes and every by-value move copy them; a box keeps the
-/// wrapper pointer-sized and its variants uniform (one alloc per `open()`, which already touches the
-/// filesystem for a `file://`).
+/// The concrete source behind an [`AnyIO`] — selected by [`open`] from the address scheme.
 #[derive(Debug)]
 enum Backend {
     /// A local-filesystem handle (a `file://` or plain-path address).
-    Local(Box<LocalIO>),
+    Local(LocalIO),
     /// An in-heap buffer (a `mem://` address).
-    Memory(Box<Heap>),
+    Memory(Heap),
 }
 
 /// A **uniform opened handle** over any source [`open`] can address — the one type a caller holds
@@ -116,7 +112,7 @@ impl AnyIO {
     /// Wraps a [`LocalIO`](crate::io::local::LocalIO) as a uniform handle (cursor at the start).
     pub fn local(io: LocalIO) -> AnyIO {
         AnyIO {
-            backend: Backend::Local(Box::new(io)),
+            backend: Backend::Local(io),
             position: 0,
         }
     }
@@ -124,7 +120,7 @@ impl AnyIO {
     /// Wraps a [`Heap`](crate::io::memory::Heap) as a uniform handle (cursor at the start).
     pub fn memory(heap: Heap) -> AnyIO {
         AnyIO {
-            backend: Backend::Memory(Box::new(heap)),
+            backend: Backend::Memory(heap),
             position: 0,
         }
     }
@@ -142,7 +138,7 @@ impl AnyIO {
     /// The backing [`LocalIO`](crate::io::local::LocalIO), or `None` when it is in-heap.
     pub fn as_local(&self) -> Option<&LocalIO> {
         match &self.backend {
-            Backend::Local(io) => Some(&**io),
+            Backend::Local(io) => Some(io),
             Backend::Memory(_) => None,
         }
     }
@@ -150,7 +146,7 @@ impl AnyIO {
     /// The backing [`Heap`](crate::io::memory::Heap), or `None` when it is a local handle.
     pub fn as_memory(&self) -> Option<&Heap> {
         match &self.backend {
-            Backend::Memory(heap) => Some(&**heap),
+            Backend::Memory(heap) => Some(heap),
             Backend::Local(_) => None,
         }
     }
@@ -160,7 +156,7 @@ impl AnyIO {
     #[allow(clippy::result_large_err)] // recover-self on mismatch, like `String::from_utf8`
     pub fn into_local(self) -> Result<LocalIO, AnyIO> {
         match self.backend {
-            Backend::Local(io) => Ok(*io),
+            Backend::Local(io) => Ok(io),
             Backend::Memory(_) => Err(self),
         }
     }
@@ -170,7 +166,7 @@ impl AnyIO {
     #[allow(clippy::result_large_err)] // recover-self on mismatch, like `String::from_utf8`
     pub fn into_memory(self) -> Result<Heap, AnyIO> {
         match self.backend {
-            Backend::Memory(heap) => Ok(*heap),
+            Backend::Memory(heap) => Ok(heap),
             Backend::Local(_) => Err(self),
         }
     }

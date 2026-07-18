@@ -97,6 +97,9 @@ impl Headers {
     /// The resource **name** header name (`name` / `set_name`).
     #[classattr]
     const NAME: &'static str = headers::Headers::NAME;
+    /// The **nullable** flag header name (`nullable` / `set_nullable`).
+    #[classattr]
+    const NULLABLE: &'static str = headers::Headers::NULLABLE;
 
     /// An empty header map (no allocation).
     #[new]
@@ -128,7 +131,7 @@ impl Headers {
     /// The **first** value for `name` (case-insensitive), or `None` if absent or not valid
     /// UTF-8. Use [`get_bytes`](Headers::get_bytes) for the raw bytes.
     fn get(&self, name: &str) -> Option<String> {
-        self.inner.get(name).map(|value| value.into_owned())
+        self.inner.get(name).map(str::to_string)
     }
 
     /// Every value for `name`, in insertion order (non-UTF-8 values are skipped).
@@ -136,7 +139,7 @@ impl Headers {
         self.inner
             .get_all(name)
             .into_iter()
-            .map(|value| value.into_owned())
+            .map(str::to_string)
             .collect()
     }
 
@@ -144,7 +147,7 @@ impl Headers {
     fn get_bytes<'py>(&self, py: Python<'py>, name: PyBackedBytes) -> Option<Bound<'py, PyBytes>> {
         self.inner
             .get_bytes(&name)
-            .map(|value| PyBytes::new_bound(py, &value))
+            .map(|value| PyBytes::new_bound(py, value))
     }
 
     /// Every raw value for `name`, in insertion order.
@@ -152,7 +155,7 @@ impl Headers {
         self.inner
             .get_all_bytes(&name)
             .into_iter()
-            .map(|value| PyBytes::new_bound(py, &value))
+            .map(|value| PyBytes::new_bound(py, value))
             .collect()
     }
 
@@ -166,7 +169,7 @@ impl Headers {
     fn items<'py>(&self, py: Python<'py>) -> Vec<(Bound<'py, PyBytes>, Bound<'py, PyBytes>)> {
         self.inner
             .iter()
-            .map(|(name, value)| (PyBytes::new_bound(py, name), PyBytes::new_bound(py, &value)))
+            .map(|(name, value)| (PyBytes::new_bound(py, name), PyBytes::new_bound(py, value)))
             .collect()
     }
 
@@ -264,96 +267,6 @@ impl Headers {
         self.inner.set_content_encoding(value);
     }
 
-    /// The `Host` value, if present and UTF-8.
-    fn host(&self) -> Option<String> {
-        self.inner.host().map(str::to_string)
-    }
-
-    /// Sets the `Host` header (replace semantics).
-    fn set_host(&mut self, value: &str) {
-        self.inner.set_host(value);
-    }
-
-    /// The `User-Agent` value, if present and UTF-8.
-    fn user_agent(&self) -> Option<String> {
-        self.inner.user_agent().map(str::to_string)
-    }
-
-    /// Sets the `User-Agent` header (replace semantics).
-    fn set_user_agent(&mut self, value: &str) {
-        self.inner.set_user_agent(value);
-    }
-
-    /// The `Accept` value, if present and UTF-8.
-    fn accept(&self) -> Option<String> {
-        self.inner.accept().map(str::to_string)
-    }
-
-    /// Sets the `Accept` header (replace semantics).
-    fn set_accept(&mut self, value: &str) {
-        self.inner.set_accept(value);
-    }
-
-    /// The `Accept-Encoding` value, if present and UTF-8.
-    fn accept_encoding(&self) -> Option<String> {
-        self.inner.accept_encoding().map(str::to_string)
-    }
-
-    /// Sets the `Accept-Encoding` header (replace semantics).
-    fn set_accept_encoding(&mut self, value: &str) {
-        self.inner.set_accept_encoding(value);
-    }
-
-    /// The `Authorization` value, if present and UTF-8.
-    fn authorization(&self) -> Option<String> {
-        self.inner.authorization().map(str::to_string)
-    }
-
-    /// Sets the `Authorization` header (replace semantics).
-    fn set_authorization(&mut self, value: &str) {
-        self.inner.set_authorization(value);
-    }
-
-    /// The `Location` value, if present and UTF-8.
-    fn location(&self) -> Option<String> {
-        self.inner.location().map(str::to_string)
-    }
-
-    /// Sets the `Location` header (replace semantics).
-    fn set_location(&mut self, value: &str) {
-        self.inner.set_location(value);
-    }
-
-    /// The `Connection` value, if present and UTF-8.
-    fn connection(&self) -> Option<String> {
-        self.inner.connection().map(str::to_string)
-    }
-
-    /// Sets the `Connection` header (replace semantics).
-    fn set_connection(&mut self, value: &str) {
-        self.inner.set_connection(value);
-    }
-
-    /// The `Cache-Control` value, if present and UTF-8.
-    fn cache_control(&self) -> Option<String> {
-        self.inner.cache_control().map(str::to_string)
-    }
-
-    /// Sets the `Cache-Control` header (replace semantics).
-    fn set_cache_control(&mut self, value: &str) {
-        self.inner.set_cache_control(value);
-    }
-
-    /// The `Last-Modified` value (RFC HTTP-date form), if present and UTF-8.
-    fn last_modified(&self) -> Option<String> {
-        self.inner.last_modified().map(str::to_string)
-    }
-
-    /// Sets the `Last-Modified` header (replace semantics).
-    fn set_last_modified(&mut self, value: &str) {
-        self.inner.set_last_modified(value);
-    }
-
     /// The `Content-Length` value parsed as an int, if present and numeric.
     fn content_length(&self) -> Option<u64> {
         self.inner.content_length()
@@ -394,6 +307,17 @@ impl Headers {
     /// Sets the resource **name** (replace semantics).
     fn set_name(&mut self, name: &str) {
         self.inner.set_name(name);
+    }
+
+    /// Whether the field/column this metadata describes **admits nulls** — the `X-Nullable`
+    /// flag, `False` when unset (the safe non-nullable default).
+    fn nullable(&self) -> bool {
+        self.inner.nullable()
+    }
+
+    /// Sets the `X-Nullable` flag.
+    fn set_nullable(&mut self, nullable: bool) {
+        self.inner.set_nullable(nullable);
     }
 
     // ---- media type: the one place Content-Type / Content-Encoding are interpreted -------
@@ -485,14 +409,11 @@ impl Headers {
         if !self.inner.contains(name) {
             return Err(PyKeyError::new_err(name.to_string()));
         }
-        self.inner
-            .get(name)
-            .map(|value| value.into_owned())
-            .ok_or_else(|| {
-                PyValueError::new_err(format!(
-                    "the value of {name:?} is not valid UTF-8; use get_bytes for the raw bytes"
-                ))
-            })
+        self.inner.get(name).map(str::to_string).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "the value of {name:?} is not valid UTF-8; use get_bytes for the raw bytes"
+            ))
+        })
     }
 
     /// Map write: `headers[name] = value` sets `name` to a single value (insert/replace,

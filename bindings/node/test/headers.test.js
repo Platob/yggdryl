@@ -174,46 +174,6 @@ test('contentType / contentLength read the common headers', () => {
   assert.equal(new Headers().with('Content-Length', 'abc').contentLength(), null)
 })
 
-test('promoted HTTP accessors round-trip, are single-valued, and show through get', () => {
-  const h = new Headers()
-
-  // Round-trip through the typed setter/getter.
-  h.setHost('example.com')
-  assert.equal(h.host(), 'example.com')
-  h.setUserAgent('yggdryl/1.0')
-  assert.equal(h.userAgent(), 'yggdryl/1.0')
-  h.setCacheControl('no-cache')
-  assert.equal(h.cacheControl(), 'no-cache')
-
-  // Single-valued: setting twice replaces (HTTP unique-key semantics).
-  h.setHost('other.example')
-  assert.equal(h.host(), 'other.example')
-  assert.deepEqual(h.getAll('Host'), ['other.example']) // one entry, not two
-
-  // Visible through the generic, case-insensitive map view.
-  assert.equal(h.get('host'), 'other.example')
-  assert.equal(h.get('user-agent'), 'yggdryl/1.0')
-  assert.equal(h.get('cache-control'), 'no-cache')
-
-  // The rest of the promoted set round-trips the same way.
-  h.setAccept('*/*')
-  h.setAcceptEncoding('gzip')
-  h.setAuthorization('Bearer t0ken')
-  h.setLocation('/next')
-  h.setConnection('keep-alive')
-  h.setLastModified('Wed, 21 Oct 2015 07:28:00 GMT')
-  assert.equal(h.accept(), '*/*')
-  assert.equal(h.acceptEncoding(), 'gzip')
-  assert.equal(h.authorization(), 'Bearer t0ken')
-  assert.equal(h.location(), '/next')
-  assert.equal(h.connection(), 'keep-alive')
-  assert.equal(h.lastModified(), 'Wed, 21 Oct 2015 07:28:00 GMT')
-
-  // Absent reads as null.
-  assert.equal(new Headers().host(), null)
-  assert.equal(new Headers().cacheControl(), null)
-})
-
 // -------------------------------------------------------------------------------------
 // HTTP text form + binary codec
 // -------------------------------------------------------------------------------------
@@ -251,16 +211,16 @@ test('serializeBytes / deserializeBytes round-trip arbitrary bytes; truncated th
 // keys, equals, copy, toString
 // -------------------------------------------------------------------------------------
 
-test('keys lists names in canonical order (promoted first, repeats kept, non-UTF-8 names skipped)', () => {
+test('keys lists names in insertion order (repeats kept, non-UTF-8 names skipped)', () => {
   const h = new Headers()
   h.append('Set-Cookie', 'a=1')
   h.append('Set-Cookie', 'b=2')
-  h.append('Host', 'example.com') // Host is a promoted key -> renders first, ahead of the overflow
-  assert.deepEqual(h.keys(), ['Host', 'Set-Cookie', 'Set-Cookie'])
+  h.append('Host', 'example.com')
+  assert.deepEqual(h.keys(), ['Set-Cookie', 'Set-Cookie', 'Host'])
 
   h.appendBytes(Buffer.from([0xff]), Buffer.from('v')) // a non-UTF-8 name
   assert.equal(h.len(), 4)
-  assert.deepEqual(h.keys(), ['Host', 'Set-Cookie', 'Set-Cookie']) // skipped, not garbled
+  assert.deepEqual(h.keys(), ['Set-Cookie', 'Set-Cookie', 'Host']) // skipped, not garbled
 })
 
 test('equals is content equality over the exact entries', () => {
@@ -353,4 +313,14 @@ test('the header-name constants are exposed on the namespace', () => {
   // The constants address real entries.
   const h = new Headers().with(yggdryl.headers.LAST_MODIFIED, 'Wed, 21 Oct 2015 07:28:00 GMT')
   assert.equal(h.get('last-modified'), 'Wed, 21 Oct 2015 07:28:00 GMT')
+})
+
+test('nullable flag defaults false and round-trips', () => {
+  const h = new Headers()
+  assert.strictEqual(h.nullable(), false) // unset -> non-nullable default
+  h.setNullable(true)
+  assert.strictEqual(h.nullable(), true)
+  assert.strictEqual(h.get(Headers.NULLABLE ?? 'X-Nullable'), 'true')
+  h.setNullable(false)
+  assert.strictEqual(h.nullable(), false)
 })
