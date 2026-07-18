@@ -152,6 +152,38 @@ impl DataTypeId {
         }
     }
 
+    /// 32-bit fixed-point decimal over an unscaled `i32` (id `14`).
+    #[napi(factory, js_name = "Decimal32")]
+    pub fn variant_decimal32() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Decimal32,
+        }
+    }
+
+    /// 64-bit fixed-point decimal over an unscaled `i64` (id `15`).
+    #[napi(factory, js_name = "Decimal64")]
+    pub fn variant_decimal64() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Decimal64,
+        }
+    }
+
+    /// 128-bit fixed-point decimal over an unscaled `i128` (id `16`).
+    #[napi(factory, js_name = "Decimal128")]
+    pub fn variant_decimal128() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Decimal128,
+        }
+    }
+
+    /// 256-bit fixed-point decimal over an unscaled `I256` (id `17`).
+    #[napi(factory, js_name = "Decimal256")]
+    pub fn variant_decimal256() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Decimal256,
+        }
+    }
+
     // ---- id / name round-trips ---------------------------------------------------------
 
     /// The `u16` discriminant — what a source stores in its headers.
@@ -190,7 +222,8 @@ impl DataTypeId {
             .ok_or_else(|| {
                 napi::Error::from_reason(format!(
                     "unknown data type name {token:?}: expected one of unknown, bool, i8, u8, \
-                     i16, u16, i32, u32, i64, u64, i128, u128, f32, f64"
+                     i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, decimal32, decimal64, \
+                     decimal128, decimal256"
                 ))
             })
     }

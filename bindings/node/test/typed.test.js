@@ -206,3 +206,135 @@ test('a wrong element shape throws a guided error', () => {
   // Unknown has no typed column
   assert.throws(() => Serie.fromValues([1n], DataTypeId.Unknown()), /no typed Serie/)
 })
+
+// -------------------------------------------------------------------------------------
+// Fixed-point decimals — the docs/typed.md "Fixed-point decimals" tab
+// -------------------------------------------------------------------------------------
+
+test('Decimal128 money: unscaled BigInt get + scale-aware toDecimalString', () => {
+  // Money as Decimal128 scale 2: the stored value is the unscaled integer.
+  const col = Serie.fromValues([12345n, 5n, -5n], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+  assert.equal(col.get(0), 12345n) // raw unscaled value
+  assert.equal(col.toDecimalString(0), '123.45') // scale-aware string
+  assert.equal(col.toDecimalString(1), '0.05')
+  assert.equal(col.toDecimalString(2), '-0.05')
+  assert.ok(col.dtype().equals(DataTypeId.Decimal128()))
+  // precision/scale live in the Field metadata
+  assert.equal(col.field().precision(), 10)
+  assert.equal(col.field().scale(), 2)
+  // Serie mirrors of the same metadata
+  assert.equal(col.decimalPrecision(), 10)
+  assert.equal(col.decimalScale(), 2)
+})
+
+test('Decimal32 crosses as a number (i32), not a BigInt', () => {
+  const col = Serie.fromValues([12345, 5, -5], DataTypeId.Decimal32()).withPrecisionScale(9, 2)
+  assert.equal(col.get(0), 12345) // a plain number
+  assert.equal(col.toDecimalString(0), '123.45')
+  assert.equal(col.toDecimalString(2), '-0.05')
+  assert.ok(col.dtype().equals(DataTypeId.Decimal32()))
+})
+
+test('all four decimal widths format the same unscaled money value', () => {
+  const d32 = Serie.fromValues([12345], DataTypeId.Decimal32()).withPrecisionScale(9, 2)
+  const d64 = Serie.fromValues([12345n], DataTypeId.Decimal64()).withPrecisionScale(18, 2)
+  const d128 = Serie.fromValues([12345n], DataTypeId.Decimal128()).withPrecisionScale(38, 2)
+  const d256 = Serie.fromValues([12345n], DataTypeId.Decimal256()).withPrecisionScale(76, 2)
+  assert.equal(d32.toDecimalString(0), '123.45')
+  assert.equal(d64.toDecimalString(0), '123.45')
+  assert.equal(d128.toDecimalString(0), '123.45')
+  assert.equal(d256.toDecimalString(0), '123.45')
+  // each reports its own decimal dtype
+  assert.ok(d32.dtype().equals(DataTypeId.Decimal32()))
+  assert.ok(d64.dtype().equals(DataTypeId.Decimal64()))
+  assert.ok(d128.dtype().equals(DataTypeId.Decimal128()))
+  assert.ok(d256.dtype().equals(DataTypeId.Decimal256()))
+})
+
+test('Decimal256 fits i128 and beyond i128, round-tripping through toDecimalString', () => {
+  // Values that fit i128 take the fast I256::from_i128 path.
+  const small = Serie.fromValues([1n, -5n], DataTypeId.Decimal256())
+  assert.equal(small.get(0), 1n)
+  assert.equal(small.get(1), -5n)
+  assert.equal(small.toDecimalString(0), '1') // default scale 0 -> plain integer
+  assert.equal(small.toDecimalString(1), '-5')
+  // Decimal256's precision defaults to the type max (76) when unset.
+  assert.equal(small.decimalPrecision(), 76)
+  assert.equal(small.field().precision(), null) // Field carries it only once set
+
+  // A value beyond i128 (2^130 = 4 * 2^128) crosses as an arbitrary-precision BigInt.
+  const big = 2n ** 130n
+  assert.ok(big > (2n ** 127n - 1n)) // beyond i128::MAX
+  const wide = Serie.fromValues([big, -big], DataTypeId.Decimal256())
+  assert.equal(wide.get(0), big)
+  assert.equal(wide.get(1), -big)
+  assert.equal(wide.toDecimalString(0), big.toString())
+  assert.equal(wide.toDecimalString(1), (-big).toString())
+  assert.deepEqual(wide.values(), [big, -big])
+
+  // A BigInt past the 256-bit range is refused with a guided error.
+  assert.throws(() => Serie.fromValues([2n ** 300n], DataTypeId.Decimal256()), /out of range/)
+})
+
+test('a nullable decimal column keeps its validity, metadata, and null-aware formatting', () => {
+  const col = Serie.fromOptions([12345n, null, -5n], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+  assert.equal(col.len(), 3)
+  assert.equal(col.nullCount(), 1)
+  assert.equal(col.get(0), 12345n)
+  assert.equal(col.get(1), null) // the null
+  assert.equal(col.toDecimalString(0), '123.45')
+  assert.equal(col.toDecimalString(1), null) // a null element formats as null
+  assert.equal(col.toDecimalString(2), '-0.05')
+  assert.equal(col.field().nullable(), true)
+  assert.equal(col.field().precision(), 10)
+  assert.equal(col.field().scale(), 2)
+})
+
+test('withName and withPrecisionScale preserve each other (either order)', () => {
+  const a = Serie.fromValues([12345n], DataTypeId.Decimal128()).withName('price').withPrecisionScale(10, 2)
+  assert.equal(a.field().name(), 'price')
+  assert.equal(a.field().precision(), 10)
+  assert.equal(a.field().scale(), 2)
+
+  const b = Serie.fromValues([12345n], DataTypeId.Decimal128()).withPrecisionScale(10, 2).withName('price')
+  assert.equal(b.field().name(), 'price')
+  assert.equal(b.field().precision(), 10)
+  assert.equal(b.field().scale(), 2)
+})
+
+test('a decimal column does not reduce', () => {
+  const col = Serie.fromValues([12345n, 5n], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+  assert.throws(() => col.sum(), /decimal column does not reduce/)
+  assert.throws(() => col.min(), /decimal column does not reduce/)
+  assert.throws(() => col.max(), /decimal column does not reduce/)
+  assert.throws(() => col.mean(), /decimal column does not reduce/)
+})
+
+test('the decimal-only methods refuse a non-decimal column', () => {
+  const ints = Serie.fromValues([1n, 2n], DataTypeId.I64())
+  assert.throws(() => ints.toDecimalString(0), /not a decimal column/)
+  assert.throws(() => ints.decimalPrecision(), /not a decimal column/)
+  assert.throws(() => ints.decimalScale(), /not a decimal column/)
+})
+
+test('a wrong decimal element shape throws a guided error', () => {
+  // Decimal32 takes a number; a bigint is the wrong shape.
+  assert.throws(() => Serie.fromValues([12345n], DataTypeId.Decimal32()), /expected a JS number/)
+  // Decimal64/128/256 take a bigint; a plain number is the wrong shape.
+  assert.throws(() => Serie.fromValues([12345], DataTypeId.Decimal128()), /expected a JS bigint/)
+  assert.throws(() => Serie.fromValues([12345], DataTypeId.Decimal256()), /expected a JS bigint/)
+})
+
+// -------------------------------------------------------------------------------------
+// DataTypeId decimal factories
+// -------------------------------------------------------------------------------------
+
+test('DataTypeId decimal factories name their widths', () => {
+  assert.equal(DataTypeId.Decimal32().name(), 'decimal32')
+  assert.equal(DataTypeId.Decimal64().name(), 'decimal64')
+  assert.equal(DataTypeId.Decimal128().name(), 'decimal128')
+  assert.equal(DataTypeId.Decimal256().name(), 'decimal256')
+  assert.equal(DataTypeId.Decimal32().byteSize(), 4)
+  assert.equal(DataTypeId.Decimal256().byteSize(), 32)
+  assert.ok(DataTypeId.fromName('decimal128').equals(DataTypeId.Decimal128()))
+})

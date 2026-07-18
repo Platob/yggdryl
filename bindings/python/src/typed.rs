@@ -8,9 +8,12 @@
 //! fixed-width type — and dispatches each method across the variants, so one dynamic `Serie` class
 //! covers every dtype.
 //!
-//! Every method is one or two lines over `yggdryl_core`; a reduction on a `bool` column raises a
-//! guided `TypeError` (booleans do not reduce — `Bit` is not numeric), and a hard-fill read error
-//! surfaces as a `ValueError` carrying the core text unchanged.
+//! Every method is one or two lines over `yggdryl_core`; a reduction on a `bool` (or decimal) column
+//! raises a guided `TypeError` (they do not reduce), and a hard-fill read error surfaces as a
+//! `ValueError` carrying the core text unchanged. The four fixed-point **decimal** dtypes join the
+//! erased [`Inner`]: their unscaled values cross as Python `int`s (a `Decimal256` beyond `i128` as an
+//! arbitrary-precision `int`, via [`i256_from_py`] / [`i256_to_py`]), and `with_precision_scale` /
+//! `to_decimal_string` / `decimal_precision` / `decimal_scale` add the scale-aware surface.
 
 // `useless_conversion`: pyo3's `#[pymethods]` expansion wraps fallible returns in a same-type
 // `From`.
@@ -18,6 +21,7 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyDict, PyInt};
 
 use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
@@ -26,7 +30,8 @@ use yggdryl_core::io::memory::{self, IOBase, IoError};
 use yggdryl_core::typed::{
     fixedbit::Bit,
     fixedbyte::{
-        Float32, Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8,
+        Decimal128, Decimal256, Decimal32, Decimal64, Float32, Float64, Int128, Int16, Int32,
+        Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
     },
     Decoder, Encoder, Field as _, FixedSerie, HeaderField, Scalar, Serie as _,
 };
@@ -34,6 +39,103 @@ use yggdryl_core::typed::{
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
+}
+
+/// Converts a Python `int` into an [`I256`] — the 256-bit unscaled value of a `Decimal256`. Values
+/// that fit an `i128` take the cheap [`I256::from_i128`] path; wider ones cross as the 32
+/// two's-complement little-endian bytes Python's `int.to_bytes(32, "little", signed=True)` renders,
+/// so the full 256-bit range round-trips. A value that does not fit 256 bits is a guided
+/// `ValueError`.
+fn i256_from_py(obj: &Bound<'_, PyAny>) -> PyResult<I256> {
+    if let Ok(value) = obj.extract::<i128>() {
+        return Ok(I256::from_i128(value));
+    }
+    let py = obj.py();
+    let kwargs = PyDict::new_bound(py);
+    kwargs.set_item("signed", true)?;
+    let bytes = obj
+        .call_method("to_bytes", (32, "little"), Some(&kwargs))
+        .map_err(|_| {
+            PyValueError::new_err(
+                "decimal256 value out of range: expected an integer that fits 256 bits \
+                 (two's complement, -2**255 .. 2**255 - 1) — use a smaller value",
+            )
+        })?;
+    let raw: Vec<u8> = bytes.extract()?;
+    let bytes: [u8; 32] = raw
+        .try_into()
+        .map_err(|_| PyValueError::new_err("decimal256 int did not encode to 32 bytes"))?;
+    Ok(I256::from_le_bytes(bytes))
+}
+
+/// Converts an [`I256`] back into a Python `int` — the inverse of [`i256_from_py`]. Values within
+/// `i128` use the native conversion; wider ones are rebuilt with `int.from_bytes(..., signed=True)`
+/// over the 32 little-endian bytes, so a value beyond `i128` still lands as an exact Python integer.
+fn i256_to_py(py: Python<'_>, value: I256) -> PyObject {
+    if let Some(value) = value.to_i128() {
+        return value.into_py(py);
+    }
+    let bytes = PyBytes::new_bound(py, &value.to_le_bytes());
+    let kwargs = PyDict::new_bound(py);
+    kwargs
+        .set_item("signed", true)
+        .expect("setting a bool dict item never fails");
+    py.get_type_bound::<PyInt>()
+        .call_method("from_bytes", (bytes, "little"), Some(&kwargs))
+        .expect("int.from_bytes over 32 signed little-endian bytes never fails")
+        .unbind()
+}
+
+/// Decodes every element of `values` (a Python iterable of `int`) into a `Vec<I256>` — the
+/// `Decimal256` counterpart of pyo3's `Vec<i128>` extraction (which has no `I256` impl).
+fn i256_values(values: &Bound<'_, PyAny>) -> PyResult<Vec<I256>> {
+    let mut out = Vec::with_capacity(values.len().unwrap_or(0));
+    for item in values.iter()? {
+        out.push(i256_from_py(&item?)?);
+    }
+    Ok(out)
+}
+
+/// Like [`i256_values`], but null-aware — a Python `None` becomes a `None` slot (a nullable
+/// `Decimal256` column built through `from_options`).
+fn i256_options(values: &Bound<'_, PyAny>) -> PyResult<Vec<Option<I256>>> {
+    let mut out = Vec::with_capacity(values.len().unwrap_or(0));
+    for item in values.iter()? {
+        let item = item?;
+        if item.is_none() {
+            out.push(None);
+        } else {
+            out.push(Some(i256_from_py(&item)?));
+        }
+    }
+    Ok(out)
+}
+
+/// Converts a decoded native element into a Python object. Every native scalar goes through pyo3's
+/// [`IntoPy`], and the 256-bit [`I256`] (which has no `IntoPy` impl) crosses through the
+/// [`i256_to_py`] bridge — so one `dispatch!` body serves every dtype, decimals included.
+trait IntoPyValue {
+    fn into_py_value(self, py: Python<'_>) -> PyObject;
+}
+
+macro_rules! impl_into_py_value {
+    ($($native:ty),+ $(,)?) => {$(
+        impl IntoPyValue for $native {
+            fn into_py_value(self, py: Python<'_>) -> PyObject {
+                self.into_py(py)
+            }
+        }
+    )+};
+}
+
+// The `i32` / `i64` / `i128` impls double as the `Decimal32` / `Decimal64` / `Decimal128` unscaled
+// values; `Decimal256` uses the `I256` impl below.
+impl_into_py_value!(i8, u8, i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, bool);
+
+impl IntoPyValue for I256 {
+    fn into_py_value(self, py: Python<'_>) -> PyObject {
+        i256_to_py(py, self)
+    }
 }
 
 /// The **type-erased** column backing [`Serie`] — one variant per fixed-width core element type.
@@ -53,6 +155,10 @@ enum Inner {
     F32(FixedSerie<Float32>),
     F64(FixedSerie<Float64>),
     Bool(FixedSerie<Bit>),
+    Decimal32(FixedSerie<Decimal32>),
+    Decimal64(FixedSerie<Decimal64>),
+    Decimal128(FixedSerie<Decimal128>),
+    Decimal256(FixedSerie<Decimal256>),
 }
 
 /// Resolves the `dtype` argument (a `yggdryl.datatype_id.DataTypeId`, or a type-name `str` like
@@ -64,7 +170,8 @@ fn resolve_dtype(dtype: &Bound<'_, PyAny>) -> PyResult<CoreId> {
         CoreId::from_name(&name).ok_or_else(|| {
             PyValueError::new_err(format!(
                 "unknown dtype {name:?}: expected a DataTypeId or a type name like 'i8', 'u8', \
-                 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'i128', 'u128', 'f32', 'f64', 'bool'"
+                 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'i128', 'u128', 'f32', 'f64', 'bool', \
+                 'decimal32', 'decimal64', 'decimal128', 'decimal256'"
             ))
         })
     } else {
@@ -75,13 +182,29 @@ fn resolve_dtype(dtype: &Bound<'_, PyAny>) -> PyResult<CoreId> {
 }
 
 /// Rebuilds a fresh column that **shares the same encoded bytes** as `s` (cloning only the small
-/// data/validity heaps) with its column `name` set — the [`with_name`](Serie::with_name) worker
-/// (the core `with_name` consumes `self`, which the `&self` binding cannot).
-fn rebuild_named<T: Encoder + Decoder>(
+/// data/validity heaps), applying the given `name` and (for a decimal column) `precision`/`scale`
+/// overrides — each defaulting to `s`'s current value. This is the shared worker behind
+/// [`with_name`](Serie::with_name) and [`with_precision_scale`](Serie::with_precision_scale), whose
+/// core counterparts consume `self` (which the `&self` binding cannot). The current `name` /
+/// `precision` / `scale` are read back from `s.field()` so a rebuild never drops decimal metadata.
+fn rebuild<T: Encoder + Decoder>(
     s: &FixedSerie<T, memory::Heap>,
-    name: &str,
+    name: Option<&str>,
+    precision_scale: Option<(u32, i32)>,
 ) -> FixedSerie<T, memory::Heap> {
-    FixedSerie::from_data(s.data().clone(), s.validity().cloned(), s.len()).with_name(name)
+    let field = s.field();
+    let mut out = FixedSerie::from_data(s.data().clone(), s.validity().cloned(), s.len());
+    if let Some(name) = name.or(field.name()) {
+        out = out.with_name(name);
+    }
+    let precision_scale = precision_scale.or(match (field.precision(), field.scale()) {
+        (Some(precision), Some(scale)) => Some((precision, scale)),
+        _ => None,
+    });
+    if let Some((precision, scale)) = precision_scale {
+        out = out.with_precision_scale(precision, scale);
+    }
+    out
 }
 
 /// Runs `$body` against the inner `FixedSerie` (bound to `$s`) of whichever variant is active,
@@ -103,6 +226,10 @@ macro_rules! dispatch {
             Inner::F32($s) => $body,
             Inner::F64($s) => $body,
             Inner::Bool($s) => $body,
+            Inner::Decimal32($s) => $body,
+            Inner::Decimal64($s) => $body,
+            Inner::Decimal128($s) => $body,
+            Inner::Decimal256($s) => $body,
         }
     };
 }
@@ -125,6 +252,10 @@ macro_rules! map_variant {
             Inner::F32($s) => Inner::F32($make),
             Inner::F64($s) => Inner::F64($make),
             Inner::Bool($s) => Inner::Bool($make),
+            Inner::Decimal32($s) => Inner::Decimal32($make),
+            Inner::Decimal64($s) => Inner::Decimal64($make),
+            Inner::Decimal128($s) => Inner::Decimal128($make),
+            Inner::Decimal256($s) => Inner::Decimal256($make),
         }
     };
 }
@@ -148,11 +279,41 @@ macro_rules! by_dtype {
             CoreId::F32 => $mk!(F32, Float32, f32),
             CoreId::F64 => $mk!(F64, Float64, f64),
             CoreId::Bool => $mk!(Bool, Bit, bool),
+            CoreId::Decimal32 => $mk!(Decimal32, Decimal32, i32),
+            CoreId::Decimal64 => $mk!(Decimal64, Decimal64, i64),
+            CoreId::Decimal128 => $mk!(Decimal128, Decimal128, i128),
+            // `Decimal256`'s native `I256` has no pyo3 extraction, so its `$mk!` arm marshals each
+            // Python `int` element itself (see the `@i256` rule the callers define).
+            CoreId::Decimal256 => $mk!(@i256),
             _ => {
                 return Err(PyValueError::new_err(
                     "dtype has no fixed-width element type: expected one of i8, u8, i16, u16, \
-                     i32, u32, i64, u64, i128, u128, f32, f64, bool (not 'unknown')",
+                     i32, u32, i64, u64, i128, u128, f32, f64, bool, decimal32, decimal64, \
+                     decimal128, decimal256 (not 'unknown')",
                 ))
+            }
+        }
+    };
+}
+
+/// Runs `$body` against the inner `FixedSerie` of whichever **decimal** variant is active (binding
+/// it to `$s`), and raises a guided `TypeError` for any non-decimal column — the dispatch behind the
+/// decimal-only methods (`to_decimal_string`, `decimal_precision`, `decimal_scale`). `$what` names
+/// the method in the error text.
+macro_rules! decimal_dispatch {
+    ($self:expr, $s:ident => $body:expr, $what:literal) => {
+        match &$self.inner {
+            Inner::Decimal32($s) => $body,
+            Inner::Decimal64($s) => $body,
+            Inner::Decimal128($s) => $body,
+            Inner::Decimal256($s) => $body,
+            _ => {
+                return Err(PyTypeError::new_err(concat!(
+                    "not a decimal column: ",
+                    $what,
+                    " applies only to a decimal Serie (dtype Decimal32 / Decimal64 / Decimal128 / \
+                     Decimal256) — build the column with a decimal dtype"
+                )))
             }
         }
     };
@@ -162,7 +323,8 @@ macro_rules! by_dtype {
 /// byte buffer, with an optional validity bitmap for nulls. Built from a list of values (or a list
 /// of options, for nulls); `get` / `to_list` are null-aware, `values` reads the raw buffer, and the
 /// numeric `sum` / `min` / `max` / `mean` reduce over the byte layer's vectorized kernels (a `bool`
-/// column does not reduce).
+/// or decimal column does not reduce). A **decimal** column additionally carries `precision` /
+/// `scale` metadata and renders a scale-aware `to_decimal_string`.
 #[pyclass(module = "yggdryl.typed")]
 pub struct Serie {
     inner: Inner,
@@ -176,6 +338,10 @@ impl Serie {
     fn from_values(values: &Bound<'_, PyAny>, dtype: &Bound<'_, PyAny>) -> PyResult<Serie> {
         let id = resolve_dtype(dtype)?;
         macro_rules! mk {
+            (@i256) => {{
+                let v = i256_values(values)?;
+                Inner::Decimal256(FixedSerie::<Decimal256>::from_values(&v))
+            }};
             ($variant:ident, $marker:ty, $native:ty) => {{
                 let v: Vec<$native> = values.extract()?;
                 Inner::$variant(FixedSerie::<$marker>::from_values(&v))
@@ -192,6 +358,10 @@ impl Serie {
     fn from_options(values: &Bound<'_, PyAny>, dtype: &Bound<'_, PyAny>) -> PyResult<Serie> {
         let id = resolve_dtype(dtype)?;
         macro_rules! mk {
+            (@i256) => {{
+                let v = i256_options(values)?;
+                Inner::Decimal256(FixedSerie::<Decimal256>::from_options(&v))
+            }};
             ($variant:ident, $marker:ty, $native:ty) => {{
                 let v: Vec<Option<$native>> = values.extract()?;
                 Inner::$variant(FixedSerie::<$marker>::from_options(&v))
@@ -223,10 +393,11 @@ impl Serie {
     }
 
     /// The element at `index` as a Python `int` / `float` / `bool`, or `None` when it is null or
-    /// out of range.
+    /// out of range. A decimal element crosses as its raw **unscaled** integer (a `Decimal256` value
+    /// beyond `i128` as an arbitrary-precision Python `int`).
     fn get(&self, py: Python<'_>, index: usize) -> PyObject {
         dispatch!(self, s => match s.get(index) {
-            Some(value) => value.into_py(py),
+            Some(value) => value.into_py_value(py),
             None => py.None(),
         })
     }
@@ -238,7 +409,7 @@ impl Serie {
             .to_options()
             .into_iter()
             .map(|value| match value {
-                Some(value) => value.into_py(py),
+                Some(value) => value.into_py_value(py),
                 None => py.None(),
             })
             .collect::<Vec<PyObject>>())
@@ -250,7 +421,7 @@ impl Serie {
         dispatch!(self, s => s
             .values()
             .into_iter()
-            .map(|value| value.into_py(py))
+            .map(|value| value.into_py_value(py))
             .collect::<Vec<PyObject>>())
     }
 
@@ -275,18 +446,60 @@ impl Serie {
     }
 
     /// A **fresh** column addressing the same bytes with its column `name` set — the metadata a
-    /// [`field`](Serie::field) reports.
+    /// [`field`](Serie::field) reports. Any decimal `precision` / `scale` is carried over.
     fn with_name(&self, name: &str) -> Serie {
         Serie {
-            inner: map_variant!(self, s => rebuild_named(s, name)),
+            inner: map_variant!(self, s => rebuild(s, Some(name), None)),
         }
     }
 
-    /// The column's [`Field`] metadata — its `name`, element type, and `nullable` flag.
+    /// The column's [`Field`] metadata — its `name`, element type, `nullable` flag, and (for a
+    /// decimal column) its `precision` / `scale`.
     fn field(&self) -> Field {
         Field {
             inner: dispatch!(self, s => s.field()),
         }
+    }
+
+    /// A **fresh** decimal column addressing the same bytes with its `precision` (max significant
+    /// digits) and `scale` (decimal places) set — the metadata [`field`](Serie::field) reports and
+    /// [`to_decimal_string`](Serie::to_decimal_string) uses to place the decimal point. Raises
+    /// `TypeError` on a non-decimal column.
+    fn with_precision_scale(&self, precision: u32, scale: i32) -> PyResult<Serie> {
+        match &self.inner {
+            Inner::Decimal32(_)
+            | Inner::Decimal64(_)
+            | Inner::Decimal128(_)
+            | Inner::Decimal256(_) => {}
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "not a decimal column: with_precision_scale applies only to a decimal Serie \
+                     (dtype Decimal32 / Decimal64 / Decimal128 / Decimal256) — build the column \
+                     with a decimal dtype",
+                ))
+            }
+        }
+        Ok(Serie {
+            inner: map_variant!(self, s => rebuild(s, None, Some((precision, scale)))),
+        })
+    }
+
+    /// The decimal value at `index` formatted with the column's scale (e.g. `"123.45"`), or `None`
+    /// when the element is null or out of range. Raises `TypeError` on a non-decimal column.
+    fn to_decimal_string(&self, index: usize) -> PyResult<Option<String>> {
+        Ok(decimal_dispatch!(self, s => s.to_decimal_string(index), "to_decimal_string"))
+    }
+
+    /// The decimal **precision** (max significant digits) — the set value, else the width's max.
+    /// Raises `TypeError` on a non-decimal column.
+    fn decimal_precision(&self) -> PyResult<u32> {
+        Ok(decimal_dispatch!(self, s => s.decimal_precision(), "decimal_precision"))
+    }
+
+    /// The decimal **scale** (decimal places) — the set value, else `0`. Raises `TypeError` on a
+    /// non-decimal column.
+    fn decimal_scale(&self) -> PyResult<i32> {
+        Ok(decimal_dispatch!(self, s => s.decimal_scale(), "decimal_scale"))
     }
 
     /// **Filters** the column by `mask` — a list of `bool` (or another `bool` `Serie`), keeping
@@ -356,6 +569,14 @@ macro_rules! reduce_methods {
                             "bool serie has no ", $label,
                             ": booleans do not reduce (Bit is not numeric) — use a numeric dtype"
                         ))),
+                        Inner::Decimal32(_)
+                        | Inner::Decimal64(_)
+                        | Inner::Decimal128(_)
+                        | Inner::Decimal256(_) => Err(PyTypeError::new_err(concat!(
+                            "decimal serie has no ", $label,
+                            ": decimals do not reduce (Decimal is not numeric here) — cast to a \
+                             numeric dtype first"
+                        ))),
                     }
                 }
             )+
@@ -410,6 +631,17 @@ impl Field {
     /// Whether the column admits nulls.
     fn nullable(&self) -> bool {
         self.inner.nullable()
+    }
+
+    /// The decimal **precision** (max significant digits) this field carries, or `None` for a
+    /// non-decimal field.
+    fn precision(&self) -> Option<u32> {
+        self.inner.precision()
+    }
+
+    /// The decimal **scale** (decimal places) this field carries, or `None` for a non-decimal field.
+    fn scale(&self) -> Option<i32> {
+        self.inner.scale()
     }
 
     /// The backing [`Headers`](crate::headers::Headers) metadata map, as an owned **copy** (name /

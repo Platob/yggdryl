@@ -30,6 +30,10 @@ ALL_TYPES = [
     (DataTypeId.U128, 11, "u128"),
     (DataTypeId.F32, 12, "f32"),
     (DataTypeId.F64, 13, "f64"),
+    (DataTypeId.Decimal32, 14, "decimal32"),
+    (DataTypeId.Decimal64, 15, "decimal64"),
+    (DataTypeId.Decimal128, 16, "decimal128"),
+    (DataTypeId.Decimal256, 17, "decimal256"),
 ]
 
 
@@ -53,7 +57,7 @@ def test_as_u16_from_u16_round_trip():
         assert DataTypeId.from_u16(value) == dtype
     # An unrecognized id degrades to Unknown (total, never raises).
     assert DataTypeId.from_u16(999) == DataTypeId.Unknown
-    assert DataTypeId.from_u16(14) == DataTypeId.Unknown
+    assert DataTypeId.from_u16(18) == DataTypeId.Unknown  # one past Decimal256 (17)
 
 
 def test_names_and_from_name():
@@ -84,6 +88,10 @@ def test_byte_and_bit_sizes():
         DataTypeId.F64: 8,
         DataTypeId.I128: 16,
         DataTypeId.U128: 16,
+        DataTypeId.Decimal32: 4,
+        DataTypeId.Decimal64: 8,
+        DataTypeId.Decimal128: 16,
+        DataTypeId.Decimal256: 32,
     }
     for dtype, byte_size in widths.items():
         assert dtype.byte_size() == byte_size

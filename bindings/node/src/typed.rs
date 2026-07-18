@@ -17,6 +17,13 @@
 //! Integer reductions (`sum`) return a `BigInt` (a wide accumulator never wraps); a float `sum`, and
 //! every `mean`, return a `number`. A boolean column does not reduce, so its `sum` / `min` / `max` /
 //! `mean` throw the core's guided `Error`.
+//!
+//! A **decimal** column carries a signed *unscaled integer* whose width matches the four native
+//! integers: `Decimal32` crosses as a `number` (`i32`), `Decimal64` / `Decimal128` as a `BigInt`
+//! (`i64` / `i128`), and `Decimal256` as an arbitrary-precision `BigInt` (its 256-bit [`I256`]
+//! bridges to napi's word-based `BigInt`). Decimals are not `Reduce`, so `sum` / `min` / `max` /
+//! `mean` throw the guided `Error`; instead read the raw unscaled value with `get` / `values`, place
+//! the point with `toDecimalString`, and read `precision` / `scale` from the [`Field`].
 
 use napi::bindgen_prelude::{BigInt, Either, Either3};
 use napi_derive::napi;
@@ -28,7 +35,8 @@ use yggdryl_core::datatype_id::DataTypeId as DtId;
 use yggdryl_core::io::memory::{Heap as CoreHeap, IOBase};
 use yggdryl_core::typed::fixedbit::Bit;
 use yggdryl_core::typed::fixedbyte::{
-    Float32, Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8,
+    Decimal128, Decimal256, Decimal32, Decimal64, Float32, Float64, Int128, Int16, Int32, Int64,
+    Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
 };
 use yggdryl_core::typed::{
     Decoder, Encoder, Field as FieldTrait, FixedSerie, HeaderField, Scalar, Serie as SerieTrait,
@@ -83,6 +91,34 @@ to_js_bigint!(i64, u64, i128, u128);
 impl ToJs for bool {
     fn to_js(self) -> JsValue {
         Either3::C(self)
+    }
+}
+
+/// A 256-bit unscaled decimal value as a JS `BigInt` — its 32 little-endian two's-complement bytes
+/// re-packed into napi's `(sign_bit, magnitude words)` shape (`words` little-endian `u64`).
+impl ToJs for I256 {
+    fn to_js(self) -> JsValue {
+        let sign_bit = self.is_negative();
+        let mut bytes = self.to_le_bytes();
+        if sign_bit {
+            negate_le_32(&mut bytes); // two's-complement magnitude for the sign-plus-magnitude form
+        }
+        let words = bytes
+            .chunks_exact(8)
+            .map(|chunk| u64::from_le_bytes(chunk.try_into().expect("8 bytes")))
+            .collect();
+        Either3::B(BigInt { sign_bit, words })
+    }
+}
+
+/// Two's-complement negate a 256-bit little-endian byte buffer in place (bitwise-not, then `+1`) —
+/// the bridge between napi's sign-plus-magnitude `BigInt` and the signed [`I256`] byte form.
+fn negate_le_32(bytes: &mut [u8; 32]) {
+    let mut carry = 1u16;
+    for byte in bytes.iter_mut() {
+        let sum = (!*byte) as u16 + carry;
+        *byte = sum as u8;
+        carry = sum >> 8;
     }
 }
 
@@ -177,6 +213,31 @@ fn to_i128(value: JsValue) -> napi::Result<i128> {
 fn to_u128(value: JsValue) -> napi::Result<u128> {
     Ok(as_bigint(value)?.get_u128().1)
 }
+/// Extracts a JS `BigInt` as a signed 256-bit [`I256`] — the `Decimal256` unscaled value. A value
+/// that fits `i128` takes the fast [`I256::from_i128`] path; a wider one is packed from the
+/// `BigInt`'s little-endian `u64` magnitude words (with the sign applied) into 32 two's-complement
+/// bytes; a `BigInt` past 256 bits throws the guided `Error`.
+fn to_i256(value: JsValue) -> napi::Result<I256> {
+    let big = as_bigint(value)?;
+    let (as_i128, lossless) = big.get_i128();
+    if lossless {
+        return Ok(I256::from_i128(as_i128));
+    }
+    if big.words.len() > 4 {
+        return Err(to_error(
+            "decimal256 value out of range: a Decimal256 holds a signed 256-bit integer — pass a \
+             bigint within the 256-bit range",
+        ));
+    }
+    let mut bytes = [0u8; 32];
+    for (index, word) in big.words.iter().enumerate() {
+        bytes[index * 8..index * 8 + 8].copy_from_slice(&word.to_le_bytes());
+    }
+    if big.sign_bit {
+        negate_le_32(&mut bytes); // sign-plus-magnitude -> signed two's-complement bytes
+    }
+    Ok(I256::from_le_bytes(bytes))
+}
 fn to_f32(value: JsValue) -> napi::Result<f32> {
     Ok(as_number(value)? as f32)
 }
@@ -216,11 +277,34 @@ where
     Ok(FixedSerie::from_options(&natives))
 }
 
-/// Reconstructs a `FixedSerie<T>` with a fresh `name` (the binding holds `&self`, so it cannot
-/// consume into the core's `with_name`; it clones the borrowed data/validity buffers instead).
+/// Clones the borrowed column (the binding holds `&self`, so it cannot consume into the core's
+/// `with_*` builders) — carrying its `name` and any decimal `precision` / `scale` metadata across, so
+/// a rebuild for one field never drops the others.
+fn clone_serie<T: Encoder + Decoder>(serie: &FixedSerie<T>) -> FixedSerie<T> {
+    let field = serie.field();
+    let mut out =
+        FixedSerie::from_data(serie.data().clone(), serie.validity().cloned(), serie.len());
+    if let Some(name) = field.name() {
+        out = out.with_name(name);
+    }
+    if let (Some(precision), Some(scale)) = (field.precision(), field.scale()) {
+        out = out.with_precision_scale(precision, scale);
+    }
+    out
+}
+
+/// Reconstructs a `FixedSerie<T>` with a fresh `name`, preserving its decimal precision/scale.
 fn rename<T: Encoder + Decoder>(serie: &FixedSerie<T>, name: &str) -> FixedSerie<T> {
-    FixedSerie::from_data(serie.data().clone(), serie.validity().cloned(), serie.len())
-        .with_name(name)
+    clone_serie(serie).with_name(name)
+}
+
+/// Reconstructs a `FixedSerie<T>` with the decimal `precision` / `scale` set, preserving its `name`.
+fn reprecision<T: Encoder + Decoder>(
+    serie: &FixedSerie<T>,
+    precision: u32,
+    scale: i32,
+) -> FixedSerie<T> {
+    clone_serie(serie).with_precision_scale(precision, scale)
 }
 
 // ---- the erased column + its dispatch --------------------------------------------------
@@ -240,10 +324,14 @@ enum SerieInner {
     F32(FixedSerie<Float32>),
     F64(FixedSerie<Float64>),
     Bool(FixedSerie<Bit>),
+    Decimal32(FixedSerie<Decimal32>),
+    Decimal64(FixedSerie<Decimal64>),
+    Decimal128(FixedSerie<Decimal128>),
+    Decimal256(FixedSerie<Decimal256>),
 }
 
 /// Runs `$body` against the inner `FixedSerie` (`$serie`) of whichever variant is present — the
-/// 13-way match, written once. Every arm must yield the same type.
+/// 17-way match, written once. Every arm must yield the same type.
 macro_rules! dispatch {
     ($self:expr, $serie:ident => $body:expr) => {
         match &$self.inner {
@@ -260,6 +348,10 @@ macro_rules! dispatch {
             SerieInner::F32($serie) => $body,
             SerieInner::F64($serie) => $body,
             SerieInner::Bool($serie) => $body,
+            SerieInner::Decimal32($serie) => $body,
+            SerieInner::Decimal64($serie) => $body,
+            SerieInner::Decimal128($serie) => $body,
+            SerieInner::Decimal256($serie) => $body,
         }
     };
 }
@@ -285,6 +377,14 @@ macro_rules! dispatch_numeric {
                 "a boolean column does not reduce: sum/min/max/mean need a numeric element type — \
                  build a numeric Serie (e.g. DataTypeId.I64())",
             )),
+            SerieInner::Decimal32(_)
+            | SerieInner::Decimal64(_)
+            | SerieInner::Decimal128(_)
+            | SerieInner::Decimal256(_) => Err(to_error(
+                "a decimal column does not reduce: sum/min/max/mean are not defined for fixed-point \
+                 decimals — read the raw unscaled values with get/values or format with \
+                 toDecimalString",
+            )),
         }
     };
 }
@@ -307,6 +407,28 @@ macro_rules! dispatch_rebuild {
             SerieInner::F32($serie) => SerieInner::F32($build),
             SerieInner::F64($serie) => SerieInner::F64($build),
             SerieInner::Bool($serie) => SerieInner::Bool($build),
+            SerieInner::Decimal32($serie) => SerieInner::Decimal32($build),
+            SerieInner::Decimal64($serie) => SerieInner::Decimal64($build),
+            SerieInner::Decimal128($serie) => SerieInner::Decimal128($build),
+            SerieInner::Decimal256($serie) => SerieInner::Decimal256($build),
+        }
+    };
+}
+
+/// Like [`dispatch!`], but only the four **decimal** variants bind `$serie` — every other element
+/// type throws the guided `Error` (the method is decimal-only). `$body` must be a `napi::Result`.
+macro_rules! dispatch_decimal {
+    ($self:expr, $serie:ident => $body:expr) => {
+        match &$self.inner {
+            SerieInner::Decimal32($serie) => $body,
+            SerieInner::Decimal64($serie) => $body,
+            SerieInner::Decimal128($serie) => $body,
+            SerieInner::Decimal256($serie) => $body,
+            _ => Err(to_error(
+                "this Serie is not a decimal column: toDecimalString / decimalPrecision / \
+                 decimalScale need a decimal element type — build one with DataTypeId.Decimal128() \
+                 and set its scale with withPrecisionScale(precision, scale)",
+            )),
         }
     };
 }
@@ -345,6 +467,10 @@ impl Serie {
                 DtId::F32 => SerieInner::F32(build_values(values, to_f32)?),
                 DtId::F64 => SerieInner::F64(build_values(values, to_f64)?),
                 DtId::Bool => SerieInner::Bool(build_values(values, to_bool_native)?),
+                DtId::Decimal32 => SerieInner::Decimal32(build_values(values, to_i32)?),
+                DtId::Decimal64 => SerieInner::Decimal64(build_values(values, to_i64)?),
+                DtId::Decimal128 => SerieInner::Decimal128(build_values(values, to_i128)?),
+                DtId::Decimal256 => SerieInner::Decimal256(build_values(values, to_i256)?),
                 _ => return Err(to_error(
                     "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
                      (e.g. DataTypeId.I64())",
@@ -376,6 +502,10 @@ impl Serie {
                 DtId::F32 => SerieInner::F32(build_options(values, to_f32)?),
                 DtId::F64 => SerieInner::F64(build_options(values, to_f64)?),
                 DtId::Bool => SerieInner::Bool(build_options(values, to_bool_native)?),
+                DtId::Decimal32 => SerieInner::Decimal32(build_options(values, to_i32)?),
+                DtId::Decimal64 => SerieInner::Decimal64(build_options(values, to_i64)?),
+                DtId::Decimal128 => SerieInner::Decimal128(build_options(values, to_i128)?),
+                DtId::Decimal256 => SerieInner::Decimal256(build_options(values, to_i256)?),
                 _ => return Err(to_error(
                     "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
                      (e.g. DataTypeId.I64())",
@@ -450,6 +580,17 @@ impl Serie {
         }
     }
 
+    /// A copy of this column with its decimal **precision** (max significant digits) and **scale**
+    /// (decimal places) set — the metadata its [`field`](Serie::field) reports and
+    /// [`toDecimalString`](Serie::to_decimal_string) uses to place the decimal point. Apply it to a
+    /// decimal column (`DataTypeId.Decimal128()`, …).
+    #[napi]
+    pub fn with_precision_scale(&self, precision: u32, scale: i32) -> Serie {
+        Serie {
+            inner: dispatch_rebuild!(self, serie => reprecision(serie, precision, scale)),
+        }
+    }
+
     /// The element [`DataTypeId`](crate::datatype_id::DataTypeId) of this column.
     #[napi]
     pub fn dtype(&self) -> DataTypeId {
@@ -457,10 +598,33 @@ impl Serie {
     }
 
     /// This column's [`Field`] metadata — its `name`, element type, and `nullable` flag (a column
-    /// with a validity buffer is nullable).
+    /// with a validity buffer is nullable), plus its `precision` / `scale` for a decimal column.
     #[napi]
     pub fn field(&self) -> Field {
         dispatch!(self, serie => Field { inner: serie.field() })
+    }
+
+    /// The **unscaled** decimal value at `index` formatted with the column's scale (e.g. `"123.45"`
+    /// at scale 2), or `null` when the element is null or out of range. Throws the guided `Error` on
+    /// a non-decimal column.
+    #[napi]
+    pub fn to_decimal_string(&self, index: u32) -> napi::Result<Option<String>> {
+        let index = index as usize;
+        dispatch_decimal!(self, serie => Ok(serie.to_decimal_string(index)))
+    }
+
+    /// The decimal **precision** (max significant digits) — the set value, else the type's max.
+    /// Throws the guided `Error` on a non-decimal column.
+    #[napi]
+    pub fn decimal_precision(&self) -> napi::Result<u32> {
+        dispatch_decimal!(self, serie => Ok(serie.decimal_precision()))
+    }
+
+    /// The decimal **scale** (decimal places) — the set value, else `0`. Throws the guided `Error`
+    /// on a non-decimal column.
+    #[napi]
+    pub fn decimal_scale(&self) -> napi::Result<i32> {
+        dispatch_decimal!(self, serie => Ok(serie.decimal_scale()))
     }
 
     /// The **sum** of every element — a `BigInt` for an integer column (a wide accumulator never
@@ -579,6 +743,20 @@ impl Field {
     #[napi]
     pub fn nullable(&self) -> bool {
         self.inner.nullable()
+    }
+
+    /// The decimal **precision** (max significant digits) this field carries, or `null` when it does
+    /// not describe a decimal column.
+    #[napi]
+    pub fn precision(&self) -> Option<u32> {
+        self.inner.precision()
+    }
+
+    /// The decimal **scale** (decimal places) this field carries, or `null` when it does not
+    /// describe a decimal column.
+    #[napi]
+    pub fn scale(&self) -> Option<i32> {
+        self.inner.scale()
     }
 
     /// The backing metadata [`Headers`](crate::headers::Headers) — **a copy** (the name / type /

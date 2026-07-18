@@ -3,7 +3,8 @@
 //!
 //! Mirrors [`yggdryl_core::datatype_id::DataTypeId`]: a compact int enum naming every native
 //! fixed-width primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats
-//! `f32`/`f64`). It round-trips through a `u16` — the value a source stores in its `Headers` as the
+//! `f32`/`f64`, and the fixed-point decimals `decimal32`…`decimal256`). It round-trips through a
+//! `u16` — the value a source stores in its `Headers` as the
 //! `Type-Id` — so the byte layer knows its **element width** (the size the typed accessors and the
 //! vectorized aggregations step by), can compute an element count, and can safely widen / shrink a
 //! region between widths. Hashable and frozen like an int enum.
@@ -20,9 +21,9 @@ use pyo3::prelude::*;
 use yggdryl_core::datatype_id;
 
 /// A **primitive element data type** — the interpretation of a fixed-width value in a byte region,
-/// with the same wire-stable numeric values as the core (`Unknown = 0`, `Bool = 1`, … `F64 = 13`),
-/// so `DataTypeId.I32 == 6` and `int(DataTypeId.I32) == 6`. `Unknown` is the default "raw bytes"
-/// state. Hashable and frozen like an int enum.
+/// with the same wire-stable numeric values as the core (`Unknown = 0`, `Bool = 1`, … `F64 = 13`,
+/// `Decimal32 = 14`, … `Decimal256 = 17`), so `DataTypeId.I32 == 6` and `int(DataTypeId.I32) == 6`.
+/// `Unknown` is the default "raw bytes" state. Hashable and frozen like an int enum.
 #[pyclass(module = "yggdryl.datatype_id", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DataTypeId {
@@ -54,6 +55,15 @@ pub enum DataTypeId {
     F32 = 12,
     /// 64-bit IEEE-754 float. Value `13`.
     F64 = 13,
+    /// 32-bit fixed-point **decimal** — a signed `i32` unscaled value (precision/scale in metadata).
+    /// Value `14`.
+    Decimal32 = 14,
+    /// 64-bit fixed-point **decimal** — a signed `i64` unscaled value. Value `15`.
+    Decimal64 = 15,
+    /// 128-bit fixed-point **decimal** — a signed `i128` unscaled value. Value `16`.
+    Decimal128 = 16,
+    /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value. Value `17`.
+    Decimal256 = 17,
 }
 
 impl From<DataTypeId> for datatype_id::DataTypeId {
@@ -73,6 +83,10 @@ impl From<DataTypeId> for datatype_id::DataTypeId {
             DataTypeId::U128 => datatype_id::DataTypeId::U128,
             DataTypeId::F32 => datatype_id::DataTypeId::F32,
             DataTypeId::F64 => datatype_id::DataTypeId::F64,
+            DataTypeId::Decimal32 => datatype_id::DataTypeId::Decimal32,
+            DataTypeId::Decimal64 => datatype_id::DataTypeId::Decimal64,
+            DataTypeId::Decimal128 => datatype_id::DataTypeId::Decimal128,
+            DataTypeId::Decimal256 => datatype_id::DataTypeId::Decimal256,
         }
     }
 }
@@ -94,6 +108,10 @@ impl From<datatype_id::DataTypeId> for DataTypeId {
             datatype_id::DataTypeId::U128 => DataTypeId::U128,
             datatype_id::DataTypeId::F32 => DataTypeId::F32,
             datatype_id::DataTypeId::F64 => DataTypeId::F64,
+            datatype_id::DataTypeId::Decimal32 => DataTypeId::Decimal32,
+            datatype_id::DataTypeId::Decimal64 => DataTypeId::Decimal64,
+            datatype_id::DataTypeId::Decimal128 => DataTypeId::Decimal128,
+            datatype_id::DataTypeId::Decimal256 => DataTypeId::Decimal256,
             // The core enum is `#[non_exhaustive]`; a newer/foreign id degrades to raw bytes.
             _ => DataTypeId::Unknown,
         }

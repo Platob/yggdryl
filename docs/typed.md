@@ -164,14 +164,70 @@ A `Field` describes a column: its `name`, element type, and nullability — thre
     assert!(!col.field().nullable()); // no nulls -> non-nullable
     ```
 
+## Fixed-point decimals
+
+A **decimal** stores a signed *unscaled integer* plus a **precision** (max significant digits) and
+**scale** (decimal places) in its `Field` metadata — the value is `unscaled × 10^-scale`. Four
+widths back the four native integers: `Decimal32`/`Decimal64`/`Decimal128` over `i32`/`i64`/`i128`,
+and `Decimal256` over a 256-bit `I256` (Rust has no `i256`). The shared `Decimal` trait gives each a
+max precision and a scale-aware format, so `to_decimal_string` places the decimal point for you.
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie
+    from yggdryl.datatype_id import DataTypeId
+
+    # Money as Decimal128 scale 2: the stored value is the unscaled integer.
+    col = Serie.from_values([12345, 5, -5], DataTypeId.Decimal128).with_precision_scale(10, 2)
+    assert col.get(0) == 12345                       # raw unscaled value
+    assert col.to_decimal_string(0) == "123.45"      # scale-aware string
+    assert col.to_decimal_string(1) == "0.05"
+    assert col.field().precision() == 10 and col.field().scale() == 2
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    // Money as Decimal128 scale 2: the stored value is the unscaled integer.
+    const col = Serie.fromValues([12345n, 5n, -5n], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+    console.assert(col.get(0) === 12345n)              // raw unscaled value
+    console.assert(col.toDecimalString(0) === '123.45') // scale-aware string
+    console.assert(col.field().precision() === 10 && col.field().scale() === 2)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{Decimal, FixedSerie, Scalar};
+    use yggdryl_core::typed::fixedbyte::{Decimal128, I256, Decimal256};
+
+    // Money as Decimal128 scale 2: the stored value is the unscaled integer.
+    let col = FixedSerie::<Decimal128>::from_values(&[12345, 5, -5])
+        .with_precision_scale(10, 2);
+    assert_eq!(col.get(0), Some(12345i128));            // raw unscaled value
+    assert_eq!(col.to_decimal_string(0).as_deref(), Some("123.45"));
+    assert_eq!(col.field().precision(), Some(10));
+
+    // The 256-bit width uses the native I256 (up to 76 digits).
+    assert_eq!(Decimal128::format(-5, 2), "-0.05");
+    let wide = FixedSerie::<Decimal256>::from_values(&[I256::from_i128(1)]);
+    assert_eq!(wide.get(0), Some(I256::from_i128(1)));
+    ```
+
 ## Types & families
 
 | family | types | granularity |
 |---|---|---|
-| `fixedbyte` | `Int8`…`UInt128`, `Float32`, `Float64` | fixed length, byte-packed |
+| `fixedbyte` | `Int8`…`UInt128`, `Float32`, `Float64`, `Decimal32`…`Decimal256` | fixed length, byte-packed |
 | `fixedbit` | `Bit` (bool) | fixed length, bit-packed |
 | `varbyte` *(reserved)* | `Utf8`, `Binary` | variable length (offsets + data) |
 | `varbit` *(reserved)* | bit-lists | variable length, bit-packed |
+
+A **decimal** carries precision/scale in its `Field`; `Decimal256` uses the native 256-bit `I256`.
 
 Booleans do not reduce (`Bit` is not `Reduce`); the numeric types run `sum` / `min` / `max` / `mean`
 over the source's vectorized, NaN-safe `Aggregate` kernels. A column is generic over its backing

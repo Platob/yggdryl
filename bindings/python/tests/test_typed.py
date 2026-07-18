@@ -277,3 +277,171 @@ def test_filter_preserves_nulls():
     kept = col.filter([True, True, False, True])
     assert kept.to_list() == [1, None, None]
     assert kept.null_count() == 2
+
+
+# -------------------------------------------------------------------------------------
+# docs/typed.md — "Fixed-point decimals"
+# -------------------------------------------------------------------------------------
+
+
+def test_doc_decimal_money():
+    # Money as Decimal128 scale 2: the stored value is the unscaled integer.
+    col = Serie.from_values([12345, 5, -5], DataTypeId.Decimal128).with_precision_scale(10, 2)
+    assert col.get(0) == 12345  # raw unscaled value
+    assert col.to_decimal_string(0) == "123.45"  # scale-aware string
+    assert col.to_decimal_string(1) == "0.05"
+    assert col.to_decimal_string(2) == "-0.05"
+    assert col.field().precision() == 10 and col.field().scale() == 2
+
+
+# -------------------------------------------------------------------------------------
+# DataTypeId — the four decimal variants
+# -------------------------------------------------------------------------------------
+
+
+def test_datatype_id_decimal_variants():
+    assert int(DataTypeId.Decimal32) == 14
+    assert int(DataTypeId.Decimal64) == 15
+    assert int(DataTypeId.Decimal128) == 16
+    assert int(DataTypeId.Decimal256) == 17
+    assert DataTypeId.Decimal128.name() == "decimal128"
+    assert DataTypeId.from_name("decimal256") == DataTypeId.Decimal256
+    assert DataTypeId.Decimal32.byte_size() == 4
+    assert DataTypeId.Decimal256.byte_size() == 32
+    assert DataTypeId.Decimal128.is_signed()
+
+
+# -------------------------------------------------------------------------------------
+# Decimals — all four widths
+# -------------------------------------------------------------------------------------
+
+
+def test_decimal_all_widths():
+    for dt in (
+        DataTypeId.Decimal32,
+        DataTypeId.Decimal64,
+        DataTypeId.Decimal128,
+        DataTypeId.Decimal256,
+    ):
+        col = Serie.from_values([100, 250], dt).with_precision_scale(5, 2)
+        assert col.dtype() == dt
+        assert col.get(0) == 100  # raw unscaled value crosses as int
+        assert col.to_decimal_string(0) == "1.00"
+        assert col.to_decimal_string(1) == "2.50"
+        assert col.field().precision() == 5 and col.field().scale() == 2
+
+
+def test_decimal_str_dtype():
+    col = Serie.from_values([100], "decimal32").with_precision_scale(5, 2)
+    assert col.dtype() == DataTypeId.Decimal32
+    assert col.to_decimal_string(0) == "1.00"
+
+
+def test_decimal_default_precision_scale():
+    # Before with_precision_scale: scale defaults to 0, precision to the width's max.
+    col = Serie.from_values([1, 2], DataTypeId.Decimal64)
+    assert col.decimal_scale() == 0
+    assert col.decimal_precision() == 18  # Decimal64 max precision
+    assert col.to_decimal_string(0) == "1"  # scale 0 -> the integer itself
+
+
+# -------------------------------------------------------------------------------------
+# Decimal256 — the 256-bit width (native + beyond i128)
+# -------------------------------------------------------------------------------------
+
+
+def test_decimal256_fits_i128():
+    col = Serie.from_values([42, -42], DataTypeId.Decimal256)
+    assert col.dtype() == DataTypeId.Decimal256
+    assert col.get(0) == 42
+    assert col.get(1) == -42
+    assert col.to_decimal_string(0) == "42"
+
+
+def test_decimal256_beyond_i128():
+    # A value larger than i128 (2**127 - 1) round-trips through the 32 two's-complement bytes.
+    big = 2**200 + 123
+    col = Serie.from_values([big, -big], DataTypeId.Decimal256)
+    assert col.get(0) == big  # arbitrary-precision Python int
+    assert col.get(1) == -big
+    assert col.to_decimal_string(0) == str(big)  # scale 0
+    assert col.to_decimal_string(1) == str(-big)
+    assert col.to_list() == [big, -big]
+    # And it still carries precision/scale like any decimal.
+    scaled = col.with_precision_scale(76, 5)
+    assert scaled.field().precision() == 76 and scaled.field().scale() == 5
+
+
+def test_decimal256_out_of_range_raises():
+    # Beyond 256 bits (2**255 - 1 max) -> guided ValueError.
+    with pytest.raises(ValueError):
+        Serie.from_values([2**300], DataTypeId.Decimal256)
+
+
+# -------------------------------------------------------------------------------------
+# Decimals — a nullable column
+# -------------------------------------------------------------------------------------
+
+
+def test_decimal_nullable():
+    col = Serie.from_options([12345, None, -5], DataTypeId.Decimal128).with_precision_scale(10, 2)
+    assert col.len() == 3
+    assert col.null_count() == 1
+    assert col.get(0) == 12345
+    assert col.get(1) is None
+    assert col.is_null(1) and col.is_valid(0)
+    assert col.to_decimal_string(0) == "123.45"
+    assert col.to_decimal_string(1) is None  # the null
+    assert col.to_decimal_string(2) == "-0.05"
+    assert col.to_list() == [12345, None, -5]
+    assert col.field().nullable() is True
+    assert col.field().precision() == 10 and col.field().scale() == 2
+
+
+def test_decimal256_nullable():
+    big = 2**200
+    col = Serie.from_options([big, None], DataTypeId.Decimal256)
+    assert col.null_count() == 1
+    assert col.get(0) == big
+    assert col.get(1) is None
+
+
+# -------------------------------------------------------------------------------------
+# Decimals — with_name carries precision/scale, non-decimal rejection, no reduction
+# -------------------------------------------------------------------------------------
+
+
+def test_decimal_with_name_preserves_precision_scale():
+    col = (
+        Serie.from_values([12345], DataTypeId.Decimal128)
+        .with_precision_scale(10, 2)
+        .with_name("price")
+    )
+    assert col.field().name() == "price"
+    assert col.field().precision() == 10 and col.field().scale() == 2
+    assert col.to_decimal_string(0) == "123.45"
+
+
+def test_decimal_no_reduction():
+    col = Serie.from_values([1, 2, 3], DataTypeId.Decimal128)
+    for reduce in ("sum", "min", "max", "mean"):
+        with pytest.raises(TypeError):
+            getattr(col, reduce)()
+
+
+def test_decimal_methods_reject_non_decimal():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    with pytest.raises(TypeError):
+        col.to_decimal_string(0)
+    with pytest.raises(TypeError):
+        col.decimal_precision()
+    with pytest.raises(TypeError):
+        col.decimal_scale()
+    with pytest.raises(TypeError):
+        col.with_precision_scale(10, 2)
+
+
+def test_field_precision_scale_none_for_non_decimal():
+    f = Field("x", DataTypeId.I64)
+    assert f.precision() is None
+    assert f.scale() is None
