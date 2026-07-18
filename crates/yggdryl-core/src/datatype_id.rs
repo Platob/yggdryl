@@ -3,7 +3,7 @@
 //! [`DataTypeId`] is a compact `#[repr(u16)]` int enum naming every native fixed-width primitive
 //! (`bool`, the signed/unsigned integers `i8`…`u128`, the floats `f32`/`f64`). It round-trips
 //! through a `u16` — the value a source stores in its [`Headers`](crate::headers::Headers) as the
-//! `Elem-Type-Id` — so the byte layer knows its **element width** (the size the typed accessors and
+//! `Type-Id` — so the byte layer knows its **element width** (the size the typed accessors and
 //! the vectorized aggregations step by), can compute an element count, and can safely widen /
 //! shrink a region between widths.
 

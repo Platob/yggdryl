@@ -124,11 +124,16 @@ rendered compactly with no intermediate string.
 
 ## Size and mtime sync
 
-Any write that changes a source's bytes keeps its metadata in step in the same pass:
-`set_content_length` renders the new byte length as a decimal straight into the `Content-Length`
-entry (alloc-free, no `String` temporary), `content_length` reads it back (whitespace-trimmed,
-absent when the value is non-numeric), and `touch_mtime` stamps the current time as total epoch
-microseconds into the `mtime` header — the size and timestamp halves of the same header sync.
+The common single-valued keys are **hard-typed struct fields**, so their accessors read and write
+with no parse and no per-value allocation. `set_content_length(u64)` stores the length directly (the
+generic `get("content-length")` renders it back on demand), `content_length()` reads the `u64`
+field, and `touch_mtime` stamps the current time as total epoch microseconds — the size and
+timestamp halves of the same content-mutation header sync. Beyond the content headers, the most-used
+HTTP request/response headers are promoted too, each with a typed accessor pair: `host` / `set_host`,
+`user_agent`, `accept`, `accept_encoding`, `authorization`, `location`, `connection`,
+`cache_control`, `last_modified` (Node: `userAgent`, `acceptEncoding`, `cacheControl`,
+`lastModified`, …), plus the storage `type_id` / `set_type_id`. Each is single-valued (setting twice
+replaces) and still visible through the generic `get` / `iter` map view.
 
 === "Python"
 
@@ -136,9 +141,12 @@ microseconds into the `mtime` header — the size and timestamp halves of the sa
     from yggdryl.headers import Headers
 
     h = Headers()
-    h.set_content_length(1024)                    # decimal rendered into Content-Length
-    assert h.get("content-length") == "1024"
-    assert h.content_length() == 1024             # read back, whitespace-trimmed
+    h.set_content_length(1024)                    # direct u64 store (no render)
+    assert h.get("content-length") == "1024"      # rendered on demand by the map view
+    assert h.content_length() == 1024             # direct u64 field read
+
+    h.set_host("example.com")                     # a promoted HTTP header, typed accessor
+    assert h.host() == "example.com"
 
     h.touch_mtime()                               # stamp now as epoch microseconds
     assert h.mtime() > 0
@@ -150,9 +158,12 @@ microseconds into the `mtime` header — the size and timestamp halves of the sa
     const { Headers } = require('yggdryl').headers
 
     const h = new Headers()
-    h.setContentLength(1024)                       // decimal rendered into Content-Length
-    console.assert(h.get('content-length') === '1024')
-    console.assert(h.contentLength() === 1024)     // read back, whitespace-trimmed
+    h.setContentLength(1024)                       // direct u64 store (no render)
+    console.assert(h.get('content-length') === '1024') // rendered on demand by the map view
+    console.assert(h.contentLength() === 1024)     // direct u64 field read
+
+    h.setHost('example.com')                       // a promoted HTTP header, typed accessor
+    console.assert(h.host() === 'example.com')
 
     h.touchMtime()                                 // stamp now as epoch microseconds
     console.assert(h.mtime() > 0)
@@ -164,9 +175,12 @@ microseconds into the `mtime` header — the size and timestamp halves of the sa
     use yggdryl_core::headers::Headers;
 
     let mut h = Headers::new();
-    h.set_content_length(1024); // decimal rendered in-place
+    h.set_content_length(1024); // direct u64 store (no render)
     assert_eq!(h.get("content-length").as_deref(), Some("1024")); // rendered from the u64 field
-    assert_eq!(h.content_length(), Some(1024)); // read back, whitespace-trimmed
+    assert_eq!(h.content_length(), Some(1024)); // direct u64 field read
+
+    h.set_host("example.com"); // a promoted HTTP header, typed accessor
+    assert_eq!(h.host(), Some("example.com"));
 
     h.touch_mtime(); // stamp now as epoch microseconds
     assert!(h.mtime().unwrap() > 0);

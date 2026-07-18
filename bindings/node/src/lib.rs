@@ -18,7 +18,7 @@ extern crate napi_derive;
 
 pub mod builders;
 pub mod compression;
-pub mod dtype;
+pub mod datatype_id;
 pub mod headers;
 pub mod io;
 pub mod mediatype;

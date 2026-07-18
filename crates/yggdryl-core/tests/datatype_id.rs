@@ -1,7 +1,7 @@
-//! Functional tests for [`DataTypeId`](yggdryl_core::dtype::DataTypeId) — the primitive element
+//! Functional tests for [`DataTypeId`](yggdryl_core::datatype_id::DataTypeId) — the primitive element
 //! data types: the `u16` round-trip, names, widths, predicates, and element counting.
 
-use yggdryl_core::dtype::DataTypeId;
+use yggdryl_core::datatype_id::DataTypeId;
 
 #[test]
 fn u16_round_trip_is_total() {

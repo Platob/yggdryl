@@ -40,6 +40,7 @@ crates/yggdryl-core/src/             # the core (dependency-free by default; cod
       device.rs compute.rs          #     AmdDevice + live Radeon detect / ComputeBackend (GPU-vs-CPU)
       heap.rs cursor.rs slice.rs     #     AmdHeap + the shared cursor/slice over it (zero-copy)
   headers.rs                         # Headers — the one metadata map (root module)
+  datatype_id.rs                     # DataTypeId — primitive element data types (root module)
   mimetype.rs                        # MimeType + MimeRegistry/MimeCatalog (root module)
   mediatype.rs                       # MediaType — an ordered MimeType list (root module)
   compression.rs                     # Compression trait + feature-gated Gzip/Zlib/Zstd/Lzma
@@ -122,10 +123,13 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   type in the project: `Headers` (ordered, case-insensitive, multi-value, byte-capable). HTTP
   headers, schema/field metadata, source annotations — all of it is a `Headers`; never
   introduce a second map type or an ad-hoc `HashMap<String, String>` in a public signature.
-  Every `IOBase` carries one (`headers()` / `headers_mut()`). The six hot single-valued keys
-  (`Content-Type`/`-Encoding`/`-Length`, `X-Elem-Type-Id`, `X-Name`, `X-Mtime-Us`) are **hard-typed
-  struct fields** (`content_length()` → `u64`, `content_type()` → `&str`, … read/write with no parse
-  and no per-value allocation); every other name lives in the ordered multi-value overflow `Vec`.
+  Every `IOBase` carries one (`headers()` / `headers_mut()`). The common single-valued keys — the
+  content headers (`Content-Type`/`-Encoding`/`-Length`), the most-used HTTP request/response headers
+  (`Host`, `User-Agent`, `Accept`, `Accept-Encoding`, `Authorization`, `Location`, `Connection`,
+  `Cache-Control`, `Last-Modified`), and the storage keys (`X-Type-Id`, `X-Name`, `X-Mtime-Us`) — are
+  **hard-typed struct fields** (`content_length()` → `u64`, `content_type()` / `host()` → `&str`, …
+  read/write with no parse and no per-value allocation); every other name lives in the ordered
+  multi-value overflow `Vec`.
   The generic map view (`get`/`get_bytes`/`iter`) still sees **everything** by returning a `Cow`
   (borrow for strings/overflow, a small render for the numeric keys). A promoted key is
   single-valued (append == replace) and a value that doesn't fit its typed field falls back to the
@@ -240,7 +244,7 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   implementation and the two never drift. Both **pre-size every buffer to its known final length**
   (`with_capacity` / `vec![0; n]`) and grow a `String`/`Vec` once, never element-by-element.
 - **The stored bytes have an element type.** A byte region interpreted as fixed-width values
-  carries a [`dtype::DataTypeId`] in its `Headers` (`Elem-Type-Id`); `IOBase::dtype()` /
+  carries a [`datatype_id::DataTypeId`] in its `Headers` (`Type-Id`); `IOBase::dtype()` /
   `set_dtype()` read/write it, `element_count()` derives the count, `resize_dtype*` widens/shrinks
   between widths (numeric, saturating on narrowing), and the `Aggregate` trait's vectorized
   `sum`/`min`/`max`/`mean`/`std`/`first`/`last`/`count_ge` reduce over that dtype for every source.

@@ -1184,7 +1184,7 @@ fn move_into_of_an_empty_source_empties_the_destination() {
 
 #[test]
 fn dtype_and_resize_widen_and_shrink() {
-    use yggdryl_core::dtype::DataTypeId;
+    use yggdryl_core::datatype_id::DataTypeId;
     let mut h = Heap::new();
     h.pwrite_i64_array(0, &[1, -2, 3, 1_000_000]).unwrap();
     h.set_dtype(DataTypeId::I64);
@@ -1247,7 +1247,7 @@ fn aggregations_over_a_heap() {
 
 #[test]
 fn mask_filter_selects_elements_by_bitmask() {
-    use yggdryl_core::dtype::DataTypeId;
+    use yggdryl_core::datatype_id::DataTypeId;
     let mut data = Heap::new();
     data.pwrite_i64_array(0, &[10, 20, 30, 40, 50]).unwrap();
     data.set_dtype(DataTypeId::I64);

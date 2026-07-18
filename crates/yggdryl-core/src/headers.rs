@@ -4,7 +4,7 @@
 use core::fmt;
 use std::borrow::Cow;
 
-use crate::dtype::DataTypeId;
+use crate::datatype_id::DataTypeId;
 use crate::io::{IoError, Serializable};
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
@@ -16,44 +16,81 @@ struct Entry {
     value: Box<[u8]>,
 }
 
-/// The six **promoted** keys that live in a hard-typed [`Headers`] field rather than the overflow
-/// map. Matched case-insensitively; each is single-valued (see the type docs).
+/// The **promoted** keys that live in a hard-typed [`Headers`] field rather than the overflow map.
+/// Matched case-insensitively; each is single-valued (see the type docs).
 #[derive(Clone, Copy)]
 enum Promoted {
     ContentType,
     ContentEncoding,
     ContentLength,
-    ElemTypeId,
+    Host,
+    UserAgent,
+    Accept,
+    AcceptEncoding,
+    Authorization,
+    Location,
+    Connection,
+    CacheControl,
+    LastModified,
+    TypeId,
     Name,
     Mtime,
 }
 
 /// The **canonical iteration/serialization order** of the promoted fields — a fixed order so the
 /// wire form is deterministic (equal maps serialize to equal bytes).
-const PROMOTED_ORDER: [Promoted; 6] = [
+const PROMOTED_ORDER: [Promoted; 15] = [
     Promoted::ContentType,
     Promoted::ContentEncoding,
     Promoted::ContentLength,
-    Promoted::ElemTypeId,
+    Promoted::Host,
+    Promoted::UserAgent,
+    Promoted::Accept,
+    Promoted::AcceptEncoding,
+    Promoted::Authorization,
+    Promoted::Location,
+    Promoted::Connection,
+    Promoted::CacheControl,
+    Promoted::LastModified,
+    Promoted::TypeId,
     Promoted::Name,
     Promoted::Mtime,
 ];
 
-/// The project's **one** metadata map. The six common single-valued keys — `Content-Type`,
-/// `Content-Encoding`, `Content-Length`, `X-Elem-Type-Id`, `X-Name`, `X-Mtime-Us` — are stored in
-/// **hard-typed fields** (`Option<Box<str>>` / `Option<u64>` / `Option<i64>` / [`DataTypeId`]), so
-/// their typed accessors ([`content_length`](Headers::content_length) → `u64`,
+/// Generates the `&str` typed accessor pair (getter + `set_*`) for a promoted **string** header
+/// field — a direct borrow on read, a direct field store on write (no parse, no re-alloc beyond
+/// the one stored `Box<str>`).
+macro_rules! str_header_accessor {
+    ($field:ident, $get:ident, $set:ident, $const:ident, $label:literal) => {
+        #[doc = concat!("The `", $label, "` value, if present — a direct borrow of the typed field.")]
+        pub fn $get(&self) -> Option<&str> {
+            self.$field.as_deref()
+        }
+
+        #[doc = concat!("Sets the `", $label, "` header — a direct typed-field store (no parse).")]
+        pub fn $set(&mut self, value: &str) {
+            self.$field = Some(value.into());
+            self.clear_other_named(Self::$const.as_bytes());
+        }
+    };
+}
+
+/// The project's **one** metadata map. The common single-valued keys — the content headers
+/// (`Content-Type`/`-Encoding`/`-Length`), the most-used HTTP request/response headers (`Host`,
+/// `User-Agent`, `Accept`, `Accept-Encoding`, `Authorization`, `Location`, `Connection`,
+/// `Cache-Control`, `Last-Modified`), and the storage keys (`X-Type-Id`, `X-Name`, `X-Mtime-Us`) —
+/// are stored in **hard-typed fields** (`Option<Box<str>>` / `Option<u64>` / `Option<i64>` /
+/// [`DataTypeId`]), so their typed accessors ([`content_length`](Headers::content_length) → `u64`,
 /// [`content_type`](Headers::content_type) → `&str`, …) read and write with **no parse and no
-/// per-value allocation**. Every **other** name lives in an insertion-ordered, case-insensitive,
-/// multi-value overflow map (`other`).
+/// per-value allocation**. Every **other** name (and the multi-value ones like `Set-Cookie`) lives
+/// in an insertion-ordered, case-insensitive, multi-value overflow map (`other`).
 ///
 /// The generic map view still sees **everything**: [`get`](Headers::get) /
 /// [`get_bytes`](Headers::get_bytes) / [`iter`](Headers::iter) return a [`Cow`] — a **borrow** for
 /// the string keys and the overflow entries, a small **rendered** buffer for the numeric keys
-/// (`Content-Length`, `X-Mtime-Us`, `X-Elem-Type-Id`) on demand. HTTP headers, schema/field
-/// metadata, source annotations — all of it is a `Headers`; every
-/// [`IOBase`](crate::io::memory::IOBase) source carries one
-/// ([`headers`](crate::io::memory::IOBase::headers) /
+/// (`Content-Length`, `X-Mtime-Us`, `X-Type-Id`) on demand. HTTP headers, schema/field metadata,
+/// source annotations — all of it is a `Headers`; every [`IOBase`](crate::io::memory::IOBase)
+/// source carries one ([`headers`](crate::io::memory::IOBase::headers) /
 /// [`headers_mut`](crate::io::memory::IOBase::headers_mut)).
 ///
 /// DESIGN: the promoted keys are **single-valued** (they are unique in HTTP), so `append` on one
@@ -82,7 +119,16 @@ pub struct Headers {
     content_type: Option<Box<str>>,
     content_encoding: Option<Box<str>>,
     content_length: Option<u64>,
-    elem_type_id: DataTypeId,
+    host: Option<Box<str>>,
+    user_agent: Option<Box<str>>,
+    accept: Option<Box<str>>,
+    accept_encoding: Option<Box<str>>,
+    authorization: Option<Box<str>>,
+    location: Option<Box<str>>,
+    connection: Option<Box<str>>,
+    cache_control: Option<Box<str>>,
+    last_modified: Option<Box<str>>,
+    type_id: DataTypeId,
     name: Option<Box<str>>,
     mtime: Option<i64>,
     other: Vec<Entry>,
@@ -128,9 +174,9 @@ impl Headers {
     /// The modification-time header this map uses for the **epoch-microseconds** form —
     /// [`mtime`](Headers::mtime) / [`set_mtime`](Headers::set_mtime).
     pub const MTIME: &'static str = "X-Mtime-Us";
-    /// The storage **element data type** header — a [`DataTypeId`](crate::dtype::DataTypeId) as its
-    /// `u16` id ([`elem_type_id`](Headers::elem_type_id) / [`set_elem_type_id`](Headers::set_elem_type_id)).
-    pub const ELEM_TYPE_ID: &'static str = "X-Elem-Type-Id";
+    /// The storage **element data type** header — a [`DataTypeId`](crate::datatype_id::DataTypeId) as
+    /// its `u16` id ([`type_id`](Headers::type_id) / [`set_type_id`](Headers::set_type_id)).
+    pub const TYPE_ID: &'static str = "X-Type-Id";
     /// The resource **name** header ([`name`](Headers::name) / [`set_name`](Headers::set_name)).
     pub const NAME: &'static str = "X-Name";
 
@@ -142,7 +188,16 @@ impl Headers {
             content_type: None,
             content_encoding: None,
             content_length: None,
-            elem_type_id: DataTypeId::Unknown,
+            host: None,
+            user_agent: None,
+            accept: None,
+            accept_encoding: None,
+            authorization: None,
+            location: None,
+            connection: None,
+            cache_control: None,
+            last_modified: None,
+            type_id: DataTypeId::Unknown,
             name: None,
             mtime: None,
             other: Vec::new(),
@@ -160,27 +215,65 @@ impl Headers {
 
     // ---- promoted-key routing (internal) ------------------------------------------------
 
+    /// The `Box<str>` slot for a **string** promoted key, or `None` for a numeric key.
+    fn string_field(&self, key: Promoted) -> Option<&Option<Box<str>>> {
+        Some(match key {
+            Promoted::ContentType => &self.content_type,
+            Promoted::ContentEncoding => &self.content_encoding,
+            Promoted::Host => &self.host,
+            Promoted::UserAgent => &self.user_agent,
+            Promoted::Accept => &self.accept,
+            Promoted::AcceptEncoding => &self.accept_encoding,
+            Promoted::Authorization => &self.authorization,
+            Promoted::Location => &self.location,
+            Promoted::Connection => &self.connection,
+            Promoted::CacheControl => &self.cache_control,
+            Promoted::LastModified => &self.last_modified,
+            Promoted::Name => &self.name,
+            Promoted::ContentLength | Promoted::TypeId | Promoted::Mtime => return None,
+        })
+    }
+
+    /// The mutable `Box<str>` slot for a **string** promoted key, or `None` for a numeric key.
+    fn string_field_mut(&mut self, key: Promoted) -> Option<&mut Option<Box<str>>> {
+        Some(match key {
+            Promoted::ContentType => &mut self.content_type,
+            Promoted::ContentEncoding => &mut self.content_encoding,
+            Promoted::Host => &mut self.host,
+            Promoted::UserAgent => &mut self.user_agent,
+            Promoted::Accept => &mut self.accept,
+            Promoted::AcceptEncoding => &mut self.accept_encoding,
+            Promoted::Authorization => &mut self.authorization,
+            Promoted::Location => &mut self.location,
+            Promoted::Connection => &mut self.connection,
+            Promoted::CacheControl => &mut self.cache_control,
+            Promoted::LastModified => &mut self.last_modified,
+            Promoted::Name => &mut self.name,
+            Promoted::ContentLength | Promoted::TypeId | Promoted::Mtime => return None,
+        })
+    }
+
     /// Whether a promoted field currently holds a value.
     fn promoted_present(&self, key: Promoted) -> bool {
         match key {
-            Promoted::ContentType => self.content_type.is_some(),
-            Promoted::ContentEncoding => self.content_encoding.is_some(),
             Promoted::ContentLength => self.content_length.is_some(),
-            Promoted::ElemTypeId => self.elem_type_id != DataTypeId::Unknown,
-            Promoted::Name => self.name.is_some(),
             Promoted::Mtime => self.mtime.is_some(),
+            Promoted::TypeId => self.type_id != DataTypeId::Unknown,
+            other => self.string_field(other).is_some_and(|slot| slot.is_some()),
         }
     }
 
     /// Clears a promoted field to its absent state.
     fn clear_promoted(&mut self, key: Promoted) {
         match key {
-            Promoted::ContentType => self.content_type = None,
-            Promoted::ContentEncoding => self.content_encoding = None,
             Promoted::ContentLength => self.content_length = None,
-            Promoted::ElemTypeId => self.elem_type_id = DataTypeId::Unknown,
-            Promoted::Name => self.name = None,
             Promoted::Mtime => self.mtime = None,
+            Promoted::TypeId => self.type_id = DataTypeId::Unknown,
+            other => {
+                if let Some(slot) = self.string_field_mut(other) {
+                    *slot = None;
+                }
+            }
         }
     }
 
@@ -190,7 +283,16 @@ impl Headers {
             Promoted::ContentType => Self::CONTENT_TYPE,
             Promoted::ContentEncoding => Self::CONTENT_ENCODING,
             Promoted::ContentLength => Self::CONTENT_LENGTH,
-            Promoted::ElemTypeId => Self::ELEM_TYPE_ID,
+            Promoted::Host => Self::HOST,
+            Promoted::UserAgent => Self::USER_AGENT,
+            Promoted::Accept => Self::ACCEPT,
+            Promoted::AcceptEncoding => Self::ACCEPT_ENCODING,
+            Promoted::Authorization => Self::AUTHORIZATION,
+            Promoted::Location => Self::LOCATION,
+            Promoted::Connection => Self::CONNECTION,
+            Promoted::CacheControl => Self::CACHE_CONTROL,
+            Promoted::LastModified => Self::LAST_MODIFIED,
+            Promoted::TypeId => Self::TYPE_ID,
             Promoted::Name => Self::NAME,
             Promoted::Mtime => Self::MTIME,
         }
@@ -200,19 +302,14 @@ impl Headers {
     /// **owned** decimal for the numeric keys; `None` when the field is absent.
     fn promoted_bytes(&self, key: Promoted) -> Option<Cow<'_, [u8]>> {
         match key {
-            Promoted::ContentType => self
-                .content_type
-                .as_ref()
-                .map(|s| Cow::Borrowed(s.as_bytes())),
-            Promoted::ContentEncoding => self
-                .content_encoding
-                .as_ref()
-                .map(|s| Cow::Borrowed(s.as_bytes())),
-            Promoted::Name => self.name.as_ref().map(|s| Cow::Borrowed(s.as_bytes())),
             Promoted::ContentLength => self.content_length.map(|n| Cow::Owned(render_u64(n))),
             Promoted::Mtime => self.mtime.map(|n| Cow::Owned(render_i64(n))),
-            Promoted::ElemTypeId => (self.elem_type_id != DataTypeId::Unknown)
-                .then(|| Cow::Owned(render_u64(u64::from(self.elem_type_id.as_u16())))),
+            Promoted::TypeId => (self.type_id != DataTypeId::Unknown)
+                .then(|| Cow::Owned(render_u64(u64::from(self.type_id.as_u16())))),
+            other => self
+                .string_field(other)
+                .and_then(|slot| slot.as_ref())
+                .map(|s| Cow::Borrowed(s.as_bytes())),
         }
     }
 
@@ -228,18 +325,6 @@ impl Headers {
             });
         };
         match key {
-            Promoted::ContentType => match core::str::from_utf8(value) {
-                Ok(s) => self.content_type = Some(s.into()),
-                Err(_) => push_raw(self),
-            },
-            Promoted::ContentEncoding => match core::str::from_utf8(value) {
-                Ok(s) => self.content_encoding = Some(s.into()),
-                Err(_) => push_raw(self),
-            },
-            Promoted::Name => match core::str::from_utf8(value) {
-                Ok(s) => self.name = Some(s.into()),
-                Err(_) => push_raw(self),
-            },
             Promoted::ContentLength => {
                 match core::str::from_utf8(value)
                     .ok()
@@ -258,16 +343,24 @@ impl Headers {
                     None => push_raw(self),
                 }
             }
-            Promoted::ElemTypeId => {
+            Promoted::TypeId => {
                 match core::str::from_utf8(value)
                     .ok()
                     .and_then(|s| s.trim().parse::<u16>().ok())
                     .map(DataTypeId::from_u16)
                 {
-                    Some(dt) if dt != DataTypeId::Unknown => self.elem_type_id = dt,
+                    Some(dt) if dt != DataTypeId::Unknown => self.type_id = dt,
                     _ => push_raw(self), // non-numeric or a foreign id — keep the raw value
                 }
             }
+            other => match core::str::from_utf8(value) {
+                Ok(s) => {
+                    if let Some(slot) = self.string_field_mut(other) {
+                        *slot = Some(s.into());
+                    }
+                }
+                Err(_) => push_raw(self),
+            },
         }
     }
 
@@ -492,6 +585,53 @@ impl Headers {
         self.clear_other_named(Self::CONTENT_ENCODING.as_bytes());
     }
 
+    // The most-used single-valued HTTP request/response headers — promoted to typed fields.
+    str_header_accessor!(host, host, set_host, HOST, "Host");
+    str_header_accessor!(
+        user_agent,
+        user_agent,
+        set_user_agent,
+        USER_AGENT,
+        "User-Agent"
+    );
+    str_header_accessor!(accept, accept, set_accept, ACCEPT, "Accept");
+    str_header_accessor!(
+        accept_encoding,
+        accept_encoding,
+        set_accept_encoding,
+        ACCEPT_ENCODING,
+        "Accept-Encoding"
+    );
+    str_header_accessor!(
+        authorization,
+        authorization,
+        set_authorization,
+        AUTHORIZATION,
+        "Authorization"
+    );
+    str_header_accessor!(location, location, set_location, LOCATION, "Location");
+    str_header_accessor!(
+        connection,
+        connection,
+        set_connection,
+        CONNECTION,
+        "Connection"
+    );
+    str_header_accessor!(
+        cache_control,
+        cache_control,
+        set_cache_control,
+        CACHE_CONTROL,
+        "Cache-Control"
+    );
+    str_header_accessor!(
+        last_modified,
+        last_modified,
+        set_last_modified,
+        LAST_MODIFIED,
+        "Last-Modified"
+    );
+
     /// The `Content-Length` value as a `u64`, if present — the hard-typed field, **no parse**.
     ///
     /// ```
@@ -512,40 +652,40 @@ impl Headers {
         self.clear_other_named(Self::CONTENT_LENGTH.as_bytes());
     }
 
-    /// The storage **element data type** — the [`DataTypeId`](crate::dtype::DataTypeId) in the typed
-    /// field, or [`DataTypeId::Unknown`](crate::dtype::DataTypeId::Unknown) when none is set.
+    /// The storage **element data type** — the [`DataTypeId`](crate::datatype_id::DataTypeId) in the
+    /// typed field, or [`DataTypeId::Unknown`](crate::datatype_id::DataTypeId::Unknown) when none is set.
     ///
     /// ```
     /// use yggdryl_core::headers::Headers;
-    /// use yggdryl_core::dtype::DataTypeId;
+    /// use yggdryl_core::datatype_id::DataTypeId;
     ///
     /// let mut h = Headers::new();
-    /// assert_eq!(h.elem_type_id(), DataTypeId::Unknown);
-    /// h.set_elem_type_id(DataTypeId::I64);
-    /// assert_eq!(h.elem_type_id(), DataTypeId::I64);
-    /// assert_eq!(h.elem_byte_size(), 8);
+    /// assert_eq!(h.type_id(), DataTypeId::Unknown);
+    /// h.set_type_id(DataTypeId::I64);
+    /// assert_eq!(h.type_id(), DataTypeId::I64);
+    /// assert_eq!(h.type_byte_size(), 8);
     /// ```
-    pub fn elem_type_id(&self) -> DataTypeId {
-        self.elem_type_id
+    pub fn type_id(&self) -> DataTypeId {
+        self.type_id
     }
 
-    /// Sets the storage [`DataTypeId`](crate::dtype::DataTypeId) — a direct field store;
-    /// [`Unknown`](crate::dtype::DataTypeId::Unknown) clears it (no declared type).
-    pub fn set_elem_type_id(&mut self, dtype: DataTypeId) {
-        self.elem_type_id = dtype;
-        self.clear_other_named(Self::ELEM_TYPE_ID.as_bytes());
+    /// Sets the storage [`DataTypeId`](crate::datatype_id::DataTypeId) — a direct field store;
+    /// [`Unknown`](crate::datatype_id::DataTypeId::Unknown) clears it (no declared type).
+    pub fn set_type_id(&mut self, type_id: DataTypeId) {
+        self.type_id = type_id;
+        self.clear_other_named(Self::TYPE_ID.as_bytes());
     }
 
-    /// The **element storage width** in bytes derived from [`elem_type_id`](Headers::elem_type_id)
+    /// The **element storage width** in bytes derived from [`type_id`](Headers::type_id)
     /// (`i64` → 8), or `0` when the type is unknown.
-    pub fn elem_byte_size(&self) -> u64 {
-        self.elem_type_id.byte_size()
+    pub fn type_byte_size(&self) -> u64 {
+        self.type_id.byte_size()
     }
 
-    /// The **element bit width** derived from [`elem_type_id`](Headers::elem_type_id) (`bool` → 1),
+    /// The **element bit width** derived from [`type_id`](Headers::type_id) (`bool` → 1),
     /// or `0` when the type is unknown.
-    pub fn elem_bit_size(&self) -> u64 {
-        self.elem_type_id.bit_size()
+    pub fn type_bit_size(&self) -> u64 {
+        self.type_id.bit_size()
     }
 
     /// The resource **name** declared under [`NAME`](Headers::NAME), if any.
@@ -782,7 +922,7 @@ impl Serializable for Headers {
     }
 }
 
-/// Matches `name` (case-insensitively) against the six promoted keys.
+/// Matches `name` (case-insensitively) against the promoted keys.
 fn promoted_key(name: &[u8]) -> Option<Promoted> {
     PROMOTED_ORDER
         .into_iter()

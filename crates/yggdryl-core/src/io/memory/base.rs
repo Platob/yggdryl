@@ -2,7 +2,7 @@
 
 use super::{IOCursor, IOSlice, IoError};
 use crate::compression::{codec_for_mime, compression_err, Compression};
-use crate::dtype::DataTypeId;
+use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
 use crate::mediatype::MediaType;
@@ -549,17 +549,17 @@ pub trait IOBase: Sized {
     // ---------------------------------------------------------------------------------
 
     /// This source's **element [`DataTypeId`]** — the storage type its
-    /// [`headers`](IOBase::headers) declare (`Elem-Type-Id`), or [`DataTypeId::Unknown`] (raw
+    /// [`headers`](IOBase::headers) declare (`Type-Id`), or [`DataTypeId::Unknown`] (raw
     /// bytes) when none is set. This is what the typed aggregations use to size their step and
     /// what [`resize_dtype`](IOBase::resize_dtype) converts between.
     fn dtype(&self) -> DataTypeId {
-        self.headers().elem_type_id()
+        self.headers().type_id()
     }
 
     /// Declares the source's element [`DataTypeId`] in its headers (so `dtype()` /
     /// [`element_count`](IOBase::element_count) report it). [`Unknown`](DataTypeId::Unknown) clears it.
     fn set_dtype(&mut self, dtype: DataTypeId) {
-        self.headers_mut().set_elem_type_id(dtype);
+        self.headers_mut().set_type_id(dtype);
     }
 
     /// How many whole [`dtype`](IOBase::dtype) elements the source currently holds —
@@ -567,7 +567,7 @@ pub trait IOBase: Sized {
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::dtype::DataTypeId;
+    /// use yggdryl_core::datatype_id::DataTypeId;
     ///
     /// let mut h = Heap::new();
     /// h.pwrite_i64_array(0, &[1, 2, 3]).unwrap();
@@ -585,7 +585,7 @@ pub trait IOBase: Sized {
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::dtype::DataTypeId;
+    /// use yggdryl_core::datatype_id::DataTypeId;
     ///
     /// let mut src = Heap::new();
     /// src.pwrite_i64_array(0, &[1, -2, 3]).unwrap();
@@ -606,7 +606,7 @@ pub trait IOBase: Sized {
 
     /// **Widens or shrinks the element type in place** — the mutating counterpart of
     /// [`resize_dtype`](IOBase::resize_dtype): rewrites `self`'s bytes at the new width (reusing its
-    /// auto-resizable backing, no extra copy) and updates the `Elem-Type-Id` header. Returns the
+    /// auto-resizable backing, no extra copy) and updates the `Type-Id` header. Returns the
     /// element count. Values convert numerically: a narrowing integer target **saturates** (never
     /// wraps), a float target rounds; conversions carry through `f64`, so integer magnitudes beyond
     /// 2^53 may lose precision. Errors with a guided [`IoError::FileIo`] when either side has no
@@ -644,7 +644,7 @@ pub trait IOBase: Sized {
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::dtype::DataTypeId;
+    /// use yggdryl_core::datatype_id::DataTypeId;
     ///
     /// let mut data = Heap::new();
     /// data.pwrite_i32_array(0, &[10, 20, 30, 40]).unwrap();

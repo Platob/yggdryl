@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 
 const yggdryl = require('../..')
 const io = yggdryl.io
-const { DataTypeId } = yggdryl.dtype
+const { DataTypeId } = yggdryl.datatype_id
 const { Headers } = yggdryl.headers
 const { Heap, Whence, Cursor, Slice, NoChildren } = yggdryl.memory
 const { Uri } = yggdryl.uri
@@ -1295,9 +1295,9 @@ test('dtype defaults to Unknown; setDtype declares it; elementCount steps by the
   assert.ok(h.dtype().equals(DataTypeId.I64()))
   assert.equal(h.dtype().asU16(), 8)
   assert.equal(h.elementCount(), 3) // 24 bytes / 8
-  // The type is stored in the headers as X-Elem-Type-Id.
-  assert.equal(h.headers.elemTypeId().name(), 'i64')
-  assert.equal(h.headers.elemByteSize(), 8)
+  // The type is stored in the headers as X-Type-Id.
+  assert.equal(h.headers.typeId().name(), 'i64')
+  assert.equal(h.headers.typeByteSize(), 8)
 
   // Unknown clears it.
   h.setDtype(DataTypeId.Unknown())
@@ -1306,19 +1306,19 @@ test('dtype defaults to Unknown; setDtype declares it; elementCount steps by the
 
 test('Headers element-type + name accessors round-trip', () => {
   const meta = new Headers()
-  assert.equal(meta.elemTypeId().name(), 'unknown') // default
-  assert.equal(meta.elemByteSize(), 0)
-  assert.equal(meta.elemBitSize(), 0)
+  assert.equal(meta.typeId().name(), 'unknown') // default
+  assert.equal(meta.typeByteSize(), 0)
+  assert.equal(meta.typeBitSize(), 0)
   assert.equal(meta.name(), null) // no X-Name yet
 
-  meta.setElemTypeId(DataTypeId.F32())
-  assert.ok(meta.elemTypeId().equals(DataTypeId.F32()))
-  assert.equal(meta.elemByteSize(), 4)
-  assert.equal(meta.elemBitSize(), 32)
+  meta.setTypeId(DataTypeId.F32())
+  assert.ok(meta.typeId().equals(DataTypeId.F32()))
+  assert.equal(meta.typeByteSize(), 4)
+  assert.equal(meta.typeBitSize(), 32)
 
   // Unknown removes the header.
-  meta.setElemTypeId(DataTypeId.Unknown())
-  assert.equal(meta.elemTypeId().name(), 'unknown')
+  meta.setTypeId(DataTypeId.Unknown())
+  assert.equal(meta.typeId().name(), 'unknown')
 
   meta.setName('column-a')
   assert.equal(meta.name(), 'column-a')

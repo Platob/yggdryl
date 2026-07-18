@@ -18,7 +18,7 @@ use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::PyBytes;
 
-use crate::dtype::DataTypeId;
+use crate::datatype_id::DataTypeId;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 use yggdryl_core::headers;
@@ -91,9 +91,9 @@ impl Headers {
     #[classattr]
     const MTIME: &'static str = headers::Headers::MTIME;
     /// The storage **element data type** header name — a `DataTypeId` as its `u16` id
-    /// (`elem_type_id` / `set_elem_type_id`).
+    /// (`type_id` / `set_type_id`).
     #[classattr]
-    const ELEM_TYPE_ID: &'static str = headers::Headers::ELEM_TYPE_ID;
+    const TYPE_ID: &'static str = headers::Headers::TYPE_ID;
     /// The resource **name** header name (`name` / `set_name`).
     #[classattr]
     const NAME: &'static str = headers::Headers::NAME;
@@ -264,6 +264,96 @@ impl Headers {
         self.inner.set_content_encoding(value);
     }
 
+    /// The `Host` value, if present and UTF-8.
+    fn host(&self) -> Option<String> {
+        self.inner.host().map(str::to_string)
+    }
+
+    /// Sets the `Host` header (replace semantics).
+    fn set_host(&mut self, value: &str) {
+        self.inner.set_host(value);
+    }
+
+    /// The `User-Agent` value, if present and UTF-8.
+    fn user_agent(&self) -> Option<String> {
+        self.inner.user_agent().map(str::to_string)
+    }
+
+    /// Sets the `User-Agent` header (replace semantics).
+    fn set_user_agent(&mut self, value: &str) {
+        self.inner.set_user_agent(value);
+    }
+
+    /// The `Accept` value, if present and UTF-8.
+    fn accept(&self) -> Option<String> {
+        self.inner.accept().map(str::to_string)
+    }
+
+    /// Sets the `Accept` header (replace semantics).
+    fn set_accept(&mut self, value: &str) {
+        self.inner.set_accept(value);
+    }
+
+    /// The `Accept-Encoding` value, if present and UTF-8.
+    fn accept_encoding(&self) -> Option<String> {
+        self.inner.accept_encoding().map(str::to_string)
+    }
+
+    /// Sets the `Accept-Encoding` header (replace semantics).
+    fn set_accept_encoding(&mut self, value: &str) {
+        self.inner.set_accept_encoding(value);
+    }
+
+    /// The `Authorization` value, if present and UTF-8.
+    fn authorization(&self) -> Option<String> {
+        self.inner.authorization().map(str::to_string)
+    }
+
+    /// Sets the `Authorization` header (replace semantics).
+    fn set_authorization(&mut self, value: &str) {
+        self.inner.set_authorization(value);
+    }
+
+    /// The `Location` value, if present and UTF-8.
+    fn location(&self) -> Option<String> {
+        self.inner.location().map(str::to_string)
+    }
+
+    /// Sets the `Location` header (replace semantics).
+    fn set_location(&mut self, value: &str) {
+        self.inner.set_location(value);
+    }
+
+    /// The `Connection` value, if present and UTF-8.
+    fn connection(&self) -> Option<String> {
+        self.inner.connection().map(str::to_string)
+    }
+
+    /// Sets the `Connection` header (replace semantics).
+    fn set_connection(&mut self, value: &str) {
+        self.inner.set_connection(value);
+    }
+
+    /// The `Cache-Control` value, if present and UTF-8.
+    fn cache_control(&self) -> Option<String> {
+        self.inner.cache_control().map(str::to_string)
+    }
+
+    /// Sets the `Cache-Control` header (replace semantics).
+    fn set_cache_control(&mut self, value: &str) {
+        self.inner.set_cache_control(value);
+    }
+
+    /// The `Last-Modified` value (RFC HTTP-date form), if present and UTF-8.
+    fn last_modified(&self) -> Option<String> {
+        self.inner.last_modified().map(str::to_string)
+    }
+
+    /// Sets the `Last-Modified` header (replace semantics).
+    fn set_last_modified(&mut self, value: &str) {
+        self.inner.set_last_modified(value);
+    }
+
     /// The `Content-Length` value parsed as an int, if present and numeric.
     fn content_length(&self) -> Option<u64> {
         self.inner.content_length()
@@ -271,29 +361,29 @@ impl Headers {
 
     // ---- storage element type + resource name --------------------------------------------
 
-    /// The storage **element data type** — the [`DataTypeId`] declared under `ELEM_TYPE_ID`, or
+    /// The storage **element data type** — the [`DataTypeId`] declared under `TYPE_ID`, or
     /// [`DataTypeId.Unknown`](DataTypeId::Unknown) when none is set. Total (never fails — an
     /// unrecognized id reads as `Unknown`).
-    fn elem_type_id(&self) -> DataTypeId {
-        self.inner.elem_type_id().into()
+    fn type_id(&self) -> DataTypeId {
+        self.inner.type_id().into()
     }
 
     /// Sets the storage [`DataTypeId`] (its `u16` id). [`Unknown`](DataTypeId::Unknown) **removes**
     /// the header (no declared type).
-    fn set_elem_type_id(&mut self, dtype: DataTypeId) {
-        self.inner.set_elem_type_id(dtype.into());
+    fn set_type_id(&mut self, dtype: DataTypeId) {
+        self.inner.set_type_id(dtype.into());
     }
 
-    /// The **element storage width** in bytes derived from [`elem_type_id`](Headers::elem_type_id)
+    /// The **element storage width** in bytes derived from [`type_id`](Headers::type_id)
     /// (`i64` → 8), or `0` when the type is unknown.
-    fn elem_byte_size(&self) -> u64 {
-        self.inner.elem_byte_size()
+    fn type_byte_size(&self) -> u64 {
+        self.inner.type_byte_size()
     }
 
-    /// The **element bit width** derived from [`elem_type_id`](Headers::elem_type_id) (`bool` → 1),
+    /// The **element bit width** derived from [`type_id`](Headers::type_id) (`bool` → 1),
     /// or `0` when the type is unknown.
-    fn elem_bit_size(&self) -> u64 {
-        self.inner.elem_bit_size()
+    fn type_bit_size(&self) -> u64 {
+        self.inner.type_bit_size()
     }
 
     /// The resource **name** declared under `NAME`, if any.

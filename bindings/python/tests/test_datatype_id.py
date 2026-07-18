@@ -1,6 +1,6 @@
-"""Tests for the ``yggdryl.dtype`` ``DataTypeId`` enum.
+"""Tests for the ``yggdryl.datatype_id`` ``DataTypeId`` enum.
 
-Mirrors ``crates/yggdryl-core/src/dtype/mod.rs`` on the Python surface: the wire-stable
+Mirrors ``crates/yggdryl-core/src/datatype_id.rs`` on the Python surface: the wire-stable
 numeric values, the ``u16`` id round-trip (``as_u16`` / ``from_u16``), the lowercase token
 names (``name`` / ``from_name``), the storage widths (``byte_size`` / ``bit_size``), the
 category predicates (``is_integer`` / ``is_signed`` / ``is_float`` / ``is_bool`` /
@@ -11,8 +11,8 @@ import operator
 
 import pytest
 
-import yggdryl.dtype
-from yggdryl.dtype import DataTypeId
+import yggdryl.datatype_id
+from yggdryl.datatype_id import DataTypeId
 
 # Every variant in id order, with its wire-stable value.
 ALL_TYPES = [
@@ -34,8 +34,8 @@ ALL_TYPES = [
 
 
 def test_module_surface():
-    assert DataTypeId.__module__ == "yggdryl.dtype"
-    assert hasattr(yggdryl.dtype, "DataTypeId")
+    assert DataTypeId.__module__ == "yggdryl.datatype_id"
+    assert hasattr(yggdryl.datatype_id, "DataTypeId")
 
 
 def test_wire_stable_values_and_int():

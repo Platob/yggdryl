@@ -4,13 +4,13 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
-const { DataTypeId } = yggdryl.dtype
+const { DataTypeId } = yggdryl.datatype_id
 
 // -------------------------------------------------------------------------------------
 // Namespace + variant factories
 // -------------------------------------------------------------------------------------
 
-test('the dtype namespace exposes DataTypeId with a factory per variant', () => {
+test('the datatype_id namespace exposes DataTypeId with a factory per variant', () => {
   assert.equal(typeof DataTypeId, 'function')
   const variants = [
     ['Unknown', 0, 'unknown'],

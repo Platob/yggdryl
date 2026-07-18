@@ -12,7 +12,7 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use crate::dtype::DataTypeId;
+use crate::datatype_id::DataTypeId;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 use yggdryl_core::headers as core;
@@ -244,37 +244,147 @@ impl Headers {
         self.inner.set_content_encoding(&value);
     }
 
+    // ---- promoted single-valued HTTP request/response headers --------------------------
+
+    /// The `Host` value, if present and UTF-8.
+    #[napi]
+    pub fn host(&self) -> Option<String> {
+        self.inner.host().map(str::to_string)
+    }
+
+    /// Sets the `Host` header (replace semantics).
+    #[napi]
+    pub fn set_host(&mut self, value: String) {
+        self.inner.set_host(&value);
+    }
+
+    /// The `User-Agent` value, if present and UTF-8.
+    #[napi]
+    pub fn user_agent(&self) -> Option<String> {
+        self.inner.user_agent().map(str::to_string)
+    }
+
+    /// Sets the `User-Agent` header (replace semantics).
+    #[napi]
+    pub fn set_user_agent(&mut self, value: String) {
+        self.inner.set_user_agent(&value);
+    }
+
+    /// The `Accept` value, if present and UTF-8.
+    #[napi]
+    pub fn accept(&self) -> Option<String> {
+        self.inner.accept().map(str::to_string)
+    }
+
+    /// Sets the `Accept` header (replace semantics).
+    #[napi]
+    pub fn set_accept(&mut self, value: String) {
+        self.inner.set_accept(&value);
+    }
+
+    /// The `Accept-Encoding` value, if present and UTF-8.
+    #[napi]
+    pub fn accept_encoding(&self) -> Option<String> {
+        self.inner.accept_encoding().map(str::to_string)
+    }
+
+    /// Sets the `Accept-Encoding` header (replace semantics).
+    #[napi]
+    pub fn set_accept_encoding(&mut self, value: String) {
+        self.inner.set_accept_encoding(&value);
+    }
+
+    /// The `Authorization` value, if present and UTF-8.
+    #[napi]
+    pub fn authorization(&self) -> Option<String> {
+        self.inner.authorization().map(str::to_string)
+    }
+
+    /// Sets the `Authorization` header (replace semantics).
+    #[napi]
+    pub fn set_authorization(&mut self, value: String) {
+        self.inner.set_authorization(&value);
+    }
+
+    /// The `Location` value, if present and UTF-8.
+    #[napi]
+    pub fn location(&self) -> Option<String> {
+        self.inner.location().map(str::to_string)
+    }
+
+    /// Sets the `Location` header (replace semantics).
+    #[napi]
+    pub fn set_location(&mut self, value: String) {
+        self.inner.set_location(&value);
+    }
+
+    /// The `Connection` value, if present and UTF-8.
+    #[napi]
+    pub fn connection(&self) -> Option<String> {
+        self.inner.connection().map(str::to_string)
+    }
+
+    /// Sets the `Connection` header (replace semantics).
+    #[napi]
+    pub fn set_connection(&mut self, value: String) {
+        self.inner.set_connection(&value);
+    }
+
+    /// The `Cache-Control` value, if present and UTF-8.
+    #[napi]
+    pub fn cache_control(&self) -> Option<String> {
+        self.inner.cache_control().map(str::to_string)
+    }
+
+    /// Sets the `Cache-Control` header (replace semantics).
+    #[napi]
+    pub fn set_cache_control(&mut self, value: String) {
+        self.inner.set_cache_control(&value);
+    }
+
+    /// The `Last-Modified` value (RFC HTTP-date form), if present and UTF-8.
+    #[napi]
+    pub fn last_modified(&self) -> Option<String> {
+        self.inner.last_modified().map(str::to_string)
+    }
+
+    /// Sets the `Last-Modified` header (replace semantics).
+    #[napi]
+    pub fn set_last_modified(&mut self, value: String) {
+        self.inner.set_last_modified(&value);
+    }
+
     // ---- element data type + resource name ---------------------------------------------
 
-    /// The storage **element [`DataTypeId`]** declared under `X-Elem-Type-Id`, or
+    /// The storage **element [`DataTypeId`]** declared under `X-Type-Id`, or
     /// [`DataTypeId.Unknown`] (raw bytes) when none is set. Total (never throws — an unrecognized
     /// id reads as `Unknown`).
     #[napi]
-    pub fn elem_type_id(&self) -> DataTypeId {
+    pub fn type_id(&self) -> DataTypeId {
         DataTypeId {
-            inner: self.inner.elem_type_id(),
+            inner: self.inner.type_id(),
         }
     }
 
     /// Sets the storage [`DataTypeId`] (its `u16` id). [`DataTypeId.Unknown`] **removes** the
     /// header (no declared type).
     #[napi]
-    pub fn set_elem_type_id(&mut self, dtype: &DataTypeId) {
-        self.inner.set_elem_type_id(dtype.inner);
+    pub fn set_type_id(&mut self, dtype: &DataTypeId) {
+        self.inner.set_type_id(dtype.inner);
     }
 
-    /// The **element storage width** in bytes derived from `elemTypeId` (`i64` → 8), or `0` when
+    /// The **element storage width** in bytes derived from `typeId` (`i64` → 8), or `0` when
     /// the type is unknown. An `i64` (a JS number).
     #[napi]
-    pub fn elem_byte_size(&self) -> i64 {
-        self.inner.elem_byte_size() as i64
+    pub fn type_byte_size(&self) -> i64 {
+        self.inner.type_byte_size() as i64
     }
 
-    /// The **element bit width** derived from `elemTypeId` (`bool` → 1), or `0` when the type is
+    /// The **element bit width** derived from `typeId` (`bool` → 1), or `0` when the type is
     /// unknown. An `i64` (a JS number).
     #[napi]
-    pub fn elem_bit_size(&self) -> i64 {
-        self.inner.elem_bit_size() as i64
+    pub fn type_bit_size(&self) -> i64 {
+        self.inner.type_bit_size() as i64
     }
 
     /// The resource **name** declared under `X-Name`, or `null` if absent.

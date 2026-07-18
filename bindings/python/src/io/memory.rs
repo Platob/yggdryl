@@ -41,7 +41,7 @@ use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::PyBytes;
 
-use crate::dtype::DataTypeId;
+use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
@@ -741,7 +741,7 @@ impl Heap {
     // ---- element type + transforms -----------------------------------------------------
 
     /// The source's declared **element** [`DataTypeId`] — read from its headers
-    /// (`ELEM_TYPE_ID`), or [`DataTypeId.Unknown`](DataTypeId::Unknown) when none is set.
+    /// (`TYPE_ID`), or [`DataTypeId.Unknown`](DataTypeId::Unknown) when none is set.
     fn dtype(&self) -> DataTypeId {
         self.inner.dtype().into()
     }

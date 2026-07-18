@@ -20,7 +20,7 @@ import pytest
 
 import yggdryl.memory
 from yggdryl.compression import Gzip, Zstd
-from yggdryl.dtype import DataTypeId
+from yggdryl.datatype_id import DataTypeId
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
 from yggdryl.mediatype import MediaType
@@ -1488,8 +1488,8 @@ def test_heap_dtype_get_set_and_element_count():
     h.set_dtype(DataTypeId.I64)
     assert h.dtype() == DataTypeId.I64
     assert h.element_count() == 3  # 24 bytes / 8
-    # The declared type is stored in the headers (Elem-Type-Id).
-    assert h.headers.elem_type_id() == DataTypeId.I64
+    # The declared type is stored in the headers (Type-Id).
+    assert h.headers.type_id() == DataTypeId.I64
     # Unknown clears it.
     h.set_dtype(DataTypeId.Unknown)
     assert h.dtype() == DataTypeId.Unknown
@@ -1616,19 +1616,19 @@ def test_heap_float_min_max_ignore_nan():
 # -------------------------------------------------------------------------------------
 
 
-def test_headers_elem_type_id_round_trip():
+def test_headers_type_id_round_trip():
     hdr = Headers()
-    assert hdr.elem_type_id() == DataTypeId.Unknown  # nothing declared
-    assert hdr.elem_byte_size() == 0
-    assert hdr.elem_bit_size() == 0
-    hdr.set_elem_type_id(DataTypeId.I64)
-    assert hdr.elem_type_id() == DataTypeId.I64
-    assert hdr.elem_byte_size() == 8
-    assert hdr.elem_bit_size() == 64
+    assert hdr.type_id() == DataTypeId.Unknown  # nothing declared
+    assert hdr.type_byte_size() == 0
+    assert hdr.type_bit_size() == 0
+    hdr.set_type_id(DataTypeId.I64)
+    assert hdr.type_id() == DataTypeId.I64
+    assert hdr.type_byte_size() == 8
+    assert hdr.type_bit_size() == 64
     # Unknown removes the header.
-    hdr.set_elem_type_id(DataTypeId.Unknown)
-    assert hdr.elem_type_id() == DataTypeId.Unknown
-    assert not hdr.contains(Headers.ELEM_TYPE_ID)
+    hdr.set_type_id(DataTypeId.Unknown)
+    assert hdr.type_id() == DataTypeId.Unknown
+    assert not hdr.contains(Headers.TYPE_ID)
 
 
 def test_headers_name_round_trip():

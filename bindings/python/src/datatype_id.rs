@@ -1,10 +1,10 @@
-//! The `yggdryl.dtype` submodule — the primitive **element data types** a byte region can be
+//! The `yggdryl.datatype_id` submodule — the primitive **element data types** a byte region can be
 //! interpreted as.
 //!
-//! Mirrors [`yggdryl_core::dtype::DataTypeId`]: a compact int enum naming every native fixed-width
-//! primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats `f32`/`f64`). It
-//! round-trips through a `u16` — the value a source stores in its `Headers` as the `Elem-Type-Id`
-//! — so the byte layer knows its **element width** (the size the typed accessors and the
+//! Mirrors [`yggdryl_core::datatype_id::DataTypeId`]: a compact int enum naming every native
+//! fixed-width primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats
+//! `f32`/`f64`). It round-trips through a `u16` — the value a source stores in its `Headers` as the
+//! `Type-Id` — so the byte layer knows its **element width** (the size the typed accessors and the
 //! vectorized aggregations step by), can compute an element count, and can safely widen / shrink a
 //! region between widths. Hashable and frozen like an int enum.
 //!
@@ -17,13 +17,13 @@
 
 use pyo3::prelude::*;
 
-use yggdryl_core::dtype;
+use yggdryl_core::datatype_id;
 
 /// A **primitive element data type** — the interpretation of a fixed-width value in a byte region,
 /// with the same wire-stable numeric values as the core (`Unknown = 0`, `Bool = 1`, … `F64 = 13`),
 /// so `DataTypeId.I32 == 6` and `int(DataTypeId.I32) == 6`. `Unknown` is the default "raw bytes"
 /// state. Hashable and frozen like an int enum.
-#[pyclass(module = "yggdryl.dtype", eq, eq_int, hash, frozen)]
+#[pyclass(module = "yggdryl.datatype_id", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DataTypeId {
     /// Unknown / raw bytes — no declared element type (the default). Value `0`.
@@ -56,44 +56,44 @@ pub enum DataTypeId {
     F64 = 13,
 }
 
-impl From<DataTypeId> for dtype::DataTypeId {
+impl From<DataTypeId> for datatype_id::DataTypeId {
     fn from(id: DataTypeId) -> Self {
         match id {
-            DataTypeId::Unknown => dtype::DataTypeId::Unknown,
-            DataTypeId::Bool => dtype::DataTypeId::Bool,
-            DataTypeId::I8 => dtype::DataTypeId::I8,
-            DataTypeId::U8 => dtype::DataTypeId::U8,
-            DataTypeId::I16 => dtype::DataTypeId::I16,
-            DataTypeId::U16 => dtype::DataTypeId::U16,
-            DataTypeId::I32 => dtype::DataTypeId::I32,
-            DataTypeId::U32 => dtype::DataTypeId::U32,
-            DataTypeId::I64 => dtype::DataTypeId::I64,
-            DataTypeId::U64 => dtype::DataTypeId::U64,
-            DataTypeId::I128 => dtype::DataTypeId::I128,
-            DataTypeId::U128 => dtype::DataTypeId::U128,
-            DataTypeId::F32 => dtype::DataTypeId::F32,
-            DataTypeId::F64 => dtype::DataTypeId::F64,
+            DataTypeId::Unknown => datatype_id::DataTypeId::Unknown,
+            DataTypeId::Bool => datatype_id::DataTypeId::Bool,
+            DataTypeId::I8 => datatype_id::DataTypeId::I8,
+            DataTypeId::U8 => datatype_id::DataTypeId::U8,
+            DataTypeId::I16 => datatype_id::DataTypeId::I16,
+            DataTypeId::U16 => datatype_id::DataTypeId::U16,
+            DataTypeId::I32 => datatype_id::DataTypeId::I32,
+            DataTypeId::U32 => datatype_id::DataTypeId::U32,
+            DataTypeId::I64 => datatype_id::DataTypeId::I64,
+            DataTypeId::U64 => datatype_id::DataTypeId::U64,
+            DataTypeId::I128 => datatype_id::DataTypeId::I128,
+            DataTypeId::U128 => datatype_id::DataTypeId::U128,
+            DataTypeId::F32 => datatype_id::DataTypeId::F32,
+            DataTypeId::F64 => datatype_id::DataTypeId::F64,
         }
     }
 }
 
-impl From<dtype::DataTypeId> for DataTypeId {
-    fn from(id: dtype::DataTypeId) -> Self {
+impl From<datatype_id::DataTypeId> for DataTypeId {
+    fn from(id: datatype_id::DataTypeId) -> Self {
         match id {
-            dtype::DataTypeId::Unknown => DataTypeId::Unknown,
-            dtype::DataTypeId::Bool => DataTypeId::Bool,
-            dtype::DataTypeId::I8 => DataTypeId::I8,
-            dtype::DataTypeId::U8 => DataTypeId::U8,
-            dtype::DataTypeId::I16 => DataTypeId::I16,
-            dtype::DataTypeId::U16 => DataTypeId::U16,
-            dtype::DataTypeId::I32 => DataTypeId::I32,
-            dtype::DataTypeId::U32 => DataTypeId::U32,
-            dtype::DataTypeId::I64 => DataTypeId::I64,
-            dtype::DataTypeId::U64 => DataTypeId::U64,
-            dtype::DataTypeId::I128 => DataTypeId::I128,
-            dtype::DataTypeId::U128 => DataTypeId::U128,
-            dtype::DataTypeId::F32 => DataTypeId::F32,
-            dtype::DataTypeId::F64 => DataTypeId::F64,
+            datatype_id::DataTypeId::Unknown => DataTypeId::Unknown,
+            datatype_id::DataTypeId::Bool => DataTypeId::Bool,
+            datatype_id::DataTypeId::I8 => DataTypeId::I8,
+            datatype_id::DataTypeId::U8 => DataTypeId::U8,
+            datatype_id::DataTypeId::I16 => DataTypeId::I16,
+            datatype_id::DataTypeId::U16 => DataTypeId::U16,
+            datatype_id::DataTypeId::I32 => DataTypeId::I32,
+            datatype_id::DataTypeId::U32 => DataTypeId::U32,
+            datatype_id::DataTypeId::I64 => DataTypeId::I64,
+            datatype_id::DataTypeId::U64 => DataTypeId::U64,
+            datatype_id::DataTypeId::I128 => DataTypeId::I128,
+            datatype_id::DataTypeId::U128 => DataTypeId::U128,
+            datatype_id::DataTypeId::F32 => DataTypeId::F32,
+            datatype_id::DataTypeId::F64 => DataTypeId::F64,
             // The core enum is `#[non_exhaustive]`; a newer/foreign id degrades to raw bytes.
             _ => DataTypeId::Unknown,
         }
@@ -104,84 +104,84 @@ impl From<dtype::DataTypeId> for DataTypeId {
 impl DataTypeId {
     /// The `u16` discriminant — what a source stores in its headers (`Unknown = 0`, … `F64 = 13`).
     fn as_u16(&self) -> u16 {
-        dtype::DataTypeId::from(*self).as_u16()
+        datatype_id::DataTypeId::from(*self).as_u16()
     }
 
     /// The type for a `u16` discriminant, or [`Unknown`](DataTypeId::Unknown) for an unrecognized
     /// value (total, never fails — a foreign/newer id degrades to raw bytes).
     #[staticmethod]
     fn from_u16(value: u16) -> DataTypeId {
-        dtype::DataTypeId::from_u16(value).into()
+        datatype_id::DataTypeId::from_u16(value).into()
     }
 
     /// The stable lowercase token (`"i32"`, `"f64"`, `"bool"`, `"unknown"`).
     fn name(&self) -> &'static str {
-        dtype::DataTypeId::from(*self).name()
+        datatype_id::DataTypeId::from(*self).name()
     }
 
     /// The type named by `token` (`"i32"`, `"f64"`, …, case-insensitive), or `None` when the name
     /// is not a known type.
     #[staticmethod]
     fn from_name(token: &str) -> Option<DataTypeId> {
-        dtype::DataTypeId::from_name(token).map(DataTypeId::from)
+        datatype_id::DataTypeId::from_name(token).map(DataTypeId::from)
     }
 
     /// The **storage width** of one element in bytes (`i32` → 4, `i128` → 16, `bool` → 1); `0` for
     /// [`Unknown`](DataTypeId::Unknown) (raw bytes have no fixed element width).
     fn byte_size(&self) -> u64 {
-        dtype::DataTypeId::from(*self).byte_size()
+        datatype_id::DataTypeId::from(*self).byte_size()
     }
 
     /// The **logical bit width** of one element — `bool` is `1`, every other fixed type is
     /// `byte_size() * 8`, and [`Unknown`](DataTypeId::Unknown) is `0`.
     fn bit_size(&self) -> u64 {
-        dtype::DataTypeId::from(*self).bit_size()
+        datatype_id::DataTypeId::from(*self).bit_size()
     }
 
     /// Whether this is an integer type (`bool` is **not** counted as an integer).
     fn is_integer(&self) -> bool {
-        dtype::DataTypeId::from(*self).is_integer()
+        datatype_id::DataTypeId::from(*self).is_integer()
     }
 
     /// Whether this is a **signed** numeric type (the signed integers and the floats).
     fn is_signed(&self) -> bool {
-        dtype::DataTypeId::from(*self).is_signed()
+        datatype_id::DataTypeId::from(*self).is_signed()
     }
 
     /// Whether this is a floating-point type (`f32` / `f64`).
     fn is_float(&self) -> bool {
-        dtype::DataTypeId::from(*self).is_float()
+        datatype_id::DataTypeId::from(*self).is_float()
     }
 
     /// Whether this is the boolean type.
     fn is_bool(&self) -> bool {
-        dtype::DataTypeId::from(*self).is_bool()
+        datatype_id::DataTypeId::from(*self).is_bool()
     }
 
     /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::Unknown)).
     fn is_fixed_width(&self) -> bool {
-        dtype::DataTypeId::from(*self).is_fixed_width()
+        datatype_id::DataTypeId::from(*self).is_fixed_width()
     }
 
     /// How many whole elements of this type fit in `bytes` — `bytes / byte_size()`, or `0` for
     /// [`Unknown`](DataTypeId::Unknown) (raw bytes have no element count).
     fn element_count(&self, bytes: u64) -> u64 {
-        dtype::DataTypeId::from(*self).element_count(bytes)
+        datatype_id::DataTypeId::from(*self).element_count(bytes)
     }
 
     /// The canonical lowercase name (so `str(dtype)` reads like the core `Display`).
     fn __str__(&self) -> &'static str {
-        dtype::DataTypeId::from(*self).name()
+        datatype_id::DataTypeId::from(*self).name()
     }
 
     /// The `u16` id as an integer index (so it can index a sequence / `operator.index`) — the
     /// index counterpart of the pyo3-provided `__int__`.
     fn __index__(&self) -> u16 {
-        dtype::DataTypeId::from(*self).as_u16()
+        datatype_id::DataTypeId::from(*self).as_u16()
     }
 }
 
-/// Populates the `dtype` submodule.
+/// Populates the `datatype_id` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<DataTypeId>()?;
     Ok(())

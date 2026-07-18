@@ -35,7 +35,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 
 use crate::compression::{as_dyn, wrap_codec, Gzip, Lzma, Zlib, Zstd};
-use crate::dtype::DataTypeId;
+use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
@@ -1564,7 +1564,7 @@ impl Heap {
     // ---- element data type (from the headers) ------------------------------------------
 
     /// This source's **element [`DataTypeId`]** — the storage type its `headers` declare
-    /// (`X-Elem-Type-Id`), or [`DataTypeId.Unknown`] (raw bytes) when none is set. This is what
+    /// (`X-Type-Id`), or [`DataTypeId.Unknown`] (raw bytes) when none is set. This is what
     /// the typed aggregations step by and what `resizeDtype` converts between.
     #[napi]
     pub fn dtype(&self) -> DataTypeId {
@@ -1600,7 +1600,7 @@ impl Heap {
     }
 
     /// **Widens or shrinks the element type in place** — rewrites this heap's bytes at the new
-    /// width and updates the `X-Elem-Type-Id` header; returns the element count. A narrowing
+    /// width and updates the `X-Type-Id` header; returns the element count. A narrowing
     /// integer target saturates, a float target rounds; conversions carry through `f64`. Throws
     /// the guided `Error` when either side has no known element type. An `i64` (a JS number).
     #[napi]

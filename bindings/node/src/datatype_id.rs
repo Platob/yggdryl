@@ -1,7 +1,7 @@
-//! The `yggdryl.dtype` namespace's [`DataTypeId`] — the primitive **element data types** a byte
-//! region can be interpreted as.
+//! The `yggdryl.datatype_id` namespace's [`DataTypeId`] — the primitive **element data types** a
+//! byte region can be interpreted as.
 //!
-//! Mirrors `yggdryl_core::dtype::DataTypeId`, a compact `#[repr(u16)]` int enum naming every native
+//! Mirrors `yggdryl_core::datatype_id::DataTypeId`, a compact `#[repr(u16)]` int enum naming every native
 //! fixed-width primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats
 //! `f32`/`f64`). napi cannot attach methods to a bare enum, so — like the core — the type is
 //! exposed as a thin `#[napi]` **class** carrying its `u16` `id`: each variant is a named static
@@ -13,20 +13,20 @@
 
 use napi_derive::napi;
 
-use yggdryl_core::dtype as core;
+use yggdryl_core::datatype_id as core;
 
 /// A **primitive element data type** — the interpretation of a fixed-width value in a byte region
 /// (`Unknown` is the default "raw bytes" state). A thin value over the core's `#[repr(u16)]` id:
-/// it round-trips through a `u16` (the value a source stores in its `Headers` as `Elem-Type-Id`),
+/// it round-trips through a `u16` (the value a source stores in its `Headers` as `Type-Id`),
 /// so the byte layer knows its element width, can compute an element count, and can widen / shrink
 /// a region between widths. Equatable and stringly named; the id keys a map or travels over a wire.
-#[napi(namespace = "dtype")]
+#[napi(namespace = "datatype_id")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct DataTypeId {
     pub(crate) inner: core::DataTypeId,
 }
 
-#[napi(namespace = "dtype")]
+#[napi(namespace = "datatype_id")]
 impl DataTypeId {
     /// Builds a data type from its **`u16` id** (`8` → `I64`); an unrecognized id degrades to
     /// [`Unknown`](DataTypeId::unknown) (total, never throws). The generic entry — `fromU16` is
