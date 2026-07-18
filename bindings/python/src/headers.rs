@@ -128,7 +128,7 @@ impl Headers {
     /// The **first** value for `name` (case-insensitive), or `None` if absent or not valid
     /// UTF-8. Use [`get_bytes`](Headers::get_bytes) for the raw bytes.
     fn get(&self, name: &str) -> Option<String> {
-        self.inner.get(name).map(str::to_string)
+        self.inner.get(name).map(|value| value.into_owned())
     }
 
     /// Every value for `name`, in insertion order (non-UTF-8 values are skipped).
@@ -136,7 +136,7 @@ impl Headers {
         self.inner
             .get_all(name)
             .into_iter()
-            .map(str::to_string)
+            .map(|value| value.into_owned())
             .collect()
     }
 
@@ -144,7 +144,7 @@ impl Headers {
     fn get_bytes<'py>(&self, py: Python<'py>, name: PyBackedBytes) -> Option<Bound<'py, PyBytes>> {
         self.inner
             .get_bytes(&name)
-            .map(|value| PyBytes::new_bound(py, value))
+            .map(|value| PyBytes::new_bound(py, &value))
     }
 
     /// Every raw value for `name`, in insertion order.
@@ -152,7 +152,7 @@ impl Headers {
         self.inner
             .get_all_bytes(&name)
             .into_iter()
-            .map(|value| PyBytes::new_bound(py, value))
+            .map(|value| PyBytes::new_bound(py, &value))
             .collect()
     }
 
@@ -166,7 +166,7 @@ impl Headers {
     fn items<'py>(&self, py: Python<'py>) -> Vec<(Bound<'py, PyBytes>, Bound<'py, PyBytes>)> {
         self.inner
             .iter()
-            .map(|(name, value)| (PyBytes::new_bound(py, name), PyBytes::new_bound(py, value)))
+            .map(|(name, value)| (PyBytes::new_bound(py, name), PyBytes::new_bound(py, &value)))
             .collect()
     }
 
@@ -395,11 +395,14 @@ impl Headers {
         if !self.inner.contains(name) {
             return Err(PyKeyError::new_err(name.to_string()));
         }
-        self.inner.get(name).map(str::to_string).ok_or_else(|| {
-            PyValueError::new_err(format!(
-                "the value of {name:?} is not valid UTF-8; use get_bytes for the raw bytes"
-            ))
-        })
+        self.inner
+            .get(name)
+            .map(|value| value.into_owned())
+            .ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "the value of {name:?} is not valid UTF-8; use get_bytes for the raw bytes"
+                ))
+            })
     }
 
     /// Map write: `headers[name] = value` sets `name` to a single value (insert/replace,

@@ -58,7 +58,7 @@ methods.
     h.append("Set-Cookie", "a=1");
     h.append("Set-Cookie", "b=2");
 
-    assert_eq!(h.get("content-type"), Some("application/json")); // case-insensitive
+    assert_eq!(h.get("content-type").as_deref(), Some("application/json")); // case-insensitive
     assert_eq!(h.get_all("set-cookie"), vec!["a=1", "b=2"]);      // multi-value
     assert_eq!(Headers::deserialize_bytes(&h.serialize_bytes()).unwrap(), h);
     ```
@@ -165,7 +165,7 @@ microseconds into the `mtime` header — the size and timestamp halves of the sa
 
     let mut h = Headers::new();
     h.set_content_length(1024); // decimal rendered in-place
-    assert_eq!(h.get("content-length"), Some("1024"));
+    assert_eq!(h.get("content-length").as_deref(), Some("1024")); // rendered from the u64 field
     assert_eq!(h.content_length(), Some(1024)); // read back, whitespace-trimmed
 
     h.touch_mtime(); // stamp now as epoch microseconds

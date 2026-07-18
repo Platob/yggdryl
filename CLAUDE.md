@@ -122,7 +122,15 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   type in the project: `Headers` (ordered, case-insensitive, multi-value, byte-capable). HTTP
   headers, schema/field metadata, source annotations — all of it is a `Headers`; never
   introduce a second map type or an ad-hoc `HashMap<String, String>` in a public signature.
-  Every `IOBase` carries one (`headers()` / `headers_mut()`).
+  Every `IOBase` carries one (`headers()` / `headers_mut()`). The six hot single-valued keys
+  (`Content-Type`/`-Encoding`/`-Length`, `X-Elem-Type-Id`, `X-Name`, `X-Mtime-Us`) are **hard-typed
+  struct fields** (`content_length()` → `u64`, `content_type()` → `&str`, … read/write with no parse
+  and no per-value allocation); every other name lives in the ordered multi-value overflow `Vec`.
+  The generic map view (`get`/`get_bytes`/`iter`) still sees **everything** by returning a `Cow`
+  (borrow for strings/overflow, a small render for the numeric keys). A promoted key is
+  single-valued (append == replace) and a value that doesn't fit its typed field falls back to the
+  overflow map — canonical order is the typed fields first, then the overflow, so equal maps
+  serialize/hash equal.
 - **Least reallocation, fewest copies — in every action.** Prefer zero-copy hand-off; never
   clone what a borrow can serve; pre-size every buffer you build (`with_capacity` /
   `encoded_len`); a bulk op ships an allocation-free *fill-into* / *read-into* counterpart

@@ -78,7 +78,7 @@ impl Headers {
     /// UTF-8. Use `getBytes` for the raw bytes.
     #[napi]
     pub fn get(&self, name: String) -> Option<String> {
-        self.inner.get(&name).map(str::to_string)
+        self.inner.get(&name).map(|value| value.into_owned())
     }
 
     /// Every value for `name` as a string, in insertion order (non-UTF-8 values are skipped).
@@ -87,7 +87,7 @@ impl Headers {
         self.inner
             .get_all(&name)
             .into_iter()
-            .map(str::to_string)
+            .map(|value| value.into_owned())
             .collect()
     }
 
