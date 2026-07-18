@@ -70,8 +70,9 @@ fn resolve_headers(options: &Object) -> napi::Result<Option<yggdryl_core::header
 /// `Buffer` / `Uint8Array`) seeds the heap with a **copy** of its bytes; omit it for an empty
 /// heap. `options` tunes the result:
 ///
-/// - `capacity` pre-allocates an **empty** heap (`Heap.withCapacity`) so appends do not
-///   reallocate (ignored when `data` is given — the copy already sizes the buffer);
+/// - `capacity` pre-sizes the heap so appends do not reallocate — an **empty** heap of that
+///   capacity when `data` is omitted (`Heap.withCapacity`), or **reserved headroom** past the
+///   copied bytes when `data` is given (`ensureCapacity`);
 /// - `headers` (a `headers.Headers` **or** a plain `{ name: value }` object) becomes the heap's
 ///   metadata map (`setHeaders`);
 /// - `mode` (an `io.IOMode`, or its name/number) sets the access mode (`setMode`).
@@ -85,9 +86,16 @@ pub fn buffer(data: Option<Uint8Array>, options: Option<Object>) -> napi::Result
         None => None,
     };
 
-    // The bytes decide the base: a copy of `data`, else a capacity-sized (or empty) heap.
+    // The bytes decide the base: a copy of `data` (reserving headroom to `capacity` when
+    // given), else a capacity-sized (or empty) heap.
     let mut inner = match (&data, capacity) {
-        (Some(bytes), _) => mem_core::Heap::from_slice(bytes.as_ref()),
+        (Some(bytes), capacity) => {
+            let mut inner = mem_core::Heap::from_slice(bytes.as_ref());
+            if let Some(capacity) = capacity {
+                inner.ensure_capacity(capacity as u64);
+            }
+            inner
+        }
         (None, Some(capacity)) => mem_core::Heap::with_capacity(capacity as usize),
         (None, None) => mem_core::Heap::new(),
     };
@@ -159,80 +167,38 @@ pub fn array(values: Vec<ArrayValue>, dtype: Option<String>) -> napi::Result<Hea
         None => "f64".to_string(),
     };
 
-    // Build a pre-sized heap and stream `values` through the matching vectorized bulk kernel.
-    let inner = match dtype.as_str() {
-        "i8" => {
-            let typed: Vec<i8> = values.iter().map(|v| as_i128(v) as i8).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len());
-            heap.pwrite_i8_array(0, &typed).map_err(to_error)?;
+    // One arm per element type, collapsed by a local macro that expands to the shared
+    // sequence: collect `values` into a pre-sized typed vector, build a capacity-sized heap
+    // (`width` bytes per element), and stream them through the matching vectorized bulk
+    // kernel. (The `u8` arm stays explicit — the byte surface *is* the `u8` array, and its
+    // `pwriteByteArray` is non-fallible, so it has no `map_err` to share.)
+    macro_rules! arm {
+        ($convert:expr, $width:expr, $write:ident) => {{
+            let typed: Vec<_> = values.iter().map($convert).collect();
+            let mut heap = mem_core::Heap::with_capacity(typed.len() * $width);
+            heap.$write(0, &typed).map_err(to_error)?;
             heap
-        }
+        }};
+    }
+
+    let inner = match dtype.as_str() {
+        "i8" => arm!(|v| as_i128(v) as i8, 1, pwrite_i8_array),
         "u8" => {
             let typed: Vec<u8> = values.iter().map(|v| as_u128(v) as u8).collect();
             let mut heap = mem_core::Heap::with_capacity(typed.len());
             heap.pwrite_byte_array(0, &typed);
             heap
         }
-        "i16" => {
-            let typed: Vec<i16> = values.iter().map(|v| as_i128(v) as i16).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 2);
-            heap.pwrite_i16_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "u16" => {
-            let typed: Vec<u16> = values.iter().map(|v| as_u128(v) as u16).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 2);
-            heap.pwrite_u16_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "i32" => {
-            let typed: Vec<i32> = values.iter().map(|v| as_i128(v) as i32).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 4);
-            heap.pwrite_i32_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "u32" => {
-            let typed: Vec<u32> = values.iter().map(|v| as_u128(v) as u32).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 4);
-            heap.pwrite_u32_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "i64" => {
-            let typed: Vec<i64> = values.iter().map(|v| as_i128(v) as i64).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 8);
-            heap.pwrite_i64_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "u64" => {
-            let typed: Vec<u64> = values.iter().map(|v| as_u128(v) as u64).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 8);
-            heap.pwrite_u64_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "i128" => {
-            let typed: Vec<i128> = values.iter().map(as_i128).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 16);
-            heap.pwrite_i128_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "u128" => {
-            let typed: Vec<u128> = values.iter().map(as_u128).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 16);
-            heap.pwrite_u128_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "f32" => {
-            let typed: Vec<f32> = values.iter().map(|v| as_f64(v) as f32).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 4);
-            heap.pwrite_f32_array(0, &typed).map_err(to_error)?;
-            heap
-        }
-        "f64" => {
-            let typed: Vec<f64> = values.iter().map(as_f64).collect();
-            let mut heap = mem_core::Heap::with_capacity(typed.len() * 8);
-            heap.pwrite_f64_array(0, &typed).map_err(to_error)?;
-            heap
-        }
+        "i16" => arm!(|v| as_i128(v) as i16, 2, pwrite_i16_array),
+        "u16" => arm!(|v| as_u128(v) as u16, 2, pwrite_u16_array),
+        "i32" => arm!(|v| as_i128(v) as i32, 4, pwrite_i32_array),
+        "u32" => arm!(|v| as_u128(v) as u32, 4, pwrite_u32_array),
+        "i64" => arm!(|v| as_i128(v) as i64, 8, pwrite_i64_array),
+        "u64" => arm!(|v| as_u128(v) as u64, 8, pwrite_u64_array),
+        "i128" => arm!(as_i128, 16, pwrite_i128_array),
+        "u128" => arm!(as_u128, 16, pwrite_u128_array),
+        "f32" => arm!(|v| as_f64(v) as f32, 4, pwrite_f32_array),
+        "f64" => arm!(as_f64, 8, pwrite_f64_array),
         other => {
             return Err(to_error(format!(
                 "unknown dtype '{other}': expected one of {DTYPE_TOKENS}"
@@ -258,14 +224,18 @@ pub fn device_buffer(
     device: Option<String>,
 ) -> napi::Result<Either<Heap, AmdBuffer>> {
     let use_gpu = match device.as_deref() {
-        Some("amd") => true,
-        Some("cpu") => false,
-        Some(other) => {
-            return Err(to_error(format!(
-                "unknown device '{other}': expected 'cpu' or 'amd', or omit it to pick the best \
-                 available device"
-            )))
-        }
+        // Case-insensitive tokens, matching the Python twin: `"cpu"` → the CPU heap,
+        // `"amd"` / `"gpu"` / `"cuda"` → a GPU buffer (an `AmdBuffer`).
+        Some(name) => match name.to_ascii_lowercase().as_str() {
+            "amd" | "gpu" | "cuda" => true,
+            "cpu" => false,
+            _ => {
+                return Err(to_error(format!(
+                    "unknown device '{name}': expected 'cpu' (the CPU heap) or one of 'amd' / \
+                     'gpu' / 'cuda' (a GPU buffer), or omit it to pick the best available device"
+                )))
+            }
+        },
         // No preference: prefer a real GPU when the probe finds one, else the CPU heap.
         None => gpu_core::available_devices()
             .iter()

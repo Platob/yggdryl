@@ -637,7 +637,7 @@ The built-in cursor reads text a line at a time, exactly like a Python file obje
 advances past them, decoding UTF-8; it returns `""` **only** at the true end, so a blank line —
 which keeps its `\n` — is distinct from EOF. `readlines()` drains the rest into a list. In Python
 the buffer is itself line-iterable (`for line in heap:` / `for line in cursor:`); in Node the same
-capability is `readLine()` / `readLines()` (with the `lines()` alias).
+capability is `readline()` / `readlines()` (with the `lines()` alias).
 
 === "Python"
 
@@ -663,16 +663,16 @@ capability is `readLine()` / `readLines()` (with the `lines()` alias).
     const { Heap } = require('yggdryl').memory
 
     const h = new Heap(Buffer.from('a\nb\n\nc'))   // a blank line, and a newline-less last line
-    console.assert(h.readLine() === 'a\n')         // through the newline, inclusive
-    console.assert(h.readLine() === 'b\n')
-    console.assert(h.readLine() === '\n')          // a blank line keeps its newline...
-    console.assert(h.readLine() === 'c')           // ...the final line has none
-    console.assert(h.readLine() === '')            // '' only at the true end
+    console.assert(h.readline() === 'a\n')         // through the newline, inclusive
+    console.assert(h.readline() === 'b\n')
+    console.assert(h.readline() === '\n')          // a blank line keeps its newline...
+    console.assert(h.readline() === 'c')           // ...the final line has none
+    console.assert(h.readline() === '')            // '' only at the true end
 
     h.rewind()
-    console.assert(h.readLines().join('|') === 'a\n|b\n|\n|c')
+    console.assert(h.readlines().join('|') === 'a\n|b\n|\n|c')
     h.rewind()
-    console.assert(h.lines().join('|') === 'a\n|b\n|\n|c')   // lines() is the readLines() alias
+    console.assert(h.lines().join('|') === 'a\n|b\n|\n|c')   // lines() is the readlines() alias
     ```
 
 === "Rust"

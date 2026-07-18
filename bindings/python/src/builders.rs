@@ -173,8 +173,8 @@ fn wants_gpu(device: Option<&Bound<'_, PyAny>>) -> PyResult<bool> {
                     "cpu" => Ok(false),
                     "amd" | "gpu" | "cuda" => Ok(true),
                     other => Err(PyValueError::new_err(format!(
-                        "unknown device {other:?}: expected \"cpu\", \"amd\", or a \
-                         yggdryl.gpu.GpuDevice"
+                        "unknown device {other:?}: expected \"cpu\", \"amd\", \"gpu\", \"cuda\", \
+                         or a yggdryl.gpu.GpuDevice"
                     ))),
                 }
             } else {

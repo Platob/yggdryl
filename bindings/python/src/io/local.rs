@@ -35,7 +35,7 @@ use pyo3::types::PyBytes;
 
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
-use crate::io::memory::{Heap, NoChildren, Whence};
+use crate::io::memory::{bulk_eof, Heap, NoChildren, Whence};
 use crate::io::mode::IOMode;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
@@ -46,17 +46,6 @@ use yggdryl_core::io::memory::{IOBase, IoError};
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
-}
-
-/// The fail-fast bounds check shared by every bulk `pread_*_array` binding: the guided
-/// [`IoError::UnexpectedEof`] when `count` elements of `width` bytes each would run past the
-/// `available` bytes, else `None` — checked **before** the result list is allocated.
-fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<IoError> {
-    (count.saturating_mul(width) as u64 > available).then(|| IoError::UnexpectedEof {
-        offset: offset + available,
-        requested: count.saturating_mul(width),
-        available: available as usize,
-    })
 }
 
 /// Emits a `#[pymethods]` block of scalar positioned `pread_<t>` / `pwrite_<t>` pairs for the

@@ -59,7 +59,7 @@ fn ioerr(error: IoError) -> PyErr {
 /// `available` bytes, else `None`. Checked **before** the result list is allocated, so a
 /// hostile `count` raises instead of attempting a giant allocation (mirrors the inline check
 /// the hand-written `i32`/`i64` array readers use).
-fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<IoError> {
+pub(crate) fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<IoError> {
     (count.saturating_mul(width) as u64 > available).then(|| IoError::UnexpectedEof {
         offset: offset + available,
         requested: count.saturating_mul(width),

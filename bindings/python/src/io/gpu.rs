@@ -27,23 +27,13 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use crate::io::meminfo::MemoryInfo;
+use crate::io::memory::bulk_eof;
 use yggdryl_core::io::gpu::{self, Compute, GpuMemory};
 use yggdryl_core::io::memory::{IOBase, IoError};
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
-}
-
-/// The fail-fast bounds check shared by every bulk `pread_*_array` binding: the guided
-/// [`IoError::UnexpectedEof`] when `count` elements of `width` bytes each would run past the
-/// `available` bytes, else `None` — checked **before** the result list is allocated.
-fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<IoError> {
-    (count.saturating_mul(width) as u64 > available).then(|| IoError::UnexpectedEof {
-        offset: offset + available,
-        requested: count.saturating_mul(width),
-        available: available as usize,
-    })
 }
 
 /// The compute devices this build can allocate on — **adapting to the hardware present**. Each
@@ -172,9 +162,12 @@ impl AmdBuffer {
 
     /// **Downloads** up to `length` bytes of device memory (from the start) into a fresh
     /// `bytes` — short when `length` exceeds the buffer.
-    fn download<'py>(&self, py: Python<'py>, length: usize) -> Bound<'py, PyBytes> {
+    fn download<'py>(&self, py: Python<'py>, length: usize) -> PyResult<Bound<'py, PyBytes>> {
         let n = self.inner.byte_size().min(length as u64) as usize;
-        PyBytes::new_bound(py, &self.inner.pread_vec(0, n))
+        PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.download(dst);
+            Ok(())
+        })
     }
 
     /// **Downloads** the whole device buffer into a fresh `bytes` — one pre-sized allocation.
@@ -412,12 +405,8 @@ impl AmdBuffer {
     /// The backend the next op over `elements` values runs on — the token `"gpu"` (device
     /// kernel, when on a real device and the workload amortizes the transfer) or `"cpu"` (the
     /// vectorized host reduction).
-    fn compute_backend(&self, elements: usize) -> &'static str {
-        if self.inner.compute_backend(elements).is_gpu() {
-            "gpu"
-        } else {
-            "cpu"
-        }
+    fn compute_backend(&self, elements: usize) -> String {
+        self.inner.compute_backend(elements).as_str().to_string()
     }
 
     /// **Device-aware copy** of this buffer's whole content into `dst`; returns the byte count.

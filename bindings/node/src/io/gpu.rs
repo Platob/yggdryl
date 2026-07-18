@@ -10,6 +10,9 @@
 //! delegation to `yggdryl_core`; every failing byte op surfaces as a thrown `Error` carrying the
 //! core's guided text unchanged.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use napi::bindgen_prelude::{BigInt, Buffer};
 use napi_derive::napi;
 
@@ -17,6 +20,14 @@ use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::{check_bulk_read, to_error};
 use yggdryl_core::io::gpu::{self as core, Compute, GpuMemory};
 use yggdryl_core::io::memory::IOBase;
+
+/// A Java-style `i32` content hash of a value, folding the 64-bit hash halves.
+fn java_hash<T: Hash>(value: &T) -> i32 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    let hash = hasher.finish();
+    (hash as u32 ^ (hash >> 32) as u32) as i32
+}
 
 /// Enumerates the compute devices this build can allocate on — **adapting to the hardware
 /// present**. Each enabled architecture (AMD via `gpu-amd`) contributes what it detects, and the
@@ -87,6 +98,12 @@ impl GpuDevice {
         self.inner == other.inner
     }
 
+    /// Java-style `i32` content hash — equal devices hash equal.
+    #[napi]
+    pub fn hash_code(&self) -> i32 {
+        java_hash(&self.inner)
+    }
+
     /// A short debug string of the form `GpuDevice(<backend>, <name>)`.
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
@@ -144,13 +161,12 @@ impl AmdBuffer {
     }
 
     /// **Downloads** up to `length` bytes of device memory (from the start) into a fresh
-    /// `Buffer` — short when `length` exceeds the buffer.
+    /// `Buffer` — short when `length` exceeds the buffer. `length` is clamped to the buffer
+    /// size **before** allocating, so an over-long request never over-allocates.
     #[napi]
     pub fn download(&self, length: u32) -> Buffer {
-        let mut out = vec![0u8; length as usize];
-        let read = self.inner.download(&mut out);
-        out.truncate(read);
-        out.into()
+        let n = self.inner.byte_size().min(length as u64) as usize;
+        self.inner.pread_vec(0, n).into()
     }
 
     /// **Downloads** the whole device buffer into a fresh host `Buffer` — one pre-sized copy.
@@ -435,11 +451,10 @@ impl AmdBuffer {
     /// on a real device *and* `elements` clears the transfer threshold, else `"cpu"`.
     #[napi]
     pub fn compute_backend(&self, elements: u32) -> String {
-        if self.inner.compute_backend(elements as usize).is_gpu() {
-            "gpu".to_string()
-        } else {
-            "cpu".to_string()
-        }
+        self.inner
+            .compute_backend(elements as usize)
+            .as_str()
+            .to_string()
     }
 
     /// **Device-aware copy** — copies this buffer's whole content into `dst` (a same-device

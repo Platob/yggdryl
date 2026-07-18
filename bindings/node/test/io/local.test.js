@@ -1010,13 +1010,13 @@ test('LocalIO bulk u16/u32/u64/f64 arrays + repeats round-trip through the file'
   rmTree(dir)
 })
 
-test('LocalIO.readLine / readLines stream the file line by line', () => {
+test('LocalIO.readline / readlines stream the file line by line', () => {
   const dir = tmpDir()
   const f = new LocalIO(nodePath.join(dir, 'lines.txt'))
   f.pwriteUtf8(0, 'alpha\nbeta\ngamma')
   f.rewind()
-  assert.equal(f.readLine(), 'alpha\n')
-  assert.deepEqual(f.readLines(), ['beta\n', 'gamma'])
+  assert.equal(f.readline(), 'alpha\n')
+  assert.deepEqual(f.readlines(), ['beta\n', 'gamma'])
   f.close()
   rmTree(dir)
 })
@@ -1121,13 +1121,13 @@ test('Mmap.compressInPlace + decompressInPlace round-trip over a file', () => {
   fs.rmSync(file)
 })
 
-test('Mmap.readLine / readLines stream lines over a file', () => {
+test('Mmap.readline / readlines stream lines over a file', () => {
   const file = tmpFile()
   const m = Mmap.create(file)
   m.writeUtf8('one\ntwo\nthree')
   m.rewind()
-  assert.equal(m.readLine(), 'one\n')
-  assert.deepEqual(m.readLines(), ['two\n', 'three'])
+  assert.equal(m.readline(), 'one\n')
+  assert.deepEqual(m.readlines(), ['two\n', 'three'])
   m.close()
   fs.rmSync(file)
 })

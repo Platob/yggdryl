@@ -51,12 +51,15 @@ test('MemoryInfo.unknown() is the portable sentinel (0/0)', () => {
   assert.equal(unknown.usageRatio(), 0) // 0 when total is unknown
 })
 
-test('MemoryInfo equals + toString', () => {
+test('MemoryInfo equals + hashCode + toString', () => {
   const a = new MemoryInfo(2048, 1024)
   const b = new MemoryInfo(2048, 1024)
   const c = new MemoryInfo(2048, 512)
   assert.equal(a.equals(b), true)
   assert.equal(a.equals(c), false)
+  // Equal values hash equal.
+  assert.equal(typeof a.hashCode(), 'number')
+  assert.equal(a.hashCode(), b.hashCode())
   assert.equal(a.toString(), 'MemoryInfo(total=2048, available=1024)')
 })
 
@@ -84,11 +87,14 @@ test('defaultDevice() is a GpuDevice whose backend token is amd or cpu', () => {
   assert.equal(device.toString(), `GpuDevice(${device.backend()}, ${device.name()})`)
 })
 
-test('GpuDevice.equals compares by value', () => {
+test('GpuDevice.equals + hashCode compare by value', () => {
   const devices = availableDevices()
   const cpuA = devices.find((d) => d.isCpu())
   const cpuB = availableDevices().find((d) => d.isCpu())
   assert.equal(cpuA.equals(cpuB), true)
+  // Equal devices hash equal.
+  assert.equal(typeof cpuA.hashCode(), 'number')
+  assert.equal(cpuA.hashCode(), cpuB.hashCode())
 })
 
 // -------------------------------------------------------------------------------------

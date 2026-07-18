@@ -151,3 +151,17 @@ fn compute_backend_selects_gpu_on_a_large_device_workload() {
     // A small workload always stays on the CPU (transfer would not amortize).
     assert_eq!(buf.compute_backend(8), ComputeBackend::Cpu);
 }
+
+#[test]
+fn compute_min_max_ignore_nan_regardless_of_order() {
+    use yggdryl_core::io::gpu::Compute;
+    // A NaN must never poison min/max, whether it leads or trails (order-independent).
+    let mut lead = CpuHeap::new();
+    lead.pwrite_f64_array(0, &[f64::NAN, 1.0, 2.0]).unwrap();
+    assert_eq!(lead.min_f64(0, 3).unwrap(), Some(1.0));
+    assert_eq!(lead.max_f64(0, 3).unwrap(), Some(2.0));
+    let mut trail = CpuHeap::new();
+    trail.pwrite_f64_array(0, &[1.0, 2.0, f64::NAN]).unwrap();
+    assert_eq!(trail.min_f64(0, 3).unwrap(), Some(1.0));
+    assert_eq!(trail.max_f64(0, 3).unwrap(), Some(2.0));
+}

@@ -47,6 +47,12 @@ test('buffer(undefined, { capacity }) pre-allocates an empty heap', () => {
   assert.ok(h.capacity() >= 128)
 })
 
+test('buffer(data, { capacity }) copies the bytes and reserves headroom to capacity', () => {
+  const h = buffer(Buffer.from('hi'), { capacity: 256 })
+  assert.deepEqual(h.toBytes(), Buffer.from('hi')) // the bytes are copied
+  assert.ok(h.capacity() >= 256) // capacity is honored even with data
+})
+
 test('buffer(data, { headers }) with a plain object sets the header and the bytes', () => {
   const h = buffer(Buffer.from('hi'), { headers: { 'Content-Type': 'text/plain' } })
   assert.deepEqual(h.toBytes(), Buffer.from('hi'))
@@ -134,6 +140,21 @@ test('deviceBuffer(data, "amd") returns an AmdBuffer carrying the payload', () =
   assert.deepEqual(dev.toBytes(), Buffer.from('radeon'))
 })
 
+test('deviceBuffer accepts "gpu" / "cuda" as GPU tokens (mirroring Python)', () => {
+  // The AmdBuffer device-memory type falls back to the CPU device when no GPU is present,
+  // so these resolve to an AmdBuffer regardless of the hardware.
+  assert.ok(deviceBuffer(undefined, 'gpu') instanceof AmdBuffer)
+  assert.ok(deviceBuffer(undefined, 'cuda') instanceof AmdBuffer)
+})
+
+test('deviceBuffer device tokens are case-insensitive', () => {
+  assert.ok(deviceBuffer(undefined, 'AMD') instanceof AmdBuffer)
+  assert.ok(deviceBuffer(undefined, 'CPU') instanceof Heap)
+})
+
 test('deviceBuffer with an unknown device token throws a guided Error', () => {
-  assert.throws(() => deviceBuffer(undefined, 'quantum'), /unknown device 'quantum'.*cpu.*amd/s)
+  assert.throws(
+    () => deviceBuffer(undefined, 'quantum'),
+    /unknown device 'quantum'.*cpu.*amd.*gpu.*cuda/s,
+  )
 })

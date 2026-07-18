@@ -8,9 +8,20 @@
 //! delegation to the core. Byte counts cross as `i64` (a JS number, exact to 2^53), matching the
 //! `byteSize()` convention on the `memory` / `local` sources; the ratio crosses as `f64`.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use napi_derive::napi;
 
 use yggdryl_core::io as core;
+
+/// A Java-style `i32` content hash of a value, folding the 64-bit hash halves.
+fn java_hash<T: Hash>(value: &T) -> i32 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    let hash = hasher.finish();
+    (hash as u32 ^ (hash >> 32) as u32) as i32
+}
 
 /// A **capacity snapshot** of a backend: its `total` size and currently `available` (free)
 /// bytes. A plain value (equatable), so `used` / `usageRatio` derive from the pair. An
@@ -87,6 +98,12 @@ impl MemoryInfo {
     #[napi]
     pub fn equals(&self, other: &MemoryInfo) -> bool {
         self.inner == other.inner
+    }
+
+    /// Java-style `i32` content hash — equal snapshots hash equal.
+    #[napi]
+    pub fn hash_code(&self) -> i32 {
+        java_hash(&self.inner)
     }
 
     /// A short debug string of the form `MemoryInfo(total=<n>, available=<n>)`.

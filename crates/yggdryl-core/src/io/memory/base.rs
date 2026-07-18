@@ -730,13 +730,7 @@ pub trait IOBase: Sized {
     fn overwrite_with(&mut self, data: &[u8]) -> Result<(), IoError> {
         self.pwrite_all(0, data)?;
         self.truncate(data.len() as u64)?; // drop any old tail past the new content
-        if self.headers().contains(Headers::CONTENT_LENGTH) {
-            let size = self.byte_size();
-            self.headers_mut().set_content_length(size);
-        }
-        if self.headers().contains(Headers::MTIME) {
-            self.headers_mut().touch_mtime();
-        }
+        self.sync_size_headers();
         Ok(())
     }
 
@@ -841,14 +835,14 @@ pub trait IOBase: Sized {
                 remaining = start;
             }
             dst.truncate(total)?; // drop any of dst's old content past the moved length
-            if dst.headers().contains(Headers::CONTENT_LENGTH) {
-                dst.headers_mut().set_content_length(total);
-            }
-            if dst.headers().contains(Headers::MTIME) {
-                dst.headers_mut().touch_mtime();
-            }
+            dst.sync_size_headers(); // dst.byte_size() == total here — the same helper as everywhere
         }
-        let _ = self.truncate(0); // empty the source (the streamed path already did this per chunk)
+        if total > 0 {
+            // Empty the source (the streamed path already did this per chunk). Guarded on `total`
+            // so a missing/empty node is not *materialized* here (a `LocalIO` truncate auto-creates
+            // the file) — a backing-less source must create nothing, matching a `Heap`.
+            let _ = self.truncate(0);
+        }
         self.close(); // release any mapping/handle first so the backing can be unlinked
         if removable {
             // Delete the emptied file/dir; a backing-less source is already empty (no-op `rm`,
@@ -1556,78 +1550,6 @@ pub trait IOBase: Sized {
 // loop the compiler vectorizes.
 // -------------------------------------------------------------------------------------
 
-pub(crate) fn stage_pread_i32_array<S: IOBase>(
-    src: &S,
-    offset: u64,
-    dst: &mut [i32],
-) -> Result<(), IoError> {
-    let mut bytes = [0u8; BULK_CHUNK * 4];
-    let mut position = offset;
-    for chunk in dst.chunks_mut(BULK_CHUNK) {
-        let staged = &mut bytes[..chunk.len() * 4];
-        src.pread_exact(position, staged)?;
-        for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(4)) {
-            *value = i32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
-        }
-        position += staged.len() as u64;
-    }
-    Ok(())
-}
-
-pub(crate) fn stage_pwrite_i32_array<S: IOBase>(
-    dst: &mut S,
-    offset: u64,
-    src: &[i32],
-) -> Result<(), IoError> {
-    let mut bytes = [0u8; BULK_CHUNK * 4];
-    let mut position = offset;
-    for chunk in src.chunks(BULK_CHUNK) {
-        let staged = &mut bytes[..chunk.len() * 4];
-        for (raw, value) in staged.chunks_exact_mut(4).zip(chunk) {
-            raw.copy_from_slice(&value.to_le_bytes());
-        }
-        dst.pwrite_all(position, staged)?;
-        position += staged.len() as u64;
-    }
-    Ok(())
-}
-
-pub(crate) fn stage_pread_i64_array<S: IOBase>(
-    src: &S,
-    offset: u64,
-    dst: &mut [i64],
-) -> Result<(), IoError> {
-    let mut bytes = [0u8; BULK_CHUNK * 8];
-    let mut position = offset;
-    for chunk in dst.chunks_mut(BULK_CHUNK) {
-        let staged = &mut bytes[..chunk.len() * 8];
-        src.pread_exact(position, staged)?;
-        for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(8)) {
-            *value = i64::from_le_bytes(raw.try_into().expect("chunks_exact yields 8"));
-        }
-        position += staged.len() as u64;
-    }
-    Ok(())
-}
-
-pub(crate) fn stage_pwrite_i64_array<S: IOBase>(
-    dst: &mut S,
-    offset: u64,
-    src: &[i64],
-) -> Result<(), IoError> {
-    let mut bytes = [0u8; BULK_CHUNK * 8];
-    let mut position = offset;
-    for chunk in src.chunks(BULK_CHUNK) {
-        let staged = &mut bytes[..chunk.len() * 8];
-        for (raw, value) in staged.chunks_exact_mut(8).zip(chunk) {
-            raw.copy_from_slice(&value.to_le_bytes());
-        }
-        dst.pwrite_all(position, staged)?;
-        position += staged.len() as u64;
-    }
-    Ok(())
-}
-
 pub(crate) fn stage_pwrite_byte_repeat<S: IOBase>(
     dst: &mut S,
     offset: u64,
@@ -1646,50 +1568,23 @@ pub(crate) fn stage_pwrite_byte_repeat<S: IOBase>(
     Ok(())
 }
 
-pub(crate) fn stage_pwrite_i32_repeat<S: IOBase>(
-    dst: &mut S,
-    offset: u64,
-    value: i32,
-    count: usize,
-) -> Result<(), IoError> {
-    let mut chunk = [0u8; BULK_CHUNK * 4];
-    for raw in chunk.chunks_exact_mut(4) {
-        raw.copy_from_slice(&value.to_le_bytes());
-    }
-    let mut position = offset;
-    let mut remaining = count;
-    while remaining > 0 {
-        let take = remaining.min(BULK_CHUNK);
-        dst.pwrite_all(position, &chunk[..take * 4])?;
-        position += (take * 4) as u64;
-        remaining -= take;
-    }
-    Ok(())
-}
-
-pub(crate) fn stage_pwrite_i64_repeat<S: IOBase>(
-    dst: &mut S,
-    offset: u64,
-    value: i64,
-    count: usize,
-) -> Result<(), IoError> {
-    let mut chunk = [0u8; BULK_CHUNK * 8];
-    for raw in chunk.chunks_exact_mut(8) {
-        raw.copy_from_slice(&value.to_le_bytes());
-    }
-    let mut position = offset;
-    let mut remaining = count;
-    while remaining > 0 {
-        let take = remaining.min(BULK_CHUNK);
-        dst.pwrite_all(position, &chunk[..take * 8])?;
-        position += (take * 8) as u64;
-        remaining -= take;
-    }
-    Ok(())
-}
-
-// The remaining little-endian widths (u16/u32/u64/f32/f64) share one generated kernel each —
-// i32/i64 stay hand-written above as the readable reference the macro mirrors.
+// Every little-endian width's staging kernels are macro-generated (`i32`/`i64` included) — one
+// invocation each, sharing the single dense/branch-free implementation. Only the byte-level
+// `stage_pwrite_byte_repeat` above is hand-written (it fills a `u8` chunk directly, no conversion).
+stage_numeric_kernels!(
+    i32,
+    4,
+    stage_pread_i32_array,
+    stage_pwrite_i32_array,
+    stage_pwrite_i32_repeat
+);
+stage_numeric_kernels!(
+    i64,
+    8,
+    stage_pread_i64_array,
+    stage_pwrite_i64_array,
+    stage_pwrite_i64_repeat
+);
 stage_numeric_kernels!(
     u16,
     2,

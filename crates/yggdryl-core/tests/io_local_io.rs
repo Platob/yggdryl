@@ -750,3 +750,15 @@ fn load_maps_for_memory_speed_reads_and_is_concurrent() {
     assert!(!missing.is_mapped());
     assert_eq!(missing.pread_vec(0, 8), b"");
 }
+
+#[test]
+fn move_into_of_a_missing_source_materializes_no_file() {
+    let tmp = TempDir::new("movemiss");
+    let mut missing = tmp.root().join_str("never.bin");
+    let mut dst = tmp.root().join_str("dst.bin");
+    // Moving a missing/backing-less source moves 0 bytes and must NOT create the source file
+    // (a LocalIO truncate auto-creates — the move guards against materializing an empty node).
+    assert_eq!(missing.move_into(&mut dst).unwrap(), 0);
+    assert!(!missing.exists());
+    dst.close();
+}

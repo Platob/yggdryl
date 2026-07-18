@@ -718,7 +718,7 @@ A `LocalIO` doubles as an open-file object *and* a path. In Python it implements
 temp path to a `~` / `$TMP` token and `from_portable()` (which pickle calls) rebuilds the
 handle against the *receiving* machine's home / temp roots. Node mirrors the file-like surface
 as `fsPath()` / `tell()` / `readable()` / `writable()` / `seekable()` with the line reads
-`readLine()` / `readLines()`; the portable address lives on `Uri` (`toPortableString()` /
+`readline()` / `readlines()`; the portable address lives on `Uri` (`toPortableString()` /
 `Uri.fromPortableString`), so a handle round-trips through
 `new LocalIO(Uri.fromPortableString(s))`.
 
@@ -758,8 +758,8 @@ as `fsPath()` / `tell()` / `readable()` / `writable()` / `seekable()` with the l
     console.assert(node.readable() && node.writable() && node.seekable());
     console.assert(node.tell() === 0);                 // the cursor, file-object style
 
-    console.assert(node.readLine() === 'line one\n');  // one line from the cursor
-    console.assert(node.readLines().join('') === 'line two\n');
+    console.assert(node.readline() === 'line one\n');  // one line from the cursor
+    console.assert(node.readlines().join('') === 'line two\n');
 
     const portable = node.uri.toPortableString();      // the portable address lives on Uri
     const reopened = new local.LocalIO(Uri.fromPortableString(portable));

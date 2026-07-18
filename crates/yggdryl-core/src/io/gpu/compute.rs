@@ -47,13 +47,23 @@ impl ComputeBackend {
     pub fn is_gpu(&self) -> bool {
         matches!(self, ComputeBackend::Gpu)
     }
+
+    /// The short lowercase token (`"gpu"` / `"cpu"`) — the stable name the bindings surface, matching
+    /// [`GpuBackend::as_str`](super::GpuBackend::as_str).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ComputeBackend::Cpu => "cpu",
+            ComputeBackend::Gpu => "gpu",
+        }
+    }
 }
 
 /// Emits the five auto-dispatched compute ops (`sum` / `min` / `max` / `mean` / `count_ge`) for one
 /// numeric type. Each streams the typed data through a fixed stack chunk via the type's fast bulk
 /// read, runs the dense CPU reduction, and consults [`Compute::compute_backend`] for the GPU seam.
 macro_rules! compute_ops {
-    ($t:ty, $read:ident, $acc:ty, $sum:ident, $min:ident, $max:ident, $mean:ident, $count_ge:ident) => {
+    ($t:ty, $read:ident, $acc:ty, $minf:path, $maxf:path,
+     $sum:ident, $min:ident, $max:ident, $mean:ident, $count_ge:ident) => {
         #[doc = concat!("**Sum** of `count` `", stringify!($t), "`s at `offset` (as `",
             stringify!($acc), "`) — auto-dispatched (GPU when large + on a device, else the \
             vectorized CPU reduction).")]
@@ -74,8 +84,9 @@ macro_rules! compute_ops {
             Ok(acc)
         }
 
-        #[doc = concat!("**Minimum** of `count` `", stringify!($t),
-            "`s at `offset`, or `None` when `count == 0`.")]
+        #[doc = concat!("**Minimum** of `count` `", stringify!($t), "`s at `offset`, or `None` when \
+            `count == 0`. Reduces with the type's own `min` (so a float `min` **ignores NaN**, and \
+            the result is independent of element order).")]
         fn $min(&self, offset: u64, count: usize) -> Result<Option<$t>, IoError> {
             let _ = self.compute_backend(count); // GPU seam: a device min-reduction runs here
             let width = core::mem::size_of::<$t>() as u64;
@@ -86,18 +97,16 @@ macro_rules! compute_ops {
                 let take = (count - done).min(COMPUTE_CHUNK);
                 self.$read(offset + done as u64 * width, &mut chunk[..take])?;
                 for &value in &chunk[..take] {
-                    best = Some(match best {
-                        Some(current) if current <= value => current,
-                        _ => value,
-                    });
+                    best = Some(best.map_or(value, |current| $minf(current, value)));
                 }
                 done += take;
             }
             Ok(best)
         }
 
-        #[doc = concat!("**Maximum** of `count` `", stringify!($t),
-            "`s at `offset`, or `None` when `count == 0`.")]
+        #[doc = concat!("**Maximum** of `count` `", stringify!($t), "`s at `offset`, or `None` when \
+            `count == 0`. Reduces with the type's own `max` (a float `max` **ignores NaN**; the \
+            result is order-independent).")]
         fn $max(&self, offset: u64, count: usize) -> Result<Option<$t>, IoError> {
             let _ = self.compute_backend(count); // GPU seam: a device max-reduction runs here
             let width = core::mem::size_of::<$t>() as u64;
@@ -108,10 +117,7 @@ macro_rules! compute_ops {
                 let take = (count - done).min(COMPUTE_CHUNK);
                 self.$read(offset + done as u64 * width, &mut chunk[..take])?;
                 for &value in &chunk[..take] {
-                    best = Some(match best {
-                        Some(current) if current >= value => current,
-                        _ => value,
-                    });
+                    best = Some(best.map_or(value, |current| $maxf(current, value)));
                 }
                 done += take;
             }
@@ -171,6 +177,8 @@ pub trait Compute: GpuMemory {
         i32,
         pread_i32_array,
         i64,
+        core::cmp::min,
+        core::cmp::max,
         sum_i32,
         min_i32,
         max_i32,
@@ -181,6 +189,8 @@ pub trait Compute: GpuMemory {
         i64,
         pread_i64_array,
         i128,
+        core::cmp::min,
+        core::cmp::max,
         sum_i64,
         min_i64,
         max_i64,
@@ -191,6 +201,8 @@ pub trait Compute: GpuMemory {
         f32,
         pread_f32_array,
         f64,
+        f32::min,
+        f32::max,
         sum_f32,
         min_f32,
         max_f32,
@@ -201,6 +213,8 @@ pub trait Compute: GpuMemory {
         f64,
         pread_f64_array,
         f64,
+        f64::min,
+        f64::max,
         sum_f64,
         min_f64,
         max_f64,

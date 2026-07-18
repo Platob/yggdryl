@@ -1080,25 +1080,25 @@ test('u16 / u32 / u64 / f32 / f64 repeat fills run past the staging chunk', () =
 })
 
 // -------------------------------------------------------------------------------------
-// Line-oriented reads (readLine / readLines)
+// Line-oriented reads (readline / readlines)
 // -------------------------------------------------------------------------------------
 
-test('readLine / readLines split on newlines (inclusive); EOF is the empty string', () => {
+test('readline / readlines split on newlines (inclusive); EOF is the empty string', () => {
   const h = new Heap(Buffer.from('first\nsecond'))
-  assert.equal(h.readLine(), 'first\n')
-  assert.equal(h.readLine(), 'second') // no trailing newline at the end
-  assert.equal(h.readLine(), '') // now at EOF
+  assert.equal(h.readline(), 'first\n')
+  assert.equal(h.readline(), 'second') // no trailing newline at the end
+  assert.equal(h.readline(), '') // now at EOF
   h.rewind()
-  assert.deepEqual(h.readLines(), ['first\n', 'second'])
+  assert.deepEqual(h.readlines(), ['first\n', 'second'])
 
   // A blank line still carries its newline, so it is distinct from EOF.
   const blank = new Heap(Buffer.from('a\n\nb\n'))
-  assert.deepEqual(blank.readLines(), ['a\n', '\n', 'b\n'])
+  assert.deepEqual(blank.readlines(), ['a\n', '\n', 'b\n'])
 
   // Cursor mirrors the same line stream.
   const cur = new Cursor(Buffer.from('x\ny\n'))
-  assert.equal(cur.readLine(), 'x\n')
-  assert.deepEqual(cur.readLines(), ['y\n'])
+  assert.equal(cur.readline(), 'x\n')
+  assert.deepEqual(cur.readlines(), ['y\n'])
 })
 
 // -------------------------------------------------------------------------------------
@@ -1140,7 +1140,7 @@ test('Cursor.fromIo infers the input type and carries a source heap position', (
   assert.deepEqual(cur.readToEnd(), Buffer.from('world'))
 })
 
-test('lines() is the array alias of readLines() on Heap and Cursor', () => {
+test('lines() is the array alias of readlines() on Heap and Cursor', () => {
   assert.deepEqual(new Heap(Buffer.from('a\nb\n')).lines(), ['a\n', 'b\n'])
   assert.deepEqual(new Cursor(Buffer.from('x\ny')).lines(), ['x\n', 'y'])
 })

@@ -1150,14 +1150,14 @@ impl Heap {
     /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
     /// **only** at the true end, so a blank line (which still carries its `\n`) is distinct
     /// from EOF.
-    #[napi]
+    #[napi(js_name = "readline")]
     pub fn read_line(&mut self) -> napi::Result<String> {
         self.inner.readline().map_err(to_error)
     }
 
     /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
     /// each element keeps its trailing `\n` except possibly the last.
-    #[napi]
+    #[napi(js_name = "readlines")]
     pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
         self.inner.readlines().map_err(to_error)
     }
@@ -2051,14 +2051,14 @@ impl Cursor {
     /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
     /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
     /// **only** at the true end (a blank line still carries its `\n`).
-    #[napi]
+    #[napi(js_name = "readline")]
     pub fn read_line(&mut self) -> napi::Result<String> {
         self.inner.readline().map_err(to_error)
     }
 
     /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
     /// each element keeps its trailing `\n` except possibly the last.
-    #[napi]
+    #[napi(js_name = "readlines")]
     pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
         self.inner.readlines().map_err(to_error)
     }
