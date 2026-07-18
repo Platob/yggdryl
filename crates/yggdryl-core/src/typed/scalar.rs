@@ -59,7 +59,6 @@ impl<T: Encoder + Decoder> FixedScalar<T, Heap> {
     /// A **non-null** scalar holding `value` (encoded into a fresh one-element heap buffer).
     pub fn of(value: T::Native) -> Self {
         let mut data = Heap::with_capacity(T::byte_width() as usize);
-        data.set_dtype(T::DATA_TYPE_ID);
         T::encode(&mut data, 0, value).expect("encode into a fresh heap never fails");
         FixedScalar {
             data,

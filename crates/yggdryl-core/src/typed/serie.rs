@@ -38,10 +38,10 @@ pub struct FixedSerie<T: DataType, D: IOBase = Heap> {
 impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
     /// An empty non-nullable column.
     pub fn new() -> Self {
-        let mut data = Heap::new();
-        data.set_dtype(T::DATA_TYPE_ID);
+        // The type identity lives at the compile-time `T` and the `field()` metadata; the raw data
+        // buffer stays untagged bytes so a build costs only its data allocation.
         FixedSerie {
-            data,
+            data: Heap::new(),
             validity: None,
             len: 0,
             name: None,
@@ -51,10 +51,8 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
 
     /// An empty non-nullable column with room for `capacity` elements before reallocating.
     pub fn with_capacity(capacity: usize) -> Self {
-        let mut data = Heap::with_capacity(capacity * T::byte_width() as usize);
-        data.set_dtype(T::DATA_TYPE_ID);
         FixedSerie {
-            data,
+            data: Heap::with_capacity(capacity * T::byte_width() as usize),
             validity: None,
             len: 0,
             name: None,
@@ -156,6 +154,21 @@ impl<T: Encoder + Decoder> Default for FixedSerie<T, Heap> {
 }
 
 impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
+    /// Wraps an existing `data` buffer (and optional `validity`) as a `len`-element column — the
+    /// zero-copy **"view any [`IOBase`] as a typed column"** front door: `data` may be a mapped file
+    /// ([`Mmap`](crate::io::local::Mmap)), a device buffer, or an in-heap [`Heap`], read in place.
+    /// The caller guarantees `data` holds `len` encoded elements (and `validity`, if present, holds
+    /// `len` bits).
+    pub fn from_data(data: D, validity: Option<D>, len: usize) -> Self {
+        FixedSerie {
+            data,
+            validity,
+            len,
+            name: None,
+            _type: PhantomData,
+        }
+    }
+
     /// Whether the element at `index` is valid (non-null).
     fn valid(&self, index: usize) -> bool {
         index < self.len

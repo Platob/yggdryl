@@ -239,3 +239,32 @@ fn header_field_metadata_and_serie_field() {
     assert!(nullable.field().nullable());
     assert_eq!(nullable.field().data_type_id(), DataTypeId::I32);
 }
+
+// -------------------------------------------------------------------------------------
+// Wrapping any IOBase as a typed column (zero-copy view)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn serie_from_data_views_an_existing_buffer() {
+    // A caller writes i32s into some IOBase (a Heap here; a mapped file / device buffer works the
+    // same via the generic `D`), then views it as a typed column without copying.
+    let mut buffer = Heap::new();
+    buffer.pwrite_i32_array(0, &[100, 200, 300, 400]).unwrap();
+    let column: FixedSerie<Int32, Heap> = FixedSerie::from_data(buffer, None, 4);
+    assert_eq!(column.len(), 4);
+    assert_eq!(column.get(0), Some(100));
+    assert_eq!(column.get(3), Some(400));
+    assert_eq!(column.values(), vec![100, 200, 300, 400]);
+    assert_eq!(column.sum().unwrap(), 1000i64);
+
+    // With a validity buffer the view is null-aware too.
+    let mut data = Heap::new();
+    data.pwrite_i32_array(0, &[1, 0, 3]).unwrap();
+    let mut validity = Heap::new();
+    validity.pwrite_bit(0, true).unwrap();
+    validity.pwrite_bit(1, false).unwrap();
+    validity.pwrite_bit(2, true).unwrap();
+    let nullable: FixedSerie<Int32, Heap> = FixedSerie::from_data(data, Some(validity), 3);
+    assert_eq!(nullable.to_options(), vec![Some(1), None, Some(3)]);
+    assert_eq!(nullable.null_count(), 1);
+}

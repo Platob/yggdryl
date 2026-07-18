@@ -15,6 +15,10 @@ path = "src/lib.rs"
 
 # Dependency-free time+memory benchmarks (their own counting allocator, plain `main`).
 [[bench]]
+name = "typed"
+harness = false
+
+[[bench]]
 name = "io_memory_heap"
 harness = false
 
