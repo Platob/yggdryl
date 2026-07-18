@@ -15,6 +15,7 @@
 //! numbers; the allocation numbers are the same in debug and release).
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
@@ -82,30 +83,32 @@ fn main() {
     println!("  {}", "-".repeat(70));
 
     // Typed positioned reads (256 elements per call = 256 ops): stack buffers, zero allocation.
+    // black_box on the offset (so the read is not hoisted/precomputed) and the result (so it is
+    // not dead-code-eliminated) — without both, the compiler elides these to nothing.
     row(
         "pread_byte",
         measure(256, iters, || {
             for i in 0..256u64 {
-                let _ = src.pread_byte(i).unwrap();
+                black_box(src.pread_byte(black_box(i)).unwrap());
             }
         }),
     );
     row(
         "pread_i32",
         measure(1, iters, || {
-            let _ = src.pread_i32(0).unwrap();
+            black_box(src.pread_i32(black_box(0)).unwrap());
         }),
     );
     row(
         "pread_i64",
         measure(1, iters, || {
-            let _ = src.pread_i64(0).unwrap();
+            black_box(src.pread_i64(black_box(0)).unwrap());
         }),
     );
     row(
         "pread_bit",
         measure(1, iters, || {
-            let _ = src.pread_bit(17).unwrap();
+            black_box(src.pread_bit(black_box(17)).unwrap());
         }),
     );
 
@@ -235,13 +238,13 @@ fn main() {
     row(
         "pwrite_i32 (in place)",
         measure(1, iters, || {
-            sink.pwrite_i32(64, -1).unwrap();
+            sink.pwrite_i32(black_box(64), black_box(-1)).unwrap();
         }),
     );
     row(
         "pwrite_i64 (in place)",
         measure(1, iters, || {
-            sink.pwrite_i64(128, -1).unwrap();
+            sink.pwrite_i64(black_box(128), black_box(-1)).unwrap();
         }),
     );
 
@@ -271,6 +274,48 @@ fn main() {
         "pwrite_byte_repeat (8 KiB)",
         measure(8192, iters, || {
             fill8.pwrite_byte_repeat(0, 0xAB, 8192).unwrap();
+        }),
+    );
+
+    // ---------------------------------------------------------------------------------
+    // Wider native types (the macro-generated widths) + the move_into relocation
+    // ---------------------------------------------------------------------------------
+
+    // f64 / u128 bulk arrays — the same staged/contiguous kernels as i32/i64, wider elements.
+    let f64_values = vec![1.5f64; 1024];
+    let mut f64_back = vec![0f64; 1024];
+    let mut f64_sink = Heap::with_capacity(8192);
+    f64_sink.pwrite_f64_array(0, &f64_values).unwrap();
+    row(
+        "pwrite_f64_array (1024 elems)",
+        measure(1024, iters, || {
+            f64_sink.pwrite_f64_array(0, &f64_values).unwrap();
+        }),
+    );
+    row(
+        "pread_f64_array (1024 elems)",
+        measure(1024, iters, || {
+            f64_sink.pread_f64_array(0, &mut f64_back).unwrap();
+        }),
+    );
+    let u128_values = vec![7u128; 1024];
+    let mut u128_sink = Heap::with_capacity(16384);
+    u128_sink.pwrite_u128_array(0, &u128_values).unwrap();
+    row(
+        "pwrite_u128_array (1024 elems)",
+        measure(1024, iters, || {
+            u128_sink.pwrite_u128_array(0, &u128_values).unwrap();
+        }),
+    );
+
+    // move_into: relocate a 4 KiB source into a destination (zero-copy as_bytes fast path,
+    // then the source is emptied). The source is rebuilt each iter (one from_slice alloc).
+    let mut move_dst = Heap::with_capacity(page.len());
+    row(
+        "move_into (4 KiB, as_bytes path)",
+        measure(1, iters, || {
+            let mut moving = Heap::from_slice(&page);
+            let _ = moving.move_into(&mut move_dst);
         }),
     );
 

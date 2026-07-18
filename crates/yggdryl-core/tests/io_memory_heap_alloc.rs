@@ -171,6 +171,20 @@ fn allocation_budgets() {
         "wide bulk numeric ops must stage on the stack (got {wide} allocs)"
     );
 
+    // move_into between two in-memory buffers is allocation-free: the zero-copy `as_bytes` path
+    // hands the bytes straight over, and because a `Heap` has no removable backing the move skips
+    // the same-address `uri()` clones and the guided-error `rm` would otherwise build and discard.
+    let mut move_src = Heap::with_capacity(64);
+    let mut move_dst = Heap::with_capacity(64);
+    let moves = allocs_over(iters, || {
+        move_src.pwrite_byte_array(0, &[7u8; 48]); // refill within capacity (0 alloc)
+        move_src.move_into(&mut move_dst).unwrap();
+    });
+    assert_eq!(
+        moves, 0,
+        "move_into between pre-sized in-memory buffers must not allocate (got {moves})"
+    );
+
     // Repeated-value fills never materialize the full array — zero heap allocation once the
     // sink is sized.
     let mut fill_sink = Heap::with_capacity(8000);

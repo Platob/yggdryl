@@ -39,6 +39,11 @@ name = "compression"
 harness = false
 required-features = ["compression"]
 
+[[bench]]
+name = "io_gpu"
+harness = false
+required-features = ["gpu"]
+
 [features]
 # `compression` is the ONLY feature that pulls external crates: the native codec cores for the
 # Gzip / Zlib / Zstd / Lzma implementations. The default core stays dependency-free — the

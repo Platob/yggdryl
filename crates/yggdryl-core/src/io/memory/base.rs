@@ -811,14 +811,16 @@ pub trait IOBase: Sized {
     /// assert_eq!(src.byte_size(), 0); // the source is emptied
     /// ```
     fn move_into<D: IOBase>(&mut self, dst: &mut D) -> Result<u64, IoError> {
-        // Moving onto the *same real address* is a no-op (a file never moves onto itself). The
-        // synthetic `mem://heap` sentinel is excluded: distinct anonymous buffers share it yet are
-        // genuinely different sources, so they still move.
-        let src_uri = self.uri();
-        if src_uri == dst.uri() && src_uri != *default_uri() {
-            return Ok(self.byte_size());
-        }
         let total = self.byte_size();
+        // Only a real **filesystem** node can destructively move onto itself, so the same-address
+        // no-op guard — and the source removal below — apply **only** when there is a removable
+        // backing. For an in-memory source this skips two owned-`uri()` clones *and* the guided
+        // error `rm` would build then discard (a `Heap` has no backing to remove), which is the
+        // difference between ~14 allocations per move and none.
+        let removable = self.is_file() || self.is_dir();
+        if removable && self.uri() == dst.uri() {
+            return Ok(total); // a file never moves onto itself
+        }
         if let Some(bytes) = self.as_bytes() {
             // Zero-copy fast path: a contiguous source (a `Heap`, a mapped file) hands its bytes
             // straight to the destination — no scratch allocation, no double copy — matching
@@ -848,7 +850,11 @@ pub trait IOBase: Sized {
         }
         let _ = self.truncate(0); // empty the source (the streamed path already did this per chunk)
         self.close(); // release any mapping/handle first so the backing can be unlinked
-        let _ = self.rm(true); // remove the emptied backing; a bare Heap has none and stays empty
+        if removable {
+            // Delete the emptied file/dir; a backing-less source is already empty (no-op `rm`,
+            // whose guided error we skip building rather than construct-and-discard).
+            let _ = self.rm(true);
+        }
         Ok(total)
     }
 
