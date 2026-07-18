@@ -24,6 +24,8 @@ current dependency.
 crates/yggdryl-core/src/             # the core (dependency-free by default; codecs opt-in)
   io/                                # the io layer
     mod.rs                           #   io root: cross-cutting contract + value types
+    any.rs                           #   AnyIO + open() — the scheme-dispatching `open()` entry
+    meminfo.rs                       #   MemoryInfo — capacity snapshot (RAM/disk/VRAM), one type
     error.rs  whence.rs              #   IoError, Whence (io-wide)
     serializable.rs                  #   the Serializable trait
     mode.rs  kind.rs                 #   IOMode, IOKind
@@ -33,6 +35,10 @@ crates/yggdryl-core/src/             # the core (dependency-free by default; cod
     local/                           #   the local-filesystem family
       io.rs                          #     LocalIO — the single access point (lazy, self-optimizing)
       mmap.rs                        #     the raw memory-mapped file LocalIO builds on
+    gpu/                             #   device memory (feature `gpu`) — organized BY ARCHITECTURE:
+      mod.rs device.rs               #     GpuMemory over IOBase + the by-arch device probe
+      cpu.rs                         #     CpuHeap — device memory IS our Heap (host RAM)
+      amd.rs  cuda.rs                #     AMD Radeon (gpu-amd, live detect) / NVIDIA (gpu-cuda)
   headers.rs                         # Headers — the one metadata map (root module)
   mimetype.rs                        # MimeType + MimeRegistry/MimeCatalog (root module)
   mediatype.rs                       # MediaType — an ordered MimeType list (root module)
@@ -155,6 +161,21 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   `Headers` value when present (it is authoritative and free) before probing the backing —
   a mapped `byte_size` is cheap, but a directory tree sum or a network `HEAD` is not, so a
   populated `Content-Length` short-circuits it.
+- **A move is a copy that consumes its source — streamed, then removed.** `move_into(dst)`
+  relocates a source's bytes into another `IOBase` and **removes the source at the end**,
+  leveraging the same abstraction a cross-source copy does — **never** a re-read or an extra
+  full-size buffer. It is a **no-op when source and destination address the same `uri`** (a
+  move onto itself neither copies nor deletes). Prefer a **streamed** move — transfer in
+  bounded chunks and, where the source can shrink cheaply (a `Heap`/`Mmap`/`LocalIO` that
+  `truncate`s), **drop each chunk from the tail as it lands** so peak memory is one chunk, not
+  the whole payload — then `rm` whatever backing remains. A source with no removable backing
+  (a bare `Heap`) still moves its bytes and simply clears to empty.
+- **Reads never fail on a missing source — they return empty.** A positioned byte read of a
+  node that does not exist yet (a lazy `LocalIO` over an absent path, a `Heap` past its end)
+  returns **zero bytes**, never an error — laziness means "not there yet", not "broken". Only
+  the *typed* helpers with a hard fill contract (`pread_i32`, `pread_exact`) surface the guided
+  `UnexpectedEof`, because they cannot fabricate the missing bytes. Every filesystem family
+  inherits this: probing/navigating an absent node touches nothing and reads empty.
 - **Every error names the fix.** An `IoError` (or any guided error) states the offending value,
   the expected range/tokens, **and** a short, concrete next step to fix it ("read fewer bytes
   or extend the data first", "enable the `compression` feature", "seek to a non-negative

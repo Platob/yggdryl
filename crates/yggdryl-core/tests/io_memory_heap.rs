@@ -1034,3 +1034,137 @@ fn truncate_grows_and_shrinks_with_header_sync() {
     assert_eq!(h.as_slice(), b"hello\0\0\0");
     assert_eq!(h.headers().content_length(), Some(8));
 }
+
+// -------------------------------------------------------------------------------------
+// All native types — scalar + array + repeat + cursor round-trips
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn scalar_native_types_round_trip() {
+    let mut h = Heap::new();
+    h.pwrite_i8(0, -5).unwrap();
+    h.pwrite_i16(1, -300).unwrap();
+    h.pwrite_u16(3, 60_000).unwrap();
+    h.pwrite_u32(5, 4_000_000_000).unwrap();
+    h.pwrite_u64(9, u64::MAX).unwrap();
+    h.pwrite_i128(17, i128::MIN).unwrap();
+    h.pwrite_u128(33, u128::MAX).unwrap();
+    h.pwrite_f32(49, 1.5).unwrap();
+    h.pwrite_f64(53, core::f64::consts::PI).unwrap();
+    assert_eq!(h.pread_i8(0).unwrap(), -5);
+    assert_eq!(h.pread_i16(1).unwrap(), -300);
+    assert_eq!(h.pread_u16(3).unwrap(), 60_000);
+    assert_eq!(h.pread_u32(5).unwrap(), 4_000_000_000);
+    assert_eq!(h.pread_u64(9).unwrap(), u64::MAX);
+    assert_eq!(h.pread_i128(17).unwrap(), i128::MIN);
+    assert_eq!(h.pread_u128(33).unwrap(), u128::MAX);
+    assert_eq!(h.pread_f32(49).unwrap(), 1.5);
+    assert_eq!(h.pread_f64(53).unwrap(), core::f64::consts::PI);
+    // The u8 scalar mirrors the byte accessor.
+    h.pwrite_u8(61, 200).unwrap();
+    assert_eq!(h.pread_u8(61).unwrap(), 200);
+    assert_eq!(h.pread_byte(61).unwrap(), 200);
+    // A short source errors with a guided EOF, never a silent partial value.
+    assert!(matches!(
+        Heap::from_slice(b"ab").pread_i128(0).unwrap_err(),
+        IoError::UnexpectedEof { .. }
+    ));
+}
+
+#[test]
+fn native_type_arrays_and_cursor_round_trip() {
+    let mut h = Heap::new();
+    h.pwrite_i8_array(0, &[-1, 2, -3]).unwrap();
+    h.pwrite_i16_array(3, &[-1000, 1000]).unwrap();
+    h.pwrite_i128_array(7, &[i128::MIN, i128::MAX]).unwrap();
+    h.pwrite_u128_array(39, &[0, u128::MAX]).unwrap();
+    let mut a = [0i8; 3];
+    let mut b = [0i16; 2];
+    let mut c = [0i128; 2];
+    let mut d = [0u128; 2];
+    h.pread_i8_array(0, &mut a).unwrap();
+    h.pread_i16_array(3, &mut b).unwrap();
+    h.pread_i128_array(7, &mut c).unwrap();
+    h.pread_u128_array(39, &mut d).unwrap();
+    assert_eq!(a, [-1, 2, -3]);
+    assert_eq!(b, [-1000, 1000]);
+    assert_eq!(c, [i128::MIN, i128::MAX]);
+    assert_eq!(d, [0, u128::MAX]);
+
+    // Repeat fill of a 16-byte type crosses the chunk boundary without materializing the array.
+    let mut r = Heap::new();
+    r.pwrite_u128_repeat(0, 42, 100).unwrap();
+    let mut back = [0u128; 100];
+    r.pread_u128_array(0, &mut back).unwrap();
+    assert!(back.iter().all(|&x| x == 42));
+
+    // The cursor streams every native width, advancing by the right byte count.
+    let mut cur = Heap::new().cursor();
+    cur.write_i8(-7).unwrap();
+    cur.write_u16(65_535).unwrap();
+    cur.write_i128(i128::MIN).unwrap();
+    cur.write_f64(2.5).unwrap();
+    assert_eq!(cur.position(), 1 + 2 + 16 + 8);
+    cur.rewind();
+    assert_eq!(cur.read_i8().unwrap(), -7);
+    assert_eq!(cur.read_u16().unwrap(), 65_535);
+    assert_eq!(cur.read_i128().unwrap(), i128::MIN);
+    assert_eq!(cur.read_f64().unwrap(), 2.5);
+}
+
+#[test]
+fn move_into_relocates_and_empties_source() {
+    let mut src = Heap::from_slice(b"payload to move");
+    let mut dst = Heap::from_slice(b"old dst content that is longer");
+    assert_eq!(src.move_into(&mut dst).unwrap(), 15);
+    assert_eq!(dst.as_slice(), b"payload to move"); // dst replaced, old tail dropped
+    assert_eq!(src.byte_size(), 0); // source emptied
+
+    // A large move crosses the 64 KiB chunk boundary and relocates exactly.
+    let big: Vec<u8> = (0..200_000u32).map(|i| i as u8).collect();
+    let mut s2 = Heap::from_vec(big.clone());
+    let mut d2 = Heap::new();
+    assert_eq!(s2.move_into(&mut d2).unwrap(), 200_000);
+    assert_eq!(d2.as_slice(), &big[..]);
+    assert_eq!(s2.byte_size(), 0);
+
+    // Two distinct anonymous heaps share mem://heap yet still move (not treated as same source).
+    let mut a = Heap::from_slice(b"abc");
+    let mut b = Heap::new();
+    assert_eq!(a.move_into(&mut b).unwrap(), 3);
+    assert_eq!(b.as_slice(), b"abc");
+}
+
+#[test]
+fn copy_from_and_pwrite_from_cover_both_branches() {
+    // copy_from: a longer source overwrites a shorter dst and drops the old tail (zero-copy path).
+    let src = Heap::from_slice(b"the full replacement payload");
+    let mut dst = Heap::from_slice(b"short");
+    assert_eq!(dst.copy_from(&src).unwrap(), 28);
+    assert_eq!(dst.as_slice(), b"the full replacement payload");
+
+    // copy_from from a non-contiguous source (a directory-less LocalIO read) hits the pread_vec
+    // fallback — exercised in the local suite; here assert the contiguous count/return.
+    let mut small = Heap::from_slice(b"xxxxxxxx");
+    assert_eq!(small.copy_from(&Heap::from_slice(b"ab")).unwrap(), 2);
+    assert_eq!(small.as_slice(), b"ab");
+
+    // pwrite_from: a positioned mid-offset copy lands at the right place; a request past src's end
+    // returns a short transferred count (contiguous branch).
+    let mut sink = Heap::new();
+    let source = Heap::from_slice(b"0123456789");
+    assert_eq!(sink.pwrite_from(4, &source, 2, 3).unwrap(), 3); // copies "234" to offset 4
+    assert_eq!(sink.pread_vec(4, 3), b"234");
+    assert_eq!(sink.pwrite_from(0, &source, 8, 100).unwrap(), 2); // only "89" remain from offset 8
+    assert_eq!(sink.pread_vec(0, 2), b"89");
+}
+
+#[test]
+fn move_into_of_an_empty_source_empties_the_destination() {
+    // An empty move drops the destination's prior content and returns 0 (documented behavior).
+    let mut src = Heap::new();
+    let mut dst = Heap::from_slice(b"existing content");
+    assert_eq!(src.move_into(&mut dst).unwrap(), 0);
+    assert_eq!(dst.byte_size(), 0);
+    assert_eq!(src.byte_size(), 0);
+}

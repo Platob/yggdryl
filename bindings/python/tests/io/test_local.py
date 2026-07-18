@@ -1150,6 +1150,19 @@ def test_localio_content_length_falls_back_to_byte_size(root):
     node.close()
 
 
+def test_localio_memory_info_reports_the_disk_volume(root):
+    from yggdryl.io import MemoryInfo
+
+    info = root.memory_info()  # the capacity of the disk volume backing the temp tree
+    assert isinstance(info, MemoryInfo)
+    assert info.total() >= info.available()  # total >= free within a volume
+    assert info.used() == info.total() - info.available()
+    # A not-yet-created child resolves the same volume (walks up to an existing ancestor).
+    child_info = (root / "deep/not/created.bin").memory_info()
+    assert isinstance(child_info, MemoryInfo)
+    assert child_info.total() >= child_info.available()
+
+
 # -------------------------------------------------------------------------------------
 # LocalIO: bulk unsigned + float arrays / repeats + cross-source copy
 # -------------------------------------------------------------------------------------
@@ -1404,3 +1417,134 @@ def test_localio_pickle_round_trips_a_path_outside_the_roots():
     assert revived == node
     # from_portable is the exact inverse of to_portable_str in this environment.
     assert LocalIO.from_portable(node.to_portable_str()) == node
+
+
+# -------------------------------------------------------------------------------------
+# All native numeric widths on LocalIO + Mmap, LocalIO.load / move_into, module open
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_scalar_all_widths(root):
+    node = root.join("scalars.bin")
+    node.pwrite_i8(0, -100)
+    node.pwrite_u8(1, 250)
+    node.pwrite_i16(2, -30000)
+    node.pwrite_u16(4, 65000)
+    node.pwrite_u32(6, 4_000_000_000)
+    node.pwrite_u64(10, 10**19)
+    node.pwrite_i128(18, -(2**126))
+    node.pwrite_u128(34, 2**127)
+    node.pwrite_f32(50, 1.5)
+    node.pwrite_f64(54, 2.25)
+    assert node.pread_i8(0) == -100
+    assert node.pread_u8(1) == 250
+    assert node.pread_i16(2) == -30000
+    assert node.pread_u16(4) == 65000
+    assert node.pread_u32(6) == 4_000_000_000
+    assert node.pread_u64(10) == 10**19
+    assert node.pread_i128(18) == -(2**126)
+    assert node.pread_u128(34) == 2**127
+    assert node.pread_f32(50) == pytest.approx(1.5)
+    assert node.pread_f64(54) == 2.25
+    node.close()
+
+
+def test_localio_bulk_arrays_and_cursor_typed(root):
+    node = root.join("bulk.bin")
+    node.pwrite_i8_array(0, [-1, 2, -3])
+    node.pwrite_i16_array(3, [1000, -2000])
+    node.pwrite_i128_array(7, [2**100])
+    node.pwrite_u128_array(23, [2**120])
+    assert node.pread_i8_array(0, 3) == [-1, 2, -3]
+    assert node.pread_i16_array(3, 2) == [1000, -2000]
+    assert node.pread_i128_array(7, 1) == [2**100]
+    assert node.pread_u128_array(23, 1) == [2**120]
+    node.pwrite_i8_repeat(0, 5, 4)
+    assert node.pread_i8_array(0, 4) == [5, 5, 5, 5]
+    # cursor typed read/write
+    cnode = root.join("cursor.bin")
+    cnode.write_i128(-(2**100))
+    cnode.write_u16(40000)
+    cnode.rewind()
+    assert cnode.read_i128() == -(2**100)
+    assert cnode.read_u16() == 40000
+    node.close()
+    cnode.close()
+
+
+def test_localio_load_eager_maps(root):
+    node = root.join("loadme.bin")
+    node.pwrite_utf8(0, "eager")
+    node.close()  # release the write-mapping
+    reopened = root.join("loadme.bin")
+    assert not reopened.is_mapped  # lazy until loaded
+    reopened.load()
+    assert reopened.is_mapped
+    assert reopened.pread_utf8(0, 5) == "eager"
+    reopened.load()  # idempotent
+    assert reopened.is_mapped
+    reopened.close()
+
+
+def test_localio_load_missing_is_noop(root):
+    missing = root.join("nope.bin")
+    missing.load()  # nothing to map yet — no error
+    assert not missing.is_mapped
+
+
+def test_localio_move_into_removes_source(root):
+    src = root.join("src.bin")
+    src.pwrite_utf8(0, "moved data")
+    src.close()
+    dst = root.join("dst.bin")
+    n = src.move_into(dst)
+    src.close()
+    assert n == 10
+    assert not src.exists()  # the source file is removed
+    assert dst.pread_utf8(0, 10) == "moved data"
+    dst.close()
+
+
+def test_mmap_scalar_bulk_cursor_all_widths(root):
+    path = root.join("m.bin").path
+    with Mmap.create(path) as m:
+        m.pwrite_i128(0, -(2**120))
+        m.pwrite_u128(16, 2**127)
+        m.pwrite_f32(32, 3.5)
+        assert m.pread_i128(0) == -(2**120)
+        assert m.pread_u128(16) == 2**127
+        assert m.pread_f32(32) == pytest.approx(3.5)
+        m.pwrite_i8_array(36, [-4, -5])
+        assert m.pread_i8_array(36, 2) == [-4, -5]
+        m.pwrite_u128_repeat(40, 2**100, 2)
+        assert m.pread_u128_array(40, 2) == [2**100, 2**100]
+        m.rewind()
+        assert m.read_i128() == -(2**120)
+
+
+def test_mmap_move_into_removes_source_file(root):
+    src_path = root.join("ms.bin").path
+    dst_path = root.join("md.bin").path
+    src = Mmap.create(src_path)
+    src.pwrite_utf8(0, "xyz")
+    dst = Mmap.create(dst_path)
+    n = src.move_into(dst)
+    assert n == 3
+    assert dst.pread_utf8(0, 3) == "xyz"
+    dst.close()
+    src.close()
+
+
+def test_open_path_and_file_uri_and_pathlike_wrap_localio(root):
+    import pathlib
+
+    import yggdryl
+
+    path = root.join("opened.bin").path
+    assert isinstance(yggdryl.open(path), LocalIO)
+    assert isinstance(yggdryl.open(pathlib.Path(path)), LocalIO)
+    assert isinstance(yggdryl.open(Uri.from_path(path)), LocalIO)
+    opened = yggdryl.open(path)
+    opened.pwrite_utf8(0, "via open")
+    opened.close()
+    assert LocalIO(path).pread_utf8(0, 8) == "via open"

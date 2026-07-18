@@ -45,6 +45,13 @@ required-features = ["compression"]
 # `Compression` trait, the `MimeType`/`IOBase` integration, and magic inference are all `std`.
 default = []
 compression = ["dep:flate2", "dep:zstd", "dep:xz2"]
+# `gpu` enables the device-memory layer (`io::gpu`), organized by architecture: the `GpuMemory`
+# trait over `IOBase`, the CPU backend where device memory IS our `Heap` (`CpuHeap`), and the
+# `MemoryInfo`/`GpuDevice` probe. All dependency-free. `gpu-amd` / `gpu-cuda` add the AMD Radeon /
+# NVIDIA architecture modules (native detection today; the VRAM queue drops in behind them later).
+gpu = []
+gpu-amd = ["gpu"]
+gpu-cuda = ["gpu"]
 
 [dependencies]
 # Dependency-free by default: the core is the abstract memory-access traits (with an in-heap

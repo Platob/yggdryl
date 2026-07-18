@@ -19,17 +19,24 @@
 //!   (`ls` / `ls_recursive` / `children` / `name` / `parent` / `rm` family), so every
 //!   source — in-memory, local, object store — is a node of one uniform IO graph.
 
+mod any;
 mod error;
 mod kind;
+mod meminfo;
 mod mode;
 mod serializable;
 mod whence;
 
+#[cfg(feature = "gpu")]
+pub mod gpu;
 pub mod local;
 pub mod memory;
 
+pub use any::{open, open_str, AnyIO};
 pub use error::IoError;
 pub use kind::IOKind;
+pub(crate) use meminfo::disk_memory;
+pub use meminfo::MemoryInfo;
 pub use mode::IOMode;
 pub use serializable::Serializable;
 pub use whence::Whence;

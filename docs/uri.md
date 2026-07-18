@@ -768,6 +768,70 @@ that need a real scheme use a multi-letter one.
     assert_eq!(Uri::from_path(r"a\b\c").path(), "a/b/c");
     ```
 
+## Filesystem paths — fspath()
+
+`fspath()` is the plain **native filesystem path** a URI/URL addresses: its stored path,
+**percent-decoded** (so a stored `%20` reads back as a space), with a `file://` URL's
+drive-rooting slash stripped so a Windows drive path un-roots (`/C:/Users/x` → `C:/Users/x`).
+It stays POSIX slash-based — the project's normalized form — so it reads identically on every
+OS. In **Python** this is exposed through `__fspath__`, making a `Uri` / `Url` a real
+`os.PathLike`: it can be handed straight to `open(...)`, `pathlib.Path(...)`, and
+`os.fspath(...)`. `Url` mirrors `fspath()`.
+
+=== "Python"
+
+    ```python
+    import os
+    from pathlib import Path
+    from yggdryl.uri import Uri, Url
+
+    # A file:// URL yields the bare native path — percent-decoded, drive un-rooted.
+    uri = Uri.parse("file:///C:/Users/x")
+    assert uri.fspath() == "C:/Users/x"            # /C:/Users/x -> C:/Users/x
+
+    # A percent-escape decodes back to its literal character.
+    spaced = Uri.from_path("/home/x/a b.txt")
+    assert spaced.path == "/home/x/a%20b.txt"      # stored percent-encoded
+    assert spaced.fspath() == "/home/x/a b.txt"    # decoded native path
+
+    # A Uri/Url is a real os.PathLike: os.fspath / pathlib.Path / open all accept it.
+    assert os.fspath(spaced) == spaced.fspath()    # __fspath__ protocol
+    assert Path(spaced).name == "a b.txt"          # pathlib consumes it directly
+    assert Url.parse("file:///C:/Users/x").fspath() == "C:/Users/x"   # Url mirrors it
+    ```
+
+=== "Node"
+
+    ```js
+    const { Uri, Url } = require('yggdryl').uri
+
+    // A file:// URL yields the bare native path — percent-decoded, drive un-rooted.
+    const uri = Uri.parse('file:///C:/Users/x')
+    console.assert(uri.fsPath() === 'C:/Users/x')          // /C:/Users/x -> C:/Users/x
+
+    // A percent-escape decodes back to its literal character.
+    const spaced = Uri.fromPath('/home/x/a b.txt')
+    console.assert(spaced.path === '/home/x/a%20b.txt')    // stored percent-encoded
+    console.assert(spaced.fsPath() === '/home/x/a b.txt')  // decoded native path
+
+    console.assert(Url.parse('file:///C:/Users/x').fsPath() === 'C:/Users/x')  // Url mirrors it
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::uri::Uri;
+
+    // `from_file_path` builds a rooted file:// address; `fspath` is the bare native path.
+    assert_eq!(Uri::from_file_path(r"C:\Users\x").fspath(), "C:/Users/x"); // drive un-rooted
+
+    // The path is stored percent-encoded; `fspath` decodes it back.
+    let spaced = Uri::from_file_path("/home/x/a b.txt");
+    assert_eq!(spaced.path(), "/home/x/a%20b.txt");     // stored percent-encoded
+    assert_eq!(spaced.fspath(), "/home/x/a b.txt");     // decoded native path
+    assert_eq!(spaced.to_url().unwrap().fspath(), "/home/x/a b.txt"); // Url mirrors it
+    ```
+
 ## Value semantics and the byte codec
 
 Both `Uri` and `Url` round-trip through bytes — `serialize_bytes()` is the canonical

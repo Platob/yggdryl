@@ -116,6 +116,89 @@ fn heap_from_io(obj: &Bound<'_, PyAny>) -> PyResult<memory::Heap> {
     Ok(heap)
 }
 
+/// Emits a `#[pymethods]` block of scalar positioned `pread_<t>` / `pwrite_<t>` pairs for an
+/// `inner`-backed source (`Heap` / `Cursor`) — each a one-line delegation to `yggdryl_core`,
+/// completing the native-width set alongside the hand-written `i32` / `i64` / byte accessors.
+/// The macro emits the whole `#[pymethods] impl` block so pyo3 processes the expanded methods
+/// (the binding's `multiple-pymethods` feature allows the extra block per type).
+macro_rules! scalar_methods {
+    ($Ty:ty $(, ($t:ty, $pread:ident, $pwrite:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("Reads a little-endian `", stringify!($t),
+                    "` at `offset`, raising `ValueError` on EOF.")]
+                fn $pread(&self, offset: u64) -> PyResult<$t> {
+                    self.inner.$pread(offset).map_err(ioerr)
+                }
+                #[doc = concat!("Writes `value` as a little-endian `", stringify!($t),
+                    "` at `offset`, growing as needed.")]
+                fn $pwrite(&mut self, offset: u64, value: $t) -> PyResult<()> {
+                    self.inner.$pwrite(offset, value).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of cursor typed `read_<t>` / `write_<t>` pairs for an
+/// `inner`-backed source that carries the cursor stream (`Heap` / `Cursor`) — each reads/writes
+/// the positioned value at the cursor and advances it, delegating to `yggdryl_core`.
+macro_rules! cursor_typed_methods {
+    ($Ty:ty $(, ($t:ty, $read:ident, $write:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("Reads a little-endian `", stringify!($t),
+                    "` at the cursor, advancing it; raising `ValueError` on EOF.")]
+                fn $read(&mut self) -> PyResult<$t> {
+                    self.inner.$read().map_err(ioerr)
+                }
+                #[doc = concat!("Writes `value` as a little-endian `", stringify!($t),
+                    "` at the cursor, advancing it.")]
+                fn $write(&mut self, value: $t) -> PyResult<()> {
+                    self.inner.$write(value).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of the bulk typed `pread_<t>_array` / `pwrite_<t>_array` /
+/// `pwrite_<t>_repeat` methods for an `inner`-backed source (`Heap`) — mirroring the existing
+/// `u16` array binding, with the element `$width` feeding the fail-fast bounds check before any
+/// result is allocated.
+macro_rules! bulk_methods {
+    ($Ty:ty $(, ($t:ty, $width:literal, $pread:ident, $pwrite:ident, $repeat:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("Bulk read of `count` little-endian `", stringify!($t),
+                    "`s at `offset` (fail-fast bounds check before allocating).")]
+                fn $pread(&self, offset: u64, count: usize) -> PyResult<Vec<$t>> {
+                    let available = self.inner.byte_size().saturating_sub(offset);
+                    if let Some(e) = bulk_eof(offset, available, count, $width) {
+                        return Err(ioerr(e));
+                    }
+                    let mut values = vec![<$t>::default(); count];
+                    self.inner.$pread(offset, &mut values).map_err(ioerr)?;
+                    Ok(values)
+                }
+                #[doc = concat!("Bulk write of little-endian `", stringify!($t),
+                    "`s at `offset`, growing as needed.")]
+                fn $pwrite(&mut self, offset: u64, values: Vec<$t>) -> PyResult<()> {
+                    self.inner.$pwrite(offset, &values).map_err(ioerr)
+                }
+                #[doc = concat!("Repeated-value fill of `count` little-endian `", stringify!($t),
+                    "` copies of `value` at `offset` (no full array is built).")]
+                fn $repeat(&mut self, offset: u64, value: $t, count: usize) -> PyResult<()> {
+                    self.inner.$repeat(offset, value, count).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
 /// Where a seek offset is measured from — the POSIX `lseek` `whence`. Mirrors
 /// [`yggdryl_core::io::memory::Whence`]: the **start** of the data (`SEEK_SET`), the **current**
 /// cursor position (`SEEK_CUR`), or the **end** (`SEEK_END`).
@@ -1134,6 +1217,66 @@ impl Heap {
     }
 }
 
+#[pymethods]
+impl Heap {
+    /// **Moves** this heap's whole content into `dst` (another `Heap`) and **empties this
+    /// heap** — a copy that consumes its origin (`mv` over the byte contract). Returns the
+    /// number of bytes moved. A no-op when `self` and `dst` resolve to the same real address
+    /// (anonymous `mem://heap` buffers still move); a bare heap has no removable backing, so it
+    /// simply ends empty.
+    fn move_into(&mut self, mut dst: PyRefMut<'_, Heap>) -> PyResult<u64> {
+        self.inner.move_into(&mut dst.inner).map_err(ioerr)
+    }
+}
+
+// The remaining native-width scalar, cursor-typed, and bulk-array accessors — completing the
+// set alongside the hand-written `i32` / `i64` / byte forms in the main block above.
+scalar_methods!(
+    Heap,
+    (i8, pread_i8, pwrite_i8),
+    (u8, pread_u8, pwrite_u8),
+    (i16, pread_i16, pwrite_i16),
+    (u16, pread_u16, pwrite_u16),
+    (u32, pread_u32, pwrite_u32),
+    (u64, pread_u64, pwrite_u64),
+    (i128, pread_i128, pwrite_i128),
+    (u128, pread_u128, pwrite_u128),
+    (f32, pread_f32, pwrite_f32),
+    (f64, pread_f64, pwrite_f64),
+);
+cursor_typed_methods!(
+    Heap,
+    (i8, read_i8, write_i8),
+    (u8, read_u8, write_u8),
+    (i16, read_i16, write_i16),
+    (u16, read_u16, write_u16),
+    (u32, read_u32, write_u32),
+    (u64, read_u64, write_u64),
+    (i128, read_i128, write_i128),
+    (u128, read_u128, write_u128),
+    (f32, read_f32, write_f32),
+    (f64, read_f64, write_f64),
+);
+bulk_methods!(
+    Heap,
+    (i8, 1, pread_i8_array, pwrite_i8_array, pwrite_i8_repeat),
+    (i16, 2, pread_i16_array, pwrite_i16_array, pwrite_i16_repeat),
+    (
+        i128,
+        16,
+        pread_i128_array,
+        pwrite_i128_array,
+        pwrite_i128_repeat
+    ),
+    (
+        u128,
+        16,
+        pread_u128_array,
+        pwrite_u128_array,
+        pwrite_u128_repeat
+    ),
+);
+
 /// A **cursor** — a moving read/write position over an owned [`Heap`] source. Mirrors
 /// `yggdryl_core::io::memory::IOCursor<Heap>`: `read` / `write` advance it, `seek` moves relative
 /// to a [`Whence`] anchor, and the positioned `pread_*` / `pwrite_*` accessors reach any offset
@@ -1644,6 +1787,35 @@ impl Cursor {
         )
     }
 }
+
+// The remaining native-width positioned scalars and cursor-typed read/write — completing the
+// set alongside the hand-written `i32` / `i64` / byte forms in the main `Cursor` block above.
+scalar_methods!(
+    Cursor,
+    (i8, pread_i8, pwrite_i8),
+    (u8, pread_u8, pwrite_u8),
+    (i16, pread_i16, pwrite_i16),
+    (u16, pread_u16, pwrite_u16),
+    (u32, pread_u32, pwrite_u32),
+    (u64, pread_u64, pwrite_u64),
+    (i128, pread_i128, pwrite_i128),
+    (u128, pread_u128, pwrite_u128),
+    (f32, pread_f32, pwrite_f32),
+    (f64, pread_f64, pwrite_f64),
+);
+cursor_typed_methods!(
+    Cursor,
+    (i8, read_i8, write_i8),
+    (u8, read_u8, write_u8),
+    (i16, read_i16, write_i16),
+    (u16, read_u16, write_u16),
+    (u32, read_u32, write_u32),
+    (u64, read_u64, write_u64),
+    (i128, read_i128, write_i128),
+    (u128, read_u128, write_u128),
+    (f32, read_f32, write_f32),
+    (f64, read_f64, write_f64),
+);
 
 /// A **bounded window** over an owned [`Heap`] source — the range `[offset, offset + length)`
 /// addressed from its own `0`. Mirrors `yggdryl_core::io::memory::IOSlice<Heap>`: it is

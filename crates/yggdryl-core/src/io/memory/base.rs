@@ -22,8 +22,8 @@ pub(crate) fn default_uri() -> &'static Uri {
     &DEFAULT_URI
 }
 
-/// The element count bulk operations stage per stack chunk — sized so the largest staged
-/// chunk (`i64`: 256 × 8 = 2 KiB) stays comfortably on the stack while the per-chunk convert
+/// The element count bulk operations stage per stack chunk — sized so the widest staged chunk
+/// (`i128`/`u128`: 256 × 16 = 4 KiB) stays comfortably on the stack while the per-chunk convert
 /// loop is long enough for LLVM to vectorize.
 const BULK_CHUNK: usize = 256;
 
@@ -86,6 +86,77 @@ macro_rules! bulk_numeric_methods {
         }
     };
 }
+
+/// Emits the **scalar** positioned read/write pair for one little-endian numeric type, each a
+/// 2-line delegation to the byte primitives — so every native width (`i8`/`u8`/`i16`/`u16`/…/
+/// `i128`/`u128`/`f32`/`f64`, alongside the hand-written `i32`/`i64`) reads and writes with the
+/// same zero-allocation stack-buffer round-trip. The read fills a fixed stack array via
+/// [`pread_exact`](IOBase::pread_exact) (guided `UnexpectedEof` on a short source); the write
+/// streams the little-endian bytes through [`pwrite_all`](IOBase::pwrite_all), growing as needed.
+macro_rules! scalar_numeric_methods {
+    ($t:ty, $width:literal, $read:ident, $write:ident) => {
+        #[doc = concat!("Reads a little-endian `", stringify!($t), "` (a ", stringify!($width),
+            "-byte value) at `offset`, erroring with [`IoError::UnexpectedEof`] on a short source.")]
+        fn $read(&self, offset: u64) -> Result<$t, IoError> {
+            let mut buf = [0u8; $width];
+            self.pread_exact(offset, &mut buf)?;
+            Ok(<$t>::from_le_bytes(buf))
+        }
+        #[doc = concat!("Writes `value` as a little-endian `", stringify!($t), "` (a ",
+            stringify!($width), "-byte value) at `offset`, growing the source as needed.")]
+        fn $write(&mut self, offset: u64, value: $t) -> Result<(), IoError> {
+            self.pwrite_all(offset, &value.to_le_bytes())
+        }
+    };
+}
+
+/// Emits the **bulk-op forwarding** methods for a wrapper that holds an inner [`IOBase`] in field
+/// `$field` — every typed bulk array read/write and repeat fill delegates straight to
+/// `self.$field`, so the wrapper inherits the backing's **fast contiguous overrides** (a `Heap`'s
+/// direct-off-the-`Vec` conversion, a mapped file's direct bulk path) instead of the stack-staged
+/// trait default's extra copy. Pure one-line delegations, no logic. Used by
+/// [`IOCursor`](IOCursor) and the GPU host buffer.
+macro_rules! forward_bulk_ops {
+    ($field:ident) => {
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_i32_array, pwrite_i32_array, i32);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_i64_array, pwrite_i64_array, i64);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_u16_array, pwrite_u16_array, u16);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_u32_array, pwrite_u32_array, u32);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_u64_array, pwrite_u64_array, u64);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_f32_array, pwrite_f32_array, f32);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_f64_array, pwrite_f64_array, f64);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_i8_array, pwrite_i8_array, i8);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_i16_array, pwrite_i16_array, i16);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_i128_array, pwrite_i128_array, i128);
+        $crate::io::memory::forward_bulk_ops!(@a $field, pread_u128_array, pwrite_u128_array, u128);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_byte_repeat, u8);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_i32_repeat, i32);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_i64_repeat, i64);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_u16_repeat, u16);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_u32_repeat, u32);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_u64_repeat, u64);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_f32_repeat, f32);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_f64_repeat, f64);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_i8_repeat, i8);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_i16_repeat, i16);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_i128_repeat, i128);
+        $crate::io::memory::forward_bulk_ops!(@r $field, pwrite_u128_repeat, u128);
+    };
+    (@a $field:ident, $pr:ident, $pw:ident, $t:ty) => {
+        fn $pr(&self, offset: u64, dst: &mut [$t]) -> Result<(), $crate::io::IoError> {
+            self.$field.$pr(offset, dst)
+        }
+        fn $pw(&mut self, offset: u64, src: &[$t]) -> Result<(), $crate::io::IoError> {
+            self.$field.$pw(offset, src)
+        }
+    };
+    (@r $field:ident, $rep:ident, $t:ty) => {
+        fn $rep(&mut self, offset: u64, value: $t, count: usize) -> Result<(), $crate::io::IoError> {
+            self.$field.$rep(offset, value, count)
+        }
+    };
+}
+pub(crate) use forward_bulk_ops;
 
 /// Emits the three stack-staged **bulk numeric** kernels (the trait-default source of truth)
 /// for one little-endian numeric type — each stages through one fixed stack chunk (zero heap)
@@ -591,6 +662,14 @@ pub trait IOBase: Sized {
         })
     }
 
+    /// **Releases any optimized/cached backing** — memory-mappings, open OS handles — returning
+    /// the node to its lazy state so it can be removed or rebound, without discarding its value
+    /// (the bytes stay on the backing). The default is a no-op (an in-memory source holds no
+    /// releasable handle); [`LocalIO`](crate::io::local::LocalIO) drops its mapping here (which is
+    /// why [`move_into`](IOBase::move_into) can then delete the file even on platforms that refuse
+    /// to unlink a mapped file). Idempotent.
+    fn close(&mut self) {}
+
     /// Syncs the size + timestamp headers after a content-mutating op — updates
     /// `Content-Length` to the current [`byte_size`](IOBase::byte_size) and `mtime` to now,
     /// but only the headers the source **already declares** (a bare source stays bare). The
@@ -707,6 +786,70 @@ pub trait IOBase: Sized {
             done += got as u64;
         }
         Ok(done)
+    }
+
+    /// **Moves** this source's whole content into `dst` and **removes this source** — a copy
+    /// that consumes its origin, `mv` over the byte contract. Returns the number of bytes moved.
+    ///
+    /// - **Same-address no-op.** When `self` and `dst` resolve to the **same** [`uri`](IOBase::uri)
+    ///   the move does nothing (neither copies nor deletes) — a file never moves onto itself.
+    /// - **Streamed, tail-consuming.** The bytes transfer in bounded chunks read from the
+    ///   **tail**; after each chunk lands in `dst`, `self` is [`truncate`](IOBase::truncate)d to
+    ///   drop it, so peak memory is **one chunk**, not the whole payload (best-effort — a source
+    ///   that cannot shrink still moves correctly, just without the tail-drop). `dst` is then
+    ///   truncated to the moved length and its size headers synced.
+    /// - **Removal.** Afterwards the emptied source is [`rm`](IOBase::rm)'d; a source with no
+    ///   removable backing (a bare [`Heap`](super::Heap)) simply ends **empty**.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut src = Heap::from_slice(b"relocate me");
+    /// let mut dst = Heap::new();
+    /// assert_eq!(src.move_into(&mut dst).unwrap(), 11);
+    /// assert_eq!(dst.pread_vec(0, 11), b"relocate me");
+    /// assert_eq!(src.byte_size(), 0); // the source is emptied
+    /// ```
+    fn move_into<D: IOBase>(&mut self, dst: &mut D) -> Result<u64, IoError> {
+        // Moving onto the *same real address* is a no-op (a file never moves onto itself). The
+        // synthetic `mem://heap` sentinel is excluded: distinct anonymous buffers share it yet are
+        // genuinely different sources, so they still move.
+        let src_uri = self.uri();
+        if src_uri == dst.uri() && src_uri != *default_uri() {
+            return Ok(self.byte_size());
+        }
+        let total = self.byte_size();
+        if let Some(bytes) = self.as_bytes() {
+            // Zero-copy fast path: a contiguous source (a `Heap`, a mapped file) hands its bytes
+            // straight to the destination — no scratch allocation, no double copy — matching
+            // `copy_from` / `pwrite_from`. `overwrite_with` truncates dst to `total` + syncs its
+            // size headers.
+            dst.overwrite_with(bytes)?;
+        } else {
+            // Streamed, tail-consuming: bounded chunks read from the tail; each moved chunk is
+            // dropped from the source so peak memory is one chunk, not the whole payload.
+            let mut buf = vec![0u8; (total as usize).clamp(1, 64 * 1024)];
+            let mut remaining = total;
+            while remaining > 0 {
+                let take = remaining.min(buf.len() as u64);
+                let start = remaining - take; // the tail block [start, start + take)
+                let got = self.pread_byte_array(start, &mut buf[..take as usize]);
+                dst.pwrite_all(start, &buf[..got])?;
+                let _ = self.truncate(start); // best-effort: shed the moved tail to cap peak memory
+                remaining = start;
+            }
+            dst.truncate(total)?; // drop any of dst's old content past the moved length
+            if dst.headers().contains(Headers::CONTENT_LENGTH) {
+                dst.headers_mut().set_content_length(total);
+            }
+            if dst.headers().contains(Headers::MTIME) {
+                dst.headers_mut().touch_mtime();
+            }
+        }
+        let _ = self.truncate(0); // empty the source (the streamed path already did this per chunk)
+        self.close(); // release any mapping/handle first so the backing can be unlinked
+        let _ = self.rm(true); // remove the emptied backing; a bare Heap has none and stays empty
+        Ok(total)
     }
 
     // ---------------------------------------------------------------------------------
@@ -1309,6 +1452,58 @@ pub trait IOBase: Sized {
         stage_pwrite_f64_array,
         stage_pwrite_f64_repeat
     );
+    // The remaining native integer widths as bulk arrays + repeats (i8/i16/i128/u128), so every
+    // fixed-width native type has the full positioned-array surface (u8 is `pread_byte_array`).
+    bulk_numeric_methods!(
+        i8,
+        pread_i8_array,
+        pwrite_i8_array,
+        pwrite_i8_repeat,
+        stage_pread_i8_array,
+        stage_pwrite_i8_array,
+        stage_pwrite_i8_repeat
+    );
+    bulk_numeric_methods!(
+        i16,
+        pread_i16_array,
+        pwrite_i16_array,
+        pwrite_i16_repeat,
+        stage_pread_i16_array,
+        stage_pwrite_i16_array,
+        stage_pwrite_i16_repeat
+    );
+    bulk_numeric_methods!(
+        i128,
+        pread_i128_array,
+        pwrite_i128_array,
+        pwrite_i128_repeat,
+        stage_pread_i128_array,
+        stage_pwrite_i128_array,
+        stage_pwrite_i128_repeat
+    );
+    bulk_numeric_methods!(
+        u128,
+        pread_u128_array,
+        pwrite_u128_array,
+        pwrite_u128_repeat,
+        stage_pread_u128_array,
+        stage_pwrite_u128_array,
+        stage_pwrite_u128_repeat
+    );
+
+    // Scalar positioned read/write for every remaining native width — `i32`/`i64`/byte are the
+    // hand-written references above; these complete the set so any native value round-trips
+    // through one positioned call.
+    scalar_numeric_methods!(i8, 1, pread_i8, pwrite_i8);
+    scalar_numeric_methods!(u8, 1, pread_u8, pwrite_u8);
+    scalar_numeric_methods!(i16, 2, pread_i16, pwrite_i16);
+    scalar_numeric_methods!(u16, 2, pread_u16, pwrite_u16);
+    scalar_numeric_methods!(u32, 4, pread_u32, pwrite_u32);
+    scalar_numeric_methods!(u64, 8, pread_u64, pwrite_u64);
+    scalar_numeric_methods!(i128, 16, pread_i128, pwrite_i128);
+    scalar_numeric_methods!(u128, 16, pread_u128, pwrite_u128);
+    scalar_numeric_methods!(f32, 4, pread_f32, pwrite_f32);
+    scalar_numeric_methods!(f64, 8, pread_f64, pwrite_f64);
 
     /// Wraps this source in an [`IOCursor`] positioned at the start — the standard way to add a
     /// moving read/write position to any source. Consumes the source (zero-copy); wrap a clone to
@@ -1523,4 +1718,32 @@ stage_numeric_kernels!(
     stage_pread_f64_array,
     stage_pwrite_f64_array,
     stage_pwrite_f64_repeat
+);
+stage_numeric_kernels!(
+    i8,
+    1,
+    stage_pread_i8_array,
+    stage_pwrite_i8_array,
+    stage_pwrite_i8_repeat
+);
+stage_numeric_kernels!(
+    i16,
+    2,
+    stage_pread_i16_array,
+    stage_pwrite_i16_array,
+    stage_pwrite_i16_repeat
+);
+stage_numeric_kernels!(
+    i128,
+    16,
+    stage_pread_i128_array,
+    stage_pwrite_i128_array,
+    stage_pwrite_i128_repeat
+);
+stage_numeric_kernels!(
+    u128,
+    16,
+    stage_pread_u128_array,
+    stage_pwrite_u128_array,
+    stage_pwrite_u128_repeat
 );

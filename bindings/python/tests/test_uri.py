@@ -644,3 +644,71 @@ def test_url_mime_and_media_type():
     url = Url.parse("https://h/data/archive.tar.gz")
     assert url.mime_type().essence == "application/gzip"
     assert url.media_type().essences() == ["application/x-tar", "application/gzip"]
+
+
+# -------------------------------------------------------------------------------------
+# fspath / os.PathLike + the open() / cursor() IO redirects
+# -------------------------------------------------------------------------------------
+
+
+def test_uri_fspath_and_os_pathlike():
+    import pathlib
+
+    u = Uri.from_path("/data/report.pdf")
+    assert u.fspath() == "/data/report.pdf"
+    assert u.__fspath__() == "/data/report.pdf"
+    assert os.fspath(u) == "/data/report.pdf"  # a real os.PathLike
+    assert str(pathlib.PurePosixPath(u)) == "/data/report.pdf"
+
+
+def test_url_fspath_and_os_pathlike():
+    url = Url.parse("file:///tmp/x.txt")
+    assert url.fspath() == "/tmp/x.txt"
+    assert url.__fspath__() == "/tmp/x.txt"
+    assert os.fspath(url) == "/tmp/x.txt"
+
+
+def test_uri_open_dispatches_by_scheme():
+    from yggdryl.local import LocalIO
+    from yggdryl.memory import Heap
+
+    heap = Uri.parse("mem://heap/data").open()
+    assert isinstance(heap, Heap)
+    node = Uri.from_path("/tmp/ygg_uri_open_probe.bin").open()
+    assert isinstance(node, LocalIO)
+
+
+def test_url_open_dispatches_by_scheme():
+    from yggdryl.local import LocalIO
+    from yggdryl.memory import Heap
+
+    assert isinstance(Url.parse("mem://heap/data").open(), Heap)
+    assert isinstance(Url.parse("file:///tmp/ygg_url_open.bin").open(), LocalIO)
+
+
+def test_uri_open_rejects_unknown_scheme():
+    with pytest.raises(ValueError):
+        Uri.parse("http://example.com/x").open()
+
+
+def test_uri_cursor_reads_the_addressed_source(tmp_path):
+    from yggdryl.local import LocalIO
+    from yggdryl.memory import Cursor
+
+    fp = str(tmp_path / "content.txt")
+    writer = LocalIO(fp)
+    writer.pwrite_utf8(0, "line1\nline2")
+    writer.close()
+
+    cur = Uri.from_path(fp).cursor()
+    assert isinstance(cur, Cursor)
+    assert cur.read_utf8(5) == "line1"
+    assert bytes(cur)[:11] == b"line1\nline2"
+
+
+def test_url_cursor_over_mem_source_is_empty():
+    from yggdryl.memory import Cursor
+
+    cur = Url.parse("mem://heap/empty").cursor()
+    assert isinstance(cur, Cursor)
+    assert cur.byte_size() == 0

@@ -1145,3 +1145,142 @@ test('lines() is the array alias of readLines() on Heap and Cursor', () => {
   assert.deepEqual(new Cursor(Buffer.from('x\ny')).lines(), ['x\n', 'y'])
 })
 
+// -------------------------------------------------------------------------------------
+// All native scalar widths (pread/pwrite) — number widths, BigInt widths, f32 via f64
+// -------------------------------------------------------------------------------------
+
+test('Heap: every native scalar width round-trips (pread/pwrite)', () => {
+  const h = new Heap()
+  h.pwriteI8(0, -5)
+  h.pwriteU8(1, 200)
+  h.pwriteI16(2, -12345)
+  h.pwriteU16(4, 60000)
+  h.pwriteU32(8, 4000000000)
+  h.pwriteU64(16, 12345678901234n) // BigInt
+  h.pwriteI128(32, -123456789012345678901234567890n) // BigInt
+  h.pwriteU128(48, 340282366920938463463374607431768211455n) // max u128, BigInt
+  h.pwriteF32(64, 1.5) // exactly representable in f32
+  h.pwriteF64(68, Math.PI)
+
+  assert.equal(h.preadI8(0), -5)
+  assert.equal(h.preadU8(1), 200)
+  assert.equal(h.preadI16(2), -12345)
+  assert.equal(h.preadU16(4), 60000)
+  assert.equal(h.preadU32(8), 4000000000)
+  assert.equal(h.preadU64(16), 12345678901234n)
+  assert.equal(h.preadI128(32), -123456789012345678901234567890n)
+  assert.equal(h.preadU128(48), 340282366920938463463374607431768211455n)
+  assert.equal(h.preadF32(64), 1.5)
+  assert.equal(h.preadF64(68), Math.PI)
+})
+
+test('Heap: bulk i8 / i16 arrays + repeat (number arrays)', () => {
+  const h = new Heap()
+  h.pwriteI8Array(0, [-1, 2, -3])
+  assert.deepEqual(h.preadI8Array(0, 3), [-1, 2, -3])
+  h.pwriteI8Repeat(0, -7, 4)
+  assert.deepEqual(h.preadI8Array(0, 4), [-7, -7, -7, -7])
+
+  h.pwriteI16Array(0, [-1000, 1000, -2000])
+  assert.deepEqual(h.preadI16Array(0, 3), [-1000, 1000, -2000])
+  h.pwriteI16Repeat(0, 9, 3)
+  assert.deepEqual(h.preadI16Array(0, 3), [9, 9, 9])
+})
+
+test('Heap: bulk i128 / u128 arrays are BigInt[]', () => {
+  const h = new Heap()
+  h.pwriteI128Array(0, [-5n, 7n, -9n])
+  assert.deepEqual(h.preadI128Array(0, 3), [-5n, 7n, -9n])
+  h.pwriteI128Repeat(0, -3n, 2)
+  assert.deepEqual(h.preadI128Array(0, 2), [-3n, -3n])
+
+  h.pwriteU128Array(0, [1n, 2n, 340282366920938463463374607431768211455n])
+  assert.deepEqual(h.preadU128Array(0, 3), [1n, 2n, 340282366920938463463374607431768211455n])
+  h.pwriteU128Repeat(0, 8n, 2)
+  assert.deepEqual(h.preadU128Array(0, 2), [8n, 8n])
+})
+
+test('Heap: cursor read/write for every native width', () => {
+  const h = new Heap()
+  h.writeI8(-1)
+  h.writeU8(255)
+  h.writeI16(-30000)
+  h.writeU16(65535)
+  h.writeU32(4294967295)
+  h.writeU64(9007199254740993n) // > 2^53, exact only via BigInt
+  h.writeI128(-42n)
+  h.writeU128(42n)
+  h.writeF32(1.5)
+  h.writeF64(Math.PI)
+  h.rewind()
+  assert.equal(h.readI8(), -1)
+  assert.equal(h.readU8(), 255)
+  assert.equal(h.readI16(), -30000)
+  assert.equal(h.readU16(), 65535)
+  assert.equal(h.readU32(), 4294967295)
+  assert.equal(h.readU64(), 9007199254740993n)
+  assert.equal(h.readI128(), -42n)
+  assert.equal(h.readU128(), 42n)
+  assert.equal(h.readF32(), 1.5)
+  assert.equal(h.readF64(), Math.PI)
+})
+
+test('Heap.moveInto moves the bytes into dst and empties the source', () => {
+  const src = new Heap(Buffer.from('relocate me'))
+  const dst = new Heap()
+  assert.equal(src.moveInto(dst), 11)
+  assert.deepEqual(dst.toBytes(), Buffer.from('relocate me'))
+  assert.equal(src.byteSize(), 0)
+})
+
+test('Cursor: scalar pread/pwrite and cursor read/write for new widths', () => {
+  const c = new Cursor()
+  c.writeI16(-30000)
+  c.writeU128(42n)
+  c.rewind()
+  assert.equal(c.readI16(), -30000)
+  assert.equal(c.readU128(), 42n)
+
+  // The positioned scalar accessors work independently of the cursor.
+  c.pwriteU32(0, 123456)
+  assert.equal(c.preadU32(0), 123456)
+  c.pwriteU64(8, 77n)
+  assert.equal(c.preadU64(8), 77n)
+})
+
+test('Slice: read-only native scalar reads (a fixed window has no typed writes)', () => {
+  const h = new Heap()
+  h.pwriteI16(0, -12345)
+  h.pwriteU64(2, 999n)
+  h.pwriteF32(10, 0.5)
+  const s = Slice.over(h, 0, 14) // the window spans exactly the 14 bytes written
+  assert.equal(s.preadI16(0), -12345)
+  assert.equal(s.preadU64(2), 999n)
+  assert.equal(s.preadF32(10), 0.5)
+  // A slice is read-only for typed scalars — no pwrite* counterparts.
+  assert.equal(typeof s.pwriteI16, 'undefined')
+  assert.equal(typeof s.preadU128, 'function')
+})
+
+// -------------------------------------------------------------------------------------
+// Module-level open() — the project's open(), returning the concrete class
+// -------------------------------------------------------------------------------------
+
+test('open: a mem:// string/Uri yields a Heap; a Buffer yields a Heap', () => {
+  const fromStr = yggdryl.open('mem://heap')
+  assert.ok(fromStr instanceof Heap)
+  fromStr.pwriteUtf8(0, 'opened')
+  assert.equal(fromStr.preadUtf8(0, 6), 'opened')
+
+  const fromUri = yggdryl.open(Uri.parse('mem://heap'))
+  assert.ok(fromUri instanceof Heap)
+
+  const fromBytes = yggdryl.open(Buffer.from('bytes'))
+  assert.ok(fromBytes instanceof Heap)
+  assert.deepEqual(fromBytes.toBytes(), Buffer.from('bytes'))
+})
+
+test('open: an unsupported scheme throws the guided error', () => {
+  assert.throws(() => yggdryl.open('ftp://example.com/x'), /cannot open the `ftp:\/\/` scheme/)
+})
+

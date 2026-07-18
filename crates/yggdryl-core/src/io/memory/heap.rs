@@ -600,6 +600,22 @@ impl IOBase for Heap {
     heap_numeric_bulk!(u64, 8, pread_u64_array, pwrite_u64_array, pwrite_u64_repeat);
     heap_numeric_bulk!(f32, 4, pread_f32_array, pwrite_f32_array, pwrite_f32_repeat);
     heap_numeric_bulk!(f64, 8, pread_f64_array, pwrite_f64_array, pwrite_f64_repeat);
+    heap_numeric_bulk!(i8, 1, pread_i8_array, pwrite_i8_array, pwrite_i8_repeat);
+    heap_numeric_bulk!(i16, 2, pread_i16_array, pwrite_i16_array, pwrite_i16_repeat);
+    heap_numeric_bulk!(
+        i128,
+        16,
+        pread_i128_array,
+        pwrite_i128_array,
+        pwrite_i128_repeat
+    );
+    heap_numeric_bulk!(
+        u128,
+        16,
+        pread_u128_array,
+        pwrite_u128_array,
+        pwrite_u128_repeat
+    );
 }
 
 // Value equality over the stored bytes only — the cursor, address `Uri`, `Headers`, and `IOMode`

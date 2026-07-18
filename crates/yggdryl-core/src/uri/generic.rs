@@ -242,6 +242,34 @@ impl Uri {
         &self.path
     }
 
+    /// This URI's **filesystem path** — its [`path`](Uri::path) percent-**decoded** to the
+    /// native form a filesystem call expects, with a leading-slash-rooted Windows drive path
+    /// (`/C:/Users/x`) un-rooted back to `C:/Users/x`. This is exactly what a Python
+    /// `os.PathLike.__fspath__` returns; it stays POSIX-slash-based (the project's normalized
+    /// form) so it reads identically on every OS.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// assert_eq!(Uri::from_file_path("/home/x/a b.txt").fspath(), "/home/x/a b.txt");
+    /// assert_eq!(Uri::from_file_path(r"C:\Users\x").fspath(), "C:/Users/x");
+    /// ```
+    pub fn fspath(&self) -> String {
+        let decoded = percent::decode(&self.path).into_owned();
+        // A `file://` URL roots a Windows drive path with a leading slash; strip it back off so
+        // the result is the plain filesystem path (`C:/…`), never the URL-rooted `/C:/…`.
+        let bytes = decoded.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0] == b'/'
+            && bytes[1].is_ascii_alphabetic()
+            && bytes[2] == b':'
+        {
+            decoded[1..].to_string()
+        } else {
+            decoded
+        }
+    }
+
     /// The query, if any (the text after `?`, without the `?`).
     pub fn query(&self) -> Option<&str> {
         self.query.as_deref()

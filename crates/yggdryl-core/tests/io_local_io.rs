@@ -680,3 +680,73 @@ fn tmpdir_is_tmpfolder_and_truncate_resizes() {
     file.close();
     dir.rmdir(true).unwrap();
 }
+
+// -------------------------------------------------------------------------------------
+// move_into — streamed relocation that deletes the source file
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn move_into_relocates_file_and_deletes_source() {
+    let tmp = TempDir::new("move");
+    let mut src = tmp.root().join_str("src.bin");
+    src.pwrite_utf8(0, "move these bytes");
+    src.close();
+
+    let mut dst = tmp.root().join_str("moved/dst.bin");
+    let moved = src.move_into(&mut dst).unwrap();
+    dst.close();
+    assert_eq!(moved, 16);
+    assert!(!src.exists()); // the source file is gone after the move
+    assert_eq!(dst.pread_utf8(0, 16).unwrap(), "move these bytes");
+
+    // Moving a file onto its OWN path is a no-op — it does not delete the file.
+    let mut self_move = tmp.root().join_str("keep.bin");
+    self_move.pwrite_utf8(0, "stay");
+    self_move.close();
+    let mut same = tmp.root().join_str("keep.bin");
+    assert_eq!(self_move.move_into(&mut same).unwrap(), 4);
+    assert!(self_move.exists()); // still there — same address is skipped
+    assert_eq!(self_move.pread_utf8(0, 4).unwrap(), "stay");
+}
+
+// -------------------------------------------------------------------------------------
+// load() — eager mmap for read-heavy / concurrent access
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn load_maps_for_memory_speed_reads_and_is_concurrent() {
+    use std::sync::Arc;
+
+    let tmp = TempDir::new("load");
+    let mut w = tmp.root().join_str("shared.bin");
+    w.pwrite_i64_array(0, &(0..1024i64).collect::<Vec<_>>())
+        .unwrap();
+    w.close();
+
+    // A fresh read-only handle: load() maps it once; later reads run from the mapping.
+    let mut r = tmp.root().join_str("shared.bin");
+    r.set_mode(yggdryl_core::io::IOMode::Read);
+    assert!(!r.is_mapped());
+    r.load().unwrap();
+    assert!(r.is_mapped());
+
+    // Shared across threads (Mmap is Send + Sync): concurrent readers see the same bytes.
+    let shared = Arc::new(r);
+    let mut handles = Vec::new();
+    for t in 0..4u64 {
+        let reader = Arc::clone(&shared);
+        handles.push(std::thread::spawn(move || {
+            let idx = (t * 100) as usize;
+            reader.pread_i64(idx as u64 * 8).unwrap()
+        }));
+    }
+    for (t, h) in handles.into_iter().enumerate() {
+        assert_eq!(h.join().unwrap(), (t * 100) as i64);
+    }
+
+    // load() on a missing node is a lazy no-op (nothing to map, reads stay empty).
+    let mut missing = tmp.root().join_str("nope.bin");
+    missing.load().unwrap();
+    assert!(!missing.is_mapped());
+    assert_eq!(missing.pread_vec(0, 8), b"");
+}

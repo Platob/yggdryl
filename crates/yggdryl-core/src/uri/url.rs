@@ -387,6 +387,12 @@ impl Url {
         Url::try_from(Uri::deserialize_bytes(bytes)?)
     }
 
+    /// This URL's **filesystem path** — the percent-decoded native path, un-rooting a Windows
+    /// drive path; see [`Uri::fspath`]. What a Python `os.PathLike.__fspath__` returns.
+    pub fn fspath(&self) -> String {
+        self.inner.fspath()
+    }
+
     /// The **portable, relocatable** string form for pickling / cross-environment transport —
     /// see [`Uri::to_portable_str`]. A `file://` URL under the current home / temp root folds to
     /// a `~` / `$TMP` token; every other URL is its exact string.

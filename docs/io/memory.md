@@ -334,6 +334,82 @@ The [`io_memory_heap` benchmark](https://github.com/Platob/yggdryl/blob/main/ben
 pins the claims: bulk arrays run allocation-free at multi-Gelem/s, and `pwrite_i32_repeat` is
 ~3.5× the build-a-full-array path.
 
+## Every native width
+
+Every operation shown so far — the scalar `pread_*` / `pwrite_*`, the bulk `pread_*_array` /
+`pwrite_*_array`, the repeated-value `pwrite_*_repeat`, and the cursor `read_*` / `write_*` — is
+defined for **every native numeric width**, not just `i32` / `i64`: the signed and unsigned
+integers `i8` / `u8` / `i16` / `u16` / `i32` / `u32` / `i64` / `u64` / `i128` / `u128` and the
+floats `f32` / `f64`, all little-endian and driven by the identical zero-allocation kernels. A width
+that overflows a JS `number` crosses the Node boundary as a `BigInt` (`u64` / `i128` / `u128`);
+Python carries it as a plain `int`, Rust as the native type.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    h = Heap()
+    h.pwrite_u16(0, 65535)                          # a narrow scalar
+    assert h.pread_u16(0) == 65535
+    h.pwrite_u128(16, 2**100)                       # the widest scalar — a Python int
+    assert h.pread_u128(16) == 2**100
+    h.pwrite_f64_array(64, [1.5, -2.5, 3.5])        # a whole f64 array
+    assert h.pread_f64_array(64, 3) == [1.5, -2.5, 3.5]
+
+    # The cursor read_/write_ stream forms exist for every width too.
+    c = Heap()
+    c.write_u16(65535)                              # writes at the cursor, advancing it
+    c.write_u128(2**100)
+    c.rewind()
+    assert c.read_u16() == 65535 and c.read_u128() == 2**100
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap()
+    h.pwriteU16(0, 65535)                           // a narrow scalar
+    console.assert(h.preadU16(0) === 65535)
+    h.pwriteU128(16, 2n ** 100n)                    // the widest scalar — a BigInt
+    console.assert(h.preadU128(16) === 2n ** 100n)
+    h.pwriteF64Array(64, [1.5, -2.5, 3.5])          // a whole f64 array
+    console.assert(h.preadF64Array(64, 3).join() === '1.5,-2.5,3.5')
+
+    // The cursor read/write stream forms exist for every width too.
+    const c = new Heap()
+    c.writeU16(65535)                               // writes at the cursor, advancing it
+    c.writeU128(2n ** 100n)
+    c.rewind()
+    console.assert(c.readU16() === 65535 && c.readU128() === 2n ** 100n)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut h = Heap::new();
+    h.pwrite_u16(0, 65535).unwrap();                     // a narrow scalar
+    assert_eq!(h.pread_u16(0).unwrap(), 65535);
+    h.pwrite_u128(16, 1u128 << 100).unwrap();            // the widest scalar — a u128
+    assert_eq!(h.pread_u128(16).unwrap(), 1u128 << 100);
+    h.pwrite_f64_array(64, &[1.5, -2.5, 3.5]).unwrap();  // a whole f64 array
+    let mut back = [0f64; 3];
+    h.pread_f64_array(64, &mut back).unwrap();
+    assert_eq!(back, [1.5, -2.5, 3.5]);
+
+    // The cursor read_/write_ stream forms exist for every width too.
+    let mut c = Heap::new();
+    c.write_u16(65535).unwrap();                         // writes at the cursor, advancing it
+    c.write_u128(1u128 << 100).unwrap();
+    c.rewind();
+    assert_eq!(c.read_u16().unwrap(), 65535);
+    assert_eq!(c.read_u128().unwrap(), 1u128 << 100);
+    ```
+
 ## Capacity discipline
 
 When the final size is known, pre-allocate so the first writes never reallocate; when it is not,
@@ -885,6 +961,104 @@ work across any source pair; the examples move `Heap` → `Heap`.
     let moved = dst.pwrite_from(0, &src, 6, 5).unwrap(); // splice 5 bytes of src from offset 6
     assert_eq!(moved, 5);
     assert_eq!(dst.as_slice(), b"world");
+    ```
+
+## Moving between sources
+
+`move_into(dst)` **relocates** a source's bytes into another `IOBase` and then empties the origin
+(deleting its backing when it has one) — the `mv` counterpart of the `copy_from` overwrite. The
+bytes transfer in bounded chunks read from the tail, so peak memory is one chunk rather than the
+whole payload; when `self` and `dst` resolve to the **same** address it is a no-op (a source never
+moves onto itself). It works across any source pair; the example moves `Heap` → `Heap`, leaving the
+source empty.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    src = Heap(b"relocate me")
+    dst = Heap()
+    assert src.move_into(dst) == 11        # bytes moved into dst
+    assert bytes(dst) == b"relocate me"
+    assert bytes(src) == b""               # the source ends empty
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const src = new Heap(Buffer.from('relocate me'))
+    const dst = new Heap()
+    console.assert(src.moveInto(dst) === 11)          // bytes moved into dst
+    console.assert(dst.toBytes().toString() === 'relocate me')
+    console.assert(src.toBytes().length === 0)        // the source ends empty
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut src = Heap::from_slice(b"relocate me");
+    let mut dst = Heap::new();
+    assert_eq!(src.move_into(&mut dst).unwrap(), 11);   // bytes moved into dst
+    assert_eq!(dst.as_slice(), b"relocate me");
+    assert_eq!(src.byte_size(), 0);                     // the source ends empty
+    ```
+
+## Opening any address — open()
+
+A module-level `open()` replicates Python's builtin `open()`: hand it an address and it hands back
+the right source. A `mem://` URI opens a `Heap`; a plain path or a `file://` URI opens a `LocalIO`
+(the single local-filesystem access point); raw bytes wrap straight into a `Heap`. The bindings
+return the **concrete** class directly — dynamic typing makes a wrapper unnecessary — while the
+Rust core hands back one uniform `AnyIO` handle that reads, writes, and seeks like an open file,
+with `is_memory()` / `is_local()` to test the backing and `into_local()` to reach the concrete
+`LocalIO` for a directory walk.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+    from yggdryl.memory import Heap
+    from yggdryl.local import LocalIO
+
+    assert isinstance(yggdryl.open("mem://heap"), Heap)       # a mem:// URI opens a Heap
+    assert isinstance(yggdryl.open("/tmp/app.bin"), LocalIO)  # a path or file:// opens a LocalIO
+    assert isinstance(yggdryl.open(b"raw bytes"), Heap)       # raw bytes wrap into a Heap
+    ```
+
+=== "Node"
+
+    ```js
+    const yggdryl = require('yggdryl')
+    const { Heap } = yggdryl.memory
+    const { LocalIO } = yggdryl.local
+
+    console.assert(yggdryl.open('mem://heap') instanceof Heap)             // a mem:// URI opens a Heap
+    console.assert(yggdryl.open('/tmp/app.bin') instanceof LocalIO)        // a path or file:// opens a LocalIO
+    console.assert(yggdryl.open(Buffer.from('raw bytes')) instanceof Heap) // a Buffer opens a Heap
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::IOBase;
+    use yggdryl_core::io::{open, open_str};
+    use yggdryl_core::uri::Uri;
+
+    // open() dispatches on the address scheme, returning one uniform AnyIO handle.
+    let mut mem = open(&Uri::parse_str("mem://heap").unwrap()).unwrap();
+    assert!(mem.is_memory() && !mem.is_local());
+    mem.pwrite_utf8(0, "opened");                        // read/write it like an open file
+    assert_eq!(mem.pread_utf8(0, 6).unwrap(), "opened");
+
+    // open_str parses a path/URI string; a plain path resolves to a local backing.
+    let disk = open_str("/tmp/app.bin").unwrap();
+    assert!(disk.is_local());
+    let _local = disk.into_local().unwrap();            // reach the concrete LocalIO when needed
     ```
 
 ## In-place compression

@@ -456,6 +456,70 @@ least-reallocation *read-into* form).
     live mapping carries capacity padding until it closes. See the
     [`io_local_io` benchmark note](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/local/io.md).
 
+## Memory-speed reads: load()
+
+`load()` **eagerly memory-maps** an existing file so every subsequent read runs at memory
+speed — the explicit counterpart of the automatic map-on-first-write, for **read-heavy or
+concurrent** workloads. Without it, reads on a never-written handle open the file ad hoc (one
+positioned OS read per call); after it, they are served from the kept mapping with no syscall
+(`is_mapped` turns true). The backing mapping is `Send + Sync`, so a loaded handle shared
+across threads (behind an `Arc`) serves **concurrent readers** from one shared mapping with no
+contention. It is a **no-op** on a missing node (reads stay lazy — call it once the file is
+present) or an already-mapped handle, and honors the handle's mode (a read-only handle maps
+read-only).
+
+=== "Python"
+
+    ```python
+    from yggdryl.local import LocalIO
+
+    src = LocalIO.tmpfile()
+    src.pwrite_utf8(0, "cached read")          # created + mapped on this write
+    src.close()                                # file on disk, handle back to lazy
+
+    reader = LocalIO(src.path)                 # a fresh lazy handle to the same file
+    reader.load()                              # map it once — no-op if missing/already mapped
+    assert reader.is_mapped
+    assert reader.pread_utf8(0, 11) == "cached read"   # served from memory, no per-read syscall
+    reader.close()
+    reader.rmfile()
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { local } = require('yggdryl');
+
+    const src = local.LocalIO.tmpfile();
+    src.pwriteUtf8(0, 'cached read');                  // created + mapped on this write
+    src.close();                                       // file on disk, handle back to lazy
+
+    const reader = new local.LocalIO(src.path);        // a fresh lazy handle to the same file
+    reader.load();                                     // map it once — no-op if missing/already mapped
+    console.assert(reader.isMapped);
+    console.assert(reader.preadUtf8(0, 11) === 'cached read'); // served from memory, no per-read syscall
+    reader.close();
+    reader.rmfile();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::local::LocalIO;
+    use yggdryl_core::io::memory::IOBase;
+
+    let mut src = LocalIO::tmpfile(None);
+    src.pwrite_utf8(0, "cached read");                  // created + mapped on this write
+    src.close();                                        // file on disk, handle back to lazy
+
+    let mut reader = LocalIO::from_path(src.as_std_path());
+    reader.load().unwrap();                             // map it once — no-op if missing/already mapped
+    assert!(reader.is_mapped());
+    assert_eq!(reader.pread_utf8(0, 11).unwrap(), "cached read"); // served from memory, no per-read syscall
+    reader.close();
+    reader.rmfile().unwrap();
+    ```
+
 ## Removing nodes — rm, rmfile, rmdir
 
 `rm()` removes whatever exists (a file is unlinked; a directory is removed with its whole
@@ -603,6 +667,45 @@ error.
 
     let gone = LocalIO::tmpfile(None);                  // a lazy handle to nothing
     assert!(gone.rm(false).is_err());                   // a missing node is an error here
+    ```
+
+## Disk capacity: memory_info()
+
+`memory_info()` reports the **disk capacity of the volume** backing this path — its total and
+available bytes — as a `MemoryInfo`, the local-filesystem answer to "how much room is there?".
+It is the **same value type** a `yggdryl.gpu` device reports for its VRAM (and an object store
+will report for its quota), so one capacity vocabulary spans every source. The path need not
+exist yet — the lookup walks up to the nearest existing ancestor to resolve the volume.
+
+=== "Python"
+
+    ```python
+    from yggdryl.local import LocalIO
+
+    node = LocalIO.tmpfile()                   # a lazy handle — the file need not exist yet
+    info = node.memory_info()                  # disk capacity of the path's volume
+    assert info.total() >= info.available()    # total is never less than the free bytes
+    assert info.used() == info.total() - info.available()
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { local } = require('yggdryl');
+
+    const node = local.LocalIO.tmpfile();              // a lazy handle — the file need not exist yet
+    const info = node.memoryInfo();                    // disk capacity of the path's volume
+    console.assert(info.total() >= info.available());  // total is never less than the free bytes
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::local::LocalIO;
+
+    let node = LocalIO::tmpfile(None);
+    let info = node.memory_info();                     // disk capacity of the path's volume
+    assert!(info.total() >= info.available());         // total is never less than the free bytes
     ```
 
 ## Portable handles: os.PathLike, file-like, and pickle

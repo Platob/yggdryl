@@ -700,6 +700,35 @@ impl Uri {
         self.to_url()
     }
 
+    /// The plain **filesystem path** this URI addresses — its percent-decoded path with any
+    /// `file://` URL drive-rooting (`/C:/…`) stripped back to the bare path (`C:/…`). The value
+    /// [`__fspath__`](Uri::__fspath__) returns, so `Uri.fspath()` and `os.fspath(uri)` agree.
+    fn fspath(&self) -> String {
+        self.inner.fspath()
+    }
+
+    /// The `os.PathLike` protocol — the [`fspath`](Uri::fspath) string, so a `Uri` can be passed
+    /// straight to `open(...)`, `pathlib.Path(...)`, `os.fspath(...)`, and the rest of the
+    /// standard library.
+    fn __fspath__(&self) -> String {
+        self.inner.fspath()
+    }
+
+    /// **Opens** the source this URI addresses — the URI redirected to the right IO
+    /// implementation by its scheme: a `mem://` address returns a `yggdryl.memory.Heap`, a
+    /// `file://` (or plain-path) one a `yggdryl.local.LocalIO`. Raises a guided `ValueError`
+    /// for any other scheme.
+    fn open(&self, py: Python<'_>) -> PyResult<PyObject> {
+        crate::io::open_core_uri(py, &self.inner)
+    }
+
+    /// A `yggdryl.memory.Cursor` over this URI's opened source — opens the source, reads all of
+    /// its bytes, and wraps them in a cursor (an independent in-heap copy). The read-through
+    /// companion of [`open`](Uri::open).
+    fn cursor(&self) -> PyResult<crate::io::memory::Cursor> {
+        crate::io::cursor_over_uri(&self.inner)
+    }
+
     // ---- combinators (copy / joinpath / merge) -------------------------------------
 
     /// A copy of this URI with any provided components overridden — the clone-with-overrides
@@ -1280,6 +1309,31 @@ impl Url {
     /// Alias of [`as_uri`](Url::as_uri) — the underlying [`Uri`].
     fn into_uri(&self) -> Uri {
         self.as_uri()
+    }
+
+    /// The plain **filesystem path** this URL addresses — see [`Uri.fspath`](Uri::fspath). The
+    /// value [`__fspath__`](Url::__fspath__) returns.
+    fn fspath(&self) -> String {
+        self.inner.fspath()
+    }
+
+    /// The `os.PathLike` protocol — the [`fspath`](Url::fspath) string, so a `Url` can be passed
+    /// straight to `open(...)`, `pathlib.Path(...)`, `os.fspath(...)`, and the rest of the
+    /// standard library.
+    fn __fspath__(&self) -> String {
+        self.inner.fspath()
+    }
+
+    /// **Opens** the source this URL addresses — the URL redirected to the right IO
+    /// implementation by its scheme (`mem://` → `yggdryl.memory.Heap`, `file://` →
+    /// `yggdryl.local.LocalIO`); see [`Uri.open`](Uri::open).
+    fn open(&self, py: Python<'_>) -> PyResult<PyObject> {
+        crate::io::open_core_uri(py, self.inner.as_uri())
+    }
+
+    /// A `yggdryl.memory.Cursor` over this URL's opened source — see [`Uri.cursor`](Uri::cursor).
+    fn cursor(&self) -> PyResult<crate::io::memory::Cursor> {
+        crate::io::cursor_over_uri(self.inner.as_uri())
     }
 
     // ---- combinators (copy / joinpath / merge) -------------------------------------

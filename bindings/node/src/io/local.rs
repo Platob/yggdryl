@@ -36,12 +36,15 @@
 //! `yggdryl.memory` classes, and every failing operation surfaces as a thrown `Error`
 //! carrying the core's guided text unchanged.
 
-use napi::bindgen_prelude::{Buffer, Either, Either4, Generator, JsError, ToNapiValue, Unknown};
+use napi::bindgen_prelude::{
+    BigInt, Buffer, Either, Either4, Generator, JsError, ToNapiValue, Unknown,
+};
 use napi_derive::napi;
 
 use crate::compression::{as_dyn, wrap_codec, Gzip, Lzma, Zlib, Zstd};
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
+use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, Heap, NoChildren, Whence};
 use crate::io::mode::IOMode;
 use crate::mediatype::MediaType;
@@ -908,6 +911,18 @@ impl LocalIO {
         self.inner.content_length() as i64
     }
 
+    /// The **disk capacity** of the volume backing this path — total and free bytes — as a
+    /// [`MemoryInfo`], the local-filesystem answer to "how much room is there?" (the same value
+    /// type a GPU device reports for its VRAM). Resolved through the platform route (Windows
+    /// `GetDiskFreeSpaceExW`), walking up to the nearest existing ancestor so a not-yet-created
+    /// path still resolves its volume; the `unknown` snapshot where no native route exists.
+    #[napi]
+    pub fn memory_info(&self) -> MemoryInfo {
+        MemoryInfo {
+            inner: self.inner.memory_info(),
+        }
+    }
+
     // ---- in-place compression ----------------------------------------------------------
 
     /// **Compresses this node in place** — replaces its bytes with the compressed form and
@@ -1135,6 +1150,413 @@ impl LocalIO {
     #[napi]
     pub fn lines(&mut self) -> napi::Result<Vec<String>> {
         self.inner.readlines().map_err(to_error)
+    }
+
+    // ---- all native scalar widths: pread/pwrite ----------------------------------------
+
+    /// Reads a little-endian `i8` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i8(&self, offset: u32) -> napi::Result<i8> {
+        self.inner.pread_i8(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i8` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i8(&mut self, offset: u32, value: i8) -> napi::Result<()> {
+        self.inner.pwrite_i8(offset as u64, value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u8` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u8(&self, offset: u32) -> napi::Result<u8> {
+        self.inner.pread_u8(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u8` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u8(&mut self, offset: u32, value: u8) -> napi::Result<()> {
+        self.inner.pwrite_u8(offset as u64, value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i16` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i16(&self, offset: u32) -> napi::Result<i16> {
+        self.inner.pread_i16(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i16` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i16(&mut self, offset: u32, value: i16) -> napi::Result<()> {
+        self.inner
+            .pwrite_i16(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u16` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u16(&self, offset: u32) -> napi::Result<u16> {
+        self.inner.pread_u16(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u16` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u16(&mut self, offset: u32, value: u16) -> napi::Result<()> {
+        self.inner
+            .pwrite_u16(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u32` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u32(&self, offset: u32) -> napi::Result<u32> {
+        self.inner.pread_u32(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u32` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u32(&mut self, offset: u32, value: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_u32(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u64` at `offset` (a BigInt), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u64(&self, offset: u32) -> napi::Result<u64> {
+        self.inner.pread_u64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u64` (a BigInt) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u64(&mut self, offset: u32, value: BigInt) -> napi::Result<()> {
+        self.inner
+            .pwrite_u64(offset as u64, value.get_u64().1)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i128` at `offset` (a BigInt), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i128(&self, offset: u32) -> napi::Result<i128> {
+        self.inner.pread_i128(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i128` (a BigInt) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i128(&mut self, offset: u32, value: BigInt) -> napi::Result<()> {
+        self.inner
+            .pwrite_i128(offset as u64, value.get_i128().0)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u128` at `offset` (a BigInt), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u128(&self, offset: u32) -> napi::Result<u128> {
+        self.inner.pread_u128(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u128` (a BigInt) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u128(&mut self, offset: u32, value: BigInt) -> napi::Result<()> {
+        self.inner
+            .pwrite_u128(offset as u64, value.get_u128().1)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `f32` at `offset` (widened to a JS number), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_f32(&self, offset: u32) -> napi::Result<f64> {
+        self.inner
+            .pread_f32(offset as u64)
+            .map(|v| v as f64)
+            .map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f32` (a JS number narrowed to `f32`) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_f32(&mut self, offset: u32, value: f64) -> napi::Result<()> {
+        self.inner
+            .pwrite_f32(offset as u64, value as f32)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `f64` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_f64(&self, offset: u32) -> napi::Result<f64> {
+        self.inner.pread_f64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f64` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_f64(&mut self, offset: u32, value: f64) -> napi::Result<()> {
+        self.inner
+            .pwrite_f64(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    // ---- remaining native bulk widths: i8 / i16 / i128 / u128 --------------------------
+
+    /// **Bulk typed read** of `count` little-endian `i8`s at `offset` into a fresh array, checked before allocating.
+    #[napi]
+    pub fn pread_i8_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i8>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 1)?;
+        let mut values = vec![0i8; count as usize];
+        self.inner
+            .pread_i8_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i8`s at `offset`.
+    #[napi]
+    pub fn pwrite_i8_array(&mut self, offset: u32, values: Vec<i8>) -> napi::Result<()> {
+        self.inner
+            .pwrite_i8_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i8` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_i8_repeat(&mut self, offset: u32, value: i8, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_i8_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i16`s at `offset` into a fresh array, checked before allocating.
+    #[napi]
+    pub fn pread_i16_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i16>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 2)?;
+        let mut values = vec![0i16; count as usize];
+        self.inner
+            .pread_i16_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i16`s at `offset`.
+    #[napi]
+    pub fn pwrite_i16_array(&mut self, offset: u32, values: Vec<i16>) -> napi::Result<()> {
+        self.inner
+            .pwrite_i16_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i16` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_i16_repeat(&mut self, offset: u32, value: i16, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_i16_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i128`s at `offset` into a fresh
+    /// `BigInt[]`, checked before allocating.
+    #[napi]
+    pub fn pread_i128_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i128>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 16)?;
+        let mut values = vec![0i128; count as usize];
+        self.inner
+            .pread_i128_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` (a `BigInt[]`) as little-endian `i128`s at `offset`.
+    #[napi]
+    pub fn pwrite_i128_array(&mut self, offset: u32, values: Vec<BigInt>) -> napi::Result<()> {
+        let src: Vec<i128> = values.into_iter().map(|v| v.get_i128().0).collect();
+        self.inner
+            .pwrite_i128_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i128` copies of `value` (a BigInt) at `offset`.
+    #[napi]
+    pub fn pwrite_i128_repeat(
+        &mut self,
+        offset: u32,
+        value: BigInt,
+        count: u32,
+    ) -> napi::Result<()> {
+        self.inner
+            .pwrite_i128_repeat(offset as u64, value.get_i128().0, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u128`s at `offset` into a fresh
+    /// `BigInt[]`, checked before allocating.
+    #[napi]
+    pub fn pread_u128_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u128>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 16)?;
+        let mut values = vec![0u128; count as usize];
+        self.inner
+            .pread_u128_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` (a `BigInt[]`) as little-endian `u128`s at `offset`.
+    #[napi]
+    pub fn pwrite_u128_array(&mut self, offset: u32, values: Vec<BigInt>) -> napi::Result<()> {
+        let src: Vec<u128> = values.into_iter().map(|v| v.get_u128().1).collect();
+        self.inner
+            .pwrite_u128_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u128` copies of `value` (a BigInt) at `offset`.
+    #[napi]
+    pub fn pwrite_u128_repeat(
+        &mut self,
+        offset: u32,
+        value: BigInt,
+        count: u32,
+    ) -> napi::Result<()> {
+        self.inner
+            .pwrite_u128_repeat(offset as u64, value.get_u128().1, count as usize)
+            .map_err(to_error)
+    }
+
+    // ---- all native cursor read/write --------------------------------------------------
+
+    /// Reads a little-endian `i8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_i8(&mut self) -> napi::Result<i8> {
+        self.inner.read_i8().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_i8(&mut self, value: i8) -> napi::Result<()> {
+        self.inner.write_i8(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_u8(&mut self) -> napi::Result<u8> {
+        self.inner.read_u8().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u8(&mut self, value: u8) -> napi::Result<()> {
+        self.inner.write_u8(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_i16(&mut self) -> napi::Result<i16> {
+        self.inner.read_i16().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_i16(&mut self, value: i16) -> napi::Result<()> {
+        self.inner.write_i16(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_u16(&mut self) -> napi::Result<u16> {
+        self.inner.read_u16().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u16(&mut self, value: u16) -> napi::Result<()> {
+        self.inner.write_u16(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u32` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_u32(&mut self) -> napi::Result<u32> {
+        self.inner.read_u32().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u32` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u32(&mut self, value: u32) -> napi::Result<()> {
+        self.inner.write_u32(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u64` at the cursor (a BigInt), advancing it by the type width.
+    #[napi]
+    pub fn read_u64(&mut self) -> napi::Result<u64> {
+        self.inner.read_u64().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u64` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u64(&mut self, value: BigInt) -> napi::Result<()> {
+        self.inner.write_u64(value.get_u64().1).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i128` at the cursor (a BigInt), advancing it by the type width.
+    #[napi]
+    pub fn read_i128(&mut self) -> napi::Result<i128> {
+        self.inner.read_i128().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i128` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_i128(&mut self, value: BigInt) -> napi::Result<()> {
+        self.inner.write_i128(value.get_i128().0).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u128` at the cursor (a BigInt), advancing it by the type width.
+    #[napi]
+    pub fn read_u128(&mut self) -> napi::Result<u128> {
+        self.inner.read_u128().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u128` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u128(&mut self, value: BigInt) -> napi::Result<()> {
+        self.inner.write_u128(value.get_u128().1).map_err(to_error)
+    }
+
+    /// Reads a little-endian `f32` at the cursor (widened to a JS number), advancing it by the type width.
+    #[napi]
+    pub fn read_f32(&mut self) -> napi::Result<f64> {
+        self.inner.read_f32().map(|v| v as f64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f32` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_f32(&mut self, value: f64) -> napi::Result<()> {
+        self.inner.write_f32(value as f32).map_err(to_error)
+    }
+
+    /// Reads a little-endian `f64` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_f64(&mut self) -> napi::Result<f64> {
+        self.inner.read_f64().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f64` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_f64(&mut self, value: f64) -> napi::Result<()> {
+        self.inner.write_f64(value).map_err(to_error)
+    }
+
+    // ---- move_into ---------------------------------------------------------------------
+
+    /// **Moves** this source's whole content into `dst` and empties this source; returns
+    /// the number of bytes moved. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn move_into(&mut self, dst: &mut LocalIO) -> napi::Result<i64> {
+        self.inner
+            .move_into(&mut dst.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Eagerly memory-maps** the existing file so later reads run at memory speed — the
+    /// explicit counterpart of the automatic map-on-first-write. A no-op when already mapped
+    /// or when the file does not exist yet.
+    #[napi]
+    pub fn load(&mut self) -> napi::Result<()> {
+        self.inner.load().map_err(to_error)
     }
 
     /// A short debug string of the form `LocalIO(<path>, <N bytes>)`.
@@ -2244,6 +2666,419 @@ impl Mmap {
     // monomorphic over `Heap` (each owns a *copy* of its source), and a live mapping cannot
     // be copied. The built-in cursor stream above covers streaming; revisit if the binding
     // views ever become generic over sources.
+
+    // ---- all native scalar widths: pread/pwrite ----------------------------------------
+
+    /// Reads a little-endian `i8` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i8(&self, offset: u32) -> napi::Result<i8> {
+        self.inner()?.pread_i8(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i8` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i8(&mut self, offset: u32, value: i8) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i8(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u8` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u8(&self, offset: u32) -> napi::Result<u8> {
+        self.inner()?.pread_u8(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u8` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u8(&mut self, offset: u32, value: u8) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u8(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i16` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i16(&self, offset: u32) -> napi::Result<i16> {
+        self.inner()?.pread_i16(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i16` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i16(&mut self, offset: u32, value: i16) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i16(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u16` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u16(&self, offset: u32) -> napi::Result<u16> {
+        self.inner()?.pread_u16(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u16` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u16(&mut self, offset: u32, value: u16) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u16(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u32` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u32(&self, offset: u32) -> napi::Result<u32> {
+        self.inner()?.pread_u32(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u32` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u32(&mut self, offset: u32, value: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u32(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u64` at `offset` (a BigInt), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u64(&self, offset: u32) -> napi::Result<u64> {
+        self.inner()?.pread_u64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u64` (a BigInt) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u64(&mut self, offset: u32, value: BigInt) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u64(offset as u64, value.get_u64().1)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i128` at `offset` (a BigInt), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i128(&self, offset: u32) -> napi::Result<i128> {
+        self.inner()?.pread_i128(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i128` (a BigInt) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i128(&mut self, offset: u32, value: BigInt) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i128(offset as u64, value.get_i128().0)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u128` at `offset` (a BigInt), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_u128(&self, offset: u32) -> napi::Result<u128> {
+        self.inner()?.pread_u128(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u128` (a BigInt) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_u128(&mut self, offset: u32, value: BigInt) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u128(offset as u64, value.get_u128().1)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `f32` at `offset` (widened to a JS number), or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_f32(&self, offset: u32) -> napi::Result<f64> {
+        self.inner()?
+            .pread_f32(offset as u64)
+            .map(|v| v as f64)
+            .map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f32` (a JS number narrowed to `f32`) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_f32(&mut self, offset: u32, value: f64) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_f32(offset as u64, value as f32)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `f64` at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_f64(&self, offset: u32) -> napi::Result<f64> {
+        self.inner()?.pread_f64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f64` at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_f64(&mut self, offset: u32, value: f64) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_f64(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    // ---- remaining native bulk widths: i8 / i16 / i128 / u128 --------------------------
+
+    /// **Bulk typed read** of `count` little-endian `i8`s at `offset` into a fresh array, checked before allocating.
+    #[napi]
+    pub fn pread_i8_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i8>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 1)?;
+        let mut values = vec![0i8; count as usize];
+        self.inner()?
+            .pread_i8_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i8`s at `offset`.
+    #[napi]
+    pub fn pwrite_i8_array(&mut self, offset: u32, values: Vec<i8>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i8_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i8` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_i8_repeat(&mut self, offset: u32, value: i8, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i8_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i16`s at `offset` into a fresh array, checked before allocating.
+    #[napi]
+    pub fn pread_i16_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i16>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 2)?;
+        let mut values = vec![0i16; count as usize];
+        self.inner()?
+            .pread_i16_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i16`s at `offset`.
+    #[napi]
+    pub fn pwrite_i16_array(&mut self, offset: u32, values: Vec<i16>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i16_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i16` copies of `value` at `offset`.
+    #[napi]
+    pub fn pwrite_i16_repeat(&mut self, offset: u32, value: i16, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i16_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i128`s at `offset` into a fresh
+    /// `BigInt[]`, checked before allocating.
+    #[napi]
+    pub fn pread_i128_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i128>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 16)?;
+        let mut values = vec![0i128; count as usize];
+        self.inner()?
+            .pread_i128_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` (a `BigInt[]`) as little-endian `i128`s at `offset`.
+    #[napi]
+    pub fn pwrite_i128_array(&mut self, offset: u32, values: Vec<BigInt>) -> napi::Result<()> {
+        let src: Vec<i128> = values.into_iter().map(|v| v.get_i128().0).collect();
+        self.inner_mut()?
+            .pwrite_i128_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i128` copies of `value` (a BigInt) at `offset`.
+    #[napi]
+    pub fn pwrite_i128_repeat(
+        &mut self,
+        offset: u32,
+        value: BigInt,
+        count: u32,
+    ) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i128_repeat(offset as u64, value.get_i128().0, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `u128`s at `offset` into a fresh
+    /// `BigInt[]`, checked before allocating.
+    #[napi]
+    pub fn pread_u128_array(&self, offset: u32, count: u32) -> napi::Result<Vec<u128>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 16)?;
+        let mut values = vec![0u128; count as usize];
+        self.inner()?
+            .pread_u128_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` (a `BigInt[]`) as little-endian `u128`s at `offset`.
+    #[napi]
+    pub fn pwrite_u128_array(&mut self, offset: u32, values: Vec<BigInt>) -> napi::Result<()> {
+        let src: Vec<u128> = values.into_iter().map(|v| v.get_u128().1).collect();
+        self.inner_mut()?
+            .pwrite_u128_array(offset as u64, &src)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `u128` copies of `value` (a BigInt) at `offset`.
+    #[napi]
+    pub fn pwrite_u128_repeat(
+        &mut self,
+        offset: u32,
+        value: BigInt,
+        count: u32,
+    ) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_u128_repeat(offset as u64, value.get_u128().1, count as usize)
+            .map_err(to_error)
+    }
+
+    // ---- all native cursor read/write --------------------------------------------------
+
+    /// Reads a little-endian `i8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_i8(&mut self) -> napi::Result<i8> {
+        self.inner_mut()?.read_i8().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_i8(&mut self, value: i8) -> napi::Result<()> {
+        self.inner_mut()?.write_i8(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_u8(&mut self) -> napi::Result<u8> {
+        self.inner_mut()?.read_u8().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u8` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u8(&mut self, value: u8) -> napi::Result<()> {
+        self.inner_mut()?.write_u8(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_i16(&mut self) -> napi::Result<i16> {
+        self.inner_mut()?.read_i16().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_i16(&mut self, value: i16) -> napi::Result<()> {
+        self.inner_mut()?.write_i16(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_u16(&mut self) -> napi::Result<u16> {
+        self.inner_mut()?.read_u16().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u16` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u16(&mut self, value: u16) -> napi::Result<()> {
+        self.inner_mut()?.write_u16(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u32` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_u32(&mut self) -> napi::Result<u32> {
+        self.inner_mut()?.read_u32().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u32` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u32(&mut self, value: u32) -> napi::Result<()> {
+        self.inner_mut()?.write_u32(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `u64` at the cursor (a BigInt), advancing it by the type width.
+    #[napi]
+    pub fn read_u64(&mut self) -> napi::Result<u64> {
+        self.inner_mut()?.read_u64().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u64` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u64(&mut self, value: BigInt) -> napi::Result<()> {
+        self.inner_mut()?
+            .write_u64(value.get_u64().1)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i128` at the cursor (a BigInt), advancing it by the type width.
+    #[napi]
+    pub fn read_i128(&mut self) -> napi::Result<i128> {
+        self.inner_mut()?.read_i128().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i128` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_i128(&mut self, value: BigInt) -> napi::Result<()> {
+        self.inner_mut()?
+            .write_i128(value.get_i128().0)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `u128` at the cursor (a BigInt), advancing it by the type width.
+    #[napi]
+    pub fn read_u128(&mut self) -> napi::Result<u128> {
+        self.inner_mut()?.read_u128().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `u128` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_u128(&mut self, value: BigInt) -> napi::Result<()> {
+        self.inner_mut()?
+            .write_u128(value.get_u128().1)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `f32` at the cursor (widened to a JS number), advancing it by the type width.
+    #[napi]
+    pub fn read_f32(&mut self) -> napi::Result<f64> {
+        self.inner_mut()?
+            .read_f32()
+            .map(|v| v as f64)
+            .map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f32` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_f32(&mut self, value: f64) -> napi::Result<()> {
+        self.inner_mut()?.write_f32(value as f32).map_err(to_error)
+    }
+
+    /// Reads a little-endian `f64` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn read_f64(&mut self) -> napi::Result<f64> {
+        self.inner_mut()?.read_f64().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `f64` at the cursor, advancing it by the type width.
+    #[napi]
+    pub fn write_f64(&mut self, value: f64) -> napi::Result<()> {
+        self.inner_mut()?.write_f64(value).map_err(to_error)
+    }
+
+    // ---- move_into ---------------------------------------------------------------------
+
+    /// **Moves** this mapping's whole content into `dst` and empties this source; returns
+    /// the number of bytes moved. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn move_into(&mut self, dst: &mut Mmap) -> napi::Result<i64> {
+        let target = dst.inner_mut()?;
+        self.inner_mut()?
+            .move_into(target)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
 
     /// A short debug string of the form `Mmap(<path>, <N bytes>)` — or `Mmap(closed)` after
     /// `close()`, so string coercion never throws.

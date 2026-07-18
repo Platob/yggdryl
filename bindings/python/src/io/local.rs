@@ -59,6 +59,166 @@ fn bulk_eof(offset: u64, available: u64, count: usize, width: usize) -> Option<I
     })
 }
 
+/// Emits a `#[pymethods]` block of scalar positioned `pread_<t>` / `pwrite_<t>` pairs for the
+/// `inner`-backed [`LocalIO`] handle — each a one-line delegation to `yggdryl_core`, completing
+/// the native-width set alongside the hand-written `i32` / `i64` / byte accessors. The macro
+/// emits the whole `#[pymethods] impl` block so pyo3 processes the expanded methods (the
+/// `multiple-pymethods` feature allows the extra block).
+macro_rules! scalar_methods {
+    ($Ty:ty $(, ($t:ty, $pread:ident, $pwrite:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("Reads a little-endian `", stringify!($t),
+                    "` at `offset`, raising `ValueError` on EOF.")]
+                fn $pread(&self, offset: u64) -> PyResult<$t> {
+                    self.inner.$pread(offset).map_err(ioerr)
+                }
+                #[doc = concat!("Writes `value` as a little-endian `", stringify!($t),
+                    "` at `offset`, growing as needed.")]
+                fn $pwrite(&mut self, offset: u64, value: $t) -> PyResult<()> {
+                    self.inner.$pwrite(offset, value).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of cursor typed `read_<t>` / `write_<t>` pairs for the
+/// `inner`-backed [`LocalIO`] handle — each reads/writes the positioned value at the cursor and
+/// advances it, delegating to `yggdryl_core`.
+macro_rules! cursor_typed_methods {
+    ($Ty:ty $(, ($t:ty, $read:ident, $write:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("Reads a little-endian `", stringify!($t),
+                    "` at the cursor, advancing it; raising `ValueError` on EOF.")]
+                fn $read(&mut self) -> PyResult<$t> {
+                    self.inner.$read().map_err(ioerr)
+                }
+                #[doc = concat!("Writes `value` as a little-endian `", stringify!($t),
+                    "` at the cursor, advancing it.")]
+                fn $write(&mut self, value: $t) -> PyResult<()> {
+                    self.inner.$write(value).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of the bulk typed `pread_<t>_array` / `pwrite_<t>_array` /
+/// `pwrite_<t>_repeat` methods for the `inner`-backed [`LocalIO`] handle — mirroring the
+/// existing `u16` array binding, with the element `$width` feeding the fail-fast bounds check.
+macro_rules! bulk_methods {
+    ($Ty:ty $(, ($t:ty, $width:literal, $pread:ident, $pwrite:ident, $repeat:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("Bulk read of `count` little-endian `", stringify!($t),
+                    "`s at `offset` (fail-fast bounds check before allocating).")]
+                fn $pread(&self, offset: u64, count: usize) -> PyResult<Vec<$t>> {
+                    let available = self.inner.byte_size().saturating_sub(offset);
+                    if let Some(e) = bulk_eof(offset, available, count, $width) {
+                        return Err(ioerr(e));
+                    }
+                    let mut values = vec![<$t>::default(); count];
+                    self.inner.$pread(offset, &mut values).map_err(ioerr)?;
+                    Ok(values)
+                }
+                #[doc = concat!("Bulk write of little-endian `", stringify!($t),
+                    "`s at `offset`, growing as needed.")]
+                fn $pwrite(&mut self, offset: u64, values: Vec<$t>) -> PyResult<()> {
+                    self.inner.$pwrite(offset, &values).map_err(ioerr)
+                }
+                #[doc = concat!("Repeated-value fill of `count` little-endian `", stringify!($t),
+                    "` copies of `value` at `offset` (no full array is built).")]
+                fn $repeat(&mut self, offset: u64, value: $t, count: usize) -> PyResult<()> {
+                    self.inner.$repeat(offset, value, count).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of scalar positioned `pread_<t>` / `pwrite_<t>` pairs for the
+/// [`Mmap`] mapping — the [`Mmap`] counterpart of [`scalar_methods`], routing each call through
+/// the closed-mapping guard [`Mmap::io`] / [`Mmap::io_mut`].
+macro_rules! mmap_scalar_methods {
+    ($(($t:ty, $pread:ident, $pwrite:ident)),+ $(,)?) => {
+        #[pymethods]
+        impl Mmap {
+            $(
+                #[doc = concat!("Reads a little-endian `", stringify!($t),
+                    "` at `offset`, raising `ValueError` on EOF.")]
+                fn $pread(&self, offset: u64) -> PyResult<$t> {
+                    self.io()?.$pread(offset).map_err(ioerr)
+                }
+                #[doc = concat!("Writes `value` as a little-endian `", stringify!($t),
+                    "` at `offset`, growing as needed.")]
+                fn $pwrite(&mut self, offset: u64, value: $t) -> PyResult<()> {
+                    self.io_mut()?.$pwrite(offset, value).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of cursor typed `read_<t>` / `write_<t>` pairs for the [`Mmap`]
+/// mapping — the [`Mmap`] counterpart of [`cursor_typed_methods`].
+macro_rules! mmap_cursor_typed_methods {
+    ($(($t:ty, $read:ident, $write:ident)),+ $(,)?) => {
+        #[pymethods]
+        impl Mmap {
+            $(
+                #[doc = concat!("Reads a little-endian `", stringify!($t),
+                    "` at the cursor, advancing it; raising `ValueError` on EOF.")]
+                fn $read(&mut self) -> PyResult<$t> {
+                    self.io_mut()?.$read().map_err(ioerr)
+                }
+                #[doc = concat!("Writes `value` as a little-endian `", stringify!($t),
+                    "` at the cursor, advancing it.")]
+                fn $write(&mut self, value: $t) -> PyResult<()> {
+                    self.io_mut()?.$write(value).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of the bulk typed array/repeat methods for the [`Mmap`]
+/// mapping — the [`Mmap`] counterpart of [`bulk_methods`], routing through the closed guard.
+macro_rules! mmap_bulk_methods {
+    ($(($t:ty, $width:literal, $pread:ident, $pwrite:ident, $repeat:ident)),+ $(,)?) => {
+        #[pymethods]
+        impl Mmap {
+            $(
+                #[doc = concat!("Bulk read of `count` little-endian `", stringify!($t),
+                    "`s at `offset` (fail-fast bounds check before allocating).")]
+                fn $pread(&self, offset: u64, count: usize) -> PyResult<Vec<$t>> {
+                    let io = self.io()?;
+                    if let Some(e) = bulk_eof(offset, io.byte_size().saturating_sub(offset), count, $width) {
+                        return Err(ioerr(e));
+                    }
+                    let mut values = vec![<$t>::default(); count];
+                    io.$pread(offset, &mut values).map_err(ioerr)?;
+                    Ok(values)
+                }
+                #[doc = concat!("Bulk write of little-endian `", stringify!($t),
+                    "`s at `offset`, growing as needed.")]
+                fn $pwrite(&mut self, offset: u64, values: Vec<$t>) -> PyResult<()> {
+                    self.io_mut()?.$pwrite(offset, &values).map_err(ioerr)
+                }
+                #[doc = concat!("Repeated-value fill of `count` little-endian `", stringify!($t),
+                    "` copies of `value` at `offset` (no full array is built).")]
+                fn $repeat(&mut self, offset: u64, value: $t, count: usize) -> PyResult<()> {
+                    self.io_mut()?.$repeat(offset, value, count).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
 /// The one local-filesystem handle — a **lazy** node over any path (file, folder, or nothing
 /// yet) that **decides per call how to serve reads and writes**: constructing, probing, and
 /// navigating touch nothing; before any write a read opens the file ad hoc (a missing node
@@ -337,6 +497,17 @@ impl LocalIO {
     /// present and falling back to the live `byte_size()`.
     fn content_length(&self) -> u64 {
         self.inner.content_length()
+    }
+
+    /// The [`MemoryInfo`](crate::io::meminfo::MemoryInfo) capacity snapshot of the **disk
+    /// volume** backing this path — total and free bytes (the same value type a
+    /// `yggdryl.gpu.GpuDevice` reports for its memory). Reports the portable
+    /// [`unknown`](crate::io::meminfo::MemoryInfo::unknown) snapshot where a native route is not
+    /// yet wired.
+    fn memory_info(&self) -> crate::io::meminfo::MemoryInfo {
+        crate::io::meminfo::MemoryInfo {
+            inner: self.inner.memory_info(),
+        }
     }
 
     /// Whether the node holds no bytes (`byte_size() == 0`) — `True` for a missing node, and
@@ -1141,6 +1312,75 @@ impl LocalIO {
         )
     }
 }
+
+#[pymethods]
+impl LocalIO {
+    /// **Eagerly memory-maps** this node's file (when it is a regular file) so later reads run
+    /// at memory speed and concurrent readers share one mapping — the explicit form of the
+    /// self-optimizing backing that a write would otherwise create lazily. A no-op when the
+    /// handle is already mapped, or when nothing exists yet at the path (reads stay ad-hoc /
+    /// empty). Raises a guided `ValueError` on an OS mapping failure.
+    fn load(&mut self) -> PyResult<()> {
+        self.inner.load().map_err(ioerr)
+    }
+
+    /// **Moves** this node's whole content into `dst` (another `LocalIO`) and **removes this
+    /// node** — a copy that consumes its origin (`mv` over the byte contract). Returns the
+    /// number of bytes moved. A no-op when `self` and `dst` resolve to the same path (a file
+    /// never moves onto itself); the mapped backing is released first so the source file can be
+    /// unlinked even on platforms that refuse to delete a mapped file.
+    fn move_into(&mut self, mut dst: PyRefMut<'_, LocalIO>) -> PyResult<u64> {
+        self.inner.move_into(&mut dst.inner).map_err(ioerr)
+    }
+}
+
+// The remaining native-width scalar, cursor-typed, and bulk-array accessors — completing the
+// set alongside the hand-written `i32` / `i64` / byte forms in the main block above.
+scalar_methods!(
+    LocalIO,
+    (i8, pread_i8, pwrite_i8),
+    (u8, pread_u8, pwrite_u8),
+    (i16, pread_i16, pwrite_i16),
+    (u16, pread_u16, pwrite_u16),
+    (u32, pread_u32, pwrite_u32),
+    (u64, pread_u64, pwrite_u64),
+    (i128, pread_i128, pwrite_i128),
+    (u128, pread_u128, pwrite_u128),
+    (f32, pread_f32, pwrite_f32),
+    (f64, pread_f64, pwrite_f64),
+);
+cursor_typed_methods!(
+    LocalIO,
+    (i8, read_i8, write_i8),
+    (u8, read_u8, write_u8),
+    (i16, read_i16, write_i16),
+    (u16, read_u16, write_u16),
+    (u32, read_u32, write_u32),
+    (u64, read_u64, write_u64),
+    (i128, read_i128, write_i128),
+    (u128, read_u128, write_u128),
+    (f32, read_f32, write_f32),
+    (f64, read_f64, write_f64),
+);
+bulk_methods!(
+    LocalIO,
+    (i8, 1, pread_i8_array, pwrite_i8_array, pwrite_i8_repeat),
+    (i16, 2, pread_i16_array, pwrite_i16_array, pwrite_i16_repeat),
+    (
+        i128,
+        16,
+        pread_i128_array,
+        pwrite_i128_array,
+        pwrite_i128_repeat
+    ),
+    (
+        u128,
+        16,
+        pread_u128_array,
+        pwrite_u128_array,
+        pwrite_u128_repeat
+    ),
+);
 
 /// The core streamed iterator a [`LocalEntries`] wraps — one level
 /// (`yggdryl_core::io::local::LocalChildren`) or the depth-first subtree walk
@@ -2142,6 +2382,63 @@ impl Mmap {
         }
     }
 }
+
+#[pymethods]
+impl Mmap {
+    /// **Moves** this mapping's whole content into `dst` (another `Mmap`) and **removes this
+    /// mapping's file** — a copy that consumes its origin (`mv` over the byte contract).
+    /// Returns the number of bytes moved. A no-op when `self` and `dst` map the same path.
+    /// Raises the guided closed `ValueError` if either mapping is closed.
+    fn move_into(&mut self, mut dst: PyRefMut<'_, Mmap>) -> PyResult<u64> {
+        let dst = dst.io_mut()?;
+        self.io_mut()?.move_into(dst).map_err(ioerr)
+    }
+}
+
+// The remaining native-width scalar, cursor-typed, and bulk-array accessors — completing the
+// set alongside the hand-written `i32` / `i64` / byte forms in the main `Mmap` block above.
+mmap_scalar_methods!(
+    (i8, pread_i8, pwrite_i8),
+    (u8, pread_u8, pwrite_u8),
+    (i16, pread_i16, pwrite_i16),
+    (u16, pread_u16, pwrite_u16),
+    (u32, pread_u32, pwrite_u32),
+    (u64, pread_u64, pwrite_u64),
+    (i128, pread_i128, pwrite_i128),
+    (u128, pread_u128, pwrite_u128),
+    (f32, pread_f32, pwrite_f32),
+    (f64, pread_f64, pwrite_f64),
+);
+mmap_cursor_typed_methods!(
+    (i8, read_i8, write_i8),
+    (u8, read_u8, write_u8),
+    (i16, read_i16, write_i16),
+    (u16, read_u16, write_u16),
+    (u32, read_u32, write_u32),
+    (u64, read_u64, write_u64),
+    (i128, read_i128, write_i128),
+    (u128, read_u128, write_u128),
+    (f32, read_f32, write_f32),
+    (f64, read_f64, write_f64),
+);
+mmap_bulk_methods!(
+    (i8, 1, pread_i8_array, pwrite_i8_array, pwrite_i8_repeat),
+    (i16, 2, pread_i16_array, pwrite_i16_array, pwrite_i16_repeat),
+    (
+        i128,
+        16,
+        pread_i128_array,
+        pwrite_i128_array,
+        pwrite_i128_repeat
+    ),
+    (
+        u128,
+        16,
+        pread_u128_array,
+        pwrite_u128_array,
+        pwrite_u128_repeat
+    ),
+);
 
 /// Populates the `local` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {

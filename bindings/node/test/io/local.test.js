@@ -1168,3 +1168,159 @@ test('LocalIO fsPath / tell / readable / writable / seekable / lines', () => {
   f.close()
   rmTree(dir)
 })
+
+// -------------------------------------------------------------------------------------
+// All native numeric widths + moveInto + load (LocalIO) and the Mmap surface
+// -------------------------------------------------------------------------------------
+
+test('LocalIO: every native scalar width round-trips (pread/pwrite)', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'nums.bin'))
+  f.pwriteI8(0, -5)
+  f.pwriteU8(1, 200)
+  f.pwriteI16(2, -12345)
+  f.pwriteU32(8, 4000000000)
+  f.pwriteU64(16, 12345678901234n)
+  f.pwriteI128(32, -9n)
+  f.pwriteU128(48, 340282366920938463463374607431768211455n)
+  f.pwriteF32(64, 1.5)
+  f.pwriteF64(68, Math.PI)
+
+  assert.equal(f.preadI8(0), -5)
+  assert.equal(f.preadU8(1), 200)
+  assert.equal(f.preadI16(2), -12345)
+  assert.equal(f.preadU32(8), 4000000000)
+  assert.equal(f.preadU64(16), 12345678901234n)
+  assert.equal(f.preadI128(32), -9n)
+  assert.equal(f.preadU128(48), 340282366920938463463374607431768211455n)
+  assert.equal(f.preadF32(64), 1.5)
+  assert.equal(f.preadF64(68), Math.PI)
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO: bulk i8 / i128 arrays and cursor widths', () => {
+  const dir = tmpDir()
+  const f = new LocalIO(nodePath.join(dir, 'bulk.bin'))
+  f.pwriteI8Array(0, [-1, 2, -3])
+  assert.deepEqual(f.preadI8Array(0, 3), [-1, 2, -3])
+  f.pwriteI128Array(16, [-2n, 3n, -4n])
+  assert.deepEqual(f.preadI128Array(16, 3), [-2n, 3n, -4n])
+
+  f.setPosition(64)
+  f.writeU64(9007199254740993n)
+  f.writeI128(-42n)
+  f.writeF32(0.5)
+  f.setPosition(64)
+  assert.equal(f.readU64(), 9007199254740993n)
+  assert.equal(f.readI128(), -42n)
+  assert.equal(f.readF32(), 0.5)
+  f.close()
+  rmTree(dir)
+})
+
+test('LocalIO.moveInto moves file bytes into another handle and empties the source', () => {
+  const dir = tmpDir()
+  const src = new LocalIO(nodePath.join(dir, 'src.bin'))
+  src.pwriteUtf8(0, 'move me')
+  const dst = new LocalIO(nodePath.join(dir, 'dst.bin'))
+  assert.equal(src.moveInto(dst), 7)
+  assert.equal(dst.preadUtf8(0, 7), 'move me')
+  assert.equal(src.byteSize(), 0)
+  dst.close()
+  rmTree(dir)
+})
+
+test('LocalIO.load eagerly maps an existing file for memory-speed reads', () => {
+  const dir = tmpDir()
+  const w = new LocalIO(nodePath.join(dir, 'cached.bin'))
+  w.pwriteUtf8(0, 'cached read')
+  w.close() // file on disk, handle back to lazy
+
+  const r = new LocalIO(nodePath.join(dir, 'cached.bin'))
+  r.load()
+  assert.equal(r.isMapped, true)
+  assert.equal(r.preadUtf8(0, 11), 'cached read')
+  r.close()
+  rmTree(dir)
+})
+
+test('Mmap: native scalar/bulk widths and cursor round-trip', () => {
+  const path = tmpFile()
+  const m = Mmap.create(path)
+  m.pwriteI8(0, -1)
+  m.pwriteU64(8, 55n)
+  m.pwriteU128(16, 123n)
+  assert.equal(m.preadI8(0), -1)
+  assert.equal(m.preadU64(8), 55n)
+  assert.equal(m.preadU128(16), 123n)
+
+  m.pwriteI16Array(32, [-9, 9])
+  assert.deepEqual(m.preadI16Array(32, 2), [-9, 9])
+  m.pwriteI128Array(48, [-2n, 3n])
+  assert.deepEqual(m.preadI128Array(48, 2), [-2n, 3n])
+
+  m.setPosition(80)
+  m.writeU32(4294967295)
+  m.writeF32(1.5)
+  m.setPosition(80)
+  assert.equal(m.readU32(), 4294967295)
+  assert.equal(m.readF32(), 1.5)
+  m.close()
+  fs.rmSync(path, { force: true })
+})
+
+test('Mmap.moveInto moves bytes into another mapping and empties the source', () => {
+  const p1 = tmpFile()
+  const p2 = tmpFile()
+  const src = Mmap.create(p1)
+  src.pwriteUtf8(0, 'shift')
+  const dst = Mmap.create(p2)
+  assert.equal(src.moveInto(dst), 5)
+  assert.equal(dst.preadUtf8(0, 5), 'shift')
+  assert.equal(src.byteSize(), 0)
+  src.close()
+  dst.close()
+  fs.rmSync(p1, { force: true })
+  fs.rmSync(p2, { force: true })
+})
+
+test('open: a plain path string / file:// Uri yields a LocalIO', () => {
+  const dir = tmpDir()
+  const p = nodePath.join(dir, 'opened.bin')
+  const node = yggdryl.open(p)
+  assert.ok(node instanceof LocalIO)
+  node.pwriteUtf8(0, 'hi')
+  assert.equal(node.preadUtf8(0, 2), 'hi')
+  node.close()
+
+  const viaUri = yggdryl.open(Uri.parse('file:///tmp/yggdryl-open-uri.bin'))
+  assert.ok(viaUri instanceof LocalIO)
+  rmTree(dir)
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO.memoryInfo — the disk capacity of the backing volume (a MemoryInfo)
+// -------------------------------------------------------------------------------------
+
+test('LocalIO.memoryInfo() reports the backing volume capacity (total >= available)', () => {
+  const dir = tmpDir()
+  const info = new LocalIO(dir).memoryInfo()
+  assert.ok(info instanceof io.MemoryInfo)
+  assert.ok(info.total() >= info.available())
+  assert.ok(info.available() >= 0)
+  assert.equal(info.used(), info.total() - info.available())
+  // A real volume reports capacity (the platform route resolves the mounted temp dir).
+  assert.equal(info.isUnknown(), false)
+  assert.ok(info.total() > 0)
+  rmTree(dir)
+})
+
+test('LocalIO.memoryInfo() resolves the volume of a not-yet-created path via its ancestor', () => {
+  const dir = tmpDir()
+  const missing = new LocalIO(nodePath.join(dir, 'deep/nested/not-created.bin'))
+  assert.equal(missing.exists(), false)
+  const info = missing.memoryInfo()
+  assert.ok(info.total() >= info.available()) // resolves the nearest existing ancestor volume
+  rmTree(dir)
+})

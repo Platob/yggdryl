@@ -8,6 +8,7 @@ const { Uri, Url, Authority, UriParts, defaultPort } = yggdryl.uri
 const { MimeType } = yggdryl.mimetype
 const { MediaType } = yggdryl.mediatype
 const { LocalIO } = yggdryl.local
+const { Heap } = yggdryl.memory
 
 test('the uri namespace exposes Uri, Url, and Authority', () => {
   for (const cls of [Uri, Url, Authority]) {
@@ -639,4 +640,39 @@ test('a LocalIO built from a file:// URI infers its mime type from the name', ()
   // An unknown extension falls back to octet-stream (still always an answer).
   const blob = new LocalIO(Uri.parse('file:///tmp/yggdryl-blob.unknownext'))
   assert.equal(blob.mimeType().essence, 'application/octet-stream')
+})
+
+// -------------------------------------------------------------------------------------
+// fsPath + open + cursor — the filesystem-path and open() redirects
+// -------------------------------------------------------------------------------------
+
+test('Uri.fsPath returns the plain filesystem path', () => {
+  assert.equal(Uri.parse('file:///tmp/data.bin').fsPath(), '/tmp/data.bin')
+  assert.equal(Uri.fromPath('/a/b.txt').fsPath(), '/a/b.txt')
+})
+
+test('Uri.open dispatches on scheme (mem:// -> Heap, file:// -> LocalIO)', () => {
+  const h = Uri.parse('mem://heap').open()
+  assert.ok(h instanceof Heap)
+  h.pwriteUtf8(0, 'hi')
+  assert.equal(h.preadUtf8(0, 2), 'hi')
+
+  const node = Uri.parse('file:///tmp/yggdryl-uri-open.bin').open()
+  assert.ok(node instanceof LocalIO)
+})
+
+test('Uri.cursor opens the source and returns a Cursor over its bytes', () => {
+  const c = Uri.parse('mem://heap').cursor()
+  assert.equal(c.byteSize(), 0) // an empty mem://heap opens empty
+  assert.equal(typeof c.readByte, 'function')
+})
+
+test('Uri.open throws the guided error on an unsupported scheme', () => {
+  assert.throws(() => Uri.parse('ftp://host/x').open(), /cannot open the `ftp:\/\/` scheme/)
+})
+
+test('Url.fsPath / open / cursor mirror Uri', () => {
+  assert.equal(Url.parse('file:///tmp/x.bin').fsPath(), '/tmp/x.bin')
+  assert.ok(Url.parse('mem://heap').open() instanceof Heap)
+  assert.equal(Url.parse('mem://heap').cursor().byteSize(), 0)
 })

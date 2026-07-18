@@ -17,17 +17,48 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{Buffer, Either};
 use napi::{Env, JsFunction, JsObject, JsUnknown};
 use napi_derive::napi;
 
+use crate::io::local::LocalIO;
+use crate::io::memory::{Cursor, Heap};
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
+use yggdryl_core::io::memory::IOBase;
+use yggdryl_core::io::{open as core_open, AnyIO};
 use yggdryl_core::uri as core;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(error.to_string())
+}
+
+/// Opens `uri` through the core scheme dispatcher, mapping a failure to a thrown JS `Error`.
+fn open_any(uri: &core::Uri) -> napi::Result<AnyIO> {
+    core_open(uri).map_err(to_error)
+}
+
+/// Redirects an opened [`AnyIO`] to the concrete binding class the scheme selected — a
+/// [`Heap`] for `mem://`, a [`LocalIO`] for `file://` / a plain path.
+fn any_to_source(any: AnyIO) -> Either<Heap, LocalIO> {
+    match any.into_memory() {
+        Ok(inner) => Either::A(Heap { inner }),
+        Err(any) => Either::B(LocalIO {
+            inner: any
+                .into_local()
+                .expect("an AnyIO is local when it is not in-memory"),
+        }),
+    }
+}
+
+/// A [`Cursor`] over a copy of the opened source's bytes — the shared body of `Uri.cursor` /
+/// `Url.cursor`.
+fn cursor_over(any: &AnyIO) -> Cursor {
+    let bytes = any.pread_vec(0, any.byte_size() as usize);
+    Cursor {
+        inner: yggdryl_core::io::memory::Heap::from_slice(&bytes).cursor(),
+    }
 }
 
 /// A Java-style `i32` content hash of a value, folding the 64-bit hash halves.
@@ -889,6 +920,31 @@ impl Uri {
         java_hash(&self.inner)
     }
 
+    // ---- filesystem path + open ---------------------------------------------------------
+
+    /// The plain filesystem path this URI addresses — the percent-decoded path with a
+    /// `file://` URL's drive-rooting slash stripped (`file:///C:/x` → `C:/x`). The JS
+    /// counterpart of Python's `__fspath__`.
+    #[napi]
+    pub fn fs_path(&self) -> String {
+        self.inner.fspath()
+    }
+
+    /// **Opens** this URI into its concrete source, dispatching on the scheme: a `mem://` URI
+    /// yields a [`Heap`], a `file://` (or plain-path) URI a [`LocalIO`]. Throws the core's
+    /// guided `Error` on an unsupported scheme.
+    #[napi(ts_return_type = "memory.Heap | local.LocalIO")]
+    pub fn open(&self) -> napi::Result<Either<Heap, LocalIO>> {
+        Ok(any_to_source(open_any(&self.inner)?))
+    }
+
+    /// Opens this URI (see `open`) and returns a [`Cursor`] over a copy of the opened source's
+    /// bytes — a moving read/write position ready to stream.
+    #[napi]
+    pub fn cursor(&self) -> napi::Result<Cursor> {
+        Ok(cursor_over(&open_any(&self.inner)?))
+    }
+
     /// The canonical URI string.
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
@@ -1445,6 +1501,31 @@ impl Url {
     #[napi]
     pub fn hash_code(&self) -> i32 {
         java_hash(&self.inner)
+    }
+
+    // ---- filesystem path + open ---------------------------------------------------------
+
+    /// The plain filesystem path this URL addresses — the percent-decoded path with a
+    /// `file://` URL's drive-rooting slash stripped (`file:///C:/x` → `C:/x`). The JS
+    /// counterpart of Python's `__fspath__`.
+    #[napi]
+    pub fn fs_path(&self) -> String {
+        self.inner.fspath()
+    }
+
+    /// **Opens** this URL into its concrete source, dispatching on the scheme: a `mem://` URL
+    /// yields a [`Heap`], a `file://` URL a [`LocalIO`]. Throws the core's guided `Error` on an
+    /// unsupported scheme.
+    #[napi(ts_return_type = "memory.Heap | local.LocalIO")]
+    pub fn open(&self) -> napi::Result<Either<Heap, LocalIO>> {
+        Ok(any_to_source(open_any(self.inner.as_uri())?))
+    }
+
+    /// Opens this URL (see `open`) and returns a [`Cursor`] over a copy of the opened source's
+    /// bytes — a moving read/write position ready to stream.
+    #[napi]
+    pub fn cursor(&self) -> napi::Result<Cursor> {
+        Ok(cursor_over(&open_any(self.inner.as_uri())?))
     }
 
     /// The canonical URL string.

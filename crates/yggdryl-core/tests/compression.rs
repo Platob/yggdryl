@@ -133,3 +133,30 @@ fn recursive_magic_inference_peels_compression_layers() {
     assert_eq!(src.infer_mime_type().essence(), "application/gzip");
     assert_eq!(src.position(), 5);
 }
+
+#[test]
+fn iobase_compress_in_place_round_trips_and_syncs_headers() {
+    // A .gz-addressed heap packs itself with the media-type codec, then unpacks back.
+    let original = corpus();
+    let mut heap = Heap::from_slice(&original);
+    heap.set_headers(
+        yggdryl_core::headers::Headers::new().with("Content-Type", "application/gzip"),
+    );
+    let packed_from = heap.byte_size();
+    heap.compress_in_place(None).unwrap(); // codec defaults to the media-type codec (gzip)
+    assert!(
+        heap.byte_size() < packed_from,
+        "compression should shrink the corpus"
+    );
+    assert_eq!(heap.headers().content_type(), Some("application/gzip"));
+
+    heap.decompress_in_place().unwrap();
+    assert_eq!(heap.as_slice(), &original[..]); // exact inverse
+    assert_eq!(heap.byte_size(), packed_from);
+
+    // compress_in_place on a NON-compression media type is a guided error naming the fix.
+    let mut plain = Heap::from_slice(b"not compressible by type");
+    plain.set_headers(yggdryl_core::headers::Headers::new().with("Content-Type", "text/plain"));
+    let err = plain.compress_in_place(None).unwrap_err().to_string();
+    assert!(err.contains("codec") || err.contains("compression"));
+}

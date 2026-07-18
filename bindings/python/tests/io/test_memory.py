@@ -1299,3 +1299,163 @@ def test_cursor_and_slice_getitem():
     assert win[:] == b"world"
     with pytest.raises(IndexError):
         win[5]  # past the window's end
+
+
+# -------------------------------------------------------------------------------------
+# All native numeric widths — scalars, bulk arrays + repeats, cursor read/write
+# -------------------------------------------------------------------------------------
+
+# (rust_type, min, max) sample edge values for each scalar width.
+_SCALAR_CASES = [
+    ("i8", -128, 127),
+    ("u8", 0, 255),
+    ("i16", -(2**15), 2**15 - 1),
+    ("u16", 0, 2**16 - 1),
+    ("u32", 0, 2**32 - 1),
+    ("u64", 0, 2**64 - 1),
+    ("i128", -(2**127), 2**127 - 1),
+    ("u128", 0, 2**128 - 1),
+]
+
+
+def test_heap_scalar_pread_pwrite_all_widths():
+    h = Heap()
+    for t, lo, hi in _SCALAR_CASES:
+        pw = getattr(h, f"pwrite_{t}")
+        pr = getattr(h, f"pread_{t}")
+        pw(0, lo)
+        assert pr(0) == lo, t
+        pw(0, hi)
+        assert pr(0) == hi, t
+    # i128 / u128 map to Python int with full precision.
+    h.pwrite_i128(0, -(2**100))
+    assert h.pread_i128(0) == -(2**100)
+    h.pwrite_u128(0, 2**120 + 7)
+    assert h.pread_u128(0) == 2**120 + 7
+
+
+def test_heap_scalar_float_widths():
+    h = Heap()
+    h.pwrite_f32(0, 1.5)
+    assert h.pread_f32(0) == pytest.approx(1.5)
+    h.pwrite_f64(8, 2.25)
+    assert h.pread_f64(8) == 2.25
+
+
+def test_heap_scalar_pread_past_end_raises():
+    with pytest.raises(ValueError):
+        Heap().pread_i128(0)  # empty -> EOF
+
+
+def test_heap_bulk_arrays_and_repeats():
+    # element width in the fail-fast bounds check: 1 (i8), 2 (i16), 16 (i128/u128)
+    h = Heap()
+    h.pwrite_i8_array(0, [-1, 2, -3])
+    assert h.pread_i8_array(0, 3) == [-1, 2, -3]
+    h.pwrite_i16_array(0, [1000, -2000, 3000])
+    assert h.pread_i16_array(0, 3) == [1000, -2000, 3000]
+    h.pwrite_i128_array(0, [2**100, -(2**99)])
+    assert h.pread_i128_array(0, 2) == [2**100, -(2**99)]
+    h.pwrite_u128_array(0, [2**127, 1])
+    assert h.pread_u128_array(0, 2) == [2**127, 1]
+    # repeats never materialize the full array
+    h2 = Heap()
+    h2.pwrite_i8_repeat(0, 7, 5)
+    assert h2.pread_i8_array(0, 5) == [7, 7, 7, 7, 7]
+    h2.pwrite_i16_repeat(0, -9, 3)
+    assert h2.pread_i16_array(0, 3) == [-9, -9, -9]
+    h2.pwrite_i128_repeat(0, 2**100, 2)
+    assert h2.pread_i128_array(0, 2) == [2**100, 2**100]
+    h2.pwrite_u128_repeat(0, 2**120, 2)
+    assert h2.pread_u128_array(0, 2) == [2**120, 2**120]
+
+
+def test_heap_bulk_array_fail_fast_bounds():
+    h = Heap(b"\x01\x02\x03")  # 3 bytes
+    with pytest.raises(ValueError):
+        h.pread_i16_array(0, 100)  # 200 bytes wanted, fails before allocating
+    with pytest.raises(ValueError):
+        h.pread_i128_array(0, 1)  # 16 bytes wanted, only 3 available
+
+
+def test_heap_cursor_typed_read_write_all_widths():
+    c = Heap()
+    c.write_i8(-9)
+    c.write_u8(200)
+    c.write_i16(-300)
+    c.write_u16(60000)
+    c.write_u32(4_000_000_000)
+    c.write_u64(10**19)
+    c.write_i128(-(2**100))
+    c.write_u128(2**120)
+    c.write_f32(3.5)
+    c.write_f64(6.5)
+    c.rewind()
+    assert c.read_i8() == -9
+    assert c.read_u8() == 200
+    assert c.read_i16() == -300
+    assert c.read_u16() == 60000
+    assert c.read_u32() == 4_000_000_000
+    assert c.read_u64() == 10**19
+    assert c.read_i128() == -(2**100)
+    assert c.read_u128() == 2**120
+    assert c.read_f32() == pytest.approx(3.5)
+    assert c.read_f64() == 6.5
+
+
+def test_cursor_scalar_and_cursor_typed_all_widths():
+    cur = Cursor()
+    # cursor stream read/write
+    cur.write_i8(-1)
+    cur.write_u128(2**100)
+    cur.rewind()
+    assert cur.read_i8() == -1
+    assert cur.read_u128() == 2**100
+    # positioned scalar accessors on the same cursor
+    assert cur.pread_i8(0) == -1
+    cur.pwrite_u16(0, 40000)
+    assert cur.pread_u16(0) == 40000
+    cur.pwrite_f64(0, 1.25)
+    assert cur.pread_f64(0) == 1.25
+
+
+# -------------------------------------------------------------------------------------
+# move_into (Heap) + the module-level yggdryl.open
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_move_into_empties_source():
+    src = Heap(b"relocate me")
+    dst = Heap()
+    n = src.move_into(dst)
+    assert n == 11
+    assert bytes(dst) == b"relocate me"
+    assert src.byte_size() == 0  # the source is emptied
+
+
+def test_open_bytes_and_bytearray_wrap_a_heap():
+    import yggdryl
+
+    h = yggdryl.open(b"hello bytes")
+    assert isinstance(h, Heap)
+    assert bytes(h) == b"hello bytes"
+    ba = yggdryl.open(bytearray(b"mutable"))
+    assert isinstance(ba, Heap)
+    assert bytes(ba) == b"mutable"
+
+
+def test_open_mem_uri_and_str_wrap_a_heap():
+    import yggdryl
+
+    assert isinstance(yggdryl.open("mem://heap/data"), Heap)
+    assert isinstance(yggdryl.open(Uri.parse("mem://heap/data")), Heap)
+    assert yggdryl.open("mem://heap/data").uri.scheme == "mem"
+
+
+def test_open_rejects_unknown_scheme_and_type():
+    import yggdryl
+
+    with pytest.raises(ValueError):
+        yggdryl.open("http://example.com/x")  # unsupported scheme
+    with pytest.raises(TypeError):
+        yggdryl.open(1234)  # not an address / bytes / PathLike

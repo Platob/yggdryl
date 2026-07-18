@@ -239,6 +239,60 @@ impl LocalIO {
         Ok(map)
     }
 
+    /// **Eagerly memory-maps** the existing file so **every subsequent read (and write) runs at
+    /// memory speed** — the explicit counterpart of the automatic map-on-first-write, for
+    /// **read-heavy or concurrent** workloads. Without it, reads on a never-written handle open
+    /// the file ad hoc (one positioned OS read per call); after it, they are served from the
+    /// kept mapping with zero syscalls. Honors the handle's [`IOMode`](IOMode) (a read-only
+    /// handle maps read-only). Because the backing [`Mmap`] is `Send + Sync`, a loaded handle
+    /// shared across threads (e.g. behind an `Arc`) serves **concurrent readers** from one shared
+    /// mapping. A no-op when already mapped or when the file does not exist yet (reads stay lazy —
+    /// call it once the file is present); errors only if an existing file cannot be mapped.
+    ///
+    /// ```
+    /// use yggdryl_core::io::local::LocalIO;
+    /// use yggdryl_core::io::memory::IOBase;
+    ///
+    /// let mut w = LocalIO::tmpfile(None);
+    /// w.pwrite_utf8(0, "cached read");
+    /// w.close(); // file exists on disk, handle back to lazy
+    ///
+    /// let mut r = LocalIO::from_path(w.as_std_path());
+    /// r.load().unwrap();        // map it once…
+    /// assert!(r.is_mapped());
+    /// assert_eq!(r.pread_utf8(0, 11).unwrap(), "cached read"); // …served from memory
+    /// r.close();
+    /// r.rmfile(true).unwrap();
+    /// ```
+    pub fn load(&mut self) -> Result<(), IoError> {
+        if self.map.is_some() || !self.path.is_file() {
+            return Ok(()); // already mapped, or nothing to map yet (reads stay ad-hoc/empty)
+        }
+        self.map = Some(if self.mode.is_writable() {
+            Mmap::open_path(&self.path)?
+        } else {
+            Mmap::open_path_readonly(&self.path)?
+        });
+        Ok(())
+    }
+
+    /// The **disk capacity** of the volume backing this path — total and free bytes — as a
+    /// [`MemoryInfo`](crate::io::MemoryInfo), the local-filesystem answer to "how much room is
+    /// there?" (the same value type a GPU device reports for its VRAM, and an object store will
+    /// report for its quota). Resolved through the platform route (Windows `GetDiskFreeSpaceExW`),
+    /// walking up to the nearest existing ancestor so a not-yet-created path still resolves its
+    /// volume; [`MemoryInfo::unknown`](crate::io::MemoryInfo::unknown) where no native route exists.
+    ///
+    /// ```
+    /// use yggdryl_core::io::local::LocalIO;
+    ///
+    /// let info = LocalIO::from_path(std::env::temp_dir()).memory_info();
+    /// assert!(info.total() >= info.available());
+    /// ```
+    pub fn memory_info(&self) -> crate::io::MemoryInfo {
+        crate::io::disk_memory(&self.path)
+    }
+
     /// Sets the access [`IOMode`] label in place (writes check it before touching the disk).
     pub fn set_mode(&mut self, mode: IOMode) {
         self.mode = mode;
@@ -398,6 +452,13 @@ impl IOBase for LocalIO {
         self.ensure_map()?.truncate(len)?;
         self.sync_size_headers();
         Ok(())
+    }
+
+    /// Releases the mapped backing (the `IOBase` trait hook — same effect as the inherent
+    /// [`close`](LocalIO::close)): the handle returns to lazy, and the now-unmapped file can be
+    /// removed even on Windows (which refuses to unlink a mapped file).
+    fn close(&mut self) {
+        self.map = None;
     }
 
     fn kind(&self) -> IOKind {
