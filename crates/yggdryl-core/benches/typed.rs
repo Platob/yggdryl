@@ -12,8 +12,12 @@ use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
-use yggdryl_core::typed::fixedbyte::{Float64, Int64};
-use yggdryl_core::typed::{FixedSerie, Scalar};
+use yggdryl_core::io::memory::Heap;
+use yggdryl_core::typed::fixedbit::Bit;
+use yggdryl_core::typed::fixedbyte::{
+    Decimal128, Decimal256, Float64, Int128, Int32, Int64, Int8, UInt128, I256,
+};
+use yggdryl_core::typed::{Encoder, FixedScalar, FixedSerie, Scalar};
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);
@@ -113,6 +117,121 @@ fn main() {
             for i in 0..n {
                 black_box(column.get(black_box(i)));
             }
+        }),
+    );
+
+    // -- Encodings: bulk build by width (each `from_values` = one vectorized array write) --
+    println!("\n  -- encode: from_values by element width --");
+    let i8s: Vec<i8> = (0..n).map(|i| i as i8).collect();
+    let i32s: Vec<i32> = (0..n as i32).collect();
+    let i128s: Vec<i128> = (0..n as i128).collect();
+    let u128s: Vec<u128> = (0..n as u128).collect();
+    row(
+        "from_values i8  (1B)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Int8>::from_values(black_box(&i8s)));
+        }),
+    );
+    row(
+        "from_values i32 (4B)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Int32>::from_values(black_box(&i32s)));
+        }),
+    );
+    row(
+        "from_values i128 (16B)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Int128>::from_values(black_box(&i128s)));
+        }),
+    );
+    row(
+        "from_values u128 (16B)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<UInt128>::from_values(black_box(&u128s)));
+        }),
+    );
+
+    // -- Encodings: the non-integer-array paths (bit-packed, byte-packed decimal) --
+    println!("\n  -- encode: bit / decimal element paths --");
+    let bools: Vec<bool> = (0..n).map(|i| i % 3 == 0).collect();
+    let dec128: Vec<i128> = (0..n as i128).collect();
+    let dec256: Vec<I256> = (0..n as i128).map(I256::from_i128).collect();
+    row(
+        "from_values bool (Bit, per-bit)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Bit>::from_values(black_box(&bools)));
+        }),
+    );
+    row(
+        "from_values Decimal128 (i128 array)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Decimal128>::from_values(black_box(&dec128)));
+        }),
+    );
+    row(
+        "from_values Decimal256 (I256, 32B)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Decimal256>::from_values(black_box(&dec256)));
+        }),
+    );
+
+    // -- Encodings: build strategy (bulk vs streaming vs nullable) + single scalar --
+    println!("\n  -- encode: build strategy + scalar --");
+    let opts: Vec<Option<i64>> = ints.iter().map(|&v| Some(v)).collect();
+    row(
+        "push loop i64 (streaming build)",
+        measure(n, iters, || {
+            let mut s = FixedSerie::<Int64>::with_capacity(n);
+            for &value in &ints {
+                s.push(black_box(value));
+            }
+            black_box(s);
+        }),
+    );
+    row(
+        "extend i64 (batch, bulk)",
+        measure(n, iters, || {
+            let mut s = FixedSerie::<Int64>::with_capacity(n);
+            s.extend(black_box(&ints));
+            black_box(s);
+        }),
+    );
+    row(
+        "from_options i64 (nullable, validity)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Int64>::from_options(black_box(&opts)));
+        }),
+    );
+    row(
+        "FixedScalar::of i64 (single encode)",
+        measure(n, iters / 16, || {
+            for &value in &ints {
+                black_box(FixedScalar::<Int64>::of(black_box(value)));
+            }
+        }),
+    );
+
+    // -- Encode kernel, isolated from allocation (a REUSED pre-grown buffer) --
+    // The large-buffer `from_values` rows above are dominated by the per-op mmap + first-touch page
+    // faults of a fresh 0.5-2 MB data buffer; these rows reuse one buffer so only the encode kernel
+    // (a `memcpy` on little-endian) is timed — where the i128/u128 whole-slice fast path shows.
+    println!("\n  -- encode kernel only (reused buffer, no per-op alloc) --");
+    let mut reuse64 = Heap::with_capacity(n * 8);
+    Int64::encode_slice(&mut reuse64, 0, &ints).unwrap();
+    let mut reuse128 = Heap::with_capacity(n * 16);
+    Int128::encode_slice(&mut reuse128, 0, &i128s).unwrap();
+    row(
+        "encode_slice i64  -> reused Heap",
+        measure(n, iters, || {
+            Int64::encode_slice(&mut reuse64, 0, black_box(&ints)).unwrap();
+            black_box(&reuse64);
+        }),
+    );
+    row(
+        "encode_slice i128 -> reused Heap",
+        measure(n, iters, || {
+            Int128::encode_slice(&mut reuse128, 0, black_box(&i128s)).unwrap();
+            black_box(&reuse128);
         }),
     );
 }

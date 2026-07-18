@@ -77,12 +77,25 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
     }
 
     /// A column from options — builds the validity buffer, encoding a default in each null slot.
+    /// Bulk: one vectorized data write (nulls → default) and one packed validity write, rather than
+    /// an element-by-element push (which reallocated the growing validity buffer).
     pub fn from_options(values: &[Option<T::Native>]) -> Self {
         let mut column = Self::with_capacity(values.len());
-        column.ensure_validity();
-        for value in values {
-            column.push_option(*value);
+        // The data buffer: every value (a null slot gets the type default), one vectorized write.
+        let natives: Vec<T::Native> = values.iter().map(|v| v.unwrap_or_default()).collect();
+        T::encode_slice(&mut column.data, 0, &natives)
+            .expect("encode into a fresh heap never fails");
+        column.len = values.len();
+        // The validity bitmap: pre-packed LSB-first (1 = valid), one byte-array write (no per-bit growth).
+        let mut bits = vec![0u8; values.len().div_ceil(8)];
+        for (index, value) in values.iter().enumerate() {
+            if value.is_some() {
+                bits[index / 8] |= 1 << (index % 8);
+            }
         }
+        let mut validity = Heap::with_capacity(bits.len());
+        validity.pwrite_byte_array(0, &bits);
+        column.validity = Some(validity);
         column
     }
 
@@ -131,6 +144,22 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
             Some(value) => self.push(value),
             None => self.push_null(),
         }
+    }
+
+    /// Appends `values` in **one vectorized bulk write** — the batch counterpart of
+    /// [`push`](FixedSerie::push), avoiding the per-element call overhead when growing a column
+    /// from a slice. All appended elements are non-null.
+    pub fn extend(&mut self, values: &[T::Native]) {
+        T::encode_slice(&mut self.data, self.len as u64, values)
+            .expect("encode into a heap never fails");
+        if let Some(validity) = self.validity.as_mut() {
+            for offset in 0..values.len() as u64 {
+                validity
+                    .pwrite_bit(self.len as u64 + offset, true)
+                    .expect("bit write never fails");
+            }
+        }
+        self.len += values.len();
     }
 
     /// Ensures a validity buffer exists, back-filling every existing element as valid.

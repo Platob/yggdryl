@@ -283,8 +283,21 @@ macro_rules! heap_numeric_bulk {
             let Some(src) = self.data.get(start..start.saturating_add(need)) else {
                 return Err(self.eof(offset, need));
             };
-            for (value, raw) in dst.iter_mut().zip(src.chunks_exact($width)) {
-                *value = <$t>::from_le_bytes(raw.try_into().expect("chunks_exact width"));
+            #[cfg(target_endian = "little")]
+            {
+                // On little-endian the stored bytes ARE the elements' bytes, so the whole slice is
+                // one `memcpy` — the per-element `from_le_bytes` loop does not vectorize for the 16-byte
+                // widths. SAFETY: `dst` is `need` contiguous bytes of plain numeric data (no padding),
+                // and `src` is exactly `need` bytes.
+                let dst_bytes =
+                    unsafe { core::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<u8>(), need) };
+                dst_bytes.copy_from_slice(src);
+            }
+            #[cfg(target_endian = "big")]
+            {
+                for (value, raw) in dst.iter_mut().zip(src.chunks_exact($width)) {
+                    *value = <$t>::from_le_bytes(raw.try_into().expect("chunks_exact width"));
+                }
             }
             Ok(())
         }
@@ -296,8 +309,21 @@ macro_rules! heap_numeric_bulk {
             if !self.grow_for_write(start, end) {
                 self.data.resize(end, 0);
             }
-            for (raw, value) in self.data[start..end].chunks_exact_mut($width).zip(src) {
-                raw.copy_from_slice(&value.to_le_bytes());
+            #[cfg(target_endian = "little")]
+            {
+                // One `memcpy` of the whole slice — the little-endian element bytes are the wire bytes.
+                // SAFETY: `src` is `src.len() * $width` contiguous bytes of plain numeric data, and the
+                // grown `data[start..end]` region is exactly that many bytes.
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(src.as_ptr().cast::<u8>(), src.len() * $width)
+                };
+                self.data[start..end].copy_from_slice(bytes);
+            }
+            #[cfg(target_endian = "big")]
+            {
+                for (raw, value) in self.data[start..end].chunks_exact_mut($width).zip(src) {
+                    raw.copy_from_slice(&value.to_le_bytes());
+                }
             }
             Ok(())
         }

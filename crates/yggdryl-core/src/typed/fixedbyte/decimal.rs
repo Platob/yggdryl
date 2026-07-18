@@ -92,6 +92,8 @@ impl Encoder for Decimal256 {
         Self::encode_slice(dst, index, &[value])
     }
     fn encode_slice<W: IOBase>(dst: &mut W, start: u64, values: &[I256]) -> Result<(), IoError> {
+        // Write each element's 32 LE bytes straight into the (pre-sized) destination — no flat
+        // temporary buffer, so a build allocates only its data buffer.
         for (offset, value) in values.iter().enumerate() {
             dst.pwrite_byte_array((start + offset as u64) * 32, &value.to_le_bytes());
         }
