@@ -1,0 +1,609 @@
+//! The `yggdryl.typed` namespace — the **typed column surface** grown on the byte contract.
+//!
+//! Mirrors `yggdryl_core::typed`'s column surface: a [`Serie`] (a typed column — many elements of
+//! one [`DataTypeId`](crate::datatype_id::DataTypeId) over a data buffer, plus an optional validity
+//! bit buffer for nulls) and its [`Field`] (the column's `name` / element type / `nullable`, carried
+//! in a [`Headers`](crate::headers::Headers) map). Every method is a thin delegation to
+//! `yggdryl_core::typed::FixedSerie` / `HeaderField` — no logic lives here.
+//!
+//! The core `FixedSerie<T>` is generic over its element type `T`; napi cannot carry that generic, so
+//! [`Serie`] holds an **erased enum** ([`SerieInner`]) over the concrete `FixedSerie<T>` for every
+//! element type, and each method dispatches across the variants (through the [`dispatch!`] /
+//! [`dispatch_numeric!`] / [`dispatch_rebuild!`] macros, so the 13-way match is written once).
+//!
+//! Value marshalling matches the `memory` namespace: a **wide integer** (`i64` / `u64` / `i128` /
+//! `u128`) crosses as a JS `BigInt`, every **narrow integer** (`i8`…`u32`) and **float**
+//! (`f32` / `f64`) as a JS `number`, and a **bool** as a JS `boolean`; a null element is `null`.
+//! Integer reductions (`sum`) return a `BigInt` (a wide accumulator never wraps); a float `sum`, and
+//! every `mean`, return a `number`. A boolean column does not reduce, so its `sum` / `min` / `max` /
+//! `mean` throw the core's guided `Error`.
+
+use napi::bindgen_prelude::{BigInt, Either, Either3};
+use napi_derive::napi;
+
+use crate::datatype_id::DataTypeId;
+use crate::headers::Headers;
+
+use yggdryl_core::datatype_id::DataTypeId as DtId;
+use yggdryl_core::io::memory::{Heap as CoreHeap, IOBase};
+use yggdryl_core::typed::fixedbit::Bit;
+use yggdryl_core::typed::fixedbyte::{
+    Float32, Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8,
+};
+use yggdryl_core::typed::{
+    Decoder, Encoder, Field as FieldTrait, FixedSerie, HeaderField, Scalar, Serie as SerieTrait,
+};
+
+/// Maps any core error to a thrown JS `Error` (its guided text).
+fn to_error(error: impl std::fmt::Display) -> napi::Error {
+    napi::Error::from_reason(error.to_string())
+}
+
+/// One JS-side element value — a `number`, a `BigInt`, or a `boolean` (the three shapes a typed
+/// element crosses as). Used only inside the binding; the `#[napi]` signatures spell it out so the
+/// generated `.d.ts` renders the union.
+type JsValue = Either3<f64, BigInt, bool>;
+
+// ---- value marshalling: a native element -> its JS shape ------------------------------
+
+/// A native element type rendered as its JS value (`number` / `BigInt` / `boolean`).
+trait ToJs {
+    /// This value as its JS shape.
+    fn to_js(self) -> JsValue;
+}
+
+macro_rules! to_js_number {
+    ($($native:ty),*) => {
+        $(impl ToJs for $native {
+            fn to_js(self) -> JsValue {
+                Either3::A(self as f64)
+            }
+        })*
+    };
+}
+to_js_number!(i8, u8, i16, u16, i32, u32, f32);
+
+impl ToJs for f64 {
+    fn to_js(self) -> JsValue {
+        Either3::A(self)
+    }
+}
+
+macro_rules! to_js_bigint {
+    ($($native:ty),*) => {
+        $(impl ToJs for $native {
+            fn to_js(self) -> JsValue {
+                Either3::B(BigInt::from(self))
+            }
+        })*
+    };
+}
+to_js_bigint!(i64, u64, i128, u128);
+
+impl ToJs for bool {
+    fn to_js(self) -> JsValue {
+        Either3::C(self)
+    }
+}
+
+/// A reduction accumulator (`sum`) rendered as its JS value — an integer sum as a `BigInt`, a float
+/// sum as a `number`.
+trait ToJsSum {
+    /// This accumulator as its JS shape.
+    fn to_js_sum(self) -> Either<BigInt, f64>;
+}
+
+impl ToJsSum for i64 {
+    fn to_js_sum(self) -> Either<BigInt, f64> {
+        Either::A(BigInt::from(self))
+    }
+}
+impl ToJsSum for i128 {
+    fn to_js_sum(self) -> Either<BigInt, f64> {
+        Either::A(BigInt::from(self))
+    }
+}
+impl ToJsSum for u128 {
+    fn to_js_sum(self) -> Either<BigInt, f64> {
+        Either::A(BigInt::from(self))
+    }
+}
+impl ToJsSum for f64 {
+    fn to_js_sum(self) -> Either<BigInt, f64> {
+        Either::B(self)
+    }
+}
+
+// ---- value marshalling: a JS element -> its native ------------------------------------
+
+/// Extracts a JS `number` element, or throws a guided `Error` (the caller passed the wrong shape).
+fn as_number(value: JsValue) -> napi::Result<f64> {
+    match value {
+        Either3::A(number) => Ok(number),
+        _ => Err(to_error(
+            "expected a JS number for this element type: pass a number (a bigint suits only \
+             i64/u64/i128/u128, a boolean only bool)",
+        )),
+    }
+}
+
+/// Extracts a JS `BigInt` element, or throws a guided `Error` naming the fix.
+fn as_bigint(value: JsValue) -> napi::Result<BigInt> {
+    match value {
+        Either3::B(big) => Ok(big),
+        _ => Err(to_error(
+            "expected a JS bigint for a 64/128-bit integer element: pass a bigint literal (e.g. 42n)",
+        )),
+    }
+}
+
+/// Extracts a JS `boolean` element, or throws a guided `Error` naming the fix.
+fn as_bool(value: JsValue) -> napi::Result<bool> {
+    match value {
+        Either3::C(flag) => Ok(flag),
+        _ => Err(to_error(
+            "expected a JS boolean for a bool element: pass true or false",
+        )),
+    }
+}
+
+fn to_i8(value: JsValue) -> napi::Result<i8> {
+    Ok(as_number(value)? as i8)
+}
+fn to_u8(value: JsValue) -> napi::Result<u8> {
+    Ok(as_number(value)? as u8)
+}
+fn to_i16(value: JsValue) -> napi::Result<i16> {
+    Ok(as_number(value)? as i16)
+}
+fn to_u16(value: JsValue) -> napi::Result<u16> {
+    Ok(as_number(value)? as u16)
+}
+fn to_i32(value: JsValue) -> napi::Result<i32> {
+    Ok(as_number(value)? as i32)
+}
+fn to_u32(value: JsValue) -> napi::Result<u32> {
+    Ok(as_number(value)? as u32)
+}
+fn to_i64(value: JsValue) -> napi::Result<i64> {
+    Ok(as_bigint(value)?.get_i64().0)
+}
+fn to_u64(value: JsValue) -> napi::Result<u64> {
+    Ok(as_bigint(value)?.get_u64().1)
+}
+fn to_i128(value: JsValue) -> napi::Result<i128> {
+    Ok(as_bigint(value)?.get_i128().0)
+}
+fn to_u128(value: JsValue) -> napi::Result<u128> {
+    Ok(as_bigint(value)?.get_u128().1)
+}
+fn to_f32(value: JsValue) -> napi::Result<f32> {
+    Ok(as_number(value)? as f32)
+}
+fn to_f64(value: JsValue) -> napi::Result<f64> {
+    as_number(value)
+}
+fn to_bool_native(value: JsValue) -> napi::Result<bool> {
+    as_bool(value)
+}
+
+/// Builds a non-nullable `FixedSerie<T>` from a JS value list, converting each element.
+fn build_values<T, F>(values: Vec<JsValue>, convert: F) -> napi::Result<FixedSerie<T>>
+where
+    T: Encoder + Decoder,
+    F: Fn(JsValue) -> napi::Result<T::Native>,
+{
+    let mut natives = Vec::with_capacity(values.len());
+    for value in values {
+        natives.push(convert(value)?);
+    }
+    Ok(FixedSerie::from_values(&natives))
+}
+
+/// Builds a nullable `FixedSerie<T>` from a JS option list (a `null` entry becomes a null element).
+fn build_options<T, F>(values: Vec<Option<JsValue>>, convert: F) -> napi::Result<FixedSerie<T>>
+where
+    T: Encoder + Decoder,
+    F: Fn(JsValue) -> napi::Result<T::Native>,
+{
+    let mut natives = Vec::with_capacity(values.len());
+    for value in values {
+        natives.push(match value {
+            Some(value) => Some(convert(value)?),
+            None => None,
+        });
+    }
+    Ok(FixedSerie::from_options(&natives))
+}
+
+/// Reconstructs a `FixedSerie<T>` with a fresh `name` (the binding holds `&self`, so it cannot
+/// consume into the core's `with_name`; it clones the borrowed data/validity buffers instead).
+fn rename<T: Encoder + Decoder>(serie: &FixedSerie<T>, name: &str) -> FixedSerie<T> {
+    FixedSerie::from_data(serie.data().clone(), serie.validity().cloned(), serie.len())
+        .with_name(name)
+}
+
+// ---- the erased column + its dispatch --------------------------------------------------
+
+/// A `FixedSerie<T>` for every concrete element type — the type-erased backing of [`Serie`].
+enum SerieInner {
+    I8(FixedSerie<Int8>),
+    U8(FixedSerie<UInt8>),
+    I16(FixedSerie<Int16>),
+    U16(FixedSerie<UInt16>),
+    I32(FixedSerie<Int32>),
+    U32(FixedSerie<UInt32>),
+    I64(FixedSerie<Int64>),
+    U64(FixedSerie<UInt64>),
+    I128(FixedSerie<Int128>),
+    U128(FixedSerie<UInt128>),
+    F32(FixedSerie<Float32>),
+    F64(FixedSerie<Float64>),
+    Bool(FixedSerie<Bit>),
+}
+
+/// Runs `$body` against the inner `FixedSerie` (`$serie`) of whichever variant is present — the
+/// 13-way match, written once. Every arm must yield the same type.
+macro_rules! dispatch {
+    ($self:expr, $serie:ident => $body:expr) => {
+        match &$self.inner {
+            SerieInner::I8($serie) => $body,
+            SerieInner::U8($serie) => $body,
+            SerieInner::I16($serie) => $body,
+            SerieInner::U16($serie) => $body,
+            SerieInner::I32($serie) => $body,
+            SerieInner::U32($serie) => $body,
+            SerieInner::I64($serie) => $body,
+            SerieInner::U64($serie) => $body,
+            SerieInner::I128($serie) => $body,
+            SerieInner::U128($serie) => $body,
+            SerieInner::F32($serie) => $body,
+            SerieInner::F64($serie) => $body,
+            SerieInner::Bool($serie) => $body,
+        }
+    };
+}
+
+/// Like [`dispatch!`], but the boolean arm throws the guided reduction error — for the numeric
+/// aggregations (`Bit` is not `Reduce`), whose `$body` must be a `napi::Result`.
+macro_rules! dispatch_numeric {
+    ($self:expr, $serie:ident => $body:expr) => {
+        match &$self.inner {
+            SerieInner::I8($serie) => $body,
+            SerieInner::U8($serie) => $body,
+            SerieInner::I16($serie) => $body,
+            SerieInner::U16($serie) => $body,
+            SerieInner::I32($serie) => $body,
+            SerieInner::U32($serie) => $body,
+            SerieInner::I64($serie) => $body,
+            SerieInner::U64($serie) => $body,
+            SerieInner::I128($serie) => $body,
+            SerieInner::U128($serie) => $body,
+            SerieInner::F32($serie) => $body,
+            SerieInner::F64($serie) => $body,
+            SerieInner::Bool(_) => Err(to_error(
+                "a boolean column does not reduce: sum/min/max/mean need a numeric element type — \
+                 build a numeric Serie (e.g. DataTypeId.I64())",
+            )),
+        }
+    };
+}
+
+/// Like [`dispatch!`], but rewraps `$build` (a fresh `FixedSerie<T>` of the current element type)
+/// back into the matching [`SerieInner`] variant — for transforms that return a new column.
+macro_rules! dispatch_rebuild {
+    ($self:expr, $serie:ident => $build:expr) => {
+        match &$self.inner {
+            SerieInner::I8($serie) => SerieInner::I8($build),
+            SerieInner::U8($serie) => SerieInner::U8($build),
+            SerieInner::I16($serie) => SerieInner::I16($build),
+            SerieInner::U16($serie) => SerieInner::U16($build),
+            SerieInner::I32($serie) => SerieInner::I32($build),
+            SerieInner::U32($serie) => SerieInner::U32($build),
+            SerieInner::I64($serie) => SerieInner::I64($build),
+            SerieInner::U64($serie) => SerieInner::U64($build),
+            SerieInner::I128($serie) => SerieInner::I128($build),
+            SerieInner::U128($serie) => SerieInner::U128($build),
+            SerieInner::F32($serie) => SerieInner::F32($build),
+            SerieInner::F64($serie) => SerieInner::F64($build),
+            SerieInner::Bool($serie) => SerieInner::Bool($build),
+        }
+    };
+}
+
+/// A **typed column** — many elements of one [`DataTypeId`](crate::datatype_id::DataTypeId) over a
+/// data buffer, with an optional validity bit buffer for nulls. Built from a value list
+/// ([`fromValues`](Serie::from_values)) or an option list ([`fromOptions`](Serie::from_options));
+/// reads and reductions forward to the byte layer's vectorized kernels.
+#[napi(namespace = "typed")]
+pub struct Serie {
+    inner: SerieInner,
+}
+
+#[napi(namespace = "typed")]
+impl Serie {
+    /// A **non-null** column of `values`, each an element of `dtype`. Narrow integers and floats
+    /// arrive as JS `number`s, wide integers (`i64`/`u64`/`i128`/`u128`) as `BigInt`s, booleans as
+    /// `boolean`s; a `DataTypeId.Unknown()` (raw bytes) has no typed column and throws.
+    #[napi(factory)]
+    pub fn from_values(
+        values: Vec<Either3<f64, BigInt, bool>>,
+        dtype: &DataTypeId,
+    ) -> napi::Result<Serie> {
+        let inner =
+            match dtype.inner {
+                DtId::I8 => SerieInner::I8(build_values(values, to_i8)?),
+                DtId::U8 => SerieInner::U8(build_values(values, to_u8)?),
+                DtId::I16 => SerieInner::I16(build_values(values, to_i16)?),
+                DtId::U16 => SerieInner::U16(build_values(values, to_u16)?),
+                DtId::I32 => SerieInner::I32(build_values(values, to_i32)?),
+                DtId::U32 => SerieInner::U32(build_values(values, to_u32)?),
+                DtId::I64 => SerieInner::I64(build_values(values, to_i64)?),
+                DtId::U64 => SerieInner::U64(build_values(values, to_u64)?),
+                DtId::I128 => SerieInner::I128(build_values(values, to_i128)?),
+                DtId::U128 => SerieInner::U128(build_values(values, to_u128)?),
+                DtId::F32 => SerieInner::F32(build_values(values, to_f32)?),
+                DtId::F64 => SerieInner::F64(build_values(values, to_f64)?),
+                DtId::Bool => SerieInner::Bool(build_values(values, to_bool_native)?),
+                _ => return Err(to_error(
+                    "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
+                     (e.g. DataTypeId.I64())",
+                )),
+            };
+        Ok(Serie { inner })
+    }
+
+    /// A **nullable** column of `values` — a `null` entry becomes a null element (building the
+    /// validity bitmap). Non-null entries follow the same per-`dtype` shapes as
+    /// [`fromValues`](Serie::from_values).
+    #[napi(factory)]
+    pub fn from_options(
+        values: Vec<Option<Either3<f64, BigInt, bool>>>,
+        dtype: &DataTypeId,
+    ) -> napi::Result<Serie> {
+        let inner =
+            match dtype.inner {
+                DtId::I8 => SerieInner::I8(build_options(values, to_i8)?),
+                DtId::U8 => SerieInner::U8(build_options(values, to_u8)?),
+                DtId::I16 => SerieInner::I16(build_options(values, to_i16)?),
+                DtId::U16 => SerieInner::U16(build_options(values, to_u16)?),
+                DtId::I32 => SerieInner::I32(build_options(values, to_i32)?),
+                DtId::U32 => SerieInner::U32(build_options(values, to_u32)?),
+                DtId::I64 => SerieInner::I64(build_options(values, to_i64)?),
+                DtId::U64 => SerieInner::U64(build_options(values, to_u64)?),
+                DtId::I128 => SerieInner::I128(build_options(values, to_i128)?),
+                DtId::U128 => SerieInner::U128(build_options(values, to_u128)?),
+                DtId::F32 => SerieInner::F32(build_options(values, to_f32)?),
+                DtId::F64 => SerieInner::F64(build_options(values, to_f64)?),
+                DtId::Bool => SerieInner::Bool(build_options(values, to_bool_native)?),
+                _ => return Err(to_error(
+                    "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
+                     (e.g. DataTypeId.I64())",
+                )),
+            };
+        Ok(Serie { inner })
+    }
+
+    /// The number of elements.
+    #[napi]
+    pub fn len(&self) -> u32 {
+        dispatch!(self, serie => serie.len() as u32)
+    }
+
+    /// Whether the column has no elements.
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        dispatch!(self, serie => serie.is_empty())
+    }
+
+    /// The element at `index` as a `number` / `BigInt` / `boolean`, or `null` when it is null or
+    /// out of range.
+    #[napi]
+    pub fn get(&self, index: u32) -> Option<Either3<f64, BigInt, bool>> {
+        let index = index as usize;
+        dispatch!(self, serie => serie.get(index).map(|value| value.to_js()))
+    }
+
+    /// Every element as an optional value (a null element is `null`) — the null-aware list.
+    #[napi]
+    pub fn to_list(&self) -> Vec<Option<Either3<f64, BigInt, bool>>> {
+        dispatch!(self, serie => serie
+            .to_options()
+            .into_iter()
+            .map(|value| value.map(|value| value.to_js()))
+            .collect())
+    }
+
+    /// The **raw** values (validity ignored — a null slot surfaces its stored default). Pair with
+    /// [`isValid`](Serie::is_valid) for null-awareness.
+    #[napi]
+    pub fn values(&self) -> Vec<Either3<f64, BigInt, bool>> {
+        dispatch!(self, serie => serie.values().into_iter().map(|value| value.to_js()).collect())
+    }
+
+    /// How many elements are null.
+    #[napi]
+    pub fn null_count(&self) -> u32 {
+        dispatch!(self, serie => serie.null_count() as u32)
+    }
+
+    /// Whether the element at `index` is **null** (absent). Out of range is `false`.
+    #[napi]
+    pub fn is_null(&self, index: u32) -> bool {
+        let index = index as usize;
+        dispatch!(self, serie => serie.is_null(index))
+    }
+
+    /// Whether the element at `index` is **valid** (non-null). Out of range is `false`.
+    #[napi]
+    pub fn is_valid(&self, index: u32) -> bool {
+        let index = index as usize;
+        dispatch!(self, serie => serie.is_valid(index))
+    }
+
+    /// A copy of this column with its **name** set (the metadata its [`field`](Serie::field)
+    /// reports).
+    #[napi]
+    pub fn with_name(&self, name: String) -> Serie {
+        Serie {
+            inner: dispatch_rebuild!(self, serie => rename(serie, &name)),
+        }
+    }
+
+    /// The element [`DataTypeId`](crate::datatype_id::DataTypeId) of this column.
+    #[napi]
+    pub fn dtype(&self) -> DataTypeId {
+        dispatch!(self, serie => DataTypeId { inner: serie.data_type_id() })
+    }
+
+    /// This column's [`Field`] metadata — its `name`, element type, and `nullable` flag (a column
+    /// with a validity buffer is nullable).
+    #[napi]
+    pub fn field(&self) -> Field {
+        dispatch!(self, serie => Field { inner: serie.field() })
+    }
+
+    /// The **sum** of every element — a `BigInt` for an integer column (a wide accumulator never
+    /// wraps), a `number` for a float column. Throws the guided `Error` on a boolean column.
+    #[napi]
+    pub fn sum(&self) -> napi::Result<Either<BigInt, f64>> {
+        dispatch_numeric!(self, serie => serie.sum().map(|value| value.to_js_sum()).map_err(to_error))
+    }
+
+    /// The **minimum** element (a float min ignores NaN), or `null` when empty. Throws the guided
+    /// `Error` on a boolean column.
+    #[napi]
+    pub fn min(&self) -> napi::Result<Option<Either3<f64, BigInt, bool>>> {
+        dispatch_numeric!(self, serie => serie
+            .min()
+            .map(|value| value.map(|value| value.to_js()))
+            .map_err(to_error))
+    }
+
+    /// The **maximum** element (a float max ignores NaN), or `null` when empty. Throws the guided
+    /// `Error` on a boolean column.
+    #[napi]
+    pub fn max(&self) -> napi::Result<Option<Either3<f64, BigInt, bool>>> {
+        dispatch_numeric!(self, serie => serie
+            .max()
+            .map(|value| value.map(|value| value.to_js()))
+            .map_err(to_error))
+    }
+
+    /// The **mean** as a `number`, or `null` when empty. Throws the guided `Error` on a boolean
+    /// column.
+    #[napi]
+    pub fn mean(&self) -> napi::Result<Option<f64>> {
+        dispatch_numeric!(self, serie => serie.mean().map_err(to_error))
+    }
+
+    /// A fresh column keeping only the elements where `mask` is truthy — `mask` is either an array
+    /// of booleans (`1` = keep) or a boolean [`Serie`]. Throws when a `Serie` mask is not a boolean
+    /// column.
+    #[napi]
+    pub fn filter(&self, mask: Either<Vec<bool>, &Serie>) -> napi::Result<Serie> {
+        let mask_heap = build_mask(mask)?;
+        Ok(Serie {
+            inner: dispatch_rebuild!(self, serie => serie.filter(&mask_heap)),
+        })
+    }
+
+    /// A short debug string — the column's name, element type, length, and null count.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        dispatch!(self, serie => format!(
+            "Serie(name={:?}, dtype={}, len={}, nullCount={})",
+            serie.field().name(),
+            serie.data_type_id(),
+            serie.len(),
+            serie.null_count()
+        ))
+    }
+}
+
+/// Builds the bit-packed mask buffer a core `filter` reads: an array of booleans packs into a fresh
+/// heap (LSB-first), a boolean [`Serie`] reuses its already-bit-packed data buffer.
+fn build_mask(mask: Either<Vec<bool>, &Serie>) -> napi::Result<CoreHeap> {
+    match mask {
+        Either::A(bits) => {
+            let mut heap = CoreHeap::new();
+            for (index, &keep) in bits.iter().enumerate() {
+                heap.pwrite_bit(index as u64, keep).map_err(to_error)?;
+            }
+            Ok(heap)
+        }
+        Either::B(serie) => match &serie.inner {
+            SerieInner::Bool(mask) => Ok(mask.data().clone()),
+            _ => Err(to_error(
+                "filter mask Serie must be a boolean column: pass an array of booleans or build \
+                 the mask with DataTypeId.Bool()",
+            )),
+        },
+    }
+}
+
+/// A **typed column's metadata** — its `name`, element [`DataTypeId`](crate::datatype_id::DataTypeId),
+/// and `nullable` flag, carried in a [`Headers`](crate::headers::Headers) map. Mirrors
+/// `yggdryl_core::typed::HeaderField`.
+#[napi(namespace = "typed")]
+pub struct Field {
+    inner: HeaderField,
+}
+
+#[napi(namespace = "typed")]
+impl Field {
+    /// A field from its `name` (optional — `null` for an unnamed field), element `dtype`, and
+    /// `nullable` flag.
+    #[napi(constructor)]
+    pub fn new(name: Option<String>, dtype: &DataTypeId, nullable: bool) -> Field {
+        Field {
+            inner: HeaderField::new(name.as_deref(), dtype.inner, nullable),
+        }
+    }
+
+    /// The column name, or `null` when unset.
+    #[napi]
+    pub fn name(&self) -> Option<String> {
+        self.inner.name().map(str::to_string)
+    }
+
+    /// The element [`DataTypeId`](crate::datatype_id::DataTypeId).
+    #[napi]
+    pub fn dtype(&self) -> DataTypeId {
+        DataTypeId {
+            inner: self.inner.data_type_id(),
+        }
+    }
+
+    /// Whether the column admits nulls.
+    #[napi]
+    pub fn nullable(&self) -> bool {
+        self.inner.nullable()
+    }
+
+    /// The backing metadata [`Headers`](crate::headers::Headers) — **a copy** (the name / type /
+    /// nullable live here, alongside any extra annotations).
+    #[napi]
+    pub fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// Content equality — equal iff the backing metadata maps are equal.
+    #[napi]
+    pub fn equals(&self, other: &Field) -> bool {
+        self.inner == other.inner
+    }
+
+    /// A short debug string — `Field(name=…, dtype=…, nullable=…)`.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "Field(name={:?}, dtype={}, nullable={})",
+            self.inner.name(),
+            self.inner.data_type_id(),
+            self.inner.nullable()
+        )
+    }
+}

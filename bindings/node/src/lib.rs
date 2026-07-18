@@ -11,7 +11,9 @@
 //! `yggdryl_core::compression`, the `yggdryl.memory` namespace (the in-heap `Heap` byte source
 //! and the `Whence` seek anchor), mirroring `yggdryl_core::io::memory`, and the `yggdryl.local`
 //! namespace (the local-filesystem family: the lazy `LocalIO` single access point and the raw
-//! memory-mapped `Mmap` it builds on), mirroring `yggdryl_core::io::local`.
+//! memory-mapped `Mmap` it builds on), mirroring `yggdryl_core::io::local`, and the
+//! `yggdryl.typed` namespace (the typed column surface: a `Serie` and its `Field`), mirroring
+//! `yggdryl_core::typed`.
 
 #[macro_use]
 extern crate napi_derive;
@@ -23,6 +25,7 @@ pub mod headers;
 pub mod io;
 pub mod mediatype;
 pub mod mimetype;
+pub mod typed;
 pub mod uri;
 
 use napi::bindgen_prelude::{Either, Either4, Uint8Array};

@@ -14,7 +14,9 @@
 //! URLs, and authorities, mirroring `yggdryl_core::uri`), the `yggdryl.mimetype` submodule
 //! (the `MimeType` media type and the `MimeCatalog` registry, mirroring
 //! `yggdryl_core::mimetype`), the `yggdryl.mediatype` submodule (the layered `MediaType`
-//! list, mirroring `yggdryl_core::mediatype`) and the `yggdryl.compression` submodule (the
+//! list, mirroring `yggdryl_core::mediatype`), the `yggdryl.typed` submodule (the typed-column
+//! surface — a `Serie` and its `Field`, mirroring `yggdryl_core::typed`) and the
+//! `yggdryl.compression` submodule (the
 //! `Gzip` / `Zlib` / `Zstd` / `Lzma` codecs and the `codec_for` resolver, mirroring
 //! `yggdryl_core::compression`).
 
@@ -31,6 +33,7 @@ mod headers;
 mod io;
 mod mediatype;
 mod mimetype;
+mod typed;
 mod uri;
 
 /// The library version string — delegates to [`yggdryl_core::version`].
@@ -81,6 +84,7 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     add_submodule(py, module, "mediatype", mediatype::register)?;
     add_submodule(py, module, "memory", io::memory::register)?;
     add_submodule(py, module, "mimetype", mimetype::register)?;
+    add_submodule(py, module, "typed", typed::register)?;
     add_submodule(py, module, "uri", uri::register)?;
     Ok(())
 }

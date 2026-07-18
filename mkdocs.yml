@@ -43,6 +43,7 @@ nav:
   - Home: index.md
   - The io root: io/index.md
   - Headers: headers.md
+  - Typed serialization: typed.md
   - Media types: mediatype.md
   - Compression: compression.md
   - Memory access: io/memory.md
