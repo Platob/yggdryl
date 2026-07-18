@@ -2,6 +2,7 @@
 
 use super::{IOCursor, IOSlice, IoError};
 use crate::compression::{codec_for_mime, compression_err, Compression};
+use crate::dtype::DataTypeId;
 use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
 use crate::mediatype::MediaType;
@@ -541,6 +542,156 @@ pub trait IOBase: Sized {
         self.headers()
             .content_length()
             .unwrap_or_else(|| self.byte_size())
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Element data type — the interpretation of the stored bytes (from the headers).
+    // ---------------------------------------------------------------------------------
+
+    /// This source's **element [`DataTypeId`]** — the storage type its
+    /// [`headers`](IOBase::headers) declare (`Elem-Type-Id`), or [`DataTypeId::Unknown`] (raw
+    /// bytes) when none is set. This is what the typed aggregations use to size their step and
+    /// what [`resize_dtype`](IOBase::resize_dtype) converts between.
+    fn dtype(&self) -> DataTypeId {
+        self.headers().elem_type_id()
+    }
+
+    /// Declares the source's element [`DataTypeId`] in its headers (so `dtype()` /
+    /// [`element_count`](IOBase::element_count) report it). [`Unknown`](DataTypeId::Unknown) clears it.
+    fn set_dtype(&mut self, dtype: DataTypeId) {
+        self.headers_mut().set_elem_type_id(dtype);
+    }
+
+    /// How many whole [`dtype`](IOBase::dtype) elements the source currently holds —
+    /// `byte_size / dtype.byte_size()`, or `0` when the type is [`Unknown`](DataTypeId::Unknown).
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    /// use yggdryl_core::dtype::DataTypeId;
+    ///
+    /// let mut h = Heap::new();
+    /// h.pwrite_i64_array(0, &[1, 2, 3]).unwrap();
+    /// h.set_dtype(DataTypeId::I64);
+    /// assert_eq!(h.element_count(), 3);
+    /// ```
+    fn element_count(&self) -> u64 {
+        self.dtype().element_count(self.byte_size())
+    }
+
+    /// **Widens or shrinks the element type, returning a fresh converted [`Heap`](super::Heap)** —
+    /// reinterprets every stored element from the current [`dtype`](IOBase::dtype) to `to` at the
+    /// new width (`i64` → `i32`, `i32` → `f64`, …), leaving `self` untouched. The **copy** front
+    /// door of [`resize_dtype_in_place`](IOBase::resize_dtype_in_place).
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    /// use yggdryl_core::dtype::DataTypeId;
+    ///
+    /// let mut src = Heap::new();
+    /// src.pwrite_i64_array(0, &[1, -2, 3]).unwrap();
+    /// src.set_dtype(DataTypeId::I64);
+    /// let narrowed = src.resize_dtype(DataTypeId::I32).unwrap(); // 24 bytes -> 12 bytes copy
+    /// assert_eq!(narrowed.byte_size(), 12);
+    /// assert_eq!(src.byte_size(), 24); // source untouched
+    /// let mut back = [0i32; 3];
+    /// narrowed.pread_i32_array(0, &mut back).unwrap();
+    /// assert_eq!(back, [1, -2, 3]);
+    /// ```
+    fn resize_dtype(&self, to: DataTypeId) -> Result<super::Heap, IoError> {
+        let mut copy = super::Heap::from_vec(self.pread_vec(0, self.byte_size() as usize));
+        copy.set_dtype(self.dtype());
+        copy.resize_dtype_in_place(to)?;
+        Ok(copy)
+    }
+
+    /// **Widens or shrinks the element type in place** — the mutating counterpart of
+    /// [`resize_dtype`](IOBase::resize_dtype): rewrites `self`'s bytes at the new width (reusing its
+    /// auto-resizable backing, no extra copy) and updates the `Elem-Type-Id` header. Returns the
+    /// element count. Values convert numerically: a narrowing integer target **saturates** (never
+    /// wraps), a float target rounds; conversions carry through `f64`, so integer magnitudes beyond
+    /// 2^53 may lose precision. Errors with a guided [`IoError::FileIo`] when either side has no
+    /// known element type (call [`set_dtype`](IOBase::set_dtype) first).
+    fn resize_dtype_in_place(&mut self, to: DataTypeId) -> Result<u64, IoError> {
+        let from = self.dtype();
+        if from == to {
+            return Ok(self.element_count());
+        }
+        if !from.is_fixed_width() || !to.is_fixed_width() {
+            return Err(IoError::FileIo {
+                op: "resize_dtype",
+                path: self.uri().to_string(),
+                detail: "both sides need a known element type — set_dtype(<from>) on the source \
+                         and pass a fixed-width target (not Unknown)"
+                    .to_string(),
+            });
+        }
+        let count = from.element_count(self.byte_size());
+        let (from_w, to_w) = (from.byte_size(), to.byte_size());
+        let mut out = vec![0u8; (count * to_w) as usize];
+        for i in 0..count {
+            let value = elem_as_f64(self, from, i * from_w)?;
+            write_f64_as(&mut out[(i * to_w) as usize..], to, value);
+        }
+        self.overwrite_with(&out)?;
+        self.set_dtype(to);
+        Ok(count)
+    }
+
+    /// **Selects elements by a bitmask, returning a fresh compacted [`Heap`](super::Heap)** — keeps
+    /// each `dtype`-width element whose corresponding **bit is set** in `mask` (an [`IOBase`] read
+    /// as an **LSB-first bit buffer**: bit `i` selects element `i`), dropping the rest. The **copy**
+    /// front door of [`mask_filter_in_place`](IOBase::mask_filter_in_place); `self` is untouched.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    /// use yggdryl_core::dtype::DataTypeId;
+    ///
+    /// let mut data = Heap::new();
+    /// data.pwrite_i32_array(0, &[10, 20, 30, 40]).unwrap();
+    /// data.set_dtype(DataTypeId::I32);
+    /// let mask = Heap::from_slice(&[0b0000_1010]); // keep elements 1 and 3
+    /// let kept = data.mask_filter(&mask).unwrap();
+    /// let mut out = [0i32; 2];
+    /// kept.pread_i32_array(0, &mut out).unwrap();
+    /// assert_eq!(out, [20, 40]);
+    /// ```
+    fn mask_filter<M: IOBase>(&self, mask: &M) -> Result<super::Heap, IoError> {
+        let mut copy = super::Heap::from_vec(self.pread_vec(0, self.byte_size() as usize));
+        copy.set_dtype(self.dtype());
+        copy.mask_filter_in_place(mask)?;
+        Ok(copy)
+    }
+
+    /// **Selects elements by a bitmask in place** — the mutating counterpart of
+    /// [`mask_filter`](IOBase::mask_filter): forward-compacts the kept `dtype`-width elements to the
+    /// front of `self` (each write lands at or before where it was read, so it never overlaps) and
+    /// [`truncate`](IOBase::truncate)s to the kept length. Returns the kept element count. Errors
+    /// with a guided [`IoError`] when `self` has no known element type (call
+    /// [`set_dtype`](IOBase::set_dtype) first) or when `mask` has fewer bits than elements.
+    fn mask_filter_in_place<M: IOBase>(&mut self, mask: &M) -> Result<u64, IoError> {
+        let width = self.dtype().byte_size();
+        if width == 0 {
+            return Err(IoError::FileIo {
+                op: "mask_filter",
+                path: self.uri().to_string(),
+                detail: "the source has no element type to select over — set_dtype(<type>) first"
+                    .to_string(),
+            });
+        }
+        let count = self.byte_size() / width;
+        let mut buf = vec![0u8; width as usize];
+        let mut kept = 0u64;
+        for i in 0..count {
+            if mask.pread_bit(i)? {
+                if kept != i {
+                    self.pread_byte_array(i * width, &mut buf);
+                    self.pwrite_all(kept * width, &buf)?;
+                }
+                kept += 1;
+            }
+        }
+        self.truncate(kept * width)?; // drops the tail past the compacted elements + syncs size
+        Ok(kept)
     }
 
     // ---------------------------------------------------------------------------------
@@ -1537,6 +1688,49 @@ pub trait IOBase: Sized {
         Self: Sized,
     {
         IOSlice::new(self, offset, len)
+    }
+}
+
+/// Reads the element at byte `off` of `src`, interpreted as `dtype`, widened to `f64` — the
+/// universal numeric carrier [`IOBase::resize_dtype`] converts through.
+fn elem_as_f64<S: IOBase>(src: &S, dtype: DataTypeId, off: u64) -> Result<f64, IoError> {
+    use DataTypeId::*;
+    Ok(match dtype {
+        Bool | U8 => src.pread_byte(off)? as f64,
+        I8 => src.pread_i8(off)? as f64,
+        I16 => src.pread_i16(off)? as f64,
+        U16 => src.pread_u16(off)? as f64,
+        I32 => src.pread_i32(off)? as f64,
+        U32 => src.pread_u32(off)? as f64,
+        I64 => src.pread_i64(off)? as f64,
+        U64 => src.pread_u64(off)? as f64,
+        I128 => src.pread_i128(off)? as f64,
+        U128 => src.pread_u128(off)? as f64,
+        F32 => src.pread_f32(off)? as f64,
+        F64 => src.pread_f64(off)?,
+        Unknown => 0.0,
+    })
+}
+
+/// Encodes `value` into `out[..dtype.byte_size()]` as `dtype` — a narrowing integer target
+/// **saturates** (Rust's `f64 as <int>` cast), a float target rounds. `out` must be wide enough.
+fn write_f64_as(out: &mut [u8], dtype: DataTypeId, value: f64) {
+    use DataTypeId::*;
+    match dtype {
+        Bool => out[..1].copy_from_slice(&[u8::from(value != 0.0)]),
+        U8 => out[..1].copy_from_slice(&(value as u8).to_le_bytes()),
+        I8 => out[..1].copy_from_slice(&(value as i8).to_le_bytes()),
+        I16 => out[..2].copy_from_slice(&(value as i16).to_le_bytes()),
+        U16 => out[..2].copy_from_slice(&(value as u16).to_le_bytes()),
+        I32 => out[..4].copy_from_slice(&(value as i32).to_le_bytes()),
+        U32 => out[..4].copy_from_slice(&(value as u32).to_le_bytes()),
+        I64 => out[..8].copy_from_slice(&(value as i64).to_le_bytes()),
+        U64 => out[..8].copy_from_slice(&(value as u64).to_le_bytes()),
+        I128 => out[..16].copy_from_slice(&(value as i128).to_le_bytes()),
+        U128 => out[..16].copy_from_slice(&(value as u128).to_le_bytes()),
+        F32 => out[..4].copy_from_slice(&(value as f32).to_le_bytes()),
+        F64 => out[..8].copy_from_slice(&value.to_le_bytes()),
+        Unknown => {}
     }
 }
 

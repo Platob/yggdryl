@@ -942,15 +942,18 @@ impl LocalIO {
         Ok(bytes)
     }
 
-    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
-    /// to the end if none), decoded as UTF-8 — advancing the cursor past it. Returns `""`
-    /// **only** at the true end (a blank line keeps its `\n`).
+    /// **Reads one line** from the cursor — the content up to the next line terminator with the
+    /// trailing `\n` / `\r\n` **stripped**, decoded as UTF-8 — advancing the cursor past the
+    /// terminator. **CSV-aware**: a `\n` inside a double-quoted field does not end the line. A
+    /// blank line returns `""` but **advances**; at the true end it returns `""` **without**
+    /// advancing (that is how iteration stops).
     fn readline(&mut self) -> PyResult<String> {
         self.inner.readline().map_err(ioerr)
     }
 
-    /// **Reads every remaining line** from the cursor into a list, advancing it to the end —
-    /// each element keeps its trailing `\n` except possibly the last.
+    /// **Reads every remaining line** from the cursor into a list, advancing it to the end — each
+    /// element has its trailing line terminator stripped (blank lines kept, quoted newlines
+    /// honored).
     fn readlines(&mut self) -> PyResult<Vec<String>> {
         self.inner.readlines().map_err(ioerr)
     }
@@ -1254,10 +1257,13 @@ impl LocalIO {
         slf
     }
 
-    /// The next line from the cursor, or `StopIteration` at the true end.
+    /// The next line from the cursor, or `StopIteration` at the true end — a line that advanced
+    /// the cursor (including a blank line, yielded as `""`), stopping only when `readline`
+    /// consumes nothing.
     fn __next__(&mut self) -> PyResult<Option<String>> {
+        let start = self.inner.position();
         let line = self.inner.readline().map_err(ioerr)?;
-        Ok((!line.is_empty()).then_some(line))
+        Ok((self.inner.position() != start).then_some(line))
     }
 
     /// This handle's **portable** address string — its `file://` URI with a home / temp path

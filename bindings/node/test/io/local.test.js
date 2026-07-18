@@ -1015,8 +1015,8 @@ test('LocalIO.readline / readlines stream the file line by line', () => {
   const f = new LocalIO(nodePath.join(dir, 'lines.txt'))
   f.pwriteUtf8(0, 'alpha\nbeta\ngamma')
   f.rewind()
-  assert.equal(f.readline(), 'alpha\n')
-  assert.deepEqual(f.readlines(), ['beta\n', 'gamma'])
+  assert.equal(f.readline(), 'alpha') // trailing newline stripped
+  assert.deepEqual(f.readlines(), ['beta', 'gamma'])
   f.close()
   rmTree(dir)
 })
@@ -1126,8 +1126,8 @@ test('Mmap.readline / readlines stream lines over a file', () => {
   const m = Mmap.create(file)
   m.writeUtf8('one\ntwo\nthree')
   m.rewind()
-  assert.equal(m.readline(), 'one\n')
-  assert.deepEqual(m.readlines(), ['two\n', 'three'])
+  assert.equal(m.readline(), 'one') // trailing newline stripped
+  assert.deepEqual(m.readlines(), ['two', 'three'])
   m.close()
   fs.rmSync(file)
 })
@@ -1163,7 +1163,7 @@ test('LocalIO fsPath / tell / readable / writable / seekable / lines', () => {
   f.pwriteUtf8(0, 'line1\nline2\n')
   f.setPosition(0)
   assert.equal(f.tell(), 0) // the position alias
-  assert.deepEqual(f.lines(), ['line1\n', 'line2\n'])
+  assert.deepEqual(f.lines(), ['line1', 'line2']) // terminators stripped
   assert.equal(f.tell(), f.byteSize()) // lines() drained the cursor to the end
   f.close()
   rmTree(dir)

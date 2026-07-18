@@ -3,7 +3,8 @@
 //! The core is the source of truth; each item here is one or two lines over `yggdryl_core`.
 //! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.io` submodule
 //! (the io-root value types `Headers` / `IOMode` / `IOKind` / `MemoryInfo`, mirroring
-//! `yggdryl_core::io`), the `yggdryl.gpu` submodule (the device-memory layer — `GpuDevice` /
+//! `yggdryl_core::io`), the `yggdryl.dtype` submodule (the `DataTypeId` primitive element data
+//! types, mirroring `yggdryl_core::dtype`), the `yggdryl.gpu` submodule (the device-memory layer — `GpuDevice` /
 //! `AmdBuffer` + `available_devices` / `default_device`, mirroring `yggdryl_core::io::gpu`),
 //! the `yggdryl.memory` submodule (the in-heap `Heap` byte source and the `Whence` seek anchor,
 //! mirroring `yggdryl_core::io::memory`), the `yggdryl.local` submodule (the local-filesystem
@@ -24,6 +25,7 @@ use pyo3::prelude::*;
 
 mod builders;
 mod compression;
+mod dtype;
 mod headers;
 mod io;
 mod mediatype;
@@ -70,6 +72,7 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(open, module)?)?;
     builders::register(module)?;
     add_submodule(py, module, "compression", compression::register)?;
+    add_submodule(py, module, "dtype", dtype::register)?;
     add_submodule(py, module, "gpu", io::gpu::register)?;
     add_submodule(py, module, "headers", |m| m.add_class::<headers::Headers>())?;
     add_submodule(py, module, "io", io::register)?;

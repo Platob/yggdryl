@@ -1,0 +1,265 @@
+//! The `yggdryl.dtype` namespace's [`DataTypeId`] — the primitive **element data types** a byte
+//! region can be interpreted as.
+//!
+//! Mirrors `yggdryl_core::dtype::DataTypeId`, a compact `#[repr(u16)]` int enum naming every native
+//! fixed-width primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats
+//! `f32`/`f64`). napi cannot attach methods to a bare enum, so — like the core — the type is
+//! exposed as a thin `#[napi]` **class** carrying its `u16` `id`: each variant is a named static
+//! factory (`DataTypeId.I64()`), and the width / classification helpers are methods
+//! (`asU16` / `name` / `byteSize` / `bitSize` / `isInteger` / … / `elementCount` / `toString`),
+//! with the static parsers `fromU16` / `fromName`. Every method is a one- or two-line delegation
+//! to `yggdryl_core`; a bad `fromName` token surfaces as a thrown `Error` carrying the core's
+//! guided text.
+
+use napi_derive::napi;
+
+use yggdryl_core::dtype as core;
+
+/// A **primitive element data type** — the interpretation of a fixed-width value in a byte region
+/// (`Unknown` is the default "raw bytes" state). A thin value over the core's `#[repr(u16)]` id:
+/// it round-trips through a `u16` (the value a source stores in its `Headers` as `Elem-Type-Id`),
+/// so the byte layer knows its element width, can compute an element count, and can widen / shrink
+/// a region between widths. Equatable and stringly named; the id keys a map or travels over a wire.
+#[napi(namespace = "dtype")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct DataTypeId {
+    pub(crate) inner: core::DataTypeId,
+}
+
+#[napi(namespace = "dtype")]
+impl DataTypeId {
+    /// Builds a data type from its **`u16` id** (`8` → `I64`); an unrecognized id degrades to
+    /// [`Unknown`](DataTypeId::unknown) (total, never throws). The generic entry — `fromU16` is
+    /// its named alias.
+    #[napi(constructor)]
+    pub fn new(id: u16) -> Self {
+        DataTypeId {
+            inner: core::DataTypeId::from_u16(id),
+        }
+    }
+
+    // ---- variant factories (one per type) ----------------------------------------------
+
+    /// Unknown / raw bytes — no declared element type (the default, id `0`).
+    #[napi(factory, js_name = "Unknown")]
+    pub fn variant_unknown() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Unknown,
+        }
+    }
+
+    /// A boolean — 1 byte in storage, 1 bit logically (id `1`).
+    #[napi(factory, js_name = "Bool")]
+    pub fn variant_bool() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Bool,
+        }
+    }
+
+    /// Signed 8-bit integer (id `2`).
+    #[napi(factory, js_name = "I8")]
+    pub fn variant_i8() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::I8,
+        }
+    }
+
+    /// Unsigned 8-bit integer (id `3`).
+    #[napi(factory, js_name = "U8")]
+    pub fn variant_u8() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::U8,
+        }
+    }
+
+    /// Signed 16-bit integer (id `4`).
+    #[napi(factory, js_name = "I16")]
+    pub fn variant_i16() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::I16,
+        }
+    }
+
+    /// Unsigned 16-bit integer (id `5`).
+    #[napi(factory, js_name = "U16")]
+    pub fn variant_u16() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::U16,
+        }
+    }
+
+    /// Signed 32-bit integer (id `6`).
+    #[napi(factory, js_name = "I32")]
+    pub fn variant_i32() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::I32,
+        }
+    }
+
+    /// Unsigned 32-bit integer (id `7`).
+    #[napi(factory, js_name = "U32")]
+    pub fn variant_u32() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::U32,
+        }
+    }
+
+    /// Signed 64-bit integer (id `8`).
+    #[napi(factory, js_name = "I64")]
+    pub fn variant_i64() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::I64,
+        }
+    }
+
+    /// Unsigned 64-bit integer (id `9`).
+    #[napi(factory, js_name = "U64")]
+    pub fn variant_u64() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::U64,
+        }
+    }
+
+    /// Signed 128-bit integer (id `10`).
+    #[napi(factory, js_name = "I128")]
+    pub fn variant_i128() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::I128,
+        }
+    }
+
+    /// Unsigned 128-bit integer (id `11`).
+    #[napi(factory, js_name = "U128")]
+    pub fn variant_u128() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::U128,
+        }
+    }
+
+    /// 32-bit IEEE-754 float (id `12`).
+    #[napi(factory, js_name = "F32")]
+    pub fn variant_f32() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::F32,
+        }
+    }
+
+    /// 64-bit IEEE-754 float (id `13`).
+    #[napi(factory, js_name = "F64")]
+    pub fn variant_f64() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::F64,
+        }
+    }
+
+    // ---- id / name round-trips ---------------------------------------------------------
+
+    /// The `u16` discriminant — what a source stores in its headers.
+    #[napi(getter)]
+    pub fn id(&self) -> u16 {
+        self.inner.as_u16()
+    }
+
+    /// The `u16` discriminant — the method form of the `id` getter.
+    #[napi]
+    pub fn as_u16(&self) -> u16 {
+        self.inner.as_u16()
+    }
+
+    /// The data type for a `u16` discriminant, or [`Unknown`](DataTypeId::unknown) for an
+    /// unrecognized value (total, never throws — a foreign/newer id degrades to raw bytes).
+    #[napi(factory)]
+    pub fn from_u16(value: u16) -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::from_u16(value),
+        }
+    }
+
+    /// The stable lowercase token (`"i32"`, `"f64"`, `"bool"`, `"unknown"`).
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The data type named by `token` (`"i32"`, `"f64"`, …, case-insensitive), or throws a guided
+    /// `Error` naming the accepted tokens for an unrecognized name.
+    #[napi(factory)]
+    pub fn from_name(token: String) -> napi::Result<DataTypeId> {
+        core::DataTypeId::from_name(&token)
+            .map(|inner| DataTypeId { inner })
+            .ok_or_else(|| {
+                napi::Error::from_reason(format!(
+                    "unknown data type name {token:?}: expected one of unknown, bool, i8, u8, \
+                     i16, u16, i32, u32, i64, u64, i128, u128, f32, f64"
+                ))
+            })
+    }
+
+    // ---- widths + classification -------------------------------------------------------
+
+    /// The **storage width** of one element in bytes (`i32` → 4, `i128` → 16, `bool` → 1); `0`
+    /// for [`Unknown`](DataTypeId::unknown). An `i64` (a JS number).
+    #[napi]
+    pub fn byte_size(&self) -> i64 {
+        self.inner.byte_size() as i64
+    }
+
+    /// The **logical bit width** of one element — `bool` is `1`, every other fixed type is
+    /// `byteSize * 8`, and [`Unknown`](DataTypeId::unknown) is `0`. An `i64` (a JS number).
+    #[napi]
+    pub fn bit_size(&self) -> i64 {
+        self.inner.bit_size() as i64
+    }
+
+    /// Whether this is an integer type (`bool` is **not** counted as an integer).
+    #[napi]
+    pub fn is_integer(&self) -> bool {
+        self.inner.is_integer()
+    }
+
+    /// Whether this is a **signed** numeric type (the signed integers and the floats).
+    #[napi]
+    pub fn is_signed(&self) -> bool {
+        self.inner.is_signed()
+    }
+
+    /// Whether this is a floating-point type (`f32` / `f64`).
+    #[napi]
+    pub fn is_float(&self) -> bool {
+        self.inner.is_float()
+    }
+
+    /// Whether this is the boolean type.
+    #[napi]
+    pub fn is_bool(&self) -> bool {
+        self.inner.is_bool()
+    }
+
+    /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::unknown)).
+    #[napi]
+    pub fn is_fixed_width(&self) -> bool {
+        self.inner.is_fixed_width()
+    }
+
+    /// How many whole elements of this type fit in `bytes` — `bytes / byteSize`, or `0` for
+    /// [`Unknown`](DataTypeId::unknown). `bytes` and the result are `i64`s (JS numbers); a
+    /// negative `bytes` counts as `0`.
+    #[napi]
+    pub fn element_count(&self, bytes: i64) -> i64 {
+        self.inner.element_count(u64::try_from(bytes).unwrap_or(0)) as i64
+    }
+
+    // ---- value semantics ---------------------------------------------------------------
+
+    /// Identity equality — equal iff they name the same element type.
+    #[napi]
+    pub fn equals(&self, other: &DataTypeId) -> bool {
+        self.inner == other.inner
+    }
+
+    /// The stable lowercase token — the same string `name()` returns.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        self.inner.to_string()
+    }
+}

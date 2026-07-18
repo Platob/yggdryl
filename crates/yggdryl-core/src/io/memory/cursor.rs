@@ -202,57 +202,84 @@ macro_rules! cursor_methods {
             out
         }
 
-        /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or to
-        /// the end if none), decoded as UTF-8 — and advances the cursor past it (leaving it put on a
-        /// UTF-8 error). Returns `""` **only** at the true end, so a blank line (which still carries
-        /// its `\n`) is distinct from EOF; this is the [`readlines`](Self::readlines) /
-        /// Python-`readline` semantics. The scan stages through a fixed stack buffer — no per-line
-        /// heap churn beyond the returned string.
+        /// **Reads one line** from the cursor — the content up to the next line terminator,
+        /// **with the trailing `\n` / `\r\n` stripped**, decoded as UTF-8 — and advances the cursor
+        /// past the terminator (leaving it put on a UTF-8 error). It is **CSV-aware**: a `\n` inside
+        /// a double-quoted field (`"a\nb"`, `""` being an escaped quote) does **not** end the line,
+        /// so a quoted record spanning newlines is returned whole. At the true end it returns `""`
+        /// **without advancing** — so a blank line (which returns `""` but *does* advance) is
+        /// distinguished from EOF by whether the cursor moved (this is how
+        /// [`readlines`](Self::readlines) stops). The scan stages through a fixed stack buffer.
         ///
         /// ```
         /// use yggdryl_core::io::memory::{Heap, IOBase};
         ///
-        /// let mut cur = Heap::from_slice(b"first\nsecond").cursor();
-        /// assert_eq!(cur.readline().unwrap(), "first\n");
-        /// assert_eq!(cur.readline().unwrap(), "second"); // no trailing newline at the end
-        /// assert_eq!(cur.readline().unwrap(), "");        // now at EOF
+        /// let mut cur = Heap::from_slice(b"first\r\nsecond").cursor();
+        /// assert_eq!(cur.readline().unwrap(), "first");  // trailing \r\n stripped
+        /// assert_eq!(cur.readline().unwrap(), "second"); // last line, no terminator
+        ///
+        /// // A quoted newline does not split the record.
+        /// let mut csv = Heap::from_slice(b"a,\"x\ny\",b\nnext").cursor();
+        /// assert_eq!(csv.readline().unwrap(), "a,\"x\ny\",b");
+        /// assert_eq!(csv.readline().unwrap(), "next");
         /// ```
         pub fn readline(&mut self) -> Result<String, IoError> {
             let start = self.position;
             let mut scan = [0u8; 256];
-            let mut end = start;
-            loop {
-                let read = self.pread_byte_array(end, &mut scan);
+            let mut pos = start;
+            let mut in_quote = false; // parity of `"` seen — `""` toggles twice, so it stays put
+            let mut newline_at: Option<u64> = None;
+            'outer: loop {
+                let read = self.pread_byte_array(pos, &mut scan);
                 if read == 0 {
-                    break; // end of source — the line is everything scanned so far
+                    break; // end of source
                 }
-                if let Some(at) = scan[..read].iter().position(|&byte| byte == b'\n') {
-                    end += (at + 1) as u64; // include the newline, like Python's readline
-                    break;
+                for (i, &byte) in scan[..read].iter().enumerate() {
+                    if byte == b'"' {
+                        in_quote = !in_quote;
+                    } else if byte == b'\n' && !in_quote {
+                        newline_at = Some(pos + i as u64);
+                        break 'outer;
+                    }
                 }
-                end += read as u64;
+                pos += read as u64;
             }
-            let text = self.pread_utf8(start, (end - start) as usize)?;
-            self.position = end;
+            // The line spans [start, content_end); `next` is where the cursor lands (past the \n).
+            let (mut content_end, next) = match newline_at {
+                Some(nl) => (nl, nl + 1),
+                None => (pos, pos), // no terminator — content runs to the end (EOF leaves next=start)
+            };
+            // Strip a trailing `\r` (the CR of a CRLF terminator).
+            let mut last = [0u8; 1];
+            if content_end > start
+                && self.pread_byte_array(content_end - 1, &mut last) == 1
+                && last[0] == b'\r'
+            {
+                content_end -= 1;
+            }
+            let text = self.pread_utf8(start, (content_end - start) as usize)?;
+            self.position = next;
             Ok(text)
         }
 
         /// **Reads every remaining line** from the cursor into a `Vec`, advancing it to the end —
-        /// each element keeps its trailing `\n` except possibly the last (see
-        /// [`readline`](Self::readline)). The eager counterpart of looping `readline` line by line.
+        /// each element has its trailing line terminator stripped and honors quoted newlines (see
+        /// [`readline`](Self::readline)). Blank lines are kept; it stops at EOF (when a
+        /// [`readline`](Self::readline) consumes nothing).
         ///
         /// ```
         /// use yggdryl_core::io::memory::{Heap, IOBase};
         ///
         /// let mut cur = Heap::from_slice(b"a\n\nb\n").cursor();
-        /// assert_eq!(cur.readlines().unwrap(), vec!["a\n", "\n", "b\n"]); // blank line kept
+        /// assert_eq!(cur.readlines().unwrap(), vec!["a", "", "b"]); // blank line kept, no newlines
         /// ```
         pub fn readlines(&mut self) -> Result<Vec<String>, IoError> {
             let mut lines = Vec::new();
             loop {
+                let start = self.position;
                 let line = self.readline()?;
-                if line.is_empty() {
-                    break;
+                if self.position == start {
+                    break; // EOF — readline consumed nothing
                 }
                 lines.push(line);
             }

@@ -80,6 +80,11 @@ impl Headers {
     /// The modification-time header this map uses for the **epoch-microseconds** form —
     /// [`mtime`](Headers::mtime) / [`set_mtime`](Headers::set_mtime).
     pub const MTIME: &'static str = "X-Mtime-Us";
+    /// The storage **element data type** header — a [`DataTypeId`](crate::dtype::DataTypeId) as its
+    /// `u16` id ([`elem_type_id`](Headers::elem_type_id) / [`set_elem_type_id`](Headers::set_elem_type_id)).
+    pub const ELEM_TYPE_ID: &'static str = "X-Elem-Type-Id";
+    /// The resource **name** header ([`name`](Headers::name) / [`set_name`](Headers::set_name)).
+    pub const NAME: &'static str = "X-Name";
 
     // ---- construction -------------------------------------------------------------------
 
@@ -267,6 +272,64 @@ impl Headers {
         let mut buf = [0u8; 20];
         let text = write_u64(&mut buf, len);
         self.insert_bytes(Self::CONTENT_LENGTH.as_bytes(), text);
+    }
+
+    /// The storage **element data type** — the [`DataTypeId`](crate::dtype::DataTypeId) declared
+    /// under [`ELEM_TYPE_ID`](Headers::ELEM_TYPE_ID), or [`DataTypeId::Unknown`](crate::dtype::DataTypeId::Unknown)
+    /// when none is set. Total (never fails — an unrecognized id reads as `Unknown`).
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    /// use yggdryl_core::dtype::DataTypeId;
+    ///
+    /// let mut h = Headers::new();
+    /// assert_eq!(h.elem_type_id(), DataTypeId::Unknown);
+    /// h.set_elem_type_id(DataTypeId::I64);
+    /// assert_eq!(h.elem_type_id(), DataTypeId::I64);
+    /// assert_eq!(h.elem_byte_size(), 8);
+    /// ```
+    pub fn elem_type_id(&self) -> crate::dtype::DataTypeId {
+        match self
+            .get(Self::ELEM_TYPE_ID)
+            .and_then(|v| v.trim().parse().ok())
+        {
+            Some(id) => crate::dtype::DataTypeId::from_u16(id),
+            None => crate::dtype::DataTypeId::Unknown,
+        }
+    }
+
+    /// Sets the storage [`DataTypeId`](crate::dtype::DataTypeId) (its `u16` id, alloc-free decimal
+    /// render). [`Unknown`](crate::dtype::DataTypeId::Unknown) **removes** the header (no declared type).
+    pub fn set_elem_type_id(&mut self, dtype: crate::dtype::DataTypeId) {
+        if dtype == crate::dtype::DataTypeId::Unknown {
+            self.remove(Self::ELEM_TYPE_ID);
+            return;
+        }
+        let mut buf = [0u8; 20];
+        let text = write_u64(&mut buf, dtype.as_u16() as u64);
+        self.insert_bytes(Self::ELEM_TYPE_ID.as_bytes(), text);
+    }
+
+    /// The **element storage width** in bytes derived from [`elem_type_id`](Headers::elem_type_id)
+    /// (`i64` → 8), or `0` when the type is unknown.
+    pub fn elem_byte_size(&self) -> u64 {
+        self.elem_type_id().byte_size()
+    }
+
+    /// The **element bit width** derived from [`elem_type_id`](Headers::elem_type_id) (`bool` → 1),
+    /// or `0` when the type is unknown.
+    pub fn elem_bit_size(&self) -> u64 {
+        self.elem_type_id().bit_size()
+    }
+
+    /// The resource **name** declared under [`NAME`](Headers::NAME), if any.
+    pub fn name(&self) -> Option<&str> {
+        self.get(Self::NAME)
+    }
+
+    /// Sets the resource **name** (replaces).
+    pub fn set_name(&mut self, name: &str) {
+        self.insert(Self::NAME, name);
     }
 
     /// Sets [`mtime`](Headers::mtime) to **now** (epoch microseconds from the system clock) —

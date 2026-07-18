@@ -184,6 +184,40 @@ test('AmdBuffer i32 aggregations: sum/min/max/mean/countGe', () => {
   assert.equal(buf.countGeI32(0, 0, 16), 0)
 })
 
+test('AmdBuffer std / first / last aggregations (i32 / i64 / f32 / f64)', () => {
+  const i32 = new AmdBuffer()
+  i32.pwriteI32Array(0, [4, 8, 15, 16, 23, 42])
+  assert.equal(i32.firstI32(0, 6), 4)
+  assert.equal(i32.lastI32(0, 6), 42)
+  assert.ok(Math.abs(i32.stdI32(0, 6) - 12.315) < 0.01) // sqrt(910/6)
+  assert.equal(i32.firstI32(0, 0), null)
+  assert.equal(i32.lastI32(0, 0), null)
+  assert.equal(i32.stdI32(0, 0), null)
+
+  const i64 = new AmdBuffer()
+  i64.pwriteI64Array(0, [10, 20, 30, 40])
+  assert.equal(i64.firstI64(0, 4), 10) // a JS number
+  assert.equal(i64.lastI64(0, 4), 40)
+  assert.ok(i64.stdI64(0, 4) > 0)
+
+  // f64 / f32 first/last widen to JS numbers (seed little-endian bytes).
+  const f64 = new AmdBuffer()
+  const b64 = Buffer.alloc(3 * 8)
+  ;[10.0, 20.0, 30.0].forEach((v, i) => b64.writeDoubleLE(v, i * 8))
+  f64.pwriteByteArray(0, b64)
+  assert.equal(f64.firstF64(0, 3), 10.0)
+  assert.equal(f64.lastF64(0, 3), 30.0)
+  assert.ok(Math.abs(f64.stdF64(0, 3) - 8.165) < 0.01) // sqrt(200/3)
+
+  const f32 = new AmdBuffer()
+  const b32 = Buffer.alloc(3 * 4)
+  ;[1.5, 2.5, 3.5].forEach((v, i) => b32.writeFloatLE(v, i * 4))
+  f32.pwriteByteArray(0, b32)
+  assert.equal(f32.firstF32(0, 3), 1.5)
+  assert.equal(f32.lastF32(0, 3), 3.5)
+  assert.ok(f32.stdF32(0, 3) > 0)
+})
+
 test('AmdBuffer i64 aggregations cross 64-bit values (BigInt sum, BigInt threshold)', () => {
   const buf = new AmdBuffer()
   buf.pwriteI64Array(0, [10, 20, 30, 40])

@@ -217,6 +217,18 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   clone-with-overrides front door); an in-place `set_<field>`; a chainable `with_<field>`.
   Where combining whole values reads naturally, add `merge_with(other)` and domain combinators
   (`joinpath`). In the Rust core `copy` stays a plain clone and overrides chain via `with_*`.
+- **Copy front door, `_in_place` fast path.** A transform that resizes or reinterprets a source's
+  bytes ships as a **pair**: the **plain name returns a fresh copy** (the non-mutating front door —
+  `resize_dtype`, `mask_filter`) and a **`_in_place`** twin **rewrites `self`** (reusing its
+  auto-resizable backing, no extra copy — `resize_dtype_in_place`, `mask_filter_in_place`,
+  `compress_in_place`). The copy is a thin `clone → _in_place`, so the in-place form is the single
+  implementation and the two never drift. Both **pre-size every buffer to its known final length**
+  (`with_capacity` / `vec![0; n]`) and grow a `String`/`Vec` once, never element-by-element.
+- **The stored bytes have an element type.** A byte region interpreted as fixed-width values
+  carries a [`dtype::DataTypeId`] in its `Headers` (`Elem-Type-Id`); `IOBase::dtype()` /
+  `set_dtype()` read/write it, `element_count()` derives the count, `resize_dtype*` widens/shrinks
+  between widths (numeric, saturating on narrowing), and the `Aggregate` trait's vectorized
+  `sum`/`min`/`max`/`mean`/`std`/`first`/`last`/`count_ge` reduce over that dtype for every source.
 - **One file per public type.** Mirror the nearest neighbour's structure, naming, error style,
   and doc style.
 - **Minimize `Option`.** Only when absence is a real, distinct state a caller must handle.

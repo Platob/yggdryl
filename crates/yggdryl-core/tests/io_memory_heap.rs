@@ -938,25 +938,32 @@ fn bulk_numeric_default_kernel_matches_heap_override() {
 // -------------------------------------------------------------------------------------
 
 #[test]
-fn readline_advances_and_keeps_newline() {
-    let mut cur = Heap::from_slice(b"alpha\nbeta\n\ngamma").cursor();
-    assert_eq!(cur.readline().unwrap(), "alpha\n");
-    assert_eq!(cur.position(), 6);
-    assert_eq!(cur.readline().unwrap(), "beta\n");
-    assert_eq!(cur.readline().unwrap(), "\n"); // blank line — carries its newline
-    assert_eq!(cur.readline().unwrap(), "gamma"); // last line, no trailing newline
+fn readline_strips_terminators_and_is_quote_aware() {
+    // CRLF + LF terminators stripped; blank line kept (advances) but EOF does not advance.
+    let mut cur = Heap::from_slice(b"alpha\r\nbeta\n\ngamma").cursor();
+    assert_eq!(cur.readline().unwrap(), "alpha"); // \r\n stripped
+    assert_eq!(cur.readline().unwrap(), "beta");
+    assert_eq!(cur.readline().unwrap(), ""); // blank line — advanced
+    assert_eq!(cur.readline().unwrap(), "gamma"); // last line, no terminator
+    let at_eof = cur.position();
     assert_eq!(cur.readline().unwrap(), ""); // EOF
-    assert_eq!(cur.readline().unwrap(), ""); // still EOF, idempotent
+    assert_eq!(cur.position(), at_eof); // EOF does not advance (distinct from a blank line)
+
+    // A newline inside a quoted field does not split the record; "" is an escaped quote.
+    let mut csv = Heap::from_slice(b"a,\"x\ny\",b\n\"esc \"\" quote\"\nlast").cursor();
+    assert_eq!(csv.readline().unwrap(), "a,\"x\ny\",b");
+    assert_eq!(csv.readline().unwrap(), "\"esc \"\" quote\"");
+    assert_eq!(csv.readline().unwrap(), "last");
 }
 
 #[test]
 fn readlines_collects_every_line() {
     let mut cur = Heap::from_slice(b"a\n\nb\n").cursor();
-    assert_eq!(cur.readlines().unwrap(), vec!["a\n", "\n", "b\n"]);
+    assert_eq!(cur.readlines().unwrap(), vec!["a", "", "b"]); // blank line kept, terminators gone
     assert_eq!(cur.position(), 5);
     // From a mid-stream position, readlines only sees the remainder (position 3 = start of "b").
     cur.set_position(3);
-    assert_eq!(cur.readlines().unwrap(), vec!["b\n"]);
+    assert_eq!(cur.readlines().unwrap(), vec!["b"]);
     // A line spanning more than one 256-byte scan chunk is still read whole.
     let long = vec![b'x'; 700];
     let mut long_cur = Heap::from_slice(&long).cursor();
@@ -1167,4 +1174,100 @@ fn move_into_of_an_empty_source_empties_the_destination() {
     assert_eq!(src.move_into(&mut dst).unwrap(), 0);
     assert_eq!(dst.byte_size(), 0);
     assert_eq!(src.byte_size(), 0);
+}
+
+// -------------------------------------------------------------------------------------
+// DataTypeId + element dtype + resize_dtype + aggregations (Aggregate over any IOBase)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn dtype_and_resize_widen_and_shrink() {
+    use yggdryl_core::dtype::DataTypeId;
+    let mut h = Heap::new();
+    h.pwrite_i64_array(0, &[1, -2, 3, 1_000_000]).unwrap();
+    h.set_dtype(DataTypeId::I64);
+    assert_eq!(h.dtype(), DataTypeId::I64);
+    assert_eq!(h.element_count(), 4);
+
+    // The copy form leaves the source untouched.
+    let narrowed = h.resize_dtype(DataTypeId::I32).unwrap();
+    assert_eq!(narrowed.byte_size(), 16);
+    assert_eq!(h.byte_size(), 32); // source unchanged
+
+    // Shrink i64 -> i32 in place preserving in-range values.
+    assert_eq!(h.resize_dtype_in_place(DataTypeId::I32).unwrap(), 4);
+    assert_eq!(h.byte_size(), 16);
+    let mut back = [0i32; 4];
+    h.pread_i32_array(0, &mut back).unwrap();
+    assert_eq!(back, [1, -2, 3, 1_000_000]);
+
+    // Widen i32 -> f64 in place.
+    h.resize_dtype_in_place(DataTypeId::F64).unwrap();
+    let mut fs = [0f64; 4];
+    h.pread_f64_array(0, &mut fs).unwrap();
+    assert_eq!(fs, [1.0, -2.0, 3.0, 1_000_000.0]);
+
+    // A narrowing conversion saturates rather than wrapping.
+    let mut big = Heap::new();
+    big.pwrite_i64(0, 5_000_000_000).unwrap(); // > i32::MAX
+    big.set_dtype(DataTypeId::I64);
+    big.resize_dtype_in_place(DataTypeId::I32).unwrap();
+    assert_eq!(big.pread_i32(0).unwrap(), i32::MAX); // saturated, not wrapped
+}
+
+#[test]
+fn aggregations_over_a_heap() {
+    use yggdryl_core::io::memory::Aggregate;
+    let mut h = Heap::new();
+    h.pwrite_i64_array(0, &[4, 8, 15, 16, 23, 42]).unwrap();
+    assert_eq!(h.sum_i64(0, 6).unwrap(), 108);
+    assert_eq!(h.min_i64(0, 6).unwrap(), Some(4));
+    assert_eq!(h.max_i64(0, 6).unwrap(), Some(42));
+    assert_eq!(h.mean_i64(0, 6).unwrap(), Some(18.0));
+    assert_eq!(h.first_i64(0, 6).unwrap(), Some(4));
+    assert_eq!(h.last_i64(0, 6).unwrap(), Some(42));
+    assert_eq!(h.count_ge_i64(0, 6, 16).unwrap(), 3);
+    // std of [4,8,15,16,23,42]: population std dev sqrt(910/6) ~ 12.315
+    let std = h.std_i64(0, 6).unwrap().unwrap();
+    assert!((std - 12.315).abs() < 0.01, "std = {std}");
+
+    // Float aggregation across the streaming chunk boundary (> AGG_CHUNK).
+    let data: Vec<f64> = (0..5000).map(|i| i as f64).collect();
+    let mut f = Heap::new();
+    f.pwrite_f64_array(0, &data).unwrap();
+    assert_eq!(f.sum_f64(0, 5000).unwrap(), (0..5000).sum::<i64>() as f64);
+    assert_eq!(f.max_f64(0, 5000).unwrap(), Some(4999.0));
+    assert_eq!(f.mean_f64(0, 5000).unwrap(), Some(2499.5));
+    // Empty range -> None / 0.
+    assert_eq!(h.min_i64(0, 0).unwrap(), None);
+    assert_eq!(h.sum_i64(0, 0).unwrap(), 0);
+}
+
+#[test]
+fn mask_filter_selects_elements_by_bitmask() {
+    use yggdryl_core::dtype::DataTypeId;
+    let mut data = Heap::new();
+    data.pwrite_i64_array(0, &[10, 20, 30, 40, 50]).unwrap();
+    data.set_dtype(DataTypeId::I64);
+    // Keep elements 0, 2, 4 (bits 0b0001_0101).
+    let mask = Heap::from_slice(&[0b0001_0101]);
+
+    // Copy form leaves the source untouched.
+    let kept = data.mask_filter(&mask).unwrap();
+    assert_eq!(kept.byte_size(), 24); // 3 kept x 8 bytes
+    let mut out = [0i64; 3];
+    kept.pread_i64_array(0, &mut out).unwrap();
+    assert_eq!(out, [10, 30, 50]);
+    assert_eq!(data.byte_size(), 40); // source unchanged
+
+    // In-place form compacts the source itself.
+    assert_eq!(data.mask_filter_in_place(&mask).unwrap(), 3);
+    assert_eq!(data.byte_size(), 24);
+    data.pread_i64_array(0, &mut out).unwrap();
+    assert_eq!(out, [10, 30, 50]);
+    assert_eq!(data.element_count(), 3); // dtype preserved -> count updated
+
+    // No element type -> guided error.
+    let mut raw = Heap::from_slice(b"raw");
+    assert!(raw.mask_filter_in_place(&mask).is_err());
 }

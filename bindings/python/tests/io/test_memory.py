@@ -20,6 +20,7 @@ import pytest
 
 import yggdryl.memory
 from yggdryl.compression import Gzip, Zstd
+from yggdryl.dtype import DataTypeId
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
 from yggdryl.mediatype import MediaType
@@ -1120,17 +1121,28 @@ def test_heap_pwrite_from_positioned_slice():
 
 def test_heap_readline_and_readlines():
     h = Heap(b"first\nsecond")
-    assert h.readline() == "first\n"
-    assert h.readline() == "second"  # no trailing newline at the end
-    assert h.readline() == ""  # now at EOF
+    assert h.readline() == "first"  # the trailing \n is stripped
+    assert h.readline() == "second"  # last line, no terminator
+    assert h.readline() == ""  # now at EOF (returns "" without advancing)
     h2 = Heap(b"a\n\nb\n")
-    assert h2.readlines() == ["a\n", "\n", "b\n"]  # a blank line keeps its \n
+    assert h2.readlines() == ["a", "", "b"]  # blank line kept, terminators stripped
+
+
+def test_heap_readline_strips_crlf_and_honors_quoted_newlines():
+    # A CRLF terminator is stripped whole (not just the \n).
+    crlf = Heap(b"first\r\nsecond")
+    assert crlf.readline() == "first"
+    assert crlf.readline() == "second"
+    # CSV-aware: a \n inside a double-quoted field does not end the record.
+    csv = Heap(b'a,"x\ny",b\nnext')
+    assert csv.readline() == 'a,"x\ny",b'
+    assert csv.readline() == "next"
 
 
 def test_cursor_readline_and_readlines():
     cur = Cursor(b"one\ntwo\n")
-    assert cur.readline() == "one\n"
-    assert cur.readlines() == ["two\n"]  # continues from the cursor
+    assert cur.readline() == "one"  # the trailing \n is stripped
+    assert cur.readlines() == ["two"]  # continues from the cursor
 
 
 # -------------------------------------------------------------------------------------
@@ -1262,13 +1274,15 @@ def test_cursor_from_io_positions_at_tell():
 def test_heap_line_iteration():
     h = Heap(b"a\nb\nc")
     assert iter(h) is h  # the iterator protocol
-    assert list(h) == ["a\n", "b\n", "c"]  # lines from the cursor, last without a newline
-    assert [line for line in Heap(b"x\ny\n")] == ["x\n", "y\n"]
+    assert list(h) == ["a", "b", "c"]  # lines from the cursor, terminators stripped
+    assert [line for line in Heap(b"x\ny\n")] == ["x", "y"]
+    # A blank line is yielded (as ""); only EOF (a readline that consumes nothing) stops.
+    assert list(Heap(b"a\n\nb")) == ["a", "", "b"]
 
 
 def test_cursor_line_iteration():
     cur = Cursor(b"one\ntwo\n")
-    assert list(cur) == ["one\n", "two\n"]
+    assert list(cur) == ["one", "two"]
 
 
 # -------------------------------------------------------------------------------------
@@ -1459,3 +1473,167 @@ def test_open_rejects_unknown_scheme_and_type():
         yggdryl.open("http://example.com/x")  # unsupported scheme
     with pytest.raises(TypeError):
         yggdryl.open(1234)  # not an address / bytes / PathLike
+
+
+# -------------------------------------------------------------------------------------
+# Element type (dtype) + transforms: dtype / element_count / resize_dtype / mask_filter
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_dtype_get_set_and_element_count():
+    h = Heap()
+    assert h.dtype() == DataTypeId.Unknown  # no declared element type by default
+    assert h.element_count() == 0  # Unknown has no element count
+    h.pwrite_i64_array(0, [1, 2, 3])
+    h.set_dtype(DataTypeId.I64)
+    assert h.dtype() == DataTypeId.I64
+    assert h.element_count() == 3  # 24 bytes / 8
+    # The declared type is stored in the headers (Elem-Type-Id).
+    assert h.headers.elem_type_id() == DataTypeId.I64
+    # Unknown clears it.
+    h.set_dtype(DataTypeId.Unknown)
+    assert h.dtype() == DataTypeId.Unknown
+
+
+def test_heap_resize_dtype_copy_leaves_source_untouched():
+    src = Heap()
+    src.pwrite_i64_array(0, [1, -2, 3])
+    src.set_dtype(DataTypeId.I64)
+    narrowed = src.resize_dtype(DataTypeId.I32)  # 24 -> 12 byte copy
+    assert isinstance(narrowed, Heap)
+    assert narrowed.byte_size() == 12
+    assert narrowed.dtype() == DataTypeId.I32
+    assert narrowed.pread_i32_array(0, 3) == [1, -2, 3]
+    assert src.byte_size() == 24  # the source is untouched
+    assert src.dtype() == DataTypeId.I64
+
+
+def test_heap_resize_dtype_in_place_widens_and_returns_count():
+    h = Heap()
+    h.pwrite_i32_array(0, [1, 2, 3, 4])
+    h.set_dtype(DataTypeId.I32)
+    n = h.resize_dtype_in_place(DataTypeId.I64)  # widen 16 -> 32 bytes
+    assert n == 4
+    assert h.dtype() == DataTypeId.I64
+    assert h.pread_i64_array(0, 4) == [1, 2, 3, 4]
+
+
+def test_heap_resize_dtype_without_a_type_is_guided():
+    h = Heap(b"\x00\x00\x00\x00")  # no declared element type
+    with pytest.raises(ValueError, match="element type"):
+        h.resize_dtype(DataTypeId.I32)
+
+
+def test_heap_mask_filter_copy_selects_set_bits():
+    src = Heap()
+    src.pwrite_i32_array(0, [10, 20, 30, 40])
+    src.set_dtype(DataTypeId.I32)
+    mask = Heap(bytes([0b1010]))  # bits 1 and 3 set (LSB-first) -> keep elements 1, 3
+    kept = src.mask_filter(mask)
+    assert isinstance(kept, Heap)
+    assert kept.pread_i32_array(0, 2) == [20, 40]
+    assert src.pread_i32_array(0, 4) == [10, 20, 30, 40]  # the source is untouched
+
+
+def test_heap_mask_filter_in_place_compacts_and_returns_count():
+    h = Heap()
+    h.pwrite_i32_array(0, [10, 20, 30, 40])
+    h.set_dtype(DataTypeId.I32)
+    mask = Heap(bytes([0b0101]))  # bits 0 and 2 set -> keep elements 0, 2
+    kept = h.mask_filter_in_place(mask)
+    assert kept == 2
+    assert h.pread_i32_array(0, 2) == [10, 30]
+    assert h.byte_size() == 8  # truncated to the kept length
+
+
+def test_heap_mask_filter_without_a_type_is_guided():
+    h = Heap(b"\x01\x02\x03\x04")  # no declared element type to select over
+    with pytest.raises(ValueError, match="element type"):
+        h.mask_filter(Heap(bytes([0b1])))
+
+
+# -------------------------------------------------------------------------------------
+# Vectorized aggregations (sum / min / max / mean / std / first / last / count_ge)
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_integer_aggregations():
+    h = Heap()
+    h.pwrite_i64_array(0, [4, 8, 15, 16, 23, 42])
+    assert h.sum_i64(0, 6) == 108
+    assert h.min_i64(0, 6) == 4
+    assert h.max_i64(0, 6) == 42
+    assert h.mean_i64(0, 6) == 18.0
+    assert h.first_i64(0, 6) == 4
+    assert h.last_i64(0, 6) == 42
+    assert h.count_ge_i64(0, 6, 16) == 3  # 16, 23, 42
+    assert h.std_i64(0, 6) == pytest.approx(12.3153, rel=1e-4)
+
+
+def test_heap_aggregations_all_representative_types():
+    for t, values in [
+        ("i32", [-5, 0, 5, 10]),
+        ("i64", [1 << 40, (1 << 40) + 1]),
+        ("u32", [1, 2, 3, 4]),
+        ("u64", [10, 20, 30]),
+        ("f32", [1.0, 2.0, 3.0, 4.0]),
+        ("f64", [1.5, 2.5, 3.5]),
+    ]:
+        h = Heap()
+        getattr(h, f"pwrite_{t}_array")(0, values)
+        n = len(values)
+        assert getattr(h, f"sum_{t}")(0, n) == sum(values), t
+        assert getattr(h, f"min_{t}")(0, n) == min(values), t
+        assert getattr(h, f"max_{t}")(0, n) == max(values), t
+        assert getattr(h, f"mean_{t}")(0, n) == pytest.approx(sum(values) / n), t
+        assert getattr(h, f"first_{t}")(0, n) == pytest.approx(values[0]), t
+        assert getattr(h, f"last_{t}")(0, n) == pytest.approx(values[-1]), t
+        assert getattr(h, f"std_{t}")(0, n) >= 0.0, t
+        assert getattr(h, f"count_ge_{t}")(0, n, min(values)) == n, t
+
+
+def test_heap_aggregations_empty_is_none():
+    h = Heap()  # no data
+    assert h.min_i32(0, 0) is None
+    assert h.max_i32(0, 0) is None
+    assert h.mean_i32(0, 0) is None
+    assert h.std_i32(0, 0) is None
+    assert h.first_i32(0, 0) is None
+    assert h.last_i32(0, 0) is None
+    assert h.sum_i32(0, 0) == 0  # an empty sum is the zero of the accumulator
+    assert h.count_ge_i32(0, 0, 0) == 0
+
+
+def test_heap_float_min_max_ignore_nan():
+    h = Heap()
+    h.pwrite_f64_array(0, [1.0, float("nan"), 3.0, 2.0])
+    assert h.min_f64(0, 4) == 1.0  # NaN is ignored order-independently
+    assert h.max_f64(0, 4) == 3.0
+
+
+# -------------------------------------------------------------------------------------
+# Headers: storage element type + resource name conveniences
+# -------------------------------------------------------------------------------------
+
+
+def test_headers_elem_type_id_round_trip():
+    hdr = Headers()
+    assert hdr.elem_type_id() == DataTypeId.Unknown  # nothing declared
+    assert hdr.elem_byte_size() == 0
+    assert hdr.elem_bit_size() == 0
+    hdr.set_elem_type_id(DataTypeId.I64)
+    assert hdr.elem_type_id() == DataTypeId.I64
+    assert hdr.elem_byte_size() == 8
+    assert hdr.elem_bit_size() == 64
+    # Unknown removes the header.
+    hdr.set_elem_type_id(DataTypeId.Unknown)
+    assert hdr.elem_type_id() == DataTypeId.Unknown
+    assert not hdr.contains(Headers.ELEM_TYPE_ID)
+
+
+def test_headers_name_round_trip():
+    hdr = Headers()
+    assert hdr.name() is None
+    hdr.set_name("column_1")
+    assert hdr.name() == "column_1"
+    assert hdr.get(Headers.NAME) == "column_1"

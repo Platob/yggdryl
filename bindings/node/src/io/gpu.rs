@@ -19,6 +19,7 @@ use napi_derive::napi;
 use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::{check_bulk_read, to_error};
 use yggdryl_core::io::gpu::{self as core, Compute, GpuMemory};
+use yggdryl_core::io::memory::Aggregate;
 use yggdryl_core::io::memory::IOBase;
 
 /// A Java-style `i32` content hash of a value, folding the 64-bit hash halves.
@@ -262,11 +263,12 @@ impl AmdBuffer {
             .map_err(to_error)
     }
 
-    // ---- Compute: auto-dispatched aggregations, filter, and device-aware copy ----------
+    // ---- aggregations, filter, and device-aware copy -----------------------------------
     //
-    // Each is a thin delegation to the core `Compute` blanket trait (in scope via the
-    // `Compute` import): the op first consults `computeBackend` for the GPU seam, then runs
-    // the dense vectorized reduction streamed through a fixed stack chunk. `offset` / `count`
+    // The reductions delegate to the core `Aggregate` blanket trait (in scope via the
+    // `Aggregate` import); the device-aware `computeBackend` / `computeCopyInto` stay on the
+    // gpu `Compute` trait. Each op runs the dense vectorized reduction streamed through a fixed
+    // stack chunk (a GPU-backed source overrides it with a device kernel). `offset` / `count`
     // cross as `u32` like the bulk byte surface; a `count` past the buffer throws the core's
     // guided EOF text. 64-bit crossings follow the buffer's convention — an `i64` accumulator
     // is a JS number (exact to 2^53), an `i128` sum is a `BigInt`, and an `i64` threshold is a
@@ -404,6 +406,109 @@ impl AmdBuffer {
     pub fn mean_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
         self.inner
             .mean_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `i32`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_i32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `i64`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_i64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `f32`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_f32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `f64`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `i32` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn first_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .first_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `i32` of the `count` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn last_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .last_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `i64` at `offset` (a JS number, exact to 2^53), or `null` when `count == 0`.
+    #[napi]
+    pub fn first_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .first_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `i64` of the `count` at `offset` (a JS number), or `null` when `count == 0`.
+    #[napi]
+    pub fn last_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .last_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `f32` at `offset` (widened to a JS number), or `null` when `count == 0`.
+    #[napi]
+    pub fn first_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .first_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// The **last** `f32` of the `count` at `offset` (widened to a JS number), or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn last_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .last_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// The **first** `f64` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn first_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .first_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `f64` of the `count` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn last_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .last_f64(offset as u64, count as usize)
             .map_err(to_error)
     }
 

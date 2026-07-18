@@ -40,13 +40,14 @@ use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
+use crate::dtype::DataTypeId;
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 use crate::uri::Uri;
-use yggdryl_core::io::memory::{self, IOBase, IoError};
+use yggdryl_core::io::memory::{self, Aggregate, IOBase, IoError};
 use yggdryl_core::io::Serializable;
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
@@ -193,6 +194,63 @@ macro_rules! bulk_methods {
                     "` copies of `value` at `offset` (no full array is built).")]
                 fn $repeat(&mut self, offset: u64, value: $t, count: usize) -> PyResult<()> {
                     self.inner.$repeat(offset, value, count).map_err(ioerr)
+                }
+            )+
+        }
+    };
+}
+
+/// Emits a `#[pymethods]` block of the [`Aggregate`] reductions (`sum` / `min` / `max` / `mean` /
+/// `std` / `first` / `last` / `count_ge`) for one numeric type over an `inner`-backed source —
+/// each a one-line delegation to the core `Aggregate` blanket trait. `$acc` is the sum accumulator
+/// width (`i32` / `u32` → `i64`, `i64` / `u64` → `i128`, the floats → `f64`).
+macro_rules! agg_methods {
+    ($Ty:ty $(, ($t:ty, $acc:ty, $sum:ident, $min:ident, $max:ident, $mean:ident, $std:ident,
+        $first:ident, $last:ident, $count_ge:ident))+ $(,)?) => {
+        #[pymethods]
+        impl $Ty {
+            $(
+                #[doc = concat!("**Sum** of `count` little-endian `", stringify!($t),
+                    "`s at `offset` (accumulated as `", stringify!($acc), "`).")]
+                fn $sum(&self, offset: u64, count: usize) -> PyResult<$acc> {
+                    self.inner.$sum(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("**Minimum** of `count` `", stringify!($t),
+                    "`s at `offset` (a float min ignores NaN), or `None` when `count == 0`.")]
+                fn $min(&self, offset: u64, count: usize) -> PyResult<Option<$t>> {
+                    self.inner.$min(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("**Maximum** of `count` `", stringify!($t),
+                    "`s at `offset` (a float max ignores NaN), or `None` when `count == 0`.")]
+                fn $max(&self, offset: u64, count: usize) -> PyResult<Option<$t>> {
+                    self.inner.$max(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("**Mean** of `count` `", stringify!($t),
+                    "`s at `offset` as `float`, or `None` when `count == 0`.")]
+                fn $mean(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+                    self.inner.$mean(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("**Population standard deviation** of `count` `", stringify!($t),
+                    "`s at `offset` as `float`, or `None` when `count == 0`.")]
+                fn $std(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+                    self.inner.$std(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("The **first** `", stringify!($t),
+                    "` at `offset`, or `None` when `count == 0`.")]
+                fn $first(&self, offset: u64, count: usize) -> PyResult<Option<$t>> {
+                    self.inner.$first(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("The **last** `", stringify!($t),
+                    "` of the `count` at `offset`, or `None` when `count == 0`.")]
+                fn $last(&self, offset: u64, count: usize) -> PyResult<Option<$t>> {
+                    self.inner.$last(offset, count).map_err(ioerr)
+                }
+                #[doc = concat!("**Filter count** — how many of `count` `", stringify!($t),
+                    "`s at `offset` are `>= threshold`.")]
+                fn $count_ge(&self, offset: u64, count: usize, threshold: $t) -> PyResult<usize> {
+                    self.inner
+                        .$count_ge(offset, count, threshold)
+                        .map_err(ioerr)
                 }
             )+
         }
@@ -679,6 +737,65 @@ impl Heap {
             .map_err(ioerr)
     }
 
+    // ---- element type + transforms -----------------------------------------------------
+
+    /// The source's declared **element** [`DataTypeId`] — read from its headers
+    /// (`ELEM_TYPE_ID`), or [`DataTypeId.Unknown`](DataTypeId::Unknown) when none is set.
+    fn dtype(&self) -> DataTypeId {
+        self.inner.dtype().into()
+    }
+
+    /// Declares the source's element [`DataTypeId`] in its headers (so `dtype` /
+    /// `element_count` report it). [`Unknown`](DataTypeId::Unknown) clears it.
+    fn set_dtype(&mut self, dtype: DataTypeId) {
+        self.inner.set_dtype(dtype.into());
+    }
+
+    /// How many whole [`dtype`](Heap::dtype) elements the source currently holds —
+    /// `byte_size() / dtype.byte_size()`, or `0` when the type is unknown.
+    fn element_count(&self) -> u64 {
+        self.inner.element_count()
+    }
+
+    /// **Widens or shrinks the element type, returning a fresh converted [`Heap`]** — reinterprets
+    /// every stored element from the current [`dtype`](Heap::dtype) to `to` at the new width (`i64`
+    /// → `i32`, `i32` → `f64`, …), leaving `self` untouched. Raises a guided `ValueError` when
+    /// either side has no known element type (call `set_dtype` first).
+    fn resize_dtype(&self, to: DataTypeId) -> PyResult<Heap> {
+        self.inner
+            .resize_dtype(to.into())
+            .map(|inner| Heap { inner })
+            .map_err(ioerr)
+    }
+
+    /// **Widens or shrinks the element type in place** — rewrites `self`'s bytes at the new width
+    /// and updates the `Elem-Type-Id` header, returning the element count. A narrowing integer
+    /// target saturates, a float target rounds. Raises a guided `ValueError` when either side has
+    /// no known element type.
+    fn resize_dtype_in_place(&mut self, to: DataTypeId) -> PyResult<u64> {
+        self.inner.resize_dtype_in_place(to.into()).map_err(ioerr)
+    }
+
+    /// **Selects elements by a bitmask, returning a fresh compacted [`Heap`]** — keeps each
+    /// `dtype`-width element whose corresponding **bit is set** in `mask` (another [`Heap`] read as
+    /// an LSB-first bit buffer: bit `i` selects element `i`), dropping the rest and leaving `self`
+    /// untouched. Raises a guided `ValueError` when `self` has no element type or `mask` has fewer
+    /// bits than elements.
+    fn mask_filter(&self, mask: &Heap) -> PyResult<Heap> {
+        self.inner
+            .mask_filter(&mask.inner)
+            .map(|inner| Heap { inner })
+            .map_err(ioerr)
+    }
+
+    /// **Selects elements by a bitmask in place** — forward-compacts the kept `dtype`-width
+    /// elements to the front of `self` and truncates to the kept length, returning the kept element
+    /// count. Raises a guided `ValueError` when `self` has no element type or `mask` has fewer bits
+    /// than elements.
+    fn mask_filter_in_place(&mut self, mask: &Heap) -> PyResult<u64> {
+        self.inner.mask_filter_in_place(&mask.inner).map_err(ioerr)
+    }
+
     // ---- cursor ------------------------------------------------------------------------
 
     /// The current cursor position (bytes from the start). May sit past the end after a seek.
@@ -784,15 +901,18 @@ impl Heap {
         Ok(bytes)
     }
 
-    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
-    /// to the end if none), decoded as UTF-8 — advancing the cursor past it. Returns `""`
-    /// **only** at the true end, so a blank line (which keeps its `\n`) is distinct from EOF.
+    /// **Reads one line** from the cursor — the content up to the next line terminator with the
+    /// trailing `\n` / `\r\n` **stripped**, decoded as UTF-8 — advancing the cursor past the
+    /// terminator. **CSV-aware**: a `\n` inside a double-quoted field does not end the line. A
+    /// blank line returns `""` but **advances**; at the true end it returns `""` **without**
+    /// advancing (that is how iteration stops).
     fn readline(&mut self) -> PyResult<String> {
         self.inner.readline().map_err(ioerr)
     }
 
-    /// **Reads every remaining line** from the cursor into a list, advancing it to the end —
-    /// each element keeps its trailing `\n` except possibly the last.
+    /// **Reads every remaining line** from the cursor into a list, advancing it to the end — each
+    /// element has its trailing line terminator stripped (blank lines kept, quoted newlines
+    /// honored).
     fn readlines(&mut self) -> PyResult<Vec<String>> {
         self.inner.readlines().map_err(ioerr)
     }
@@ -1206,10 +1326,13 @@ impl Heap {
         slf
     }
 
-    /// The next line from the cursor, or `StopIteration` at the true end.
+    /// The next line from the cursor, or `StopIteration` at the true end — a line that advanced
+    /// the cursor (including a blank line, yielded as `""`), stopping only when `readline`
+    /// consumes nothing.
     fn __next__(&mut self) -> PyResult<Option<String>> {
+        let start = self.inner.position();
         let line = self.inner.readline().map_err(ioerr)?;
-        Ok((!line.is_empty()).then_some(line))
+        Ok((self.inner.position() != start).then_some(line))
     }
 
     fn __repr__(&self) -> String {
@@ -1274,6 +1397,83 @@ bulk_methods!(
         pread_u128_array,
         pwrite_u128_array,
         pwrite_u128_repeat
+    ),
+);
+// The vectorized statistical aggregations — the core `Aggregate` blanket trait over any source —
+// for a representative set of native widths. `count` is the **element** count, not bytes.
+agg_methods!(
+    Heap,
+    (
+        i32,
+        i64,
+        sum_i32,
+        min_i32,
+        max_i32,
+        mean_i32,
+        std_i32,
+        first_i32,
+        last_i32,
+        count_ge_i32
+    ),
+    (
+        i64,
+        i128,
+        sum_i64,
+        min_i64,
+        max_i64,
+        mean_i64,
+        std_i64,
+        first_i64,
+        last_i64,
+        count_ge_i64
+    ),
+    (
+        u32,
+        i64,
+        sum_u32,
+        min_u32,
+        max_u32,
+        mean_u32,
+        std_u32,
+        first_u32,
+        last_u32,
+        count_ge_u32
+    ),
+    (
+        u64,
+        i128,
+        sum_u64,
+        min_u64,
+        max_u64,
+        mean_u64,
+        std_u64,
+        first_u64,
+        last_u64,
+        count_ge_u64
+    ),
+    (
+        f32,
+        f64,
+        sum_f32,
+        min_f32,
+        max_f32,
+        mean_f32,
+        std_f32,
+        first_f32,
+        last_f32,
+        count_ge_f32
+    ),
+    (
+        f64,
+        f64,
+        sum_f64,
+        min_f64,
+        max_f64,
+        mean_f64,
+        std_f64,
+        first_f64,
+        last_f64,
+        count_ge_f64
     ),
 );
 
@@ -1431,15 +1631,18 @@ impl Cursor {
         Ok(bytes)
     }
 
-    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
-    /// to the end if none), decoded as UTF-8 — advancing the cursor past it. Returns `""`
-    /// **only** at the true end (a blank line keeps its `\n`).
+    /// **Reads one line** from the cursor — the content up to the next line terminator with the
+    /// trailing `\n` / `\r\n` **stripped**, decoded as UTF-8 — advancing the cursor past the
+    /// terminator. **CSV-aware**: a `\n` inside a double-quoted field does not end the line. A
+    /// blank line returns `""` but **advances**; at the true end it returns `""` **without**
+    /// advancing (that is how iteration stops).
     fn readline(&mut self) -> PyResult<String> {
         self.inner.readline().map_err(ioerr)
     }
 
-    /// **Reads every remaining line** from the cursor into a list, advancing it to the end —
-    /// each element keeps its trailing `\n` except possibly the last.
+    /// **Reads every remaining line** from the cursor into a list, advancing it to the end — each
+    /// element has its trailing line terminator stripped (blank lines kept, quoted newlines
+    /// honored).
     fn readlines(&mut self) -> PyResult<Vec<String>> {
         self.inner.readlines().map_err(ioerr)
     }
@@ -1773,10 +1976,13 @@ impl Cursor {
         slf
     }
 
-    /// The next line from the cursor, or `StopIteration` at the true end.
+    /// The next line from the cursor, or `StopIteration` at the true end — a line that advanced
+    /// the cursor (including a blank line, yielded as `""`), stopping only when `readline`
+    /// consumes nothing.
     fn __next__(&mut self) -> PyResult<Option<String>> {
+        let start = self.inner.position();
         let line = self.inner.readline().map_err(ioerr)?;
-        Ok((!line.is_empty()).then_some(line))
+        Ok((self.inner.position() != start).then_some(line))
     }
 
     fn __repr__(&self) -> String {

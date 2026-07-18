@@ -29,7 +29,9 @@ use pyo3::types::PyBytes;
 use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::bulk_eof;
 use yggdryl_core::io::gpu::{self, Compute, GpuMemory};
-use yggdryl_core::io::memory::{IOBase, IoError};
+// The statistical aggregations moved from the gpu `Compute` trait onto the `Aggregate` blanket
+// trait over any `IOBase`; import it so `sum_i32` / `std_i32` / … resolve on `AmdBuffer`.
+use yggdryl_core::io::memory::{Aggregate, IOBase, IoError};
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
@@ -400,6 +402,70 @@ impl AmdBuffer {
         self.inner
             .count_ge_f64(offset, count, threshold)
             .map_err(ioerr)
+    }
+
+    /// **Population standard deviation** of `count` `i32`s at `offset` as `float`, or `None` when
+    /// `count == 0`.
+    fn std_i32(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.std_i32(offset, count).map_err(ioerr)
+    }
+
+    /// **Population standard deviation** of `count` `i64`s at `offset` as `float`, or `None` when
+    /// `count == 0`.
+    fn std_i64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.std_i64(offset, count).map_err(ioerr)
+    }
+
+    /// **Population standard deviation** of `count` `f32`s at `offset` as `float`, or `None` when
+    /// `count == 0`.
+    fn std_f32(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.std_f32(offset, count).map_err(ioerr)
+    }
+
+    /// **Population standard deviation** of `count` `f64`s at `offset` as `float`, or `None` when
+    /// `count == 0`.
+    fn std_f64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.std_f64(offset, count).map_err(ioerr)
+    }
+
+    /// The **first** `i32` at `offset`, or `None` when `count == 0`.
+    fn first_i32(&self, offset: u64, count: usize) -> PyResult<Option<i32>> {
+        self.inner.first_i32(offset, count).map_err(ioerr)
+    }
+
+    /// The **first** `i64` at `offset`, or `None` when `count == 0`.
+    fn first_i64(&self, offset: u64, count: usize) -> PyResult<Option<i64>> {
+        self.inner.first_i64(offset, count).map_err(ioerr)
+    }
+
+    /// The **first** `f32` at `offset`, or `None` when `count == 0`.
+    fn first_f32(&self, offset: u64, count: usize) -> PyResult<Option<f32>> {
+        self.inner.first_f32(offset, count).map_err(ioerr)
+    }
+
+    /// The **first** `f64` at `offset`, or `None` when `count == 0`.
+    fn first_f64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.first_f64(offset, count).map_err(ioerr)
+    }
+
+    /// The **last** `i32` of the `count` at `offset`, or `None` when `count == 0`.
+    fn last_i32(&self, offset: u64, count: usize) -> PyResult<Option<i32>> {
+        self.inner.last_i32(offset, count).map_err(ioerr)
+    }
+
+    /// The **last** `i64` of the `count` at `offset`, or `None` when `count == 0`.
+    fn last_i64(&self, offset: u64, count: usize) -> PyResult<Option<i64>> {
+        self.inner.last_i64(offset, count).map_err(ioerr)
+    }
+
+    /// The **last** `f32` of the `count` at `offset`, or `None` when `count == 0`.
+    fn last_f32(&self, offset: u64, count: usize) -> PyResult<Option<f32>> {
+        self.inner.last_f32(offset, count).map_err(ioerr)
+    }
+
+    /// The **last** `f64` of the `count` at `offset`, or `None` when `count == 0`.
+    fn last_f64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.last_f64(offset, count).map_err(ioerr)
     }
 
     /// The backend the next op over `elements` values runs on — the token `"gpu"` (device

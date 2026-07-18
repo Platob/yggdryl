@@ -1210,8 +1210,18 @@ def test_localio_readline_and_readlines(root):
     node = root / "lines.txt"
     node.pwrite_utf8(0, "line1\nline2\n")
     node.rewind()
-    assert node.readline() == "line1\n"
-    assert node.readlines() == ["line2\n"]
+    assert node.readline() == "line1"  # the trailing \n is stripped
+    assert node.readlines() == ["line2"]
+    node.close()
+
+
+def test_localio_readline_strips_crlf_and_honors_quoted_newlines(root):
+    node = root / "crlf.csv"
+    node.pwrite_byte_array(0, b'a,"x\ny",b\r\nnext')
+    node.rewind()
+    # CSV-aware + CRLF terminator stripped whole.
+    assert node.readline() == 'a,"x\ny",b'
+    assert node.readline() == "next"
     node.close()
 
 
@@ -1387,7 +1397,7 @@ def test_localio_line_iteration(root):
     node.pwrite_utf8(0, "alpha\nbeta\ngamma")
     node.rewind()
     assert iter(node) is node
-    assert list(node) == ["alpha\n", "beta\n", "gamma"]  # lines, not children
+    assert list(node) == ["alpha", "beta", "gamma"]  # lines (terminators stripped), not children
     node.close()
 
 

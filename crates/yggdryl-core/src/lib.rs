@@ -8,6 +8,9 @@
 /// The io layer: byte / memory access and the shared value types.
 pub mod io;
 
+/// The primitive element data types ([`dtype::DataTypeId`]) a byte region is interpreted as.
+pub mod dtype;
+
 /// The project's one metadata map (ordered, case-insensitive, multi-value byte headers).
 pub mod headers;
 

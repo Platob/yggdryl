@@ -35,6 +35,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 
 use crate::compression::{as_dyn, wrap_codec, Gzip, Lzma, Zlib, Zstd};
+use crate::dtype::DataTypeId;
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
@@ -42,6 +43,7 @@ use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 use crate::uri::Uri;
 use yggdryl_core::io::memory as core;
+use yggdryl_core::io::memory::Aggregate;
 use yggdryl_core::io::memory::IOBase;
 use yggdryl_core::io::Serializable;
 
@@ -1146,17 +1148,20 @@ impl Heap {
 
     // ---- line-oriented reads -----------------------------------------------------------
 
-    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
-    /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
-    /// **only** at the true end, so a blank line (which still carries its `\n`) is distinct
-    /// from EOF.
+    /// **Reads one line** from the cursor — the content up to the next line terminator, with the
+    /// trailing `\n` / `\r\n` **stripped**, decoded as UTF-8 — and advances the cursor past the
+    /// terminator. It is **CSV-quote-aware**: a `\n` inside a double-quoted field does not end the
+    /// line. A blank line returns `""` but still advances; at the true end it returns `""`
+    /// **without** advancing, so EOF is distinguished from a blank line by whether the cursor moved.
     #[napi(js_name = "readline")]
     pub fn read_line(&mut self) -> napi::Result<String> {
         self.inner.readline().map_err(to_error)
     }
 
     /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
-    /// each element keeps its trailing `\n` except possibly the last.
+    /// each element has its trailing `\n` / `\r\n` **stripped** and honors quoted newlines (a
+    /// `\n` inside a double-quoted field does not split the record). Blank lines are kept (as
+    /// `""`); it stops at EOF.
     #[napi(js_name = "readlines")]
     pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
         self.inner.readlines().map_err(to_error)
@@ -1554,6 +1559,496 @@ impl Heap {
     #[napi]
     pub fn write_f64(&mut self, value: f64) -> napi::Result<()> {
         self.inner.write_f64(value).map_err(to_error)
+    }
+
+    // ---- element data type (from the headers) ------------------------------------------
+
+    /// This source's **element [`DataTypeId`]** — the storage type its `headers` declare
+    /// (`X-Elem-Type-Id`), or [`DataTypeId.Unknown`] (raw bytes) when none is set. This is what
+    /// the typed aggregations step by and what `resizeDtype` converts between.
+    #[napi]
+    pub fn dtype(&self) -> DataTypeId {
+        DataTypeId {
+            inner: self.inner.dtype(),
+        }
+    }
+
+    /// Declares the source's element [`DataTypeId`] in its headers (so `dtype()` / `elementCount()`
+    /// report it). [`DataTypeId.Unknown`] clears it.
+    #[napi]
+    pub fn set_dtype(&mut self, dtype: &DataTypeId) {
+        self.inner.set_dtype(dtype.inner);
+    }
+
+    /// How many whole `dtype` elements the source currently holds — `byteSize / dtype.byteSize`,
+    /// or `0` when the type is [`DataTypeId.Unknown`]. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn element_count(&self) -> i64 {
+        self.inner.element_count() as i64
+    }
+
+    /// **Widens or shrinks the element type, returning a fresh converted [`Heap`]** — reinterprets
+    /// every stored element from the current `dtype` to `to` at the new width (`i64` → `i32`,
+    /// `i32` → `f64`, …), leaving this heap untouched. The **copy** front door of
+    /// `resizeDtypeInPlace`; throws the guided `Error` when either side has no known element type.
+    #[napi]
+    pub fn resize_dtype(&self, to: &DataTypeId) -> napi::Result<Heap> {
+        self.inner
+            .resize_dtype(to.inner)
+            .map(|inner| Heap { inner })
+            .map_err(to_error)
+    }
+
+    /// **Widens or shrinks the element type in place** — rewrites this heap's bytes at the new
+    /// width and updates the `X-Elem-Type-Id` header; returns the element count. A narrowing
+    /// integer target saturates, a float target rounds; conversions carry through `f64`. Throws
+    /// the guided `Error` when either side has no known element type. An `i64` (a JS number).
+    #[napi]
+    pub fn resize_dtype_in_place(&mut self, to: &DataTypeId) -> napi::Result<i64> {
+        self.inner
+            .resize_dtype_in_place(to.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Selects elements by a bitmask, returning a fresh compacted [`Heap`]** — keeps each
+    /// `dtype`-width element whose corresponding **bit is set** in `mask` (read LSB-first: bit `i`
+    /// selects element `i`), dropping the rest. The **copy** front door of `maskFilterInPlace`;
+    /// this heap is untouched. Throws the guided `Error` with no known element type or a short mask.
+    #[napi]
+    pub fn mask_filter(&self, mask: &Heap) -> napi::Result<Heap> {
+        self.inner
+            .mask_filter(&mask.inner)
+            .map(|inner| Heap { inner })
+            .map_err(to_error)
+    }
+
+    /// **Selects elements by a bitmask in place** — forward-compacts the kept `dtype`-width
+    /// elements to the front and truncates to the kept length; returns the kept element count.
+    /// Throws the guided `Error` with no known element type or when `mask` has fewer bits than
+    /// elements. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn mask_filter_in_place(&mut self, mask: &Heap) -> napi::Result<i64> {
+        self.inner
+            .mask_filter_in_place(&mask.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    // ---- vectorized aggregations (i32 / i64 / u32 / u64 / f32 / f64) --------------------
+    //
+    // The `Aggregate` blanket trait streamed through a fixed stack chunk. `offset` / `count`
+    // cross as `u32` like the bulk byte surface, `count` being the **element** count (pair it
+    // with `elementCount()` to reduce the whole typed source); a `count` past the end throws the
+    // core's guided EOF text. 64-bit crossings follow the byte surface — an `i64` accumulator is
+    // a JS number (exact to 2^53), an `i128`/`u64` value is a `BigInt`; `f32` values widen to
+    // `f64` like `preadF32`. `min`/`max`/`first`/`last` are `null` when `count == 0`.
+
+    /// **Sum** of `count` `i32`s at `offset` (accumulated as `i64`). A JS number (exact to 2^53).
+    #[napi]
+    pub fn sum_i32(&self, offset: u32, count: u32) -> napi::Result<i64> {
+        self.inner
+            .sum_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `i32`s at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn min_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .min_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `i32`s at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn max_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .max_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `i32`s at `offset` as `f64`, or `null` when `count == 0`.
+    #[napi]
+    pub fn mean_i32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `i32`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_i32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `i32` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn first_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .first_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `i32` of the `count` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn last_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .last_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `i32`s at `offset` are `>= threshold`. A JS number.
+    #[napi]
+    pub fn count_ge_i32(&self, offset: u32, count: u32, threshold: i32) -> napi::Result<i64> {
+        self.inner
+            .count_ge_i32(offset as u64, count as usize, threshold)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `i64`s at `offset` (accumulated as `i128`, a `BigInt`).
+    #[napi]
+    pub fn sum_i64(&self, offset: u32, count: u32) -> napi::Result<i128> {
+        self.inner
+            .sum_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `i64`s at `offset` (a JS number, exact to 2^53), or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn min_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .min_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `i64`s at `offset` (a JS number, exact to 2^53), or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn max_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .max_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `i64`s at `offset` as `f64`, or `null` when `count == 0`.
+    #[napi]
+    pub fn mean_i64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `i64`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_i64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `i64` at `offset` (a JS number), or `null` when `count == 0`.
+    #[napi]
+    pub fn first_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .first_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `i64` of the `count` at `offset` (a JS number), or `null` when `count == 0`.
+    #[napi]
+    pub fn last_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .last_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `i64`s at `offset` are `>= threshold` (a `BigInt`).
+    /// A JS number.
+    #[napi]
+    pub fn count_ge_i64(&self, offset: u32, count: u32, threshold: BigInt) -> napi::Result<i64> {
+        self.inner
+            .count_ge_i64(offset as u64, count as usize, threshold.get_i64().0)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `u32`s at `offset` (accumulated as `i64`). A JS number (exact to 2^53).
+    #[napi]
+    pub fn sum_u32(&self, offset: u32, count: u32) -> napi::Result<i64> {
+        self.inner
+            .sum_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `u32`s at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn min_u32(&self, offset: u32, count: u32) -> napi::Result<Option<u32>> {
+        self.inner
+            .min_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `u32`s at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn max_u32(&self, offset: u32, count: u32) -> napi::Result<Option<u32>> {
+        self.inner
+            .max_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `u32`s at `offset` as `f64`, or `null` when `count == 0`.
+    #[napi]
+    pub fn mean_u32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `u32`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_u32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `u32` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn first_u32(&self, offset: u32, count: u32) -> napi::Result<Option<u32>> {
+        self.inner
+            .first_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `u32` of the `count` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn last_u32(&self, offset: u32, count: u32) -> napi::Result<Option<u32>> {
+        self.inner
+            .last_u32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `u32`s at `offset` are `>= threshold`. A JS number.
+    #[napi]
+    pub fn count_ge_u32(&self, offset: u32, count: u32, threshold: u32) -> napi::Result<i64> {
+        self.inner
+            .count_ge_u32(offset as u64, count as usize, threshold)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `u64`s at `offset` (accumulated as `i128`, a `BigInt`).
+    #[napi]
+    pub fn sum_u64(&self, offset: u32, count: u32) -> napi::Result<i128> {
+        self.inner
+            .sum_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `u64`s at `offset` (a `BigInt`), or `null` when `count == 0`.
+    #[napi]
+    pub fn min_u64(&self, offset: u32, count: u32) -> napi::Result<Option<u64>> {
+        self.inner
+            .min_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `u64`s at `offset` (a `BigInt`), or `null` when `count == 0`.
+    #[napi]
+    pub fn max_u64(&self, offset: u32, count: u32) -> napi::Result<Option<u64>> {
+        self.inner
+            .max_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `u64`s at `offset` as `f64`, or `null` when `count == 0`.
+    #[napi]
+    pub fn mean_u64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `u64`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_u64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `u64` at `offset` (a `BigInt`), or `null` when `count == 0`.
+    #[napi]
+    pub fn first_u64(&self, offset: u32, count: u32) -> napi::Result<Option<u64>> {
+        self.inner
+            .first_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `u64` of the `count` at `offset` (a `BigInt`), or `null` when `count == 0`.
+    #[napi]
+    pub fn last_u64(&self, offset: u32, count: u32) -> napi::Result<Option<u64>> {
+        self.inner
+            .last_u64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `u64`s at `offset` are `>= threshold` (a `BigInt`).
+    /// A JS number.
+    #[napi]
+    pub fn count_ge_u64(&self, offset: u32, count: u32, threshold: BigInt) -> napi::Result<i64> {
+        self.inner
+            .count_ge_u64(offset as u64, count as usize, threshold.get_u64().1)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `f32`s at `offset` (accumulated as `f64`).
+    #[napi]
+    pub fn sum_f32(&self, offset: u32, count: u32) -> napi::Result<f64> {
+        self.inner
+            .sum_f32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `f32`s at `offset` (widened to a JS number, ignoring NaN), or `null`
+    /// when `count == 0`.
+    #[napi]
+    pub fn min_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .min_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `f32`s at `offset` (widened to a JS number, ignoring NaN), or `null`
+    /// when `count == 0`.
+    #[napi]
+    pub fn max_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .max_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `f32`s at `offset` as `f64`, or `null` when `count == 0`.
+    #[napi]
+    pub fn mean_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_f32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `f32`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_f32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `f32` at `offset` (widened to a JS number), or `null` when `count == 0`.
+    #[napi]
+    pub fn first_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .first_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// The **last** `f32` of the `count` at `offset` (widened to a JS number), or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn last_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .last_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `f32`s at `offset` are `>= threshold`. A JS number.
+    #[napi]
+    pub fn count_ge_f32(&self, offset: u32, count: u32, threshold: f64) -> napi::Result<i64> {
+        self.inner
+            .count_ge_f32(offset as u64, count as usize, threshold as f32)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `f64`s at `offset`.
+    #[napi]
+    pub fn sum_f64(&self, offset: u32, count: u32) -> napi::Result<f64> {
+        self.inner
+            .sum_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `f64`s at `offset` (ignoring NaN), or `null` when `count == 0`.
+    #[napi]
+    pub fn min_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .min_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `f64`s at `offset` (ignoring NaN), or `null` when `count == 0`.
+    #[napi]
+    pub fn max_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .max_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `f64`s at `offset` as `f64`, or `null` when `count == 0`.
+    #[napi]
+    pub fn mean_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Population standard deviation** of `count` `f64`s at `offset` as `f64`, or `null` when
+    /// `count == 0`.
+    #[napi]
+    pub fn std_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .std_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **first** `f64` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn first_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .first_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// The **last** `f64` of the `count` at `offset`, or `null` when `count == 0`.
+    #[napi]
+    pub fn last_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .last_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `f64`s at `offset` are `>= threshold`. A JS number.
+    #[napi]
+    pub fn count_ge_f64(&self, offset: u32, count: u32, threshold: f64) -> napi::Result<i64> {
+        self.inner
+            .count_ge_f64(offset as u64, count as usize, threshold)
+            .map(|n| n as i64)
+            .map_err(to_error)
     }
 
     // ---- move_into ---------------------------------------------------------------------
@@ -2048,16 +2543,19 @@ impl Cursor {
         self.inner.content_length() as i64
     }
 
-    /// **Reads one line** from the cursor — the bytes through the next `\n` **inclusive** (or
-    /// to the end if none), decoded as UTF-8 — and advances the cursor past it. Returns `""`
-    /// **only** at the true end (a blank line still carries its `\n`).
+    /// **Reads one line** from the cursor — the content up to the next line terminator, with the
+    /// trailing `\n` / `\r\n` **stripped**, decoded as UTF-8 — and advances the cursor past the
+    /// terminator. It is **CSV-quote-aware**: a `\n` inside a double-quoted field does not end the
+    /// line. A blank line returns `""` but still advances; EOF returns `""` without advancing.
     #[napi(js_name = "readline")]
     pub fn read_line(&mut self) -> napi::Result<String> {
         self.inner.readline().map_err(to_error)
     }
 
     /// **Reads every remaining line** from the cursor into an array, advancing it to the end —
-    /// each element keeps its trailing `\n` except possibly the last.
+    /// each element has its trailing `\n` / `\r\n` **stripped** and honors quoted newlines (a
+    /// `\n` inside a double-quoted field does not split the record). Blank lines are kept (as
+    /// `""`); it stops at EOF.
     #[napi(js_name = "readlines")]
     pub fn read_lines(&mut self) -> napi::Result<Vec<String>> {
         self.inner.readlines().map_err(to_error)

@@ -17,6 +17,7 @@ use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
+use crate::dtype::DataTypeId;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 use yggdryl_core::headers;
@@ -88,6 +89,13 @@ impl Headers {
     /// (`mtime` / `set_mtime`).
     #[classattr]
     const MTIME: &'static str = headers::Headers::MTIME;
+    /// The storage **element data type** header name — a `DataTypeId` as its `u16` id
+    /// (`elem_type_id` / `set_elem_type_id`).
+    #[classattr]
+    const ELEM_TYPE_ID: &'static str = headers::Headers::ELEM_TYPE_ID;
+    /// The resource **name** header name (`name` / `set_name`).
+    #[classattr]
+    const NAME: &'static str = headers::Headers::NAME;
 
     /// An empty header map (no allocation).
     #[new]
@@ -258,6 +266,43 @@ impl Headers {
     /// The `Content-Length` value parsed as an int, if present and numeric.
     fn content_length(&self) -> Option<u64> {
         self.inner.content_length()
+    }
+
+    // ---- storage element type + resource name --------------------------------------------
+
+    /// The storage **element data type** — the [`DataTypeId`] declared under `ELEM_TYPE_ID`, or
+    /// [`DataTypeId.Unknown`](DataTypeId::Unknown) when none is set. Total (never fails — an
+    /// unrecognized id reads as `Unknown`).
+    fn elem_type_id(&self) -> DataTypeId {
+        self.inner.elem_type_id().into()
+    }
+
+    /// Sets the storage [`DataTypeId`] (its `u16` id). [`Unknown`](DataTypeId::Unknown) **removes**
+    /// the header (no declared type).
+    fn set_elem_type_id(&mut self, dtype: DataTypeId) {
+        self.inner.set_elem_type_id(dtype.into());
+    }
+
+    /// The **element storage width** in bytes derived from [`elem_type_id`](Headers::elem_type_id)
+    /// (`i64` → 8), or `0` when the type is unknown.
+    fn elem_byte_size(&self) -> u64 {
+        self.inner.elem_byte_size()
+    }
+
+    /// The **element bit width** derived from [`elem_type_id`](Headers::elem_type_id) (`bool` → 1),
+    /// or `0` when the type is unknown.
+    fn elem_bit_size(&self) -> u64 {
+        self.inner.elem_bit_size()
+    }
+
+    /// The resource **name** declared under `NAME`, if any.
+    fn name(&self) -> Option<String> {
+        self.inner.name().map(str::to_string)
+    }
+
+    /// Sets the resource **name** (replace semantics).
+    fn set_name(&mut self, name: &str) {
+        self.inner.set_name(name);
     }
 
     // ---- media type: the one place Content-Type / Content-Encoding are interpreted -------

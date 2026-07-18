@@ -23,6 +23,7 @@
 //! `rm` CRUD, the memory-tree container reads); the in-memory sources are **leaves**
 //! ([`NoChildren`]).
 
+mod aggregate;
 mod base;
 mod cursor;
 mod heap;
@@ -37,6 +38,7 @@ pub(crate) use cursor::{cursor_methods, cursor_scalar_pairs};
 
 pub use crate::io::{IoError, Whence};
 
+pub use aggregate::Aggregate;
 pub use base::{IOBase, NoChildren};
 pub use cursor::IOCursor;
 pub use heap::Heap;

@@ -12,6 +12,7 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
+use crate::dtype::DataTypeId;
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
 use yggdryl_core::headers as core;
@@ -241,6 +242,51 @@ impl Headers {
     #[napi]
     pub fn set_content_encoding(&mut self, value: String) {
         self.inner.set_content_encoding(&value);
+    }
+
+    // ---- element data type + resource name ---------------------------------------------
+
+    /// The storage **element [`DataTypeId`]** declared under `X-Elem-Type-Id`, or
+    /// [`DataTypeId.Unknown`] (raw bytes) when none is set. Total (never throws — an unrecognized
+    /// id reads as `Unknown`).
+    #[napi]
+    pub fn elem_type_id(&self) -> DataTypeId {
+        DataTypeId {
+            inner: self.inner.elem_type_id(),
+        }
+    }
+
+    /// Sets the storage [`DataTypeId`] (its `u16` id). [`DataTypeId.Unknown`] **removes** the
+    /// header (no declared type).
+    #[napi]
+    pub fn set_elem_type_id(&mut self, dtype: &DataTypeId) {
+        self.inner.set_elem_type_id(dtype.inner);
+    }
+
+    /// The **element storage width** in bytes derived from `elemTypeId` (`i64` → 8), or `0` when
+    /// the type is unknown. An `i64` (a JS number).
+    #[napi]
+    pub fn elem_byte_size(&self) -> i64 {
+        self.inner.elem_byte_size() as i64
+    }
+
+    /// The **element bit width** derived from `elemTypeId` (`bool` → 1), or `0` when the type is
+    /// unknown. An `i64` (a JS number).
+    #[napi]
+    pub fn elem_bit_size(&self) -> i64 {
+        self.inner.elem_bit_size() as i64
+    }
+
+    /// The resource **name** declared under `X-Name`, or `null` if absent.
+    #[napi]
+    pub fn name(&self) -> Option<String> {
+        self.inner.name().map(str::to_string)
+    }
+
+    /// Sets the resource **name** (replace semantics).
+    #[napi]
+    pub fn set_name(&mut self, name: String) {
+        self.inner.set_name(&name);
     }
 
     // ---- media type: the one place Content-Type / Content-Encoding are interpreted ------

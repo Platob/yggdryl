@@ -4,7 +4,7 @@
 #![cfg(feature = "gpu")]
 
 use yggdryl_core::io::gpu::{available_devices, default_device, CpuHeap, GpuBackend, GpuMemory};
-use yggdryl_core::io::memory::{Heap, IOBase};
+use yggdryl_core::io::memory::{Aggregate, Heap, IOBase};
 use yggdryl_core::io::MemoryInfo;
 
 #[test]
@@ -154,7 +154,6 @@ fn compute_backend_selects_gpu_on_a_large_device_workload() {
 
 #[test]
 fn compute_min_max_ignore_nan_regardless_of_order() {
-    use yggdryl_core::io::gpu::Compute;
     // A NaN must never poison min/max, whether it leads or trails (order-independent).
     let mut lead = CpuHeap::new();
     lead.pwrite_f64_array(0, &[f64::NAN, 1.0, 2.0]).unwrap();

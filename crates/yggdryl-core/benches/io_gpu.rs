@@ -55,8 +55,8 @@ fn row(name: &str, (mops, allocs, bytes): (f64, f64, f64)) {
 }
 
 fn main() {
-    use yggdryl_core::io::gpu::{Compute, CpuHeap, GpuMemory};
-    use yggdryl_core::io::memory::IOBase;
+    use yggdryl_core::io::gpu::{CpuHeap, GpuMemory};
+    use yggdryl_core::io::memory::{Aggregate, IOBase};
 
     let iters = 2_000;
     let n = 1 << 16; // 65 536 elements — crosses the GPU dispatch threshold + many stack chunks

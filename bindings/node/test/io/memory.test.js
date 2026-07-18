@@ -5,6 +5,7 @@ const assert = require('node:assert/strict')
 
 const yggdryl = require('../..')
 const io = yggdryl.io
+const { DataTypeId } = yggdryl.dtype
 const { Headers } = yggdryl.headers
 const { Heap, Whence, Cursor, Slice, NoChildren } = yggdryl.memory
 const { Uri } = yggdryl.uri
@@ -1083,22 +1084,40 @@ test('u16 / u32 / u64 / f32 / f64 repeat fills run past the staging chunk', () =
 // Line-oriented reads (readline / readlines)
 // -------------------------------------------------------------------------------------
 
-test('readline / readlines split on newlines (inclusive); EOF is the empty string', () => {
+test('readline / readlines strip the terminator; a blank line is "" but advances; EOF is ""', () => {
   const h = new Heap(Buffer.from('first\nsecond'))
-  assert.equal(h.readline(), 'first\n')
-  assert.equal(h.readline(), 'second') // no trailing newline at the end
-  assert.equal(h.readline(), '') // now at EOF
+  assert.equal(h.readline(), 'first') // trailing \n stripped
+  assert.equal(h.readline(), 'second') // last line, no terminator
+  assert.equal(h.readline(), '') // now at EOF (returns "" without advancing)
+  assert.equal(h.position, h.byteSize()) // a second EOF read stays put
+  assert.equal(h.readline(), '')
   h.rewind()
-  assert.deepEqual(h.readlines(), ['first\n', 'second'])
+  assert.deepEqual(h.readlines(), ['first', 'second'])
 
-  // A blank line still carries its newline, so it is distinct from EOF.
+  // A blank line returns "" but still advances, so it is kept (distinct from EOF).
   const blank = new Heap(Buffer.from('a\n\nb\n'))
-  assert.deepEqual(blank.readlines(), ['a\n', '\n', 'b\n'])
+  assert.deepEqual(blank.readlines(), ['a', '', 'b'])
 
   // Cursor mirrors the same line stream.
   const cur = new Cursor(Buffer.from('x\ny\n'))
-  assert.equal(cur.readline(), 'x\n')
-  assert.deepEqual(cur.readlines(), ['y\n'])
+  assert.equal(cur.readline(), 'x')
+  assert.deepEqual(cur.readlines(), ['y'])
+})
+
+test('readline strips CRLF and is CSV-quote-aware (a quoted newline does not split)', () => {
+  // A CRLF terminator is stripped whole.
+  const crlf = new Heap(Buffer.from('alpha\r\nbeta\r\n'))
+  assert.deepEqual(crlf.readlines(), ['alpha', 'beta'])
+
+  // A \n inside a double-quoted field is part of the record, not a line break.
+  const csv = new Heap(Buffer.from('a,"x\ny",b\nnext'))
+  assert.equal(csv.readline(), 'a,"x\ny",b') // the quoted newline is kept in the record
+  assert.equal(csv.readline(), 'next') // the real line break ended the previous record
+  assert.equal(csv.readline(), '') // EOF
+
+  // The same on a Cursor.
+  const cur = new Cursor(Buffer.from('one\r\n"two\nlines"\r\nthree'))
+  assert.deepEqual(cur.readlines(), ['one', '"two\nlines"', 'three'])
 })
 
 // -------------------------------------------------------------------------------------
@@ -1141,8 +1160,8 @@ test('Cursor.fromIo infers the input type and carries a source heap position', (
 })
 
 test('lines() is the array alias of readlines() on Heap and Cursor', () => {
-  assert.deepEqual(new Heap(Buffer.from('a\nb\n')).lines(), ['a\n', 'b\n'])
-  assert.deepEqual(new Cursor(Buffer.from('x\ny')).lines(), ['x\n', 'y'])
+  assert.deepEqual(new Heap(Buffer.from('a\nb\n')).lines(), ['a', 'b'])
+  assert.deepEqual(new Cursor(Buffer.from('x\ny')).lines(), ['x', 'y'])
 })
 
 // -------------------------------------------------------------------------------------
@@ -1260,6 +1279,177 @@ test('Slice: read-only native scalar reads (a fixed window has no typed writes)'
   // A slice is read-only for typed scalars — no pwrite* counterparts.
   assert.equal(typeof s.pwriteI16, 'undefined')
   assert.equal(typeof s.preadU128, 'function')
+})
+
+// -------------------------------------------------------------------------------------
+// Element data type (dtype / setDtype / elementCount) + resize + mask filter
+// -------------------------------------------------------------------------------------
+
+test('dtype defaults to Unknown; setDtype declares it; elementCount steps by the width', () => {
+  const h = new Heap()
+  h.pwriteI64Array(0, [1, 2, 3])
+  assert.equal(h.dtype().name(), 'unknown') // no declared type
+  assert.equal(h.elementCount(), 0) // Unknown -> no element count
+
+  h.setDtype(DataTypeId.I64())
+  assert.ok(h.dtype().equals(DataTypeId.I64()))
+  assert.equal(h.dtype().asU16(), 8)
+  assert.equal(h.elementCount(), 3) // 24 bytes / 8
+  // The type is stored in the headers as X-Elem-Type-Id.
+  assert.equal(h.headers.elemTypeId().name(), 'i64')
+  assert.equal(h.headers.elemByteSize(), 8)
+
+  // Unknown clears it.
+  h.setDtype(DataTypeId.Unknown())
+  assert.equal(h.dtype().name(), 'unknown')
+})
+
+test('Headers element-type + name accessors round-trip', () => {
+  const meta = new Headers()
+  assert.equal(meta.elemTypeId().name(), 'unknown') // default
+  assert.equal(meta.elemByteSize(), 0)
+  assert.equal(meta.elemBitSize(), 0)
+  assert.equal(meta.name(), null) // no X-Name yet
+
+  meta.setElemTypeId(DataTypeId.F32())
+  assert.ok(meta.elemTypeId().equals(DataTypeId.F32()))
+  assert.equal(meta.elemByteSize(), 4)
+  assert.equal(meta.elemBitSize(), 32)
+
+  // Unknown removes the header.
+  meta.setElemTypeId(DataTypeId.Unknown())
+  assert.equal(meta.elemTypeId().name(), 'unknown')
+
+  meta.setName('column-a')
+  assert.equal(meta.name(), 'column-a')
+})
+
+test('resizeDtype returns a fresh narrowed heap; resizeDtypeInPlace rewrites at the new width', () => {
+  const src = new Heap()
+  src.pwriteI64Array(0, [1, -2, 3])
+  src.setDtype(DataTypeId.I64())
+
+  const narrowed = src.resizeDtype(DataTypeId.I32())
+  assert.ok(narrowed instanceof Heap)
+  assert.equal(narrowed.byteSize(), 12) // 3 * 4
+  assert.equal(src.byteSize(), 24) // source untouched
+  assert.deepEqual(narrowed.preadI32Array(0, 3), [1, -2, 3])
+  assert.ok(narrowed.dtype().equals(DataTypeId.I32()))
+
+  // In place: rewrites this heap and returns the element count.
+  assert.equal(src.resizeDtypeInPlace(DataTypeId.I32()), 3)
+  assert.equal(src.byteSize(), 12)
+  assert.deepEqual(src.preadI32Array(0, 3), [1, -2, 3])
+
+  // A source with no declared type throws the guided error.
+  assert.throws(() => new Heap(Buffer.from('abcd')).resizeDtype(DataTypeId.I32()), /element type/)
+})
+
+test('maskFilter keeps elements whose mask bit is set (LSB-first); in-place compacts + truncates', () => {
+  const data = new Heap()
+  data.pwriteI32Array(0, [10, 20, 30, 40])
+  data.setDtype(DataTypeId.I32())
+
+  // 0b0000_1010 -> keep elements 1 and 3.
+  const mask = new Heap(Buffer.from([0b0000_1010]))
+  const kept = data.maskFilter(mask)
+  assert.deepEqual(kept.preadI32Array(0, 2), [20, 40])
+  assert.equal(data.byteSize(), 16) // source untouched
+
+  // In place returns the kept count and truncates.
+  assert.equal(data.maskFilterInPlace(mask), 2)
+  assert.deepEqual(data.preadI32Array(0, 2), [20, 40])
+  assert.equal(data.byteSize(), 8)
+
+  // No declared element type -> guided throw.
+  assert.throws(() => new Heap(Buffer.from('abcd')).maskFilterInPlace(mask), /element type/)
+})
+
+// -------------------------------------------------------------------------------------
+// Vectorized aggregations (sum / min / max / mean / std / first / last / countGe)
+// -------------------------------------------------------------------------------------
+
+test('i32 aggregations over a whole typed source', () => {
+  const h = new Heap()
+  h.pwriteI32Array(0, [4, 8, 15, 16, 23, 42])
+  assert.equal(h.sumI32(0, 6), 108)
+  assert.equal(h.minI32(0, 6), 4)
+  assert.equal(h.maxI32(0, 6), 42)
+  assert.equal(h.meanI32(0, 6), 18)
+  assert.equal(h.firstI32(0, 6), 4)
+  assert.equal(h.lastI32(0, 6), 42)
+  assert.equal(h.countGeI32(0, 6, 16), 3) // 16, 23, 42
+  assert.ok(Math.abs(h.stdI32(0, 6) - 12.315) < 0.01) // sqrt(910/6), population std
+
+  // An empty range: reductions are null, sum/count are 0.
+  assert.equal(h.minI32(0, 0), null)
+  assert.equal(h.maxI32(0, 0), null)
+  assert.equal(h.meanI32(0, 0), null)
+  assert.equal(h.stdI32(0, 0), null)
+  assert.equal(h.firstI32(0, 0), null)
+  assert.equal(h.lastI32(0, 0), null)
+  assert.equal(h.sumI32(0, 0), 0)
+  assert.equal(h.countGeI32(0, 0, 0), 0)
+
+  // A count past the end throws the guided EOF error.
+  assert.throws(() => h.sumI32(0, 7), /unexpected end of data/)
+})
+
+test('i64 / u64 sums are BigInt; thresholds cross as BigInt', () => {
+  const h = new Heap()
+  h.pwriteI64Array(0, [1000, 2000, 3000])
+  assert.equal(h.sumI64(0, 3), 6000n) // i128 accumulator -> BigInt
+  assert.equal(h.minI64(0, 3), 1000) // a JS number
+  assert.equal(h.maxI64(0, 3), 3000)
+  assert.equal(h.meanI64(0, 3), 2000)
+  assert.equal(h.firstI64(0, 3), 1000)
+  assert.equal(h.lastI64(0, 3), 3000)
+  assert.equal(h.countGeI64(0, 3, 2000n), 2) // threshold is a BigInt
+
+  const u = new Heap()
+  u.pwriteU64Array(0, [10, 20, 30])
+  assert.equal(u.sumU64(0, 3), 60n) // BigInt
+  assert.equal(u.minU64(0, 3), 10n) // u64 values cross as BigInt
+  assert.equal(u.maxU64(0, 3), 30n)
+  assert.equal(u.firstU64(0, 3), 10n)
+  assert.equal(u.lastU64(0, 3), 30n)
+  assert.equal(u.meanU64(0, 3), 20)
+  assert.equal(u.countGeU64(0, 3, 20n), 2)
+})
+
+test('u32 aggregations', () => {
+  const h = new Heap()
+  h.pwriteU32Array(0, [5, 10, 15, 20])
+  assert.equal(h.sumU32(0, 4), 50)
+  assert.equal(h.minU32(0, 4), 5)
+  assert.equal(h.maxU32(0, 4), 20)
+  assert.equal(h.meanU32(0, 4), 12.5)
+  assert.equal(h.firstU32(0, 4), 5)
+  assert.equal(h.lastU32(0, 4), 20)
+  assert.equal(h.countGeU32(0, 4, 15), 2)
+  assert.ok(h.stdU32(0, 4) > 0)
+})
+
+test('f32 / f64 aggregations widen to JS numbers; float min/max ignore NaN', () => {
+  const f32 = new Heap()
+  f32.pwriteF32Array(0, [1.5, 2.5, -0.5, 4.0])
+  assert.equal(f32.sumF32(0, 4), 7.5)
+  assert.equal(f32.minF32(0, 4), -0.5)
+  assert.equal(f32.maxF32(0, 4), 4.0)
+  assert.equal(f32.firstF32(0, 4), 1.5)
+  assert.equal(f32.lastF32(0, 4), 4.0)
+  assert.equal(f32.meanF32(0, 4), 1.875)
+  assert.equal(f32.countGeF32(0, 4, 2.0), 2) // 2.5 and 4.0
+
+  const f64 = new Heap()
+  f64.pwriteF64Array(0, [10.0, 20.0, 30.0, NaN])
+  assert.equal(f64.sumF64(0, 3), 60.0)
+  assert.equal(f64.minF64(0, 4), 10.0) // NaN ignored
+  assert.equal(f64.maxF64(0, 4), 30.0)
+  assert.equal(f64.meanF64(0, 3), 20.0)
+  assert.equal(f64.firstF64(0, 3), 10.0)
+  assert.equal(f64.lastF64(0, 3), 30.0)
+  assert.ok(Math.abs(f64.stdF64(0, 3) - 8.165) < 0.01)
 })
 
 // -------------------------------------------------------------------------------------
