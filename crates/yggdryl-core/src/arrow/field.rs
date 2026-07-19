@@ -43,11 +43,8 @@ pub fn to_arrow_field(field: &HeaderField) -> Field {
         field.scale(),
         field.byte_width(),
     );
-    let mut arrow = Field::new(
-        field.name().unwrap_or_default(),
-        data_type,
-        field.nullable(),
-    );
+    // `name()` is total — an unnamed field carries the element type's name into Arrow.
+    let mut arrow = Field::new(field.name(), data_type, field.nullable());
 
     // Carry the free-form annotations (everything but the structural keys) into Arrow metadata.
     let metadata = headers_to_metadata(&field.extra_annotations());
@@ -82,7 +79,7 @@ pub(crate) fn headers_to_metadata(headers: &Headers) -> HashMap<String, String> 
 ///
 /// let arrow = ArrowField::new("price", DataType::Int64, true);
 /// let field = from_arrow_field(&arrow);
-/// assert_eq!(field.name(), Some("price"));
+/// assert_eq!(field.name(), "price");
 /// assert_eq!(field.data_type_id(), DataTypeId::I64);
 /// assert!(field.nullable());
 /// ```

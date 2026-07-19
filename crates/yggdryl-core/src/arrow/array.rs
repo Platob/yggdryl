@@ -454,7 +454,7 @@ pub fn column_from_arrow(array: &ArrayRef, field: &ColumnField) -> Result<Column
         ColumnField::List(list_field) => return list_from_arrow(array, list_field),
         ColumnField::Map(map_field) => return map_from_arrow(array, map_field),
     };
-    let name = leaf.name();
+    let name = leaf.headers().name();
     let nullable = leaf.nullable();
 
     match leaf.data_type_id() {

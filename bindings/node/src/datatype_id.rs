@@ -353,8 +353,8 @@ impl DataTypeId {
     }
 
     /// The **category** this type's band belongs to, as a lowercase name (`"integer"`, `"float"`,
-    /// `"decimal"`, `"binary"`, `"utf8"`, `"boolean"`, `"null"`, plus the reserved `"temporal"` /
-    /// `"nested"`).
+    /// `"decimal"`, `"binary"`, `"utf8"`, `"boolean"`, `"null"`, plus the reserved `"temporal"` and
+    /// the nested `"struct"` / `"list"` / `"map"`).
     #[napi]
     pub fn category(&self) -> String {
         self.inner.category().name().to_string()

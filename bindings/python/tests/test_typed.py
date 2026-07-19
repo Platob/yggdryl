@@ -80,11 +80,19 @@ def test_doc_field():
 # -------------------------------------------------------------------------------------
 
 
-def test_field_defaults_and_none_name():
+def test_field_defaults_and_unnamed():
     f = Field(dtype=DataTypeId.F64)
-    assert f.name() is None
+    assert f.name() == "f64"  # unnamed -> the element type's name
+    assert f.headers().name() is None  # ...but no raw stored name
     assert f.dtype() == DataTypeId.F64
     assert f.nullable() is False  # default non-nullable
+
+
+def test_field_name_defaults_to_dtype_and_null_free_is_non_nullable():
+    assert Field(dtype=DataTypeId.I64).name() == "i64"  # unnamed -> dtype name
+    assert Field("x", DataTypeId.I64).name() == "x"  # named -> the stored name
+    # A null-free from_options builds a non-nullable column (no validity buffer).
+    assert Serie.from_options([1, 2, 3], DataTypeId.I64).field().nullable() is False
 
 
 def test_field_requires_dtype():

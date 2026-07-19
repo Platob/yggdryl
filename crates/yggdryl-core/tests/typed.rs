@@ -445,7 +445,7 @@ fn serie_filter_by_bit_mask() {
 #[test]
 fn header_field_metadata_and_serie_field() {
     let field = HeaderField::new(Some("price"), DataTypeId::I64, true);
-    assert_eq!(field.name(), Some("price"));
+    assert_eq!(field.name(), "price");
     assert_eq!(field.data_type_id(), DataTypeId::I64);
     assert!(field.nullable());
     // The metadata really lives in the Headers map.
@@ -455,7 +455,7 @@ fn header_field_metadata_and_serie_field() {
 
     // A serie reports its own field: name from `with_name`, nullable from validity presence.
     let non_null = FixedSerie::<Int64>::from_values(&[1, 2, 3]).with_name("id");
-    assert_eq!(non_null.field().name(), Some("id"));
+    assert_eq!(non_null.field().name(), "id");
     assert_eq!(non_null.field().data_type_id(), DataTypeId::I64);
     assert!(!non_null.field().nullable());
 
@@ -494,7 +494,7 @@ fn header_field_metadata_accessors_and_trio() {
         .with_name("id")
         .with_nullable(true)
         .with_data_type_id(DataTypeId::I32);
-    assert_eq!(built.name(), Some("id"));
+    assert_eq!(built.name(), "id");
     assert!(built.nullable());
     assert_eq!(built.data_type_id(), DataTypeId::I32);
 
@@ -502,7 +502,7 @@ fn header_field_metadata_accessors_and_trio() {
     mutated.set_name("key");
     mutated.set_nullable(false);
     mutated.set_data_type_id(DataTypeId::I64);
-    assert_eq!(mutated.name(), Some("key"));
+    assert_eq!(mutated.name(), "key");
     assert!(!mutated.nullable());
     assert_eq!(mutated.data_type_id(), DataTypeId::I64);
 }
@@ -524,8 +524,11 @@ fn serie_cast_field_nullability_name_metadata() {
     assert!(nullable.is_valid(0) && nullable.is_valid(1) && nullable.is_valid(2));
     assert_eq!(nullable.values(), vec![1, 2, 3]);
 
-    // nullable (but clean) -> non-nullable: drops the validity buffer.
-    let clean = FixedSerie::<Int32>::from_options(&[Some(1), Some(2)]);
+    // nullable (but clean) -> non-nullable: drops the validity buffer. A null-free `from_options`
+    // is now itself non-nullable, so build the clean *nullable* column via a cast.
+    let clean = FixedSerie::<Int32>::from_values(&[1, 2])
+        .cast_field(&HeaderField::new(None, DataTypeId::I32, true))
+        .unwrap();
     assert!(clean.field().nullable());
     let non_null = clean
         .cast_field(&HeaderField::new(None, DataTypeId::I32, false))
@@ -539,7 +542,7 @@ fn serie_cast_field_nullability_name_metadata() {
             &HeaderField::new(Some("price"), DataTypeId::I64, false).with_metadata("unit", "USD"),
         )
         .unwrap();
-    assert_eq!(named.field().name(), Some("price"));
+    assert_eq!(named.field().name(), "price");
     assert_eq!(named.field().metadata_value("unit").as_deref(), Some("USD"));
 }
 
@@ -574,7 +577,7 @@ fn serie_cast_field_guided_errors_and_noop() {
     // The copy front door is a no-op in content and name too.
     let copy = named.cast_field(&same).unwrap();
     assert_eq!(copy.values(), named.values());
-    assert_eq!(copy.field().name(), Some("x"));
+    assert_eq!(copy.field().name(), "x");
 }
 
 #[test]
@@ -589,7 +592,7 @@ fn scalar_cast_field_nullability_name_and_errors() {
         )
         .unwrap();
     assert!(nullable.field().nullable());
-    assert_eq!(nullable.field().name(), Some("answer"));
+    assert_eq!(nullable.field().name(), "answer");
     assert_eq!(
         nullable.field().metadata_value("src").as_deref(),
         Some("quiz")
@@ -664,7 +667,7 @@ fn decimal_serie_precision_scale_and_format() {
 
     // The field carries the decimal metadata (in its Headers).
     let field = col.field();
-    assert_eq!(field.name(), Some("price"));
+    assert_eq!(field.name(), "price");
     assert_eq!(field.data_type_id(), DataTypeId::Decimal128);
     assert_eq!(field.precision(), Some(10));
     assert_eq!(field.scale(), Some(2));
@@ -981,7 +984,7 @@ fn fixed_utf8_serie_nullable() {
     assert_eq!(col.get(0).as_deref(), Some("ab\0")); // zero-padded to 3
     assert_eq!(col.get(1), None);
     assert_eq!(col.get(2).as_deref(), Some("xyz"));
-    assert_eq!(col.field().name(), Some("code"));
+    assert_eq!(col.field().name(), "code");
     assert_eq!(col.field().byte_width(), Some(3));
     assert!(col.field().data_type_id().is_utf8());
 }
@@ -1146,4 +1149,64 @@ fn var_and_fixed_size_slice_and_set() {
         fx.set(2, b"x").unwrap_err(),
         IoError::SliceOutOfBounds { .. }
     ));
+}
+
+// -------------------------------------------------------------------------------------
+// HeaderField::name — total, defaulting to the element-type name for an unnamed field
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn header_field_name_defaults_to_dtype_name() {
+    use yggdryl_core::typed::{Column, ColumnField, StructSerie};
+
+    // An unnamed field: name() falls back to the dtype name; the raw stored X-Name stays unset.
+    let unnamed = HeaderField::new(None, DataTypeId::I64, false);
+    assert_eq!(unnamed.name(), "i64"); // the default
+    assert_eq!(unnamed.headers().name(), None); // nothing written into the stored bytes
+
+    // A named field: name() and the raw stored name agree.
+    let named = HeaderField::new(Some("price"), DataTypeId::I64, false);
+    assert_eq!(named.name(), "price");
+    assert_eq!(named.headers().name(), Some("price"));
+
+    // A StructSerie child column with no name reports its dtype name through its field.
+    let child = FixedSerie::<Int64>::from_values(&[1, 2, 3]); // unnamed
+    let table = StructSerie::from_columns(vec![Column::from(child)]).unwrap();
+    match table.field().field(0).unwrap() {
+        ColumnField::Leaf(header) => {
+            assert_eq!(header.name(), "i64"); // default dtype name
+            assert_eq!(header.headers().name(), None); // still unnamed under the hood
+        }
+        other => panic!("expected a leaf child field, got {other:?}"),
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// from_options — a null-free collection is non-nullable (no validity buffer)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn from_options_null_free_is_non_nullable() {
+    // FixedSerie: null-free -> non-nullable (no validity), a null -> nullable.
+    let clean = FixedSerie::<Int32>::from_options(&[Some(1), Some(2)]);
+    assert!(!clean.field().nullable());
+    assert_eq!(clean.null_count(), 0);
+    assert!(clean.validity().is_none());
+    assert_eq!(clean.values(), vec![1, 2]);
+
+    let nullable = FixedSerie::<Int32>::from_options(&[Some(1), None]);
+    assert!(nullable.field().nullable());
+    assert_eq!(nullable.null_count(), 1);
+    assert!(nullable.validity().is_some());
+
+    // VarSerie<Utf8>: a null-free from_options is non-nullable too.
+    let words = VarSerie::<Utf8>::from_options(&[Some("a".to_string()), Some("bc".to_string())]);
+    assert!(!words.field().nullable());
+    assert_eq!(words.null_count(), 0);
+    assert!(words.validity().is_none());
+
+    let some_null = VarSerie::<Utf8>::from_options(&[Some("a".to_string()), None]);
+    assert!(some_null.field().nullable());
+    assert_eq!(some_null.null_count(), 1);
+    assert!(some_null.validity().is_some());
 }

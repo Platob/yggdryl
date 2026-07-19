@@ -177,7 +177,14 @@ fn main() {
 
     // -- Encodings: build strategy (bulk vs streaming vs nullable) + single scalar --
     println!("\n  -- encode: build strategy + scalar --");
-    let opts: Vec<Option<i64>> = ints.iter().map(|&v| Some(v)).collect();
+    // Every 4th element is null so `from_options` keeps the validity buffer — the "nullable,
+    // validity" build and the null-aware `to_options` rows below actually exercise that path (a
+    // null-free `from_options` is now non-nullable).
+    let opts: Vec<Option<i64>> = ints
+        .iter()
+        .enumerate()
+        .map(|(index, &v)| if index % 4 == 0 { None } else { Some(v) })
+        .collect();
     row(
         "push loop i64 (streaming build)",
         measure(n, iters, || {

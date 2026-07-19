@@ -137,3 +137,41 @@ fn large_variants() {
     assert!(!DataTypeId::LargeBinary.is_fixed_width());
     assert_eq!(DataTypeId::LargeBinary.to_string(), "large_binary");
 }
+
+#[test]
+fn nested_categories_split_struct_list_map() {
+    // The nested band splits into three distinct categories.
+    assert_eq!(DataTypeId::Struct.category(), DataTypeCategory::Struct);
+    assert_eq!(DataTypeId::List.category(), DataTypeCategory::List);
+    assert_eq!(DataTypeId::Map.category(), DataTypeCategory::Map);
+    assert_eq!(DataTypeCategory::Struct.name(), "struct");
+    assert_eq!(DataTypeCategory::List.name(), "list");
+    assert_eq!(DataTypeCategory::Map.name(), "map");
+
+    // All three are still "nested", and each answers its own specific predicate.
+    for dt in [DataTypeId::Struct, DataTypeId::List, DataTypeId::Map] {
+        assert!(dt.is_nested());
+    }
+    assert!(
+        DataTypeId::Struct.is_struct()
+            && !DataTypeId::Struct.is_list()
+            && !DataTypeId::Struct.is_map()
+    );
+    assert!(
+        DataTypeId::List.is_list() && !DataTypeId::List.is_struct() && !DataTypeId::List.is_map()
+    );
+    assert!(DataTypeId::Map.is_map() && !DataTypeId::Map.is_struct() && !DataTypeId::Map.is_list());
+
+    // A non-nested type answers every nested predicate false.
+    assert!(
+        !DataTypeId::I64.is_nested()
+            && !DataTypeId::I64.is_struct()
+            && !DataTypeId::I64.is_list()
+            && !DataTypeId::I64.is_map()
+    );
+
+    // The nested ids still round-trip through their u16 band (0x0700 / 0x0710 / 0x0720).
+    assert_eq!(DataTypeId::from_u16(0x0700), DataTypeId::Struct);
+    assert_eq!(DataTypeId::from_u16(0x0710), DataTypeId::List);
+    assert_eq!(DataTypeId::from_u16(0x0720), DataTypeId::Map);
+}

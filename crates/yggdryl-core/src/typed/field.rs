@@ -27,9 +27,6 @@ const STRUCTURAL_KEYS: [&str; 6] = [
 /// A typed column descriptor: `name`, element type, and nullability — plus the open [`Headers`] map
 /// the metadata lives in.
 pub trait Field {
-    /// The column name, if set.
-    fn name(&self) -> Option<&str>;
-
     /// The element [`DataTypeId`].
     fn data_type_id(&self) -> DataTypeId;
 
@@ -38,6 +35,16 @@ pub trait Field {
 
     /// The backing metadata map (the field's name/type/nullable live here, alongside any extras).
     fn headers(&self) -> &Headers;
+
+    /// The column **name** — total: the stored [`X-Name`](Headers::NAME) when set, else the element
+    /// type's name as the default (an unnamed `i64` field names itself `"i64"`). The default is
+    /// **not** written back into the stored bytes, so an unnamed field still round-trips as unnamed —
+    /// read [`headers().name()`](Headers::name) directly for the raw stored name.
+    fn name(&self) -> &str {
+        self.headers()
+            .name()
+            .unwrap_or_else(|| self.data_type_id().name())
+    }
 }
 
 /// A [`Field`] backed by a [`Headers`] map — the metadata `name` / `type_id` / `nullable` are three
@@ -48,9 +55,14 @@ pub trait Field {
 /// use yggdryl_core::datatype_id::DataTypeId;
 ///
 /// let field = HeaderField::new(Some("price"), DataTypeId::I64, true);
-/// assert_eq!(field.name(), Some("price"));
+/// assert_eq!(field.name(), "price");
 /// assert_eq!(field.data_type_id(), DataTypeId::I64);
 /// assert!(field.nullable());
+///
+/// // An unnamed field derives its name from the element type; the raw X-Name stays unset.
+/// let unnamed = HeaderField::new(None, DataTypeId::I64, false);
+/// assert_eq!(unnamed.name(), "i64");
+/// assert_eq!(unnamed.headers().name(), None);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct HeaderField {
@@ -252,10 +264,6 @@ pub(crate) fn cast_dtype_error(
 }
 
 impl Field for HeaderField {
-    fn name(&self) -> Option<&str> {
-        self.headers.name()
-    }
-
     fn data_type_id(&self) -> DataTypeId {
         self.headers.type_id()
     }

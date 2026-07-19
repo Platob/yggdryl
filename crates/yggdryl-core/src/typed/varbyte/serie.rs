@@ -73,10 +73,12 @@ impl<T: VarLenType> VarSerie<T, Heap> {
         column
     }
 
-    /// A column from options — pushing a null (an empty span) where a value is absent.
+    /// A column from options — pushing a null (an empty span) where a value is absent. A collection
+    /// with **no `None`** is **non-nullable** (no validity buffer, [`field().nullable()`](VarSerie::field)
+    /// is `false`): the validity buffer is created lazily on the **first** null (via
+    /// [`push_null`](VarSerie::push_null)), so a null-free build never allocates it.
     pub fn from_options(values: &[Option<T::Owned>]) -> Self {
         let mut column = Self::new();
-        column.ensure_validity();
         for value in values {
             match value {
                 Some(value) => column.push(value),

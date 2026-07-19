@@ -314,14 +314,14 @@ fn header_field_round_trips() {
     );
 
     let back = from_arrow_field(&arrow);
-    assert_eq!(back.name(), Some("price"));
+    assert_eq!(back.name(), "price");
     assert_eq!(back.data_type_id(), DataTypeId::I64);
     assert!(back.nullable());
     assert_eq!(back.metadata_value("unit").as_deref(), Some("USD"));
 
     // A directly-built Arrow field converts too.
     let direct = from_arrow_field(&ArrowField::new("q", DataType::Boolean, false));
-    assert_eq!(direct.name(), Some("q"));
+    assert_eq!(direct.name(), "q");
     assert_eq!(direct.data_type_id(), DataTypeId::Bool);
     assert!(!direct.nullable());
 }

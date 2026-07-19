@@ -83,10 +83,12 @@ impl<T: VarType> FixedSizeSerie<T, Heap> {
         column
     }
 
-    /// A column of fixed `width` from options.
+    /// A column of fixed `width` from options. A collection with **no `None`** is **non-nullable**
+    /// (no validity buffer, [`field().nullable()`](FixedSizeSerie::field) is `false`): the validity
+    /// buffer is created lazily on the **first** null (via [`push_null`](FixedSizeSerie::push_null)),
+    /// so a null-free build never allocates it.
     pub fn from_options(width: usize, values: &[Option<T::Owned>]) -> Self {
         let mut column = Self::new(width);
-        column.ensure_validity();
         for value in values {
             match value {
                 Some(value) => column.push(value),

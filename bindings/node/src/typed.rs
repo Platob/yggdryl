@@ -340,7 +340,9 @@ fn clone_serie<T: Encoder + Decoder>(serie: &FixedSerie<T>) -> FixedSerie<T> {
     let field = serie.field();
     let mut out =
         FixedSerie::from_data(serie.data().clone(), serie.validity().cloned(), serie.len());
-    if let Some(name) = field.name() {
+    // The raw stored name (not the dtype-name default of `field.name()`) — carry it across only
+    // when actually set, so an unnamed column round-trips unnamed.
+    if let Some(name) = serie.name() {
         out = out.with_name(name);
     }
     if let (Some(precision), Some(scale)) = (field.precision(), field.scale()) {
@@ -1469,10 +1471,12 @@ impl Field {
         }
     }
 
-    /// The column name, or `null` when unset.
+    /// The column **name** — total: the stored name when set, else the element type's name as the
+    /// default (an unnamed `i64` field names itself `"i64"`). Read [`headers`](Field::headers)`.name()`
+    /// for the raw stored name (`null` when unnamed).
     #[napi]
-    pub fn name(&self) -> Option<String> {
-        self.inner.name().map(str::to_string)
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
     }
 
     /// The element [`DataTypeId`](crate::datatype_id::DataTypeId).

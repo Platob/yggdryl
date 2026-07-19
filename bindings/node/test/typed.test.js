@@ -73,10 +73,19 @@ test('Field carries a Headers copy, equals, and toString', () => {
   assert.equal(headers.nullable(), false)
   assert.match(a.toString(), /Field\(/)
 
-  // an unnamed field
+  // an unnamed field: no raw stored name, so name() falls back to the dtype name
   const unnamed = new Field(null, DataTypeId.F64(), true)
-  assert.equal(unnamed.name(), null)
+  assert.equal(unnamed.headers().name(), null) // the raw X-Name stays unset
+  assert.equal(unnamed.name(), 'f64') // ... so name() defaults to the element type's name
   assert.ok(unnamed.dtype().equals(DataTypeId.F64()))
+})
+
+test('Field.name() defaults to the dtype name when unnamed; a null-free fromOptions is non-nullable', () => {
+  // a named field reports its name; an unnamed one falls back to the element type's name
+  assert.equal(new Field('x', DataTypeId.I64(), false).name(), 'x')
+  assert.equal(new Field(null, DataTypeId.I64(), false).name(), 'i64')
+  // a fromOptions with no null builds a non-nullable column (no validity buffer)
+  assert.equal(Serie.fromOptions([1, 2, 3], DataTypeId.I32()).field().nullable(), false)
 })
 
 // -------------------------------------------------------------------------------------
@@ -189,7 +198,7 @@ test('withName does not mutate the original and clears no data', () => {
   const named = col.withName('id')
   assert.equal(named.field().name(), 'id')
   assert.deepEqual(named.toList(), [1n, 2n, 3n])
-  assert.equal(col.field().name(), null) // original unchanged
+  assert.equal(col.field().headers().name(), null) // original unchanged: still unnamed (no raw X-Name)
 })
 
 // -------------------------------------------------------------------------------------
@@ -449,7 +458,7 @@ test('ByteSerie: a utf8 column round-trips a multibyte string; withName copies',
   const named = col.withName('greeting')
   assert.equal(named.field().name(), 'greeting')
   assert.equal(named.get(2), '日本語')
-  assert.equal(col.field().name(), null)
+  assert.equal(col.field().headers().name(), null) // the original stays unnamed (no raw X-Name)
 })
 
 test('ByteSerie: a nullable binary column via fromOptions', () => {
@@ -511,7 +520,7 @@ test('ByteSerie: a large_utf8 column round-trips a multibyte string', () => {
   const named = col.withName('greeting')
   assert.equal(named.field().name(), 'greeting')
   assert.equal(named.get(2), '日本語')
-  assert.equal(col.field().name(), null)
+  assert.equal(col.field().headers().name(), null) // the original stays unnamed (no raw X-Name)
 
   // slice copies a sub-column, preserving the large dtype
   const tail = col.slice(1, 2)

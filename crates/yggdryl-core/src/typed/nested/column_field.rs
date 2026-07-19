@@ -26,10 +26,12 @@ pub enum ColumnField {
 }
 
 impl ColumnField {
-    /// The column name, if set.
+    /// The **explicitly stored** column name, if set (`None` for an unnamed field). For a
+    /// [`Leaf`](ColumnField::Leaf) this is the field's raw stored [`X-Name`](crate::headers::Headers::NAME),
+    /// not the dtype-name default of [`Field::name`].
     pub fn name(&self) -> Option<&str> {
         match self {
-            ColumnField::Leaf(field) => field.name(),
+            ColumnField::Leaf(field) => field.headers().name(),
             ColumnField::Struct(field) => field.name(),
             ColumnField::List(field) => field.name(),
             ColumnField::Map(field) => field.name(),

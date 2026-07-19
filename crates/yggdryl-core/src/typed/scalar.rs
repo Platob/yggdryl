@@ -174,7 +174,7 @@ impl<T: Decoder, D: IOBase> FixedScalar<T, D> {
 
         // Same dtype, nullability, name, and annotations — nothing to do.
         if is_nullable == to_nullable
-            && field.name() == self.name.as_deref()
+            && field.headers().name() == self.name.as_deref()
             && extra == self.metadata
         {
             return Ok(());
@@ -198,7 +198,7 @@ impl<T: Decoder, D: IOBase> FixedScalar<T, D> {
         } else if is_nullable && !to_nullable {
             self.validity = None; // verified non-null above
         }
-        self.name = field.name().map(Into::into);
+        self.name = field.headers().name().map(Into::into);
         self.metadata = extra;
         Ok(())
     }

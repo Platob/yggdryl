@@ -218,7 +218,7 @@ fn rebuild<T: Encoder + Decoder>(
 ) -> FixedSerie<T, memory::Heap> {
     let field = s.field();
     let mut out = FixedSerie::from_data(s.data().clone(), s.validity().cloned(), s.len());
-    if let Some(name) = name.or(field.name()) {
+    if let Some(name) = name.or_else(|| field.headers().name()) {
         out = out.with_name(name);
     }
     let precision_scale = precision_scale.or(match (field.precision(), field.scale()) {
@@ -1119,7 +1119,7 @@ impl Serie {
         let dtype = dispatch!(self, s => s.data_type_id()).name();
         let len = dispatch!(self, s => s.len());
         let nulls = dispatch!(self, s => s.null_count());
-        match dispatch!(self, s => s.field().name().map(str::to_string)) {
+        match dispatch!(self, s => s.field().headers().name().map(str::to_string)) {
             Some(name) => {
                 format!("Serie(name={name:?}, dtype='{dtype}', len={len}, null_count={nulls})")
             }
@@ -1709,7 +1709,7 @@ impl ByteSerie {
             Some(width) => format!(", width={width}"),
             None => String::new(),
         };
-        match byte_dispatch!(self, s => s.field().name().map(str::to_string)) {
+        match byte_dispatch!(self, s => s.field().headers().name().map(str::to_string)) {
             Some(name) => format!(
                 "ByteSerie(name={name:?}, dtype='{dtype}'{width}, len={len}, null_count={nulls})"
             ),
@@ -1752,9 +1752,9 @@ impl Field {
         })
     }
 
-    /// The column name, if set.
-    fn name(&self) -> Option<String> {
-        self.inner.name().map(str::to_string)
+    /// The column name — defaults to the element type's name when unnamed.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
     }
 
     /// The element [`DataTypeId`](crate::datatype_id::DataTypeId).
@@ -1845,16 +1845,16 @@ impl Field {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "Field(name={:?}, dtype='{}', nullable={})",
-            self.inner.name(),
-            self.inner.data_type_id().name(),
-            if self.inner.nullable() {
-                "True"
-            } else {
-                "False"
-            },
-        )
+        let dtype = self.inner.data_type_id().name();
+        let nullable = if self.inner.nullable() {
+            "True"
+        } else {
+            "False"
+        };
+        match self.inner.headers().name() {
+            Some(name) => format!("Field(name={name:?}, dtype='{dtype}', nullable={nullable})"),
+            None => format!("Field(dtype='{dtype}', nullable={nullable})"),
+        }
     }
 }
 

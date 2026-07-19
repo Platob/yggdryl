@@ -21,7 +21,7 @@
 //! | `0x0400` | [`Temporal`](DataTypeCategory::Temporal) | *(reserved — date / time / timestamp)* |
 //! | `0x0500` | [`Binary`](DataTypeCategory::Binary) | `Binary`, `LargeBinary`, `FixedBinary` |
 //! | `0x0600` | [`Utf8`](DataTypeCategory::Utf8) | `Utf8`, `LargeUtf8`, `FixedUtf8` |
-//! | `0x0700` | [`Nested`](DataTypeCategory::Nested) | `Struct`, `List`, `Map` |
+//! | `0x0700` | [`Struct`](DataTypeCategory::Struct) / [`List`](DataTypeCategory::List) / [`Map`](DataTypeCategory::Map) | `Struct`, `List`, `Map` |
 
 /// The **broad family** a [`DataTypeId`] belongs to — one per band. `category()` returns it, and the
 /// coarse predicates (`is_integer` / `is_float` / …) are band membership checks against it.
@@ -45,8 +45,13 @@ pub enum DataTypeCategory {
     Binary = 6,
     /// UTF-8 strings (`utf8` / `fixed_utf8` / `large_utf8`).
     Utf8 = 7,
-    /// Composite types — `struct` / `list` / `map` *(reserved band)*.
-    Nested = 8,
+    /// A **struct** composite — a heterogeneous, ordered set of named child columns.
+    Struct = 8,
+    /// A **list** composite — a variable-length sequence of one child element type.
+    List = 9,
+    /// A **map** composite — an ordered set of key→value entries.
+    Map = 10,
+    // Numbers 11.. are reserved for further composite families (union, dictionary, …).
 }
 
 impl DataTypeCategory {
@@ -61,7 +66,9 @@ impl DataTypeCategory {
             DataTypeCategory::Temporal => "temporal",
             DataTypeCategory::Binary => "binary",
             DataTypeCategory::Utf8 => "utf8",
-            DataTypeCategory::Nested => "nested",
+            DataTypeCategory::Struct => "struct",
+            DataTypeCategory::List => "list",
+            DataTypeCategory::Map => "map",
         }
     }
 }
@@ -286,7 +293,12 @@ impl DataTypeId {
             0x04 => DataTypeCategory::Temporal,
             0x05 => DataTypeCategory::Binary,
             0x06 => DataTypeCategory::Utf8,
-            0x07 => DataTypeCategory::Nested,
+            // The nested band splits by exact id — struct / list / map each get their own category.
+            0x07 => match self {
+                DataTypeId::List => DataTypeCategory::List,
+                DataTypeId::Map => DataTypeCategory::Map,
+                _ => DataTypeCategory::Struct,
+            },
             _ => DataTypeCategory::Null,
         }
     }
@@ -385,10 +397,28 @@ impl DataTypeId {
         self.category() == DataTypeCategory::Temporal
     }
 
-    /// Whether this is a **nested / composite** type (the reserved [`Nested`](DataTypeCategory::Nested)
-    /// band — struct / list / map).
+    /// Whether this is a **nested / composite** type — a [`Struct`](DataTypeCategory::Struct),
+    /// [`List`](DataTypeCategory::List), or [`Map`](DataTypeCategory::Map) (the `0x0700` band).
     pub fn is_nested(self) -> bool {
-        self.category() == DataTypeCategory::Nested
+        matches!(
+            self.category(),
+            DataTypeCategory::Struct | DataTypeCategory::List | DataTypeCategory::Map
+        )
+    }
+
+    /// Whether this is a **struct** composite (the [`Struct`](DataTypeCategory::Struct) category).
+    pub fn is_struct(self) -> bool {
+        self.category() == DataTypeCategory::Struct
+    }
+
+    /// Whether this is a **list** composite (the [`List`](DataTypeCategory::List) category).
+    pub fn is_list(self) -> bool {
+        self.category() == DataTypeCategory::List
+    }
+
+    /// Whether this is a **map** composite (the [`Map`](DataTypeCategory::Map) category).
+    pub fn is_map(self) -> bool {
+        self.category() == DataTypeCategory::Map
     }
 
     /// Whether this is an integer type (`bool` is **not** counted as an integer).

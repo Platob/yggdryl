@@ -164,26 +164,32 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
         column
     }
 
-    /// A column from options — builds the validity buffer, encoding a default in each null slot.
-    /// Bulk: one vectorized data write (nulls → default) and one packed validity write, rather than
-    /// an element-by-element push (which reallocated the growing validity buffer).
+    /// A column from options. A collection with **no `None`** is **non-nullable** — no validity
+    /// buffer is built ([`field().nullable()`](FixedSerie::field) is `false`), equivalent to
+    /// [`from_values`](FixedSerie::from_values). When at least one null is present it keeps the
+    /// validity buffer, encoding a default in each null slot. Bulk: one vectorized data write (nulls
+    /// → default) and, only when needed, one packed validity write — never an element-by-element push.
     pub fn from_options(values: &[Option<T::Native>]) -> Self {
+        // Scan once: a null-free collection is non-nullable (skip the validity buffer entirely).
+        let has_null = values.iter().any(Option::is_none);
         let mut column = Self::with_capacity(values.len());
         // The data buffer: every value (a null slot gets the type default), one vectorized write.
         let natives: Vec<T::Native> = values.iter().map(|v| v.unwrap_or_default()).collect();
         T::encode_slice(&mut column.data, 0, &natives)
             .expect("encode into a fresh heap never fails");
         column.len = values.len();
-        // The validity bitmap: pre-packed LSB-first (1 = valid), one byte-array write (no per-bit growth).
-        let mut bits = vec![0u8; values.len().div_ceil(8)];
-        for (index, value) in values.iter().enumerate() {
-            if value.is_some() {
-                bits[index / 8] |= 1 << (index % 8);
+        if has_null {
+            // The validity bitmap: pre-packed LSB-first (1 = valid), one byte-array write (no per-bit growth).
+            let mut bits = vec![0u8; values.len().div_ceil(8)];
+            for (index, value) in values.iter().enumerate() {
+                if value.is_some() {
+                    bits[index / 8] |= 1 << (index % 8);
+                }
             }
+            let mut validity = Heap::with_capacity(bits.len());
+            validity.pwrite_byte_array(0, &bits);
+            column.validity = Some(validity);
         }
-        let mut validity = Heap::with_capacity(bits.len());
-        validity.pwrite_byte_array(0, &bits);
-        column.validity = Some(validity);
         column
     }
 
@@ -637,7 +643,7 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
 
         // Same dtype, nullability, name, and annotations — nothing to do (skip all work).
         if is_nullable == to_nullable
-            && field.name() == self.name.as_deref()
+            && field.headers().name() == self.name.as_deref()
             && extra == self.metadata
         {
             return Ok(());
@@ -657,7 +663,7 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
         } else if is_nullable && !to_nullable {
             self.validity = None; // verified null-free above
         }
-        self.name = field.name().map(Into::into);
+        self.name = field.headers().name().map(Into::into);
         self.metadata = extra;
         Ok(())
     }
