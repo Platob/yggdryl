@@ -98,6 +98,60 @@ test('elementCount divides bytes by the width; Unknown and negatives are 0', () 
 })
 
 // -------------------------------------------------------------------------------------
+// Byte types — variable-length + fixed-size binary / utf8
+// -------------------------------------------------------------------------------------
+
+test('the byte-type factories name their ids (18-21) and round-trip', () => {
+  const byteTypes = [
+    ['Binary', 18, 'binary'],
+    ['Utf8', 19, 'utf8'],
+    ['FixedBinary', 20, 'fixed_binary'],
+    ['FixedUtf8', 21, 'fixed_utf8'],
+  ]
+  for (const [factory, id, name] of byteTypes) {
+    const d = DataTypeId[factory]()
+    assert.ok(d instanceof DataTypeId)
+    assert.equal(d.asU16(), id, `${factory}.asU16()`)
+    assert.equal(d.name(), name, `${factory}.name()`)
+    assert.ok(DataTypeId.fromU16(id).equals(d), `fromU16(${id})`)
+    assert.ok(DataTypeId.fromName(name).equals(d), `fromName(${name})`)
+    // byte types have no id-derivable element width and are not fixed-width
+    assert.equal(d.byteSize(), 0, `${factory}.byteSize()`)
+    assert.equal(d.isFixedWidth(), false, `${factory}.isFixedWidth()`)
+  }
+})
+
+test('byte-type predicates: isBinary / isUtf8 / isVariableLength', () => {
+  const binary = DataTypeId.Binary()
+  const utf8 = DataTypeId.Utf8()
+  const fixedBinary = DataTypeId.FixedBinary()
+  const fixedUtf8 = DataTypeId.FixedUtf8()
+
+  // isBinary — Binary | FixedBinary
+  assert.equal(binary.isBinary(), true)
+  assert.equal(fixedBinary.isBinary(), true)
+  assert.equal(utf8.isBinary(), false)
+  assert.equal(fixedUtf8.isBinary(), false)
+
+  // isUtf8 — Utf8 | FixedUtf8
+  assert.equal(utf8.isUtf8(), true)
+  assert.equal(fixedUtf8.isUtf8(), true)
+  assert.equal(binary.isUtf8(), false)
+  assert.equal(fixedBinary.isUtf8(), false)
+
+  // isVariableLength — Binary | Utf8 only (the offsets + data layout)
+  assert.equal(binary.isVariableLength(), true)
+  assert.equal(utf8.isVariableLength(), true)
+  assert.equal(fixedBinary.isVariableLength(), false)
+  assert.equal(fixedUtf8.isVariableLength(), false)
+
+  // a numeric type is none of these
+  assert.equal(DataTypeId.I64().isBinary(), false)
+  assert.equal(DataTypeId.I64().isUtf8(), false)
+  assert.equal(DataTypeId.I64().isVariableLength(), false)
+})
+
+// -------------------------------------------------------------------------------------
 // Value semantics
 // -------------------------------------------------------------------------------------
 

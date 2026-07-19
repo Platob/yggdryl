@@ -2,11 +2,13 @@
 //!
 //! Mirrors `yggdryl_core::typed`'s column surface: a [`Serie`] (a typed column — many elements of
 //! one [`DataTypeId`](crate::datatype_id::DataTypeId) over a byte buffer, plus an optional validity
-//! bitmap for nulls) and its [`Field`] (the column's `name` / `type` / `nullable` metadata, carried
-//! in a [`Headers`](crate::headers::Headers)). Where the core `FixedSerie<T>` is generic over its
-//! compile-time element type `T`, the binding erases `T` into an [`Inner`] enum — one variant per
-//! fixed-width type — and dispatches each method across the variants, so one dynamic `Serie` class
-//! covers every dtype.
+//! bitmap for nulls), the byte-column [`ByteSerie`] (`bytes` / `str` elements — the variable-length
+//! `Binary` / `Utf8` and the fixed-size `FixedBinary` / `FixedUtf8`), and their [`Field`] (the
+//! column's `name` / `type` / `nullable` metadata, carried in a [`Headers`](crate::headers::Headers)).
+//! Where the core `FixedSerie<T>` is generic over its compile-time element type `T`, the binding
+//! erases `T` into an [`Inner`] enum — one variant per fixed-width type — and dispatches each method
+//! across the variants, so one dynamic `Serie` class covers every dtype; [`ByteSerie`] does the same
+//! over its four byte carriers ([`ByteInner`]).
 //!
 //! Every method is one or two lines over `yggdryl_core`; a reduction on a `bool` (or decimal) column
 //! raises a guided `TypeError` (they do not reduce), and a hard-fill read error surfaces as a
@@ -33,7 +35,8 @@ use yggdryl_core::typed::{
         Decimal128, Decimal256, Decimal32, Decimal64, Float32, Float64, Int128, Int16, Int32,
         Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
     },
-    Decoder, Encoder, Field as _, FixedSerie, HeaderField, Scalar, Serie as _,
+    Binary, Decoder, Encoder, Field as _, FixedBinary, FixedSerie, FixedSizeSerie, FixedUtf8,
+    HeaderField, Scalar, Serie as _, Utf8, VarSerie, VarType,
 };
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
@@ -135,6 +138,25 @@ impl_into_py_value!(i8, u8, i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, 
 impl IntoPyValue for I256 {
     fn into_py_value(self, py: Python<'_>) -> PyObject {
         i256_to_py(py, self)
+    }
+}
+
+/// Converts a decoded **byte-column** element into a Python object — a `Vec<u8>` crosses as `bytes`
+/// (via [`PyBytes`]), a `String` as `str`. The [`IntoPyValue`] counterpart for the byte carriers, so
+/// one [`byte_dispatch!`] body serves a binary and a UTF-8 column alike.
+trait IntoPyByteValue {
+    fn into_py_byte_value(self, py: Python<'_>) -> PyObject;
+}
+
+impl IntoPyByteValue for Vec<u8> {
+    fn into_py_byte_value(self, py: Python<'_>) -> PyObject {
+        PyBytes::new_bound(py, &self).into_any().unbind()
+    }
+}
+
+impl IntoPyByteValue for String {
+    fn into_py_byte_value(self, py: Python<'_>) -> PyObject {
+        self.into_py(py)
     }
 }
 
@@ -586,6 +608,317 @@ macro_rules! reduce_methods {
 
 reduce_methods!((sum, "sum"), (min, "min"), (max, "max"), (mean, "mean"));
 
+/// The **type-erased** column backing [`ByteSerie`] — one variant per byte carrier: the
+/// variable-length [`VarSerie`] (`Binary` / `Utf8`, offsets + data) and the fixed-stride
+/// [`FixedSizeSerie`] (`FixedBinary` / `FixedUtf8`). A method dispatches across the variants (see the
+/// [`byte_dispatch!`] / [`byte_map!`] helpers), so the single dynamic class serves every byte dtype.
+enum ByteInner {
+    Binary(VarSerie<Binary>),
+    Utf8(VarSerie<Utf8>),
+    FixedBinary(FixedSizeSerie<FixedBinary>),
+    FixedUtf8(FixedSizeSerie<FixedUtf8>),
+}
+
+/// Runs `$body` against the inner carrier (bound to `$s`) of whichever variant is active, unifying
+/// the arms at `$body`'s type — the [`ByteSerie`] read/scalar dispatch (the byte counterpart of
+/// [`dispatch!`]).
+macro_rules! byte_dispatch {
+    ($self:expr, $s:ident => $body:expr) => {
+        match &$self.inner {
+            ByteInner::Binary($s) => $body,
+            ByteInner::Utf8($s) => $body,
+            ByteInner::FixedBinary($s) => $body,
+            ByteInner::FixedUtf8($s) => $body,
+        }
+    };
+}
+
+/// Like [`byte_dispatch!`], but re-wraps the per-variant carrier that `$make` produces back into the
+/// **matching** [`ByteInner`] variant — the column-returning dispatch (the byte counterpart of
+/// [`map_variant!`], behind [`with_name`](ByteSerie::with_name)).
+macro_rules! byte_map {
+    ($self:expr, $s:ident => $make:expr) => {
+        match &$self.inner {
+            ByteInner::Binary($s) => ByteInner::Binary($make),
+            ByteInner::Utf8($s) => ByteInner::Utf8($make),
+            ByteInner::FixedBinary($s) => ByteInner::FixedBinary($make),
+            ByteInner::FixedUtf8($s) => ByteInner::FixedUtf8($make),
+        }
+    };
+}
+
+/// A guided `ValueError` for a `width=` passed to a **variable-length** dtype (`Binary` / `Utf8`).
+fn var_width_error() -> PyErr {
+    PyValueError::new_err(
+        "a variable-length column takes no width: drop the width= argument for a binary / utf8 \
+         column (its elements size themselves)",
+    )
+}
+
+/// A guided `ValueError` for a **fixed-size** dtype (`FixedBinary` / `FixedUtf8`) built without a
+/// `width=`.
+fn fixed_width_missing() -> PyErr {
+    PyValueError::new_err(
+        "a fixed-size column needs a width: pass width=<N> (the fixed element byte length) for a \
+         fixed_binary / fixed_utf8 column",
+    )
+}
+
+/// A guided `ValueError` for a non-byte dtype passed to [`ByteSerie`] (a numeric / decimal / bool /
+/// unknown dtype belongs on [`Serie`]).
+fn non_byte_dtype_error() -> PyErr {
+    PyValueError::new_err(
+        "dtype is not a byte column: expected binary, utf8, fixed_binary, or fixed_utf8 — use \
+         Serie for numeric/decimal/bool columns",
+    )
+}
+
+/// Rebuilds a fresh byte carrier that **shares the same encoded bytes** as `self` (cloning only the
+/// small offsets/data/validity heaps), applying `name` — the shared worker behind
+/// [`with_name`](ByteSerie::with_name), whose core counterpart consumes `self` (which the `&self`
+/// binding cannot). Implemented for both carriers so one [`byte_map!`] body covers the four variants.
+trait RebuildByteSerie {
+    fn rebuild_with_name(&self, name: &str) -> Self;
+}
+
+impl<T: VarType> RebuildByteSerie for VarSerie<T, memory::Heap> {
+    fn rebuild_with_name(&self, name: &str) -> Self {
+        VarSerie::from_parts(
+            self.offsets().clone(),
+            self.data().clone(),
+            self.validity().cloned(),
+            self.len(),
+        )
+        .with_name(name)
+    }
+}
+
+impl<T: VarType> RebuildByteSerie for FixedSizeSerie<T, memory::Heap> {
+    fn rebuild_with_name(&self, name: &str) -> Self {
+        FixedSizeSerie::from_parts(
+            self.data().clone(),
+            self.validity().cloned(),
+            self.len(),
+            self.width(),
+        )
+        .with_name(name)
+    }
+}
+
+/// A **byte-column** — the variable-length + fixed-size analogue of [`Serie`]: many `bytes` / `str`
+/// elements of one byte [`DataTypeId`](crate::datatype_id::DataTypeId) (`Binary` / `Utf8` /
+/// `FixedBinary` / `FixedUtf8`) over an offsets + data (or fixed-stride) buffer, with an optional
+/// validity bitmap for nulls. Built from a list of `bytes` / `str` (or a list of options, for
+/// nulls); `get` / `to_list` are null-aware and `values` reads the raw buffer. A variable-length
+/// column sizes each element itself; a fixed-size column packs at a per-column byte `width`
+/// (zero-padding a shorter value, truncating a longer one).
+#[pyclass(module = "yggdryl.typed")]
+pub struct ByteSerie {
+    inner: ByteInner,
+}
+
+#[pymethods]
+impl ByteSerie {
+    /// A **non-nullable** byte column holding `values` (a list of `bytes` for a binary dtype, `str`
+    /// for a utf8 dtype), encoded as `dtype` (a `DataTypeId` or a type-name `str` like `"binary"`).
+    /// A fixed-size dtype (`"fixed_binary"` / `"fixed_utf8"`) requires `width`; a variable-length
+    /// dtype (`"binary"` / `"utf8"`) takes none.
+    #[staticmethod]
+    #[pyo3(signature = (values, dtype, width=None))]
+    fn from_values(
+        values: &Bound<'_, PyAny>,
+        dtype: &Bound<'_, PyAny>,
+        width: Option<usize>,
+    ) -> PyResult<ByteSerie> {
+        let id = resolve_dtype(dtype)?;
+        let inner = match id {
+            CoreId::Binary => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<Vec<u8>> = values.extract()?;
+                ByteInner::Binary(VarSerie::<Binary>::from_values(&v))
+            }
+            CoreId::Utf8 => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<String> = values.extract()?;
+                ByteInner::Utf8(VarSerie::<Utf8>::from_values(&v))
+            }
+            CoreId::FixedBinary => {
+                let width = width.ok_or_else(fixed_width_missing)?;
+                let v: Vec<Vec<u8>> = values.extract()?;
+                ByteInner::FixedBinary(FixedSizeSerie::<FixedBinary>::from_values(width, &v))
+            }
+            CoreId::FixedUtf8 => {
+                let width = width.ok_or_else(fixed_width_missing)?;
+                let v: Vec<String> = values.extract()?;
+                ByteInner::FixedUtf8(FixedSizeSerie::<FixedUtf8>::from_values(width, &v))
+            }
+            _ => return Err(non_byte_dtype_error()),
+        };
+        Ok(ByteSerie { inner })
+    }
+
+    /// A **nullable** byte column from `values` (a list of `bytes` / `str` that may contain `None`),
+    /// encoded as `dtype` — each `None` becomes a null. Same `dtype` / `width` handling as
+    /// [`from_values`](ByteSerie::from_values).
+    #[staticmethod]
+    #[pyo3(signature = (values, dtype, width=None))]
+    fn from_options(
+        values: &Bound<'_, PyAny>,
+        dtype: &Bound<'_, PyAny>,
+        width: Option<usize>,
+    ) -> PyResult<ByteSerie> {
+        let id = resolve_dtype(dtype)?;
+        let inner = match id {
+            CoreId::Binary => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<Option<Vec<u8>>> = values.extract()?;
+                ByteInner::Binary(VarSerie::<Binary>::from_options(&v))
+            }
+            CoreId::Utf8 => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<Option<String>> = values.extract()?;
+                ByteInner::Utf8(VarSerie::<Utf8>::from_options(&v))
+            }
+            CoreId::FixedBinary => {
+                let width = width.ok_or_else(fixed_width_missing)?;
+                let v: Vec<Option<Vec<u8>>> = values.extract()?;
+                ByteInner::FixedBinary(FixedSizeSerie::<FixedBinary>::from_options(width, &v))
+            }
+            CoreId::FixedUtf8 => {
+                let width = width.ok_or_else(fixed_width_missing)?;
+                let v: Vec<Option<String>> = values.extract()?;
+                ByteInner::FixedUtf8(FixedSizeSerie::<FixedUtf8>::from_options(width, &v))
+            }
+            _ => return Err(non_byte_dtype_error()),
+        };
+        Ok(ByteSerie { inner })
+    }
+
+    /// The number of elements in the column.
+    fn len(&self) -> usize {
+        byte_dispatch!(self, s => s.len())
+    }
+
+    /// The number of elements (so `len(serie)` works).
+    fn __len__(&self) -> usize {
+        self.len()
+    }
+
+    /// Truthiness — `True` when the column holds at least one element.
+    fn __bool__(&self) -> bool {
+        !self.is_empty()
+    }
+
+    /// Whether the column holds no elements.
+    fn is_empty(&self) -> bool {
+        byte_dispatch!(self, s => s.is_empty())
+    }
+
+    /// The element at `index` as `bytes` (a binary column) or `str` (a utf8 column), or `None` when
+    /// it is null or out of range.
+    fn get(&self, py: Python<'_>, index: usize) -> PyObject {
+        byte_dispatch!(self, s => match s.get(index) {
+            Some(value) => value.into_py_byte_value(py),
+            None => py.None(),
+        })
+    }
+
+    /// Every element as an option (null-aware) — a Python list of `bytes` / `str` with `None` in each
+    /// null slot.
+    fn to_list(&self, py: Python<'_>) -> Vec<PyObject> {
+        byte_dispatch!(self, s => s
+            .to_options()
+            .into_iter()
+            .map(|value| match value {
+                Some(value) => value.into_py_byte_value(py),
+                None => py.None(),
+            })
+            .collect::<Vec<PyObject>>())
+    }
+
+    /// The **raw** values (validity ignored) — a Python list of `bytes` / `str`; a null slot surfaces
+    /// its stored bytes. Pair with [`is_valid`](ByteSerie::is_valid) for null-awareness.
+    fn values(&self, py: Python<'_>) -> Vec<PyObject> {
+        byte_dispatch!(self, s => s
+            .values()
+            .into_iter()
+            .map(|value| value.into_py_byte_value(py))
+            .collect::<Vec<PyObject>>())
+    }
+
+    /// How many elements are null.
+    fn null_count(&self) -> usize {
+        byte_dispatch!(self, s => s.null_count())
+    }
+
+    /// Whether the element at `index` is **null** (absent, or out of range).
+    fn is_null(&self, index: usize) -> bool {
+        byte_dispatch!(self, s => s.is_null(index))
+    }
+
+    /// Whether the element at `index` is **valid** (present and in range).
+    fn is_valid(&self, index: usize) -> bool {
+        byte_dispatch!(self, s => s.is_valid(index))
+    }
+
+    /// The column's element [`DataTypeId`](crate::datatype_id::DataTypeId).
+    fn dtype(&self) -> DataTypeId {
+        byte_dispatch!(self, s => s.data_type_id()).into()
+    }
+
+    /// The fixed element byte **width** for a fixed-size column (`FixedBinary` / `FixedUtf8`), or
+    /// `None` for a variable-length column (`Binary` / `Utf8`, whose elements size themselves).
+    fn width(&self) -> Option<usize> {
+        match &self.inner {
+            ByteInner::Binary(_) | ByteInner::Utf8(_) => None,
+            ByteInner::FixedBinary(s) => Some(s.width()),
+            ByteInner::FixedUtf8(s) => Some(s.width()),
+        }
+    }
+
+    /// A **fresh** column addressing the same bytes with its column `name` set — the metadata a
+    /// [`field`](ByteSerie::field) reports. Any fixed-size `width` is carried over.
+    fn with_name(&self, name: &str) -> ByteSerie {
+        ByteSerie {
+            inner: byte_map!(self, s => s.rebuild_with_name(name)),
+        }
+    }
+
+    /// The column's [`Field`] metadata — its `name`, element type, `nullable` flag, and (for a
+    /// fixed-size column) its `byte_width`.
+    fn field(&self) -> Field {
+        Field {
+            inner: byte_dispatch!(self, s => s.field()),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        let dtype = byte_dispatch!(self, s => s.data_type_id()).name();
+        let len = byte_dispatch!(self, s => s.len());
+        let nulls = byte_dispatch!(self, s => s.null_count());
+        let width = match self.width() {
+            Some(width) => format!(", width={width}"),
+            None => String::new(),
+        };
+        match byte_dispatch!(self, s => s.field().name().map(str::to_string)) {
+            Some(name) => format!(
+                "ByteSerie(name={name:?}, dtype='{dtype}'{width}, len={len}, null_count={nulls})"
+            ),
+            None => {
+                format!("ByteSerie(dtype='{dtype}'{width}, len={len}, null_count={nulls})")
+            }
+        }
+    }
+}
+
 /// A **column descriptor** — a column's `name`, element [`DataTypeId`](crate::datatype_id::DataTypeId),
 /// and nullability, carried in a [`Headers`](crate::headers::Headers) map (so it serializes, hashes,
 /// and travels like any other metadata). Wraps the core `HeaderField`.
@@ -644,6 +977,12 @@ impl Field {
         self.inner.scale()
     }
 
+    /// The fixed element **byte width** a fixed-size column (`FixedBinary` / `FixedUtf8`) carries, or
+    /// `None` for a variable-length / non-byte field.
+    fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width()
+    }
+
     /// The backing [`Headers`](crate::headers::Headers) metadata map, as an owned **copy** (name /
     /// type / nullable live here, alongside any extra annotations).
     fn headers(&self) -> Headers {
@@ -679,9 +1018,11 @@ impl Field {
     }
 }
 
-/// Populates the `typed` submodule with the column surface: [`Serie`] and its [`Field`].
+/// Populates the `typed` submodule with the column surface: [`Serie`], the byte-column
+/// [`ByteSerie`], and their [`Field`].
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Serie>()?;
+    module.add_class::<ByteSerie>()?;
     module.add_class::<Field>()?;
     Ok(())
 }

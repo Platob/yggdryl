@@ -18,6 +18,12 @@
 //! every `mean`, return a `number`. A boolean column does not reduce, so its `sum` / `min` / `max` /
 //! `mean` throw the core's guided `Error`.
 //!
+//! A **byte column** ([`ByteSerie`]) is the variable-length / fixed-size counterpart of [`Serie`],
+//! type-erased over the four byte carriers: variable-length `Binary` / `Utf8` (an `i32` offsets +
+//! data buffer) and fixed-size `FixedBinary` / `FixedUtf8` (a fixed byte stride, short values
+//! zero-padded and long ones truncated). A binary element crosses as a JS `Buffer`, a UTF-8 element
+//! as a JS `string`; it shares the same null-aware `get` / `toList` / `field` surface.
+//!
 //! A **decimal** column carries a signed *unscaled integer* whose width matches the four native
 //! integers: `Decimal32` crosses as a `number` (`i32`), `Decimal64` / `Decimal128` as a `BigInt`
 //! (`i64` / `i128`), and `Decimal256` as an arbitrary-precision `BigInt` (its 256-bit [`I256`]
@@ -25,7 +31,7 @@
 //! `mean` throw the guided `Error`; instead read the raw unscaled value with `get` / `values`, place
 //! the point with `toDecimalString`, and read `precision` / `scale` from the [`Field`].
 
-use napi::bindgen_prelude::{BigInt, Either, Either3};
+use napi::bindgen_prelude::{BigInt, Buffer, Either, Either3};
 use napi_derive::napi;
 
 use crate::datatype_id::DataTypeId;
@@ -39,7 +45,8 @@ use yggdryl_core::typed::fixedbyte::{
     Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
 };
 use yggdryl_core::typed::{
-    Decoder, Encoder, Field as FieldTrait, FixedSerie, HeaderField, Scalar, Serie as SerieTrait,
+    Binary, Decoder, Encoder, Field as FieldTrait, FixedBinary, FixedSerie, FixedSizeSerie,
+    FixedUtf8, HeaderField, Scalar, Serie as SerieTrait, Utf8, VarSerie, VarType,
 };
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
@@ -759,6 +766,13 @@ impl Field {
         self.inner.scale()
     }
 
+    /// The fixed element **byte width** this field carries (for a fixed-size byte column —
+    /// `FixedBinary` / `FixedUtf8`), or `null` when it does not describe one.
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width()
+    }
+
     /// The backing metadata [`Headers`](crate::headers::Headers) — **a copy** (the name / type /
     /// nullable live here, alongside any extra annotations).
     #[napi]
@@ -783,5 +797,383 @@ impl Field {
             self.inner.data_type_id(),
             self.inner.nullable()
         )
+    }
+}
+
+// ---- the byte column: value marshalling ------------------------------------------------
+
+/// A native byte-column element rendered as its JS value — a `Buffer` for a binary element
+/// (`Vec<u8>`), a `string` for a UTF-8 element (`String`).
+trait ToJsElement {
+    /// This owned element as its JS shape (`Buffer` / `string`).
+    fn to_js_element(self) -> Either<Buffer, String>;
+}
+
+impl ToJsElement for Vec<u8> {
+    fn to_js_element(self) -> Either<Buffer, String> {
+        Either::A(Buffer::from(self))
+    }
+}
+
+impl ToJsElement for String {
+    fn to_js_element(self) -> Either<Buffer, String> {
+        Either::B(self)
+    }
+}
+
+/// Extracts a JS `Buffer` element as raw bytes, or throws a guided `Error` (a binary column takes a
+/// `Buffer`, not a string).
+fn as_binary_element(value: Either<Buffer, String>) -> napi::Result<Vec<u8>> {
+    match value {
+        Either::A(buffer) => Ok(buffer.to_vec()),
+        Either::B(_) => Err(to_error(
+            "expected a Buffer element for a binary column: pass a Buffer (a string suits only \
+             utf8 / fixed_utf8)",
+        )),
+    }
+}
+
+/// Extracts a JS `string` element, or throws a guided `Error` (a utf8 column takes a string, not a
+/// `Buffer`).
+fn as_utf8_element(value: Either<Buffer, String>) -> napi::Result<String> {
+    match value {
+        Either::B(text) => Ok(text),
+        Either::A(_) => Err(to_error(
+            "expected a string element for a utf8 column: pass a string (a Buffer suits only \
+             binary / fixed_binary)",
+        )),
+    }
+}
+
+/// Every element as raw bytes for a binary column (each must be a `Buffer`).
+fn binary_values(values: Vec<Either<Buffer, String>>) -> napi::Result<Vec<Vec<u8>>> {
+    values.into_iter().map(as_binary_element).collect()
+}
+
+/// Every element as a string for a utf8 column (each must be a `string`).
+fn utf8_values(values: Vec<Either<Buffer, String>>) -> napi::Result<Vec<String>> {
+    values.into_iter().map(as_utf8_element).collect()
+}
+
+/// Like [`binary_values`], null-aware — a `null` entry becomes a null element.
+fn binary_options(
+    values: Vec<Option<Either<Buffer, String>>>,
+) -> napi::Result<Vec<Option<Vec<u8>>>> {
+    values
+        .into_iter()
+        .map(|value| value.map(as_binary_element).transpose())
+        .collect()
+}
+
+/// Like [`utf8_values`], null-aware — a `null` entry becomes a null element.
+fn utf8_options(values: Vec<Option<Either<Buffer, String>>>) -> napi::Result<Vec<Option<String>>> {
+    values
+        .into_iter()
+        .map(|value| value.map(as_utf8_element).transpose())
+        .collect()
+}
+
+/// The fixed element width for a fixed-size column, or a guided `Error` when it is absent.
+fn require_width(width: Option<u32>) -> napi::Result<usize> {
+    match width {
+        Some(width) => Ok(width as usize),
+        None => Err(to_error(
+            "a fixed-size column needs a width: pass the fixed element byte length for a \
+             fixed_binary / fixed_utf8 column",
+        )),
+    }
+}
+
+/// Refuses a `width` on a variable-length column with a guided `Error`.
+fn reject_width(width: Option<u32>) -> napi::Result<()> {
+    match width {
+        None => Ok(()),
+        Some(_) => Err(to_error(
+            "a variable-length column takes no width: drop the width argument for a binary / utf8 \
+             column",
+        )),
+    }
+}
+
+/// The guided `Error` a non-byte [`DataTypeId`](crate::datatype_id::DataTypeId) raises when passed to
+/// a [`ByteSerie`] builder.
+fn byte_dtype_error() -> napi::Error {
+    to_error(
+        "this DataTypeId is not a byte column: expected Binary, Utf8, FixedBinary, or FixedUtf8 — \
+         use Serie for numeric/decimal/bool columns",
+    )
+}
+
+/// A byte carrier that clones its bytes into a fresh column carrying a new `name` — the shared body
+/// of [`ByteSerie::with_name`], written once per carrier layout (offsets+data for the variable-length
+/// carrier, a single data buffer for the fixed-size one).
+trait RebuildNamed {
+    /// A fresh column over clones of this one's buffers, with `name` set.
+    fn rebuild_named(&self, name: &str) -> Self;
+}
+
+impl<T: VarType> RebuildNamed for VarSerie<T> {
+    fn rebuild_named(&self, name: &str) -> Self {
+        VarSerie::from_parts(
+            self.offsets().clone(),
+            self.data().clone(),
+            self.validity().cloned(),
+            self.len(),
+        )
+        .with_name(name)
+    }
+}
+
+impl<T: VarType> RebuildNamed for FixedSizeSerie<T> {
+    fn rebuild_named(&self, name: &str) -> Self {
+        FixedSizeSerie::from_parts(
+            self.data().clone(),
+            self.validity().cloned(),
+            self.len(),
+            self.width(),
+        )
+        .with_name(name)
+    }
+}
+
+// ---- the erased byte column + its dispatch ---------------------------------------------
+
+/// A byte column for each of the four byte carriers — the type-erased backing of [`ByteSerie`].
+enum ByteInner {
+    Binary(VarSerie<Binary>),
+    Utf8(VarSerie<Utf8>),
+    FixedBinary(FixedSizeSerie<FixedBinary>),
+    FixedUtf8(FixedSizeSerie<FixedUtf8>),
+}
+
+/// Runs `$body` against the inner byte column (`$serie`) of whichever variant is present — the
+/// four-way match, written once. Every arm must yield the same type.
+macro_rules! byte_dispatch {
+    ($self:expr, $serie:ident => $body:expr) => {
+        match &$self.inner {
+            ByteInner::Binary($serie) => $body,
+            ByteInner::Utf8($serie) => $body,
+            ByteInner::FixedBinary($serie) => $body,
+            ByteInner::FixedUtf8($serie) => $body,
+        }
+    };
+}
+
+/// Like [`byte_dispatch!`], but rewraps `$build` (a fresh column of the current carrier) back into
+/// the matching [`ByteInner`] variant — for transforms that return a new column.
+macro_rules! byte_rebuild {
+    ($self:expr, $serie:ident => $build:expr) => {
+        match &$self.inner {
+            ByteInner::Binary($serie) => ByteInner::Binary($build),
+            ByteInner::Utf8($serie) => ByteInner::Utf8($build),
+            ByteInner::FixedBinary($serie) => ByteInner::FixedBinary($build),
+            ByteInner::FixedUtf8($serie) => ByteInner::FixedUtf8($build),
+        }
+    };
+}
+
+/// A **byte-blob typed column** — the variable-length / fixed-size counterpart of [`Serie`], over the
+/// four byte carriers: variable-length `Binary` (an `i32` offsets + data buffer) / `Utf8`, and
+/// fixed-size `FixedBinary` / `FixedUtf8` (a fixed byte stride). A binary element crosses as a JS
+/// `Buffer`, a UTF-8 element as a JS `string`; a null element is `null`. Built from a value list
+/// ([`fromValues`](ByteSerie::from_values)) or an option list
+/// ([`fromOptions`](ByteSerie::from_options)).
+#[napi(namespace = "typed")]
+pub struct ByteSerie {
+    inner: ByteInner,
+}
+
+#[napi(namespace = "typed")]
+impl ByteSerie {
+    /// A **non-null** byte column of `values`, each an element of `dtype` (`DataTypeId.Binary()`,
+    /// `Utf8()`, `FixedBinary()`, `FixedUtf8()`). Binary elements arrive as `Buffer`s, UTF-8 elements
+    /// as `string`s. A fixed-size `dtype` requires `width` (the fixed element byte length); a
+    /// variable-length one takes no `width`.
+    #[napi(factory)]
+    pub fn from_values(
+        values: Vec<Either<Buffer, String>>,
+        dtype: &DataTypeId,
+        width: Option<u32>,
+    ) -> napi::Result<ByteSerie> {
+        let inner = match dtype.inner {
+            DtId::Binary => {
+                reject_width(width)?;
+                ByteInner::Binary(VarSerie::<Binary>::from_values(&binary_values(values)?))
+            }
+            DtId::Utf8 => {
+                reject_width(width)?;
+                ByteInner::Utf8(VarSerie::<Utf8>::from_values(&utf8_values(values)?))
+            }
+            DtId::FixedBinary => {
+                let width = require_width(width)?;
+                ByteInner::FixedBinary(FixedSizeSerie::<FixedBinary>::from_values(
+                    width,
+                    &binary_values(values)?,
+                ))
+            }
+            DtId::FixedUtf8 => {
+                let width = require_width(width)?;
+                ByteInner::FixedUtf8(FixedSizeSerie::<FixedUtf8>::from_values(
+                    width,
+                    &utf8_values(values)?,
+                ))
+            }
+            _ => return Err(byte_dtype_error()),
+        };
+        Ok(ByteSerie { inner })
+    }
+
+    /// A **nullable** byte column of `values` — a `null` entry becomes a null element. Non-null
+    /// entries follow the same per-`dtype` shapes as [`fromValues`](ByteSerie::from_values).
+    #[napi(factory)]
+    pub fn from_options(
+        values: Vec<Option<Either<Buffer, String>>>,
+        dtype: &DataTypeId,
+        width: Option<u32>,
+    ) -> napi::Result<ByteSerie> {
+        let inner = match dtype.inner {
+            DtId::Binary => {
+                reject_width(width)?;
+                ByteInner::Binary(VarSerie::<Binary>::from_options(&binary_options(values)?))
+            }
+            DtId::Utf8 => {
+                reject_width(width)?;
+                ByteInner::Utf8(VarSerie::<Utf8>::from_options(&utf8_options(values)?))
+            }
+            DtId::FixedBinary => {
+                let width = require_width(width)?;
+                ByteInner::FixedBinary(FixedSizeSerie::<FixedBinary>::from_options(
+                    width,
+                    &binary_options(values)?,
+                ))
+            }
+            DtId::FixedUtf8 => {
+                let width = require_width(width)?;
+                ByteInner::FixedUtf8(FixedSizeSerie::<FixedUtf8>::from_options(
+                    width,
+                    &utf8_options(values)?,
+                ))
+            }
+            _ => return Err(byte_dtype_error()),
+        };
+        Ok(ByteSerie { inner })
+    }
+
+    /// The number of elements.
+    #[napi]
+    pub fn len(&self) -> u32 {
+        byte_dispatch!(self, serie => serie.len() as u32)
+    }
+
+    /// Whether the column has no elements.
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        byte_dispatch!(self, serie => serie.is_empty())
+    }
+
+    /// The element at `index` as a `Buffer` (binary) or `string` (utf8), or `null` when it is null
+    /// or out of range.
+    #[napi]
+    pub fn get(&self, index: u32) -> Option<Either<Buffer, String>> {
+        let index = index as usize;
+        byte_dispatch!(self, serie => serie.get(index).map(|value| value.to_js_element()))
+    }
+
+    /// Every element as an optional value (a null element is `null`) — the null-aware list.
+    #[napi]
+    pub fn to_list(&self) -> Vec<Option<Either<Buffer, String>>> {
+        byte_dispatch!(self, serie => serie
+            .to_options()
+            .into_iter()
+            .map(|value| value.map(|value| value.to_js_element()))
+            .collect())
+    }
+
+    /// The **raw** values (validity ignored — a null slot surfaces its stored bytes). Pair with
+    /// [`isValid`](ByteSerie::is_valid) for null-awareness.
+    #[napi]
+    pub fn values(&self) -> Vec<Either<Buffer, String>> {
+        byte_dispatch!(self, serie => serie
+            .values()
+            .into_iter()
+            .map(|value| value.to_js_element())
+            .collect())
+    }
+
+    /// How many elements are null.
+    #[napi]
+    pub fn null_count(&self) -> u32 {
+        byte_dispatch!(self, serie => serie.null_count() as u32)
+    }
+
+    /// Whether the element at `index` is **null** (absent). Out of range is `false`.
+    #[napi]
+    pub fn is_null(&self, index: u32) -> bool {
+        let index = index as usize;
+        byte_dispatch!(self, serie => serie.is_null(index))
+    }
+
+    /// Whether the element at `index` is **valid** (non-null). Out of range is `false`.
+    #[napi]
+    pub fn is_valid(&self, index: u32) -> bool {
+        let index = index as usize;
+        byte_dispatch!(self, serie => serie.is_valid(index))
+    }
+
+    /// The element [`DataTypeId`](crate::datatype_id::DataTypeId) of this column.
+    #[napi]
+    pub fn dtype(&self) -> DataTypeId {
+        byte_dispatch!(self, serie => DataTypeId { inner: serie.data_type_id() })
+    }
+
+    /// The fixed element **byte width** for a fixed-size column (`FixedBinary` / `FixedUtf8`), or
+    /// `null` for a variable-length one (`Binary` / `Utf8`).
+    #[napi]
+    pub fn width(&self) -> Option<u32> {
+        match &self.inner {
+            ByteInner::Binary(_) | ByteInner::Utf8(_) => None,
+            ByteInner::FixedBinary(serie) => Some(serie.width() as u32),
+            ByteInner::FixedUtf8(serie) => Some(serie.width() as u32),
+        }
+    }
+
+    /// A copy of this column with its **name** set — a fresh column sharing the same bytes (the
+    /// metadata its [`field`](ByteSerie::field) reports).
+    #[napi]
+    pub fn with_name(&self, name: String) -> ByteSerie {
+        ByteSerie {
+            inner: byte_rebuild!(self, serie => serie.rebuild_named(&name)),
+        }
+    }
+
+    /// This column's [`Field`] metadata — its `name`, element type, `nullable` flag, and (for a
+    /// fixed-size column) its fixed byte `width`.
+    #[napi]
+    pub fn field(&self) -> Field {
+        byte_dispatch!(self, serie => Field { inner: serie.field() })
+    }
+
+    /// A short debug string — the column's name, element type, length, null count, and (for a
+    /// fixed-size column) its fixed byte width.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        let field = byte_dispatch!(self, serie => serie.field());
+        match field.byte_width() {
+            Some(width) => format!(
+                "ByteSerie(name={:?}, dtype={}, len={}, nullCount={}, width={})",
+                field.name(),
+                field.data_type_id(),
+                self.len(),
+                self.null_count(),
+                width
+            ),
+            None => format!(
+                "ByteSerie(name={:?}, dtype={}, len={}, nullCount={})",
+                field.name(),
+                field.data_type_id(),
+                self.len(),
+                self.null_count()
+            ),
+        }
     }
 }

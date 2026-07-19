@@ -16,13 +16,15 @@ import pytest
 import yggdryl.typed
 from yggdryl.datatype_id import DataTypeId
 from yggdryl.headers import Headers
-from yggdryl.typed import Field, Serie
+from yggdryl.typed import ByteSerie, Field, Serie
 
 
 def test_module_surface():
     assert Serie.__module__ == "yggdryl.typed"
+    assert ByteSerie.__module__ == "yggdryl.typed"
     assert Field.__module__ == "yggdryl.typed"
     assert hasattr(yggdryl.typed, "Serie")
+    assert hasattr(yggdryl.typed, "ByteSerie")
     assert hasattr(yggdryl.typed, "Field")
 
 
@@ -445,3 +447,207 @@ def test_field_precision_scale_none_for_non_decimal():
     f = Field("x", DataTypeId.I64)
     assert f.precision() is None
     assert f.scale() is None
+
+
+# =====================================================================================
+# ByteSerie — the variable-length + fixed-size byte columns
+# =====================================================================================
+
+
+def test_bytes_module_surface():
+    assert ByteSerie.__module__ == "yggdryl.typed"
+
+
+# -------------------------------------------------------------------------------------
+# A variable-length `binary` column
+# -------------------------------------------------------------------------------------
+
+
+def test_binary_column():
+    col = ByteSerie.from_values([b"a", b"bb", b"", b"ccc"], DataTypeId.Binary)
+    assert col.len() == 4
+    assert len(col) == 4  # __len__
+    assert bool(col) is True  # __bool__
+    assert col.dtype() == DataTypeId.Binary
+    assert col.width() is None  # variable-length -> no fixed width
+    assert col.get(0) == b"a"
+    assert col.get(2) == b""  # an empty element is not a null
+    assert col.get(3) == b"ccc"
+    assert col.get(4) is None  # out of range
+    assert col.to_list() == [b"a", b"bb", b"", b"ccc"]
+    assert col.values() == [b"a", b"bb", b"", b"ccc"]
+    assert col.null_count() == 0
+    field = col.field()
+    assert field.dtype() == DataTypeId.Binary
+    assert field.byte_width() is None  # variable-length carries no width
+
+
+def test_binary_str_dtype():
+    col = ByteSerie.from_values([b"x", b"y"], "binary")
+    assert col.dtype() == DataTypeId.Binary
+    assert col.to_list() == [b"x", b"y"]
+
+
+# -------------------------------------------------------------------------------------
+# A variable-length `utf8` column — multibyte round-trip
+# -------------------------------------------------------------------------------------
+
+
+def test_utf8_column_multibyte():
+    col = ByteSerie.from_values(["héllo", "世界", "", "ok"], DataTypeId.Utf8)
+    assert col.dtype() == DataTypeId.Utf8
+    assert col.get(0) == "héllo"
+    assert col.get(1) == "世界"  # multibyte survives the byte round-trip
+    assert col.get(2) == ""
+    assert col.to_list() == ["héllo", "世界", "", "ok"]
+    assert col.values() == ["héllo", "世界", "", "ok"]
+    assert col.width() is None
+
+
+def test_utf8_str_dtype():
+    col = ByteSerie.from_values(["a", "béta"], "utf8")
+    assert col.dtype() == DataTypeId.Utf8
+    assert col.to_list() == ["a", "béta"]
+
+
+# -------------------------------------------------------------------------------------
+# A nullable column via from_options
+# -------------------------------------------------------------------------------------
+
+
+def test_binary_nullable():
+    col = ByteSerie.from_options([b"a", None, b"ccc"], DataTypeId.Binary)
+    assert col.len() == 3
+    assert col.null_count() == 1
+    assert col.get(0) == b"a"
+    assert col.get(1) is None  # the null
+    assert col.is_null(1) and col.is_valid(0)
+    assert not col.is_valid(1)
+    assert col.to_list() == [b"a", None, b"ccc"]
+
+
+def test_utf8_nullable():
+    col = ByteSerie.from_options(["x", None, "z"], DataTypeId.Utf8)
+    assert col.null_count() == 1
+    assert col.get(1) is None
+    assert col.to_list() == ["x", None, "z"]
+
+
+# -------------------------------------------------------------------------------------
+# A fixed_binary column — zero-pad + truncation at the fixed width
+# -------------------------------------------------------------------------------------
+
+
+def test_fixed_binary_width():
+    # width=4: "ab" zero-pads to 4 bytes, "abcdef" truncates to the first 4.
+    col = ByteSerie.from_values([b"ab", b"abcd", b"abcdef"], DataTypeId.FixedBinary, width=4)
+    assert col.dtype() == DataTypeId.FixedBinary
+    assert col.width() == 4
+    assert col.get(0) == b"ab\x00\x00"  # zero-padded to the width
+    assert col.get(1) == b"abcd"  # exact fit
+    assert col.get(2) == b"abcd"  # truncated to the width
+    assert col.len() == 3
+    field = col.field()
+    assert field.dtype() == DataTypeId.FixedBinary
+    assert field.byte_width() == 4
+
+
+def test_fixed_binary_str_dtype():
+    col = ByteSerie.from_values([b"ab"], "fixed_binary", width=2)
+    assert col.dtype() == DataTypeId.FixedBinary
+    assert col.width() == 2
+    assert col.get(0) == b"ab"
+
+
+# -------------------------------------------------------------------------------------
+# A fixed_utf8 nullable column
+# -------------------------------------------------------------------------------------
+
+
+def test_fixed_utf8_nullable():
+    col = ByteSerie.from_options(["ab", None, "cd"], DataTypeId.FixedUtf8, width=2)
+    assert col.dtype() == DataTypeId.FixedUtf8
+    assert col.width() == 2
+    assert col.len() == 3
+    assert col.null_count() == 1
+    assert col.get(0) == "ab"
+    assert col.get(1) is None  # the null
+    assert col.get(2) == "cd"
+    assert col.is_null(1) and col.is_valid(0)
+    assert col.field().byte_width() == 2
+    assert col.field().nullable() is True
+
+
+# -------------------------------------------------------------------------------------
+# with_name — a fresh column sharing the bytes, preserving width
+# -------------------------------------------------------------------------------------
+
+
+def test_bytes_with_name():
+    col = ByteSerie.from_values([b"a", b"bb"], DataTypeId.Binary).with_name("blob")
+    assert col.field().name() == "blob"
+    assert col.to_list() == [b"a", b"bb"]  # bytes preserved
+
+
+def test_fixed_bytes_with_name_preserves_width():
+    col = ByteSerie.from_values(["ab", "cd"], DataTypeId.FixedUtf8, width=2).with_name("code")
+    assert col.field().name() == "code"
+    assert col.width() == 2  # width carried over
+    assert col.field().byte_width() == 2
+    assert col.to_list() == ["ab", "cd"]
+
+
+# -------------------------------------------------------------------------------------
+# repr
+# -------------------------------------------------------------------------------------
+
+
+def test_bytes_repr():
+    col = ByteSerie.from_values([b"a", b"bb"], DataTypeId.Binary)
+    r = repr(col)
+    assert "ByteSerie(" in r and "binary" in r and "len=2" in r
+
+    fixed = ByteSerie.from_values([b"ab"], DataTypeId.FixedBinary, width=4).with_name("k")
+    fr = repr(fixed)
+    assert "fixed_binary" in fr and "width=4" in fr and 'name="k"' in fr
+
+
+# -------------------------------------------------------------------------------------
+# Empty column
+# -------------------------------------------------------------------------------------
+
+
+def test_bytes_empty():
+    col = ByteSerie.from_values([], DataTypeId.Binary)
+    assert col.len() == 0
+    assert col.is_empty()
+    assert not col  # __bool__
+    assert col.to_list() == []
+    assert col.values() == []
+    assert col.get(0) is None
+    assert col.null_count() == 0
+
+
+# -------------------------------------------------------------------------------------
+# Guided errors — width missing / width given / non-byte dtype
+# -------------------------------------------------------------------------------------
+
+
+def test_fixed_requires_width():
+    with pytest.raises(ValueError):
+        ByteSerie.from_values([b"ab"], DataTypeId.FixedBinary)
+    with pytest.raises(ValueError):
+        ByteSerie.from_options([b"ab", None], DataTypeId.FixedUtf8)
+
+
+def test_variable_rejects_width():
+    with pytest.raises(ValueError):
+        ByteSerie.from_values([b"ab"], DataTypeId.Binary, width=4)
+    with pytest.raises(ValueError):
+        ByteSerie.from_options(["ab", None], DataTypeId.Utf8, width=2)
+
+
+def test_non_byte_dtype_rejected():
+    for dt in (DataTypeId.I64, DataTypeId.Bool, DataTypeId.Decimal128, DataTypeId.Unknown):
+        with pytest.raises(ValueError):
+            ByteSerie.from_values([b"ab"], dt)

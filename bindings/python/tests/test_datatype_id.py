@@ -4,7 +4,8 @@ Mirrors ``crates/yggdryl-core/src/datatype_id.rs`` on the Python surface: the wi
 numeric values, the ``u16`` id round-trip (``as_u16`` / ``from_u16``), the lowercase token
 names (``name`` / ``from_name``), the storage widths (``byte_size`` / ``bit_size``), the
 category predicates (``is_integer`` / ``is_signed`` / ``is_float`` / ``is_bool`` /
-``is_fixed_width``), the element count, and the int/index/str/repr dunders.
+``is_fixed_width`` / ``is_binary`` / ``is_utf8`` / ``is_variable_length``), the element count,
+and the int/index/str/repr dunders.
 """
 
 import operator
@@ -34,6 +35,10 @@ ALL_TYPES = [
     (DataTypeId.Decimal64, 15, "decimal64"),
     (DataTypeId.Decimal128, 16, "decimal128"),
     (DataTypeId.Decimal256, 17, "decimal256"),
+    (DataTypeId.Binary, 18, "binary"),
+    (DataTypeId.Utf8, 19, "utf8"),
+    (DataTypeId.FixedBinary, 20, "fixed_binary"),
+    (DataTypeId.FixedUtf8, 21, "fixed_utf8"),
 ]
 
 
@@ -57,7 +62,7 @@ def test_as_u16_from_u16_round_trip():
         assert DataTypeId.from_u16(value) == dtype
     # An unrecognized id degrades to Unknown (total, never raises).
     assert DataTypeId.from_u16(999) == DataTypeId.Unknown
-    assert DataTypeId.from_u16(18) == DataTypeId.Unknown  # one past Decimal256 (17)
+    assert DataTypeId.from_u16(22) == DataTypeId.Unknown  # one past FixedUtf8 (21)
 
 
 def test_names_and_from_name():
@@ -92,6 +97,11 @@ def test_byte_and_bit_sizes():
         DataTypeId.Decimal64: 8,
         DataTypeId.Decimal128: 16,
         DataTypeId.Decimal256: 32,
+        # The byte columns are not fixed-width — no id-derivable element width.
+        DataTypeId.Binary: 0,
+        DataTypeId.Utf8: 0,
+        DataTypeId.FixedBinary: 0,
+        DataTypeId.FixedUtf8: 0,
     }
     for dtype, byte_size in widths.items():
         assert dtype.byte_size() == byte_size
@@ -145,3 +155,50 @@ def test_hashable_and_frozen():
     assert {DataTypeId.I32, DataTypeId.I32, DataTypeId.F64} == {DataTypeId.I32, DataTypeId.F64}
     lookup = {DataTypeId.I64: "wide"}
     assert lookup[DataTypeId.from_u16(8)] == "wide"  # equal values hash equal
+
+
+# -------------------------------------------------------------------------------------
+# The four byte columns — Binary / Utf8 / FixedBinary / FixedUtf8
+# -------------------------------------------------------------------------------------
+
+
+def test_byte_variants():
+    byte_types = [
+        (DataTypeId.Binary, 18, "binary"),
+        (DataTypeId.Utf8, 19, "utf8"),
+        (DataTypeId.FixedBinary, 20, "fixed_binary"),
+        (DataTypeId.FixedUtf8, 21, "fixed_utf8"),
+    ]
+    for dtype, value, name in byte_types:
+        assert int(dtype) == value
+        assert dtype.name() == name
+        assert DataTypeId.from_name(name) == dtype
+        assert DataTypeId.from_u16(value) == dtype
+        # Not fixed-width — no id-derivable element width (a fixed-size width is field metadata).
+        assert dtype.byte_size() == 0
+        assert dtype.is_fixed_width() is False
+        # Byte columns are neither integer nor float nor bool.
+        assert not dtype.is_integer()
+        assert not dtype.is_float()
+        assert not dtype.is_bool()
+
+
+def test_byte_category_predicates():
+    # is_binary: Binary / FixedBinary.
+    assert DataTypeId.Binary.is_binary()
+    assert DataTypeId.FixedBinary.is_binary()
+    assert not DataTypeId.Utf8.is_binary()
+    assert not DataTypeId.I32.is_binary()
+
+    # is_utf8: Utf8 / FixedUtf8.
+    assert DataTypeId.Utf8.is_utf8()
+    assert DataTypeId.FixedUtf8.is_utf8()
+    assert not DataTypeId.Binary.is_utf8()
+    assert not DataTypeId.I32.is_utf8()
+
+    # is_variable_length: only the offsets + data layouts (Binary / Utf8).
+    assert DataTypeId.Binary.is_variable_length()
+    assert DataTypeId.Utf8.is_variable_length()
+    assert not DataTypeId.FixedBinary.is_variable_length()
+    assert not DataTypeId.FixedUtf8.is_variable_length()
+    assert not DataTypeId.I32.is_variable_length()

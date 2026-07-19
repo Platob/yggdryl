@@ -9,9 +9,11 @@ column is a *zero-overhead* view (a build owns only its data buffer; a reduction
 The layer is built from six small pieces in the Rust core — `DataType`, `Encoder`, `Decoder`,
 `Reduce`, `Scalar`, and `Serie` (`Serie: Scalar`) — plus a `Field` (a column's `name` / `type` /
 `nullable`, carried in a [`Headers`](headers.md) map). Implementations are split by **length ×
-granularity**: `fixedbyte` (integers, floats), `fixedbit` (booleans), and the reserved `varbyte` /
-`varbit` (strings, binary). The bindings expose the column surface — a `Serie` and its `Field` —
-with the element type inferred from a [`DataTypeId`](https://platob.github.io/yggdryl/).
+granularity**: `fixedbyte` (integers, floats, decimals, and the fixed-size `FixedBinary` /
+`FixedUtf8`), `fixedbit` (booleans), `varbyte` (the variable-length `Binary` / `Utf8`), and the
+reserved `varbit` (bit-lists). The bindings expose the column surface — a numeric `Serie`, a byte
+`ByteSerie`, and their `Field` — with the element type inferred from a
+[`DataTypeId`](https://platob.github.io/yggdryl/).
 
 ## Build a column and reduce it
 
@@ -218,16 +220,91 @@ max precision and a scale-aware format, so `to_decimal_string` places the decima
     assert_eq!(wide.get(0), Some(I256::from_i128(1)));
     ```
 
+## Variable-length & fixed-size byte columns
+
+A **byte column** stores raw bytes or UTF-8 text instead of fixed-width numbers. Two layouts share
+one `VarType` descriptor: **variable-length** `Binary` / `Utf8` (an `i32` offsets buffer + a data
+buffer — element *i* is `data[offsets[i]..offsets[i+1]]`, so each element sizes itself) and
+**fixed-size** `FixedBinary` / `FixedUtf8` (a single data buffer at a per-column byte `width` — a
+shorter value is zero-padded, a longer one truncated; the width lives in the `Field` metadata). The
+bindings expose both through one `ByteSerie` class (the numeric `Serie` stays as is); a binary
+element crosses as `bytes` / a `Buffer`, a UTF-8 element as `str` / a `string`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import ByteSerie
+    from yggdryl.datatype_id import DataTypeId
+
+    # Variable-length UTF-8: each element sizes itself.
+    words = ByteSerie.from_values(["héllo", "世界"], DataTypeId.Utf8)
+    assert words.len() == 2
+    assert words.get(0) == "héllo"
+    assert words.width() is None                 # variable-length: no fixed width
+
+    # Fixed-size binary, width 4: short values zero-pad, long ones truncate.
+    codes = ByteSerie.from_options([b"\x01\x02", None, b"ABCDE"], DataTypeId.FixedBinary, width=4)
+    assert codes.width() == 4
+    assert codes.field().byte_width() == 4
+    assert codes.get(0) == b"\x01\x02\x00\x00"   # zero-padded to 4
+    assert codes.get(1) is None                  # the null
+    assert codes.get(2) == b"ABCD"               # truncated to 4
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { ByteSerie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    // Variable-length UTF-8: each element sizes itself.
+    const words = ByteSerie.fromValues(['héllo', '世界'], DataTypeId.Utf8())
+    console.assert(words.len() === 2)
+    console.assert(words.get(0) === 'héllo')
+    console.assert(words.width() === null)          // variable-length: no fixed width
+
+    // Fixed-size binary, width 4: short values zero-pad, long ones truncate.
+    const codes = ByteSerie.fromOptions(
+      [Buffer.from([1, 2]), null, Buffer.from('ABCDE')], DataTypeId.FixedBinary(), 4)
+    console.assert(codes.width() === 4)
+    console.assert(codes.field().byteWidth() === 4)
+    console.assert(codes.get(0).equals(Buffer.from([1, 2, 0, 0])))  // zero-padded to 4
+    console.assert(codes.get(1) === null)           // the null
+    console.assert(codes.get(2).equals(Buffer.from('ABCD')))        // truncated to 4
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{FixedBinary, FixedSizeSerie, Scalar, Utf8, VarSerie};
+
+    // Variable-length UTF-8: element i is data[offsets[i]..offsets[i + 1]].
+    let words = VarSerie::<Utf8>::from_values(&["héllo".to_string(), "世界".to_string()]);
+    assert_eq!(words.len(), 2);
+    assert_eq!(words.get(0).as_deref(), Some("héllo"));
+    assert!(words.field().byte_width().is_none()); // variable-length: no fixed width
+
+    // Fixed-size binary, width 4: short values zero-pad, long ones truncate.
+    let codes =
+        FixedSizeSerie::<FixedBinary>::from_options(4, &[Some(vec![1, 2]), None, Some(b"ABCDE".to_vec())]);
+    assert_eq!(codes.width(), 4);
+    assert_eq!(codes.get(0), Some(vec![1, 2, 0, 0])); // zero-padded
+    assert_eq!(codes.get(1), None);                   // the null
+    assert_eq!(codes.get(2), Some(b"ABCD".to_vec()));  // truncated
+    ```
+
 ## Types & families
 
 | family | types | granularity |
 |---|---|---|
-| `fixedbyte` | `Int8`…`UInt128`, `Float32`, `Float64`, `Decimal32`…`Decimal256` | fixed length, byte-packed |
+| `fixedbyte` | `Int8`…`UInt128`, `Float32`, `Float64`, `Decimal32`…`Decimal256`, `FixedBinary`, `FixedUtf8` | fixed length, byte-packed |
 | `fixedbit` | `Bit` (bool) | fixed length, bit-packed |
-| `varbyte` *(reserved)* | `Utf8`, `Binary` | variable length (offsets + data) |
+| `varbyte` | `Binary`, `Utf8` | variable length (offsets + data) |
 | `varbit` *(reserved)* | bit-lists | variable length, bit-packed |
 
-A **decimal** carries precision/scale in its `Field`; `Decimal256` uses the native 256-bit `I256`.
+A **decimal** carries precision/scale in its `Field`; `Decimal256` uses the native 256-bit `I256`. A
+**fixed-size** `FixedBinary` / `FixedUtf8` carries its byte `width` in its `Field`; a **variable-length**
+`Binary` / `Utf8` sizes each element through its offsets buffer.
 
 Booleans do not reduce (`Bit` is not `Reduce`); the numeric types run `sum` / `min` / `max` / `mean`
 over the source's vectorized, NaN-safe `Aggregate` kernels. A column is generic over its backing

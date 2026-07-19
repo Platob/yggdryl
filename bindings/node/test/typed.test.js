@@ -4,7 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
-const { Serie, Field } = yggdryl.typed
+const { Serie, ByteSerie, Field } = yggdryl.typed
 const { DataTypeId } = yggdryl.datatype_id
 
 // -------------------------------------------------------------------------------------
@@ -337,4 +337,123 @@ test('DataTypeId decimal factories name their widths', () => {
   assert.equal(DataTypeId.Decimal32().byteSize(), 4)
   assert.equal(DataTypeId.Decimal256().byteSize(), 32)
   assert.ok(DataTypeId.fromName('decimal128').equals(DataTypeId.Decimal128()))
+})
+
+// -------------------------------------------------------------------------------------
+// ByteSerie — variable-length + fixed-size byte columns (binary / utf8)
+// -------------------------------------------------------------------------------------
+
+test('ByteSerie: a variable-length binary column from Buffers', () => {
+  const values = [Buffer.from([1, 2, 3]), Buffer.from([]), Buffer.from([255, 254])]
+  const col = ByteSerie.fromValues(values, DataTypeId.Binary())
+  assert.equal(col.len(), 3)
+  assert.equal(col.isEmpty(), false)
+
+  const first = col.get(0)
+  assert.ok(Buffer.isBuffer(first)) // a binary element crosses as a Buffer
+  assert.deepEqual(first, Buffer.from([1, 2, 3]))
+  assert.deepEqual(col.get(1), Buffer.from([])) // an empty blob
+  assert.deepEqual(col.get(2), Buffer.from([255, 254]))
+  assert.equal(col.get(3), null) // out of range
+
+  assert.deepEqual(col.toList(), values)
+  assert.deepEqual(col.values(), values)
+
+  assert.ok(col.dtype().equals(DataTypeId.Binary()))
+  assert.equal(col.width(), null) // variable-length -> no fixed width
+  assert.equal(col.nullCount(), 0)
+  assert.ok(col.field().dtype().equals(DataTypeId.Binary()))
+  assert.equal(col.field().nullable(), false)
+  assert.equal(col.field().byteWidth(), null)
+  assert.match(col.toString(), /ByteSerie\(/)
+})
+
+test('ByteSerie: a utf8 column round-trips a multibyte string; withName copies', () => {
+  const col = ByteSerie.fromValues(['hello', 'café', '日本語', ''], DataTypeId.Utf8())
+  assert.equal(col.len(), 4)
+  assert.equal(col.get(0), 'hello')
+  assert.equal(col.get(1), 'café') // é is 2 UTF-8 bytes
+  assert.equal(col.get(2), '日本語') // 3 chars, 9 bytes
+  assert.equal(col.get(3), '') // empty string
+  assert.deepEqual(col.toList(), ['hello', 'café', '日本語', ''])
+  assert.deepEqual(col.values(), ['hello', 'café', '日本語', ''])
+  assert.ok(col.dtype().equals(DataTypeId.Utf8()))
+  assert.equal(col.width(), null)
+
+  // withName produces a named copy over the same bytes; the original is unchanged
+  const named = col.withName('greeting')
+  assert.equal(named.field().name(), 'greeting')
+  assert.equal(named.get(2), '日本語')
+  assert.equal(col.field().name(), null)
+})
+
+test('ByteSerie: a nullable binary column via fromOptions', () => {
+  const col = ByteSerie.fromOptions([Buffer.from([1]), null, Buffer.from([2, 3])], DataTypeId.Binary())
+  assert.equal(col.len(), 3)
+  assert.equal(col.nullCount(), 1)
+  assert.deepEqual(col.get(0), Buffer.from([1]))
+  assert.equal(col.get(1), null) // the null
+  assert.deepEqual(col.get(2), Buffer.from([2, 3]))
+  assert.ok(col.isNull(1) && col.isValid(0))
+  assert.equal(col.isValid(1), false)
+  assert.deepEqual(col.toList(), [Buffer.from([1]), null, Buffer.from([2, 3])])
+  assert.equal(col.field().nullable(), true)
+})
+
+test('ByteSerie: a fixed_binary column zero-pads short and truncates long values', () => {
+  const col = ByteSerie.fromValues(
+    [Buffer.from([1, 2]), Buffer.from([9, 9, 9, 9, 9, 9])],
+    DataTypeId.FixedBinary(),
+    4
+  )
+  assert.equal(col.len(), 2)
+  assert.equal(col.width(), 4) // the fixed element byte width
+  assert.equal(col.field().byteWidth(), 4)
+
+  assert.deepEqual(col.get(0), Buffer.from([1, 2, 0, 0])) // short value zero-padded to 4
+  assert.deepEqual(col.get(1), Buffer.from([9, 9, 9, 9])) // long value truncated to 4
+  assert.ok(col.dtype().equals(DataTypeId.FixedBinary()))
+  assert.equal(col.field().nullable(), false)
+  assert.match(col.toString(), /width=4/)
+})
+
+test('ByteSerie: a nullable fixed_utf8 column', () => {
+  const col = ByteSerie.fromOptions(['ab', null, 'cd'], DataTypeId.FixedUtf8(), 4)
+  assert.equal(col.len(), 3)
+  assert.equal(col.width(), 4)
+  assert.equal(col.nullCount(), 1)
+  assert.equal(col.get(1), null) // the null
+  // a non-null element is decoded over the full fixed width (short value zero-padded)
+  assert.ok(col.get(0).startsWith('ab'))
+  assert.ok(col.dtype().equals(DataTypeId.FixedUtf8()))
+  assert.equal(col.field().nullable(), true)
+  assert.equal(col.field().byteWidth(), 4)
+})
+
+test('ByteSerie: guided errors on the build side', () => {
+  // a fixed-size dtype needs a width
+  assert.throws(
+    () => ByteSerie.fromValues([Buffer.from([1])], DataTypeId.FixedBinary()),
+    /fixed-size column needs a width/
+  )
+  // a variable-length dtype takes no width
+  assert.throws(
+    () => ByteSerie.fromValues([Buffer.from([1])], DataTypeId.Binary(), 4),
+    /variable-length column takes no width/
+  )
+  // a non-byte dtype is refused
+  assert.throws(
+    () => ByteSerie.fromValues([Buffer.from([1])], DataTypeId.I64()),
+    /not a byte column/
+  )
+  // a string where a Buffer (binary) is required
+  assert.throws(
+    () => ByteSerie.fromValues(['nope'], DataTypeId.Binary()),
+    /expected a Buffer element for a binary column/
+  )
+  // a Buffer where a string (utf8) is required
+  assert.throws(
+    () => ByteSerie.fromValues([Buffer.from([1])], DataTypeId.Utf8()),
+    /expected a string element for a utf8 column/
+  )
 })

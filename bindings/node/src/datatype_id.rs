@@ -3,7 +3,9 @@
 //!
 //! Mirrors `yggdryl_core::datatype_id::DataTypeId`, a compact `#[repr(u16)]` int enum naming every native
 //! fixed-width primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats
-//! `f32`/`f64`). napi cannot attach methods to a bare enum, so — like the core — the type is
+//! `f32`/`f64`, the fixed-point `decimal32`…`decimal256`) plus the **byte types** (variable-length
+//! `binary` / `utf8` and fixed-size `fixed_binary` / `fixed_utf8`). napi cannot attach methods to a
+//! bare enum, so — like the core — the type is
 //! exposed as a thin `#[napi]` **class** carrying its `u16` `id`: each variant is a named static
 //! factory (`DataTypeId.I64()`), and the width / classification helpers are methods
 //! (`asU16` / `name` / `byteSize` / `bitSize` / `isInteger` / … / `elementCount` / `toString`),
@@ -15,11 +17,13 @@ use napi_derive::napi;
 
 use yggdryl_core::datatype_id as core;
 
-/// A **primitive element data type** — the interpretation of a fixed-width value in a byte region
-/// (`Unknown` is the default "raw bytes" state). A thin value over the core's `#[repr(u16)]` id:
-/// it round-trips through a `u16` (the value a source stores in its `Headers` as `Type-Id`),
-/// so the byte layer knows its element width, can compute an element count, and can widen / shrink
-/// a region between widths. Equatable and stringly named; the id keys a map or travels over a wire.
+/// A **primitive element data type** — the interpretation of a value in a byte region (`Unknown` is
+/// the default "raw bytes" state). A thin value over the core's `#[repr(u16)]` id: it round-trips
+/// through a `u16` (the value a source stores in its `Headers` as `Type-Id`), so the byte layer
+/// knows its element width, can compute an element count, and can widen / shrink a region between
+/// widths. Beyond the fixed-width numeric / decimal types it also names the **byte types**
+/// (variable-length `binary` / `utf8`, fixed-size `fixed_binary` / `fixed_utf8`). Equatable and
+/// stringly named; the id keys a map or travels over a wire.
 #[napi(namespace = "datatype_id")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct DataTypeId {
@@ -184,6 +188,38 @@ impl DataTypeId {
         }
     }
 
+    /// **Variable-length binary** — an arbitrary byte blob per element (id `18`).
+    #[napi(factory, js_name = "Binary")]
+    pub fn variant_binary() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Binary,
+        }
+    }
+
+    /// **Variable-length UTF-8** — a string per element (id `19`).
+    #[napi(factory, js_name = "Utf8")]
+    pub fn variant_utf8() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::Utf8,
+        }
+    }
+
+    /// **Fixed-size binary** — a byte blob at a per-column fixed byte width (id `20`).
+    #[napi(factory, js_name = "FixedBinary")]
+    pub fn variant_fixed_binary() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::FixedBinary,
+        }
+    }
+
+    /// **Fixed-size UTF-8** — a string at a per-column fixed byte width (id `21`).
+    #[napi(factory, js_name = "FixedUtf8")]
+    pub fn variant_fixed_utf8() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::FixedUtf8,
+        }
+    }
+
     // ---- id / name round-trips ---------------------------------------------------------
 
     /// The `u16` discriminant — what a source stores in its headers.
@@ -223,7 +259,7 @@ impl DataTypeId {
                 napi::Error::from_reason(format!(
                     "unknown data type name {token:?}: expected one of unknown, bool, i8, u8, \
                      i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, decimal32, decimal64, \
-                     decimal128, decimal256"
+                     decimal128, decimal256, binary, utf8, fixed_binary, fixed_utf8"
                 ))
             })
     }
@@ -268,10 +304,29 @@ impl DataTypeId {
         self.inner.is_bool()
     }
 
-    /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::unknown)).
+    /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::unknown) and the
+    /// byte types).
     #[napi]
     pub fn is_fixed_width(&self) -> bool {
         self.inner.is_fixed_width()
+    }
+
+    /// Whether this is a **binary** byte type (`Binary` / `FixedBinary`).
+    #[napi]
+    pub fn is_binary(&self) -> bool {
+        self.inner.is_binary()
+    }
+
+    /// Whether this is a **UTF-8 string** type (`Utf8` / `FixedUtf8`).
+    #[napi]
+    pub fn is_utf8(&self) -> bool {
+        self.inner.is_utf8()
+    }
+
+    /// Whether this is a **variable-length** byte type (`Binary` / `Utf8`).
+    #[napi]
+    pub fn is_variable_length(&self) -> bool {
+        self.inner.is_variable_length()
     }
 
     /// How many whole elements of this type fit in `bytes` — `bytes / byteSize`, or `0` for

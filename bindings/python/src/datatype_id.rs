@@ -20,10 +20,13 @@ use pyo3::prelude::*;
 
 use yggdryl_core::datatype_id;
 
-/// A **primitive element data type** — the interpretation of a fixed-width value in a byte region,
-/// with the same wire-stable numeric values as the core (`Unknown = 0`, `Bool = 1`, … `F64 = 13`,
-/// `Decimal32 = 14`, … `Decimal256 = 17`), so `DataTypeId.I32 == 6` and `int(DataTypeId.I32) == 6`.
-/// `Unknown` is the default "raw bytes" state. Hashable and frozen like an int enum.
+/// A **primitive element data type** — the interpretation of a value in a byte region, with the
+/// same wire-stable numeric values as the core (`Unknown = 0`, `Bool = 1`, … `F64 = 13`,
+/// `Decimal32 = 14`, … `Decimal256 = 17`, `Binary = 18`, … `FixedUtf8 = 21`), so `DataTypeId.I32 ==
+/// 6` and `int(DataTypeId.I32) == 6`. `Unknown` is the default "raw bytes" state. The four byte
+/// columns (`Binary` / `Utf8` / `FixedBinary` / `FixedUtf8`) are **not** fixed-width (their
+/// `byte_size()` is `0`; a fixed-size column's width lives in its field metadata). Hashable and
+/// frozen like an int enum.
 #[pyclass(module = "yggdryl.datatype_id", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DataTypeId {
@@ -64,6 +67,15 @@ pub enum DataTypeId {
     Decimal128 = 16,
     /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value. Value `17`.
     Decimal256 = 17,
+    /// **Variable-length binary** — an offsets + data byte blob (`bytes` elements). Value `18`.
+    Binary = 18,
+    /// **Variable-length UTF-8** string — the same offsets + data layout (`str` elements). Value
+    /// `19`.
+    Utf8 = 19,
+    /// **Fixed-length binary** — a fixed per-column byte width (`bytes` elements). Value `20`.
+    FixedBinary = 20,
+    /// **Fixed-length UTF-8** string — a fixed per-column byte width (`str` elements). Value `21`.
+    FixedUtf8 = 21,
 }
 
 impl From<DataTypeId> for datatype_id::DataTypeId {
@@ -87,6 +99,10 @@ impl From<DataTypeId> for datatype_id::DataTypeId {
             DataTypeId::Decimal64 => datatype_id::DataTypeId::Decimal64,
             DataTypeId::Decimal128 => datatype_id::DataTypeId::Decimal128,
             DataTypeId::Decimal256 => datatype_id::DataTypeId::Decimal256,
+            DataTypeId::Binary => datatype_id::DataTypeId::Binary,
+            DataTypeId::Utf8 => datatype_id::DataTypeId::Utf8,
+            DataTypeId::FixedBinary => datatype_id::DataTypeId::FixedBinary,
+            DataTypeId::FixedUtf8 => datatype_id::DataTypeId::FixedUtf8,
         }
     }
 }
@@ -112,6 +128,10 @@ impl From<datatype_id::DataTypeId> for DataTypeId {
             datatype_id::DataTypeId::Decimal64 => DataTypeId::Decimal64,
             datatype_id::DataTypeId::Decimal128 => DataTypeId::Decimal128,
             datatype_id::DataTypeId::Decimal256 => DataTypeId::Decimal256,
+            datatype_id::DataTypeId::Binary => DataTypeId::Binary,
+            datatype_id::DataTypeId::Utf8 => DataTypeId::Utf8,
+            datatype_id::DataTypeId::FixedBinary => DataTypeId::FixedBinary,
+            datatype_id::DataTypeId::FixedUtf8 => DataTypeId::FixedUtf8,
             // The core enum is `#[non_exhaustive]`; a newer/foreign id degrades to raw bytes.
             _ => DataTypeId::Unknown,
         }
@@ -176,9 +196,26 @@ impl DataTypeId {
         datatype_id::DataTypeId::from(*self).is_bool()
     }
 
-    /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::Unknown)).
+    /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::Unknown) and
+    /// the four byte columns).
     fn is_fixed_width(&self) -> bool {
         datatype_id::DataTypeId::from(*self).is_fixed_width()
+    }
+
+    /// Whether this is a **binary** byte column (`Binary` / `FixedBinary`).
+    fn is_binary(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_binary()
+    }
+
+    /// Whether this is a **UTF-8 string** column (`Utf8` / `FixedUtf8`).
+    fn is_utf8(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_utf8()
+    }
+
+    /// Whether this is a **variable-length** byte column (`Binary` / `Utf8`) — an offsets + data
+    /// layout (a fixed-size column packs at a fixed stride instead).
+    fn is_variable_length(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_variable_length()
     }
 
     /// How many whole elements of this type fit in `bytes` — `bytes / byte_size()`, or `0` for
