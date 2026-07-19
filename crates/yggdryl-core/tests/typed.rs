@@ -11,7 +11,8 @@ use yggdryl_core::typed::fixedbyte::{
     UInt8, I256,
 };
 use yggdryl_core::typed::{
-    Decimal, Decoder, Encoder, Field, FixedScalar, FixedSerie, HeaderField, Scalar, Serie,
+    Binary, Decimal, Decoder, Encoder, Field, FixedBinary, FixedScalar, FixedSerie, FixedSizeSerie,
+    FixedUtf8, HeaderField, Scalar, Serie, Utf8, VarScalar, VarSerie,
 };
 
 // -------------------------------------------------------------------------------------
@@ -365,4 +366,110 @@ fn decimal_encoder_decoder_direct() {
     assert_eq!(nullable.to_decimal_string(0).as_deref(), Some("1.00"));
     assert_eq!(nullable.to_decimal_string(1), None); // null
     assert_eq!(nullable.to_decimal_string(2).as_deref(), Some("2.50"));
+}
+
+// -------------------------------------------------------------------------------------
+// Variable-length: Binary / Utf8 (offsets + data layout)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn var_binary_serie() {
+    let col =
+        VarSerie::<Binary>::from_values(&[b"hello".to_vec(), b"".to_vec(), b"world!".to_vec()]);
+    assert_eq!(col.len(), 3);
+    assert_eq!(col.get(0), Some(b"hello".to_vec()));
+    assert_eq!(col.get(1), Some(b"".to_vec())); // an empty (zero-length) element
+    assert_eq!(col.get(2), Some(b"world!".to_vec()));
+    assert_eq!(col.get(3), None); // out of range
+    assert_eq!(col.data_type_id(), DataTypeId::Binary);
+    assert_eq!(col.bytes_at(2), Some(b"world!".to_vec()));
+
+    // push + nullable + raw bytes front door.
+    let mut built = VarSerie::<Binary>::new();
+    built.push(&b"a".to_vec());
+    built.push_null();
+    built.push_bytes(b"bc");
+    assert_eq!(built.len(), 3);
+    assert_eq!(built.null_count(), 1);
+    assert_eq!(built.get(1), None);
+    assert_eq!(
+        built.to_options(),
+        vec![Some(b"a".to_vec()), None, Some(b"bc".to_vec())]
+    );
+}
+
+#[test]
+fn var_utf8_serie() {
+    let col = VarSerie::<Utf8>::from_options(&[
+        Some("héllo".to_string()),
+        None,
+        Some(String::new()),
+        Some("世界".to_string()),
+    ]);
+    assert_eq!(col.len(), 4);
+    assert_eq!(col.null_count(), 1);
+    assert_eq!(col.get(0).as_deref(), Some("héllo")); // multibyte
+    assert_eq!(col.get(1), None);
+    assert_eq!(col.get(3).as_deref(), Some("世界"));
+    assert_eq!(col.data_type_id(), DataTypeId::Utf8);
+    assert_eq!(col.field().data_type_id(), DataTypeId::Utf8);
+    assert!(col.field().nullable());
+    // values() ignores validity: the null slot (index 1) is a zero-length span -> "".
+    assert_eq!(col.values(), vec!["héllo", "", "", "世界"]);
+}
+
+#[test]
+fn var_scalar() {
+    let some = VarScalar::<Utf8>::of("hi".to_string());
+    assert_eq!(some.value(), Some(&"hi".to_string()));
+    assert_eq!(some.len(), 1);
+    assert!(some.is_valid(0));
+    assert_eq!(some.get(0).as_deref(), Some("hi"));
+
+    let null = VarScalar::<Binary>::null();
+    assert_eq!(null.value(), None);
+    assert!(null.is_null(0));
+    assert_eq!(
+        VarScalar::<Binary>::from_option(Some(vec![1, 2])).get(0),
+        Some(vec![1, 2])
+    );
+}
+
+// -------------------------------------------------------------------------------------
+// Fixed-size (parameterized width): FixedBinary / FixedUtf8
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn fixed_binary_serie_padded_and_truncated() {
+    let col = FixedSizeSerie::<FixedBinary>::from_values(
+        4,
+        &[b"ab".to_vec(), b"cdef".to_vec(), b"ghijk".to_vec()],
+    );
+    assert_eq!(col.width(), 4);
+    assert_eq!(col.len(), 3);
+    assert_eq!(col.get(0), Some(b"ab\0\0".to_vec())); // zero-padded to 4
+    assert_eq!(col.get(1), Some(b"cdef".to_vec())); // exact width
+    assert_eq!(col.get(2), Some(b"ghij".to_vec())); // truncated to 4
+    assert_eq!(col.data_type_id(), DataTypeId::FixedBinary);
+
+    let field = col.field();
+    assert_eq!(field.byte_width(), Some(4)); // the parameterized length rides the field metadata
+    assert!(field.data_type_id().is_binary());
+}
+
+#[test]
+fn fixed_utf8_serie_nullable() {
+    let col = FixedSizeSerie::<FixedUtf8>::from_options(
+        3,
+        &[Some("ab".to_string()), None, Some("xyz".to_string())],
+    )
+    .with_name("code");
+    assert_eq!(col.width(), 3);
+    assert_eq!(col.null_count(), 1);
+    assert_eq!(col.get(0).as_deref(), Some("ab\0")); // zero-padded to 3
+    assert_eq!(col.get(1), None);
+    assert_eq!(col.get(2).as_deref(), Some("xyz"));
+    assert_eq!(col.field().name(), Some("code"));
+    assert_eq!(col.field().byte_width(), Some(3));
+    assert!(col.field().data_type_id().is_utf8());
 }

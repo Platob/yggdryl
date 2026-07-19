@@ -51,11 +51,19 @@ pub enum DataTypeId {
     Decimal128 = 16,
     /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value.
     Decimal256 = 17,
+    /// **Variable-length binary** — an `i32`-offsets + data byte layout (`Vec<u8>` elements).
+    Binary = 18,
+    /// **Variable-length UTF-8** string — the same offsets + data layout (`String` elements).
+    Utf8 = 19,
+    /// **Fixed-length binary** — a fixed byte width per element (the width in the field metadata).
+    FixedBinary = 20,
+    /// **Fixed-length UTF-8** — a fixed byte width per element (the width in the field metadata).
+    FixedUtf8 = 21,
 }
 
 impl DataTypeId {
     /// Every non-`Unknown` type, in id order — the canonical set (used by tests and registries).
-    pub const ALL: [DataTypeId; 17] = [
+    pub const ALL: [DataTypeId; 21] = [
         DataTypeId::Bool,
         DataTypeId::I8,
         DataTypeId::U8,
@@ -73,6 +81,10 @@ impl DataTypeId {
         DataTypeId::Decimal64,
         DataTypeId::Decimal128,
         DataTypeId::Decimal256,
+        DataTypeId::Binary,
+        DataTypeId::Utf8,
+        DataTypeId::FixedBinary,
+        DataTypeId::FixedUtf8,
     ];
 
     /// The `u16` discriminant — what a source stores in its headers.
@@ -101,6 +113,10 @@ impl DataTypeId {
             15 => DataTypeId::Decimal64,
             16 => DataTypeId::Decimal128,
             17 => DataTypeId::Decimal256,
+            18 => DataTypeId::Binary,
+            19 => DataTypeId::Utf8,
+            20 => DataTypeId::FixedBinary,
+            21 => DataTypeId::FixedUtf8,
             _ => DataTypeId::Unknown,
         }
     }
@@ -126,6 +142,10 @@ impl DataTypeId {
             DataTypeId::Decimal64 => "decimal64",
             DataTypeId::Decimal128 => "decimal128",
             DataTypeId::Decimal256 => "decimal256",
+            DataTypeId::Binary => "binary",
+            DataTypeId::Utf8 => "utf8",
+            DataTypeId::FixedBinary => "fixed_binary",
+            DataTypeId::FixedUtf8 => "fixed_utf8",
         }
     }
 
@@ -155,6 +175,12 @@ impl DataTypeId {
             DataTypeId::Decimal64 => 8,
             DataTypeId::Decimal128 => 16,
             DataTypeId::Decimal256 => 32,
+            // Variable-length + fixed-size byte types have no id-derivable element width (a
+            // fixed-size type's width lives in the field metadata).
+            DataTypeId::Binary
+            | DataTypeId::Utf8
+            | DataTypeId::FixedBinary
+            | DataTypeId::FixedUtf8 => 0,
         }
     }
 
@@ -168,9 +194,26 @@ impl DataTypeId {
         }
     }
 
-    /// Whether this is a fixed-width type (everything except [`Unknown`](DataTypeId::Unknown)).
+    /// Whether this type has an **id-derivable fixed element width** — the numeric / bool / decimal
+    /// types (`byte_size() > 0`). The variable-length and fixed-size byte types (`Binary` / `Utf8` /
+    /// `FixedBinary` / `FixedUtf8`) return `false` (their width, if any, is field metadata).
     pub fn is_fixed_width(self) -> bool {
-        self != DataTypeId::Unknown
+        self.byte_size() > 0
+    }
+
+    /// Whether this is a **binary** byte type (`Binary` / `FixedBinary`).
+    pub fn is_binary(self) -> bool {
+        matches!(self, DataTypeId::Binary | DataTypeId::FixedBinary)
+    }
+
+    /// Whether this is a **UTF-8 string** type (`Utf8` / `FixedUtf8`).
+    pub fn is_utf8(self) -> bool {
+        matches!(self, DataTypeId::Utf8 | DataTypeId::FixedUtf8)
+    }
+
+    /// Whether this is a **variable-length** type (`Binary` / `Utf8`) — an offsets + data layout.
+    pub fn is_variable_length(self) -> bool {
+        matches!(self, DataTypeId::Binary | DataTypeId::Utf8)
     }
 
     /// Whether this is an integer type (`bool` is **not** counted as an integer).

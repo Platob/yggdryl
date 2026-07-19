@@ -94,6 +94,9 @@ impl Headers {
     /// The decimal **scale** header — the decimal places of a decimal field
     /// ([`scale`](Headers::scale) / [`set_scale`](Headers::set_scale)).
     pub const SCALE: &'static str = "X-Scale";
+    /// The **byte-width** header — the fixed element byte width of a fixed-size field
+    /// ([`byte_width`](Headers::byte_width) / [`set_byte_width`](Headers::set_byte_width)).
+    pub const BYTE_WIDTH: &'static str = "X-Byte-Width";
 
     // ---- construction -------------------------------------------------------------------
 
@@ -379,6 +382,17 @@ impl Headers {
     /// Sets the decimal [`SCALE`](Headers::SCALE).
     pub fn set_scale(&mut self, scale: i32) {
         self.insert(Self::SCALE, &scale.to_string());
+    }
+
+    /// The fixed element **byte width** from the [`BYTE_WIDTH`](Headers::BYTE_WIDTH) header, if
+    /// present and numeric — the parameterized length of a fixed-size field.
+    pub fn byte_width(&self) -> Option<u32> {
+        self.get(Self::BYTE_WIDTH)?.trim().parse().ok()
+    }
+
+    /// Sets the fixed element [`BYTE_WIDTH`](Headers::BYTE_WIDTH).
+    pub fn set_byte_width(&mut self, byte_width: u32) {
+        self.insert(Self::BYTE_WIDTH, &byte_width.to_string());
     }
 
     /// Sets [`mtime`](Headers::mtime) to **now** (epoch microseconds from the system clock) —

@@ -16,11 +16,12 @@
 //! - [`Field`] — a column's metadata (name, type, nullable), carried in a [`Headers`](crate::headers::Headers).
 //!
 //! The concrete implementations are split by **length × granularity**: [`fixedbyte`] (integers,
-//! floats), [`fixedbit`] (booleans), and the reserved [`varbyte`] / [`varbit`] (strings, binary,
-//! bit-lists). Every fixed type is one [`fixed_numeric!`](fixedbyte::fixed_numeric)-style line, so a
-//! new type is added in a single rule. The concrete value carriers [`FixedScalar`] / [`FixedSerie`]
-//! are generic over the type **and** the backing [`IOBase`], so a column is in-heap, memory-mapped,
-//! or on device memory with no change to its surface.
+//! floats, decimals, and the fixed-size `FixedBinary` / `FixedUtf8`), [`fixedbit`] (booleans),
+//! [`varbyte`] (the variable-length `Binary` / `Utf8`), and the reserved [`varbit`] (bit-lists). A
+//! fixed-width type is one macro line; the variable-length types share the [`VarType`] base
+//! descriptor over an offsets+data ([`VarSerie`]) or fixed-stride ([`FixedSizeSerie`]) carrier. All
+//! carriers are generic over the type **and** the backing [`IOBase`], so a column is in-heap,
+//! memory-mapped, or on device memory with no change to its surface.
 //!
 //! ```
 //! use yggdryl_core::typed::{FixedSerie, Scalar};
@@ -42,6 +43,7 @@ mod field;
 mod reduce;
 mod scalar;
 mod serie;
+mod var_type;
 
 pub mod fixedbit;
 pub mod fixedbyte;
@@ -53,6 +55,9 @@ pub use decimal::{apply_scale, Decimal};
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use field::{Field, HeaderField};
+pub use fixedbyte::{FixedBinary, FixedSizeSerie, FixedUtf8};
 pub use reduce::Reduce;
 pub use scalar::{FixedScalar, Scalar};
 pub use serie::{FixedSerie, Serie};
+pub use var_type::VarType;
+pub use varbyte::{Binary, Utf8, VarScalar, VarSerie};

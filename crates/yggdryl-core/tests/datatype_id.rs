@@ -57,3 +57,21 @@ fn decimal_variants() {
     // Still round-trips through u16 (ALL now covers the 4 decimals).
     assert_eq!(DataTypeId::from_u16(16), DataTypeId::Decimal128);
 }
+
+#[test]
+fn variable_and_fixed_size_variants() {
+    assert!(DataTypeId::Binary.is_binary() && DataTypeId::Binary.is_variable_length());
+    assert!(DataTypeId::Utf8.is_utf8() && DataTypeId::Utf8.is_variable_length());
+    assert!(DataTypeId::FixedBinary.is_binary() && !DataTypeId::FixedBinary.is_variable_length());
+    assert!(DataTypeId::FixedUtf8.is_utf8());
+    // No id-derivable width (a fixed-size type's width is field metadata).
+    assert!(!DataTypeId::Binary.is_fixed_width() && DataTypeId::Binary.byte_size() == 0);
+    assert!(!DataTypeId::FixedBinary.is_fixed_width());
+    assert_eq!(DataTypeId::from_name("utf8"), Some(DataTypeId::Utf8));
+    assert_eq!(
+        DataTypeId::from_name("fixed_binary"),
+        Some(DataTypeId::FixedBinary)
+    );
+    assert_eq!(DataTypeId::from_u16(20), DataTypeId::FixedBinary);
+    assert_eq!(DataTypeId::Utf8.to_string(), "utf8");
+}

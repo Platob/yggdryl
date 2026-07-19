@@ -70,9 +70,27 @@ impl HeaderField {
         field
     }
 
+    /// A **fixed-size** field — sets the fixed element `byte_width` (the parameterized length)
+    /// alongside the name / type / nullable.
+    pub fn fixed_size(
+        name: Option<&str>,
+        type_id: DataTypeId,
+        byte_width: u32,
+        nullable: bool,
+    ) -> Self {
+        let mut field = Self::new(name, type_id, nullable);
+        field.headers.set_byte_width(byte_width);
+        field
+    }
+
     /// A field wrapping an existing [`Headers`] map (its `type_id`/`name`/`nullable` are read from it).
     pub fn from_headers(headers: Headers) -> Self {
         HeaderField { headers }
+    }
+
+    /// The fixed element **byte width** (the parameterized length), if this field carries it.
+    pub fn byte_width(&self) -> Option<u32> {
+        self.headers.byte_width()
     }
 
     /// The decimal **precision** (max significant digits), if this field carries it.
