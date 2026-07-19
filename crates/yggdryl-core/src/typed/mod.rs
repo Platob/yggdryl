@@ -38,11 +38,13 @@
 //! ```
 
 mod any;
+mod convert;
 mod data_type;
 mod decimal;
 mod decoder;
 mod encoder;
 mod field;
+mod logical;
 mod null;
 mod parse;
 mod reduce;
@@ -57,12 +59,14 @@ pub mod varbit;
 pub mod varbyte;
 
 pub use any::{AnyScalar, AnySerie};
+pub use convert::{convert_column, convert_column_in_place};
 pub use data_type::DataType;
 pub use decimal::{apply_scale, Decimal};
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use field::{Field, HeaderField};
 pub use fixedbyte::{FixedBinary, FixedSizeSerie, FixedUtf8};
+pub use logical::LogicalType;
 pub use nested::{
     Column, ColumnField, FromValue, ListField, ListScalar, ListSerie, MapField, MapScalar,
     MapSerie, StructField, StructScalar, StructSerie, ToValue, Value,

@@ -48,6 +48,7 @@ fn length_mismatch_error(index: usize, len: usize, expected: usize) -> IoError {
 
 /// A **struct column** — the table. Its `children` are equal-length erased [`Column`]s; `validity`,
 /// when present, is the row-level null bitmap (LSB-first, `1` = valid); `len` is the shared row count.
+#[derive(Clone)]
 pub struct StructSerie {
     children: Vec<Column>,
     validity: Option<Heap>,

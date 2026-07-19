@@ -44,6 +44,7 @@ const OFFSET_WIDTH: u64 = 4;
 /// element-level validity buffer. `offsets` holds `len + 1` little-endian `i32`s with
 /// `offsets[0] == 0`; list `i` occupies the child range `[offsets[i], offsets[i + 1])`. `validity`,
 /// when present, is the element-level null bitmap (LSB-first, `1` = valid); `len` is the list count.
+#[derive(Clone)]
 pub struct ListSerie {
     offsets: Heap,
     values: Box<Column>,

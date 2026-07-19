@@ -23,6 +23,10 @@ name = "typed_nested"
 harness = false
 
 [[bench]]
+name = "typed_convert"
+harness = false
+
+[[bench]]
 name = "arrow"
 harness = false
 required-features = ["arrow"]

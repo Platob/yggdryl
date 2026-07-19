@@ -30,6 +30,11 @@ macro_rules! leaf_columns {
         /// A single data column, erased over its element type. `Null` is a bufferless run of `n`
         /// nulls; each leaf variant holds one concrete flat carrier; `Struct` / `List` / `Map`
         /// recurse into a nested [`StructSerie`] / [`ListSerie`] / [`MapSerie`].
+        ///
+        /// `Clone` deep-copies the column (each leaf's backing buffers, a nested child recursively) —
+        /// the duplication the erased [`convert_column`](crate::typed::convert_column) hands back for a
+        /// no-op ([`Any`](crate::datatype_id::DataTypeId::Any) / same-dtype) conversion.
+        #[derive(Clone)]
         #[non_exhaustive]
         pub enum Column {
             /// `n` null elements with **no backing buffer** — the cheapest all-null child.

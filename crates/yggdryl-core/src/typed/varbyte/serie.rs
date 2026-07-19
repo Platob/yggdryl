@@ -20,6 +20,7 @@ use crate::typed::{HeaderField, Scalar, Serie, VarLenType, VarOffset};
 /// A **variable-length column** over an offsets buffer + a data buffer (default [`Heap`]), plus an
 /// optional validity buffer. Element `i` occupies `data[offsets[i]..offsets[i + 1]]`. The offset
 /// element width (`i32` or `i64`) is the marker's [`VarLenType::Offset`].
+#[derive(Clone)]
 pub struct VarSerie<T: VarLenType, D: IOBase = Heap> {
     /// `len + 1` little-endian offsets of width `T::Offset::WIDTH`; `offsets[0] == 0`.
     offsets: D,

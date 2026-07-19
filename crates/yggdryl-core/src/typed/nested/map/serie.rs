@@ -55,6 +55,7 @@ fn nullable_keys_error() -> IoError {
 /// `len + 1` little-endian `i32`s with `offsets[0] == 0`; map `i` occupies the entry range
 /// `[offsets[i], offsets[i + 1])`. `validity`, when present, is the element-level null bitmap
 /// (LSB-first, `1` = valid); `len` is the map count.
+#[derive(Clone)]
 pub struct MapSerie {
     offsets: Heap,
     entries: StructSerie,

@@ -53,6 +53,7 @@ impl VarType for FixedUtf8 {
 // fixed-size column has no offsets buffer, so a large fixed-width column is simply a `FixedBinary` /
 // `FixedUtf8` constructed with a big `width` (the `usize` stride is already unbounded). No new
 // marker is warranted.
+#[derive(Clone)]
 pub struct FixedSizeSerie<T: VarType, D: IOBase = Heap> {
     data: D,
     validity: Option<D>,
