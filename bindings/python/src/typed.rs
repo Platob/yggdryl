@@ -1468,6 +1468,56 @@ impl ByteSerie {
         }
     }
 
+    /// A **fresh** column sharing the same bytes with a maximum element byte width set to `max_width`
+    /// — every element must already fit within `max_width` (a longer element raises a guided
+    /// `ValueError`), and the bound is recorded as the [`field`](ByteSerie::field)'s `byte_width`.
+    /// Applies only to a **variable-length** `binary` / `utf8` column; a **fixed-size** column
+    /// (`FixedBinary` / `FixedUtf8`) already has a fixed width (its [`width`](ByteSerie::width) is the
+    /// fixed stride) and raises a guided `ValueError`.
+    fn with_max_width(&self, max_width: usize) -> PyResult<ByteSerie> {
+        let inner = match &self.inner {
+            ByteInner::Binary(s) => ByteInner::Binary(
+                VarSerie::<Binary>::from_parts(
+                    s.offsets().clone(),
+                    s.data().clone(),
+                    s.validity().cloned(),
+                    s.len(),
+                )
+                .with_max_width(max_width)
+                .map_err(ioerr)?,
+            ),
+            ByteInner::Utf8(s) => ByteInner::Utf8(
+                VarSerie::<Utf8>::from_parts(
+                    s.offsets().clone(),
+                    s.data().clone(),
+                    s.validity().cloned(),
+                    s.len(),
+                )
+                .with_max_width(max_width)
+                .map_err(ioerr)?,
+            ),
+            ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => {
+                return Err(PyValueError::new_err(
+                    "a fixed-size column already has a fixed width: max_width applies only to a \
+                     variable binary / utf8 column (its width() is the fixed stride)",
+                ))
+            }
+        };
+        Ok(ByteSerie { inner })
+    }
+
+    /// The maximum element byte width set on a **variable-length** `binary` / `utf8` column (via
+    /// [`with_max_width`](ByteSerie::with_max_width)), or `None` when none is set. A **fixed-size**
+    /// column always returns `None` — its fixed width is [`width`](ByteSerie::width) (the fixed
+    /// stride), not a variable-element bound.
+    fn max_width(&self) -> Option<usize> {
+        match &self.inner {
+            ByteInner::Binary(s) => s.max_width(),
+            ByteInner::Utf8(s) => s.max_width(),
+            ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => None,
+        }
+    }
+
     /// A **fresh** sub-column copying elements `[start, start + len)` into a new byte column,
     /// carrying the validity bits (and, for a fixed-size column, its `width`). The window is
     /// **clamped** to the column's length — an out-of-range `start` or over-long `len` yields a

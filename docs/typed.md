@@ -412,6 +412,11 @@ element crosses as `bytes` / a `Buffer`, a UTF-8 element as `str` / a `string`.
     assert_eq!(codes.get(2), Some(b"ABCD".to_vec()));  // truncated
     ```
 
+A variable-length `Binary` / `Utf8` column can also declare an **optional maximum element width**
+(`with_max_width(n)` — Python/Node; `VarSerie::with_max_width` in Rust) — a schema bound the checked
+appends enforce and the `Field` records as its `byte_width`, raising a guided error if any element
+exceeds it. (A fixed-size column's `byte_width` is instead its *exact* stride.)
+
 ## Parsing strings into a column
 
 `Serie.parse(strings, dtype)` builds a column by **flexibly** parsing text — accepting the mainstream

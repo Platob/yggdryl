@@ -1968,6 +1968,59 @@ impl ByteSerie {
         }
     }
 
+    /// A copy of this **variable-length** byte column (`Binary` / `Utf8`) with its optional **max
+    /// element byte width** set — a fresh column sharing the same bytes, **validating** every
+    /// existing element against `maxWidth` (an element already wider throws the guided `Error`
+    /// naming its index, width, the max, and the fix). The max is recorded as the field's
+    /// [`byteWidth`](Field::byte_width) and enforced on the checked appends. Throws the guided
+    /// `Error` on a **fixed-size** column (`FixedBinary` / `FixedUtf8`), whose width is already
+    /// fixed and exact — read its stride with [`width`](ByteSerie::width).
+    #[napi]
+    pub fn with_max_width(&self, max_width: u32) -> napi::Result<ByteSerie> {
+        let max_width = max_width as usize;
+        let inner =
+            match &self.inner {
+                ByteInner::Binary(serie) => ByteInner::Binary(
+                    VarSerie::<Binary>::from_parts(
+                        serie.offsets().clone(),
+                        serie.data().clone(),
+                        serie.validity().cloned(),
+                        serie.len(),
+                    )
+                    .with_max_width(max_width)
+                    .map_err(to_error)?,
+                ),
+                ByteInner::Utf8(serie) => ByteInner::Utf8(
+                    VarSerie::<Utf8>::from_parts(
+                        serie.offsets().clone(),
+                        serie.data().clone(),
+                        serie.validity().cloned(),
+                        serie.len(),
+                    )
+                    .with_max_width(max_width)
+                    .map_err(to_error)?,
+                ),
+                ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => return Err(to_error(
+                    "a fixed-size column already has a fixed width: max_width applies only to a \
+                     variable binary / utf8 column (its width() is the fixed stride)",
+                )),
+            };
+        Ok(ByteSerie { inner })
+    }
+
+    /// The optional **max element byte width** for a **variable-length** column (`Binary` /
+    /// `Utf8`) — the value set by [`withMaxWidth`](ByteSerie::with_max_width), or `null` when
+    /// unbounded. Always `null` for a **fixed-size** column (`FixedBinary` / `FixedUtf8`), whose
+    /// width is exact — read its stride with [`width`](ByteSerie::width).
+    #[napi]
+    pub fn max_width(&self) -> Option<u32> {
+        match &self.inner {
+            ByteInner::Binary(serie) => serie.max_width().map(|max| max as u32),
+            ByteInner::Utf8(serie) => serie.max_width().map(|max| max as u32),
+            ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => None,
+        }
+    }
+
     /// This column's [`Field`] metadata — its `name`, element type, `nullable` flag, and (for a
     /// fixed-size column) its fixed byte `width`.
     #[napi]

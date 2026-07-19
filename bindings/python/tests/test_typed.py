@@ -598,6 +598,41 @@ def test_fixed_bytes_with_name_preserves_width():
 
 
 # -------------------------------------------------------------------------------------
+# max_width — a variable-length element byte bound (validated; recorded as byte_width)
+# -------------------------------------------------------------------------------------
+
+
+def test_utf8_with_max_width():
+    col = ByteSerie.from_values(["a", "bb", "ccc"], DataTypeId.Utf8)
+    assert col.max_width() is None  # unset by default
+    bounded = col.with_max_width(3)  # every element already fits within 3 bytes
+    assert bounded.max_width() == 3
+    assert bounded.field().byte_width() == 3
+    assert bounded.to_list() == ["a", "bb", "ccc"]  # bytes shared, unchanged
+    with pytest.raises(ValueError):
+        col.with_max_width(2)  # "ccc" is 3 bytes > 2
+
+
+def test_binary_with_max_width():
+    col = ByteSerie.from_values([b"a", b"bb", b"ccc"], DataTypeId.Binary)
+    bounded = col.with_max_width(4)
+    assert bounded.max_width() == 4
+    assert bounded.field().byte_width() == 4
+    assert bounded.to_list() == [b"a", b"bb", b"ccc"]  # bytes shared, unchanged
+    with pytest.raises(ValueError):
+        col.with_max_width(2)  # b"ccc" is 3 bytes > 2
+
+
+def test_fixed_max_width_rejected():
+    # A fixed-size column already has a fixed width — max_width does not apply.
+    col = ByteSerie.from_values([b"ab", b"cd"], DataTypeId.FixedBinary, width=4)
+    with pytest.raises(ValueError):
+        col.with_max_width(4)
+    assert col.max_width() is None  # its fixed width is width(), not a variable bound
+    assert col.width() == 4  # the fixed stride
+
+
+# -------------------------------------------------------------------------------------
 # repr
 # -------------------------------------------------------------------------------------
 

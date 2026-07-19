@@ -806,6 +806,96 @@ fn var_scalar() {
 }
 
 // -------------------------------------------------------------------------------------
+// Variable-length max element width — the optional schema bound on VarSerie (Binary / Utf8)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn var_serie_max_width_validation_and_field() {
+    // A Utf8 column of "a" / "bb" / "ccc": with_max_width(3) fits (longest element is 3 bytes) and
+    // records the max as the field's byte_width.
+    let col =
+        VarSerie::<Utf8>::from_values(&["a".to_string(), "bb".to_string(), "ccc".to_string()])
+            .with_max_width(3)
+            .unwrap();
+    assert_eq!(col.max_width(), Some(3));
+    assert_eq!(col.field().byte_width(), Some(3));
+
+    // with_max_width(2) refuses: element 2 ("ccc") is 3 bytes, over the max of 2 — a guided error.
+    let base =
+        VarSerie::<Utf8>::from_values(&["a".to_string(), "bb".to_string(), "ccc".to_string()]);
+    let err = base.with_max_width(2).err().unwrap();
+    assert!(matches!(err, IoError::TypedCast { .. }));
+    let msg = err.to_string();
+    assert!(msg.contains("element 2"), "message was: {msg}");
+    assert!(msg.contains("3 bytes"), "message was: {msg}");
+    assert!(msg.contains("max width of 2"), "message was: {msg}");
+}
+
+#[test]
+fn var_serie_try_push_enforces_and_push_bypasses() {
+    let mut col = VarSerie::<Utf8>::new().with_max_width(3).unwrap();
+
+    // try_push within the max succeeds and appends.
+    col.try_push(&"ok".to_string()).unwrap();
+    assert_eq!(col.len(), 1);
+
+    // try_push of an over-long value returns the guided error and does NOT append.
+    let err = col.try_push(&"toolong".to_string()).unwrap_err();
+    assert!(matches!(err, IoError::TypedCast { .. }));
+    assert!(err.to_string().contains("max width of 3"));
+    assert_eq!(col.len(), 1); // unchanged — nothing appended
+    assert_eq!(col.get(0).as_deref(), Some("ok"));
+
+    // The raw-bytes checked twin behaves the same.
+    assert!(col.try_push_bytes(b"abcd").is_err());
+    assert_eq!(col.len(), 1);
+    col.try_push_bytes(b"xyz").unwrap();
+    assert_eq!(col.len(), 2);
+
+    // plain push bypasses the check — it appends the over-long value.
+    col.push(&"way-too-long".to_string());
+    assert_eq!(col.len(), 3);
+    assert_eq!(col.get(2).as_deref(), Some("way-too-long"));
+}
+
+#[test]
+fn var_serie_set_max_width_clear() {
+    let mut col = VarSerie::<Utf8>::from_values(&["a".to_string(), "bb".to_string()])
+        .with_max_width(4)
+        .unwrap();
+    assert_eq!(col.max_width(), Some(4));
+    assert_eq!(col.field().byte_width(), Some(4));
+
+    // Clearing to None always succeeds and drops the byte_width from the field.
+    col.set_max_width(None).unwrap();
+    assert_eq!(col.max_width(), None);
+    assert_eq!(col.field().byte_width(), None);
+}
+
+#[test]
+fn var_binary_serie_max_width() {
+    // A Binary column max-width case: within-bound succeeds, over-bound is the guided error.
+    let col = VarSerie::<Binary>::from_values(&[b"ab".to_vec(), b"cde".to_vec()])
+        .with_max_width(3)
+        .unwrap();
+    assert_eq!(col.field().byte_width(), Some(3));
+
+    let err = VarSerie::<Binary>::from_values(&[b"ab".to_vec(), b"cdef".to_vec()])
+        .with_max_width(3)
+        .err()
+        .unwrap();
+    assert!(matches!(err, IoError::TypedCast { .. }));
+    assert!(err.to_string().contains("element 1"));
+    assert!(err.to_string().contains("4 bytes"));
+
+    // try_push enforcement on a Binary column.
+    let mut built = VarSerie::<Binary>::new().with_max_width(2).unwrap();
+    built.try_push_bytes(b"hi").unwrap();
+    assert!(built.try_push_bytes(b"big!").is_err());
+    assert_eq!(built.len(), 1);
+}
+
+// -------------------------------------------------------------------------------------
 // Fixed-size (parameterized width): FixedBinary / FixedUtf8
 // -------------------------------------------------------------------------------------
 

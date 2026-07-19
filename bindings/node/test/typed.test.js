@@ -524,6 +524,48 @@ test('ByteSerie: guided errors on the build side', () => {
 })
 
 // -------------------------------------------------------------------------------------
+// ByteSerie.withMaxWidth / maxWidth — the optional max element byte width on a variable column
+// -------------------------------------------------------------------------------------
+
+test('ByteSerie: withMaxWidth bounds a utf8 column, recorded as the field byteWidth', () => {
+  const col = ByteSerie.fromValues(['a', 'bb', 'ccc'], DataTypeId.Utf8())
+  assert.equal(col.maxWidth(), null) // unbounded to start
+
+  const bounded = col.withMaxWidth(3)
+  assert.equal(bounded.maxWidth(), 3)
+  assert.equal(bounded.field().byteWidth(), 3) // the max lives in the field metadata
+  assert.deepEqual(bounded.toList(), ['a', 'bb', 'ccc']) // bytes shared, unchanged
+  assert.equal(col.maxWidth(), null) // the original is unchanged
+
+  // a max that an existing element exceeds throws the guided error
+  assert.throws(() => col.withMaxWidth(2), /over the column's max width|max width/)
+})
+
+test('ByteSerie: withMaxWidth bounds a binary column', () => {
+  const col = ByteSerie.fromValues(
+    [Buffer.from([1]), Buffer.from([2, 3]), Buffer.from([4, 5, 6, 7])],
+    DataTypeId.Binary()
+  )
+  const bounded = col.withMaxWidth(4)
+  assert.equal(bounded.maxWidth(), 4)
+  assert.equal(bounded.field().byteWidth(), 4)
+  assert.deepEqual(bounded.get(2), Buffer.from([4, 5, 6, 7]))
+  // a tighter bound the widest element (4 bytes) breaks is refused
+  assert.throws(() => col.withMaxWidth(3), /max width/)
+})
+
+test('ByteSerie: withMaxWidth throws on a fixed-size column; its maxWidth is null', () => {
+  const col = ByteSerie.fromValues(
+    [Buffer.from([1, 2]), Buffer.from([3, 4])],
+    DataTypeId.FixedBinary(),
+    2
+  )
+  assert.throws(() => col.withMaxWidth(4), /fixed-size column already has a fixed width/)
+  assert.equal(col.maxWidth(), null) // a fixed column has no max width
+  assert.equal(col.width(), 2) // ... its width() is the fixed stride
+})
+
+// -------------------------------------------------------------------------------------
 // Numeric aggregations — std / var / median / countGe
 // -------------------------------------------------------------------------------------
 
