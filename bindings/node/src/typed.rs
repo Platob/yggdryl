@@ -32,7 +32,10 @@
 //! `mean` throw the guided `Error`; instead read the raw unscaled value with `get` / `values`, place
 //! the point with `toDecimalString`, and read `precision` / `scale` from the [`Field`].
 
-use napi::bindgen_prelude::{BigInt, Buffer, Either, Either3};
+use napi::bindgen_prelude::{
+    BigInt, Buffer, Either, Either3, Either5, FromNapiValue, Null, ToNapiValue,
+};
+use napi::{Env, JsUnknown};
 use napi_derive::napi;
 
 use crate::datatype_id::DataTypeId;
@@ -46,9 +49,11 @@ use yggdryl_core::typed::fixedbyte::{
     Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
 };
 use yggdryl_core::typed::{
-    Binary, Decoder, Encoder, Field as FieldTrait, FixedBinary, FixedSerie, FixedSizeSerie,
-    FixedUtf8, HeaderField, LargeBinary, LargeUtf8, Scalar, Serie as SerieTrait, Utf8, VarLenType,
-    VarSerie, VarType,
+    Binary, Column as CoreColumn, ColumnField as CoreColumnField, Decoder, Encoder,
+    Field as FieldTrait, FixedBinary, FixedSerie, FixedSizeSerie, FixedUtf8, HeaderField,
+    LargeBinary, LargeUtf8, ListSerie as CoreListSerie, MapSerie as CoreMapSerie, Scalar,
+    Serie as SerieTrait, StructField as CoreStructField, StructSerie as CoreStructSerie, Utf8,
+    Value as CoreValue, VarLenType, VarSerie, VarType,
 };
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
@@ -122,20 +127,26 @@ impl ToJs for bool {
     }
 }
 
-/// A 256-bit unscaled decimal value as a JS `BigInt` — its 32 little-endian two's-complement bytes
-/// re-packed into napi's `(sign_bit, magnitude words)` shape (`words` little-endian `u64`).
+/// A 256-bit unscaled decimal value as a napi [`BigInt`] — its 32 little-endian two's-complement
+/// bytes re-packed into napi's `(sign_bit, magnitude words)` shape (`words` little-endian `u64`).
+/// Shared by [`ToJs`] (numeric columns) and the nested [`value_to_unknown`] marshaller.
+fn i256_to_bigint(value: I256) -> BigInt {
+    let sign_bit = value.is_negative();
+    let mut bytes = value.to_le_bytes();
+    if sign_bit {
+        negate_le_32(&mut bytes); // two's-complement magnitude for the sign-plus-magnitude form
+    }
+    let words = bytes
+        .chunks_exact(8)
+        .map(|chunk| u64::from_le_bytes(chunk.try_into().expect("8 bytes")))
+        .collect();
+    BigInt { sign_bit, words }
+}
+
+/// A 256-bit unscaled decimal value as a JS `BigInt` — see [`i256_to_bigint`].
 impl ToJs for I256 {
     fn to_js(self) -> JsValue {
-        let sign_bit = self.is_negative();
-        let mut bytes = self.to_le_bytes();
-        if sign_bit {
-            negate_le_32(&mut bytes); // two's-complement magnitude for the sign-plus-magnitude form
-        }
-        let words = bytes
-            .chunks_exact(8)
-            .map(|chunk| u64::from_le_bytes(chunk.try_into().expect("8 bytes")))
-            .collect();
-        Either3::B(BigInt { sign_bit, words })
+        Either3::B(i256_to_bigint(self))
     }
 }
 
@@ -2157,5 +2168,959 @@ impl ByteSerie {
                 self.null_count()
             ),
         }
+    }
+}
+
+// =======================================================================================
+// The nested typed layer — struct / list / map columns grown on the erased core `Column`.
+// =======================================================================================
+//
+// The core `yggdryl_core::typed::nested` layer composes columns of *different* types: the erased
+// [`CoreColumn`] tags every concrete data column, and the [`CoreStructSerie`] / [`CoreListSerie`] /
+// [`CoreMapSerie`] carriers nest inside each other. These four napi classes ([`StructSerie`],
+// [`StructField`], [`ListSerie`], [`MapSerie`]) mirror them, each a thin owner of its core value.
+//
+// The crux is the boundary conversion in **both** directions, because napi hands classes across the
+// FFI **by copy** (never a live `&mut`):
+//
+//   - reading a child — the core hands back a borrowed `&CoreColumn`, so it is **cloned** and wrapped
+//     into whichever binding class the variant selects ([`column_to_union`]);
+//   - writing a child — the binding gets a borrowed wrapper (`&Serie` / `&ByteSerie` / a nested
+//     class), so its `inner` is **cloned** into a fresh owned `CoreColumn` ([`column_from_binding`]).
+//
+// Because there is no live `&mut` across the boundary, the core's deep-mut accessors
+// (`column_by_name_mut`, `values_mut`, …) surface as a **copy-out + replace** pair here:
+// `column(name)` returns a copy and `setColumn(name, serie)` replaces the whole column.
+
+// Private in-module constructors wrapping an erased backing — used by the column conversions to
+// build the leaf wrappers / a flat field back out of a core `Column` / `ColumnField`.
+impl Serie {
+    fn from_inner(inner: SerieInner) -> Serie {
+        Serie { inner }
+    }
+}
+
+impl ByteSerie {
+    fn from_inner(inner: ByteInner) -> ByteSerie {
+        ByteSerie { inner }
+    }
+}
+
+impl Field {
+    fn from_inner(inner: HeaderField) -> Field {
+        Field { inner }
+    }
+}
+
+/// The heterogeneous column union crossing to JS — a [`Serie`] (numeric / bool / decimal leaf), a
+/// [`ByteSerie`] (byte leaf), or a nested [`StructSerie`] / [`ListSerie`] / [`MapSerie`]. napi returns
+/// the concrete instance directly (no discriminant wrapper), so JS calls its methods as usual.
+type ColumnUnion = Either5<Serie, ByteSerie, StructSerie, ListSerie, MapSerie>;
+
+/// The heterogeneous column union crossing **from** JS — a borrowed binding wrapper (`&Serie` /
+/// `&ByteSerie` / a nested class), the input of every column-taking factory / setter. napi
+/// discriminates it by class (an `instanceof`-style check per arm).
+type ColumnRef<'a> =
+    Either5<&'a Serie, &'a ByteSerie, &'a StructSerie, &'a ListSerie, &'a MapSerie>;
+
+// ---- cloning a borrowed core column (napi returns copies) ------------------------------
+
+/// Clones a borrowed [`VarSerie`] (variable-length byte carrier), preserving its `name` and optional
+/// `max_width` — the byte-carrier twin of [`clone_serie`]. `VarSerie` is not `Clone`, so it is
+/// re-wrapped from clones of its offsets / data / validity buffers.
+fn clone_varserie<T: VarLenType>(serie: &VarSerie<T>) -> VarSerie<T> {
+    let out = VarSerie::<T>::from_parts_bounded(
+        serie.offsets().clone(),
+        serie.data().clone(),
+        serie.validity().cloned(),
+        serie.len(),
+        serie.max_width(),
+    )
+    .expect("re-wrapping already-valid buffers with their own max_width never fails");
+    match serie.name() {
+        Some(name) => out.with_name(name),
+        None => out,
+    }
+}
+
+/// Clones a borrowed [`FixedSizeSerie`] (fixed-stride byte carrier), preserving its `name` and fixed
+/// `width` — the fixed-size twin of [`clone_serie`].
+fn clone_fixedsize<T: VarType>(serie: &FixedSizeSerie<T>) -> FixedSizeSerie<T> {
+    let out = FixedSizeSerie::<T>::from_parts(
+        serie.data().clone(),
+        serie.validity().cloned(),
+        serie.len(),
+        serie.width(),
+    );
+    match serie.name() {
+        Some(name) => out.with_name(name),
+        None => out,
+    }
+}
+
+/// Rebuilds a fresh row-level / element-level validity [`CoreHeap`] bitmap (LSB-first, `1` = valid)
+/// from a `nullable` flag, a `len`, and a per-index validity probe — the shared clone step for a
+/// nested carrier's `validity` buffer (which the core does not expose directly).
+fn rebuild_validity(
+    nullable: bool,
+    len: usize,
+    is_valid: impl Fn(usize) -> bool,
+) -> Option<CoreHeap> {
+    if !nullable {
+        return None;
+    }
+    let mut bits = CoreHeap::new();
+    for index in 0..len {
+        bits.pwrite_bit(index as u64, is_valid(index))
+            .expect("bit write into a fresh heap never fails");
+    }
+    Some(bits)
+}
+
+/// Rebuilds a fresh `len + 1` little-endian `i32` offsets [`CoreHeap`] from a per-list span probe —
+/// the shared clone step for a [`CoreListSerie`] / [`CoreMapSerie`] offsets buffer. `offsets[0]` is
+/// the first span's start (`0` for an empty column) and `offsets[i + 1]` its end.
+fn rebuild_offsets(len: usize, span: impl Fn(usize) -> (usize, usize)) -> CoreHeap {
+    let mut offsets = CoreHeap::new();
+    let first = if len == 0 { 0 } else { span(0).0 as i32 };
+    offsets
+        .pwrite_i32(0, first)
+        .expect("offset write into a fresh heap never fails");
+    for index in 0..len {
+        offsets
+            .pwrite_i32((index as u64 + 1) * 4, span(index).1 as i32)
+            .expect("offset write into a heap never fails");
+    }
+    offsets
+}
+
+/// Deep-clones a borrowed [`CoreStructSerie`] — rebuilds it from clones of its children, its `name`,
+/// its row-level validity (reconstructed from the per-row probe), and its metadata.
+fn clone_struct(serie: &CoreStructSerie) -> CoreStructSerie {
+    let children: Vec<CoreColumn> = serie.columns().iter().map(clone_column).collect();
+    let mut out = CoreStructSerie::from_columns(children)
+        .expect("cloned children keep the source's shared length");
+    if let Some(name) = serie.name() {
+        out = out.with_name(name);
+    }
+    out = out.with_validity(rebuild_validity(
+        serie.field().nullable(),
+        serie.len(),
+        |index| serie.is_valid(index),
+    ));
+    *out.metadata_mut() = serie.metadata().clone();
+    out
+}
+
+/// Deep-clones a borrowed [`CoreListSerie`] — rebuilds it from a clone of the flattened child column,
+/// its reconstructed offsets, its `name`, and its element-level validity.
+fn clone_list(serie: &CoreListSerie) -> CoreListSerie {
+    let values = clone_column(serie.values());
+    let offsets = rebuild_offsets(serie.len(), |index| {
+        serie.list_at(index).expect("index within the list count")
+    });
+    let validity = rebuild_validity(serie.field().nullable(), serie.len(), |index| {
+        serie.is_valid(index)
+    });
+    CoreListSerie::from_offsets(
+        serie.name().unwrap_or(""),
+        offsets,
+        values,
+        validity,
+        serie.len(),
+    )
+}
+
+/// Deep-clones a borrowed [`CoreMapSerie`] — rebuilds it from clones of its flattened key / value
+/// columns, its reconstructed offsets, its `name`, its `keys_sorted` flag, and its element-level
+/// validity.
+fn clone_map(serie: &CoreMapSerie) -> CoreMapSerie {
+    let keys = clone_column(serie.keys());
+    let values = clone_column(serie.values());
+    let offsets = rebuild_offsets(serie.len(), |index| {
+        serie.map_at(index).expect("index within the map count")
+    });
+    let validity = rebuild_validity(serie.field().nullable(), serie.len(), |index| {
+        serie.is_valid(index)
+    });
+    CoreMapSerie::from_offsets(
+        serie.name().unwrap_or(""),
+        offsets,
+        keys,
+        values,
+        validity,
+        serie.len(),
+    )
+    .expect("cloned key column keeps its non-nullability and shared length")
+    .with_keys_sorted(serie.keys_sorted())
+}
+
+/// Deep-clones any borrowed [`CoreColumn`] — the recursive dispatch every read / nested-write flows
+/// through. A future (`#[non_exhaustive]`) variant falls back to an all-null run of the same length.
+fn clone_column(column: &CoreColumn) -> CoreColumn {
+    match column {
+        CoreColumn::Null(count) => CoreColumn::Null(*count),
+        CoreColumn::Int8(serie) => CoreColumn::Int8(clone_serie(serie)),
+        CoreColumn::UInt8(serie) => CoreColumn::UInt8(clone_serie(serie)),
+        CoreColumn::Int16(serie) => CoreColumn::Int16(clone_serie(serie)),
+        CoreColumn::UInt16(serie) => CoreColumn::UInt16(clone_serie(serie)),
+        CoreColumn::Int32(serie) => CoreColumn::Int32(clone_serie(serie)),
+        CoreColumn::UInt32(serie) => CoreColumn::UInt32(clone_serie(serie)),
+        CoreColumn::Int64(serie) => CoreColumn::Int64(clone_serie(serie)),
+        CoreColumn::UInt64(serie) => CoreColumn::UInt64(clone_serie(serie)),
+        CoreColumn::Int128(serie) => CoreColumn::Int128(clone_serie(serie)),
+        CoreColumn::UInt128(serie) => CoreColumn::UInt128(clone_serie(serie)),
+        CoreColumn::Float32(serie) => CoreColumn::Float32(clone_serie(serie)),
+        CoreColumn::Float64(serie) => CoreColumn::Float64(clone_serie(serie)),
+        CoreColumn::Bool(serie) => CoreColumn::Bool(clone_serie(serie)),
+        CoreColumn::Decimal32(serie) => CoreColumn::Decimal32(clone_serie(serie)),
+        CoreColumn::Decimal64(serie) => CoreColumn::Decimal64(clone_serie(serie)),
+        CoreColumn::Decimal128(serie) => CoreColumn::Decimal128(clone_serie(serie)),
+        CoreColumn::Decimal256(serie) => CoreColumn::Decimal256(clone_serie(serie)),
+        CoreColumn::Binary(serie) => CoreColumn::Binary(clone_varserie(serie)),
+        CoreColumn::Utf8(serie) => CoreColumn::Utf8(clone_varserie(serie)),
+        CoreColumn::LargeBinary(serie) => CoreColumn::LargeBinary(clone_varserie(serie)),
+        CoreColumn::LargeUtf8(serie) => CoreColumn::LargeUtf8(clone_varserie(serie)),
+        CoreColumn::FixedBinary(serie) => CoreColumn::FixedBinary(clone_fixedsize(serie)),
+        CoreColumn::FixedUtf8(serie) => CoreColumn::FixedUtf8(clone_fixedsize(serie)),
+        CoreColumn::Struct(serie) => CoreColumn::Struct(clone_struct(serie)),
+        CoreColumn::List(serie) => CoreColumn::List(clone_list(serie)),
+        CoreColumn::Map(serie) => CoreColumn::Map(clone_map(serie)),
+        _ => CoreColumn::Null(column.len()),
+    }
+}
+
+// ---- core Column <-> binding wrapper ---------------------------------------------------
+
+/// Wraps an **owned** core [`CoreColumn`] into the concrete binding class its variant selects — the
+/// read boundary. A bufferless [`CoreColumn::Null`] (never produced by these builders) surfaces as a
+/// nullable `I8` [`Serie`] of `n` nulls; a future variant collapses the same way.
+fn column_to_union(column: CoreColumn) -> ColumnUnion {
+    match column {
+        CoreColumn::Int8(serie) => Either5::A(Serie::from_inner(SerieInner::I8(serie))),
+        CoreColumn::UInt8(serie) => Either5::A(Serie::from_inner(SerieInner::U8(serie))),
+        CoreColumn::Int16(serie) => Either5::A(Serie::from_inner(SerieInner::I16(serie))),
+        CoreColumn::UInt16(serie) => Either5::A(Serie::from_inner(SerieInner::U16(serie))),
+        CoreColumn::Int32(serie) => Either5::A(Serie::from_inner(SerieInner::I32(serie))),
+        CoreColumn::UInt32(serie) => Either5::A(Serie::from_inner(SerieInner::U32(serie))),
+        CoreColumn::Int64(serie) => Either5::A(Serie::from_inner(SerieInner::I64(serie))),
+        CoreColumn::UInt64(serie) => Either5::A(Serie::from_inner(SerieInner::U64(serie))),
+        CoreColumn::Int128(serie) => Either5::A(Serie::from_inner(SerieInner::I128(serie))),
+        CoreColumn::UInt128(serie) => Either5::A(Serie::from_inner(SerieInner::U128(serie))),
+        CoreColumn::Float32(serie) => Either5::A(Serie::from_inner(SerieInner::F32(serie))),
+        CoreColumn::Float64(serie) => Either5::A(Serie::from_inner(SerieInner::F64(serie))),
+        CoreColumn::Bool(serie) => Either5::A(Serie::from_inner(SerieInner::Bool(serie))),
+        CoreColumn::Decimal32(serie) => Either5::A(Serie::from_inner(SerieInner::Decimal32(serie))),
+        CoreColumn::Decimal64(serie) => Either5::A(Serie::from_inner(SerieInner::Decimal64(serie))),
+        CoreColumn::Decimal128(serie) => {
+            Either5::A(Serie::from_inner(SerieInner::Decimal128(serie)))
+        }
+        CoreColumn::Decimal256(serie) => {
+            Either5::A(Serie::from_inner(SerieInner::Decimal256(serie)))
+        }
+        CoreColumn::Binary(serie) => Either5::B(ByteSerie::from_inner(ByteInner::Binary(serie))),
+        CoreColumn::Utf8(serie) => Either5::B(ByteSerie::from_inner(ByteInner::Utf8(serie))),
+        CoreColumn::LargeBinary(serie) => {
+            Either5::B(ByteSerie::from_inner(ByteInner::LargeBinary(serie)))
+        }
+        CoreColumn::LargeUtf8(serie) => {
+            Either5::B(ByteSerie::from_inner(ByteInner::LargeUtf8(serie)))
+        }
+        CoreColumn::FixedBinary(serie) => {
+            Either5::B(ByteSerie::from_inner(ByteInner::FixedBinary(serie)))
+        }
+        CoreColumn::FixedUtf8(serie) => {
+            Either5::B(ByteSerie::from_inner(ByteInner::FixedUtf8(serie)))
+        }
+        CoreColumn::Struct(serie) => Either5::C(StructSerie { inner: serie }),
+        CoreColumn::List(serie) => Either5::D(ListSerie { inner: serie }),
+        CoreColumn::Map(serie) => Either5::E(MapSerie { inner: serie }),
+        CoreColumn::Null(count) => Either5::A(Serie::from_inner(SerieInner::I8(
+            FixedSerie::<Int8>::from_options(&vec![None; count]),
+        ))),
+        _ => Either5::A(Serie::from_inner(SerieInner::I8(
+            FixedSerie::<Int8>::from_options(&[]),
+        ))),
+    }
+}
+
+/// Clones a borrowed numeric [`Serie`]'s `inner` into an owned [`CoreColumn`], optionally overriding
+/// the child `name` (given by `StructSerie.fromColumns` / `setColumn`).
+fn serie_to_column(serie: &Serie, name: Option<&str>) -> CoreColumn {
+    fn named<T: Encoder + Decoder>(serie: &FixedSerie<T>, name: Option<&str>) -> FixedSerie<T> {
+        let cloned = clone_serie(serie);
+        match name {
+            Some(name) => cloned.with_name(name),
+            None => cloned,
+        }
+    }
+    match &serie.inner {
+        SerieInner::I8(serie) => CoreColumn::Int8(named(serie, name)),
+        SerieInner::U8(serie) => CoreColumn::UInt8(named(serie, name)),
+        SerieInner::I16(serie) => CoreColumn::Int16(named(serie, name)),
+        SerieInner::U16(serie) => CoreColumn::UInt16(named(serie, name)),
+        SerieInner::I32(serie) => CoreColumn::Int32(named(serie, name)),
+        SerieInner::U32(serie) => CoreColumn::UInt32(named(serie, name)),
+        SerieInner::I64(serie) => CoreColumn::Int64(named(serie, name)),
+        SerieInner::U64(serie) => CoreColumn::UInt64(named(serie, name)),
+        SerieInner::I128(serie) => CoreColumn::Int128(named(serie, name)),
+        SerieInner::U128(serie) => CoreColumn::UInt128(named(serie, name)),
+        SerieInner::F32(serie) => CoreColumn::Float32(named(serie, name)),
+        SerieInner::F64(serie) => CoreColumn::Float64(named(serie, name)),
+        SerieInner::Bool(serie) => CoreColumn::Bool(named(serie, name)),
+        SerieInner::Decimal32(serie) => CoreColumn::Decimal32(named(serie, name)),
+        SerieInner::Decimal64(serie) => CoreColumn::Decimal64(named(serie, name)),
+        SerieInner::Decimal128(serie) => CoreColumn::Decimal128(named(serie, name)),
+        SerieInner::Decimal256(serie) => CoreColumn::Decimal256(named(serie, name)),
+    }
+}
+
+/// Clones a borrowed byte [`ByteSerie`]'s `inner` into an owned [`CoreColumn`], optionally overriding
+/// the child `name`.
+fn byteserie_to_column(byte: &ByteSerie, name: Option<&str>) -> CoreColumn {
+    fn named_var<T: VarLenType>(serie: &VarSerie<T>, name: Option<&str>) -> VarSerie<T> {
+        let cloned = clone_varserie(serie);
+        match name {
+            Some(name) => cloned.with_name(name),
+            None => cloned,
+        }
+    }
+    fn named_fixed<T: VarType>(serie: &FixedSizeSerie<T>, name: Option<&str>) -> FixedSizeSerie<T> {
+        let cloned = clone_fixedsize(serie);
+        match name {
+            Some(name) => cloned.with_name(name),
+            None => cloned,
+        }
+    }
+    match &byte.inner {
+        ByteInner::Binary(serie) => CoreColumn::Binary(named_var(serie, name)),
+        ByteInner::Utf8(serie) => CoreColumn::Utf8(named_var(serie, name)),
+        ByteInner::LargeBinary(serie) => CoreColumn::LargeBinary(named_var(serie, name)),
+        ByteInner::LargeUtf8(serie) => CoreColumn::LargeUtf8(named_var(serie, name)),
+        ByteInner::FixedBinary(serie) => CoreColumn::FixedBinary(named_fixed(serie, name)),
+        ByteInner::FixedUtf8(serie) => CoreColumn::FixedUtf8(named_fixed(serie, name)),
+    }
+}
+
+/// Clones a borrowed binding column wrapper into an owned core [`CoreColumn`] — the write boundary,
+/// optionally overriding the child `name`. A nested wrapper is deep-cloned then renamed.
+fn column_from_binding(wrapper: ColumnRef, name: Option<&str>) -> CoreColumn {
+    match wrapper {
+        Either5::A(serie) => serie_to_column(serie, name),
+        Either5::B(byte) => byteserie_to_column(byte, name),
+        Either5::C(nested) => {
+            let mut cloned = clone_struct(&nested.inner);
+            if let Some(name) = name {
+                cloned = cloned.with_name(name);
+            }
+            CoreColumn::Struct(cloned)
+        }
+        Either5::D(nested) => {
+            let mut cloned = clone_list(&nested.inner);
+            if let Some(name) = name {
+                cloned = cloned.with_name(name);
+            }
+            CoreColumn::List(cloned)
+        }
+        Either5::E(nested) => {
+            let mut cloned = clone_map(&nested.inner);
+            if let Some(name) = name {
+                cloned = cloned.with_name(name);
+            }
+            CoreColumn::Map(cloned)
+        }
+    }
+}
+
+// ---- nested value marshalling: a core `Value` -> its JS shape --------------------------
+
+/// Bridges any owned `ToNapiValue` into a `JsUnknown` through the raw napi boundary — the general
+/// converter [`value_to_unknown`] leans on so a heterogeneous, recursive [`CoreValue`] tree renders
+/// with one code path (a leaf as a `number` / `BigInt` / `boolean` / `Buffer` / `string`, a nested
+/// row / list / map entries as a JS array).
+fn to_unknown<T: ToNapiValue>(env: &Env, value: T) -> napi::Result<JsUnknown> {
+    let raw = unsafe { T::to_napi_value(env.raw(), value)? };
+    Ok(unsafe { JsUnknown::from_napi_value(env.raw(), raw)? })
+}
+
+/// Marshals one erased [`CoreValue`] element to its JS shape: a narrow integer / float / `Decimal32`
+/// as a `number`, a wide integer / `Decimal64` / `Decimal128` / `Decimal256` as a `BigInt`, a `Bool`
+/// as a `boolean`, `Binary` as a `Buffer`, `Utf8` as a `string`, `Null` as JS `null`; a nested `Row`
+/// / `List` as a JS array of its child values, and a `Map` as an **entries array**
+/// (`[[key, value], …]`, so any key type is representable).
+fn value_to_unknown(env: &Env, value: &CoreValue) -> napi::Result<JsUnknown> {
+    match value {
+        CoreValue::Null => to_unknown(env, Null),
+        CoreValue::Int8(v) => to_unknown(env, *v as f64),
+        CoreValue::UInt8(v) => to_unknown(env, *v as f64),
+        CoreValue::Int16(v) => to_unknown(env, *v as f64),
+        CoreValue::UInt16(v) => to_unknown(env, *v as f64),
+        CoreValue::Int32(v) => to_unknown(env, *v as f64),
+        CoreValue::UInt32(v) => to_unknown(env, *v as f64),
+        CoreValue::Float32(v) => to_unknown(env, *v as f64),
+        CoreValue::Float64(v) => to_unknown(env, *v),
+        CoreValue::Decimal32(v) => to_unknown(env, *v as f64),
+        CoreValue::Int64(v) => to_unknown(env, BigInt::from(*v)),
+        CoreValue::UInt64(v) => to_unknown(env, BigInt::from(*v)),
+        CoreValue::Int128(v) => to_unknown(env, BigInt::from(*v)),
+        CoreValue::UInt128(v) => to_unknown(env, BigInt::from(*v)),
+        CoreValue::Decimal64(v) => to_unknown(env, BigInt::from(*v)),
+        CoreValue::Decimal128(v) => to_unknown(env, BigInt::from(*v)),
+        CoreValue::Decimal256(v) => to_unknown(env, i256_to_bigint(*v)),
+        CoreValue::Bool(v) => to_unknown(env, *v),
+        CoreValue::Binary(bytes) => to_unknown(env, Buffer::from(bytes.clone())),
+        CoreValue::Utf8(text) => to_unknown(env, text.clone()),
+        CoreValue::Row(row) => {
+            let items = row
+                .values()
+                .iter()
+                .map(|value| value_to_unknown(env, value))
+                .collect::<napi::Result<Vec<_>>>()?;
+            to_unknown(env, items)
+        }
+        CoreValue::List(list) => {
+            let items = list
+                .values()
+                .iter()
+                .map(|value| value_to_unknown(env, value))
+                .collect::<napi::Result<Vec<_>>>()?;
+            to_unknown(env, items)
+        }
+        CoreValue::Map(map) => {
+            let entries = map
+                .keys()
+                .iter()
+                .zip(map.values().iter())
+                .map(|(key, value)| {
+                    let pair = vec![value_to_unknown(env, key)?, value_to_unknown(env, value)?];
+                    to_unknown(env, pair)
+                })
+                .collect::<napi::Result<Vec<_>>>()?;
+            to_unknown(env, entries)
+        }
+    }
+}
+
+/// Renders a core [`CoreColumnField`] as the flat binding [`Field`] — a leaf keeps its
+/// [`HeaderField`], a nested field collapses to its `name` / nested [`DataTypeId`] (`Struct` / `List`
+/// / `Map`) / `nullable` (its child schema is reachable on the child columns' own `field()`).
+fn columnfield_to_field(field: &CoreColumnField) -> Field {
+    match field {
+        CoreColumnField::Leaf(header) => Field::from_inner(header.clone()),
+        other => Field::from_inner(HeaderField::new(
+            other.name(),
+            other.data_type_id(),
+            other.nullable(),
+        )),
+    }
+}
+
+// ---- the struct "table" ----------------------------------------------------------------
+
+/// A **struct column** — the table: an ordered set of equal-length, heterogeneous child columns
+/// ([`Serie`] / [`ByteSerie`] / nested), with an optional row-level validity buffer. Mirrors
+/// `yggdryl_core::typed::StructSerie`. Because napi crosses classes by copy, [`column`](StructSerie::column)
+/// hands back a **copy** of a child and [`setColumn`](StructSerie::set_column) replaces a whole column
+/// — the binding form of the core's deep-mut `column_by_name_mut`.
+#[napi(namespace = "typed")]
+pub struct StructSerie {
+    inner: CoreStructSerie,
+}
+
+#[napi(namespace = "typed")]
+impl StructSerie {
+    /// An **empty**, non-nullable struct named `name` (add columns with
+    /// [`setColumn`](StructSerie::set_column)).
+    #[napi(constructor)]
+    pub fn new(name: Option<String>) -> StructSerie {
+        StructSerie {
+            inner: CoreStructSerie::new(name.as_deref().unwrap_or("")),
+        }
+    }
+
+    /// A struct from `columns` (each a [`Serie`] / [`ByteSerie`] / nested column), optionally renamed
+    /// by the parallel `names`. Throws the guided `Error` when the columns are not all the same length,
+    /// or when `names` is given with a different length than `columns`.
+    #[napi(factory)]
+    pub fn from_columns(
+        columns: Vec<Either5<&Serie, &ByteSerie, &StructSerie, &ListSerie, &MapSerie>>,
+        names: Option<Vec<String>>,
+    ) -> napi::Result<StructSerie> {
+        let children: Vec<CoreColumn> = match &names {
+            Some(names) => {
+                if names.len() != columns.len() {
+                    return Err(to_error(format!(
+                        "names length {} does not match columns length {}: pass exactly one name per \
+                         column, or omit names to keep each column's own name",
+                        names.len(),
+                        columns.len()
+                    )));
+                }
+                columns
+                    .into_iter()
+                    .zip(names.iter())
+                    .map(|(column, name)| column_from_binding(column, Some(name.as_str())))
+                    .collect()
+            }
+            None => columns
+                .into_iter()
+                .map(|column| column_from_binding(column, None))
+                .collect(),
+        };
+        Ok(StructSerie {
+            inner: CoreStructSerie::from_columns(children).map_err(to_error)?,
+        })
+    }
+
+    /// The number of child columns.
+    #[napi]
+    pub fn num_columns(&self) -> u32 {
+        self.inner.num_columns() as u32
+    }
+
+    /// The number of rows.
+    #[napi]
+    pub fn len(&self) -> u32 {
+        self.inner.len() as u32
+    }
+
+    /// Whether the struct has no rows.
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// A **copy** of the child column at `index` — a [`Serie`] / [`ByteSerie`] / nested class — or
+    /// `null` when out of range. (A copy, not a live handle: mutate a column and write it back with
+    /// [`setColumn`](StructSerie::set_column).)
+    #[napi]
+    pub fn column(
+        &self,
+        index: u32,
+    ) -> Option<Either5<Serie, ByteSerie, StructSerie, ListSerie, MapSerie>> {
+        self.inner
+            .column(index as usize)
+            .map(|column| column_to_union(clone_column(column)))
+    }
+
+    /// A **copy** of the first child column named `name`, or `null` when absent.
+    #[napi]
+    pub fn column_by_name(
+        &self,
+        name: String,
+    ) -> Option<Either5<Serie, ByteSerie, StructSerie, ListSerie, MapSerie>> {
+        self.inner
+            .column_by_name(&name)
+            .map(|column| column_to_union(clone_column(column)))
+    }
+
+    /// The child column names in order (an unnamed column reports `""`).
+    #[napi]
+    pub fn column_names(&self) -> Vec<String> {
+        self.inner
+            .columns()
+            .iter()
+            .map(|column| column.name().unwrap_or("").to_string())
+            .collect()
+    }
+
+    /// **Replaces** the child column named `name` with `column` (renamed to `name`), or **appends**
+    /// it when `name` is absent — the binding form of the core's deep-mut `column_by_name_mut`.
+    /// Throws the guided `Error` when the replacement's length differs from the struct's.
+    #[napi]
+    pub fn set_column(
+        &mut self,
+        name: String,
+        column: Either5<&Serie, &ByteSerie, &StructSerie, &ListSerie, &MapSerie>,
+    ) -> napi::Result<()> {
+        let new_column = column_from_binding(column, Some(&name));
+        match self.inner.column_by_name_mut(&name) {
+            Some(slot) => {
+                if new_column.len() != slot.len() {
+                    return Err(to_error(format!(
+                        "setColumn length mismatch: column {name:?} has {} rows but the struct has \
+                         {} — build the column to {} rows (pad or truncate) before setting it",
+                        new_column.len(),
+                        slot.len(),
+                        slot.len()
+                    )));
+                }
+                *slot = new_column;
+                Ok(())
+            }
+            None => {
+                let old = std::mem::replace(&mut self.inner, CoreStructSerie::new(""));
+                self.inner = old.with_column(new_column).map_err(to_error)?;
+                Ok(())
+            }
+        }
+    }
+
+    /// The **row** at `index` — an array of its child values (each a `number` / `BigInt` / `boolean`
+    /// / `Buffer` / `string` / `null`, or a nested array / entries array) — or `null` when out of
+    /// range.
+    #[napi]
+    pub fn row(&self, env: Env, index: u32) -> napi::Result<Option<Vec<JsUnknown>>> {
+        match self.inner.row(index as usize) {
+            None => Ok(None),
+            Some(scalar) => {
+                let values = scalar
+                    .values()
+                    .iter()
+                    .map(|value| value_to_unknown(&env, value))
+                    .collect::<napi::Result<Vec<_>>>()?;
+                Ok(Some(values))
+            }
+        }
+    }
+
+    /// Appends a **null row** — grows every child by one null slot and clears the new row's validity
+    /// bit.
+    #[napi]
+    pub fn push_null(&mut self) {
+        self.inner.push_null();
+    }
+
+    /// Whether the **row** at `index` is valid (non-null). Out of range is `false`.
+    #[napi]
+    pub fn is_valid(&self, index: u32) -> bool {
+        self.inner.is_valid(index as usize)
+    }
+
+    /// How many rows are null.
+    #[napi]
+    pub fn null_count(&self) -> u32 {
+        self.inner.null_count() as u32
+    }
+
+    /// This struct's [`StructField`] schema — its name, nullability, and ordered child fields.
+    #[napi]
+    pub fn field(&self) -> StructField {
+        StructField {
+            inner: self.inner.field(),
+        }
+    }
+
+    /// A short debug string — the struct's name, column count, row count, and null count.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "StructSerie(name={:?}, numColumns={}, len={}, nullCount={})",
+            self.inner.name(),
+            self.inner.num_columns(),
+            self.inner.len(),
+            self.inner.null_count()
+        )
+    }
+}
+
+/// A **struct column's schema** — its `name`, `nullable` flag, and ordered child [`Field`]s. Mirrors
+/// `yggdryl_core::typed::StructField`.
+#[napi(namespace = "typed")]
+pub struct StructField {
+    inner: CoreStructField,
+}
+
+#[napi(namespace = "typed")]
+impl StructField {
+    /// A struct schema from its optional `name` and ordered child leaf `fields`. (A manually-built
+    /// schema carries leaf child fields; a nested child schema is reported by a nested
+    /// [`StructSerie::field`] built from real nested columns.)
+    #[napi(constructor)]
+    pub fn new(name: Option<String>, fields: Vec<&Field>) -> StructField {
+        let children: Vec<CoreColumnField> = fields
+            .iter()
+            .map(|field| CoreColumnField::Leaf(field.inner.clone()))
+            .collect();
+        StructField {
+            inner: CoreStructField::new(name.as_deref(), children),
+        }
+    }
+
+    /// The child field names in order (an unnamed child reports `""`).
+    #[napi]
+    pub fn names(&self) -> Vec<String> {
+        self.inner.names().iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The child [`Field`] at `index`, or `null` when out of range.
+    #[napi]
+    pub fn field(&self, index: u32) -> Option<Field> {
+        self.inner.field(index as usize).map(columnfield_to_field)
+    }
+
+    /// The first child [`Field`] named `name`, or `null` when absent.
+    #[napi]
+    pub fn field_by_name(&self, name: String) -> Option<Field> {
+        self.inner.field_by_name(&name).map(columnfield_to_field)
+    }
+
+    /// The number of child fields.
+    #[napi]
+    pub fn num_fields(&self) -> u32 {
+        self.inner.num_fields() as u32
+    }
+
+    /// The struct's name, or `null` when unset.
+    #[napi]
+    pub fn name(&self) -> Option<String> {
+        self.inner.name().map(str::to_string)
+    }
+
+    /// Whether the struct admits null rows.
+    #[napi]
+    pub fn nullable(&self) -> bool {
+        self.inner.nullable()
+    }
+
+    /// Content equality — equal iff every field (name, nullability, metadata, children) matches.
+    #[napi]
+    pub fn equals(&self, other: &StructField) -> bool {
+        self.inner == other.inner
+    }
+
+    /// A short debug string — the struct's name, field count, and nullability.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "StructField(name={:?}, numFields={}, nullable={})",
+            self.inner.name(),
+            self.inner.num_fields(),
+            self.inner.nullable()
+        )
+    }
+}
+
+// ---- the list column -------------------------------------------------------------------
+
+/// A **list column** — a variable-length list over a flattened child column: [`push`](ListSerie::push)
+/// demarcates each list as the next `childLen` rows of the child. Mirrors
+/// `yggdryl_core::typed::ListSerie`.
+#[napi(namespace = "typed")]
+pub struct ListSerie {
+    inner: CoreListSerie,
+}
+
+#[napi(namespace = "typed")]
+impl ListSerie {
+    /// An **empty** list column over the flattened child `values` column (a [`Serie`] / [`ByteSerie`]
+    /// / nested column), optionally named. Its rows become list elements as
+    /// [`push`](ListSerie::push) demarcates them.
+    #[napi(constructor)]
+    pub fn new(
+        values: Either5<&Serie, &ByteSerie, &StructSerie, &ListSerie, &MapSerie>,
+        name: Option<String>,
+    ) -> ListSerie {
+        let child = column_from_binding(values, None);
+        ListSerie {
+            inner: CoreListSerie::new(name.as_deref().unwrap_or(""), child),
+        }
+    }
+
+    /// Appends a **non-null** list spanning the next `child_len` rows of the flattened child column.
+    #[napi]
+    pub fn push(&mut self, child_len: u32) {
+        self.inner.push(child_len as usize);
+    }
+
+    /// Appends a **null** list (an empty span with its validity bit cleared).
+    #[napi]
+    pub fn push_null(&mut self) {
+        self.inner.push_null();
+    }
+
+    /// The number of lists.
+    #[napi]
+    pub fn len(&self) -> u32 {
+        self.inner.len() as u32
+    }
+
+    /// Whether the column has no lists.
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// A **copy** of the flattened child column ([`Serie`] / [`ByteSerie`] / nested) holding every
+    /// list's elements.
+    #[napi]
+    pub fn values(&self) -> Either5<Serie, ByteSerie, StructSerie, ListSerie, MapSerie> {
+        column_to_union(clone_column(self.inner.values()))
+    }
+
+    /// The **list element** at `index` as an array of its child values (each a `number` / `BigInt` /
+    /// `boolean` / `Buffer` / `string` / `null`, or a nested array / entries array), or `null` when
+    /// the list is null or out of range. An empty (non-null) list is an empty array.
+    #[napi]
+    pub fn list(&self, env: Env, index: u32) -> napi::Result<Option<Vec<JsUnknown>>> {
+        match self.inner.list(index as usize) {
+            Some(scalar) if !scalar.is_null() => {
+                let values = scalar
+                    .values()
+                    .iter()
+                    .map(|value| value_to_unknown(&env, value))
+                    .collect::<napi::Result<Vec<_>>>()?;
+                Ok(Some(values))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Whether the list at `index` is valid (non-null). Out of range is `false`.
+    #[napi]
+    pub fn is_valid(&self, index: u32) -> bool {
+        self.inner.is_valid(index as usize)
+    }
+
+    /// How many lists are null.
+    #[napi]
+    pub fn null_count(&self) -> u32 {
+        self.inner.null_count() as u32
+    }
+
+    /// This list's [`Field`] — a flat descriptor (`name` / `List` dtype / `nullable`); the item's
+    /// element type is on [`values`](ListSerie::values)`.field()`.
+    #[napi]
+    pub fn field(&self) -> Field {
+        let field = self.inner.field();
+        Field::from_inner(HeaderField::new(field.name(), DtId::List, field.nullable()))
+    }
+
+    /// A short debug string — the list's name, list count, and null count.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "ListSerie(name={:?}, len={}, nullCount={})",
+            self.inner.name(),
+            self.inner.len(),
+            self.inner.null_count()
+        )
+    }
+}
+
+// ---- the map column --------------------------------------------------------------------
+
+/// A **map column** — a key→value map over flattened key / value columns: [`push`](MapSerie::push)
+/// demarcates each map as the next `entryCount` entries. Map **keys must be non-nullable** (an Arrow
+/// constraint). Mirrors `yggdryl_core::typed::MapSerie`.
+#[napi(namespace = "typed")]
+pub struct MapSerie {
+    inner: CoreMapSerie,
+}
+
+#[napi(namespace = "typed")]
+impl MapSerie {
+    /// An **empty** map column over the flattened `keys` + `values` columns (each a [`Serie`] /
+    /// [`ByteSerie`] / nested column), optionally named. Their rows become entries as
+    /// [`push`](MapSerie::push) demarcates them. Throws the guided `Error` when the key column is
+    /// nullable or the two columns differ in length.
+    #[napi(constructor)]
+    pub fn new(
+        keys: Either5<&Serie, &ByteSerie, &StructSerie, &ListSerie, &MapSerie>,
+        values: Either5<&Serie, &ByteSerie, &StructSerie, &ListSerie, &MapSerie>,
+        name: Option<String>,
+    ) -> napi::Result<MapSerie> {
+        let key_col = column_from_binding(keys, None);
+        let value_col = column_from_binding(values, None);
+        Ok(MapSerie {
+            inner: CoreMapSerie::new(name.as_deref().unwrap_or(""), key_col, value_col)
+                .map_err(to_error)?,
+        })
+    }
+
+    /// Appends a **non-null** map spanning the next `entry_count` entries of the flattened columns.
+    #[napi]
+    pub fn push(&mut self, entry_count: u32) {
+        self.inner.push(entry_count as usize);
+    }
+
+    /// Appends a **null** map (an empty span with its validity bit cleared).
+    #[napi]
+    pub fn push_null(&mut self) {
+        self.inner.push_null();
+    }
+
+    /// The number of maps.
+    #[napi]
+    pub fn len(&self) -> u32 {
+        self.inner.len() as u32
+    }
+
+    /// Whether the column has no maps.
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// A **copy** of the flattened **key** column ([`Serie`] / [`ByteSerie`] / nested).
+    #[napi]
+    pub fn keys(&self) -> Either5<Serie, ByteSerie, StructSerie, ListSerie, MapSerie> {
+        column_to_union(clone_column(self.inner.keys()))
+    }
+
+    /// A **copy** of the flattened **value** column ([`Serie`] / [`ByteSerie`] / nested).
+    #[napi]
+    pub fn values(&self) -> Either5<Serie, ByteSerie, StructSerie, ListSerie, MapSerie> {
+        column_to_union(clone_column(self.inner.values()))
+    }
+
+    /// The **map element** at `index` as an **entries array** (`[[key, value], …]`, each value a
+    /// `number` / `BigInt` / `boolean` / `Buffer` / `string` / `null` or a nested array), or `null`
+    /// when the map is null or out of range. An empty (non-null) map is an empty array.
+    #[napi]
+    pub fn get(&self, env: Env, index: u32) -> napi::Result<Option<Vec<JsUnknown>>> {
+        match self.inner.map(index as usize) {
+            Some(scalar) if !scalar.is_null() => {
+                let entries = scalar
+                    .keys()
+                    .iter()
+                    .zip(scalar.values().iter())
+                    .map(|(key, value)| {
+                        let pair =
+                            vec![value_to_unknown(&env, key)?, value_to_unknown(&env, value)?];
+                        to_unknown(&env, pair)
+                    })
+                    .collect::<napi::Result<Vec<_>>>()?;
+                Ok(Some(entries))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Whether the keys are **sorted** within each map (an Arrow schema hint).
+    #[napi]
+    pub fn keys_sorted(&self) -> bool {
+        self.inner.keys_sorted()
+    }
+
+    /// Whether the map at `index` is valid (non-null). Out of range is `false`.
+    #[napi]
+    pub fn is_valid(&self, index: u32) -> bool {
+        self.inner.is_valid(index as usize)
+    }
+
+    /// How many maps are null.
+    #[napi]
+    pub fn null_count(&self) -> u32 {
+        self.inner.null_count() as u32
+    }
+
+    /// This map's [`Field`] — a flat descriptor (`name` / `Map` dtype / `nullable`); the key / value
+    /// element types are on [`keys`](MapSerie::keys)`.field()` / [`values`](MapSerie::values)`.field()`.
+    #[napi]
+    pub fn field(&self) -> Field {
+        let field = self.inner.field();
+        Field::from_inner(HeaderField::new(field.name(), DtId::Map, field.nullable()))
+    }
+
+    /// A short debug string — the map's name, map count, and null count.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "MapSerie(name={:?}, len={}, nullCount={})",
+            self.inner.name(),
+            self.inner.len(),
+            self.inner.null_count()
+        )
     }
 }

@@ -42,7 +42,7 @@ use yggdryl_core::typed::{
 };
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
-fn ioerr(error: IoError) -> PyErr {
+pub(crate) fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
@@ -76,7 +76,7 @@ fn i256_from_py(obj: &Bound<'_, PyAny>) -> PyResult<I256> {
 /// Converts an [`I256`] back into a Python `int` — the inverse of [`i256_from_py`]. Values within
 /// `i128` use the native conversion; wider ones are rebuilt with `int.from_bytes(..., signed=True)`
 /// over the 32 little-endian bytes, so a value beyond `i128` still lands as an exact Python integer.
-fn i256_to_py(py: Python<'_>, value: I256) -> PyObject {
+pub(crate) fn i256_to_py(py: Python<'_>, value: I256) -> PyObject {
     if let Some(value) = value.to_i128() {
         return value.into_py(py);
     }
@@ -165,7 +165,7 @@ impl IntoPyByteValue for String {
 /// The **type-erased** column backing [`Serie`] — one variant per fixed-width core element type.
 /// A method on `Serie` dispatches across every variant (see the [`dispatch!`] / [`map_variant!`]
 /// helpers), so the single dynamic class serves every dtype without 13× hand-written methods.
-enum Inner {
+pub(crate) enum Inner {
     I8(FixedSerie<Int8>),
     U8(FixedSerie<UInt8>),
     I16(FixedSerie<Int16>),
@@ -537,7 +537,7 @@ macro_rules! decimal_dispatch {
 /// `scale` metadata and renders a scale-aware `to_decimal_string`.
 #[pyclass(module = "yggdryl.typed")]
 pub struct Serie {
-    inner: Inner,
+    pub(crate) inner: Inner,
 }
 
 #[pymethods]
@@ -1188,7 +1188,7 @@ reduce_methods!(
 /// with `i64` offsets — same offsets + data layout) and the fixed-stride [`FixedSizeSerie`]
 /// (`FixedBinary` / `FixedUtf8`). A method dispatches across the variants (see the [`byte_dispatch!`]
 /// / [`byte_map!`] helpers), so the single dynamic class serves every byte dtype.
-enum ByteInner {
+pub(crate) enum ByteInner {
     Binary(VarSerie<Binary>),
     LargeBinary(VarSerie<LargeBinary>),
     Utf8(VarSerie<Utf8>),
@@ -1307,7 +1307,7 @@ impl<T: VarType> RebuildByteSerie for FixedSizeSerie<T, memory::Heap> {
 /// (zero-padding a shorter value, truncating a longer one).
 #[pyclass(module = "yggdryl.typed")]
 pub struct ByteSerie {
-    inner: ByteInner,
+    pub(crate) inner: ByteInner,
 }
 
 #[pymethods]
@@ -1859,10 +1859,12 @@ impl Field {
 }
 
 /// Populates the `typed` submodule with the column surface: [`Serie`], the byte-column
-/// [`ByteSerie`], and their [`Field`].
+/// [`ByteSerie`], and their [`Field`] — then the nested carriers (`StructSerie` / `ListSerie` /
+/// `MapSerie` and their `StructField` / `ListField` / `MapField`) via [`crate::nested::register`].
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Serie>()?;
     module.add_class::<ByteSerie>()?;
     module.add_class::<Field>()?;
+    crate::nested::register(module)?;
     Ok(())
 }

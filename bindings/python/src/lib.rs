@@ -15,7 +15,9 @@
 //! (the `MimeType` media type and the `MimeCatalog` registry, mirroring
 //! `yggdryl_core::mimetype`), the `yggdryl.mediatype` submodule (the layered `MediaType`
 //! list, mirroring `yggdryl_core::mediatype`), the `yggdryl.typed` submodule (the typed-column
-//! surface — a `Serie` and its `Field`, mirroring `yggdryl_core::typed`) and the
+//! surface — a `Serie` and its `Field`, plus the nested carriers `StructSerie` / `ListSerie` /
+//! `MapSerie` and their `StructField` / `ListField` / `MapField`, mirroring
+//! `yggdryl_core::typed` and its `nested` layer) and the
 //! `yggdryl.compression` submodule (the
 //! `Gzip` / `Zlib` / `Zstd` / `Lzma` codecs and the `codec_for` resolver, mirroring
 //! `yggdryl_core::compression`).
@@ -33,6 +35,7 @@ mod headers;
 mod io;
 mod mediatype;
 mod mimetype;
+mod nested;
 mod typed;
 mod uri;
 

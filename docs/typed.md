@@ -530,6 +530,72 @@ values), `first_value` / `last_value`, and — for any orderable element — `mi
     assert_eq!(names.n_unique(), 3);
     ```
 
+## Nested columns — struct (the table), list, map
+
+The `nested` layer composes columns: a **`StructSerie`** is the project's **table** — named columns
+of any type (leaf or nested) sharing one length; a **`ListSerie`** is a column of variable-length
+lists over one child column; a **`MapSerie`** is a column of key→value maps. In the Rust core the
+columns are the erased `Column`, so a struct holds heterogeneous children and its graph is navigable
+by index or name — `column_by_name`, the recursive `column_path("address.city")`, and the
+`column_mut` / `column_path_mut` accessors that hand back a `&mut` to **deep-mutate an inner series
+in place, no copy**. The bindings expose the same shape (a returned column is a `Serie` / `ByteSerie`
+/ nested wrapper; mutation across the FFI is `set_column(name, column)`).
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie, ByteSerie, StructSerie
+    from yggdryl.datatype_id import DataTypeId
+
+    table = StructSerie.from_columns(
+        [Serie.from_values([1, 2, 3], DataTypeId.I64),
+         ByteSerie.from_values(["ada", "alan", "grace"], DataTypeId.Utf8)],
+        names=["id", "name"],
+    )
+    assert table.num_columns() == 2
+    assert table.column_names() == ["id", "name"]
+    assert table.column_by_name("name").to_list() == ["ada", "alan", "grace"]
+    assert table.row(1) == [2, "alan"]
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie, ByteSerie, StructSerie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const table = StructSerie.fromColumns(
+      [Serie.fromValues([1n, 2n, 3n], DataTypeId.I64()),
+       ByteSerie.fromValues(['ada', 'alan', 'grace'], DataTypeId.Utf8())],
+      ['id', 'name'])
+    console.assert(table.numColumns() === 2)
+    console.assert(table.columnByName('name').toList().join(',') === 'ada,alan,grace')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{Column, FixedSerie, Scalar, Serie, StructSerie, Utf8, VarSerie};
+    use yggdryl_core::typed::fixedbyte::Int64;
+
+    let ids = Column::from(FixedSerie::<Int64>::from_values(&[1, 2, 3]).with_name("id"));
+    let names = Column::from(
+        VarSerie::<Utf8>::from_values(&["ada".into(), "alan".into(), "grace".into()]).with_name("name"),
+    );
+    let mut table = StructSerie::from_columns(vec![ids, names]).unwrap();
+    assert_eq!(table.num_columns(), 2);
+
+    // Deep-mutate an inner column in place — no copy — via the &mut graph accessor.
+    if let Some(Column::Int64(col)) = table.column_by_name_mut("id") {
+        col.set(0, 999).unwrap();
+    }
+    assert_eq!(table.column_by_name("id").unwrap().get(0), yggdryl_core::typed::Value::Int64(999));
+    ```
+
+A `StructSerie` maps to an Arrow `StructArray` / `RecordBatch` and its `StructField` schema to an
+Arrow `Schema` (a `ListSerie` ↔ `ListArray`, a `MapSerie` ↔ `MapArray`) behind the opt-in **`arrow`**
+feature.
+
 ## Types & families
 
 | family | types | granularity |
