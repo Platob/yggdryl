@@ -124,6 +124,20 @@ pub enum IoError {
         /// The complete, guided message (the offending value + the fix).
         detail: String,
     },
+    /// A string handed to a flexible/typed value parser
+    /// ([`FlexibleFromStr::parse_flexible`](crate::typed::FlexibleFromStr) /
+    /// [`parse_exact`](crate::typed::FlexibleFromStr), or the
+    /// [`Encoder::encode_str`](crate::typed::Encoder) family) could not be read as the target
+    /// numeric / boolean type. The message names the offending string, the target type, and the
+    /// accepted forms + the fix.
+    ParseError {
+        /// The target type name (`"i64"`, `"f64"`, `"bool"`, …).
+        kind: &'static str,
+        /// The offending input string.
+        input: String,
+        /// The accepted forms and the fix hint.
+        expected: &'static str,
+    },
 }
 
 impl fmt::Display for IoError {
@@ -185,6 +199,11 @@ impl fmt::Display for IoError {
             ),
             // The detail is already a complete, guided sentence — render it verbatim.
             Self::TypedCast { detail } => f.write_str(detail),
+            Self::ParseError {
+                kind,
+                input,
+                expected,
+            } => write!(f, "cannot parse {input:?} as {kind}: {expected}"),
         }
     }
 }

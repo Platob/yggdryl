@@ -13,7 +13,10 @@
 use core::marker::PhantomData;
 
 use super::field::{cast_dtype_error, cast_null_error};
-use super::{DataType, Decimal, Decoder, Encoder, Field, HeaderField, Reduce, Scalar};
+use super::{
+    DataType, Decimal, Decoder, Encoder, Field, FlexibleFromStr, FlexibleToStr, HeaderField,
+    Reduce, Scalar,
+};
 use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
 use crate::io::memory::{Heap, IOBase, IoError};
@@ -175,6 +178,34 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
         column
     }
 
+    /// A **non-nullable** in-heap column built by **flexibly parsing** `values` — each string via the
+    /// tolerant [`parse_flexible`](super::FlexibleFromStr::parse_flexible) (thousands separators,
+    /// `0x`/`0b`/`0o` radices, `1e3` scientific, `+`/whitespace) in **one vectorized**
+    /// [`encode_str_slice`](Encoder::encode_str_slice) into a fresh [`Heap`]. A value the type cannot
+    /// represent surfaces the guided [`IoError::ParseError`].
+    pub fn from_strings(values: &[&str]) -> Result<FixedSerie<T, Heap>, IoError>
+    where
+        T::Native: FlexibleFromStr,
+    {
+        let mut column = Self::with_capacity(values.len());
+        T::encode_str_slice(&mut column.data, 0, values)?;
+        column.len = values.len();
+        Ok(column)
+    }
+
+    /// The **strict** twin of [`from_strings`](FixedSerie::from_strings): parses each string with
+    /// [`parse_exact`](super::FlexibleFromStr::parse_exact) (`str::parse`, no coercion) in one
+    /// vectorized [`encode_str_exact_slice`](Encoder::encode_str_exact_slice).
+    pub fn from_strings_exact(values: &[&str]) -> Result<FixedSerie<T, Heap>, IoError>
+    where
+        T::Native: FlexibleFromStr,
+    {
+        let mut column = Self::with_capacity(values.len());
+        T::encode_str_exact_slice(&mut column.data, 0, values)?;
+        column.len = values.len();
+        Ok(column)
+    }
+
     /// Sets the column **name** (the metadata a [`field`](FixedSerie::field) reports).
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
@@ -298,6 +329,31 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
             T::decode_slice(&self.data, 0, &mut out).expect("decode over a valid buffer");
         }
         out
+    }
+
+    /// Every element decoded and **formatted** to its string in one vectorized
+    /// [`decode_str_slice`](Decoder::decode_str_slice) — validity **ignored** (matching
+    /// [`values`](FixedSerie::values); a null slot surfaces the rendering of its stored default).
+    /// Pair with [`to_string_options`](FixedSerie::to_string_options) for the null-aware form.
+    pub fn to_strings(&self) -> Result<Vec<String>, IoError>
+    where
+        T::Native: FlexibleToStr,
+    {
+        T::decode_str_slice(&self.data, 0, self.len)
+    }
+
+    /// Every element as an `Option<String>`, **null-aware**: `None` for a null slot, else the
+    /// formatted value. One vectorized decode+format pass, then the invalid indices are nulled out.
+    pub fn to_string_options(&self) -> Result<Vec<Option<String>>, IoError>
+    where
+        T::Native: FlexibleToStr,
+    {
+        let formatted = T::decode_str_slice(&self.data, 0, self.len)?;
+        Ok(formatted
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| if self.valid(index) { Some(value) } else { None })
+            .collect())
     }
 
     /// The backing data buffer (borrowed).

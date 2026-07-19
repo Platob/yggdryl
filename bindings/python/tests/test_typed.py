@@ -1126,3 +1126,98 @@ def test_cast_field_bool_or_decimal256_cross_dtype_guard():
     assert out.field().nullable() is True
     assert out.field().name() == "flag"
     assert out.to_list() == [True, False, True]
+
+
+# =====================================================================================
+# Serie.parse / parse_exact — build a column by parsing text; to_strings /
+# to_string_options — render a column back to strings
+# =====================================================================================
+
+
+def test_parse_int_flexible():
+    # Flexible parsing: thousands separators, leading +, scientific, hex radix.
+    col = Serie.parse(["1,000", "+42", "1e3", "0xFF"], DataTypeId.I64)
+    assert col.dtype() == DataTypeId.I64
+    assert col.to_list() == [1000, 42, 1000, 255]
+    assert col.to_strings() == ["1000", "42", "1000", "255"]
+
+
+def test_parse_float_flexible():
+    col = Serie.parse(["1,234.5", "9.99"], DataTypeId.F64)
+    assert col.dtype() == DataTypeId.F64
+    assert col.to_list() == [1234.5, 9.99]
+
+
+def test_parse_bool_flexible():
+    col = Serie.parse(["YES", "0", "true"], DataTypeId.Bool)
+    assert col.dtype() == DataTypeId.Bool
+    assert col.to_list() == [True, False, True]
+
+
+def test_parse_str_dtype():
+    col = Serie.parse(["1", "2", "3"], "i32")
+    assert col.dtype() == DataTypeId.I32
+    assert col.to_list() == [1, 2, 3]
+
+
+def test_parse_exact_strict_rejects_flexible():
+    # parse accepts "1,000"; parse_exact (str::parse, no coercion) rejects it.
+    assert Serie.parse(["1,000"], DataTypeId.I64).to_list() == [1000]
+    with pytest.raises(ValueError):
+        Serie.parse_exact(["1,000"], DataTypeId.I64)
+
+
+def test_parse_exact_accepts_plain():
+    col = Serie.parse_exact(["1000", "42"], DataTypeId.I64)
+    assert col.to_list() == [1000, 42]
+
+
+def test_parse_invalid_value_raises():
+    with pytest.raises(ValueError):
+        Serie.parse(["not a number"], DataTypeId.I64)
+
+
+def test_parse_non_fixed_width_raises():
+    with pytest.raises(ValueError):
+        Serie.parse(["a", "b"], DataTypeId.Utf8)
+    with pytest.raises(ValueError):
+        Serie.parse(["1"], DataTypeId.Unknown)
+
+
+def test_parse_decimal256_raises_guided():
+    # decimal256's I256 native has no string parse -> guided ValueError naming from_values.
+    with pytest.raises(ValueError) as excinfo:
+        Serie.parse(["1", "2"], DataTypeId.Decimal256)
+    assert "from_values" in str(excinfo.value)
+    with pytest.raises(ValueError):
+        Serie.parse_exact(["1"], DataTypeId.Decimal256)
+
+
+def test_to_strings_decimal_unscaled():
+    # For a decimal column, to_strings renders the raw unscaled integer (not scaled).
+    col = Serie.from_values([12345, 5], DataTypeId.Decimal128).with_precision_scale(10, 2)
+    assert col.to_strings() == ["12345", "5"]
+    # to_decimal_string is the scale-aware rendering.
+    assert col.to_decimal_string(0) == "123.45"
+
+
+def test_to_strings_decimal256_raises_guided():
+    col = Serie.from_values([1, 2], DataTypeId.Decimal256)
+    with pytest.raises(ValueError) as excinfo:
+        col.to_strings()
+    assert "to_decimal_string" in str(excinfo.value)
+    with pytest.raises(ValueError):
+        col.to_string_options()
+
+
+def test_to_string_options_nullable():
+    col = Serie.from_options([1, None, 3], DataTypeId.I64)
+    assert col.to_string_options() == ["1", None, "3"]
+    # to_strings ignores validity — the null slot surfaces its stored default.
+    assert col.to_strings() == ["1", "0", "3"]
+
+
+def test_to_strings_round_trip():
+    col = Serie.from_values([10, 20, 30], DataTypeId.I32)
+    assert col.to_strings() == ["10", "20", "30"]
+    assert Serie.parse(col.to_strings(), DataTypeId.I32).to_list() == [10, 20, 30]

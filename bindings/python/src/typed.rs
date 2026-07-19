@@ -581,6 +581,60 @@ impl Serie {
         })
     }
 
+    /// A **non-nullable** column built by **flexibly parsing** `strings` (a list of `str`) as
+    /// `dtype` (a `DataTypeId` or a type-name `str` like `"i64"`). Flexible parsing accepts
+    /// thousands separators (`1,000` / `1_000`), a leading `+`, scientific `1e3`, the `0x` / `0b` /
+    /// `0o` radices, and `inf` / `nan` for floats. A value the target type cannot represent raises a
+    /// guided `ValueError`. A `decimal256` dtype raises a guided `ValueError` (its `I256` native has
+    /// no string parse); a non-fixed-width / byte dtype raises the "no fixed-width element type"
+    /// error.
+    #[staticmethod]
+    fn parse(strings: &Bound<'_, PyAny>, dtype: &Bound<'_, PyAny>) -> PyResult<Serie> {
+        let id = resolve_dtype(dtype)?;
+        let owned: Vec<String> = strings.extract()?;
+        let refs: Vec<&str> = owned.iter().map(String::as_str).collect();
+        macro_rules! mk {
+            (@i256) => {{
+                return Err(PyValueError::new_err(
+                    "decimal256 has no string parse: build it from its unscaled integer with \
+                     Serie.from_values(..., DataTypeId.Decimal256)",
+                ));
+            }};
+            ($variant:ident, $marker:ty, $native:ty) => {{
+                Inner::$variant(FixedSerie::<$marker>::from_strings(&refs).map_err(ioerr)?)
+            }};
+        }
+        Ok(Serie {
+            inner: by_dtype!(id, mk),
+        })
+    }
+
+    /// The **strict** twin of [`parse`](Serie::parse): builds the column by parsing each string with
+    /// no coercion (`str::parse` — no thousands separators, no radix prefixes, no leading `+`), so a
+    /// string like `"1,000"` that [`parse`](Serie::parse) accepts raises a guided `ValueError` here.
+    /// Same `dtype` handling — a `decimal256` dtype raises the same guided `ValueError`, and a
+    /// non-fixed-width / byte dtype raises the "no fixed-width element type" error.
+    #[staticmethod]
+    fn parse_exact(strings: &Bound<'_, PyAny>, dtype: &Bound<'_, PyAny>) -> PyResult<Serie> {
+        let id = resolve_dtype(dtype)?;
+        let owned: Vec<String> = strings.extract()?;
+        let refs: Vec<&str> = owned.iter().map(String::as_str).collect();
+        macro_rules! mk {
+            (@i256) => {{
+                return Err(PyValueError::new_err(
+                    "decimal256 has no string parse: build it from its unscaled integer with \
+                     Serie.from_values(..., DataTypeId.Decimal256)",
+                ));
+            }};
+            ($variant:ident, $marker:ty, $native:ty) => {{
+                Inner::$variant(FixedSerie::<$marker>::from_strings_exact(&refs).map_err(ioerr)?)
+            }};
+        }
+        Ok(Serie {
+            inner: by_dtype!(id, mk),
+        })
+    }
+
     /// The number of elements in the column.
     fn len(&self) -> usize {
         dispatch!(self, s => s.len())
@@ -632,6 +686,66 @@ impl Serie {
             .into_iter()
             .map(|value| value.into_py_value(py))
             .collect::<Vec<PyObject>>())
+    }
+
+    /// Every element **formatted as a `str`** (validity ignored) — a Python list of `str`; a null
+    /// slot surfaces the rendering of its stored default. Pair with [`is_valid`](Serie::is_valid),
+    /// or use [`to_string_options`](Serie::to_string_options), for null-awareness. For a **decimal**
+    /// column (`decimal32` / `decimal64` / `decimal128`) this renders the raw **unscaled** integer;
+    /// use [`to_decimal_string`](Serie::to_decimal_string) for the scale-aware value. A `decimal256`
+    /// column raises a guided `ValueError` (its `I256` native has no string format).
+    fn to_strings(&self) -> PyResult<Vec<String>> {
+        match &self.inner {
+            Inner::I8(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::U8(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::I16(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::U16(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::I32(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::U32(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::I64(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::U64(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::I128(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::U128(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::F32(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::F64(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::Bool(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::Decimal32(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::Decimal64(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::Decimal128(s) => Ok(s.to_strings().map_err(ioerr)?),
+            Inner::Decimal256(_) => Err(PyValueError::new_err(
+                "decimal256 has no string format: read the unscaled value with get / values, or \
+                 use to_decimal_string for the scaled decimal",
+            )),
+        }
+    }
+
+    /// Every element as an **option `str`** (null-aware) — a Python list of `str` with `None` in each
+    /// null slot. The null-aware counterpart of [`to_strings`](Serie::to_strings) (same decimal
+    /// rendering — the raw unscaled integer for `decimal32` / `decimal64` / `decimal128`); a
+    /// `decimal256` column raises the same guided `ValueError`.
+    fn to_string_options(&self) -> PyResult<Vec<Option<String>>> {
+        match &self.inner {
+            Inner::I8(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::U8(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::I16(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::U16(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::I32(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::U32(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::I64(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::U64(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::I128(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::U128(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::F32(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::F64(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::Bool(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::Decimal32(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::Decimal64(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::Decimal128(s) => Ok(s.to_string_options().map_err(ioerr)?),
+            Inner::Decimal256(_) => Err(PyValueError::new_err(
+                "decimal256 has no string format: read the unscaled value with get / values, or \
+                 use to_decimal_string for the scaled decimal",
+            )),
+        }
     }
 
     /// How many elements are null.

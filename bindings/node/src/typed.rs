@@ -675,6 +675,149 @@ impl Serie {
         Ok(Serie { inner })
     }
 
+    /// A **non-null** column built by **flexibly** parsing each string in `strings` as an element of
+    /// `dtype` — tolerant of thousands separators (`1,000` / `1_000`), a leading `+`, scientific
+    /// notation (`1e3`), a radix prefix (`0xFF` / `0b1010` / `0o17`), and `inf` / `nan`. A string that
+    /// does not parse throws the guided `Error`. `DataTypeId.Decimal256()` has **no** string parse
+    /// (its 256-bit native does not parse from text) and throws — build it from its unscaled integer
+    /// with `Serie.fromValues(..., DataTypeId.Decimal256())`. A non-fixed-width / byte dtype throws the
+    /// "no typed Serie" error.
+    #[napi(factory)]
+    pub fn parse(strings: Vec<String>, dtype: &DataTypeId) -> napi::Result<Serie> {
+        let refs = strings.iter().map(String::as_str).collect::<Vec<_>>();
+        let inner = match dtype.inner {
+            DtId::I8 => SerieInner::I8(FixedSerie::<Int8>::from_strings(&refs).map_err(to_error)?),
+            DtId::U8 => SerieInner::U8(FixedSerie::<UInt8>::from_strings(&refs).map_err(to_error)?),
+            DtId::I16 => {
+                SerieInner::I16(FixedSerie::<Int16>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::U16 => {
+                SerieInner::U16(FixedSerie::<UInt16>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::I32 => {
+                SerieInner::I32(FixedSerie::<Int32>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::U32 => {
+                SerieInner::U32(FixedSerie::<UInt32>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::I64 => {
+                SerieInner::I64(FixedSerie::<Int64>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::U64 => {
+                SerieInner::U64(FixedSerie::<UInt64>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::I128 => {
+                SerieInner::I128(FixedSerie::<Int128>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::U128 => {
+                SerieInner::U128(FixedSerie::<UInt128>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::F32 => {
+                SerieInner::F32(FixedSerie::<Float32>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::F64 => {
+                SerieInner::F64(FixedSerie::<Float64>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::Bool => {
+                SerieInner::Bool(FixedSerie::<Bit>::from_strings(&refs).map_err(to_error)?)
+            }
+            DtId::Decimal32 => SerieInner::Decimal32(
+                FixedSerie::<Decimal32>::from_strings(&refs).map_err(to_error)?,
+            ),
+            DtId::Decimal64 => SerieInner::Decimal64(
+                FixedSerie::<Decimal64>::from_strings(&refs).map_err(to_error)?,
+            ),
+            DtId::Decimal128 => SerieInner::Decimal128(
+                FixedSerie::<Decimal128>::from_strings(&refs).map_err(to_error)?,
+            ),
+            DtId::Decimal256 => {
+                return Err(to_error(
+                    "decimal256 has no string parse: build it from its unscaled integer with \
+                     Serie.fromValues(..., DataTypeId.Decimal256())",
+                ))
+            }
+            _ => {
+                return Err(to_error(
+                    "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
+                     (e.g. DataTypeId.I64())",
+                ))
+            }
+        };
+        Ok(Serie { inner })
+    }
+
+    /// The **strict** twin of [`parse`](Serie::parse): builds a non-null column by parsing each
+    /// string exactly (no thousands separators, no leading `+`, no radix prefix — only the canonical
+    /// form the element type formats to). A string that does not parse strictly throws the guided
+    /// `Error`. `DataTypeId.Decimal256()` throws the same "no string parse" error; a non-fixed-width /
+    /// byte dtype throws "no typed Serie".
+    #[napi(factory)]
+    pub fn parse_exact(strings: Vec<String>, dtype: &DataTypeId) -> napi::Result<Serie> {
+        let refs = strings.iter().map(String::as_str).collect::<Vec<_>>();
+        let inner =
+            match dtype.inner {
+                DtId::I8 => {
+                    SerieInner::I8(FixedSerie::<Int8>::from_strings_exact(&refs).map_err(to_error)?)
+                }
+                DtId::U8 => SerieInner::U8(
+                    FixedSerie::<UInt8>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::I16 => SerieInner::I16(
+                    FixedSerie::<Int16>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::U16 => SerieInner::U16(
+                    FixedSerie::<UInt16>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::I32 => SerieInner::I32(
+                    FixedSerie::<Int32>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::U32 => SerieInner::U32(
+                    FixedSerie::<UInt32>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::I64 => SerieInner::I64(
+                    FixedSerie::<Int64>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::U64 => SerieInner::U64(
+                    FixedSerie::<UInt64>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::I128 => SerieInner::I128(
+                    FixedSerie::<Int128>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::U128 => SerieInner::U128(
+                    FixedSerie::<UInt128>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::F32 => SerieInner::F32(
+                    FixedSerie::<Float32>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::F64 => SerieInner::F64(
+                    FixedSerie::<Float64>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::Bool => SerieInner::Bool(
+                    FixedSerie::<Bit>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::Decimal32 => SerieInner::Decimal32(
+                    FixedSerie::<Decimal32>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::Decimal64 => SerieInner::Decimal64(
+                    FixedSerie::<Decimal64>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::Decimal128 => SerieInner::Decimal128(
+                    FixedSerie::<Decimal128>::from_strings_exact(&refs).map_err(to_error)?,
+                ),
+                DtId::Decimal256 => {
+                    return Err(to_error(
+                        "decimal256 has no string parse: build it from its unscaled integer with \
+                     Serie.fromValues(..., DataTypeId.Decimal256())",
+                    ))
+                }
+                _ => return Err(to_error(
+                    "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
+                     (e.g. DataTypeId.I64())",
+                )),
+            };
+        Ok(Serie { inner })
+    }
+
     /// The number of elements.
     #[napi]
     pub fn len(&self) -> u32 {
@@ -710,6 +853,67 @@ impl Serie {
     #[napi]
     pub fn values(&self) -> Vec<Either3<f64, BigInt, bool>> {
         dispatch!(self, serie => serie.values().into_iter().map(|value| value.to_js()).collect())
+    }
+
+    /// Every element formatted as a string (validity ignored — a null slot renders its stored
+    /// default; pair with [`toStringOptions`](Serie::to_string_options) for null-awareness). Uses
+    /// each element type's canonical format. For a **decimal** column this renders the raw
+    /// **unscaled** integer (use [`toDecimalString`](Serie::to_decimal_string) for the scaled value).
+    /// A `Decimal256` column has **no** string format and throws the guided `Error`.
+    #[napi]
+    pub fn to_strings(&self) -> napi::Result<Vec<String>> {
+        match &self.inner {
+            SerieInner::I8(s) => s.to_strings().map_err(to_error),
+            SerieInner::U8(s) => s.to_strings().map_err(to_error),
+            SerieInner::I16(s) => s.to_strings().map_err(to_error),
+            SerieInner::U16(s) => s.to_strings().map_err(to_error),
+            SerieInner::I32(s) => s.to_strings().map_err(to_error),
+            SerieInner::U32(s) => s.to_strings().map_err(to_error),
+            SerieInner::I64(s) => s.to_strings().map_err(to_error),
+            SerieInner::U64(s) => s.to_strings().map_err(to_error),
+            SerieInner::I128(s) => s.to_strings().map_err(to_error),
+            SerieInner::U128(s) => s.to_strings().map_err(to_error),
+            SerieInner::F32(s) => s.to_strings().map_err(to_error),
+            SerieInner::F64(s) => s.to_strings().map_err(to_error),
+            SerieInner::Bool(s) => s.to_strings().map_err(to_error),
+            SerieInner::Decimal32(s) => s.to_strings().map_err(to_error),
+            SerieInner::Decimal64(s) => s.to_strings().map_err(to_error),
+            SerieInner::Decimal128(s) => s.to_strings().map_err(to_error),
+            SerieInner::Decimal256(_) => Err(to_error(
+                "decimal256 has no string format: read the unscaled value with get/values, or use \
+                 toDecimalString for the scaled decimal",
+            )),
+        }
+    }
+
+    /// Every element as an optional string — a **null** element is `null`, a non-null element its
+    /// canonical string. The null-aware twin of [`toStrings`](Serie::to_strings) (which renders the
+    /// stored default in null slots). For a **decimal** column this renders the raw **unscaled**
+    /// integer. A `Decimal256` column has **no** string format and throws the guided `Error`.
+    #[napi]
+    pub fn to_string_options(&self) -> napi::Result<Vec<Option<String>>> {
+        match &self.inner {
+            SerieInner::I8(s) => s.to_string_options().map_err(to_error),
+            SerieInner::U8(s) => s.to_string_options().map_err(to_error),
+            SerieInner::I16(s) => s.to_string_options().map_err(to_error),
+            SerieInner::U16(s) => s.to_string_options().map_err(to_error),
+            SerieInner::I32(s) => s.to_string_options().map_err(to_error),
+            SerieInner::U32(s) => s.to_string_options().map_err(to_error),
+            SerieInner::I64(s) => s.to_string_options().map_err(to_error),
+            SerieInner::U64(s) => s.to_string_options().map_err(to_error),
+            SerieInner::I128(s) => s.to_string_options().map_err(to_error),
+            SerieInner::U128(s) => s.to_string_options().map_err(to_error),
+            SerieInner::F32(s) => s.to_string_options().map_err(to_error),
+            SerieInner::F64(s) => s.to_string_options().map_err(to_error),
+            SerieInner::Bool(s) => s.to_string_options().map_err(to_error),
+            SerieInner::Decimal32(s) => s.to_string_options().map_err(to_error),
+            SerieInner::Decimal64(s) => s.to_string_options().map_err(to_error),
+            SerieInner::Decimal128(s) => s.to_string_options().map_err(to_error),
+            SerieInner::Decimal256(_) => Err(to_error(
+                "decimal256 has no string format: read the unscaled value with get/values, or use \
+                 toDecimalString for the scaled decimal",
+            )),
+        }
     }
 
     /// How many elements are null.

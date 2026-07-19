@@ -340,6 +340,71 @@ test('DataTypeId decimal factories name their widths', () => {
 })
 
 // -------------------------------------------------------------------------------------
+// String parse / format — Serie.parse / parseExact / toStrings / toStringOptions
+// -------------------------------------------------------------------------------------
+
+test('parse flexibly reads separators / signs / scientific / radix into an I64 column', () => {
+  const col = Serie.parse(['1,000', '+42', '1e3', '0xFF'], DataTypeId.I64())
+  assert.equal(col.len(), 4)
+  assert.equal(col.get(0), 1000n) // thousands separator
+  assert.equal(col.get(1), 42n) // leading +
+  assert.equal(col.get(2), 1000n) // scientific 1e3
+  assert.equal(col.get(3), 255n) // hex radix
+  assert.deepEqual(col.toStrings(), ['1000', '42', '1000', '255'])
+})
+
+test('parse builds a float column tolerant of a thousands separator', () => {
+  const col = Serie.parse(['1,234.5', '9.99'], DataTypeId.F64())
+  const list = col.toList()
+  assert.ok(Math.abs(list[0] - 1234.5) < 1e-9)
+  assert.ok(Math.abs(list[1] - 9.99) < 1e-9)
+})
+
+test('parse builds a boolean column from flexible truthy/falsy tokens', () => {
+  const col = Serie.parse(['YES', '0', 'true'], DataTypeId.Bool())
+  assert.deepEqual(col.toList(), [true, false, true])
+})
+
+test('parseExact rejects a thousands separator that parse accepts', () => {
+  assert.throws(() => Serie.parseExact(['1,000'], DataTypeId.I64()))
+  const col = Serie.parse(['1,000'], DataTypeId.I64()) // parse accepts it
+  assert.equal(col.get(0), 1000n)
+})
+
+test('parse / toStrings refuse a Decimal256 column with the guided error', () => {
+  assert.throws(
+    () => Serie.parse(['1'], DataTypeId.Decimal256()),
+    /decimal256 has no string parse/
+  )
+  assert.throws(
+    () => Serie.parseExact(['1'], DataTypeId.Decimal256()),
+    /decimal256 has no string parse/
+  )
+  // a Decimal256 column built the supported way still cannot format to strings
+  const col = Serie.fromValues([12345n], DataTypeId.Decimal256())
+  assert.throws(() => col.toStrings(), /decimal256 has no string format/)
+  assert.throws(() => col.toStringOptions(), /decimal256 has no string format/)
+})
+
+test('parse refuses a non-fixed-width dtype with the no-typed-Serie error', () => {
+  assert.throws(() => Serie.parse(['x'], DataTypeId.Utf8()), /no typed Serie/)
+})
+
+test('toStrings on a decimal column renders the raw unscaled integer', () => {
+  const col = Serie.fromValues([12345n, -5n], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+  // toStrings is the raw unscaled value, not the scaled toDecimalString
+  assert.deepEqual(col.toStrings(), ['12345', '-5'])
+  assert.equal(col.toDecimalString(0), '123.45')
+})
+
+test('toStringOptions is null-aware on a nullable column', () => {
+  const col = Serie.fromOptions([1, null, 3], DataTypeId.I32())
+  assert.deepEqual(col.toStringOptions(), ['1', null, '3'])
+  // toStrings ignores validity, rendering the stored default at the null slot
+  assert.deepEqual(col.toStrings(), ['1', '0', '3'])
+})
+
+// -------------------------------------------------------------------------------------
 // ByteSerie — variable-length + fixed-size byte columns (binary / utf8)
 // -------------------------------------------------------------------------------------
 

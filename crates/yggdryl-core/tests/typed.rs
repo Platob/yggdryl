@@ -12,7 +12,7 @@ use yggdryl_core::typed::fixedbyte::{
 };
 use yggdryl_core::typed::{
     Binary, Decimal, Decoder, Encoder, Field, FixedBinary, FixedScalar, FixedSerie, FixedSizeSerie,
-    FixedUtf8, HeaderField, Scalar, Serie, Utf8, VarScalar, VarSerie,
+    FixedUtf8, FlexibleFromStr, HeaderField, Scalar, Serie, Utf8, VarScalar, VarSerie,
 };
 
 // -------------------------------------------------------------------------------------
@@ -41,6 +41,118 @@ fn encoder_decoder_round_trip_scalar_and_bulk() {
     let mut bytes = Heap::new();
     UInt8::encode_slice(&mut bytes, 0, &[0xAB, 0xCD, 0xEF]).unwrap();
     assert_eq!(UInt8::decode(&bytes, 2).unwrap(), 0xEF);
+}
+
+// -------------------------------------------------------------------------------------
+// Flexible string <-> value parsing — Encoder::encode_str / Decoder::decode_str, scalar + bulk
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn flexible_str_parse_scalar_int_round_trip() {
+    // Each tolerant form parses through encode_str and decodes to the expected i64.
+    for (text, expected) in [
+        ("1,000,000", 1_000_000i64),
+        ("  +42 ", 42),
+        ("0xFF", 255),
+        ("0b1010", 10),
+        ("0o17", 15),
+        ("1e3", 1000),
+        ("-2_500", -2500),
+    ] {
+        let mut h = Heap::new();
+        Int64::encode_str(&mut h, 0, text).unwrap();
+        assert_eq!(Int64::decode(&h, 0).unwrap(), expected, "parsing {text:?}");
+        // decode_str renders the canonical decimal back.
+        assert_eq!(Int64::decode_str(&h, 0).unwrap(), expected.to_string());
+    }
+
+    // A fractional value for an integer target is a guided ParseError naming the fix.
+    let mut h = Heap::new();
+    let err = Int64::encode_str(&mut h, 0, "1.5").unwrap_err();
+    assert!(matches!(err, IoError::ParseError { .. }));
+    assert!(err.to_string().contains("fractional"));
+}
+
+#[test]
+fn flexible_str_parse_float_and_bool() {
+    // Floats: scientific, thousands separators, and the special values.
+    let mut f = Heap::new();
+    Float64::encode_str(&mut f, 0, "1.5e3").unwrap();
+    assert_eq!(Float64::decode(&f, 0).unwrap(), 1500.0);
+    Float64::encode_str(&mut f, 1, "1,234.5").unwrap();
+    assert_eq!(Float64::decode(&f, 1).unwrap(), 1234.5);
+    Float64::encode_str(&mut f, 2, "inf").unwrap();
+    assert!(Float64::decode(&f, 2).unwrap().is_infinite());
+    Float64::encode_str(&mut f, 3, "NaN").unwrap();
+    assert!(Float64::decode(&f, 3).unwrap().is_nan());
+
+    // bool: case-insensitive words and 1/0, round-tripped through the Bit column encoder.
+    let mut b = Heap::new();
+    Bit::encode_str(&mut b, 0, "YES").unwrap();
+    Bit::encode_str(&mut b, 1, "0").unwrap();
+    assert!(Bit::decode(&b, 0).unwrap());
+    assert!(!Bit::decode(&b, 1).unwrap());
+    assert_eq!(Bit::decode_str(&b, 0).unwrap(), "true");
+}
+
+#[test]
+fn flexible_str_parse_bulk_and_exact() {
+    // Bulk: one vectorized encode of the parsed values, then a bulk decode back to strings.
+    let mut h = Heap::new();
+    Int64::encode_str_slice(&mut h, 0, &["1", "2_0", "0x3"]).unwrap();
+    assert_eq!(
+        Int64::decode_str_slice(&h, 0, 3).unwrap(),
+        vec!["1".to_string(), "20".to_string(), "3".to_string()]
+    );
+
+    // parse_exact refuses a thousands separator that parse_flexible accepts.
+    assert_eq!(
+        <i64 as FlexibleFromStr>::parse_flexible("1,000").unwrap(),
+        1000
+    );
+    assert!(matches!(
+        <i64 as FlexibleFromStr>::parse_exact("1,000").unwrap_err(),
+        IoError::ParseError { .. }
+    ));
+    // The strict bulk encoder surfaces the same error on the comma element.
+    let mut strict = Heap::new();
+    assert!(Int64::encode_str_exact_slice(&mut strict, 0, &["1", "1,000"]).is_err());
+}
+
+#[test]
+fn fixed_serie_from_strings_and_to_strings() {
+    // Column-level flexible parse: builds a non-nullable in-heap column.
+    let col = FixedSerie::<Int64>::from_strings(&["1,000", "2_0", "0x3"]).unwrap();
+    assert_eq!(col.len(), 3);
+    assert_eq!(col.null_count(), 0);
+    assert_eq!(col.values(), vec![1000, 20, 3]);
+
+    // Round-trip back to strings (validity-ignored, mirrors `values()`).
+    assert_eq!(
+        col.to_strings().unwrap(),
+        vec!["1000".to_string(), "20".to_string(), "3".to_string()]
+    );
+
+    // A nullable column: to_string_options is null-aware (None at the null slot).
+    let nullable = FixedSerie::<Int64>::from_options(&[Some(7), None, Some(9)]);
+    assert_eq!(
+        nullable.to_string_options().unwrap(),
+        vec![Some("7".to_string()), None, Some("9".to_string())]
+    );
+    // to_strings ignores validity — the null slot renders its stored default (0).
+    assert_eq!(
+        nullable.to_strings().unwrap(),
+        vec!["7".to_string(), "0".to_string(), "9".to_string()]
+    );
+
+    // The strict constructor rejects a thousands separator that from_strings accepts.
+    // (`.err().unwrap()` avoids requiring the Ok column type to be Debug.)
+    assert!(matches!(
+        FixedSerie::<Int64>::from_strings_exact(&["1", "1,000"])
+            .err()
+            .unwrap(),
+        IoError::ParseError { .. }
+    ));
 }
 
 // -------------------------------------------------------------------------------------

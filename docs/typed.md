@@ -412,6 +412,50 @@ element crosses as `bytes` / a `Buffer`, a UTF-8 element as `str` / a `string`.
     assert_eq!(codes.get(2), Some(b"ABCD".to_vec()));  // truncated
     ```
 
+## Parsing strings into a column
+
+`Serie.parse(strings, dtype)` builds a column by **flexibly** parsing text — accepting the mainstream
+real-world formats (a leading `+`, surrounding whitespace, thousands separators `1,000` / `1_000`,
+scientific `1e3`, hex/binary/octal `0xFF` / `0b1010`, and `inf` / `nan` for floats) — then runs
+everything downstream on the vectorized internal path. `to_strings()` renders each element back. The
+strict `parse_exact` refuses any coercion (no separators, no radix prefixes) when you need it.
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie
+    from yggdryl.datatype_id import DataTypeId
+
+    col = Serie.parse(["1,000", "+42", "1e3", "0xFF"], DataTypeId.I64)
+    assert col.to_list() == [1000, 42, 1000, 255]
+    assert col.to_strings() == ["1000", "42", "1000", "255"]
+
+    prices = Serie.parse(["1,234.5", "9.99"], DataTypeId.F64)  # thousands + decimal
+    assert prices.to_list() == [1234.5, 9.99]
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const col = Serie.parse(['1,000', '+42', '1e3', '0xFF'], DataTypeId.I64())
+    console.assert(col.get(0) === 1000n && col.get(3) === 255n) // I64 -> BigInt
+    console.assert(JSON.stringify(col.toStrings()) === '["1000","42","1000","255"]')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{FixedSerie, Serie};
+    use yggdryl_core::typed::fixedbyte::Int64;
+
+    let col = FixedSerie::<Int64>::from_strings(&["1,000", "+42", "1e3", "0xFF"]).unwrap();
+    assert_eq!(col.values(), vec![1000, 42, 1000, 255]);
+    assert_eq!(col.to_strings().unwrap(), vec!["1000", "42", "1000", "255"]);
+    ```
+
 ## More aggregations — statistics for every type
 
 Beyond `sum` / `min` / `max` / `mean`, a numeric column reduces with `var` (population variance),
