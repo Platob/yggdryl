@@ -365,8 +365,10 @@ impl UriParts {
 }
 
 /// A generic RFC 3986 URI split into its components, doubling as a filesystem-path
-/// abstraction. Any component may be absent; a bare path (no scheme, no authority) is a
-/// perfectly good `Uri`.
+/// abstraction. Any component may be absent; a bare path is a perfectly good `Uri` (parsing one
+/// defaults its scheme to `file`, while `fromPath` keeps it scheme-less). The `scheme` and
+/// `authority` accessors are **total** — they report the `"uri"` sentinel rather than `null`
+/// when the component is absent.
 #[napi(namespace = "uri")]
 pub struct Uri {
     pub(crate) inner: core::Uri,
@@ -392,18 +394,19 @@ impl Uri {
         }
     }
 
-    /// The scheme, if any.
+    /// The scheme, defaulting to `"uri"` when scheme-less; a bare path parses as `"file"`.
     #[napi(getter)]
-    pub fn scheme(&self) -> Option<String> {
-        self.inner.scheme().map(str::to_string)
+    pub fn scheme(&self) -> String {
+        self.inner.scheme().to_string()
     }
 
-    /// The authority, if any.
+    /// The canonical authority string `[user[:password]@]host[:port]` — `""` for a
+    /// present-but-empty authority (`file:///path`), `"uri"` when there is no authority. Use
+    /// `host` / `port` / `user` / `password` for the parsed components, or build an `Authority`
+    /// value directly to pass to `withAuthority` / `setAuthority`.
     #[napi(getter)]
-    pub fn authority(&self) -> Option<Authority> {
-        self.inner
-            .authority()
-            .map(|a| Authority { inner: a.clone() })
+    pub fn authority(&self) -> String {
+        self.inner.authority()
     }
 
     /// The userinfo user, if this URI has an authority carrying one.
@@ -986,13 +989,13 @@ impl Url {
         self.inner.scheme().to_string()
     }
 
-    /// The authority — an empty `Authority` when the URL has none (a `mailto:` / `file:` URL);
-    /// use `hasAuthority` to test presence.
+    /// The canonical authority string `[user[:password]@]host[:port]` — `""` for a
+    /// present-but-empty authority, `"uri"` when the URL has none (a `mailto:` / `file:` URL);
+    /// use `hasAuthority` to test presence and `host` / `port` / `user` / `password` for the
+    /// parsed components.
     #[napi(getter)]
-    pub fn authority(&self) -> Authority {
-        Authority {
-            inner: self.inner.authority(),
-        }
+    pub fn authority(&self) -> String {
+        self.inner.authority()
     }
 
     /// Whether this URL carries a `//` authority.

@@ -418,7 +418,7 @@ pub trait IOBase: Sized {
     ///
     /// // An in-memory source reports the synthetic mem:// address.
     /// assert_eq!(Heap::new().uri().to_string(), "mem://heap");
-    /// assert_eq!(Heap::new().uri().scheme(), Some("mem"));
+    /// assert_eq!(Heap::new().uri().scheme(), "mem");
     /// ```
     fn uri(&self) -> Uri {
         DEFAULT_URI.clone()

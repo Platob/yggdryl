@@ -27,8 +27,11 @@ guided error) when the URI has no scheme; the reverse is infallible.
     assert absolute.scheme == "https"
     assert absolute.to_url().scheme == "https"     # Uri -> Url
 
-    relative = Uri.parse("/just/a/path")
-    assert relative.scheme is None
+    path = Uri.parse("/just/a/path")               # a bare path defaults to the file scheme
+    assert path.scheme == "file"
+
+    relative = Uri.parse("//host/path")            # genuinely scheme-less (protocol-relative)
+    assert relative.scheme == "uri"                # the scheme-less sentinel
     try:
         relative.to_url()                          # no scheme -> guided error
     except ValueError as error:
@@ -46,8 +49,11 @@ guided error) when the URI has no scheme; the reverse is infallible.
     console.assert(absolute.scheme === 'https')
     console.assert(absolute.toUrl().scheme === 'https')   // Uri -> Url
 
-    const relative = Uri.parse('/just/a/path')
-    console.assert(relative.scheme === null)
+    const path = Uri.parse('/just/a/path')                // a bare path defaults to the file scheme
+    console.assert(path.scheme === 'file')
+
+    const relative = Uri.parse('//host/path')             // genuinely scheme-less
+    console.assert(relative.scheme === 'uri')             // the scheme-less sentinel
     try {
       relative.toUrl()                                    // no scheme -> guided error
     } catch (error) {
@@ -63,11 +69,14 @@ guided error) when the URI has no scheme; the reverse is infallible.
     use yggdryl_core::uri::{Uri, Url};
 
     let absolute = Uri::parse_str("https://example.com/a/b.txt").unwrap();
-    assert_eq!(absolute.scheme(), Some("https"));
+    assert_eq!(absolute.scheme(), "https");
     assert_eq!(absolute.to_url().unwrap().scheme(), "https");   // Uri -> Url
 
-    let relative = Uri::parse_str("/just/a/path").unwrap();
-    assert_eq!(relative.scheme(), None);
+    let path = Uri::parse_str("/just/a/path").unwrap();         // a bare path defaults to file
+    assert_eq!(path.scheme(), "file");
+
+    let relative = Uri::parse_str("//host/path").unwrap();      // genuinely scheme-less
+    assert_eq!(relative.scheme(), "uri");                       // the scheme-less sentinel
     assert!(relative.to_url().is_err());                        // no scheme
 
     let uri: Uri = Url::parse_str("s3://bucket/key").unwrap().into();  // Url -> Uri

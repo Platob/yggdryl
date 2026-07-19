@@ -37,25 +37,24 @@ def test_parse_full_url_every_accessor():
     assert uri.stem == "b.tar"
     assert uri.extension == "gz"
     assert uri.extensions == ["tar", "gz"]
-    # The authority is exposed as its own value type.
-    auth = uri.authority
-    assert isinstance(auth, Authority)
-    assert auth.host == "example.com"
-    assert auth.port == 8080
-    assert str(auth) == "user:pw@example.com:8080"
+    # The authority is exposed as its canonical string (structured access via host/port/user).
+    assert uri.authority == "user:pw@example.com:8080"
     # Canonical string round-trips through Display.
     assert str(uri) == "https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag"
 
 
 def test_windows_path_is_posix_normalized():
     uri = Uri.from_path(r"C:\Users\x\archive.tar.gz")
-    assert uri.scheme is None
+    assert uri.scheme == "uri"  # from_path stays scheme-less -> the "uri" sentinel
     assert uri.path == "C:/Users/x/archive.tar.gz"
     assert uri.name == "archive.tar.gz"
     assert uri.stem == "archive.tar"
     assert uri.extensions == ["tar", "gz"]
-    # A parsed drive path normalizes identically (drive letter kept, no scheme).
-    assert Uri.parse(r"C:\Users\x\archive.tar.gz") == uri
+    # A parsed drive path normalizes identically, but parse defaults a bare path to the
+    # file scheme (a bare path is addressable), so it equals the from_path value + file scheme.
+    parsed = Uri.parse(r"C:\Users\x\archive.tar.gz")
+    assert parsed.scheme == "file"
+    assert parsed == uri.with_scheme("file")
 
 
 def test_dotfile_has_no_extension():
@@ -71,7 +70,7 @@ def test_mutators_builder_and_in_place():
     base = Uri.from_path("/p")
     built = base.with_scheme("https").with_host("h").with_port(443).with_query("a=1")
     assert str(built) == "https://h:443/p?a=1"
-    assert base.scheme is None  # unchanged
+    assert base.scheme == "uri"  # unchanged (from_path stays scheme-less)
 
     # In-place setters mutate the receiver.
     u = Uri.from_path("/p")
@@ -193,12 +192,37 @@ def test_uri_url_interchange():
 
 
 def test_scheme_less_uri_is_not_a_url():
-    rel = Uri.parse("/relative/path")
-    assert rel.scheme is None
+    # A bare path now defaults to the file scheme (so it *is* absolute); the genuinely
+    # scheme-less case is a protocol-relative reference (authority, no scheme).
+    rel = Uri.parse("//host/path")
+    assert rel.scheme == "uri"  # scheme-less -> the "uri" sentinel default
     with pytest.raises(ValueError, match="absolute"):
         rel.to_url()
     with pytest.raises(ValueError, match="absolute"):
-        Url.parse("/relative/path")
+        Url.parse("//host/path")
+
+
+def test_scheme_and_authority_are_total_strings():
+    # scheme() is a total str: a real scheme passes through, a bare path parses as file,
+    # and a genuinely scheme-less URI reports the "uri" sentinel.
+    assert Uri.parse("http://h/p").scheme == "http"
+    assert Uri.parse("/just/a/path").scheme == "file"  # a bare path defaults to file
+    assert Uri.from_path("/just/a/path").scheme == "uri"  # from_path stays scheme-less
+    assert Uri.parse("//h/p").scheme == "uri"  # protocol-relative: scheme-less
+
+    # authority() is a total str, never an object / None.
+    assert Uri.parse("http://h/p").authority == "h"
+    assert Uri.parse("http://h:8080/p").authority == "h:8080"
+    assert Uri.parse("https://user:pw@h:443/p").authority == "user:pw@h:443"
+    assert Uri.parse("file:///path").authority == ""  # present-but-empty authority
+    assert Uri.from_path("/just/a/path").authority == "uri"  # no authority -> sentinel
+
+    # Url mirrors both (scheme always present).
+    assert Url.parse("http://h/p").scheme == "http"
+    assert Url.parse("http://h/p").authority == "h"
+    assert Url.parse("http://h:8080/p").authority == "h:8080"
+    assert Url.parse("file:///path").authority == ""
+    assert Url.parse("mailto:a@b.com").authority == "uri"
 
 
 def test_default_port_module_function():
@@ -364,8 +388,8 @@ def test_with_authority_and_authority_builders():
         Uri.from_path("").with_scheme("postgres").with_authority(authority).with_path("/app")
     )
     assert str(built) == "postgres://svc@db.internal:5432/app"
-    # Dropping the authority.
-    assert Uri.parse("https://user@h:8080/p").with_authority(None).authority is None
+    # Dropping the authority -> the "uri" sentinel string (authority() is total, never None).
+    assert Uri.parse("https://user@h:8080/p").with_authority(None).authority == "uri"
     # Authority builders chain and clear via None.
     a = Authority.from_host("h").with_user("u").with_password("p").with_port(80)
     assert str(a) == "u:p@h:80"
@@ -519,21 +543,18 @@ def test_copy_with_field_overrides():
 
 
 def test_url_authority_totals():
-    # A URL with an authority exposes it as an Authority value with a matching host.
+    # A URL with an authority exposes it as its canonical string; structured access via
+    # host / port / user.
     url = Url.parse("https://user@example.com:8443/p")
     assert url.has_authority
-    auth = url.authority
-    assert isinstance(auth, Authority)
-    assert auth.host == "example.com"
-    assert auth.port == 8443
+    assert url.authority == "user@example.com:8443"
     assert url.host == "example.com"
+    assert url.port == 8443
 
-    # A URL with no authority reports a total empty Authority / empty host (never None).
+    # A URL with no authority reports the "uri" sentinel string (never None), empty host.
     mailto = Url.parse("mailto:person@example.com")
     assert not mailto.has_authority
-    empty = mailto.authority
-    assert isinstance(empty, Authority)
-    assert empty.host == ""
+    assert mailto.authority == "uri"
     assert mailto.host == ""
 
 

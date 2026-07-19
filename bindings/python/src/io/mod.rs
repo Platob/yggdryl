@@ -33,19 +33,22 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Mirrors the core `yggdryl_core::io::open` scheme routing, but hands back the concrete Python
 /// class (dynamic typing makes the core's uniform `AnyIO` wrapper unnecessary here).
 pub(crate) fn open_core_uri(py: Python<'_>, uri: &yggdryl_core::uri::Uri) -> PyResult<PyObject> {
+    // `scheme()` is total: a scheme-less URI (a bare path via `from_path`) reads as the `"uri"`
+    // sentinel and routes to the local family alongside `"file"`, mirroring the core `open`'s
+    // `None | Some("file")` arm.
     match uri.scheme() {
-        Some("mem") => {
+        "mem" => {
             let heap = memory::Heap {
                 inner: yggdryl_core::io::memory::Heap::at_uri(uri.clone()),
             };
             Ok(Py::new(py, heap)?.into_any())
         }
-        None | Some("file") => {
+        "file" | "uri" => {
             let inner = yggdryl_core::io::local::LocalIO::from_uri(uri)
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
             Ok(Py::new(py, local::LocalIO { inner })?.into_any())
         }
-        Some(other) => Err(PyValueError::new_err(format!(
+        other => Err(PyValueError::new_err(format!(
             "cannot open the `{other}://` scheme; open a `file://` (or plain path) as a LocalIO \
              or a `mem://` as a Heap"
         ))),

@@ -18,8 +18,10 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 #[test]
 fn empty_string_is_the_empty_uri() {
     let uri = Uri::parse_str("").unwrap();
-    assert_eq!(uri.scheme(), None);
-    assert_eq!(uri.authority(), None);
+    // No path to address, so the bare-path rule does not apply: it stays scheme-less and
+    // authority-less, reporting the `"uri"` sentinel while still serializing empty.
+    assert_eq!(uri.scheme(), "uri");
+    assert_eq!(uri.authority(), "uri");
     assert_eq!(uri.path(), "");
     assert_eq!(uri.name(), None);
     assert_eq!(uri.serialize_bytes(), b"");
@@ -74,7 +76,12 @@ fn unicode_path_is_percent_encoded_on_store() {
     assert_eq!(uri.stem(), Some("na%C3%AFve.tar")); // dot logic unaffected by the escapes
     assert_eq!(uri.extension(), Some("gz"));
     assert_eq!(uri.extensions(), vec!["tar", "gz"]);
-    assert_eq!(Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap(), uri);
+    // `from_path` is scheme-less; its serialized bytes re-parse as a `file:` URI (Change 1),
+    // preserving the percent-encoded path exactly.
+    let round = Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap();
+    assert_eq!(round.scheme(), "file");
+    assert_eq!(round.path(), uri.path());
+    assert_eq!(round, Uri::parse_str(&uri.to_string()).unwrap());
 }
 
 #[test]
@@ -106,7 +113,7 @@ fn unterminated_ipv6_bracket_is_kept_as_the_host() {
 fn scheme_and_host_case_is_preserved() {
     // The parser is case-preserving; it does not lowercase the scheme or host.
     let uri = Uri::parse_str("HTTPS://Example.COM/Path").unwrap();
-    assert_eq!(uri.scheme(), Some("HTTPS"));
+    assert_eq!(uri.scheme(), "HTTPS");
     assert_eq!(uri.host(), Some("Example.COM"));
     assert_eq!(uri.path(), "/Path");
 }
@@ -135,7 +142,6 @@ fn parse_serialize_parse_round_trip_property() {
         "mailto:person@example.com",
         "file:///etc/hosts",
         "s3://bucket/keys/object.parquet",
-        "/a/b/c",
         "?q=1",
         "#frag",
         "",
@@ -153,8 +159,9 @@ fn parse_serialize_parse_round_trip_property() {
         assert_eq!(hash_of(&round), hash_of(&uri), "hash agrees for {s:?}");
     }
 
-    // Non-canonical inputs (back-slash paths) normalize, but still round-trip once parsed.
-    for s in [r"C:\Users\x\a.txt", r"\\server\share\f", r"a\b\c"] {
+    // Non-canonical inputs still round-trip once parsed: back-slash paths normalize their
+    // slashes, and a bare path gains the `file` scheme (so it no longer serializes verbatim).
+    for s in [r"C:\Users\x\a.txt", r"\\server\share\f", r"a\b\c", "/a/b/c"] {
         let uri = Uri::parse_str(s).unwrap();
         let round = Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap();
         assert_eq!(round, uri, "normalized round-trip for {s:?}");

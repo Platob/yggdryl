@@ -285,7 +285,7 @@ fn with_authority_none_drops_the_authority() {
     let uri = Uri::parse_str("https://user@h:8080/p")
         .unwrap()
         .with_authority(None);
-    assert_eq!(uri.authority(), None);
+    assert_eq!(uri.authority(), "uri"); // authority dropped -> absent -> the `"uri"` sentinel
     assert_eq!(uri.to_string(), "https:/p");
 }
 

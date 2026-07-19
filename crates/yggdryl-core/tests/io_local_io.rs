@@ -496,7 +496,7 @@ fn uri_is_a_file_url_over_an_absolute_path() {
     let node = tmp.root().join_str("sub/data.bin");
     let uri = node.uri();
     // A local node reports a file:// URL.
-    assert_eq!(uri.scheme(), Some("file"));
+    assert_eq!(uri.scheme(), "file");
     assert!(uri.to_string().starts_with("file:///"));
     assert!(uri.to_string().ends_with("data.bin"));
     // The mime type is inferred from the path (the node need not exist).

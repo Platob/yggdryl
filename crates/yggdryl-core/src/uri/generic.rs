@@ -26,7 +26,7 @@ use super::{percent, Authority, UriError, UriParts, Url};
 /// use yggdryl_core::uri::Uri;
 ///
 /// let uri = Uri::parse_str("https://user:pw@example.com:8080/a/b.txt?q=1#frag").unwrap();
-/// assert_eq!(uri.scheme(), Some("https"));
+/// assert_eq!(uri.scheme(), "https");
 /// assert_eq!(uri.host(), Some("example.com"));
 /// assert_eq!(uri.port(), Some(8080));
 /// assert_eq!(uri.path(), "/a/b.txt");
@@ -35,9 +35,9 @@ use super::{percent, Authority, UriError, UriParts, Url};
 /// assert_eq!(uri.query(), Some("q=1"));
 /// assert_eq!(uri.fragment(), Some("frag"));
 ///
-/// // A Windows drive path is normalized to POSIX slashes, with no scheme.
+/// // A Windows drive path is normalized to POSIX slashes and defaults to the `file` scheme.
 /// let path = Uri::parse_str(r"C:\Users\x\a.tar.gz").unwrap();
-/// assert_eq!(path.scheme(), None);
+/// assert_eq!(path.scheme(), "file");
 /// assert_eq!(path.path(), "C:/Users/x/a.tar.gz");
 /// assert_eq!(path.extensions(), vec!["tar", "gz"]);
 /// ```
@@ -50,6 +50,18 @@ pub struct Uri {
     fragment: Option<String>,
 }
 
+/// The documented **sentinel** the total [`Uri::scheme`] / [`Uri::authority`] accessors report
+/// for a generic, scheme-less URI (a default-constructed one, a `//host/path` protocol-relative
+/// reference). It is **read-time only** — never written into the canonical bytes, so a
+/// scheme-less URI still serializes scheme-less and equality / hashing / round-trip are
+/// unchanged.
+const URI_SENTINEL: &str = "uri";
+
+/// The scheme a scheme-less filesystem path defaults to under [`Uri::parse_str`] — see
+/// [`default_bare_path_scheme`]. Unlike [`URI_SENTINEL`] this **is** stored (a bare path now
+/// serializes as, and round-trips as, a `file:` URI).
+const FILE_SCHEME: &str = "file";
+
 impl Uri {
     /// Parses `s` into its RFC 3986 components, or normalizes a bare filesystem path.
     ///
@@ -58,6 +70,12 @@ impl Uri {
     /// authority is `[ userinfo "@" ] host [ ":" port ]`. A Windows drive/UNC/back-slashed
     /// path is instead routed through [`from_path`](Uri::from_path) and slash-normalized.
     ///
+    /// A **scheme-less input that looks like a filesystem path** (an absolute `/path`, a
+    /// relative `a/b` or `./x`, a Windows drive path) defaults to the [`FILE_SCHEME`] `file`,
+    /// so it addresses the local filesystem exactly as `open()` / `LocalIO` route a plain path
+    /// — see [`default_bare_path_scheme`]. An input that already carries a scheme, or one with
+    /// no path at all (empty / query-only / fragment-only), is untouched.
+    ///
     /// # Errors
     /// [`UriError::EmptyScheme`] / [`UriError::InvalidScheme`] for a malformed scheme,
     /// [`UriError::InvalidPort`] for a non-numeric or out-of-range port.
@@ -65,15 +83,20 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert_eq!(Uri::parse_str("mailto:a@b.com").unwrap().scheme(), Some("mailto"));
-    /// assert_eq!(Uri::parse_str("/a/b/c").unwrap().path(), "/a/b/c");
+    /// assert_eq!(Uri::parse_str("mailto:a@b.com").unwrap().scheme(), "mailto");
+    /// // A bare path defaults to the `file` scheme, keeping its path verbatim.
+    /// let path = Uri::parse_str("/a/b/c").unwrap();
+    /// assert_eq!(path.scheme(), "file");
+    /// assert_eq!(path.path(), "/a/b/c");
     /// ```
     pub fn parse_str(s: &str) -> Result<Uri, UriError> {
         // DESIGN: filesystem paths are detected up front and normalized to POSIX slashes.
         // A drive path (`X:\` / `X:/`) or UNC path (`\\…`) is unambiguous; any other
         // scheme-less, back-slashed string is a Windows relative path.
         if is_drive_path(s) || is_unc_path(s) {
-            return Ok(Uri::from_path(s));
+            let mut uri = Uri::from_path(s);
+            default_bare_path_scheme(&mut uri);
+            return Ok(uri);
         }
 
         let (scheme, rest) = split_scheme(s)?;
@@ -99,16 +122,19 @@ impl Uri {
             let mut uri = Uri::from_path(path_str);
             uri.query = query;
             uri.fragment = fragment;
+            default_bare_path_scheme(&mut uri);
             return Ok(uri);
         }
 
-        Ok(Uri {
+        let mut uri = Uri {
             scheme,
             authority,
             path: normalize_slashes(path_str).into_owned(),
             query,
             fragment,
-        })
+        };
+        default_bare_path_scheme(&mut uri);
+        Ok(uri)
     }
 
     /// Builds a scheme-less, authority-less `Uri` from a filesystem path, rewriting every
@@ -148,13 +174,61 @@ impl Uri {
         uri
     }
 
-    /// The scheme, if any.
-    pub fn scheme(&self) -> Option<&str> {
+    /// The scheme this URI carries, or the sentinel [`"uri"`](URI_SENTINEL) when it has none —
+    /// a **total** accessor (never `None`).
+    ///
+    /// After [`parse_str`](Uri::parse_str) a URL keeps its real scheme (`"https"`, `"mem"`, …)
+    /// and a bare filesystem path defaults to `"file"`; only a genuinely scheme-less URI (a
+    /// default-constructed one, a `//host/path` protocol-relative reference) reports `"uri"`.
+    /// The default is **read-time only** — a scheme-less URI still serializes scheme-less, so
+    /// the round-trip is unchanged.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// assert_eq!(Uri::parse_str("https://h/p").unwrap().scheme(), "https");
+    /// assert_eq!(Uri::parse_str("/just/a/path").unwrap().scheme(), "file"); // a bare path
+    /// assert_eq!(Uri::default().scheme(), "uri"); // genuinely scheme-less
+    /// ```
+    pub fn scheme(&self) -> &str {
+        self.scheme.as_deref().unwrap_or(URI_SENTINEL)
+    }
+
+    /// The raw scheme exactly as stored (`None` when the URI carries none) — the form the
+    /// parser, the [`Url`] conversion, serialization, and the scheme-dispatching `open()` need
+    /// to tell "no scheme" from the read-time [`"uri"`](URI_SENTINEL) default.
+    pub(crate) fn scheme_opt(&self) -> Option<&str> {
         self.scheme.as_deref()
     }
 
-    /// The authority, if any.
-    pub fn authority(&self) -> Option<&Authority> {
+    /// The authority component rendered as a string, or the sentinel [`"uri"`](URI_SENTINEL)
+    /// when this URI has **no** authority — a **total** accessor mirroring [`scheme`](Uri::scheme).
+    ///
+    /// A URI with an authority reports its canonical `[user[:password]@]host[:port]` string
+    /// (`"host"`, `"user@h:8080"`); a URI with a genuinely *empty* authority — a `file:///path`
+    /// — reports `""` (present but empty, distinct from absent); and only a URI with no
+    /// authority component (a default-constructed one, a relative path, a `mailto:` URL)
+    /// reports `"uri"`. The default is read-time only; serialization is unchanged. Use the
+    /// component accessors ([`host`](Uri::host), [`port`](Uri::port), …) for the parsed parts.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// assert_eq!(Uri::parse_str("http://host/p").unwrap().authority(), "host");
+    /// assert_eq!(Uri::parse_str("file:///etc/hosts").unwrap().authority(), ""); // empty, present
+    /// assert_eq!(Uri::default().authority(), "uri"); // absent
+    /// ```
+    pub fn authority(&self) -> String {
+        match &self.authority {
+            Some(authority) => authority.to_string(),
+            None => URI_SENTINEL.to_string(),
+        }
+    }
+
+    /// The raw authority exactly as stored (`None` when the URI carries none) — the form
+    /// [`Url`] and internal callers need to tell an empty authority (`file:///`) from an absent
+    /// one, which the string [`authority`](Uri::authority) collapses to `""` vs `"uri"`.
+    pub(crate) fn authority_ref(&self) -> Option<&Authority> {
         self.authority.as_ref()
     }
 
@@ -215,7 +289,8 @@ impl Uri {
     /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::parse_str("https://h/p").unwrap().default_port(), Some(443));
-    /// assert_eq!(Uri::parse_str("/just/a/path").unwrap().default_port(), None); // no scheme
+    /// // A bare path defaults to the `file` scheme, which registers no default port.
+    /// assert_eq!(Uri::parse_str("/just/a/path").unwrap().default_port(), None);
     /// ```
     pub fn default_port(&self) -> Option<u16> {
         self.scheme.as_deref().and_then(super::default_port)
@@ -728,7 +803,7 @@ impl Uri {
     /// ```
     pub fn to_portable_str(&self) -> String {
         let full = self.to_string();
-        if self.scheme() != Some("file") {
+        if self.scheme_opt() != Some("file") {
             return full; // only local file addresses relocate; everything else is already portable
         }
         // Prefer the longest matching root so a temp dir nested under home relocates as `$TMP`.
@@ -782,7 +857,10 @@ impl Uri {
     /// use yggdryl_core::uri::Uri;
     ///
     /// assert!(Uri::parse_str("https://h/").unwrap().into_url().is_ok());
-    /// assert!(Uri::parse_str("/relative").unwrap().into_url().is_err());
+    /// // A bare path defaults to the `file` scheme, so it *is* absolute; a protocol-relative
+    /// // reference (authority, no scheme) is the scheme-less case that fails.
+    /// assert!(Uri::parse_str("/relative").unwrap().into_url().is_ok());
+    /// assert!(Uri::parse_str("//host/path").unwrap().into_url().is_err());
     /// ```
     pub fn into_url(self) -> Result<Url, UriError> {
         Url::try_from(self)
@@ -1253,6 +1331,29 @@ fn push_token(out: &mut String, token: &str) {
         out.push('&');
     }
     out.push_str(token);
+}
+
+/// DESIGN: **a scheme-less input that looks like a filesystem path defaults to the `file`
+/// scheme.** After [`Uri::parse_str`], an absolute `/path`, a relative `a/b` or `./x`, and a
+/// Windows drive path all report `scheme() == "file"` and address the local filesystem — the
+/// very scheme `open()` / `LocalIO` route a plain path through. The `file` scheme is **stored**
+/// here (a bare path now serializes as, and round-trips as, a `file:` URI), unlike the
+/// read-time [`URI_SENTINEL`] default.
+///
+/// It is applied only when the URI is scheme-less **and** authority-less **and** carries a
+/// non-empty path that does not begin with `//`. Those exclusions keep three cases scheme-less:
+/// an input with no path (empty / query-only / fragment-only) has nothing to address; an input
+/// with an authority (`//host/path`) is a protocol-relative reference, not a path; and a
+/// normalized UNC path (`//server/share`) begins with `//`, whose `file://…` rendering would
+/// silently promote its first segment to a host — so it stays the generic [`URI_SENTINEL`].
+fn default_bare_path_scheme(uri: &mut Uri) {
+    if uri.scheme.is_none()
+        && uri.authority.is_none()
+        && !uri.path.is_empty()
+        && !uri.path.starts_with("//")
+    {
+        uri.scheme = Some(FILE_SCHEME.to_string());
+    }
 }
 
 /// A drive-letter prefix: a single ASCII letter, `:`, then a slash (`C:\` or `C:/`).

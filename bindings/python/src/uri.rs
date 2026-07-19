@@ -403,18 +403,18 @@ impl Uri {
         }
     }
 
-    /// The scheme, if any.
+    /// The scheme, defaulting to `"uri"` when scheme-less; a bare path parses as `"file"`.
     #[getter]
-    fn scheme(&self) -> Option<String> {
-        self.inner.scheme().map(str::to_string)
+    fn scheme(&self) -> String {
+        self.inner.scheme().to_string()
     }
 
-    /// The authority, if any.
+    /// The authority rendered as `[user[:password]@]host[:port]`: `""` for a present-but-empty
+    /// authority (`file:///path`), or `"uri"` when the URI has none. For structured access use
+    /// the `host` / `port` / `user` / `password` accessors (and build an `Authority` from them).
     #[getter]
-    fn authority(&self) -> Option<Authority> {
-        self.inner
-            .authority()
-            .map(|a| Authority { inner: a.clone() })
+    fn authority(&self) -> String {
+        self.inner.authority()
     }
 
     /// The userinfo user, if any.
@@ -1016,13 +1016,13 @@ impl Url {
         self.inner.scheme().to_string()
     }
 
-    /// The authority — an empty `Authority` when the URL has none (a `mailto:` / `file:` URL);
-    /// use `has_authority` to test presence.
+    /// The authority rendered as `[user[:password]@]host[:port]`: `""` for a present-but-empty
+    /// authority (`file:///path`), or `"uri"` when the URL has none (a `mailto:` URL); use
+    /// `has_authority` to test presence. For structured access use the `host` / `port` / `user`
+    /// / `password` accessors (and build an `Authority` from them).
     #[getter]
-    fn authority(&self) -> Authority {
-        Authority {
-            inner: self.inner.authority(),
-        }
+    fn authority(&self) -> String {
+        self.inner.authority()
     }
 
     /// Whether this URL carries a `//` authority.

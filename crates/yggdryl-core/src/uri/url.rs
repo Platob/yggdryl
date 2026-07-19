@@ -21,8 +21,9 @@ use super::{Authority, Uri, UriError};
 /// assert_eq!(url.host(), "example.com");
 /// assert_eq!(url.name(), Some("b.txt"));
 ///
-/// // A scheme-less input is not an absolute URL.
-/// assert!(Url::parse_str("/relative/path").is_err());
+/// // A protocol-relative reference (authority, no scheme) is not an absolute URL. (A bare
+/// // path like "/relative/path" now defaults to the `file` scheme, so it *is* absolute.)
+/// assert!(Url::parse_str("//host/path").is_err());
 /// ```
 #[derive(Debug, Clone)]
 pub struct Url {
@@ -44,29 +45,31 @@ impl Url {
         Url::try_from(Uri::parse_str(s)?)
     }
 
-    /// The scheme (always present).
+    /// The scheme (always present — a URL is guaranteed absolute).
     pub fn scheme(&self) -> &str {
-        // Guaranteed `Some` by the constructor invariant.
-        self.inner.scheme().unwrap_or_default()
+        // Guaranteed `Some` by the constructor invariant, so the `Uri` sentinel never shows.
+        self.inner.scheme()
     }
 
-    /// The authority — **total**: an empty [`Authority`] when the URL has none (a `mailto:` /
-    /// `file:` URL). A URL almost always has one, so this returns a value rather than an `Option`;
-    /// test presence explicitly with [`has_authority`](Url::has_authority).
+    /// The authority component rendered as a string — a **total** accessor (see
+    /// [`Uri::authority`]). A URL with an authority reports its `[user[:password]@]host[:port]`
+    /// string; a URL with **no** authority component (a `mailto:` / `file:/path` URL) reports
+    /// the sentinel `"uri"`. Test presence explicitly with [`has_authority`](Url::has_authority),
+    /// and read the parsed parts with [`host`](Url::host) / [`port`](Url::port) / ….
     ///
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// assert_eq!(Url::parse_str("https://h:8080/p").unwrap().authority().port(), Some(8080));
-    /// assert_eq!(Url::parse_str("mailto:a@b.com").unwrap().authority().host(), ""); // no authority
+    /// assert_eq!(Url::parse_str("https://h:8080/p").unwrap().authority(), "h:8080");
+    /// assert_eq!(Url::parse_str("mailto:a@b.com").unwrap().authority(), "uri"); // no authority
     /// ```
-    pub fn authority(&self) -> Authority {
-        self.inner.authority().cloned().unwrap_or_default()
+    pub fn authority(&self) -> String {
+        self.inner.authority()
     }
 
     /// Whether this URL carries a `//` authority (`false` for `mailto:` / `file:/path`).
     pub fn has_authority(&self) -> bool {
-        self.inner.authority().is_some()
+        self.inner.authority_ref().is_some()
     }
 
     /// The userinfo user, if any.
@@ -422,7 +425,7 @@ impl Url {
     /// use yggdryl_core::uri::Url;
     ///
     /// let uri = Url::parse_str("sc://h").unwrap().into_uri();
-    /// assert_eq!(uri.scheme(), Some("sc"));
+    /// assert_eq!(uri.scheme(), "sc");
     /// ```
     pub fn into_uri(self) -> Uri {
         self.inner
@@ -512,7 +515,7 @@ impl TryFrom<Uri> for Url {
     type Error = UriError;
 
     fn try_from(uri: Uri) -> Result<Url, UriError> {
-        if uri.scheme().is_none() {
+        if uri.scheme_opt().is_none() {
             return Err(UriError::MissingScheme {
                 input: uri.to_string(),
             });

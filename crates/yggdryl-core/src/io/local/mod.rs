@@ -47,7 +47,9 @@ pub(crate) fn absolutize(path: &StdPath) -> PathBuf {
 /// Resolves a [`Uri`] to a filesystem path: a `file://` URL or a plain-path URI (no scheme).
 /// A `file:///C:/x` path keeps its drive letter (the leading slash is stripped on Windows).
 pub(crate) fn uri_to_path(uri: &Uri) -> Result<PathBuf, IoError> {
-    match uri.scheme() {
+    // The raw scheme: a plain path is scheme-less (`from_path`) or `file` (`parse_str`); both
+    // resolve to a filesystem path.
+    match uri.scheme_opt() {
         None | Some("file") => {}
         Some(other) => {
             return Err(IoError::FileIo {

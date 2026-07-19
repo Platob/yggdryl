@@ -294,7 +294,9 @@ impl IOBase for AnyIO {
 /// assert!(io.is_local());
 /// ```
 pub fn open(uri: &Uri) -> Result<AnyIO, IoError> {
-    match uri.scheme() {
+    // Dispatch on the raw scheme: a bare path parses as `file` (or stays scheme-less when built
+    // via `from_path`), and both route to the local family — hence `None | Some("file")`.
+    match uri.scheme_opt() {
         None | Some("file") => Ok(AnyIO::local(LocalIO::from_uri(uri)?)),
         Some("mem") => Ok(AnyIO::memory(Heap::at_uri(uri.clone()))),
         Some(other) => Err(IoError::FileIo {

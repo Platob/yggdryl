@@ -38,26 +38,56 @@ test('parse splits a full URI into its RFC 3986 components', () => {
   assert.equal(uri.path, whatwg.pathname)
 })
 
-test('absent components read as null; a bare path is a valid Uri', () => {
+test('a bare path parses as the file scheme; the truly-absent components read null/uri', () => {
   const uri = Uri.parse('/a/b/c')
-  assert.equal(uri.scheme, null)
-  assert.equal(uri.authority, null)
-  assert.equal(uri.host, null)
+  assert.equal(uri.scheme, 'file') // a bare path parses with the file scheme
+  assert.equal(uri.authority, 'uri') // total string sentinel: no authority component
+  assert.equal(uri.host, null) // the parsed component accessors stay nullable
   assert.equal(uri.port, null)
   assert.equal(uri.query, null)
   assert.equal(uri.fragment, null)
   assert.equal(uri.path, '/a/b/c')
+
+  // `fromPath` keeps the Uri scheme-less; the total accessors then report the 'uri' sentinel.
+  const bare = Uri.fromPath('/a/b/c')
+  assert.equal(bare.scheme, 'uri')
+  assert.equal(bare.authority, 'uri')
 })
 
-test('the authority is exposed as its own value type', () => {
-  const auth = Uri.parse('sc://user:pw@host:99/p').authority
-  assert.ok(auth instanceof Authority)
-  assert.equal(auth.user, 'user')
-  assert.equal(auth.password, 'pw')
-  assert.equal(auth.host, 'host')
-  assert.equal(auth.port, 99)
+test('scheme / authority are total strings (file for a parsed bare path, uri when absent)', () => {
+  // A bare path parses with the file scheme; an explicit scheme passes through.
+  assert.equal(Uri.parse('/just/a/path').scheme, 'file')
+  assert.equal(Uri.parse('http://h/p').scheme, 'http')
+
+  // authority() is the canonical string: the host, with an optional port.
+  assert.equal(Uri.parse('http://h/p').authority, 'h')
+  assert.equal(Uri.parse('http://h:8080/p').authority, 'h:8080')
+  // A present-but-empty authority (file:///path) is '' — distinct from an absent one.
+  assert.equal(Uri.parse('file:///path').authority, '')
+  // A genuinely scheme-less / authority-less Uri reports the 'uri' sentinel for both.
+  const empty = Uri.parse('')
+  assert.equal(empty.scheme, 'uri')
+  assert.equal(empty.authority, 'uri')
+
+  // Url mirrors the totals.
+  assert.equal(Url.parse('http://h/p').scheme, 'http')
+  assert.equal(Url.parse('http://h/p').authority, 'h')
+})
+
+test('the authority getter is a canonical string; Authority stays its own value type', () => {
+  const uri = Uri.parse('sc://user:pw@host:99/p')
+  // The authority getter is now the canonical `[user[:password]@]host[:port]` string.
+  assert.equal(uri.authority, 'user:pw@host:99')
+  // Structured access is via the component accessors.
+  assert.equal(uri.user, 'user')
+  assert.equal(uri.password, 'pw')
+  assert.equal(uri.host, 'host')
+  assert.equal(uri.port, 99)
+
+  // The Authority value type is still built directly and renders the same canonical string.
+  const auth = new Authority('host', 'user', 'pw', 99)
   assert.equal(auth.toString(), 'user:pw@host:99')
-  assert.ok(auth.equals(new Authority('host', 'user', 'pw', 99)))
+  assert.equal(auth.toString(), uri.authority)
   assert.ok(Authority.fromHost('host').equals(new Authority('host')))
 })
 
@@ -77,15 +107,18 @@ test('extensions: multi-dot, dotfile, directory-like', () => {
   assert.equal(Uri.fromPath('/a/b/').name, null)
 })
 
-test('Windows paths are normalized to POSIX slashes with no scheme', () => {
+test('Windows paths normalize to POSIX slashes; a drive path parses as file, a UNC path stays scheme-less', () => {
   const drive = Uri.parse('C:\\Users\\x\\a.tar.gz')
-  assert.equal(drive.scheme, null) // drive letter, not a one-letter scheme
-  assert.equal(drive.path, 'C:/Users/x/a.tar.gz')
+  assert.equal(drive.scheme, 'file') // a drive path is a bare path -> file scheme
+  assert.equal(drive.path, 'C:/Users/x/a.tar.gz') // drive letter kept in the path, not read as a scheme
   assert.deepEqual(drive.extensions, ['tar', 'gz'])
 
   assert.equal(Uri.fromPath('a\\b\\c').path, 'a/b/c')
-  // UNC path.
-  assert.equal(Uri.parse('\\\\server\\share\\f').path, '//server/share/f')
+  // A UNC path normalizes to a leading '//', so it stays scheme-less (a '//host' would otherwise
+  // promote its first segment to an authority).
+  const unc = Uri.parse('\\\\server\\share\\f')
+  assert.equal(unc.path, '//server/share/f')
+  assert.equal(unc.scheme, 'uri')
 })
 
 test('IPv6 hosts stay bracketed', () => {
@@ -120,8 +153,10 @@ test('toPortableString / fromPortableString round-trip a URI and a URL', () => {
   assert.equal(url.toPortableString(), 'https://example.com/x')
   assert.ok(Url.fromPortableString(url.toPortableString()).equals(url))
 
-  // fromPortableString surfaces the guided parse error (a URL requires a scheme).
-  assert.throws(() => Url.fromPortableString('/no/scheme'), /requires a scheme/)
+  // fromPortableString surfaces the guided parse error (a URL requires a scheme; a
+  // protocol-relative '//no/scheme' is scheme-less, whereas a bare '/no/scheme' would default
+  // to the file scheme).
+  assert.throws(() => Url.fromPortableString('//no/scheme'), /requires a scheme/)
 })
 
 test('Authority byte codec round-trips and is the exact inverse', () => {
@@ -151,7 +186,7 @@ test('builder mutators return a new Uri; setters mutate in place', () => {
   const base = Uri.fromPath('/p')
   const built = base.withScheme('https').withHost('example.com').withPort(443)
   assert.equal(built.toString(), 'https://example.com:443/p')
-  assert.equal(base.scheme, null) // original untouched (builder returns a copy)
+  assert.equal(base.scheme, 'uri') // original untouched (scheme-less -> the 'uri' sentinel)
 
   const uri = Uri.fromPath('/p')
   uri.setScheme('https')
@@ -175,8 +210,9 @@ test('Url requires a scheme; authority stays optional', () => {
   assert.equal(mailto.hasAuthority, false)
   assert.equal(mailto.path, 'person@example.com')
 
-  // A scheme-less input is not an absolute URL.
-  assert.throws(() => Url.parse('/relative/path'), /requires a scheme/)
+  // A scheme-less input is not an absolute URL (a protocol-relative '//h/p' has no scheme;
+  // a bare '/relative/path' would default to the file scheme).
+  assert.throws(() => Url.parse('//h/p'), /requires a scheme/)
 })
 
 test('Uri <-> Url interchange', () => {
@@ -184,8 +220,9 @@ test('Uri <-> Url interchange', () => {
   assert.ok(url instanceof Url)
   assert.equal(url.scheme, 'sc')
 
-  // A scheme-less Uri cannot become a Url.
-  assert.throws(() => Uri.parse('/relative').toUrl(), /requires a scheme/)
+  // A scheme-less Uri cannot become a Url (a protocol-relative '//h/p' reference has no scheme;
+  // a bare path like '/relative' would instead default to the file scheme).
+  assert.throws(() => Uri.parse('//h/p').toUrl(), /requires a scheme/)
 
   // Round back to a Uri.
   const uri = url.toUri()
@@ -206,7 +243,7 @@ test('Url.fromUri is the factory counterpart of Uri.toUrl', () => {
   assert.equal(url.path, '/p')
 
   // A scheme-less Uri is rejected with the same guided error as toUrl.
-  assert.throws(() => Url.fromUri(Uri.parse('/relative')), /requires a scheme/)
+  assert.throws(() => Url.fromUri(Uri.parse('//h/p')), /requires a scheme/)
 })
 
 test('Url byte codec and value semantics', () => {
@@ -214,8 +251,9 @@ test('Url byte codec and value semantics', () => {
   assert.ok(Url.deserializeBytes(url.serializeBytes()).equals(url))
   assert.equal(url.hashCode(), Url.parse('https://h/p').hashCode())
 
-  // Decoding scheme-less bytes as a Url fails.
-  assert.throws(() => Url.deserializeBytes(Buffer.from('/relative')), /requires a scheme/)
+  // Decoding scheme-less bytes as a Url fails (a protocol-relative '//relative' is scheme-less;
+  // a bare '/relative' would default to the file scheme).
+  assert.throws(() => Url.deserializeBytes(Buffer.from('//relative')), /requires a scheme/)
 })
 
 test('defaultPort maps well-known schemes (case-insensitive)', () => {
@@ -360,8 +398,8 @@ test('withAuthority attaches a built Authority; Authority builders chain', () =>
   const authority = Authority.fromHost('db.internal').withUser('svc').withPort(5432)
   const built = Uri.fromPath('').withScheme('postgres').withAuthority(authority).withPath('/app')
   assert.equal(built.toString(), 'postgres://svc@db.internal:5432/app')
-  // Dropping the authority.
-  assert.equal(Uri.parse('https://user@h:8080/p').withAuthority(null).authority, null)
+  // Dropping the authority (the total accessor then reports the 'uri' sentinel).
+  assert.equal(Uri.parse('https://user@h:8080/p').withAuthority(null).authority, 'uri')
   // Authority builders chain and clear via null.
   const a = Authority.fromHost('h').withUser('u').withPassword('p').withPort(80)
   assert.equal(a.toString(), 'u:p@h:80')
@@ -547,20 +585,18 @@ test('Authority.copy overrides only the given fields; no-arg copy equals a clone
 // Url.authority / hasAuthority / host totals
 // -------------------------------------------------------------------------------------
 
-test('Url.authority is an Authority; hasAuthority / host are total', () => {
+test('Url.authority is the canonical string; hasAuthority / host are total', () => {
   const url = Url.parse('https://user:pw@example.com:8080/p')
-  assert.ok(url.authority instanceof Authority)
-  assert.equal(url.authority.host, 'example.com')
-  assert.equal(url.authority.port, 8080)
+  assert.equal(url.authority, 'user:pw@example.com:8080') // canonical string, not an object
+  assert.equal(url.host, 'example.com') // structured access via the component accessors
+  assert.equal(url.port, 8080)
   assert.equal(url.hasAuthority, true)
-  assert.equal(url.host, 'example.com')
 
-  // A scheme-only URL: authority is an empty Authority, host is '' (total), hasAuthority false.
+  // A scheme-only URL: authority is the 'uri' sentinel, host is '' (total), hasAuthority false.
   const mailto = Url.parse('mailto:a@b.com')
-  assert.ok(mailto.authority instanceof Authority)
+  assert.equal(mailto.authority, 'uri')
   assert.equal(mailto.hasAuthority, false)
   assert.equal(mailto.host, '')
-  assert.equal(mailto.authority.host, '')
 })
 
 // -------------------------------------------------------------------------------------
@@ -577,13 +613,19 @@ test('Uri.parts bundles the five components and re-renders', () => {
   assert.equal(parts.fragment, 'f')
   assert.equal(parts.toString(), 'https://h:8080/a/b?q=1#f') // re-renders the URI
 
-  // Absent components are null; path is always present (may be empty).
+  // A bare path parses with the file scheme, so parts.scheme reflects it; the other
+  // components are absent (null), and path is always present.
   const bare = Uri.parse('/just/a/path').parts()
-  assert.equal(bare.scheme, null)
+  assert.equal(bare.scheme, 'file')
   assert.equal(bare.authority, null)
   assert.equal(bare.path, '/just/a/path')
   assert.equal(bare.query, null)
   assert.equal(bare.fragment, null)
+
+  // A genuinely scheme-less / authority-less input leaves both parts null.
+  const schemeless = Uri.parse('?q=1').parts()
+  assert.equal(schemeless.scheme, null)
+  assert.equal(schemeless.authority, null)
 
   // Content equality over the five components.
   assert.ok(Uri.parse('https://h/a').parts().equals(Uri.parse('https://h/a').parts()))

@@ -304,7 +304,7 @@ fn uri_is_always_the_synthetic_mem_heap() {
     // A heap stores no address: every heap reports the stable synthetic mem:// address
     // (deterministic), regardless of contents or state.
     assert_eq!(Heap::new().uri().to_string(), "mem://heap");
-    assert_eq!(Heap::new().uri().scheme(), Some("mem"));
+    assert_eq!(Heap::new().uri().scheme(), "mem");
     assert_eq!(Heap::new().uri().host(), Some("heap"));
     assert_eq!(Heap::from_slice(b"x").uri().to_string(), "mem://heap");
     // It parses as a real Uri.

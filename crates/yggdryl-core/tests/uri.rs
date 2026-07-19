@@ -20,7 +20,7 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 #[test]
 fn full_url_every_accessor() {
     let uri = Uri::parse_str("scheme://user:pass@host:1234/a/b.txt?q=1#frag").unwrap();
-    assert_eq!(uri.scheme(), Some("scheme"));
+    assert_eq!(uri.scheme(), "scheme");
     assert_eq!(uri.user(), Some("user"));
     assert_eq!(uri.password(), Some("pass"));
     assert_eq!(uri.host(), Some("host"));
@@ -33,9 +33,8 @@ fn full_url_every_accessor() {
     assert_eq!(uri.extension(), Some("txt"));
     assert_eq!(uri.extensions(), vec!["txt"]);
 
-    let authority = uri.authority().unwrap();
-    assert_eq!(authority.host(), "host");
-    assert_eq!(authority.to_string(), "user:pass@host:1234");
+    // `authority()` is total: the canonical `[user[:password]@]host[:port]` string.
+    assert_eq!(uri.authority(), "user:pass@host:1234");
 }
 
 // -------------------------------------------------------------------------------------
@@ -43,12 +42,63 @@ fn full_url_every_accessor() {
 // -------------------------------------------------------------------------------------
 
 #[test]
-fn scheme_less_posix_path() {
+fn scheme_less_posix_path_defaults_to_file() {
+    // A bare absolute path defaults to the `file` scheme (Change 1); its path is kept verbatim
+    // and it grows no authority, so `authority()` reports the `"uri"` absent sentinel.
     let uri = Uri::parse_str("/a/b/c").unwrap();
-    assert_eq!(uri.scheme(), None);
-    assert_eq!(uri.authority(), None);
+    assert_eq!(uri.scheme(), "file");
+    assert_eq!(uri.authority(), "uri");
     assert_eq!(uri.path(), "/a/b/c");
     assert_eq!(uri.name(), Some("c"));
+}
+
+#[test]
+fn bare_relative_and_dot_paths_default_to_file() {
+    // A plain relative path and `./` / `../`-relative paths all default to the `file` scheme,
+    // keeping their path verbatim.
+    for path in ["data/set.csv", "./a/b", "../up/one"] {
+        let uri = Uri::parse_str(path).unwrap();
+        assert_eq!(uri.scheme(), "file", "scheme for {path:?}");
+        assert_eq!(uri.path(), path, "path for {path:?}");
+    }
+    // A Windows drive path (either slash flavour) is a file path too.
+    assert_eq!(Uri::parse_str(r"C:\tmp\a").unwrap().scheme(), "file");
+    assert_eq!(Uri::parse_str("C:/tmp/a").unwrap().scheme(), "file");
+}
+
+#[test]
+fn scheme_and_authority_are_total_with_uri_default() {
+    // A real scheme / authority pass through unchanged.
+    let http = Uri::parse_str("http://host/p").unwrap();
+    assert_eq!(http.scheme(), "http");
+    assert_eq!(http.authority(), "host");
+
+    // A `mem://` URI is unchanged by the bare-path rule.
+    assert_eq!(Uri::parse_str("mem://heap/x").unwrap().scheme(), "mem");
+
+    // A default (scheme-less, authority-less) URI reports the `"uri"` sentinel for both, yet
+    // still serializes empty — the default is read-time only.
+    let default = Uri::default();
+    assert_eq!(default.scheme(), "uri");
+    assert_eq!(default.authority(), "uri");
+    assert_eq!(default.serialize_bytes(), b"");
+
+    // A `file:///path` has an *empty* (present) authority, distinct from absent: `""`, not "uri".
+    let file = Uri::parse_str("file:///etc/hosts").unwrap();
+    assert_eq!(file.scheme(), "file");
+    assert_eq!(file.authority(), "");
+    assert_eq!(file.host(), Some("")); // the empty host confirms the authority is present
+}
+
+#[test]
+fn scheme_less_uri_round_trips_scheme_less() {
+    // The `"uri"` default is never baked into the bytes: a genuinely scheme-less URI still
+    // serializes scheme-less and re-parses to an equal value.
+    for s in ["//host/path", "?q=1", "#frag", ""] {
+        let uri = Uri::parse_str(s).unwrap();
+        assert_eq!(uri.serialize_bytes(), s.as_bytes(), "verbatim for {s:?}");
+        assert_eq!(Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap(), uri);
+    }
 }
 
 // -------------------------------------------------------------------------------------
@@ -58,7 +108,7 @@ fn scheme_less_posix_path() {
 #[test]
 fn windows_drive_path_normalizes_to_posix() {
     let uri = Uri::parse_str(r"C:\Users\x\a.tar.gz").unwrap();
-    assert_eq!(uri.scheme(), None);
+    assert_eq!(uri.scheme(), "file"); // a bare drive path defaults to the file scheme
     assert_eq!(uri.path(), "C:/Users/x/a.tar.gz");
     assert_eq!(uri.name(), Some("a.tar.gz"));
     assert_eq!(uri.stem(), Some("a.tar"));
@@ -68,9 +118,10 @@ fn windows_drive_path_normalizes_to_posix() {
 
 #[test]
 fn drive_path_with_forward_slash_is_still_a_path() {
-    // A single-letter "scheme" before a slash is a drive letter, not a URI scheme.
+    // A single-letter "scheme" before a slash is a drive letter, not a URI scheme; the bare
+    // drive path then defaults to the `file` scheme.
     let uri = Uri::parse_str("C:/Users/x").unwrap();
-    assert_eq!(uri.scheme(), None);
+    assert_eq!(uri.scheme(), "file");
     assert_eq!(uri.path(), "C:/Users/x");
 }
 
@@ -78,14 +129,16 @@ fn drive_path_with_forward_slash_is_still_a_path() {
 fn single_letter_scheme_needs_no_trailing_slash() {
     // DESIGN tradeoff: `x:/…` is a drive letter, but `x:foo` (no slash) is scheme `x`.
     let uri = Uri::parse_str("x:foo").unwrap();
-    assert_eq!(uri.scheme(), Some("x"));
+    assert_eq!(uri.scheme(), "x");
     assert_eq!(uri.path(), "foo");
 }
 
 #[test]
 fn unc_path_normalizes() {
     let uri = Uri::parse_str(r"\\server\share\f").unwrap();
-    assert_eq!(uri.scheme(), None);
+    // A normalized UNC path begins with `//`, so it is left scheme-less (the `file://…`
+    // rendering would promote `server` to a host) and reports the generic `"uri"` sentinel.
+    assert_eq!(uri.scheme(), "uri");
     assert_eq!(uri.path(), "//server/share/f");
     assert_eq!(uri.name(), Some("f"));
 }
@@ -218,9 +271,9 @@ fn ipv6_host_with_trailing_junk_is_rejected() {
 
 #[test]
 fn byte_round_trip() {
+    // These are already canonical, so they serialize byte-for-byte.
     for s in [
         "scheme://user:pass@host:1234/a/b.txt?q=1#frag",
-        "/a/b/c",
         "mailto:person@example.com",
         "file:///etc/hosts",
         "?q=1",
@@ -232,6 +285,15 @@ fn byte_round_trip() {
         assert_eq!(bytes, s.as_bytes());
         assert_eq!(Uri::deserialize_bytes(&bytes).unwrap(), uri);
     }
+
+    // A bare path now carries the `file` scheme (Change 1), so it serializes as a `file:` URI
+    // rather than verbatim — but it still round-trips to an equal `Uri`.
+    let bare = Uri::parse_str("/a/b/c").unwrap();
+    assert_eq!(bare.serialize_bytes(), b"file:/a/b/c");
+    assert_eq!(
+        Uri::deserialize_bytes(&bare.serialize_bytes()).unwrap(),
+        bare
+    );
 }
 
 #[test]
@@ -305,7 +367,11 @@ fn setters_create_authority() {
 
 #[test]
 fn scheme_less_uri_is_not_a_url() {
-    let uri = Uri::parse_str("/relative/path").unwrap();
+    // A bare path now carries the `file` scheme, so a genuinely scheme-less input is a
+    // protocol-relative reference (an authority, no scheme). It reports the `"uri"` sentinel
+    // yet is still not absolute, so the conversion fails.
+    let uri = Uri::parse_str("//host/path").unwrap();
+    assert_eq!(uri.scheme(), "uri");
     assert!(matches!(
         Url::try_from(uri.clone()),
         Err(UriError::MissingScheme { .. })
@@ -453,7 +519,7 @@ fn portable_str_folds_home_and_temp_and_round_trips() {
 fn portable_str_reconstructs_across_environments() {
     // Simulate transport: a `~/data/x` token produced elsewhere resolves against THIS home.
     let rebuilt = Uri::from_portable_str("~/data/x.bin").unwrap();
-    assert_eq!(rebuilt.scheme(), Some("file"));
+    assert_eq!(rebuilt.scheme(), "file");
     assert!(rebuilt.path().ends_with("/data/x.bin"));
     // Re-folding it yields the same token (idempotent on this machine's home).
     assert_eq!(rebuilt.to_portable_str(), "~/data/x.bin");
