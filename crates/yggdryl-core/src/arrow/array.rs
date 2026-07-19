@@ -1,20 +1,23 @@
 //! [`Column`] ↔ Arrow [`Array`](arrow_array::Array) — the leaf column bridge.
 //!
-//! [`column_to_arrow`] builds the closest Arrow array for every **leaf** [`Column`] variant, and
-//! [`column_from_arrow`] rebuilds our concrete carrier from an Arrow array + its
-//! [`ColumnField`]. The nested `Struct` / `List` / `Map` arms return a guided error (a later nested
-//! phase owns them). See the [module docs](super) for the closest-match map and the copy profile.
+//! [`column_to_arrow`] builds the closest Arrow array for every [`Column`] variant, and
+//! [`column_from_arrow`] rebuilds our concrete carrier from an Arrow array + its [`ColumnField`]. The
+//! nested `Struct` / `List` / `Map` arms **recurse** — a struct becomes a
+//! [`StructArray`](arrow_array::StructArray), a list a [`ListArray`](arrow_array::ListArray) (`i32`
+//! offsets), a map a [`MapArray`](arrow_array::MapArray) (a `List<Struct<key, value>>`) — through
+//! arbitrary depth, reusing the leaf helpers. See the [module docs](super) for the closest-match map
+//! and the copy profile.
 
 use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Decimal128Array, Decimal256Array,
     FixedSizeBinaryArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, LargeBinaryArray, LargeStringArray, NullArray, StringArray, UInt16Array,
-    UInt32Array, UInt64Array, UInt8Array,
+    Int8Array, LargeBinaryArray, LargeStringArray, ListArray, MapArray, NullArray, StringArray,
+    StructArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_buffer::{i256, BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
-use arrow_schema::{ArrowError, DataType};
+use arrow_schema::{ArrowError, DataType, Field, Fields};
 
 use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
@@ -23,11 +26,15 @@ use crate::typed::fixedbyte::{
     Decimal128, Decimal256, Decimal32, Decimal64, FixedBinary, FixedSizeSerie, FixedUtf8, Float32,
     Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
 };
-use crate::typed::nested::{Column, ColumnField};
+use crate::typed::nested::{
+    Column, ColumnField, ListField, ListSerie, MapField, MapSerie, StructField, StructSerie,
+};
 use crate::typed::varbyte::{Binary, LargeBinary, LargeUtf8, Utf8};
 use crate::typed::{
     Decoder, Encoder, Field as _, FixedSerie, HeaderField, Scalar, VarOffset, VarSerie, VarType,
 };
+
+use super::field::{column_field_to_arrow, force_non_nullable};
 
 // ---- to/from macros (defined before use) -----------------------------------------------------
 
@@ -111,22 +118,13 @@ macro_rules! var_from_arrow {
 
 // ---- shared errors ---------------------------------------------------------------------------
 
-/// The guided error for an Arrow array that could not be built from a column's buffers.
-fn build_error(error: ArrowError) -> IoError {
+/// The guided error for an Arrow array that could not be built from a column's buffers. Shared with
+/// the [`RecordBatch`](arrow_array::RecordBatch) bridge.
+pub(super) fn build_error(error: ArrowError) -> IoError {
     IoError::TypedCast {
         detail: format!(
             "cannot build the Arrow array from the column's buffers: {error}; check the column \
              length, offsets, and decimal precision/scale"
-        ),
-    }
-}
-
-/// The guided error for the reserved nested arms.
-fn nested_error(kind: &str) -> IoError {
-    IoError::TypedCast {
-        detail: format!(
-            "nested Arrow interop for a {kind} column is added by the nested arrow phase; convert \
-             a leaf column (numeric, bool, decimal, binary, utf8, or fixed-size) for now"
         ),
     }
 }
@@ -176,8 +174,9 @@ fn packed_bytes(source: &Heap, len: usize) -> Buffer {
 
 // ---- Column -> Arrow -------------------------------------------------------------------------
 
-/// Builds the matching Arrow [`ArrayRef`] for a **leaf** [`Column`]. Nested `Struct` / `List` /
-/// `Map` columns return a guided [`IoError`] (a later nested phase adds them). See the
+/// Builds the matching Arrow [`ArrayRef`] for any [`Column`] — a leaf array for a flat column, or a
+/// recursively-built [`StructArray`](arrow_array::StructArray) / [`ListArray`](arrow_array::ListArray)
+/// / [`MapArray`](arrow_array::MapArray) for a nested one (through arbitrary depth). See the
 /// [module docs](super) for the closest-match map and the (one-copy) copy profile.
 ///
 /// ```
@@ -268,10 +267,108 @@ pub fn column_to_arrow(column: &Column) -> Result<ArrayRef, IoError> {
         Column::LargeUtf8(serie) => var_to_arrow!(serie, i64, LargeStringArray),
         Column::FixedBinary(serie) => fixed_size_to_arrow(serie),
         Column::FixedUtf8(serie) => fixed_size_to_arrow(serie),
-        Column::Struct(_) => Err(nested_error("struct")),
-        Column::List(_) => Err(nested_error("list")),
-        Column::Map(_) => Err(nested_error("map")),
+        Column::Struct(serie) => struct_to_arrow(serie),
+        Column::List(serie) => list_to_arrow(serie),
+        Column::Map(serie) => map_to_arrow(serie),
     }
+}
+
+/// A validity [`NullBuffer`] built from a per-index `valid` predicate — the to-Arrow validity for a
+/// nested carrier that exposes `is_valid` but not its raw bitmap. `None` for a non-`nullable`
+/// carrier (no validity buffer); otherwise `len` bits, `1` = valid (Arrow's convention).
+fn nulls_from_predicate<F: Fn(usize) -> bool>(
+    len: usize,
+    nullable: bool,
+    valid: F,
+) -> Option<NullBuffer> {
+    if !nullable {
+        return None;
+    }
+    let mut bits = vec![0u8; len.div_ceil(8)];
+    for index in 0..len {
+        if valid(index) {
+            bits[index / 8] |= 1 << (index % 8);
+        }
+    }
+    Some(NullBuffer::new(BooleanBuffer::new(
+        Buffer::from_vec(bits),
+        0,
+        len,
+    )))
+}
+
+/// The `len + 1` `i32` offsets of a nested carrier (list or map) as an Arrow [`OffsetBuffer`], from a
+/// per-index `[start, end)` range accessor. `offsets[0]` is `0` and `offsets[i + 1]` is range `i`'s
+/// end — contiguous, so the flattened child `[0, offsets[len])` is the referenced region.
+fn offset_buffer<F: Fn(usize) -> (usize, usize)>(len: usize, range: F) -> OffsetBuffer<i32> {
+    let mut offsets: Vec<i32> = Vec::with_capacity(len + 1);
+    offsets.push(0);
+    for index in 0..len {
+        offsets.push(range(index).1 as i32);
+    }
+    OffsetBuffer::new(ScalarBuffer::from(offsets))
+}
+
+/// A [`StructSerie`] → an Arrow [`StructArray`]: each child column recurses through
+/// [`column_to_arrow`], the child fields through [`column_field_to_arrow`], and the struct's
+/// row-level validity becomes the array's [`NullBuffer`].
+fn struct_to_arrow(serie: &StructSerie) -> Result<ArrayRef, IoError> {
+    let len = serie.len();
+    let struct_field = serie.field();
+    let fields: Vec<Field> = struct_field
+        .children()
+        .iter()
+        .map(column_field_to_arrow)
+        .collect();
+    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(serie.num_columns());
+    for column in serie.columns() {
+        arrays.push(column_to_arrow(column)?);
+    }
+    let nulls = nulls_from_predicate(len, struct_field.nullable(), |index| serie.is_valid(index));
+    let array = StructArray::try_new(Fields::from(fields), arrays, nulls).map_err(build_error)?;
+    Ok(Arc::new(array))
+}
+
+/// A [`ListSerie`] → an Arrow [`ListArray`]: the flattened child recurses through
+/// [`column_to_arrow`], the `i32` offsets become an [`OffsetBuffer`], and the list-level validity
+/// the [`NullBuffer`].
+fn list_to_arrow(serie: &ListSerie) -> Result<ArrayRef, IoError> {
+    let len = serie.len();
+    let list_field = serie.field();
+    let item_field = Arc::new(column_field_to_arrow(list_field.item()));
+    let values = column_to_arrow(serie.values())?;
+    let offsets = offset_buffer(len, |index| serie.list_at(index).unwrap_or((0, 0)));
+    let nulls = nulls_from_predicate(len, list_field.nullable(), |index| serie.is_valid(index));
+    let array = ListArray::try_new(item_field, offsets, values, nulls).map_err(build_error)?;
+    Ok(Arc::new(array))
+}
+
+/// A [`MapSerie`] → an Arrow [`MapArray`]: the flattened key + value columns recurse through
+/// [`column_to_arrow`] into an `entries` [`StructArray`], the `i32` offsets become an
+/// [`OffsetBuffer`], and the map-level validity the [`NullBuffer`]. The `entries` key field is forced
+/// non-nullable (Arrow forbids null map keys) and `keys_sorted` rides along.
+fn map_to_arrow(serie: &MapSerie) -> Result<ArrayRef, IoError> {
+    let len = serie.len();
+    let map_field = serie.field();
+    let key_field = force_non_nullable(column_field_to_arrow(map_field.key()));
+    let value_field = column_field_to_arrow(map_field.value());
+    let entries_fields = Fields::from(vec![key_field, value_field]);
+
+    let key_array = column_to_arrow(serie.keys())?;
+    let value_array = column_to_arrow(serie.values())?;
+    let entries = StructArray::try_new(entries_fields.clone(), vec![key_array, value_array], None)
+        .map_err(build_error)?;
+    let entries_field = Arc::new(Field::new(
+        "entries",
+        DataType::Struct(entries_fields),
+        false,
+    ));
+
+    let offsets = offset_buffer(len, |index| serie.map_at(index).unwrap_or((0, 0)));
+    let nulls = nulls_from_predicate(len, map_field.nullable(), |index| serie.is_valid(index));
+    let array = MapArray::try_new(entries_field, offsets, entries, nulls, serie.keys_sorted())
+        .map_err(build_error)?;
+    Ok(Arc::new(array))
 }
 
 /// A `Decimal128Array` over an in-heap `i128` value buffer (reinterpreted, one copy) + validity.
@@ -334,8 +431,9 @@ fn fixed_size_to_arrow<T: VarType>(serie: &FixedSizeSerie<T>) -> Result<ArrayRef
 /// Rebuilds our concrete leaf [`Column`] from an Arrow [`ArrayRef`] and its [`ColumnField`], using
 /// the field to restore the exact internal type (e.g. `FixedUtf8` vs `FixedBinary`, a decimal's
 /// precision / scale, or the `I128` / `U128` behind a `Decimal128`). Sliced / offset input arrays
-/// are handled — every column is rebuilt through the logical Arrow accessors. Nested fields return a
-/// guided [`IoError`].
+/// are handled — every column is rebuilt through the logical Arrow accessors. A nested
+/// [`ColumnField::Struct`] / [`List`](ColumnField::List) / [`Map`](ColumnField::Map) **recurses** into
+/// the matching nested carrier.
 ///
 /// ```
 /// use yggdryl_core::arrow::{column_from_arrow, column_to_arrow};
@@ -352,9 +450,9 @@ fn fixed_size_to_arrow<T: VarType>(serie: &FixedSizeSerie<T>) -> Result<ArrayRef
 pub fn column_from_arrow(array: &ArrayRef, field: &ColumnField) -> Result<Column, IoError> {
     let leaf = match field {
         ColumnField::Leaf(header) => header,
-        ColumnField::Struct(_) => return Err(nested_error("struct")),
-        ColumnField::List(_) => return Err(nested_error("list")),
-        ColumnField::Map(_) => return Err(nested_error("map")),
+        ColumnField::Struct(struct_field) => return struct_from_arrow(array, struct_field),
+        ColumnField::List(list_field) => return list_from_arrow(array, list_field),
+        ColumnField::Map(map_field) => return map_from_arrow(array, map_field),
     };
     let name = leaf.name();
     let nullable = leaf.nullable();
@@ -515,8 +613,107 @@ pub fn column_from_arrow(array: &ArrayRef, field: &ColumnField) -> Result<Column
                 Ok(Column::from(serie))
             }
         }
-        DataTypeId::Struct | DataTypeId::List | DataTypeId::Map => Err(nested_error("nested")),
+        // A `ColumnField::Leaf` that nonetheless declares a nested id is contradictory — the nested
+        // arms above (matched on the field, not the id) own every real nested column.
+        DataTypeId::Struct | DataTypeId::List | DataTypeId::Map => Err(IoError::TypedCast {
+            detail: format!(
+                "a leaf field declares the nested type {:?}, which has no leaf carrier: describe a \
+                 nested column with a ColumnField::Struct / List / Map, not a leaf field",
+                leaf.data_type_id()
+            ),
+        }),
     }
+}
+
+/// An Arrow [`StructArray`] → a [`StructSerie`]: each child array rebuilds through
+/// [`column_from_arrow`] with the matching child [`ColumnField`], then the row-level validity is
+/// restored. A **sliced** struct array carries sliced children, so the recursion respects the slice.
+fn struct_from_arrow(array: &ArrayRef, field: &StructField) -> Result<Column, IoError> {
+    let arr = downcast::<StructArray>(array, "StructArray")?;
+    let len = arr.len();
+    if field.num_fields() != arr.num_columns() {
+        return Err(IoError::TypedCast {
+            detail: format!(
+                "struct field declares {} child column(s) but the Arrow StructArray has {}: pass \
+                 the struct schema that matches the array",
+                field.num_fields(),
+                arr.num_columns()
+            ),
+        });
+    }
+    let mut columns = Vec::with_capacity(field.num_fields());
+    for (index, child_field) in field.children().iter().enumerate() {
+        columns.push(column_from_arrow(arr.column(index), child_field)?);
+    }
+    let mut serie = StructSerie::from_columns(columns)?;
+    if let Some(name) = field.name() {
+        serie = serie.with_name(name);
+    }
+    *serie.metadata_mut() = field.metadata().clone();
+    let validity = validity_heap(arr.nulls(), len, field.nullable());
+    Ok(Column::from(serie.with_validity(validity)))
+}
+
+/// An Arrow [`ListArray`] → a [`ListSerie`]: the referenced value range `[offsets[0], offsets[len])`
+/// is sliced out of the values array and rebuilt through [`column_from_arrow`], the offsets are
+/// **rebased** from 0, and the list-level validity is restored. Respects a **sliced** list array (its
+/// logical offsets index the full values array).
+fn list_from_arrow(array: &ArrayRef, field: &ListField) -> Result<Column, IoError> {
+    let arr = downcast::<ListArray>(array, "ListArray")?;
+    let len = arr.len();
+    let offsets = arr.value_offsets();
+    let first = offsets[0];
+    let last = offsets[len];
+    let span = (last - first).max(0) as usize;
+    let value_slice = arr.values().slice(first.max(0) as usize, span);
+    let child = column_from_arrow(&value_slice, field.item())?;
+
+    let mut offset_heap = Heap::with_capacity((len + 1) * 4);
+    for (index, &offset) in offsets.iter().enumerate() {
+        offset_heap.pwrite_i32(index as u64 * 4, offset - first)?;
+    }
+    let validity = validity_heap(arr.nulls(), len, field.nullable());
+    let serie = ListSerie::from_offsets(
+        field.name().unwrap_or(""),
+        offset_heap,
+        child,
+        validity,
+        len,
+    );
+    Ok(Column::from(serie))
+}
+
+/// An Arrow [`MapArray`] → a [`MapSerie`]: the referenced entry range `[offsets[0], offsets[len])` is
+/// sliced out of the key + value arrays and rebuilt through [`column_from_arrow`], the offsets are
+/// **rebased** from 0, and the map-level validity + `keys_sorted` restored. Respects a **sliced** map
+/// array.
+fn map_from_arrow(array: &ArrayRef, field: &MapField) -> Result<Column, IoError> {
+    let arr = downcast::<MapArray>(array, "MapArray")?;
+    let len = arr.len();
+    let offsets = arr.value_offsets();
+    let first = offsets[0];
+    let last = offsets[len];
+    let start = first.max(0) as usize;
+    let span = (last - first).max(0) as usize;
+    let key_col = column_from_arrow(&arr.keys().slice(start, span), field.key())?;
+    let value_col = column_from_arrow(&arr.values().slice(start, span), field.value())?;
+
+    let mut offset_heap = Heap::with_capacity((len + 1) * 4);
+    for (index, &offset) in offsets.iter().enumerate() {
+        offset_heap.pwrite_i32(index as u64 * 4, offset - first)?;
+    }
+    let validity = validity_heap(arr.nulls(), len, field.nullable());
+    let keys_sorted = matches!(arr.data_type(), DataType::Map(_, true));
+    let serie = MapSerie::from_offsets(
+        field.name().unwrap_or(""),
+        offset_heap,
+        key_col,
+        value_col,
+        validity,
+        len,
+    )?
+    .with_keys_sorted(keys_sorted);
+    Ok(Column::from(serie))
 }
 
 // ---- from-Arrow helpers ----------------------------------------------------------------------

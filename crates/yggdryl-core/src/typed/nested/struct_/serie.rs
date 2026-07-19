@@ -95,6 +95,17 @@ impl StructSerie {
         self
     }
 
+    /// Replaces the **row-level validity** buffer (`Some` bitmap — LSB-first, `1` = valid — or `None`
+    /// for an all-valid, non-nullable struct), chainable. The counterpart of the offsets-plus-validity
+    /// constructors on [`ListSerie`](super::super::ListSerie) /
+    /// [`MapSerie`](super::super::MapSerie): the front door for restoring a struct's null rows when
+    /// rebuilding it from external buffers (e.g. an Arrow `StructArray`'s null buffer). The caller is
+    /// responsible for sizing the bitmap to the struct's row count.
+    pub fn with_validity(mut self, validity: Option<Heap>) -> Self {
+        self.validity = validity;
+        self
+    }
+
     /// Appends a child `column`, chainable — the first column fixes the struct's row count; a later
     /// column of a different length is the guided [`length_mismatch_error`].
     ///

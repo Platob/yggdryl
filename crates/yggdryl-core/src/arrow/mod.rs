@@ -1,12 +1,14 @@
-//! `arrow` — the Apache Arrow **leaf** interop bridge (feature `arrow`).
+//! `arrow` — the Apache Arrow interop bridge (feature `arrow`).
 //!
-//! Behind the opt-in `arrow` feature, every **leaf** element type in the crate converts **to and
-//! from** its closest Arrow equivalent: a [`DataTypeId`](crate::datatype_id::DataTypeId) (+ its field
-//! params) ↔ an Arrow [`DataType`](arrow_schema::DataType), a
-//! [`HeaderField`](crate::typed::HeaderField) ↔ an Arrow [`Field`](arrow_schema::Field), and a leaf
-//! [`Column`](crate::typed::Column) ↔ an Arrow [`Array`](arrow_array::Array). The nested
-//! `Struct` / `List` / `Map` arms are reserved for a later nested phase — they return a guided error
-//! here (and the type map emits a documented structural shell).
+//! Behind the opt-in `arrow` feature, every element type in the crate converts **to and from** its
+//! closest Arrow equivalent: a [`DataTypeId`](crate::datatype_id::DataTypeId) (+ its field params) ↔
+//! an Arrow [`DataType`](arrow_schema::DataType), a [`HeaderField`](crate::typed::HeaderField) ↔ an
+//! Arrow [`Field`](arrow_schema::Field), and a [`Column`](crate::typed::Column) ↔ an Arrow
+//! [`Array`](arrow_array::Array). The **nested** carriers recurse: a struct becomes a
+//! [`StructArray`](arrow_array::StructArray), a list a [`ListArray`](arrow_array::ListArray), a map a
+//! [`MapArray`](arrow_array::MapArray) — through arbitrary depth. At the top level a
+//! [`StructSerie`](crate::typed::StructSerie) ↔ a [`RecordBatch`](arrow_array::RecordBatch) and a
+//! [`StructField`](crate::typed::StructField) ↔ a [`Schema`](arrow_schema::Schema).
 //!
 //! # Closest-match map
 //!
@@ -29,7 +31,29 @@
 //! | `Utf8` / `LargeUtf8` | `Utf8` / `LargeUtf8` | exact |
 //! | `FixedBinary` | `FixedSizeBinary(byte_width)` | exact (width from the field) |
 //! | `FixedUtf8` | `FixedSizeBinary(byte_width)` | **lossy:** Arrow has no fixed-size UTF-8; the reverse maps `FixedSizeBinary` → `FixedBinary` (only our own field metadata restores `FixedUtf8`). |
-//! | `Struct` / `List` / `Map` | `Struct(empty)` / `List(null item)` / `Map(null entries)` | **structural shell** — children can't come from the id alone; the nested phase fills them in. |
+//! | `Struct` / `List` / `Map` | `Struct(empty)` / `List(null item)` / `Map(null entries)` | from the **id alone** this is a structural shell (children can't come from the id); a real nested [`Column`](crate::typed::Column) / [`ColumnField`](crate::typed::ColumnField) carries its children and maps to the full nested type (see below). |
+//!
+//! # Nested + RecordBatch mapping
+//!
+//! A nested [`Column`](crate::typed::Column) maps to the matching nested Arrow array — a
+//! [`StructSerie`](crate::typed::StructSerie) to a [`StructArray`](arrow_array::StructArray) (child
+//! arrays from each child column, fields from each child descriptor, the row-level validity as the
+//! array's [`NullBuffer`](arrow_buffer::NullBuffer)); a [`ListSerie`](crate::typed::ListSerie) to a
+//! [`ListArray`](arrow_array::ListArray) (`i32` offsets, the flattened child as the values array); a
+//! [`MapSerie`](crate::typed::MapSerie) to a [`MapArray`](arrow_array::MapArray) (a
+//! `List<Struct<key, value>>`, key field forced non-nullable, `keys_sorted` preserved). The mapping
+//! is **recursive** — a struct-of-list-of-map round-trips at any depth — and respects a **sliced**
+//! Arrow array on the reverse path (the referenced value / entry range is sliced out and the offsets
+//! rebased from 0).
+//!
+//! At the top level, a [`StructSerie`](crate::typed::StructSerie) ↔ a
+//! [`RecordBatch`](arrow_array::RecordBatch) (schema + column arrays) and a
+//! [`StructField`](crate::typed::StructField) ↔ a [`Schema`](arrow_schema::Schema) (child fields +
+//! struct-level metadata). **Row-validity caveat:** a `RecordBatch` has **no** row-level validity, so
+//! [`struct_serie_to_record_batch`] **refuses** (a guided error) a struct that actually holds null
+//! rows rather than silently dropping them — a struct that is nullable but holds no null rows converts
+//! cleanly, and row-level nulls travel losslessly through a [`StructArray`](arrow_array::StructArray)
+//! ([`column_to_arrow`]) instead.
 //!
 //! # Copy profile
 //!
@@ -50,7 +74,11 @@
 mod array;
 mod data_type;
 mod field;
+mod record_batch;
+mod schema;
 
 pub use array::{column_from_arrow, column_to_arrow};
 pub use data_type::{from_arrow_data_type, to_arrow_data_type};
 pub use field::{from_arrow_field, to_arrow_field};
+pub use record_batch::{struct_serie_from_record_batch, struct_serie_to_record_batch};
+pub use schema::{struct_field_from_arrow_schema, struct_field_to_arrow_schema};
