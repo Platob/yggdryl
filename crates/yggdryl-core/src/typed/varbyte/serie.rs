@@ -339,6 +339,12 @@ impl<T: VarLenType, D: IOBase> VarSerie<T, D> {
         self.validity.as_ref()
     }
 
+    /// The column **name**, if set — the lightweight accessor (the same value
+    /// [`field`](VarSerie::field) reports), read without building a [`HeaderField`].
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
     /// Every element as its owned value, ignoring validity (invalid-byte elements are skipped).
     pub fn values(&self) -> Vec<T::Owned> {
         (0..self.len)

@@ -21,7 +21,7 @@
 //! | `0x0400` | [`Temporal`](DataTypeCategory::Temporal) | *(reserved — date / time / timestamp)* |
 //! | `0x0500` | [`Binary`](DataTypeCategory::Binary) | `Binary`, `LargeBinary`, `FixedBinary` |
 //! | `0x0600` | [`Utf8`](DataTypeCategory::Utf8) | `Utf8`, `LargeUtf8`, `FixedUtf8` |
-//! | `0x0700` | [`Nested`](DataTypeCategory::Nested) | *(reserved — struct / list / map)* |
+//! | `0x0700` | [`Nested`](DataTypeCategory::Nested) | `Struct`, `List`, `Map` |
 
 /// The **broad family** a [`DataTypeId`] belongs to — one per band. `category()` returns it, and the
 /// coarse predicates (`is_integer` / `is_float` / …) are band membership checks against it.
@@ -142,11 +142,22 @@ pub enum DataTypeId {
     LargeUtf8 = 0x0602,
     /// **Fixed-length UTF-8** — a fixed byte width per element (the width in the field metadata).
     FixedUtf8 = 0x0610,
+
+    // ---- nested band (0x0700) ---------------------------------------------------------
+    /// A **struct** — a heterogeneous, ordered set of named child columns (the project's
+    /// "table"-like holder). Its element is a row; its children are themselves any [`DataTypeId`].
+    Struct = 0x0700,
+    /// A **list** — a variable-length sequence of one child element type *(reserved this phase — the
+    /// id slots the band; the carrier lands in a later phase)*.
+    List = 0x0710,
+    /// A **map** — an ordered set of key→value entries *(reserved this phase — the id slots the band;
+    /// the carrier lands in a later phase)*.
+    Map = 0x0720,
 }
 
 impl DataTypeId {
     /// Every non-`Unknown` type, in id order — the canonical set (used by tests and registries).
-    pub const ALL: [DataTypeId; 23] = [
+    pub const ALL: [DataTypeId; 26] = [
         DataTypeId::Bool,
         DataTypeId::I8,
         DataTypeId::U8,
@@ -170,6 +181,9 @@ impl DataTypeId {
         DataTypeId::Utf8,
         DataTypeId::LargeUtf8,
         DataTypeId::FixedUtf8,
+        DataTypeId::Struct,
+        DataTypeId::List,
+        DataTypeId::Map,
     ];
 
     /// The `u16` discriminant — what a source stores in its headers.
@@ -204,6 +218,9 @@ impl DataTypeId {
             0x0600 => DataTypeId::Utf8,
             0x0602 => DataTypeId::LargeUtf8,
             0x0610 => DataTypeId::FixedUtf8,
+            0x0700 => DataTypeId::Struct,
+            0x0710 => DataTypeId::List,
+            0x0720 => DataTypeId::Map,
             _ => DataTypeId::Unknown,
         }
     }
@@ -235,6 +252,9 @@ impl DataTypeId {
             DataTypeId::LargeUtf8 => "large_utf8",
             DataTypeId::FixedBinary => "fixed_binary",
             DataTypeId::FixedUtf8 => "fixed_utf8",
+            DataTypeId::Struct => "struct",
+            DataTypeId::List => "list",
+            DataTypeId::Map => "map",
         }
     }
 
@@ -285,15 +305,19 @@ impl DataTypeId {
             DataTypeId::Decimal64 => 8,
             DataTypeId::Decimal128 => 16,
             DataTypeId::Decimal256 => 32,
-            // Unknown + the variable-length / fixed-size byte types have no id-derivable element
-            // width (a fixed-size type's width lives in the field metadata).
+            // Unknown + the variable-length / fixed-size byte types + the nested composites have no
+            // id-derivable element width (a fixed-size type's width lives in the field metadata; a
+            // nested type's layout is in its children, not a single fixed stride).
             DataTypeId::Unknown
             | DataTypeId::Binary
             | DataTypeId::LargeBinary
             | DataTypeId::Utf8
             | DataTypeId::LargeUtf8
             | DataTypeId::FixedBinary
-            | DataTypeId::FixedUtf8 => 0,
+            | DataTypeId::FixedUtf8
+            | DataTypeId::Struct
+            | DataTypeId::List
+            | DataTypeId::Map => 0,
         }
     }
 

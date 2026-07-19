@@ -254,6 +254,12 @@ impl<T: VarType, D: IOBase> FixedSizeSerie<T, D> {
         self.validity.as_ref()
     }
 
+    /// The column **name**, if set — the lightweight accessor (the same value
+    /// [`field`](FixedSizeSerie::field) reports), read without building a [`HeaderField`].
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
     /// Every element as its owned value, ignoring validity (a byte slot that does not decode — an
     /// invalid-UTF-8 `FixedUtf8` — is skipped). Mirrors [`VarSerie::values`](crate::typed::VarSerie).
     pub fn values(&self) -> Vec<T::Owned> {

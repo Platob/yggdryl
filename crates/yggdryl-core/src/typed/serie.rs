@@ -37,6 +37,15 @@ pub trait Serie: Scalar {
         (0..self.len()).map(|index| self.get(index)).collect()
     }
 
+    /// The **child columns** of this series — the downward graph edge for nested navigation. A leaf
+    /// series (numeric, byte, string, bool) has none, so the default returns an empty `Vec` (no
+    /// allocation); a nested [`StructSerie`](crate::typed::StructSerie) overrides it to return its
+    /// columns. There is no `parent()` up-pointer — nested owns its children downward, so a uniform
+    /// `children()` is the whole graph surface.
+    fn children(&self) -> Vec<&crate::typed::nested::Column> {
+        Vec::new()
+    }
+
     /// The **total** element count (nulls included) — an alias of [`len`](Scalar::len).
     fn count(&self) -> usize {
         self.len()
@@ -364,6 +373,12 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
     /// The validity bit buffer, when the column is nullable.
     pub fn validity(&self) -> Option<&D> {
         self.validity.as_ref()
+    }
+
+    /// The column **name**, if set — the lightweight accessor (the same value
+    /// [`field`](FixedSerie::field) reports), read without building a [`HeaderField`].
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     /// The column's [`Field`] metadata — its `name`, `type_id`, `nullable` flag, (for a decimal

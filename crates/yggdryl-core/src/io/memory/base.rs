@@ -1713,8 +1713,8 @@ fn elem_as_f64<S: IOBase>(src: &S, dtype: DataTypeId, off: u64) -> Result<f64, I
         Decimal32 => src.pread_i32(off)? as f64,
         Decimal64 => src.pread_i64(off)? as f64,
         Decimal128 => src.pread_i128(off)? as f64,
-        Decimal256 | Binary | LargeBinary | Utf8 | LargeUtf8 | FixedBinary | FixedUtf8
-        | Unknown => 0.0,
+        Decimal256 | Binary | LargeBinary | Utf8 | LargeUtf8 | FixedBinary | FixedUtf8 | Struct
+        | List | Map | Unknown => 0.0,
     })
 }
 
@@ -1741,8 +1741,8 @@ fn write_f64_as(out: &mut [u8], dtype: DataTypeId, value: f64) {
         Decimal32 => out[..4].copy_from_slice(&(value as i32).to_le_bytes()),
         Decimal64 => out[..8].copy_from_slice(&(value as i64).to_le_bytes()),
         Decimal128 => out[..16].copy_from_slice(&(value as i128).to_le_bytes()),
-        Decimal256 | Binary | LargeBinary | Utf8 | LargeUtf8 | FixedBinary | FixedUtf8
-        | Unknown => {}
+        Decimal256 | Binary | LargeBinary | Utf8 | LargeUtf8 | FixedBinary | FixedUtf8 | Struct
+        | List | Map | Unknown => {}
     }
 }
 
