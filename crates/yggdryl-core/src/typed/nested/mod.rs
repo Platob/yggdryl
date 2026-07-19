@@ -9,22 +9,27 @@
 //! - [`ColumnField`] — the recursive schema descriptor parallel to `Column` (a leaf's
 //!   [`HeaderField`](crate::typed::HeaderField) or a nested struct's [`StructField`]).
 //!
-//! On top of them the [`struct_`] family provides the first nested carrier: [`StructSerie`] (the
-//! "table"), [`StructScalar`] (one row), and [`StructField`] (the schema). A struct is itself a
-//! [`Serie`](crate::typed::Serie), so it nests inside another struct — navigation flows **downward**
-//! through [`StructSerie::column_path`] into inner children.
+//! On top of them three nested carriers grow, each a [`Serie`](crate::typed::Serie) that is itself a
+//! [`Column`] and so nests inside any other:
 //!
-//! `List` and `Map` are reserved: their [`DataTypeId`](crate::datatype_id::DataTypeId) band members
-//! already exist, and their carriers plus the matching [`Column`] / [`Value`] / [`ColumnField`]
-//! variants land in a later phase — the enums are `#[non_exhaustive]` to keep that additive.
+//! - [`struct_`] — [`StructSerie`] (the "table"), [`StructScalar`] (one row), [`StructField`] (the
+//!   schema). Navigation flows **downward** through [`StructSerie::column_path`] into inner children.
+//! - [`list`] — [`ListSerie`] (an offsets buffer over a flattened child [`Column`]), [`ListScalar`]
+//!   (one list element), [`ListField`] (the schema, with its item field).
+//! - [`map`] — [`MapSerie`] (an offsets buffer over a two-column key / value entries struct),
+//!   [`MapScalar`] (one map element), [`MapField`] (the schema, with its key / value fields).
 
 mod column;
 mod column_field;
 mod value;
 
+pub mod list;
+pub mod map;
 pub mod struct_;
 
 pub use column::Column;
 pub use column_field::ColumnField;
+pub use list::{ListField, ListScalar, ListSerie};
+pub use map::{MapField, MapScalar, MapSerie};
 pub use struct_::{StructField, StructScalar, StructSerie};
 pub use value::Value;

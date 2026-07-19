@@ -6,14 +6,11 @@
 //! a nested [`StructScalar`] for a struct row), so a `Value` outlives the column it came from.
 
 use crate::typed::fixedbyte::I256;
-use crate::typed::nested::StructScalar;
+use crate::typed::nested::{ListScalar, MapScalar, StructScalar};
 
 /// One erased, possibly-null typed value — the element a [`Column::get`](super::Column::get) yields
 /// and a [`StructScalar`] row holds. `PartialEq` compares like variants (float `NaN` is unequal to
 /// itself, as usual); it is deliberately **not** `Eq` / `Hash`, because it can hold a float.
-///
-// DESIGN: `List` / `Map` element forms (a `Vec<Value>` / a key→value map) land with their carriers
-// in a later phase — this enum grows a variant then, so downstream matches keep a wildcard arm.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     /// A null / absent element (of any type).
@@ -60,6 +57,12 @@ pub enum Value {
     Utf8(String),
     /// A **nested struct row** — the element of a struct column (a [`StructScalar`]).
     Row(StructScalar),
+    /// A **list element** — the element of a list column (a [`ListScalar`]: its children as owned
+    /// [`Value`]s).
+    List(ListScalar),
+    /// A **map element** — the element of a map column (a [`MapScalar`]: its key→value entries as
+    /// owned [`Value`]s).
+    Map(MapScalar),
 }
 
 impl Value {

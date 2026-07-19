@@ -60,7 +60,10 @@ pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use field::{Field, HeaderField};
 pub use fixedbyte::{FixedBinary, FixedSizeSerie, FixedUtf8};
-pub use nested::{Column, ColumnField, StructField, StructScalar, StructSerie, Value};
+pub use nested::{
+    Column, ColumnField, ListField, ListScalar, ListSerie, MapField, MapScalar, MapSerie,
+    StructField, StructScalar, StructSerie, Value,
+};
 pub use parse::{FlexibleFromStr, FlexibleToStr};
 pub use reduce::Reduce;
 pub use scalar::{FixedScalar, Scalar};

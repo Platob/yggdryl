@@ -15,7 +15,7 @@ use crate::typed::fixedbyte::{
     Decimal128, Decimal256, Decimal32, Decimal64, FixedBinary, FixedSizeSerie, FixedUtf8, Float32,
     Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8,
 };
-use crate::typed::nested::{ColumnField, StructSerie, Value};
+use crate::typed::nested::{ColumnField, ListSerie, MapSerie, StructSerie, Value};
 use crate::typed::varbyte::{Binary, LargeBinary, LargeUtf8, Utf8};
 use crate::typed::{FixedSerie, HeaderField, Scalar, VarSerie};
 
@@ -28,11 +28,8 @@ use crate::typed::{FixedSerie, HeaderField, Scalar, VarSerie};
 macro_rules! leaf_columns {
     ( $( $(#[$doc:meta])* $variant:ident : $carrier:ty => $wrap:path ),+ $(,)? ) => {
         /// A single data column, erased over its element type. `Null` is a bufferless run of `n`
-        /// nulls; each leaf variant holds one concrete flat carrier; `Struct` recurses into a nested
-        /// [`StructSerie`].
-        ///
-        // DESIGN: `List` / `Map` variants land with their carriers in a later phase; the enum is
-        // `#[non_exhaustive]` so adding them stays additive (downstream matches keep a wildcard arm).
+        /// nulls; each leaf variant holds one concrete flat carrier; `Struct` / `List` / `Map`
+        /// recurse into a nested [`StructSerie`] / [`ListSerie`] / [`MapSerie`].
         #[non_exhaustive]
         pub enum Column {
             /// `n` null elements with **no backing buffer** — the cheapest all-null child.
@@ -43,6 +40,12 @@ macro_rules! leaf_columns {
             )+
             /// A **nested struct** child — recurses into a [`StructSerie`].
             Struct(StructSerie),
+            /// A **nested list** child — recurses into a [`ListSerie`] (a flattened child column
+            /// plus offsets).
+            List(ListSerie),
+            /// A **nested map** child — recurses into a [`MapSerie`] (a two-column key / value
+            /// entries struct plus offsets).
+            Map(MapSerie),
         }
 
         impl Column {
@@ -52,6 +55,8 @@ macro_rules! leaf_columns {
                     Column::Null(n) => *n,
                     $( Column::$variant(serie) => serie.len(), )+
                     Column::Struct(serie) => serie.len(),
+                    Column::List(serie) => serie.len(),
+                    Column::Map(serie) => serie.len(),
                 }
             }
 
@@ -62,6 +67,8 @@ macro_rules! leaf_columns {
                     Column::Null(n) => index < *n,
                     $( Column::$variant(serie) => serie.is_null(index), )+
                     Column::Struct(serie) => serie.is_null(index),
+                    Column::List(serie) => serie.is_null(index),
+                    Column::Map(serie) => serie.is_null(index),
                 }
             }
 
@@ -71,6 +78,8 @@ macro_rules! leaf_columns {
                     Column::Null(n) => *n,
                     $( Column::$variant(serie) => serie.null_count(), )+
                     Column::Struct(serie) => serie.null_count(),
+                    Column::List(serie) => serie.null_count(),
+                    Column::Map(serie) => serie.null_count(),
                 }
             }
 
@@ -87,21 +96,27 @@ macro_rules! leaf_columns {
                         Some(row) if !row.is_null() => Value::Row(row),
                         _ => Value::Null,
                     },
+                    Column::List(serie) => serie.get(index),
+                    Column::Map(serie) => serie.get(index),
                 }
             }
 
             /// The element [`DataTypeId`] — [`Unknown`](DataTypeId::Unknown) for a bufferless
-            /// [`Null`](Column::Null) column, [`Struct`](DataTypeId::Struct) for a nested struct.
+            /// [`Null`](Column::Null) column, or the nested tag ([`Struct`](DataTypeId::Struct) /
+            /// [`List`](DataTypeId::List) / [`Map`](DataTypeId::Map)) for a nested child.
             pub fn data_type_id(&self) -> DataTypeId {
                 match self {
                     Column::Null(_) => DataTypeId::Unknown,
                     $( Column::$variant(serie) => serie.data_type_id(), )+
                     Column::Struct(_) => DataTypeId::Struct,
+                    Column::List(_) => DataTypeId::List,
+                    Column::Map(_) => DataTypeId::Map,
                 }
             }
 
             /// The column's [`ColumnField`] descriptor — [`Leaf`](ColumnField::Leaf) for a flat
-            /// column, [`Struct`](ColumnField::Struct) for a nested struct.
+            /// column, or the nested field ([`Struct`](ColumnField::Struct) /
+            /// [`List`](ColumnField::List) / [`Map`](ColumnField::Map)) for a nested child.
             pub fn field(&self) -> ColumnField {
                 match self {
                     Column::Null(_) => {
@@ -109,6 +124,8 @@ macro_rules! leaf_columns {
                     }
                     $( Column::$variant(serie) => ColumnField::Leaf(serie.field()), )+
                     Column::Struct(serie) => ColumnField::Struct(serie.field()),
+                    Column::List(serie) => ColumnField::List(serie.field()),
+                    Column::Map(serie) => ColumnField::Map(serie.field()),
                 }
             }
 
@@ -118,6 +135,8 @@ macro_rules! leaf_columns {
                     Column::Null(_) => None,
                     $( Column::$variant(serie) => serie.name(), )+
                     Column::Struct(serie) => serie.name(),
+                    Column::List(serie) => serie.name(),
+                    Column::Map(serie) => serie.name(),
                 }
             }
 
@@ -128,6 +147,8 @@ macro_rules! leaf_columns {
                     Column::Null(n) => *n += 1,
                     $( Column::$variant(serie) => serie.push_null(), )+
                     Column::Struct(serie) => serie.push_null(),
+                    Column::List(serie) => serie.push_null(),
+                    Column::Map(serie) => serie.push_null(),
                 }
             }
         }
@@ -206,5 +227,17 @@ impl Column {
 impl From<StructSerie> for Column {
     fn from(serie: StructSerie) -> Self {
         Column::Struct(serie)
+    }
+}
+
+impl From<ListSerie> for Column {
+    fn from(serie: ListSerie) -> Self {
+        Column::List(serie)
+    }
+}
+
+impl From<MapSerie> for Column {
+    fn from(serie: MapSerie) -> Self {
+        Column::Map(serie)
     }
 }
