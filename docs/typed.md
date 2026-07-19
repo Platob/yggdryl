@@ -293,6 +293,75 @@ element crosses as `bytes` / a `Buffer`, a UTF-8 element as `str` / a `string`.
     assert_eq!(codes.get(2), Some(b"ABCD".to_vec()));  // truncated
     ```
 
+## More aggregations — statistics for every type
+
+Beyond `sum` / `min` / `max` / `mean`, a numeric column reduces with `var` (population variance),
+`std`, `median`, and `count_ge(threshold)` — each a single streamed, allocation-free pass (a
+`median` is the one exception: it sorts a copy). And a **universal** set works on *every* column,
+numbers, booleans, and byte/string alike: `count` / `valid_count`, `n_unique` (distinct non-null
+values), `first_value` / `last_value`, and — for any orderable element — `min_value` / `max_value`
+(the lexicographic min/max of a `utf8` or `binary` column).
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie, ByteSerie
+    from yggdryl.datatype_id import DataTypeId
+
+    col = Serie.from_values([2, 4, 4, 4, 5, 5, 7, 9], DataTypeId.I64)
+    assert col.mean() == 5.0
+    assert col.var() == 4.0           # population variance; std == 2.0
+    assert col.std() == 2.0
+    assert col.median() == 4.5        # even count -> mean of the middle two
+    assert col.count_ge(5) == 4       # how many elements are >= 5
+    assert col.n_unique() == 5        # {2, 4, 5, 7, 9}
+
+    # The universal set also runs on a string column — min/max are lexicographic.
+    names = ByteSerie.from_values(["banana", "apple", "cherry", "apple"], DataTypeId.Utf8)
+    assert names.min_value() == "apple" and names.max_value() == "cherry"
+    assert names.n_unique() == 3
+    assert names.first_value() == "banana" and names.count() == 4
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie, ByteSerie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const col = Serie.fromValues([2n, 4n, 4n, 4n, 5n, 5n, 7n, 9n], DataTypeId.I64())
+    console.assert(col.var() === 4.0 && col.std() === 2.0) // population variance
+    console.assert(col.median() === 4.5)
+    console.assert(col.countGe(5n) === 4)
+    console.assert(col.nUnique() === 5)
+
+    const names = ByteSerie.fromValues(['banana', 'apple', 'cherry', 'apple'], DataTypeId.Utf8())
+    console.assert(names.minValue() === 'apple' && names.maxValue() === 'cherry')
+    console.assert(names.nUnique() === 3 && names.count() === 4)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{FixedSerie, Serie, Utf8, VarSerie};
+    use yggdryl_core::typed::fixedbyte::Int64;
+
+    let col = FixedSerie::<Int64>::from_values(&[2, 4, 4, 4, 5, 5, 7, 9]);
+    assert_eq!(col.var().unwrap(), Some(4.0)); // population variance
+    assert_eq!(col.std().unwrap(), Some(2.0));
+    assert_eq!(col.median().unwrap(), Some(4.5));
+    assert_eq!(col.count_ge(5).unwrap(), 4);
+    assert_eq!(col.n_unique(), 5); // Serie default (Value: Eq + Hash)
+
+    // The universal set runs on a string column — min_value/max_value are lexicographic (Value: Ord).
+    let names = VarSerie::<Utf8>::from_values(
+        &["banana", "apple", "cherry", "apple"].map(str::to_string),
+    );
+    assert_eq!(names.min_value().as_deref(), Some("apple"));
+    assert_eq!(names.max_value().as_deref(), Some("cherry"));
+    assert_eq!(names.n_unique(), 3);
+    ```
+
 ## Types & families
 
 | family | types | granularity |

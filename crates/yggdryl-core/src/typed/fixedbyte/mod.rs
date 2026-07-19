@@ -10,12 +10,14 @@
 /// plus its [`DataType`](super::DataType), [`Encoder`](super::Encoder), [`Decoder`](super::Decoder),
 /// and [`Reduce`](super::Reduce) impls: encode/decode forward to the source's typed **array** kernels
 /// (a scalar op is a one-element slice), the reductions to its [`Aggregate`](crate::io::memory::Aggregate)
-/// kernels. Params: `Marker, native, DataTypeId, Sum, pwrite_array, pread_array, sum, min, max, mean`.
+/// kernels. Params: `Marker, native, DataTypeId, Sum, pwrite_array, pread_array, sum, min, max, mean,
+/// std, var, median, first, last, count_ge`.
 macro_rules! fixed_numeric {
     (
         $(#[$doc:meta])*
         $marker:ident, $native:ty, $id:ident, $sum:ty,
-        $warr:ident, $rarr:ident, $summ:ident, $minm:ident, $maxm:ident, $meanm:ident
+        $warr:ident, $rarr:ident, $summ:ident, $minm:ident, $maxm:ident, $meanm:ident,
+        $stdm:ident, $varm:ident, $medianm:ident, $firstm:ident, $lastm:ident, $countgem:ident
     ) => {
         $(#[$doc])*
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -106,6 +108,74 @@ macro_rules! fixed_numeric {
                     src,
                     start * core::mem::size_of::<$native>() as u64,
                     count,
+                )
+            }
+            fn std<R: $crate::io::memory::IOBase>(
+                src: &R,
+                start: u64,
+                count: usize,
+            ) -> Result<Option<f64>, $crate::io::memory::IoError> {
+                $crate::io::memory::Aggregate::$stdm(
+                    src,
+                    start * core::mem::size_of::<$native>() as u64,
+                    count,
+                )
+            }
+            fn var<R: $crate::io::memory::IOBase>(
+                src: &R,
+                start: u64,
+                count: usize,
+            ) -> Result<Option<f64>, $crate::io::memory::IoError> {
+                $crate::io::memory::Aggregate::$varm(
+                    src,
+                    start * core::mem::size_of::<$native>() as u64,
+                    count,
+                )
+            }
+            fn median<R: $crate::io::memory::IOBase>(
+                src: &R,
+                start: u64,
+                count: usize,
+            ) -> Result<Option<f64>, $crate::io::memory::IoError> {
+                $crate::io::memory::Aggregate::$medianm(
+                    src,
+                    start * core::mem::size_of::<$native>() as u64,
+                    count,
+                )
+            }
+            fn first<R: $crate::io::memory::IOBase>(
+                src: &R,
+                start: u64,
+                count: usize,
+            ) -> Result<Option<$native>, $crate::io::memory::IoError> {
+                $crate::io::memory::Aggregate::$firstm(
+                    src,
+                    start * core::mem::size_of::<$native>() as u64,
+                    count,
+                )
+            }
+            fn last<R: $crate::io::memory::IOBase>(
+                src: &R,
+                start: u64,
+                count: usize,
+            ) -> Result<Option<$native>, $crate::io::memory::IoError> {
+                $crate::io::memory::Aggregate::$lastm(
+                    src,
+                    start * core::mem::size_of::<$native>() as u64,
+                    count,
+                )
+            }
+            fn count_ge<R: $crate::io::memory::IOBase>(
+                src: &R,
+                start: u64,
+                count: usize,
+                threshold: $native,
+            ) -> Result<usize, $crate::io::memory::IoError> {
+                $crate::io::memory::Aggregate::$countgem(
+                    src,
+                    start * core::mem::size_of::<$native>() as u64,
+                    count,
+                    threshold,
                 )
             }
         }

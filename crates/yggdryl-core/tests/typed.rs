@@ -174,6 +174,114 @@ fn float_serie_min_max_ignore_nan() {
 }
 
 // -------------------------------------------------------------------------------------
+// Numeric reductions — the full Reduce set on a FixedSerie (var / std / median / first /
+// last / count_ge, over and above sum / min / max / mean)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn serie_numeric_full_reductions() {
+    // A dataset with an exact population variance / std and an even-count median.
+    let col = FixedSerie::<Int64>::from_values(&[2, 4, 4, 4, 5, 5, 7, 9]);
+    assert_eq!(col.mean().unwrap(), Some(5.0));
+    assert_eq!(col.var().unwrap(), Some(4.0)); // population variance = 32/8
+    assert_eq!(col.std().unwrap(), Some(2.0)); // sqrt(var)
+    assert_eq!(col.median().unwrap(), Some(4.5)); // even count -> mean of the two middle values
+    assert_eq!(col.first().unwrap(), Some(2));
+    assert_eq!(col.last().unwrap(), Some(9));
+    assert_eq!(col.count_ge(5).unwrap(), 4); // 5, 5, 7, 9
+
+    // Odd count -> the single middle element (median sorts; first / last stay positional).
+    let odd = FixedSerie::<Int64>::from_values(&[3, 1, 2]);
+    assert_eq!(odd.median().unwrap(), Some(2.0)); // sorted [1, 2, 3] -> 2
+    assert_eq!(odd.first().unwrap(), Some(3)); // positional, not sorted
+    assert_eq!(odd.last().unwrap(), Some(2));
+}
+
+// -------------------------------------------------------------------------------------
+// Universal aggregations — the type-agnostic Serie defaults (count / valid_count /
+// first_value / last_value / n_unique / min_value / max_value), for every element type
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn serie_universal_aggregations_across_types() {
+    // Integer column: min_value / max_value are ordering-based (numeric order here).
+    let ints = FixedSerie::<Int64>::from_values(&[5, 1, 3, 9, 3]);
+    assert_eq!(ints.count(), 5);
+    assert_eq!(ints.valid_count(), 5);
+    assert_eq!(ints.first_value(), Some(5));
+    assert_eq!(ints.last_value(), Some(3));
+    assert_eq!(ints.min_value(), Some(1));
+    assert_eq!(ints.max_value(), Some(9));
+    assert_eq!(ints.n_unique(), 4); // {5, 1, 3, 9}
+
+    // Utf8 VarSerie: lexicographic min / max, n_unique with a duplicate.
+    let words = VarSerie::<Utf8>::from_values(&[
+        "banana".to_string(),
+        "apple".to_string(),
+        "cherry".to_string(),
+        "apple".to_string(),
+    ]);
+    assert_eq!(words.count(), 4);
+    assert_eq!(words.first_value().as_deref(), Some("banana"));
+    assert_eq!(words.last_value().as_deref(), Some("apple"));
+    assert_eq!(words.min_value().as_deref(), Some("apple")); // lexicographic
+    assert_eq!(words.max_value().as_deref(), Some("cherry"));
+    assert_eq!(words.n_unique(), 3); // apple counted once
+
+    // Bool column: false < true.
+    let bools = FixedSerie::<Bit>::from_values(&[true, false, true, true]);
+    assert_eq!(bools.count(), 4);
+    assert_eq!(bools.valid_count(), 4);
+    assert_eq!(bools.first_value(), Some(true));
+    assert_eq!(bools.last_value(), Some(true));
+    assert_eq!(bools.min_value(), Some(false));
+    assert_eq!(bools.max_value(), Some(true));
+    assert_eq!(bools.n_unique(), 2); // {true, false}
+
+    // Nullable column: nulls excluded from n_unique / min_value; valid_count counts non-nulls.
+    let nullable = FixedSerie::<Int32>::from_options(&[Some(4), None, Some(4), Some(7), None]);
+    assert_eq!(nullable.count(), 5); // total, nulls included
+    assert_eq!(nullable.valid_count(), 3); // 4, 4, 7
+    assert_eq!(nullable.n_unique(), 2); // {4, 7}
+    assert_eq!(nullable.min_value(), Some(4));
+    assert_eq!(nullable.max_value(), Some(7));
+    assert_eq!(nullable.first_value(), Some(4)); // index 0 is valid
+    assert_eq!(nullable.last_value(), None); // index 4 is null -> null-aware None
+}
+
+#[test]
+fn serie_universal_empty_and_float_edges() {
+    // Empty column: every universal aggregation is None / 0.
+    let empty = FixedSerie::<Int64>::new();
+    assert_eq!(empty.count(), 0);
+    assert_eq!(empty.valid_count(), 0);
+    assert_eq!(empty.n_unique(), 0);
+    assert_eq!(empty.first_value(), None);
+    assert_eq!(empty.last_value(), None);
+    assert_eq!(empty.min_value(), None);
+    assert_eq!(empty.max_value(), None);
+    // The numeric reductions are None on empty too.
+    assert_eq!(empty.var().unwrap(), None);
+    assert_eq!(empty.std().unwrap(), None);
+    assert_eq!(empty.median().unwrap(), None);
+    assert_eq!(empty.first().unwrap(), None);
+    assert_eq!(empty.last().unwrap(), None);
+    assert_eq!(empty.count_ge(0).unwrap(), 0);
+
+    // A float column has the numeric mean / std / var / median...
+    let floats = FixedSerie::<Float64>::from_values(&[1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(floats.mean().unwrap(), Some(2.5));
+    assert_eq!(floats.var().unwrap(), Some(1.25)); // population variance = 5/4
+    assert_eq!(floats.std().unwrap(), Some(1.25f64.sqrt()));
+    assert_eq!(floats.median().unwrap(), Some(2.5)); // sorted [1,2,3,4] -> (2+3)/2
+                                                     // ...but NO `min_value` / `max_value`: `f64` is not `Ord`, so those methods do not exist for a
+                                                     // float column (uncommenting `floats.min_value()` would fail to compile). It uses the NaN-safe
+                                                     // numeric `min` / `max` instead:
+    assert_eq!(floats.min().unwrap(), Some(1.0));
+    assert_eq!(floats.max().unwrap(), Some(4.0));
+}
+
+// -------------------------------------------------------------------------------------
 // Bit — the boolean column (bit-granular)
 // -------------------------------------------------------------------------------------
 

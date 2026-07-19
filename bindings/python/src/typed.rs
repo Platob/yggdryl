@@ -548,6 +548,103 @@ impl Serie {
         })
     }
 
+    /// How many elements are `>= threshold` (a number matching the column's dtype); raises
+    /// `TypeError` for a bool or decimal column (they do not reduce). The threshold is extracted
+    /// per-variant as that arm's native type — the read counterpart of how
+    /// [`from_values`](Serie::from_values) marshals a native.
+    fn count_ge(&self, threshold: &Bound<'_, PyAny>) -> PyResult<usize> {
+        match &self.inner {
+            Inner::I8(s) => Ok(s.count_ge(threshold.extract::<i8>()?).map_err(ioerr)?),
+            Inner::U8(s) => Ok(s.count_ge(threshold.extract::<u8>()?).map_err(ioerr)?),
+            Inner::I16(s) => Ok(s.count_ge(threshold.extract::<i16>()?).map_err(ioerr)?),
+            Inner::U16(s) => Ok(s.count_ge(threshold.extract::<u16>()?).map_err(ioerr)?),
+            Inner::I32(s) => Ok(s.count_ge(threshold.extract::<i32>()?).map_err(ioerr)?),
+            Inner::U32(s) => Ok(s.count_ge(threshold.extract::<u32>()?).map_err(ioerr)?),
+            Inner::I64(s) => Ok(s.count_ge(threshold.extract::<i64>()?).map_err(ioerr)?),
+            Inner::U64(s) => Ok(s.count_ge(threshold.extract::<u64>()?).map_err(ioerr)?),
+            Inner::I128(s) => Ok(s.count_ge(threshold.extract::<i128>()?).map_err(ioerr)?),
+            Inner::U128(s) => Ok(s.count_ge(threshold.extract::<u128>()?).map_err(ioerr)?),
+            Inner::F32(s) => Ok(s.count_ge(threshold.extract::<f32>()?).map_err(ioerr)?),
+            Inner::F64(s) => Ok(s.count_ge(threshold.extract::<f64>()?).map_err(ioerr)?),
+            Inner::Bool(_) => Err(PyTypeError::new_err(
+                "bool serie has no count_ge: booleans do not reduce (Bit is not numeric) — use a \
+                 numeric dtype",
+            )),
+            Inner::Decimal32(_)
+            | Inner::Decimal64(_)
+            | Inner::Decimal128(_)
+            | Inner::Decimal256(_) => Err(PyTypeError::new_err(
+                "decimal serie has no count_ge: decimals do not reduce (Decimal is not numeric \
+                 here) — cast to a numeric dtype first",
+            )),
+        }
+    }
+
+    /// The **total** element count (nulls included) — an alias of [`len`](Serie::len), available on
+    /// every column.
+    fn count(&self) -> usize {
+        dispatch!(self, s => s.count())
+    }
+
+    /// The count of **non-null** elements (`len - null_count`), available on every column.
+    fn valid_count(&self) -> usize {
+        dispatch!(self, s => s.valid_count())
+    }
+
+    /// The count of **distinct non-null** values. Every arm forwards to the core
+    /// [`Serie::n_unique`](yggdryl_core::typed::Serie::n_unique); the two float arms — whose
+    /// `f32`/`f64` value is neither `Eq` nor `Hash` — count distinct IEEE-754 **bit patterns**
+    /// instead.
+    // DESIGN: floats have no core `n_unique` (their native is not `Eq`/`Hash`); counting distinct
+    // `to_bits()` is the binding's only sensible bridge (signed zeros / NaN payloads compare by bits).
+    fn n_unique(&self) -> usize {
+        match &self.inner {
+            Inner::I8(s) => s.n_unique(),
+            Inner::U8(s) => s.n_unique(),
+            Inner::I16(s) => s.n_unique(),
+            Inner::U16(s) => s.n_unique(),
+            Inner::I32(s) => s.n_unique(),
+            Inner::U32(s) => s.n_unique(),
+            Inner::I64(s) => s.n_unique(),
+            Inner::U64(s) => s.n_unique(),
+            Inner::I128(s) => s.n_unique(),
+            Inner::U128(s) => s.n_unique(),
+            Inner::F32(s) => (0..s.len())
+                .filter_map(|i| s.get(i))
+                .map(f32::to_bits)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            Inner::F64(s) => (0..s.len())
+                .filter_map(|i| s.get(i))
+                .map(f64::to_bits)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            Inner::Bool(s) => s.n_unique(),
+            Inner::Decimal32(s) => s.n_unique(),
+            Inner::Decimal64(s) => s.n_unique(),
+            Inner::Decimal128(s) => s.n_unique(),
+            Inner::Decimal256(s) => s.n_unique(),
+        }
+    }
+
+    /// The **first** element (null-aware, at index 0) as a Python value, or `None` when the column
+    /// is empty or the element is null.
+    fn first_value(&self, py: Python<'_>) -> PyObject {
+        dispatch!(self, s => match s.first_value() {
+            Some(value) => value.into_py_value(py),
+            None => py.None(),
+        })
+    }
+
+    /// The **last** element (null-aware, at `len - 1`) as a Python value, or `None` when the column
+    /// is empty or the element is null.
+    fn last_value(&self, py: Python<'_>) -> PyObject {
+        dispatch!(self, s => match s.last_value() {
+            Some(value) => value.into_py_value(py),
+            None => py.None(),
+        })
+    }
+
     fn __repr__(&self) -> String {
         let dtype = dispatch!(self, s => s.data_type_id()).name();
         let len = dispatch!(self, s => s.len());
@@ -606,7 +703,15 @@ macro_rules! reduce_methods {
     };
 }
 
-reduce_methods!((sum, "sum"), (min, "min"), (max, "max"), (mean, "mean"));
+reduce_methods!(
+    (sum, "sum"),
+    (min, "min"),
+    (max, "max"),
+    (mean, "mean"),
+    (std, "std"),
+    (var, "var"),
+    (median, "median"),
+);
 
 /// The **type-erased** column backing [`ByteSerie`] — one variant per byte carrier: the
 /// variable-length [`VarSerie`] (`Binary` / `Utf8`, offsets + data) and the fixed-stride
@@ -898,6 +1003,57 @@ impl ByteSerie {
         Field {
             inner: byte_dispatch!(self, s => s.field()),
         }
+    }
+
+    /// The **total** element count (nulls included) — an alias of [`len`](ByteSerie::len).
+    fn count(&self) -> usize {
+        byte_dispatch!(self, s => s.count())
+    }
+
+    /// The count of **non-null** elements (`len - null_count`).
+    fn valid_count(&self) -> usize {
+        byte_dispatch!(self, s => s.valid_count())
+    }
+
+    /// The count of **distinct non-null** values (each element's `bytes` / `str` compared by value).
+    fn n_unique(&self) -> usize {
+        byte_dispatch!(self, s => s.n_unique())
+    }
+
+    /// The **first** element (null-aware, at index 0) as `bytes` / `str`, or `None` when the column
+    /// is empty or the element is null.
+    fn first_value(&self, py: Python<'_>) -> PyObject {
+        byte_dispatch!(self, s => match s.first_value() {
+            Some(value) => value.into_py_byte_value(py),
+            None => py.None(),
+        })
+    }
+
+    /// The **last** element (null-aware, at `len - 1`) as `bytes` / `str`, or `None` when the column
+    /// is empty or the element is null.
+    fn last_value(&self, py: Python<'_>) -> PyObject {
+        byte_dispatch!(self, s => match s.last_value() {
+            Some(value) => value.into_py_byte_value(py),
+            None => py.None(),
+        })
+    }
+
+    /// The **lexicographic minimum** over non-null elements (a streamed fold, no sort), or `None`
+    /// when the column has no non-null element.
+    fn min_value(&self, py: Python<'_>) -> PyObject {
+        byte_dispatch!(self, s => match s.min_value() {
+            Some(value) => value.into_py_byte_value(py),
+            None => py.None(),
+        })
+    }
+
+    /// The **lexicographic maximum** over non-null elements (a streamed fold, no sort), or `None`
+    /// when the column has no non-null element.
+    fn max_value(&self, py: Python<'_>) -> PyObject {
+        byte_dispatch!(self, s => match s.max_value() {
+            Some(value) => value.into_py_byte_value(py),
+            None => py.None(),
+        })
     }
 
     fn __repr__(&self) -> String {

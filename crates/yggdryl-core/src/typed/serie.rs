@@ -17,10 +17,76 @@ use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
 
 /// The bulk surface a [`Scalar`] gains as a column.
+///
+/// Beyond [`to_options`](Serie::to_options), a `Serie` inherits the **universal aggregations** that
+/// depend only on [`len`](Scalar::len) / [`null_count`](Scalar::null_count) / [`get`](Scalar::get),
+/// so they work for **every** element type — numeric, `bool`, byte, and utf8 alike (unlike the
+/// numeric-only [`Reduce`](crate::typed::Reduce) reductions on [`FixedSerie`]). Two of them are
+/// gated on the value type: [`n_unique`](Serie::n_unique) needs `Eq + Hash`, and the ordering-based
+/// [`min_value`](Serie::min_value) / [`max_value`](Serie::max_value) need `Ord` (so a float column,
+/// whose `f64` value is not `Ord`, has no `min_value`/`max_value` — it uses the NaN-safe numeric
+/// `min`/`max` instead).
 pub trait Serie: Scalar {
     /// Every element as an option, null-aware, decoded into a fresh `Vec`.
     fn to_options(&self) -> Vec<Option<Self::Value>> {
         (0..self.len()).map(|index| self.get(index)).collect()
+    }
+
+    /// The **total** element count (nulls included) — an alias of [`len`](Scalar::len).
+    fn count(&self) -> usize {
+        self.len()
+    }
+
+    /// The count of **non-null** elements — `len - null_count`.
+    fn valid_count(&self) -> usize {
+        self.len() - self.null_count()
+    }
+
+    /// The **first** element (null-aware, at index 0); `None` when empty or the element is null.
+    fn first_value(&self) -> Option<Self::Value> {
+        self.get(0)
+    }
+
+    /// The **last** element (null-aware, at `len - 1`); `None` when empty or the element is null.
+    fn last_value(&self) -> Option<Self::Value> {
+        if self.is_empty() {
+            None
+        } else {
+            self.get(self.len() - 1)
+        }
+    }
+
+    /// The count of **distinct non-null** values. Collects the valid values into a
+    /// [`HashSet`](std::collections::HashSet) — the one allocation is inherent to distinct-counting.
+    fn n_unique(&self) -> usize
+    where
+        Self::Value: Eq + core::hash::Hash,
+    {
+        (0..self.len())
+            .filter_map(|index| self.get(index))
+            .collect::<std::collections::HashSet<Self::Value>>()
+            .len()
+    }
+
+    /// The **ordering-based** minimum over non-null values (a streamed fold, no sort); `None` when
+    /// there are no non-null values. Available only for `Ord` value types — so it gives byte / utf8
+    /// / integer / bool columns a lexicographic-or-numeric min, while a float column (not `Ord`)
+    /// uses the NaN-safe numeric `min` instead.
+    fn min_value(&self) -> Option<Self::Value>
+    where
+        Self::Value: Ord,
+    {
+        (0..self.len()).filter_map(|index| self.get(index)).min()
+    }
+
+    /// The **ordering-based** maximum over non-null values (a streamed fold, no sort); `None` when
+    /// there are no non-null values. Available only for `Ord` value types (see
+    /// [`min_value`](Serie::min_value)).
+    fn max_value(&self) -> Option<Self::Value>
+    where
+        Self::Value: Ord,
+    {
+        (0..self.len()).filter_map(|index| self.get(index)).max()
     }
 }
 
@@ -312,6 +378,37 @@ impl<T: Reduce + Decoder, D: IOBase> FixedSerie<T, D> {
     /// The **mean** as `f64`; `None` when empty.
     pub fn mean(&self) -> Result<Option<f64>, IoError> {
         T::mean(&self.data, 0, self.len)
+    }
+
+    /// The **population standard deviation** as `f64` (the `sqrt` of the variance); `None` when empty.
+    pub fn std(&self) -> Result<Option<f64>, IoError> {
+        T::std(&self.data, 0, self.len)
+    }
+
+    /// The **population variance** as `f64` (`std²`); `None` when empty.
+    pub fn var(&self) -> Result<Option<f64>, IoError> {
+        T::var(&self.data, 0, self.len)
+    }
+
+    /// The **median** as `f64`; `None` when empty. Materializes + sorts the values (an order
+    /// statistic — the single allocation is inherent).
+    pub fn median(&self) -> Result<Option<f64>, IoError> {
+        T::median(&self.data, 0, self.len)
+    }
+
+    /// The **first** element (positional); `None` when empty.
+    pub fn first(&self) -> Result<Option<T::Native>, IoError> {
+        T::first(&self.data, 0, self.len)
+    }
+
+    /// The **last** element (positional); `None` when empty.
+    pub fn last(&self) -> Result<Option<T::Native>, IoError> {
+        T::last(&self.data, 0, self.len)
+    }
+
+    /// How many elements are `>= threshold`.
+    pub fn count_ge(&self, threshold: T::Native) -> Result<usize, IoError> {
+        T::count_ge(&self.data, 0, self.len, threshold)
     }
 }
 

@@ -651,3 +651,157 @@ def test_non_byte_dtype_rejected():
     for dt in (DataTypeId.I64, DataTypeId.Bool, DataTypeId.Decimal128, DataTypeId.Unknown):
         with pytest.raises(ValueError):
             ByteSerie.from_values([b"ab"], dt)
+
+
+# =====================================================================================
+# Serie — the extended numeric reductions (std / var / median / count_ge) and the
+# universal aggregations (count / valid_count / n_unique / first_value / last_value)
+# =====================================================================================
+
+
+def test_std_var_median():
+    col = Serie.from_values([2, 4, 4, 4, 5, 5, 7, 9], DataTypeId.I64)
+    # mean is 5.0; population variance = 32 / 8 = 4.0, std = sqrt(4) = 2.0.
+    assert col.var() == 4.0
+    assert col.std() == 2.0
+    # An even count -> the average of the two middle order statistics (4 and 5).
+    assert col.median() == 4.5
+
+
+def test_count_ge():
+    col = Serie.from_values([2, 4, 4, 4, 5, 5, 7, 9], DataTypeId.I64)
+    assert col.count_ge(5) == 4  # 5, 5, 7, 9 are >= 5
+    assert col.count_ge(4) == 7  # everything but the leading 2
+    assert col.count_ge(2) == 8  # all
+    assert col.count_ge(10) == 0  # none reach 10
+
+
+def test_count_ge_float():
+    col = Serie.from_values([0.5, 1.5, 2.0, 2.5], DataTypeId.F64)
+    assert col.count_ge(2.0) == 2  # 2.0 and 2.5
+
+
+def test_std_var_median_empty_is_none():
+    col = Serie.from_values([], DataTypeId.I64)
+    assert col.std() is None
+    assert col.var() is None
+    assert col.median() is None
+
+
+def test_universal_aggregations_numeric():
+    col = Serie.from_values([2, 4, 4, 4, 5, 5, 7, 9], DataTypeId.I64)
+    assert col.count() == 8  # total, nulls included
+    assert col.valid_count() == 8  # no nulls here
+    assert col.n_unique() == 5  # distinct values {2, 4, 5, 7, 9}
+    assert col.first_value() == 2
+    assert col.last_value() == 9
+
+
+def test_universal_aggregations_nullable():
+    col = Serie.from_options([1, None, 3, None, 5, 5], DataTypeId.I64)
+    assert col.count() == 6  # total, nulls included
+    assert col.valid_count() == 4  # nulls excluded (1, 3, 5, 5)
+    assert col.n_unique() == 3  # distinct non-null {1, 3, 5}
+    assert col.first_value() == 1
+    assert col.last_value() == 5
+
+
+def test_first_last_value_null_slot():
+    # first_value / last_value are null-aware: a null at the edge reads as None.
+    col = Serie.from_options([None, 2, 3, None], DataTypeId.I64)
+    assert col.first_value() is None  # index 0 is null
+    assert col.last_value() is None  # last index is null
+    empty = Serie.from_values([], DataTypeId.I64)
+    assert empty.first_value() is None and empty.last_value() is None
+
+
+def test_n_unique_float():
+    # A float column has no core `n_unique` (f64 is not Eq/Hash) -> distinct bit patterns.
+    col = Serie.from_values([1.0, 2.0, 2.0, 3.0], DataTypeId.F64)
+    assert col.n_unique() == 3
+    assert col.count() == 4
+    assert col.first_value() == 1.0
+    assert col.last_value() == 3.0
+
+
+def test_extended_reductions_reject_bool():
+    col = Serie.from_values([True, False, True], DataTypeId.Bool)
+    for reduce in ("std", "var", "median"):
+        with pytest.raises(TypeError):
+            getattr(col, reduce)()
+    with pytest.raises(TypeError):
+        col.count_ge(1)
+    # The universal aggregations still work on a bool column (no TypeError).
+    assert col.count() == 3
+    assert col.valid_count() == 3
+    assert col.n_unique() == 2  # {True, False}
+    assert col.first_value() is True
+    assert col.last_value() is True
+
+
+def test_extended_reductions_reject_decimal():
+    col = Serie.from_values([1, 2, 3], DataTypeId.Decimal128)
+    for reduce in ("std", "var", "median"):
+        with pytest.raises(TypeError):
+            getattr(col, reduce)()
+    with pytest.raises(TypeError):
+        col.count_ge(1)
+    # Universal aggregations remain available on a decimal column.
+    assert col.count() == 3
+    assert col.valid_count() == 3
+    assert col.n_unique() == 3
+
+
+# =====================================================================================
+# ByteSerie — the universal aggregations (count / valid_count / n_unique / first_value /
+# last_value / min_value / max_value)
+# =====================================================================================
+
+
+def test_bytes_min_max_value_utf8():
+    col = ByteSerie.from_values(["banana", "apple", "cherry"], DataTypeId.Utf8)
+    assert col.min_value() == "apple"  # lexicographic min
+    assert col.max_value() == "cherry"  # lexicographic max
+
+
+def test_bytes_min_max_value_binary():
+    col = ByteSerie.from_values([b"banana", b"apple", b"cherry"], DataTypeId.Binary)
+    assert col.min_value() == b"apple"
+    assert col.max_value() == b"cherry"
+
+
+def test_bytes_universal_aggregations():
+    col = ByteSerie.from_values(["a", "b", "a", "c"], DataTypeId.Utf8)
+    assert col.count() == 4
+    assert col.valid_count() == 4
+    assert col.n_unique() == 3  # {"a", "b", "c"} — the duplicate "a" counts once
+    assert col.first_value() == "a"
+    assert col.last_value() == "c"
+
+
+def test_bytes_universal_aggregations_nullable():
+    col = ByteSerie.from_options(
+        ["banana", None, "apple", None, "cherry"], DataTypeId.Utf8
+    )
+    assert col.count() == 5  # nulls included
+    assert col.valid_count() == 3  # nulls excluded
+    assert col.n_unique() == 3  # distinct non-null
+    assert col.min_value() == "apple"  # nulls excluded from the ordering
+    assert col.max_value() == "cherry"
+    assert col.first_value() == "banana"
+    assert col.last_value() == "cherry"
+
+
+def test_bytes_first_last_value_null_slot():
+    col = ByteSerie.from_options([None, "z"], DataTypeId.Utf8)
+    assert col.first_value() is None  # index 0 is null
+    assert col.last_value() == "z"
+
+
+def test_bytes_min_max_value_empty_is_none():
+    col = ByteSerie.from_values([], DataTypeId.Utf8)
+    assert col.min_value() is None
+    assert col.max_value() is None
+    assert col.first_value() is None
+    assert col.last_value() is None
+    assert col.n_unique() == 0

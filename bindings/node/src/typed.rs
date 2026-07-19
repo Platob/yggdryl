@@ -54,6 +54,25 @@ fn to_error(error: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(error.to_string())
 }
 
+/// The guided error a boolean column raises for a numeric reduction — `Bit` is not a reducible
+/// type, so `sum`/`min`/`max`/`mean`/`std`/`var`/`median`/`countGe` are undefined for it. Shared by
+/// `dispatch_numeric!` and `count_ge`, so every reduction refuses a bool column with one message.
+fn bool_reduce_error() -> napi::Error {
+    to_error(
+        "a boolean column does not reduce: sum/min/max/mean need a numeric element type — \
+         build a numeric Serie (e.g. DataTypeId.I64())",
+    )
+}
+
+/// The guided error a decimal column raises for a numeric reduction — the fixed-point decimal types
+/// are not reducible. Shared by `dispatch_numeric!` and `count_ge`.
+fn decimal_reduce_error() -> napi::Error {
+    to_error(
+        "a decimal column does not reduce: sum/min/max/mean are not defined for fixed-point \
+         decimals — read the raw unscaled values with get/values or format with toDecimalString",
+    )
+}
+
 /// One JS-side element value — a `number`, a `BigInt`, or a `boolean` (the three shapes a typed
 /// element crosses as). Used only inside the binding; the `#[napi]` signatures spell it out so the
 /// generated `.d.ts` renders the union.
@@ -314,6 +333,27 @@ fn reprecision<T: Encoder + Decoder>(
     clone_serie(serie).with_precision_scale(precision, scale)
 }
 
+/// Distinct-value count for a 32-bit float column by IEEE-754 bit pattern — the core `n_unique`
+/// needs `Eq + Hash`, which `f32` lacks, so the binding counts distinct bit patterns (equal bits ==
+/// equal value). DESIGN: `-0.0`/`+0.0` and distinct NaN payloads count as separate values.
+fn n_unique_f32(serie: &FixedSerie<Float32>) -> usize {
+    (0..serie.len())
+        .filter_map(|index| serie.get(index))
+        .map(f32::to_bits)
+        .collect::<std::collections::HashSet<u32>>()
+        .len()
+}
+
+/// Distinct-value count for a 64-bit float column by IEEE-754 bit pattern — the `f64` counterpart of
+/// `n_unique_f32`.
+fn n_unique_f64(serie: &FixedSerie<Float64>) -> usize {
+    (0..serie.len())
+        .filter_map(|index| serie.get(index))
+        .map(f64::to_bits)
+        .collect::<std::collections::HashSet<u64>>()
+        .len()
+}
+
 // ---- the erased column + its dispatch --------------------------------------------------
 
 /// A `FixedSerie<T>` for every concrete element type — the type-erased backing of [`Serie`].
@@ -380,18 +420,11 @@ macro_rules! dispatch_numeric {
             SerieInner::U128($serie) => $body,
             SerieInner::F32($serie) => $body,
             SerieInner::F64($serie) => $body,
-            SerieInner::Bool(_) => Err(to_error(
-                "a boolean column does not reduce: sum/min/max/mean need a numeric element type — \
-                 build a numeric Serie (e.g. DataTypeId.I64())",
-            )),
+            SerieInner::Bool(_) => Err(bool_reduce_error()),
             SerieInner::Decimal32(_)
             | SerieInner::Decimal64(_)
             | SerieInner::Decimal128(_)
-            | SerieInner::Decimal256(_) => Err(to_error(
-                "a decimal column does not reduce: sum/min/max/mean are not defined for fixed-point \
-                 decimals — read the raw unscaled values with get/values or format with \
-                 toDecimalString",
-            )),
+            | SerieInner::Decimal256(_) => Err(decimal_reduce_error()),
         }
     };
 }
@@ -666,6 +699,109 @@ impl Serie {
     #[napi]
     pub fn mean(&self) -> napi::Result<Option<f64>> {
         dispatch_numeric!(self, serie => serie.mean().map_err(to_error))
+    }
+
+    /// The **population standard deviation** as a `number` (the `sqrt` of the variance), or `null`
+    /// when empty. Throws the guided `Error` on a boolean or decimal column.
+    #[napi]
+    pub fn std(&self) -> napi::Result<Option<f64>> {
+        dispatch_numeric!(self, serie => serie.std().map_err(to_error))
+    }
+
+    /// The **population variance** as a `number` (`std²`), or `null` when empty. Throws the guided
+    /// `Error` on a boolean or decimal column.
+    #[napi]
+    pub fn var(&self) -> napi::Result<Option<f64>> {
+        dispatch_numeric!(self, serie => serie.var().map_err(to_error))
+    }
+
+    /// The **median** as a `number`, or `null` when empty. Throws the guided `Error` on a boolean or
+    /// decimal column.
+    #[napi]
+    pub fn median(&self) -> napi::Result<Option<f64>> {
+        dispatch_numeric!(self, serie => serie.median().map_err(to_error))
+    }
+
+    /// How many elements are **`>= threshold`** — the threshold crosses in the same shape the
+    /// column's elements do (a `number` for a narrow integer or float, a `BigInt` for a wide
+    /// integer), converted to the column's native element type. Throws the guided `Error` on a
+    /// boolean or decimal column.
+    #[napi]
+    pub fn count_ge(&self, threshold: Either3<f64, BigInt, bool>) -> napi::Result<u32> {
+        let count = match &self.inner {
+            SerieInner::I8(serie) => serie.count_ge(to_i8(threshold)?),
+            SerieInner::U8(serie) => serie.count_ge(to_u8(threshold)?),
+            SerieInner::I16(serie) => serie.count_ge(to_i16(threshold)?),
+            SerieInner::U16(serie) => serie.count_ge(to_u16(threshold)?),
+            SerieInner::I32(serie) => serie.count_ge(to_i32(threshold)?),
+            SerieInner::U32(serie) => serie.count_ge(to_u32(threshold)?),
+            SerieInner::I64(serie) => serie.count_ge(to_i64(threshold)?),
+            SerieInner::U64(serie) => serie.count_ge(to_u64(threshold)?),
+            SerieInner::I128(serie) => serie.count_ge(to_i128(threshold)?),
+            SerieInner::U128(serie) => serie.count_ge(to_u128(threshold)?),
+            SerieInner::F32(serie) => serie.count_ge(to_f32(threshold)?),
+            SerieInner::F64(serie) => serie.count_ge(to_f64(threshold)?),
+            SerieInner::Bool(_) => return Err(bool_reduce_error()),
+            SerieInner::Decimal32(_)
+            | SerieInner::Decimal64(_)
+            | SerieInner::Decimal128(_)
+            | SerieInner::Decimal256(_) => return Err(decimal_reduce_error()),
+        };
+        count.map(|value| value as u32).map_err(to_error)
+    }
+
+    /// The **total** element count (nulls included) — an alias of `len`. Works for every element
+    /// type (no throw).
+    #[napi]
+    pub fn count(&self) -> u32 {
+        dispatch!(self, serie => serie.count() as u32)
+    }
+
+    /// The count of **non-null** elements (`len - nullCount`). Works for every element type.
+    #[napi]
+    pub fn valid_count(&self) -> u32 {
+        dispatch!(self, serie => serie.valid_count() as u32)
+    }
+
+    /// The count of **distinct non-null** values. Works for every element type; a float column
+    /// counts distinct by IEEE-754 bit pattern (the core `n_unique` needs `Eq + Hash`, which
+    /// `f32`/`f64` lack).
+    #[napi]
+    pub fn n_unique(&self) -> u32 {
+        let count = match &self.inner {
+            SerieInner::I8(serie) => serie.n_unique(),
+            SerieInner::U8(serie) => serie.n_unique(),
+            SerieInner::I16(serie) => serie.n_unique(),
+            SerieInner::U16(serie) => serie.n_unique(),
+            SerieInner::I32(serie) => serie.n_unique(),
+            SerieInner::U32(serie) => serie.n_unique(),
+            SerieInner::I64(serie) => serie.n_unique(),
+            SerieInner::U64(serie) => serie.n_unique(),
+            SerieInner::I128(serie) => serie.n_unique(),
+            SerieInner::U128(serie) => serie.n_unique(),
+            SerieInner::F32(serie) => n_unique_f32(serie),
+            SerieInner::F64(serie) => n_unique_f64(serie),
+            SerieInner::Bool(serie) => serie.n_unique(),
+            SerieInner::Decimal32(serie) => serie.n_unique(),
+            SerieInner::Decimal64(serie) => serie.n_unique(),
+            SerieInner::Decimal128(serie) => serie.n_unique(),
+            SerieInner::Decimal256(serie) => serie.n_unique(),
+        };
+        count as u32
+    }
+
+    /// The **first** element value (null-aware, at index 0) as a `number` / `BigInt` / `boolean`, or
+    /// `null` when empty or the element is null. Works for every element type.
+    #[napi]
+    pub fn first_value(&self) -> Option<Either3<f64, BigInt, bool>> {
+        dispatch!(self, serie => serie.first_value().map(|value| value.to_js()))
+    }
+
+    /// The **last** element value (null-aware, at `len - 1`) as a `number` / `BigInt` / `boolean`,
+    /// or `null` when empty or the element is null. Works for every element type.
+    #[napi]
+    pub fn last_value(&self) -> Option<Either3<f64, BigInt, bool>> {
+        dispatch!(self, serie => serie.last_value().map(|value| value.to_js()))
     }
 
     /// A fresh column keeping only the elements where `mask` is truthy — `mask` is either an array
@@ -1118,6 +1254,53 @@ impl ByteSerie {
     pub fn is_valid(&self, index: u32) -> bool {
         let index = index as usize;
         byte_dispatch!(self, serie => serie.is_valid(index))
+    }
+
+    /// The **total** element count (nulls included) — an alias of `len`.
+    #[napi]
+    pub fn count(&self) -> u32 {
+        byte_dispatch!(self, serie => serie.count() as u32)
+    }
+
+    /// The count of **non-null** elements (`len - nullCount`).
+    #[napi]
+    pub fn valid_count(&self) -> u32 {
+        byte_dispatch!(self, serie => serie.valid_count() as u32)
+    }
+
+    /// The count of **distinct non-null** values (a binary element by its bytes, a utf8 element by
+    /// its string).
+    #[napi]
+    pub fn n_unique(&self) -> u32 {
+        byte_dispatch!(self, serie => serie.n_unique() as u32)
+    }
+
+    /// The **first** element (null-aware, at index 0) as a `Buffer` (binary) / `string` (utf8), or
+    /// `null` when empty or the element is null.
+    #[napi]
+    pub fn first_value(&self) -> Option<Either<Buffer, String>> {
+        byte_dispatch!(self, serie => serie.first_value().map(|value| value.to_js_element()))
+    }
+
+    /// The **last** element (null-aware, at `len - 1`) as a `Buffer` / `string`, or `null` when
+    /// empty or the element is null.
+    #[napi]
+    pub fn last_value(&self) -> Option<Either<Buffer, String>> {
+        byte_dispatch!(self, serie => serie.last_value().map(|value| value.to_js_element()))
+    }
+
+    /// The **lexicographic minimum** over non-null values (a binary element ordered by its bytes, a
+    /// utf8 element by its string), or `null` when there are no non-null values.
+    #[napi]
+    pub fn min_value(&self) -> Option<Either<Buffer, String>> {
+        byte_dispatch!(self, serie => serie.min_value().map(|value| value.to_js_element()))
+    }
+
+    /// The **lexicographic maximum** over non-null values, or `null` when there are no non-null
+    /// values.
+    #[napi]
+    pub fn max_value(&self) -> Option<Either<Buffer, String>> {
+        byte_dispatch!(self, serie => serie.max_value().map(|value| value.to_js_element()))
     }
 
     /// The element [`DataTypeId`](crate::datatype_id::DataTypeId) of this column.

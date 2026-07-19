@@ -9,8 +9,10 @@
 //! - [`Encoder`] / [`Decoder`] — write / read a native value as an element of that type into / from
 //!   **any** [`IOBase`](crate::io::memory::IOBase), forwarding to the byte layer's vectorized typed
 //!   array kernels.
-//! - [`Reduce`] — the numeric aggregations (`sum`/`min`/`max`/`mean`) a type routes to the source's
-//!   [`Aggregate`](crate::io::memory::Aggregate) kernels.
+//! - [`Reduce`] — the numeric aggregations (`sum`/`min`/`max`/`mean`/`std`/`var`/`median`/`first`/
+//!   `last`/`count_ge`) a type routes to the source's [`Aggregate`](crate::io::memory::Aggregate)
+//!   kernels; every [`Serie`] also inherits the type-agnostic universal aggregations
+//!   (`count`/`valid_count`/`first_value`/`last_value`/`n_unique`/`min_value`/`max_value`).
 //! - [`Scalar`] — an indexed, possibly-null typed value; [`Serie`] (`: Scalar`) refines it into a
 //!   **column** — many elements over a data buffer plus an optional validity bit buffer.
 //! - [`Field`] — a column's metadata (name, type, nullable), carried in a [`Headers`](crate::headers::Headers).

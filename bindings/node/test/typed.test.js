@@ -457,3 +457,146 @@ test('ByteSerie: guided errors on the build side', () => {
     /expected a string element for a utf8 column/
   )
 })
+
+// -------------------------------------------------------------------------------------
+// Numeric aggregations — std / var / median / countGe
+// -------------------------------------------------------------------------------------
+
+test('std / var / median / countGe over a known I64 dataset', () => {
+  // [2,4,4,4,5,5,7,9]: mean 5, population variance 4, std 2, median 4.5
+  const col = Serie.fromValues([2n, 4n, 4n, 4n, 5n, 5n, 7n, 9n], DataTypeId.I64())
+  assert.equal(col.mean(), 5.0)
+  assert.equal(col.var(), 4.0)
+  assert.equal(col.std(), 2.0)
+  assert.equal(col.median(), 4.5)
+  // count_ge is inclusive (>=): {5, 5, 7, 9} are >= 5, so four elements
+  assert.equal(col.countGe(5n), 4)
+  assert.equal(col.countGe(7n), 2) // {7, 9}
+  assert.equal(col.countGe(10n), 0)
+})
+
+test('countGe converts the threshold through the arm native (narrow int / float)', () => {
+  const i32 = Serie.fromValues([1, 2, 3, 4, 5], DataTypeId.I32())
+  assert.equal(i32.countGe(3), 3) // narrow integer threshold is a number
+  const f64 = Serie.fromValues([1.5, 2.5, 3.5], DataTypeId.F64())
+  assert.equal(f64.countGe(2.5), 2) // float threshold is a number
+})
+
+test('std / var / median / countGe are null on an empty column', () => {
+  const col = Serie.fromValues([], DataTypeId.I64())
+  assert.equal(col.std(), null)
+  assert.equal(col.var(), null)
+  assert.equal(col.median(), null)
+  assert.equal(col.countGe(0n), 0)
+})
+
+// -------------------------------------------------------------------------------------
+// Universal aggregations — count / validCount / nUnique / firstValue / lastValue
+// -------------------------------------------------------------------------------------
+
+test('count / validCount / nUnique / firstValue / lastValue on a numeric column', () => {
+  const col = Serie.fromValues([2n, 4n, 4n, 4n, 5n, 5n, 7n, 9n], DataTypeId.I64())
+  assert.equal(col.count(), 8) // total, nulls included
+  assert.equal(col.validCount(), 8) // no nulls
+  assert.equal(col.nUnique(), 5) // {2,4,5,7,9}
+  assert.equal(col.firstValue(), 2n)
+  assert.equal(col.lastValue(), 9n)
+})
+
+test('the universal aggregations are null-aware', () => {
+  const col = Serie.fromOptions([1, null, 3, null, 3], DataTypeId.I32())
+  assert.equal(col.count(), 5) // total counts nulls
+  assert.equal(col.validCount(), 3) // 3 non-null
+  assert.equal(col.nUnique(), 2) // distinct non-null: {1, 3}
+  assert.equal(col.firstValue(), 1)
+  assert.equal(col.lastValue(), 3)
+})
+
+test('firstValue / lastValue are null when the edge element is null or empty', () => {
+  const leadingNull = Serie.fromOptions([null, 2, 3], DataTypeId.I32())
+  assert.equal(leadingNull.firstValue(), null) // index 0 is null
+  assert.equal(leadingNull.lastValue(), 3)
+
+  const empty = Serie.fromValues([], DataTypeId.I64())
+  assert.equal(empty.firstValue(), null)
+  assert.equal(empty.lastValue(), null)
+  assert.equal(empty.count(), 0)
+  assert.equal(empty.nUnique(), 0)
+})
+
+test('std / var / median / countGe throw the guided error on a bool column', () => {
+  const col = Serie.fromValues([true, false, true], DataTypeId.Bool())
+  assert.throws(() => col.std(), /boolean column does not reduce/)
+  assert.throws(() => col.var(), /boolean column does not reduce/)
+  assert.throws(() => col.median(), /boolean column does not reduce/)
+  assert.throws(() => col.countGe(true), /boolean column does not reduce/)
+  // but the universal aggregations still work on a bool column (no throw)
+  assert.equal(col.count(), 3)
+  assert.equal(col.nUnique(), 2) // {true, false}
+  assert.equal(col.firstValue(), true)
+  assert.equal(col.lastValue(), true)
+})
+
+test('std / var / median / countGe throw the guided error on a decimal column', () => {
+  const col = Serie.fromValues([12345n, 5n], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+  assert.throws(() => col.std(), /decimal column does not reduce/)
+  assert.throws(() => col.var(), /decimal column does not reduce/)
+  assert.throws(() => col.median(), /decimal column does not reduce/)
+  assert.throws(() => col.countGe(0n), /decimal column does not reduce/)
+  // the universal aggregations still work on a decimal column
+  assert.equal(col.count(), 2)
+  assert.equal(col.nUnique(), 2)
+  assert.equal(col.firstValue(), 12345n)
+})
+
+// -------------------------------------------------------------------------------------
+// ByteSerie universal aggregations — count / validCount / nUnique / first/last/min/max
+// -------------------------------------------------------------------------------------
+
+test('ByteSerie: minValue / maxValue are lexicographic on a utf8 column', () => {
+  const col = ByteSerie.fromValues(['banana', 'apple', 'cherry'], DataTypeId.Utf8())
+  assert.equal(col.minValue(), 'apple') // lexicographic min
+  assert.equal(col.maxValue(), 'cherry') // lexicographic max
+  assert.equal(col.count(), 3)
+  assert.equal(col.validCount(), 3)
+  assert.equal(col.firstValue(), 'banana') // positional first
+  assert.equal(col.lastValue(), 'cherry') // positional last
+})
+
+test('ByteSerie: nUnique counts distinct values with a duplicate', () => {
+  const col = ByteSerie.fromValues(['a', 'b', 'a', 'c', 'b'], DataTypeId.Utf8())
+  assert.equal(col.count(), 5)
+  assert.equal(col.nUnique(), 3) // {a, b, c}
+})
+
+test('ByteSerie: the universal aggregations are null-aware', () => {
+  const col = ByteSerie.fromOptions(['b', null, 'a', null, 'a'], DataTypeId.Utf8())
+  assert.equal(col.count(), 5) // total counts nulls
+  assert.equal(col.validCount(), 3) // 3 non-null
+  assert.equal(col.nUnique(), 2) // distinct non-null: {a, b}
+  assert.equal(col.minValue(), 'a') // over non-null values
+  assert.equal(col.maxValue(), 'b')
+  assert.equal(col.firstValue(), 'b') // index 0
+  assert.equal(col.lastValue(), 'a') // last is index 4
+})
+
+test('ByteSerie: minValue / maxValue on a binary column order by bytes', () => {
+  const col = ByteSerie.fromValues(
+    [Buffer.from([2, 0]), Buffer.from([1, 9]), Buffer.from([2])],
+    DataTypeId.Binary()
+  )
+  assert.deepEqual(col.minValue(), Buffer.from([1, 9])) // 0x01.. < 0x02..
+  assert.deepEqual(col.maxValue(), Buffer.from([2, 0])) // [2,0] > [2] (longer, shared prefix)
+  assert.deepEqual(col.firstValue(), Buffer.from([2, 0]))
+  assert.deepEqual(col.lastValue(), Buffer.from([2]))
+})
+
+test('ByteSerie: min/max/first/last are null on an empty column', () => {
+  const col = ByteSerie.fromValues([], DataTypeId.Utf8())
+  assert.equal(col.count(), 0)
+  assert.equal(col.nUnique(), 0)
+  assert.equal(col.minValue(), null)
+  assert.equal(col.maxValue(), null)
+  assert.equal(col.firstValue(), null)
+  assert.equal(col.lastValue(), null)
+})

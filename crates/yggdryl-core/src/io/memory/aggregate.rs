@@ -1,10 +1,11 @@
 //! [`Aggregate`] — **vectorized statistical aggregations over any [`IOBase`] source**.
 //!
 //! A blanket trait (`impl<T: IOBase> Aggregate for T`), so every source — a `Heap`, a mapped file,
-//! a device buffer — gets the same reductions: `sum` / `mean` / `min` / `max` / `std` / `first` /
-//! `last` and the threshold filter `count_ge`, for **every native numeric width** (`i8`…`u128`,
-//! `f32`, `f64`). Each streams the typed data through a fixed **stack** chunk via the type's fast
-//! contiguous bulk read (zero heap allocation in the reduction loop) and runs the dense,
+//! a device buffer — gets the same reductions: `sum` / `mean` / `min` / `max` / `std` / `var` /
+//! `median` / `first` / `last` and the threshold filter `count_ge`, for **every native numeric
+//! width** (`i8`…`u128`, `f32`, `f64`). Each streams the typed data through a fixed **stack** chunk
+//! via the type's fast contiguous bulk read (zero heap allocation in the reduction loop — the sole
+//! exception is `median`, which must materialize the values to sort) and runs the dense,
 //! LLVM-vectorized loop. Float `min`/`max` reduce with the type's own `min`/`max`, so they **ignore
 //! NaN** order-independently. A GPU-backed source overrides these with device kernels.
 
@@ -14,12 +15,13 @@ use super::{IOBase, IoError};
 /// stack while the loop is long enough for the compiler to auto-vectorize.
 const AGG_CHUNK: usize = 1024;
 
-/// Emits the full aggregation set (`sum` / `min` / `max` / `mean` / `std` / `first` / `last` /
-/// `count_ge`) for one numeric type. Reductions stream through a stack chunk; single-element
-/// `first`/`last` reuse the same bulk reader over a one-element slice.
+/// Emits the full aggregation set (`sum` / `min` / `max` / `mean` / `std` / `var` / `median` /
+/// `first` / `last` / `count_ge`) for one numeric type. Reductions stream through a stack chunk;
+/// single-element `first`/`last` reuse the same bulk reader over a one-element slice; `median` is
+/// the sole one that materializes (an order statistic needs the sorted values).
 macro_rules! agg_methods {
     ($t:ty, $read:ident, $acc:ty, $minf:path, $maxf:path,
-     $sum:ident, $min:ident, $max:ident, $mean:ident, $std:ident,
+     $sum:ident, $min:ident, $max:ident, $mean:ident, $std:ident, $var:ident, $median:ident,
      $first:ident, $last:ident, $count_ge:ident) => {
         #[doc = concat!("**Sum** of `count` `", stringify!($t), "`s at `offset` (as `",
             stringify!($acc), "`).")]
@@ -83,9 +85,9 @@ macro_rules! agg_methods {
             Ok(Some(self.$sum(offset, count)? as f64 / count as f64))
         }
 
-        #[doc = concat!("**Population standard deviation** of `count` `", stringify!($t),
-            "`s as `f64`; `None` when empty. One streamed pass (sum + sum-of-squares).")]
-        fn $std(&self, offset: u64, count: usize) -> Result<Option<f64>, IoError> {
+        #[doc = concat!("**Population variance** of `count` `", stringify!($t),
+            "`s as `f64` (`std²`); `None` when empty. One streamed pass (sum + sum-of-squares).")]
+        fn $var(&self, offset: u64, count: usize) -> Result<Option<f64>, IoError> {
             if count == 0 {
                 return Ok(None);
             }
@@ -105,7 +107,41 @@ macro_rules! agg_methods {
             }
             let n = count as f64;
             let mean = sum / n;
-            Ok(Some((sum_sq / n - mean * mean).max(0.0).sqrt()))
+            Ok(Some((sum_sq / n - mean * mean).max(0.0)))
+        }
+
+        #[doc = concat!("**Population standard deviation** of `count` `", stringify!($t),
+            "`s as `f64` (the `sqrt` of the variance); `None` when empty.")]
+        fn $std(&self, offset: u64, count: usize) -> Result<Option<f64>, IoError> {
+            Ok(self.$var(offset, count)?.map(f64::sqrt))
+        }
+
+        #[doc = concat!("**Median** of `count` `", stringify!($t),
+            "`s as `f64`; `None` when empty. Unlike the streaming reductions this **materializes** ",
+            "the `count` values into one pre-sized `Vec` and sorts them — the single allocation is ",
+            "inherent to an order statistic (a total order is used so a float NaN never panics).")]
+        fn $median(&self, offset: u64, count: usize) -> Result<Option<f64>, IoError> {
+            if count == 0 {
+                return Ok(None);
+            }
+            let width = core::mem::size_of::<$t>() as u64;
+            let mut values: Vec<$t> = Vec::with_capacity(count);
+            let mut chunk = [0 as $t; AGG_CHUNK];
+            let mut done = 0usize;
+            while done < count {
+                let take = (count - done).min(AGG_CHUNK);
+                self.$read(offset + done as u64 * width, &mut chunk[..take])?;
+                values.extend_from_slice(&chunk[..take]);
+                done += take;
+            }
+            values.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+            let mid = count / 2;
+            let median = if count.is_multiple_of(2) {
+                (values[mid - 1] as f64 + values[mid] as f64) / 2.0
+            } else {
+                values[mid] as f64
+            };
+            Ok(Some(median))
         }
 
         #[doc = concat!("The **first** `", stringify!($t), "` at `offset`; `None` when `count == 0`.")]
@@ -153,9 +189,9 @@ macro_rules! agg_methods {
 }
 
 /// **Vectorized statistical aggregations over any source.** A blanket trait over every
-/// [`IOBase`]: `sum` / `min` / `max` / `mean` / `std` / `first` / `last` and the `count_ge` filter,
-/// for each native numeric width. `count` is the **element** count (not bytes); pair it with
-/// [`element_count`](IOBase::element_count) to reduce a whole typed source.
+/// [`IOBase`]: `sum` / `min` / `max` / `mean` / `std` / `var` / `median` / `first` / `last` and the
+/// `count_ge` filter, for each native numeric width. `count` is the **element** count (not bytes);
+/// pair it with [`element_count`](IOBase::element_count) to reduce a whole typed source.
 ///
 /// ```
 /// use yggdryl_core::io::memory::{Aggregate, Heap, IOBase};
@@ -166,6 +202,8 @@ macro_rules! agg_methods {
 /// assert_eq!(h.min_i64(0, 6).unwrap(), Some(4));
 /// assert_eq!(h.max_i64(0, 6).unwrap(), Some(42));
 /// assert_eq!(h.mean_i64(0, 6).unwrap(), Some(18.0));
+/// assert_eq!(h.median_i64(0, 6).unwrap(), Some(15.5)); // mean of the two middle values
+/// assert!((h.var_i64(0, 6).unwrap().unwrap() - 151.6667).abs() < 1e-3); // population variance
 /// assert_eq!(h.first_i64(0, 6).unwrap(), Some(4));
 /// assert_eq!(h.last_i64(0, 6).unwrap(), Some(42));
 /// assert_eq!(h.count_ge_i64(0, 6, 16).unwrap(), 3);
@@ -182,6 +220,8 @@ pub trait Aggregate: IOBase {
         max_i8,
         mean_i8,
         std_i8,
+        var_i8,
+        median_i8,
         first_i8,
         last_i8,
         count_ge_i8
@@ -197,6 +237,8 @@ pub trait Aggregate: IOBase {
         max_u8,
         mean_u8,
         std_u8,
+        var_u8,
+        median_u8,
         first_u8,
         last_u8,
         count_ge_u8
@@ -212,6 +254,8 @@ pub trait Aggregate: IOBase {
         max_i16,
         mean_i16,
         std_i16,
+        var_i16,
+        median_i16,
         first_i16,
         last_i16,
         count_ge_i16
@@ -227,6 +271,8 @@ pub trait Aggregate: IOBase {
         max_u16,
         mean_u16,
         std_u16,
+        var_u16,
+        median_u16,
         first_u16,
         last_u16,
         count_ge_u16
@@ -242,6 +288,8 @@ pub trait Aggregate: IOBase {
         max_i32,
         mean_i32,
         std_i32,
+        var_i32,
+        median_i32,
         first_i32,
         last_i32,
         count_ge_i32
@@ -257,6 +305,8 @@ pub trait Aggregate: IOBase {
         max_u32,
         mean_u32,
         std_u32,
+        var_u32,
+        median_u32,
         first_u32,
         last_u32,
         count_ge_u32
@@ -272,6 +322,8 @@ pub trait Aggregate: IOBase {
         max_i64,
         mean_i64,
         std_i64,
+        var_i64,
+        median_i64,
         first_i64,
         last_i64,
         count_ge_i64
@@ -287,6 +339,8 @@ pub trait Aggregate: IOBase {
         max_u64,
         mean_u64,
         std_u64,
+        var_u64,
+        median_u64,
         first_u64,
         last_u64,
         count_ge_u64
@@ -302,6 +356,8 @@ pub trait Aggregate: IOBase {
         max_i128,
         mean_i128,
         std_i128,
+        var_i128,
+        median_i128,
         first_i128,
         last_i128,
         count_ge_i128
@@ -317,6 +373,8 @@ pub trait Aggregate: IOBase {
         max_u128,
         mean_u128,
         std_u128,
+        var_u128,
+        median_u128,
         first_u128,
         last_u128,
         count_ge_u128
@@ -332,6 +390,8 @@ pub trait Aggregate: IOBase {
         max_f32,
         mean_f32,
         std_f32,
+        var_f32,
+        median_f32,
         first_f32,
         last_f32,
         count_ge_f32
@@ -347,6 +407,8 @@ pub trait Aggregate: IOBase {
         max_f64,
         mean_f64,
         std_f64,
+        var_f64,
+        median_f64,
         first_f64,
         last_f64,
         count_ge_f64
