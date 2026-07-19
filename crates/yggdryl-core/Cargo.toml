@@ -60,6 +60,12 @@ compression = ["dep:flate2", "dep:zstd", "dep:xz2"]
 # layer is `io::memory`; `MemoryInfo` lives at the io root). The VRAM queue + device kernels drop in
 # behind this feature later.
 amd = []
+# `arrow` enables the Apache Arrow interop bridge (`crate::arrow`): every element type converts to /
+# from its closest Arrow `DataType` / `Field` / `Buffer` / `Array`, and a struct column to / from a
+# `RecordBatch` + `Schema` — zero-copy where possible, closest-match with a documented lossy edge
+# when Arrow has no exact type. The core stays dependency-free by default; this is the second opt-in
+# feature that pulls external crates — the granular `arrow-*` crates (schema/array/buffer/data).
+arrow = ["dep:arrow-schema", "dep:arrow-array", "dep:arrow-buffer", "dep:arrow-data"]
 
 [dependencies]
 # Dependency-free by default: the core is the abstract memory-access traits (with an in-heap
@@ -75,3 +81,10 @@ flate2 = { version = "1.1", optional = true, default-features = false, features 
 ] }
 zstd = { version = "0.13", optional = true }
 xz2 = { version = "0.1", optional = true }
+
+# The Apache Arrow interop crates (behind `--features arrow`) — the granular arrow-rs crates, so the
+# bridge pulls only the type-system + array/buffer pieces it needs, not the umbrella `arrow` crate.
+arrow-schema = { version = "56", optional = true, default-features = false }
+arrow-array = { version = "56", optional = true, default-features = false }
+arrow-buffer = { version = "56", optional = true, default-features = false }
+arrow-data = { version = "56", optional = true, default-features = false }
