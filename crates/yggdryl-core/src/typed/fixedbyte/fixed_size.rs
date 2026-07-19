@@ -186,6 +186,14 @@ impl<T: VarType, D: IOBase> FixedSizeSerie<T, D> {
         self.validity.as_ref()
     }
 
+    /// Every element as its owned value, ignoring validity (a byte slot that does not decode — an
+    /// invalid-UTF-8 `FixedUtf8` — is skipped). Mirrors [`VarSerie::values`](crate::typed::VarSerie).
+    pub fn values(&self) -> Vec<T::Owned> {
+        (0..self.len)
+            .filter_map(|index| self.bytes_at(index).and_then(|bytes| T::to_owned(&bytes)))
+            .collect()
+    }
+
     /// The column's [`Field`](crate::typed::Field) — `name`, `type_id`, `nullable`, and the fixed
     /// byte `width`.
     pub fn field(&self) -> HeaderField {
