@@ -32,6 +32,8 @@
 //! `mean` throw the guided `Error`; instead read the raw unscaled value with `get` / `values`, place
 //! the point with `toDecimalString`, and read `precision` / `scale` from the [`Field`].
 
+use arrow_ipc::reader::StreamReader;
+use arrow_ipc::writer::StreamWriter;
 use napi::bindgen_prelude::{
     BigInt, Buffer, Either, Either3, Either5, FromNapiValue, Null, ToNapiValue,
 };
@@ -41,6 +43,7 @@ use napi_derive::napi;
 use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
 
+use yggdryl_core::arrow::{struct_serie_from_record_batch, struct_serie_to_record_batch};
 use yggdryl_core::datatype_id::DataTypeId as DtId;
 use yggdryl_core::io::memory::{Heap as CoreHeap, IOBase};
 use yggdryl_core::typed::fixedbit::Bit;
@@ -2799,6 +2802,55 @@ impl StructSerie {
         StructField {
             inner: self.inner.field(),
         }
+    }
+
+    /// Serializes this struct to an Arrow **IPC stream** — the standard `apache-arrow` (JS)
+    /// interchange. Converts to a `RecordBatch` (via `yggdryl_core::arrow`) and writes the schema
+    /// then the batch with `arrow_ipc::writer::StreamWriter`, returning the bytes as a `Buffer`.
+    /// Read them in `apache-arrow` JS with `tableFromIPC(buf)`, or back into a [`StructSerie`] with
+    /// [`fromIpc`](StructSerie::from_ipc).
+    ///
+    /// Throws the guided `Error` when the struct holds **null rows** — an Arrow `RecordBatch` has
+    /// no row-level validity, so those rows cannot be represented (fill or drop them first, or map
+    /// the struct to a `StructArray`, which does carry row validity).
+    #[napi]
+    pub fn to_ipc(&self) -> napi::Result<Buffer> {
+        let batch = struct_serie_to_record_batch(&self.inner).map_err(to_error)?;
+        let mut bytes: Vec<u8> = Vec::new();
+        {
+            let schema = batch.schema();
+            let mut writer = StreamWriter::try_new(&mut bytes, &schema).map_err(to_error)?;
+            writer.write(&batch).map_err(to_error)?;
+            writer.finish().map_err(to_error)?;
+        }
+        Ok(Buffer::from(bytes))
+    }
+
+    /// Rebuilds a [`StructSerie`] from an Arrow **IPC stream** `buffer` — as produced by
+    /// [`toIpc`](StructSerie::to_ipc) or `apache-arrow`'s `tableToIPC(table)`. Reads the stream with
+    /// `arrow_ipc::reader::StreamReader`, takes its **first** `RecordBatch`, and rebuilds the columns
+    /// (via `yggdryl_core::arrow`). Throws the guided `Error` when `buffer` is not a valid Arrow IPC
+    /// stream, or carries a schema but no record batch.
+    #[napi(factory)]
+    pub fn from_ipc(buffer: Buffer) -> napi::Result<StructSerie> {
+        let bytes: &[u8] = buffer.as_ref();
+        let mut reader = StreamReader::try_new(bytes, None).map_err(|error| {
+            to_error(format!(
+                "invalid Arrow IPC stream: {error} — pass the bytes of an Arrow IPC stream \
+                 (StructSerie.toIpc(...) or apache-arrow's tableToIPC(table))"
+            ))
+        })?;
+        let batch =
+            match reader.next() {
+                Some(result) => result.map_err(to_error)?,
+                None => return Err(to_error(
+                    "empty Arrow IPC stream: the stream carries a schema but no record batch — \
+                     write at least one batch first (StructSerie.toIpc always does)",
+                )),
+            };
+        Ok(StructSerie {
+            inner: struct_serie_from_record_batch(&batch).map_err(to_error)?,
+        })
     }
 
     /// A short debug string — the struct's name, column count, row count, and null count.

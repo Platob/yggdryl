@@ -440,7 +440,7 @@ pub(crate) fn column_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Column> {
 
 /// Clones a [`Serie`]'s erased [`Inner`] into a core [`Column`] — every fixed-width variant is a
 /// cheap `FixedSerie` clone (it shares its encoded bytes).
-fn column_from_inner(inner: &Inner) -> Column {
+pub(crate) fn column_from_inner(inner: &Inner) -> Column {
     match inner {
         Inner::I8(s) => Column::from(s.clone()),
         Inner::U8(s) => Column::from(s.clone()),
@@ -464,7 +464,7 @@ fn column_from_inner(inner: &Inner) -> Column {
 
 /// Clones a [`ByteSerie`]'s erased [`ByteInner`] into a core [`Column`] — reconstructing the
 /// variable-length / fixed-size carrier from its parts (they do not derive `Clone`).
-fn column_from_byte_inner(inner: &ByteInner) -> Column {
+pub(crate) fn column_from_byte_inner(inner: &ByteInner) -> Column {
     match inner {
         ByteInner::Binary(s) => Column::from(rebuild_var(s)),
         ByteInner::LargeBinary(s) => Column::from(rebuild_var(s)),

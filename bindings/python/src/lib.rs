@@ -28,6 +28,7 @@
 
 use pyo3::prelude::*;
 
+mod arrow;
 mod builders;
 mod compression;
 mod datatype_id;

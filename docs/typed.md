@@ -596,6 +596,68 @@ A `StructSerie` maps to an Arrow `StructArray` / `RecordBatch` and its `StructFi
 Arrow `Schema` (a `ListSerie` ↔ `ListArray`, a `MapSerie` ↔ `MapArray`) behind the opt-in **`arrow`**
 feature.
 
+## Arrow interop
+
+Behind the opt-in **`arrow`** feature, every type converts to / from its closest Apache Arrow
+equivalent — a `DataTypeId` ↔ an Arrow `DataType`, a `Serie` / `ByteSerie` ↔ an Arrow `Array`, and a
+`StructSerie` (the table) ↔ an Arrow `RecordBatch` with its schema. The bindings expose a **real
+bridge**: Python via the zero-copy Arrow **PyCapsule** interface (so `pyarrow` imports directly),
+Node via Arrow **IPC** (so `apache-arrow` reads the bytes).
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl.typed import Serie, ByteSerie, StructSerie
+    from yggdryl.datatype_id import DataTypeId
+
+    table = StructSerie.from_columns(
+        [Serie.from_values([1, 2, 3], DataTypeId.I64),
+         ByteSerie.from_values(["ada", "alan", "grace"], DataTypeId.Utf8)],
+        names=["id", "name"],
+    )
+    batch = pa.record_batch(table)          # zero-copy via the Arrow PyCapsule interface
+    assert batch.num_columns == 2
+    assert batch.column("name").to_pylist() == ["ada", "alan", "grace"]
+
+    back = StructSerie.from_arrow(batch)     # import a pyarrow object back
+    assert back.column_names() == ["id", "name"]
+
+    leaf = pa.array(Serie.from_values([1, 2, 3], DataTypeId.I64))  # a leaf column -> pyarrow.Array
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { tableFromIPC } = require('apache-arrow')
+    const { Serie, ByteSerie, StructSerie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const table = StructSerie.fromColumns(
+      [Serie.fromValues([1n, 2n, 3n], DataTypeId.I64()),
+       ByteSerie.fromValues(['ada', 'alan', 'grace'], DataTypeId.Utf8())],
+      ['id', 'name'])
+
+    const arrow = tableFromIPC(table.toIpc())     // Arrow IPC -> apache-arrow Table
+    console.assert(arrow.numCols === 2)
+
+    const back = StructSerie.fromIpc(table.toIpc()) // round-trip back into yggdryl
+    console.assert(back.numColumns() === 2)
+    ```
+
+=== "Rust"
+
+    ```rust
+    // Requires the `arrow` feature (cargo build -p yggdryl-core --features arrow).
+    use yggdryl_core::arrow::{struct_serie_to_record_batch, struct_serie_from_record_batch};
+    // let batch: arrow_array::RecordBatch = struct_serie_to_record_batch(&table).unwrap();
+    // let round_trip = struct_serie_from_record_batch(&batch).unwrap();
+    // Leaf columns: yggdryl_core::arrow::{column_to_arrow, column_from_arrow};
+    ```
+
+The closest-match map (and every lossy edge — e.g. `i128` → `Decimal128(38,0)`, `FixedUtf8` →
+`FixedSizeBinary`) is documented on the `yggdryl_core::arrow` module.
+
 ## Types & families
 
 | family | types | granularity |

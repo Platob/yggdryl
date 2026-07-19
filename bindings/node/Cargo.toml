@@ -15,10 +15,16 @@ crate-type = ["cdylib"]
 # The Rust core — this binding is a thin wrapper that delegates to it. The `compression`
 # feature pulls the native codec cores (flate2 / zstd / xz2) so the `yggdryl.compression`
 # namespace and the IOBase compression helpers resolve real Gzip / Zlib / Zstd / Lzma codecs;
-# `amd` enables the AMD Radeon device-memory backend behind the `yggdryl.amd` namespace.
-yggdryl-core = { workspace = true, features = ["compression", "amd"] }
+# `amd` enables the AMD Radeon device-memory backend behind the `yggdryl.amd` namespace;
+# `arrow` enables the Apache Arrow interop bridge (`yggdryl_core::arrow`) that
+# `StructSerie.toIpc` / `fromIpc` delegate to.
+yggdryl-core = { workspace = true, features = ["compression", "amd", "arrow"] }
 napi = { workspace = true }
 napi-derive = { workspace = true }
+# Apache Arrow IPC (stream) serialization — the physical layer behind `StructSerie.toIpc` /
+# `fromIpc`, the standard `apache-arrow` (JS) interchange. Pinned to v56 to match the core's
+# arrow-rs interop crates so the `RecordBatch` / `Schema` types unify across the boundary.
+arrow-ipc = { version = "56", default-features = false }
 
 [build-dependencies]
 napi-build = { workspace = true }

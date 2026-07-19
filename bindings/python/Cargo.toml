@@ -18,12 +18,19 @@ crate-type = ["cdylib"]
 # `yggdryl.compression` codecs and the source compress/decompress helpers resolve real codecs.
 # `amd` compiles the device-memory layer (`io::amd`, the AMD Radeon family) so the
 # `yggdryl.amd` submodule (`AmdDevice` / `AmdHeap` + the `detect` probe) resolves the same
-# device the core probes.
-yggdryl-core = { workspace = true, features = ["compression", "amd"] }
+# device the core probes. `arrow` compiles the Apache Arrow interop bridge (`yggdryl_core::arrow`
+# — `column_to_arrow` / `struct_serie_to_record_batch` / `struct_field_to_arrow_schema` and their
+# inverses) the `__arrow_c_array__` / `__arrow_c_schema__` / `from_arrow` PyCapsule methods delegate to.
+yggdryl-core = { workspace = true, features = ["compression", "amd", "arrow"] }
 # `extension-module` links against the interpreter at import time (added on top of the
 # workspace's stable-ABI `abi3-py37`), so `cargo build`/`cargo test` never touch this crate
 # (default-members = core); maturin builds it.
 pyo3 = { workspace = true, features = ["extension-module"] }
 # Arrow FFI (C Data Interface) — export/import a StructArray as ArrowArray + ArrowSchema for
 # the `__arrow_c_array__` / `__arrow_c_schema__` PyCapsule protocol pyarrow consumes zero-copy.
-# The `ffi` feature gates the `to_ffi` / `from_ffi` + `FFI_Arrow*` surface.
+# The `ffi` feature gates the `to_ffi` / `from_ffi` + `FFI_Arrow*` surface; the same granular
+# arrow-rs v56 crates the core's `arrow` bridge builds on (so the `ArrayRef` / `RecordBatch` types
+# match). We build the C-Data-Interface capsules by hand with pyo3 0.22 (the umbrella `arrow`
+# crate's `pyarrow` feature targets a newer pyo3, so we do NOT use it) — only `ffi` is needed here.
+arrow-array = { version = "56", default-features = false, features = ["ffi"] }
+arrow-schema = { version = "56", default-features = false, features = ["ffi"] }
