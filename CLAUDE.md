@@ -324,6 +324,63 @@ that lacks any of the three is incomplete — do not consider it landed.
   twin skips validation** for a caller that has already verified the dtype (the fast path), the
   same way the byte layer pairs a guarded op with its unchecked kernel. A bulk `set_range` is a
   dense, allocation-free copy, never element-by-element.
+- **Non-nullable is the default; nullability is proven, not assumed.** A `Field` / `Headers`
+  built without an explicit flag is **non-nullable** (`nullable = false`) — the common case, and
+  the one the validity buffer can skip. A builder that ingests a collection with **no null
+  values** stamps `nullable = false` in the metadata; only an actual null (a `None` / a
+  `from_options` gap) makes a column nullable. Never default to nullable "to be safe" — an
+  unneeded validity buffer is wasted memory and a lost fast path.
+- **A `Field` always names itself — `name()` is non-nullable, defaulting to the dtype name.**
+  When a field has no explicit name, `name()` returns the element type's token (`"i64"`,
+  `"utf8"`, `"struct"`), never an empty string or `None`. The same total-accessor discipline as
+  `Url::host()` — a caller never handles an absent name.
+- **One `Any` type wraps every element type — keep it exhaustive.** The erased [`Any`] (id
+  `X-Type-Id`-tagged) is the universal carrier over *all* types — leaf, byte, and nested. It
+  backs the generic `get_any_value_at` / `get_any_scalar_at` / `set_any_scalar_at` accessors,
+  which **redirect to the concrete type's optimized path** (never a slow per-element fallback),
+  and the interpreting builders/factories. A cast **to** `Any` is a no-op (it already holds any
+  type). **When you add a new element type you MUST extend `Any` (and `Column`, `Value`,
+  `ColumnField`) in the same commit** — a type the erased carriers don't know is a latent panic.
+- **Type conversion is isolated behind one pattern — logical over physical, any→any.** A
+  **logical** type (decimal, utf8, temporal later) is a thin descriptor that **customizes, and
+  overrides only where it can beat, the generic conversion to its physical storage** (decimal →
+  its i32/i64/i128 unscaled buffer, utf8 → its offsets+data). Conversions live in **one place**
+  (a `Convert`/`Cast` module, not scattered `if dtype ==` arms) so any-type → any-type is a
+  single dispatch that reuses the existing **optimized physical** kernels (numeric `resize_dtype`,
+  the byte offset copy, the bit pack) and stages through fixed stack chunks — never a scalar loop.
+  Adding a type means adding its logical↔physical rule once; every conversion path picks it up.
+- **Series grow and reshape through the memory layer, vectorized.** A `Serie` gains
+  `with_capacity` (pre-allocate the exact backing when the size is known — proven by a benchmark),
+  `append` / `extend` (from a `Vec`, another `Serie`, or a repeated value — one bulk copy, no
+  per-element push), `mask_filter` (keep by a bool mask), `fill_null` (replace nulls with a value
+  / forward-fill — used by field casting to satisfy a non-nullable target, with the validity
+  check **skipped** when the column is already null-free), and the ordering ops `mask_sort` /
+  `reverse`. Each runs as a **dense branch-free kernel over contiguous slices** (SIMD-friendly on
+  stable Rust; a device override on a GPU-backed source), guided by the column metadata but doing
+  the work on the raw bytes. Prove every one with a time+memory benchmark.
+- **Aggregations over a `Headers`-carrying source take `use_cache: bool` and stay coherent.**
+  A reduction on a source with a `Headers` may cache its result (a high-precision decimal in a
+  promoted header, read/written through the typed accessor with no parse) and reuse it when
+  `use_cache` is set; **any mutation clears the cached aggregate** in the same pass (the
+  content-changing-io-keeps-metadata-in-sync rule), so a stale cache can never surface.
+- **A container node addresses itself through its `Headers`, not a boxed field.** A source's
+  address (its `uri`/`url`) lives in a **promoted hot header** (reuse the closest existing HTTP
+  key — `Location` / `Host` — or a `X-Source-Uri` when none fits), so a `Heap`/source never stores
+  a separate boxed `Uri`; the one metadata map holds it, read/written through the typed accessor.
+- **A data format is a `DataIO` implementation, one crate per format.** The `io::DataIO` trait is
+  the format contract: a `holder: IOBase` byte source, `field()` / `struct_field()` schema
+  accessors, read/write **iterators of `StructSerie` and Arrow `RecordBatch`**, and a static
+  `mime_type`. Each concrete format is its **own crate** (`yggdryl-ipc` for Arrow IPC first) that
+  plugs any source in through the `IOBase` contract — **zero-copy streaming** where the format
+  allows, never buffering the whole payload. Read/write **check field + types** and pair with a
+  `*_checked` twin that skips the checks (and, on write, **casts to the DataIO's own schema when
+  one is defined**). Prove the streaming path leverages `IOBase` with a benchmark.
+- **The bindings move Arrow data through the C Data Interface / IPC, zero-copy.** Python uses the
+  Arrow **PyCapsule** interface (`__arrow_c_array__` / `__arrow_c_schema__` / `__arrow_c_stream__`)
+  so pyarrow imports with no copy; Node uses Arrow **IPC** buffers for apache-arrow. A nested
+  series maps to **its own concrete serie**, not an opaque `ArrayRef` — rebuild to/from the Arrow
+  equivalent with minimum allocations. Prefer the cdata/IPC hand-off over element marshalling for
+  any bulk transfer.
 - Mark underdetermined decisions with a `// DESIGN:` comment.
 
 ## Toolchain (this environment is Windows)
