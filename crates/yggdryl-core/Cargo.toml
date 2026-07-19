@@ -19,6 +19,15 @@ name = "typed"
 harness = false
 
 [[bench]]
+name = "typed_nested"
+harness = false
+
+[[bench]]
+name = "arrow"
+harness = false
+required-features = ["arrow"]
+
+[[bench]]
 name = "io_memory_heap"
 harness = false
 
