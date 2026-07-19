@@ -600,3 +600,131 @@ test('ByteSerie: min/max/first/last are null on an empty column', () => {
   assert.equal(col.firstValue(), null)
   assert.equal(col.lastValue(), null)
 })
+
+// -------------------------------------------------------------------------------------
+// In-place mutators — set / setChecked / setNull / slice / setRange / setRangeSerie
+// -------------------------------------------------------------------------------------
+
+test('set / setChecked replace an element in place', () => {
+  const col = Serie.fromValues([10, 20, 30], DataTypeId.I32())
+  col.set(1, 99)
+  assert.deepEqual(col.toList(), [10, 99, 30])
+  col.setChecked(0, 5) // no bounds check
+  assert.deepEqual(col.toList(), [5, 99, 30])
+
+  // wide-integer and bool columns convert through their own JS shape
+  const big = Serie.fromValues([1n, 2n], DataTypeId.I64())
+  big.set(0, 42n)
+  assert.deepEqual(big.toList(), [42n, 2n])
+  const flags = Serie.fromValues([true, false], DataTypeId.Bool())
+  flags.set(1, true)
+  assert.deepEqual(flags.toList(), [true, true])
+})
+
+test('set re-validates a previously-null slot', () => {
+  const col = Serie.fromOptions([1, null, 3], DataTypeId.I32())
+  assert.equal(col.nullCount(), 1)
+  col.set(1, 99) // fills the null and marks it valid
+  assert.equal(col.get(1), 99)
+  assert.ok(col.isValid(1))
+  assert.equal(col.nullCount(), 0)
+  assert.deepEqual(col.toList(), [1, 99, 3])
+})
+
+test('setNull nulls a single element (back-filling validity)', () => {
+  const col = Serie.fromValues([1, 2, 3], DataTypeId.I32())
+  col.setNull(1)
+  assert.equal(col.get(1), null)
+  assert.ok(col.isNull(1))
+  assert.equal(col.nullCount(), 1)
+  assert.deepEqual(col.toList(), [1, null, 3])
+})
+
+test('slice copies a clamped sub-column', () => {
+  const col = Serie.fromValues([10, 20, 30, 40, 50], DataTypeId.I32())
+  assert.deepEqual(col.slice(1, 3).toList(), [20, 30, 40])
+  assert.deepEqual(col.slice(3, 100).toList(), [40, 50]) // over-long len clamps
+  assert.deepEqual(col.slice(9, 3).toList(), []) // out-of-range start -> empty
+  assert.deepEqual(col.toList(), [10, 20, 30, 40, 50]) // original unchanged
+})
+
+test('setRange bulk-replaces a window from a list', () => {
+  const col = Serie.fromValues([1, 2, 3, 4, 5], DataTypeId.I32())
+  col.setRange(1, [20, 30])
+  assert.deepEqual(col.toList(), [1, 20, 30, 4, 5])
+  col.setRangeChecked(3, [40, 50]) // no bounds check
+  assert.deepEqual(col.toList(), [1, 20, 30, 40, 50])
+})
+
+test('setRangeSerie copies another column values and validity', () => {
+  const target = Serie.fromValues([1, 2, 3, 4, 5], DataTypeId.I32())
+  const src = Serie.fromValues([90, 91], DataTypeId.I32())
+  target.setRangeSerie(2, src)
+  assert.deepEqual(target.toList(), [1, 2, 90, 91, 5])
+
+  // a nullable source reflects its per-element null-ness across the range
+  const target2 = Serie.fromValues([1, 2, 3, 4, 5], DataTypeId.I32())
+  const nullableSrc = Serie.fromOptions([90, null], DataTypeId.I32())
+  target2.setRangeSerie(1, nullableSrc)
+  assert.deepEqual(target2.toList(), [1, 90, null, 4, 5])
+  assert.equal(target2.nullCount(), 1)
+})
+
+test('set / setRange throw a guided error past the end', () => {
+  const col = Serie.fromValues([1, 2, 3], DataTypeId.I32())
+  assert.throws(() => col.set(3, 9), /runs past the end/)
+  assert.throws(() => col.setRange(2, [9, 9]), /runs past the end/) // [2,4) past length 3
+})
+
+test('setRangeSerie throws a guided dtype-mismatch error', () => {
+  const i32 = Serie.fromValues([1, 2, 3], DataTypeId.I32())
+  const i64 = Serie.fromValues([9n], DataTypeId.I64())
+  assert.throws(
+    () => i32.setRangeSerie(0, i64),
+    /dtype mismatch: cannot set an i32 range from a i64 column/
+  )
+})
+
+// -------------------------------------------------------------------------------------
+// ByteSerie in-place mutators — slice / set (fixed-size) + the append-only guard
+// -------------------------------------------------------------------------------------
+
+test('ByteSerie: slice copies a sub-column of a utf8 and a fixed_binary column', () => {
+  const utf8 = ByteSerie.fromValues(['a', 'b', 'c', 'd'], DataTypeId.Utf8())
+  assert.deepEqual(utf8.slice(1, 2).toList(), ['b', 'c'])
+  assert.deepEqual(utf8.slice(2, 100).toList(), ['c', 'd']) // clamped
+
+  const fixed = ByteSerie.fromValues(
+    [Buffer.from([1, 1]), Buffer.from([2, 2]), Buffer.from([3, 3])],
+    DataTypeId.FixedBinary(),
+    2
+  )
+  const sub = fixed.slice(1, 2)
+  assert.equal(sub.width(), 2)
+  assert.deepEqual(sub.toList(), [Buffer.from([2, 2]), Buffer.from([3, 3])])
+})
+
+test('ByteSerie: set replaces a fixed_binary element (zero-pad / truncate)', () => {
+  const col = ByteSerie.fromValues(
+    [Buffer.from([1, 1, 1, 1]), Buffer.from([2, 2, 2, 2])],
+    DataTypeId.FixedBinary(),
+    4
+  )
+  col.set(0, Buffer.from([7, 8])) // short value zero-padded to width 4
+  assert.deepEqual(col.get(0), Buffer.from([7, 8, 0, 0]))
+  col.setChecked(1, Buffer.from([9, 9, 9, 9, 9, 9])) // long value truncated to 4
+  assert.deepEqual(col.get(1), Buffer.from([9, 9, 9, 9]))
+})
+
+test('ByteSerie: set on a fixed_utf8 element writes the string bytes', () => {
+  const col = ByteSerie.fromValues(['ab', 'cd'], DataTypeId.FixedUtf8(), 4)
+  col.set(0, 'zz')
+  assert.ok(col.get(0).startsWith('zz'))
+})
+
+test('ByteSerie: set on a variable-length column throws the append-only error', () => {
+  const binary = ByteSerie.fromValues([Buffer.from([1]), Buffer.from([2])], DataTypeId.Binary())
+  assert.throws(() => binary.set(0, Buffer.from([9])), /variable-length column is append-only/)
+  const utf8 = ByteSerie.fromValues(['a', 'b'], DataTypeId.Utf8())
+  assert.throws(() => utf8.setChecked(0, 'z'), /variable-length column is append-only/)
+})

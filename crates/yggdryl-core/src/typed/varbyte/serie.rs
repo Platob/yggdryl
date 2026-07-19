@@ -131,6 +131,45 @@ impl<T: VarType> VarSerie<T, Heap> {
             self.validity = Some(validity);
         }
     }
+
+    /// A fresh sub-column copying elements `[start, start + len)` into a new in-heap [`VarSerie`],
+    /// **rebuilding** the offsets + data (element `i` of the copy re-packed from `self`'s bytes) and
+    /// carrying the validity bits. The window is **clamped** to the column's length — an out-of-range
+    /// `start` or over-long `len` yields a shorter (or empty) column, never an error. The offsets +
+    /// data buffers are pre-reserved to the range's known extent.
+    ///
+    // DESIGN: an in-place `set` of a **variable-length** element is out of scope — replacing element
+    // `i` with a value of a different length would rewrite the entire tail (every following offset and
+    // the packed data after it), so variable-length columns are **append-only** for now: `slice` (a
+    // read-range copy) is the only range operation, and growth goes through `push` / `push_bytes`. A
+    // fixed-stride carrier (`FixedSizeSerie`) has no such tail and does get an in-place `set`.
+    pub fn slice(&self, start: usize, len: usize) -> Self {
+        let start = start.min(self.len);
+        let count = len.min(self.len - start);
+        let mut out = Self::new();
+        if self.validity.is_some() {
+            out.ensure_validity();
+        }
+        // Pre-size: the copy holds `count + 1` offsets and the range's byte span in data.
+        out.offsets.reserve(((count + 1) * 4) as u64);
+        if count > 0 {
+            let data_start = self.offsets.pread_i32(start as u64 * 4).unwrap_or(0).max(0) as u64;
+            let data_end = self
+                .offsets
+                .pread_i32((start + count) as u64 * 4)
+                .unwrap_or(0)
+                .max(0) as u64;
+            out.data.reserve(data_end.saturating_sub(data_start));
+        }
+        for index in start..start + count {
+            if self.valid(index) {
+                out.push_bytes(&self.bytes_at(index).unwrap_or_default());
+            } else {
+                out.push_null();
+            }
+        }
+        out
+    }
 }
 
 impl<T: VarType> Default for VarSerie<T, Heap> {

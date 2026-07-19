@@ -112,6 +112,69 @@ Building from options (with `None` / `null`) creates the validity bitmap; `get` 
     assert_eq!(col.to_options(), vec![Some(1), None, Some(3), None, Some(5)]);
     ```
 
+## Editing a column — set, ranges, slices
+
+A column is mutable in place: `set(index, value)` replaces one element (re-validating a null slot),
+`set_null(index)` nulls one, `set_range(start, values)` bulk-replaces a window from a list (or
+`set_range_serie` from another column), and `slice(start, len)` returns a fresh sub-column. Each
+bounds-checks and reports a guided error; the **`*_checked` twin skips the bounds check** for a
+caller that has already validated the index (the fast path).
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie
+    from yggdryl.datatype_id import DataTypeId
+
+    col = Serie.from_values([10, 20, 30, 40, 50], DataTypeId.I32)
+    col.set(1, 99)                       # replace element 1 in place
+    col.set_null(2)                      # null the element at 2
+    col.set_range(3, [7, 8])             # bulk-replace a window from a list
+    assert col.to_list() == [10, 99, None, 7, 8]
+
+    window = col.slice(0, 2)             # a fresh sub-column
+    assert window.to_list() == [10, 99]
+
+    col.set_checked(0, 1)                # fast path: caller guarantees 0 is in range
+    assert col.get(0) == 1
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const col = Serie.fromValues([10, 20, 30, 40, 50], DataTypeId.I32())
+    col.set(1, 99)                       // replace element 1 in place
+    col.setNull(2)                       // null the element at 2
+    col.setRange(3, [7, 8])              // bulk-replace a window from a list
+    console.assert(JSON.stringify(col.toList()) === '[10,99,null,7,8]')
+
+    const window = col.slice(0, 2)       // a fresh sub-column
+    console.assert(window.len() === 2)
+    col.setChecked(0, 1)                 // fast path: caller guarantees 0 is in range
+    console.assert(col.get(0) === 1)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{FixedSerie, Scalar, Serie};
+    use yggdryl_core::typed::fixedbyte::Int32;
+
+    let mut col = FixedSerie::<Int32>::from_values(&[10, 20, 30, 40, 50]);
+    col.set(1, 99).unwrap();             // replace element 1 in place
+    col.set_null(2).unwrap();            // null the element at 2
+    col.set_range(3, &[7, 8]).unwrap();  // bulk-replace a window
+    assert_eq!(col.to_options(), vec![Some(10), Some(99), None, Some(7), Some(8)]);
+
+    let window = col.slice(0, 2);        // a fresh sub-column
+    assert_eq!(window.values(), vec![10, 99]);
+    col.set_checked(0, 1);               // fast path: caller guarantees 0 is in range
+    assert_eq!(col.get(0), Some(1));
+    ```
+
 ## A column's `Field` — its metadata
 
 A `Field` describes a column: its `name`, element type, and nullability — three entries in a

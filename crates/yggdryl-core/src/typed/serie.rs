@@ -228,19 +228,6 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
         self.len += values.len();
     }
 
-    /// Ensures a validity buffer exists, back-filling every existing element as valid.
-    fn ensure_validity(&mut self) {
-        if self.validity.is_none() {
-            let mut validity = Heap::new();
-            for index in 0..self.len as u64 {
-                validity
-                    .pwrite_bit(index, true)
-                    .expect("bit write never fails");
-            }
-            self.validity = Some(validity);
-        }
-    }
-
     /// **Filters** the column by a boolean `mask` (an LSB-first bit source, `1` = keep), returning a
     /// fresh compacted column. DESIGN: the scaffold compacts element-by-element; the vectorized path
     /// is [`IOBase::mask_filter`](crate::io::memory::IOBase::mask_filter) over the data buffer with a
@@ -326,6 +313,195 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
             ),
             _ => HeaderField::new(self.name.as_deref(), T::DATA_TYPE_ID, nullable),
         }
+    }
+}
+
+/// Element + range **mutators** and a read-range slice — the in-place edit surface over the typed
+/// column. Every write reuses the column's existing backing (no reallocation): a scalar `set` rewrites
+/// one element slot, a bulk `set_range` rewrites a contiguous block through the source's **vectorized**
+/// typed array write, and each keeps the validity bitmap in sync. The `*_checked` twins are the
+/// **unchecked fast paths** — the caller pre-validated `index < len`, so they skip the bounds check.
+impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
+    /// The guided out-of-range error for a positioned/range write whose window `[offset, offset+len)`
+    /// runs past the column length — states the offending window and length, and its fix ("request a
+    /// window that fits").
+    fn window_error(&self, offset: usize, len: usize) -> IoError {
+        IoError::SliceOutOfBounds {
+            offset: offset as u64,
+            len: len as u64,
+            available: self.len as u64,
+        }
+    }
+
+    /// Ensures a validity buffer exists, back-filling every existing element as valid — the generic
+    /// backing counterpart of the [`Heap`] builders' back-fill (creates an empty `D` on the first
+    /// null). One implementation for every backing that can be constructed empty.
+    fn ensure_validity(&mut self)
+    where
+        D: Default,
+    {
+        if self.validity.is_none() {
+            let mut validity = D::default();
+            for index in 0..self.len as u64 {
+                validity
+                    .pwrite_bit(index, true)
+                    .expect("bit write never fails");
+            }
+            self.validity = Some(validity);
+        }
+    }
+
+    /// Replaces the element at `index` **in place** (must be `< len`, else a guided
+    /// [`IoError::SliceOutOfBounds`] naming the fix — set within `0..len`, or [`push`](FixedSerie::push)
+    /// to append). Encodes `value` into the element's slot with **no reallocation**; when the column is
+    /// nullable this also **marks the slot valid** (a previously-null slot becomes present).
+    pub fn set(&mut self, index: usize, value: T::Native) -> Result<(), IoError> {
+        if index >= self.len {
+            return Err(self.window_error(index, 1));
+        }
+        self.set_checked(index, value);
+        Ok(())
+    }
+
+    /// The **unchecked fast path** of [`set`](FixedSerie::set): rewrites the element slot with **no
+    /// bounds check** (the caller guarantees `index < len`) and marks it valid. An out-of-range
+    /// `index` is a **silent logic error** here — it would write past the column, corrupting length /
+    /// element alignment; use [`set`](FixedSerie::set) unless the index is already validated.
+    pub fn set_checked(&mut self, index: usize, value: T::Native) {
+        T::encode(&mut self.data, index as u64, value).expect("encode into an existing slot");
+        if let Some(validity) = self.validity.as_mut() {
+            validity
+                .pwrite_bit(index as u64, true)
+                .expect("bit write never fails");
+        }
+    }
+
+    /// **Nulls** the element at `index` (must be `< len`, else the guided
+    /// [`IoError::SliceOutOfBounds`]) — ensures a validity buffer exists (back-filling existing
+    /// elements as valid on the first null) and **clears** the bit at `index`. The stored data byte is
+    /// left as-is; validity alone decides null-ness.
+    pub fn set_null(&mut self, index: usize) -> Result<(), IoError>
+    where
+        D: Default,
+    {
+        if index >= self.len {
+            return Err(self.window_error(index, 1));
+        }
+        self.ensure_validity();
+        self.validity
+            .as_mut()
+            .expect("validity ensured")
+            .pwrite_bit(index as u64, false)
+            .expect("bit write never fails");
+        Ok(())
+    }
+
+    /// A fresh sub-column copying elements `[start, start + len)` into a new in-heap
+    /// [`FixedSerie`], carrying the matching validity bits. The window is **clamped** to the column's
+    /// length — an out-of-range `start` or an over-long `len` yields a shorter (or empty) column, never
+    /// an error. Both the data and (when nullable) the validity copy are **pre-sized** to the exact
+    /// element count.
+    pub fn slice(&self, start: usize, len: usize) -> FixedSerie<T, Heap> {
+        let start = start.min(self.len);
+        let count = len.min(self.len - start);
+        let mut out = FixedSerie::<T, Heap>::with_capacity(count);
+        if count > 0 {
+            // One vectorized bulk read out of `self`, one vectorized bulk write into the fresh heap.
+            let mut values = vec![T::Native::default(); count];
+            T::decode_slice(&self.data, start as u64, &mut values)
+                .expect("decode over a valid buffer");
+            T::encode_slice(&mut out.data, 0, &values)
+                .expect("encode into a fresh heap never fails");
+        }
+        out.len = count;
+        if let Some(bits) = self.validity.as_ref() {
+            let mut out_bits = Heap::with_capacity(count.div_ceil(8));
+            for offset in 0..count as u64 {
+                let valid = bits.pread_bit(start as u64 + offset).unwrap_or(false);
+                out_bits
+                    .pwrite_bit(offset, valid)
+                    .expect("bit write into a fresh heap");
+            }
+            out.validity = Some(out_bits);
+        }
+        out
+    }
+
+    /// **Bulk in-place replace** of `values.len()` elements starting at `start` — requires
+    /// `start + values.len() <= len` (else the guided [`IoError::SliceOutOfBounds`]). One **dense**
+    /// vectorized typed-array write (no per-element loop); when the column is nullable the whole range
+    /// is **marked valid**.
+    pub fn set_range(&mut self, start: usize, values: &[T::Native]) -> Result<(), IoError> {
+        if start
+            .checked_add(values.len())
+            .is_none_or(|end| end > self.len)
+        {
+            return Err(self.window_error(start, values.len()));
+        }
+        self.set_range_checked(start, values);
+        Ok(())
+    }
+
+    /// The **unchecked bulk twin** of [`set_range`](FixedSerie::set_range): the same dense vectorized
+    /// write with **no bounds check** (the caller guarantees `start + values.len() <= len`). An
+    /// out-of-range window is a **silent logic error** — it would write past the column.
+    pub fn set_range_checked(&mut self, start: usize, values: &[T::Native]) {
+        T::encode_slice(&mut self.data, start as u64, values)
+            .expect("encode into an existing range");
+        if let Some(validity) = self.validity.as_mut() {
+            for offset in 0..values.len() as u64 {
+                validity
+                    .pwrite_bit(start as u64 + offset, true)
+                    .expect("bit write never fails");
+            }
+        }
+    }
+
+    /// Sets the range `[start, start + other.len())` from **another column's values and validity**
+    /// (bounds-checked — requires `start + other.len() <= len`, else the guided
+    /// [`IoError::SliceOutOfBounds`]). Reuses the vectorized bulk path for the values; the source's
+    /// per-element null-ness is reflected across the range (a nullable `other` makes the target
+    /// nullable, back-filling a validity buffer if it had none — an all-valid `other` marks the range
+    /// valid).
+    pub fn set_range_serie<D2: IOBase>(
+        &mut self,
+        start: usize,
+        other: &FixedSerie<T, D2>,
+    ) -> Result<(), IoError>
+    where
+        D: Default,
+    {
+        let count = other.len;
+        if start.checked_add(count).is_none_or(|end| end > self.len) {
+            return Err(self.window_error(start, count));
+        }
+        // Values: one bulk decode out of `other`, one bulk (vectorized) encode into `self`'s range.
+        let values = other.values();
+        T::encode_slice(&mut self.data, start as u64, &values)
+            .expect("encode into an existing range");
+        // Validity: reflect the source's per-element null-ness across the written range.
+        match other.validity.as_ref() {
+            Some(src_bits) => {
+                self.ensure_validity();
+                let dst_bits = self.validity.as_mut().expect("validity ensured");
+                for offset in 0..count as u64 {
+                    let valid = src_bits.pread_bit(offset).unwrap_or(false);
+                    dst_bits
+                        .pwrite_bit(start as u64 + offset, valid)
+                        .expect("bit write never fails");
+                }
+            }
+            None => {
+                if let Some(dst_bits) = self.validity.as_mut() {
+                    for offset in 0..count as u64 {
+                        dst_bits
+                            .pwrite_bit(start as u64 + offset, true)
+                            .expect("bit write never fails");
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -10,7 +10,7 @@
 use core::marker::PhantomData;
 
 use crate::datatype_id::DataTypeId;
-use crate::io::memory::{Heap, IOBase};
+use crate::io::memory::{Heap, IOBase, IoError};
 use crate::typed::{HeaderField, Scalar, Serie, VarType};
 
 /// Fixed-size **binary** — each element is exactly the column's byte width (`Vec<u8>`).
@@ -139,6 +139,68 @@ impl<T: VarType> FixedSizeSerie<T, Heap> {
             }
             self.validity = Some(validity);
         }
+    }
+
+    /// Replaces the element at `index` **in place** with `bytes`, zero-padded (or truncated) to the
+    /// fixed width (must be `< len`, else a guided [`IoError::SliceOutOfBounds`] naming the window and
+    /// length). The fixed stride makes this a **direct slot write** — no tail rewrite (unlike a
+    /// variable-length [`VarSerie`](crate::typed::VarSerie), which is append-only); when the column is
+    /// nullable it also **marks the slot valid**.
+    pub fn set(&mut self, index: usize, bytes: &[u8]) -> Result<(), IoError> {
+        if index >= self.len {
+            return Err(IoError::SliceOutOfBounds {
+                offset: index as u64,
+                len: 1,
+                available: self.len as u64,
+            });
+        }
+        self.set_checked(index, bytes);
+        Ok(())
+    }
+
+    /// The **unchecked fast path** of [`set`](FixedSizeSerie::set): the same slot write with **no
+    /// bounds check** (the caller guarantees `index < len`) and validity mark. An out-of-range `index`
+    /// is a **silent logic error** here — it would write past the column.
+    pub fn set_checked(&mut self, index: usize, bytes: &[u8]) {
+        let mut slot = vec![0u8; self.width];
+        let take = bytes.len().min(self.width);
+        slot[..take].copy_from_slice(&bytes[..take]);
+        self.data
+            .pwrite_byte_array(index as u64 * self.width as u64, &slot);
+        if let Some(validity) = self.validity.as_mut() {
+            validity
+                .pwrite_bit(index as u64, true)
+                .expect("bit write into a heap");
+        }
+    }
+
+    /// A fresh sub-column copying elements `[start, start + len)` into a new in-heap
+    /// [`FixedSizeSerie`] — one contiguous copy of the fixed-stride block — carrying the validity
+    /// bits. The window is **clamped** to the column's length (an out-of-range window yields a
+    /// shorter/empty column, never an error); the data copy is pre-sized to the exact block length.
+    pub fn slice(&self, start: usize, len: usize) -> Self {
+        let start = start.min(self.len);
+        let count = len.min(self.len - start);
+        let mut out = Self::new(self.width);
+        if count > 0 {
+            // One contiguous read of the fixed-stride block, one write into the fresh heap.
+            let block = self
+                .data
+                .pread_vec(start as u64 * self.width as u64, count * self.width);
+            out.data.pwrite_byte_array(0, &block);
+        }
+        out.len = count;
+        if let Some(bits) = self.validity.as_ref() {
+            let mut out_bits = Heap::with_capacity(count.div_ceil(8));
+            for offset in 0..count as u64 {
+                let valid = bits.pread_bit(start as u64 + offset).unwrap_or(false);
+                out_bits
+                    .pwrite_bit(offset, valid)
+                    .expect("bit write into a fresh heap");
+            }
+            out.validity = Some(out_bits);
+        }
+        out
     }
 }
 

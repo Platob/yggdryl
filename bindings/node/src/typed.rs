@@ -303,6 +303,20 @@ where
     Ok(FixedSerie::from_options(&natives))
 }
 
+/// Converts a JS value list into a pre-sized native `Vec` for a bulk in-place write — the range twin
+/// of [`build_values`] (which wraps its natives in a fresh `FixedSerie`). Reuses the same per-arm
+/// converter, so the conversion doubles as the runtime type check.
+fn convert_values<N, F>(values: Vec<JsValue>, convert: F) -> napi::Result<Vec<N>>
+where
+    F: Fn(JsValue) -> napi::Result<N>,
+{
+    let mut natives = Vec::with_capacity(values.len());
+    for value in values {
+        natives.push(convert(value)?);
+    }
+    Ok(natives)
+}
+
 /// Clones the borrowed column (the binding holds `&self`, so it cannot consume into the core's
 /// `with_*` builders) — carrying its `name` and any decimal `precision` / `scale` metadata across, so
 /// a rebuild for one field never drops the others.
@@ -451,6 +465,113 @@ macro_rules! dispatch_rebuild {
             SerieInner::Decimal64($serie) => SerieInner::Decimal64($build),
             SerieInner::Decimal128($serie) => SerieInner::Decimal128($build),
             SerieInner::Decimal256($serie) => SerieInner::Decimal256($build),
+        }
+    };
+}
+
+/// Like [`dispatch!`], but binds `$serie` **mutably** — for the uniform in-place mutators that take
+/// no per-element conversion (`setNull`). Every arm must yield the same type.
+macro_rules! dispatch_mut {
+    ($self:expr, $serie:ident => $body:expr) => {
+        match &mut $self.inner {
+            SerieInner::I8($serie) => $body,
+            SerieInner::U8($serie) => $body,
+            SerieInner::I16($serie) => $body,
+            SerieInner::U16($serie) => $body,
+            SerieInner::I32($serie) => $body,
+            SerieInner::U32($serie) => $body,
+            SerieInner::I64($serie) => $body,
+            SerieInner::U64($serie) => $body,
+            SerieInner::I128($serie) => $body,
+            SerieInner::U128($serie) => $body,
+            SerieInner::F32($serie) => $body,
+            SerieInner::F64($serie) => $body,
+            SerieInner::Bool($serie) => $body,
+            SerieInner::Decimal32($serie) => $body,
+            SerieInner::Decimal64($serie) => $body,
+            SerieInner::Decimal128($serie) => $body,
+            SerieInner::Decimal256($serie) => $body,
+        }
+    };
+}
+
+/// Like [`dispatch_mut!`], but also binds `$conv` to the active arm's JS-value→native converter (the
+/// same per-arm converters [`fromValues`](Serie::from_values) uses — a decimal arm binds its unscaled
+/// integer converter). The conversion is the runtime type check: the wrong JS shape throws the guided
+/// `Error`. Shared by every value-taking in-place mutator (`set` / `setChecked` / `setRange` /
+/// `setRangeChecked`), so the 17-way match + converter table is written once. Every arm must yield the
+/// same type.
+macro_rules! set_dispatch {
+    ($self:expr, $serie:ident, $conv:ident => $body:expr) => {
+        match &mut $self.inner {
+            SerieInner::I8($serie) => {
+                let $conv = to_i8;
+                $body
+            }
+            SerieInner::U8($serie) => {
+                let $conv = to_u8;
+                $body
+            }
+            SerieInner::I16($serie) => {
+                let $conv = to_i16;
+                $body
+            }
+            SerieInner::U16($serie) => {
+                let $conv = to_u16;
+                $body
+            }
+            SerieInner::I32($serie) => {
+                let $conv = to_i32;
+                $body
+            }
+            SerieInner::U32($serie) => {
+                let $conv = to_u32;
+                $body
+            }
+            SerieInner::I64($serie) => {
+                let $conv = to_i64;
+                $body
+            }
+            SerieInner::U64($serie) => {
+                let $conv = to_u64;
+                $body
+            }
+            SerieInner::I128($serie) => {
+                let $conv = to_i128;
+                $body
+            }
+            SerieInner::U128($serie) => {
+                let $conv = to_u128;
+                $body
+            }
+            SerieInner::F32($serie) => {
+                let $conv = to_f32;
+                $body
+            }
+            SerieInner::F64($serie) => {
+                let $conv = to_f64;
+                $body
+            }
+            SerieInner::Bool($serie) => {
+                let $conv = to_bool_native;
+                $body
+            }
+            SerieInner::Decimal32($serie) => {
+                let $conv = to_i32;
+                $body
+            }
+            SerieInner::Decimal64($serie) => {
+                let $conv = to_i64;
+                $body
+            }
+            SerieInner::Decimal128($serie) => {
+                let $conv = to_i128;
+                $body
+            }
+            SerieInner::Decimal256($serie) => {
+                let $conv = to_i256;
+                $body
+            }
         }
     };
 }
@@ -815,6 +936,121 @@ impl Serie {
         })
     }
 
+    /// Replaces the element at `index` **in place** (marking the slot valid on a nullable column) —
+    /// `value` crosses in the same shape the column's elements do (a `number` for a narrow integer or
+    /// float, a `BigInt` for a wide integer, a `boolean` for a bool; a decimal's *unscaled* integer),
+    /// converted to the column's native type. Throws the guided `Error` on the wrong JS shape, or on an
+    /// `index` past the end (set within `0..len`, or rebuild to grow).
+    #[napi]
+    pub fn set(&mut self, index: u32, value: Either3<f64, BigInt, bool>) -> napi::Result<()> {
+        let index = index as usize;
+        set_dispatch!(self, serie, conv => serie.set(index, conv(value)?)).map_err(to_error)
+    }
+
+    /// The **unchecked fast path** of [`set`](Serie::set): the same conversion and slot write with
+    /// **no bounds check** (the caller guarantees `index < len`). An out-of-range `index` is a silent
+    /// logic error that writes past the column — use [`set`](Serie::set) unless the index is validated.
+    #[napi]
+    pub fn set_checked(
+        &mut self,
+        index: u32,
+        value: Either3<f64, BigInt, bool>,
+    ) -> napi::Result<()> {
+        let index = index as usize;
+        set_dispatch!(self, serie, conv => serie.set_checked(index, conv(value)?));
+        Ok(())
+    }
+
+    /// **Nulls** the element at `index` (ensuring a validity buffer exists, back-filling existing
+    /// elements as valid on the first null). Throws the guided `Error` on an `index` past the end.
+    #[napi]
+    pub fn set_null(&mut self, index: u32) -> napi::Result<()> {
+        let index = index as usize;
+        dispatch_mut!(self, serie => serie.set_null(index)).map_err(to_error)
+    }
+
+    /// A fresh sub-column copying elements `[start, start + len)` — the window is **clamped** to the
+    /// column's length (an out-of-range window yields a shorter or empty column, never an error).
+    #[napi]
+    pub fn slice(&self, start: u32, len: u32) -> Serie {
+        let (start, len) = (start as usize, len as usize);
+        Serie {
+            inner: dispatch_rebuild!(self, serie => serie.slice(start, len)),
+        }
+    }
+
+    /// **Bulk in-place replace** of `values.len()` elements starting at `start` (marking the range
+    /// valid on a nullable column) — each element crosses in the column's element shape, converted to
+    /// its native type. Throws the guided `Error` on the wrong JS shape, or when the window
+    /// `start + values.len()` runs past the end.
+    #[napi]
+    pub fn set_range(
+        &mut self,
+        start: u32,
+        values: Vec<Either3<f64, BigInt, bool>>,
+    ) -> napi::Result<()> {
+        let start = start as usize;
+        set_dispatch!(self, serie, conv => serie.set_range(start, &convert_values(values, conv)?))
+            .map_err(to_error)
+    }
+
+    /// The **unchecked bulk twin** of [`setRange`](Serie::set_range): the same dense vectorized write
+    /// with **no bounds check** (the caller guarantees `start + values.len() <= len`). An out-of-range
+    /// window is a silent logic error that writes past the column.
+    #[napi]
+    pub fn set_range_checked(
+        &mut self,
+        start: u32,
+        values: Vec<Either3<f64, BigInt, bool>>,
+    ) -> napi::Result<()> {
+        let start = start as usize;
+        set_dispatch!(self, serie, conv => serie.set_range_checked(start, &convert_values(values, conv)?));
+        Ok(())
+    }
+
+    /// Sets the range `[start, start + other.len())` from **another column's values and validity** —
+    /// `other` must have the same element type as this column (else the guided dtype-mismatch
+    /// `Error`). Throws when the window `start + other.len()` runs past the end.
+    #[napi]
+    pub fn set_range_serie(&mut self, start: u32, other: &Serie) -> napi::Result<()> {
+        let start = start as usize;
+        let self_dtype = dispatch!(self, serie => serie.data_type_id());
+        let other_dtype = dispatch!(other, serie => serie.data_type_id());
+        match (&mut self.inner, &other.inner) {
+            (SerieInner::I8(dst), SerieInner::I8(src)) => dst.set_range_serie(start, src),
+            (SerieInner::U8(dst), SerieInner::U8(src)) => dst.set_range_serie(start, src),
+            (SerieInner::I16(dst), SerieInner::I16(src)) => dst.set_range_serie(start, src),
+            (SerieInner::U16(dst), SerieInner::U16(src)) => dst.set_range_serie(start, src),
+            (SerieInner::I32(dst), SerieInner::I32(src)) => dst.set_range_serie(start, src),
+            (SerieInner::U32(dst), SerieInner::U32(src)) => dst.set_range_serie(start, src),
+            (SerieInner::I64(dst), SerieInner::I64(src)) => dst.set_range_serie(start, src),
+            (SerieInner::U64(dst), SerieInner::U64(src)) => dst.set_range_serie(start, src),
+            (SerieInner::I128(dst), SerieInner::I128(src)) => dst.set_range_serie(start, src),
+            (SerieInner::U128(dst), SerieInner::U128(src)) => dst.set_range_serie(start, src),
+            (SerieInner::F32(dst), SerieInner::F32(src)) => dst.set_range_serie(start, src),
+            (SerieInner::F64(dst), SerieInner::F64(src)) => dst.set_range_serie(start, src),
+            (SerieInner::Bool(dst), SerieInner::Bool(src)) => dst.set_range_serie(start, src),
+            (SerieInner::Decimal32(dst), SerieInner::Decimal32(src)) => {
+                dst.set_range_serie(start, src)
+            }
+            (SerieInner::Decimal64(dst), SerieInner::Decimal64(src)) => {
+                dst.set_range_serie(start, src)
+            }
+            (SerieInner::Decimal128(dst), SerieInner::Decimal128(src)) => {
+                dst.set_range_serie(start, src)
+            }
+            (SerieInner::Decimal256(dst), SerieInner::Decimal256(src)) => {
+                dst.set_range_serie(start, src)
+            }
+            _ => {
+                return Err(to_error(format!(
+                    "dtype mismatch: cannot set an {self_dtype} range from a {other_dtype} column"
+                )))
+            }
+        }
+        .map_err(to_error)
+    }
+
     /// A short debug string — the column's name, element type, length, and null count.
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
@@ -1037,6 +1273,16 @@ fn byte_dtype_error() -> napi::Error {
     to_error(
         "this DataTypeId is not a byte column: expected Binary, Utf8, FixedBinary, or FixedUtf8 — \
          use Serie for numeric/decimal/bool columns",
+    )
+}
+
+/// The guided `Error` a **variable-length** byte column (`Binary` / `Utf8`) raises for an in-place
+/// `set` — replacing one element with a different-length value would rewrite the whole tail, so the
+/// variable-length carrier is append-only.
+fn var_set_error() -> napi::Error {
+    to_error(
+        "a variable-length column is append-only: in-place set needs a fixed_binary / fixed_utf8 \
+         column (a variable element would rewrite the tail)",
     )
 }
 
@@ -1334,6 +1580,49 @@ impl ByteSerie {
     #[napi]
     pub fn field(&self) -> Field {
         byte_dispatch!(self, serie => Field { inner: serie.field() })
+    }
+
+    /// A fresh sub-column copying elements `[start, start + len)` — the window is **clamped** to the
+    /// column's length (an out-of-range window yields a shorter or empty column, never an error).
+    #[napi]
+    pub fn slice(&self, start: u32, len: u32) -> ByteSerie {
+        let (start, len) = (start as usize, len as usize);
+        ByteSerie {
+            inner: byte_rebuild!(self, serie => serie.slice(start, len)),
+        }
+    }
+
+    /// Replaces the element at `index` **in place** on a **fixed-size** column (`FixedBinary` /
+    /// `FixedUtf8`) — a binary element is a `Buffer`, a utf8 element a `string`, zero-padded or
+    /// truncated to the fixed width (marking the slot valid on a nullable column). Throws the guided
+    /// `Error` on the wrong JS shape, on an `index` past the end, or on a **variable-length** column
+    /// (`Binary` / `Utf8`), which is append-only.
+    #[napi]
+    pub fn set(&mut self, index: u32, value: Either<Buffer, String>) -> napi::Result<()> {
+        let index = index as usize;
+        match &mut self.inner {
+            ByteInner::FixedBinary(serie) => serie.set(index, &as_binary_element(value)?),
+            ByteInner::FixedUtf8(serie) => serie.set(index, as_utf8_element(value)?.as_bytes()),
+            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+        }
+        .map_err(to_error)
+    }
+
+    /// The **unchecked fast path** of [`set`](ByteSerie::set): the same fixed-size slot write with
+    /// **no bounds check** (the caller guarantees `index < len`). An out-of-range `index` is a silent
+    /// logic error that writes past the column; a variable-length column still throws the append-only
+    /// `Error`.
+    #[napi]
+    pub fn set_checked(&mut self, index: u32, value: Either<Buffer, String>) -> napi::Result<()> {
+        let index = index as usize;
+        match &mut self.inner {
+            ByteInner::FixedBinary(serie) => serie.set_checked(index, &as_binary_element(value)?),
+            ByteInner::FixedUtf8(serie) => {
+                serie.set_checked(index, as_utf8_element(value)?.as_bytes())
+            }
+            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+        };
+        Ok(())
     }
 
     /// A short debug string — the column's name, element type, length, null count, and (for a

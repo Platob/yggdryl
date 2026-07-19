@@ -23,6 +23,7 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::pybacked::PyBackedBytes;
 use pyo3::types::{PyBytes, PyDict, PyInt};
 
 use crate::datatype_id::DataTypeId;
@@ -278,6 +279,192 @@ macro_rules! map_variant {
             Inner::Decimal64($s) => Inner::Decimal64($make),
             Inner::Decimal128($s) => Inner::Decimal128($make),
             Inner::Decimal256($s) => Inner::Decimal256($make),
+        }
+    };
+}
+
+/// Like [`dispatch!`], but binds the inner `FixedSerie` **mutably** — the write-path spine behind the
+/// value-agnostic mutators ([`set_null`](Serie::set_null)).
+macro_rules! dispatch_mut {
+    ($self:expr, $s:ident => $body:expr) => {
+        match &mut $self.inner {
+            Inner::I8($s) => $body,
+            Inner::U8($s) => $body,
+            Inner::I16($s) => $body,
+            Inner::U16($s) => $body,
+            Inner::I32($s) => $body,
+            Inner::U32($s) => $body,
+            Inner::I64($s) => $body,
+            Inner::U64($s) => $body,
+            Inner::I128($s) => $body,
+            Inner::U128($s) => $body,
+            Inner::F32($s) => $body,
+            Inner::F64($s) => $body,
+            Inner::Bool($s) => $body,
+            Inner::Decimal32($s) => $body,
+            Inner::Decimal64($s) => $body,
+            Inner::Decimal128($s) => $body,
+            Inner::Decimal256($s) => $body,
+        }
+    };
+}
+
+/// Extracts `$value` (a Python number / bool) as the **active variant's native type** — this
+/// extraction *is* the runtime type check, raising a guided `TypeError` / `ValueError` on a
+/// wrong-typed value — binds it to `$native`, and runs `$call` against the mutable inner
+/// `FixedSerie` `$s`. A decimal variant takes the raw **unscaled integer** (`Decimal256` via
+/// [`i256_from_py`]). The single-element write counterpart of [`count_ge`](Serie::count_ge)'s
+/// per-variant threshold extraction / [`from_values`](Serie::from_values)'s marshalling.
+macro_rules! set_dispatch {
+    ($self:expr, $value:expr, ($s:ident, $native:ident) => $call:expr) => {
+        match &mut $self.inner {
+            Inner::I8($s) => {
+                let $native = $value.extract::<i8>()?;
+                $call
+            }
+            Inner::U8($s) => {
+                let $native = $value.extract::<u8>()?;
+                $call
+            }
+            Inner::I16($s) => {
+                let $native = $value.extract::<i16>()?;
+                $call
+            }
+            Inner::U16($s) => {
+                let $native = $value.extract::<u16>()?;
+                $call
+            }
+            Inner::I32($s) => {
+                let $native = $value.extract::<i32>()?;
+                $call
+            }
+            Inner::U32($s) => {
+                let $native = $value.extract::<u32>()?;
+                $call
+            }
+            Inner::I64($s) => {
+                let $native = $value.extract::<i64>()?;
+                $call
+            }
+            Inner::U64($s) => {
+                let $native = $value.extract::<u64>()?;
+                $call
+            }
+            Inner::I128($s) => {
+                let $native = $value.extract::<i128>()?;
+                $call
+            }
+            Inner::U128($s) => {
+                let $native = $value.extract::<u128>()?;
+                $call
+            }
+            Inner::F32($s) => {
+                let $native = $value.extract::<f32>()?;
+                $call
+            }
+            Inner::F64($s) => {
+                let $native = $value.extract::<f64>()?;
+                $call
+            }
+            Inner::Bool($s) => {
+                let $native = $value.extract::<bool>()?;
+                $call
+            }
+            Inner::Decimal32($s) => {
+                let $native = $value.extract::<i32>()?;
+                $call
+            }
+            Inner::Decimal64($s) => {
+                let $native = $value.extract::<i64>()?;
+                $call
+            }
+            Inner::Decimal128($s) => {
+                let $native = $value.extract::<i128>()?;
+                $call
+            }
+            Inner::Decimal256($s) => {
+                let $native = i256_from_py($value)?;
+                $call
+            }
+        }
+    };
+}
+
+/// Like [`set_dispatch!`], but extracts `$values` (a Python list) as a `Vec` of the active variant's
+/// native type — the **bulk** write spine ([`set_range`](Serie::set_range) /
+/// [`set_range_checked`](Serie::set_range_checked)), reusing the same per-variant marshalling
+/// [`from_values`](Serie::from_values) uses.
+macro_rules! set_range_dispatch {
+    ($self:expr, $values:expr, ($s:ident, $vec:ident) => $call:expr) => {
+        match &mut $self.inner {
+            Inner::I8($s) => {
+                let $vec: Vec<i8> = $values.extract()?;
+                $call
+            }
+            Inner::U8($s) => {
+                let $vec: Vec<u8> = $values.extract()?;
+                $call
+            }
+            Inner::I16($s) => {
+                let $vec: Vec<i16> = $values.extract()?;
+                $call
+            }
+            Inner::U16($s) => {
+                let $vec: Vec<u16> = $values.extract()?;
+                $call
+            }
+            Inner::I32($s) => {
+                let $vec: Vec<i32> = $values.extract()?;
+                $call
+            }
+            Inner::U32($s) => {
+                let $vec: Vec<u32> = $values.extract()?;
+                $call
+            }
+            Inner::I64($s) => {
+                let $vec: Vec<i64> = $values.extract()?;
+                $call
+            }
+            Inner::U64($s) => {
+                let $vec: Vec<u64> = $values.extract()?;
+                $call
+            }
+            Inner::I128($s) => {
+                let $vec: Vec<i128> = $values.extract()?;
+                $call
+            }
+            Inner::U128($s) => {
+                let $vec: Vec<u128> = $values.extract()?;
+                $call
+            }
+            Inner::F32($s) => {
+                let $vec: Vec<f32> = $values.extract()?;
+                $call
+            }
+            Inner::F64($s) => {
+                let $vec: Vec<f64> = $values.extract()?;
+                $call
+            }
+            Inner::Bool($s) => {
+                let $vec: Vec<bool> = $values.extract()?;
+                $call
+            }
+            Inner::Decimal32($s) => {
+                let $vec: Vec<i32> = $values.extract()?;
+                $call
+            }
+            Inner::Decimal64($s) => {
+                let $vec: Vec<i64> = $values.extract()?;
+                $call
+            }
+            Inner::Decimal128($s) => {
+                let $vec: Vec<i128> = $values.extract()?;
+                $call
+            }
+            Inner::Decimal256($s) => {
+                let $vec = i256_values($values)?;
+                $call
+            }
         }
     };
 }
@@ -548,6 +735,97 @@ impl Serie {
         })
     }
 
+    /// Replaces the element at `index` **in place** with `value` (a Python number / bool converted
+    /// to the column's native type — the conversion *is* the type check, raising a guided
+    /// `TypeError` / `ValueError` on a wrong-typed value). A previously-null slot becomes valid.
+    /// `index` must be `< len`, else a guided `ValueError`. A decimal column takes the raw unscaled
+    /// integer (a `Decimal256` value beyond `i128` as an arbitrary-precision `int`).
+    fn set(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        set_dispatch!(self, value, (s, v) => s.set(index, v).map_err(ioerr)?);
+        Ok(())
+    }
+
+    /// The **unchecked fast path** of [`set`](Serie::set): the same per-variant conversion and slot
+    /// rewrite with **no bounds check** — the caller guarantees `index < len` (an out-of-range
+    /// `index` is a silent logic error that would corrupt the column).
+    fn set_checked(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        set_dispatch!(self, value, (s, v) => s.set_checked(index, v));
+        Ok(())
+    }
+
+    /// **Nulls** the element at `index` (`< len`, else a guided `ValueError`) — clears its validity
+    /// bit (back-filling a validity buffer if the column had none). The stored data byte is left
+    /// as-is; validity alone decides null-ness.
+    fn set_null(&mut self, index: usize) -> PyResult<()> {
+        dispatch_mut!(self, s => s.set_null(index).map_err(ioerr)?);
+        Ok(())
+    }
+
+    /// A **fresh** sub-column copying elements `[start, start + len)` into a new column, carrying the
+    /// matching validity bits. The window is **clamped** to the column's length — an out-of-range
+    /// `start` or over-long `len` yields a shorter (or empty) column, never an error.
+    fn slice(&self, start: usize, len: usize) -> Serie {
+        Serie {
+            inner: map_variant!(self, s => s.slice(start, len)),
+        }
+    }
+
+    /// **Bulk in-place replace** of `len(values)` elements starting at `start` from a Python list
+    /// (each converted to the column's native type). Requires `start + len(values) <= len`, else a
+    /// guided `ValueError`; a nullable column marks the whole range valid.
+    fn set_range(&mut self, start: usize, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        set_range_dispatch!(self, values, (s, v) => s.set_range(start, &v).map_err(ioerr)?);
+        Ok(())
+    }
+
+    /// The **unchecked bulk twin** of [`set_range`](Serie::set_range): the same dense write with
+    /// **no bounds check** — the caller guarantees `start + len(values) <= len`.
+    fn set_range_checked(&mut self, start: usize, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        set_range_dispatch!(self, values, (s, v) => s.set_range_checked(start, &v));
+        Ok(())
+    }
+
+    /// Sets the range `[start, start + len(other))` from **another `Serie`'s values and validity**
+    /// (bounds-checked — requires `start + len(other) <= len`, else a guided `ValueError`). `other`
+    /// must share this column's dtype, else a guided `ValueError` naming both dtypes.
+    fn set_range_serie(&mut self, start: usize, other: &Serie) -> PyResult<()> {
+        let self_dtype = dispatch!(self, s => s.data_type_id()).name();
+        let other_dtype = dispatch!(other, s => s.data_type_id()).name();
+        match (&mut self.inner, &other.inner) {
+            (Inner::I8(a), Inner::I8(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::U8(a), Inner::U8(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::I16(a), Inner::I16(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::U16(a), Inner::U16(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::I32(a), Inner::I32(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::U32(a), Inner::U32(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::I64(a), Inner::I64(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::U64(a), Inner::U64(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::I128(a), Inner::I128(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::U128(a), Inner::U128(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::F32(a), Inner::F32(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::F64(a), Inner::F64(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::Bool(a), Inner::Bool(b)) => a.set_range_serie(start, b).map_err(ioerr)?,
+            (Inner::Decimal32(a), Inner::Decimal32(b)) => {
+                a.set_range_serie(start, b).map_err(ioerr)?
+            }
+            (Inner::Decimal64(a), Inner::Decimal64(b)) => {
+                a.set_range_serie(start, b).map_err(ioerr)?
+            }
+            (Inner::Decimal128(a), Inner::Decimal128(b)) => {
+                a.set_range_serie(start, b).map_err(ioerr)?
+            }
+            (Inner::Decimal256(a), Inner::Decimal256(b)) => {
+                a.set_range_serie(start, b).map_err(ioerr)?
+            }
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "dtype mismatch: cannot set an {self_dtype} range from a {other_dtype} column"
+                )))
+            }
+        }
+        Ok(())
+    }
+
     /// How many elements are `>= threshold` (a number matching the column's dtype); raises
     /// `TypeError` for a bool or decimal column (they do not reduce). The threshold is extracted
     /// per-variant as that arm's native type — the read counterpart of how
@@ -778,6 +1056,16 @@ fn non_byte_dtype_error() -> PyErr {
     )
 }
 
+/// A guided `ValueError` for an in-place `set` / `set_checked` on a **variable-length** byte column
+/// (`Binary` / `Utf8`) — replacing one variable element would rewrite the packed tail, so those
+/// carriers are append-only; only a fixed-stride column supports a direct slot write.
+fn var_set_error() -> PyErr {
+    PyValueError::new_err(
+        "a variable-length column is append-only: in-place set needs a fixed_binary / fixed_utf8 \
+         column (a variable element would rewrite the tail)",
+    )
+}
+
 /// Rebuilds a fresh byte carrier that **shares the same encoded bytes** as `self` (cloning only the
 /// small offsets/data/validity heaps), applying `name` — the shared worker behind
 /// [`with_name`](ByteSerie::with_name), whose core counterpart consumes `self` (which the `&self`
@@ -987,6 +1275,54 @@ impl ByteSerie {
             ByteInner::FixedBinary(s) => Some(s.width()),
             ByteInner::FixedUtf8(s) => Some(s.width()),
         }
+    }
+
+    /// A **fresh** sub-column copying elements `[start, start + len)` into a new byte column,
+    /// carrying the validity bits (and, for a fixed-size column, its `width`). The window is
+    /// **clamped** to the column's length — an out-of-range `start` or over-long `len` yields a
+    /// shorter (or empty) column, never an error.
+    fn slice(&self, start: usize, len: usize) -> ByteSerie {
+        ByteSerie {
+            inner: byte_map!(self, s => s.slice(start, len)),
+        }
+    }
+
+    /// Replaces the element at `index` **in place** — only on a **fixed-size** column
+    /// (`FixedBinary` takes `bytes`, `FixedUtf8` takes a `str`), zero-padded / truncated to the
+    /// fixed width, marking a null slot valid. `index` must be `< len`, else a guided `ValueError`.
+    /// A **variable-length** column (`Binary` / `Utf8`) is append-only and raises a guided
+    /// `ValueError` (a variable element would rewrite the tail).
+    fn set(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        match &mut self.inner {
+            ByteInner::FixedBinary(s) => {
+                let bytes: PyBackedBytes = value.extract()?;
+                s.set(index, &bytes).map_err(ioerr)?;
+            }
+            ByteInner::FixedUtf8(s) => {
+                let text: String = value.extract()?;
+                s.set(index, text.as_bytes()).map_err(ioerr)?;
+            }
+            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+        }
+        Ok(())
+    }
+
+    /// The **unchecked fast path** of [`set`](ByteSerie::set): the same fixed-size slot write with
+    /// **no bounds check** — the caller guarantees `index < len`. A variable-length column raises
+    /// the same guided `ValueError`.
+    fn set_checked(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        match &mut self.inner {
+            ByteInner::FixedBinary(s) => {
+                let bytes: PyBackedBytes = value.extract()?;
+                s.set_checked(index, &bytes);
+            }
+            ByteInner::FixedUtf8(s) => {
+                let text: String = value.extract()?;
+                s.set_checked(index, text.as_bytes());
+            }
+            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+        }
+        Ok(())
     }
 
     /// A **fresh** column addressing the same bytes with its column `name` set — the metadata a

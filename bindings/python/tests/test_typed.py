@@ -805,3 +805,214 @@ def test_bytes_min_max_value_empty_is_none():
     assert col.first_value() is None
     assert col.last_value() is None
     assert col.n_unique() == 0
+
+
+# =====================================================================================
+# Serie — in-place mutation: set / set_checked / set_null / slice / set_range /
+# set_range_serie
+# =====================================================================================
+
+
+def test_set_replaces_element():
+    col = Serie.from_values([1, 2, 3, 4], DataTypeId.I64)
+    col.set(1, 20)
+    assert col.to_list() == [1, 20, 3, 4]
+    assert col.get(1) == 20
+
+
+def test_set_checked_replaces_element():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I32)
+    col.set_checked(0, 99)  # caller guarantees index < len
+    assert col.to_list() == [99, 2, 3]
+
+
+def test_set_revalidates_null_slot():
+    # set on a previously-null slot marks it valid again.
+    col = Serie.from_options([1, None, 3], DataTypeId.I64)
+    assert col.is_null(1) and col.null_count() == 1
+    col.set(1, 22)
+    assert col.is_valid(1)
+    assert col.get(1) == 22
+    assert col.null_count() == 0
+    assert col.to_list() == [1, 22, 3]
+
+
+def test_set_null_nulls_element():
+    col = Serie.from_values([10, 20, 30], DataTypeId.I64)
+    assert col.null_count() == 0
+    col.set_null(1)
+    assert col.is_null(1)
+    assert col.get(1) is None
+    assert col.null_count() == 1
+    assert col.to_list() == [10, None, 30]
+
+
+def test_set_out_of_range_raises():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    with pytest.raises(ValueError):
+        col.set(3, 9)
+    with pytest.raises(ValueError):
+        col.set(100, 9)
+    with pytest.raises(ValueError):
+        col.set_null(3)
+
+
+def test_set_wrong_type_raises():
+    # The per-variant conversion is the runtime type check.
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    with pytest.raises((TypeError, ValueError)):
+        col.set(0, "not a number")
+
+
+def test_set_decimal_unscaled_int():
+    col = Serie.from_values([100, 200], DataTypeId.Decimal128).with_precision_scale(5, 2)
+    col.set(0, 12345)  # the unscaled integer, like from_values
+    assert col.get(0) == 12345
+    assert col.to_decimal_string(0) == "123.45"
+
+
+def test_set_decimal256_beyond_i128():
+    big = 2**200 + 7
+    col = Serie.from_values([1, 2], DataTypeId.Decimal256)
+    col.set(1, big)
+    assert col.get(1) == big
+
+
+def test_slice_sub_column():
+    col = Serie.from_values([1, 2, 3, 4, 5], DataTypeId.I64)
+    sub = col.slice(1, 3)
+    assert sub.to_list() == [2, 3, 4]
+    assert sub.dtype() == DataTypeId.I64
+    # The original is untouched.
+    assert col.to_list() == [1, 2, 3, 4, 5]
+
+
+def test_slice_clamps_never_errors():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I32)
+    assert col.slice(1, 100).to_list() == [2, 3]  # over-long len clamps
+    assert col.slice(10, 5).to_list() == []  # out-of-range start -> empty
+
+
+def test_slice_preserves_nulls():
+    col = Serie.from_options([1, None, 3, None, 5], DataTypeId.I64)
+    sub = col.slice(1, 3)
+    assert sub.to_list() == [None, 3, None]
+    assert sub.null_count() == 2
+
+
+def test_set_range_from_list():
+    col = Serie.from_values([0, 0, 0, 0, 0], DataTypeId.I64)
+    col.set_range(1, [10, 20, 30])
+    assert col.to_list() == [0, 10, 20, 30, 0]
+
+
+def test_set_range_checked_from_list():
+    col = Serie.from_values([1, 1, 1, 1], DataTypeId.I32)
+    col.set_range_checked(2, [7, 8])  # caller guarantees the window fits
+    assert col.to_list() == [1, 1, 7, 8]
+
+
+def test_set_range_out_of_range_raises():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    with pytest.raises(ValueError):
+        col.set_range(2, [10, 20])  # 2 + 2 > 3
+
+
+def test_set_range_serie_from_another_serie():
+    col = Serie.from_values([0, 0, 0, 0], DataTypeId.I64)
+    other = Serie.from_values([7, 8], DataTypeId.I64)
+    col.set_range_serie(1, other)
+    assert col.to_list() == [0, 7, 8, 0]
+
+
+def test_set_range_serie_carries_nulls():
+    col = Serie.from_values([1, 2, 3, 4], DataTypeId.I64)
+    other = Serie.from_options([None, 9], DataTypeId.I64)
+    col.set_range_serie(2, other)
+    assert col.is_null(2)
+    assert col.get(3) == 9
+    assert col.to_list() == [1, 2, None, 9]
+
+
+def test_set_range_serie_dtype_mismatch_raises():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    other = Serie.from_values([1, 2], DataTypeId.I32)
+    with pytest.raises(ValueError):
+        col.set_range_serie(0, other)
+
+
+# =====================================================================================
+# ByteSerie — in-place mutation: slice / set / set_checked
+# =====================================================================================
+
+
+def test_bytes_slice_utf8():
+    col = ByteSerie.from_values(["a", "bb", "ccc", "dddd"], DataTypeId.Utf8)
+    sub = col.slice(1, 2)
+    assert sub.to_list() == ["bb", "ccc"]
+    assert sub.dtype() == DataTypeId.Utf8
+    assert col.to_list() == ["a", "bb", "ccc", "dddd"]  # original untouched
+
+
+def test_bytes_slice_fixed_binary_preserves_width():
+    col = ByteSerie.from_values([b"aa", b"bb", b"cc", b"dd"], DataTypeId.FixedBinary, width=2)
+    sub = col.slice(1, 2)
+    assert sub.to_list() == [b"bb", b"cc"]
+    assert sub.width() == 2  # width carried over
+    assert sub.dtype() == DataTypeId.FixedBinary
+
+
+def test_bytes_slice_clamps():
+    col = ByteSerie.from_values(["x", "y", "z"], DataTypeId.Utf8)
+    assert col.slice(1, 100).to_list() == ["y", "z"]
+    assert col.slice(10, 5).to_list() == []
+
+
+def test_fixed_binary_set_zero_pad_and_truncate():
+    col = ByteSerie.from_values([b"aa", b"bb", b"cc"], DataTypeId.FixedBinary, width=4)
+    col.set(0, b"z")  # zero-pads to the width
+    assert col.get(0) == b"z\x00\x00\x00"
+    col.set(1, b"abcdef")  # truncates to the width
+    assert col.get(1) == b"abcd"
+    assert col.get(2) == b"cc\x00\x00"  # untouched
+
+
+def test_fixed_utf8_set():
+    col = ByteSerie.from_values(["ab", "cd"], DataTypeId.FixedUtf8, width=2)
+    col.set(1, "zz")
+    assert col.get(1) == "zz"
+
+
+def test_fixed_binary_set_revalidates_null():
+    col = ByteSerie.from_options([b"aa", None, b"cc"], DataTypeId.FixedBinary, width=2)
+    assert col.is_null(1) and col.null_count() == 1
+    col.set(1, b"xy")
+    assert col.is_valid(1)
+    assert col.get(1) == b"xy"
+    assert col.null_count() == 0
+
+
+def test_fixed_binary_set_out_of_range_raises():
+    col = ByteSerie.from_values([b"aa"], DataTypeId.FixedBinary, width=2)
+    with pytest.raises(ValueError):
+        col.set(1, b"bb")
+
+
+def test_fixed_binary_set_checked():
+    col = ByteSerie.from_values([b"aa", b"bb"], DataTypeId.FixedBinary, width=2)
+    col.set_checked(0, b"xy")  # caller guarantees index < len
+    assert col.get(0) == b"xy"
+
+
+def test_variable_binary_set_is_append_only():
+    col = ByteSerie.from_values([b"a", b"bb", b"ccc"], DataTypeId.Binary)
+    with pytest.raises(ValueError):
+        col.set(0, b"x")
+    with pytest.raises(ValueError):
+        col.set_checked(0, b"x")
+
+
+def test_variable_utf8_set_is_append_only():
+    col = ByteSerie.from_values(["a", "bb"], DataTypeId.Utf8)
+    with pytest.raises(ValueError):
+        col.set(0, "x")

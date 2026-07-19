@@ -4,7 +4,7 @@
 //! filtering, and the `HeaderField` metadata — plus the edges (empty, all-null, out-of-range, NaN).
 
 use yggdryl_core::datatype_id::DataTypeId;
-use yggdryl_core::io::memory::{Heap, IOBase};
+use yggdryl_core::io::memory::{Heap, IOBase, IoError};
 use yggdryl_core::typed::fixedbit::Bit;
 use yggdryl_core::typed::fixedbyte::{
     Decimal128, Decimal256, Decimal32, Decimal64, Float64, Int128, Int32, Int64, Int8, UInt128,
@@ -580,4 +580,166 @@ fn fixed_utf8_serie_nullable() {
     assert_eq!(col.field().name(), Some("code"));
     assert_eq!(col.field().byte_width(), Some(3));
     assert!(col.field().data_type_id().is_utf8());
+}
+
+// -------------------------------------------------------------------------------------
+// Element + range mutators (set / set_checked / set_null / set_range / set_range_serie)
+// and the read-range slice — the in-place edit surface on the typed columns.
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn serie_set_and_set_checked_replace_elements() {
+    let mut col = FixedSerie::<Int32>::from_values(&[10, 20, 30, 40]);
+    col.set(1, 99).unwrap();
+    assert_eq!(col.get(1), Some(99));
+    assert_eq!(col.values(), vec![10, 99, 30, 40]);
+
+    // set_checked — the unchecked fast path (caller pre-validated index < len).
+    col.set_checked(3, -7);
+    assert_eq!(col.get(3), Some(-7));
+    assert_eq!(
+        col.to_options(),
+        vec![Some(10), Some(99), Some(30), Some(-7)]
+    );
+
+    // Out-of-range set returns the guided (window-past-end) error.
+    let err = col.set(4, 0).unwrap_err();
+    assert!(matches!(err, IoError::SliceOutOfBounds { .. }));
+}
+
+#[test]
+fn serie_set_re_validates_null_and_set_null_nulls() {
+    let mut col = FixedSerie::<Int32>::from_options(&[Some(1), None, Some(3), None, Some(5)]);
+    assert_eq!(col.null_count(), 2);
+
+    // A `set` past a nullable column's null re-validates it (flips the slot to present).
+    col.set(1, 22).unwrap();
+    assert_eq!(col.get(1), Some(22));
+    assert!(col.is_valid(1));
+    assert_eq!(col.null_count(), 1);
+
+    // set_null nulls a valid slot; null_count updates.
+    col.set_null(0).unwrap();
+    assert!(col.is_null(0));
+    assert_eq!(col.get(0), None);
+    assert_eq!(col.null_count(), 2);
+    assert_eq!(
+        col.to_options(),
+        vec![None, Some(22), Some(3), None, Some(5)]
+    );
+
+    // set_null on a previously non-nullable column back-fills a validity buffer.
+    let mut plain = FixedSerie::<Int64>::from_values(&[7, 8, 9]);
+    assert_eq!(plain.null_count(), 0);
+    plain.set_null(1).unwrap();
+    assert_eq!(plain.null_count(), 1);
+    assert_eq!(plain.to_options(), vec![Some(7), None, Some(9)]);
+
+    // Out-of-range set_null is the guided error.
+    assert!(matches!(
+        plain.set_null(3).unwrap_err(),
+        IoError::SliceOutOfBounds { .. }
+    ));
+}
+
+#[test]
+fn serie_set_range_and_set_range_serie() {
+    let mut col = FixedSerie::<Int64>::from_values(&[1, 2, 3, 4, 5, 6]);
+    col.set_range(2, &[30, 40, 50]).unwrap();
+    assert_eq!(col.values(), vec![1, 2, 30, 40, 50, 6]);
+
+    // Unchecked bulk twin.
+    col.set_range_checked(0, &[-1, -2]);
+    assert_eq!(col.values(), vec![-1, -2, 30, 40, 50, 6]);
+
+    // Out-of-range set_range returns the guided error.
+    let err = col.set_range(4, &[0, 0, 0]).unwrap_err();
+    assert!(matches!(err, IoError::SliceOutOfBounds { .. }));
+
+    // set_range_serie copies values AND validity from another column (nullable source makes the
+    // target nullable, back-filling a validity buffer).
+    let other = FixedSerie::<Int64>::from_options(&[Some(70), None, Some(90)]);
+    col.set_range_serie(2, &other).unwrap();
+    assert_eq!(
+        col.to_options(),
+        vec![Some(-1), Some(-2), Some(70), None, Some(90), Some(6)]
+    );
+    assert_eq!(col.null_count(), 1);
+
+    // set_range_serie from a non-nullable source into a non-nullable target stays non-nullable.
+    let mut plain = FixedSerie::<Int32>::from_values(&[0, 0, 0, 0]);
+    let src = FixedSerie::<Int32>::from_values(&[11, 22]);
+    plain.set_range_serie(1, &src).unwrap();
+    assert_eq!(plain.values(), vec![0, 11, 22, 0]);
+    assert_eq!(plain.null_count(), 0);
+}
+
+#[test]
+fn serie_slice_numeric_and_clamp() {
+    let col = FixedSerie::<Int32>::from_values(&[10, 20, 30, 40, 50]);
+
+    let mid = col.slice(1, 3);
+    assert_eq!(mid.len(), 3);
+    assert_eq!(mid.values(), vec![20, 30, 40]);
+
+    // Clamp an over-long window -> a short column.
+    let tail = col.slice(3, 10);
+    assert_eq!(tail.len(), 2);
+    assert_eq!(tail.values(), vec![40, 50]);
+
+    // A start past the end -> an empty column (never an error).
+    assert_eq!(col.slice(9, 4).len(), 0);
+
+    // A nullable slice carries the matching validity bits.
+    let nullable = FixedSerie::<Int64>::from_options(&[Some(1), None, Some(3), None, Some(5)]);
+    let sub = nullable.slice(1, 3);
+    assert_eq!(sub.to_options(), vec![None, Some(3), None]);
+    assert_eq!(sub.null_count(), 2);
+}
+
+#[test]
+fn var_and_fixed_size_slice_and_set() {
+    // Utf8 VarSerie slice rebuilds offsets/data and carries validity.
+    let words = VarSerie::<Utf8>::from_options(&[
+        Some("alpha".to_string()),
+        None,
+        Some("gamma".to_string()),
+        Some("delta".to_string()),
+    ]);
+    let sub = words.slice(1, 2);
+    assert_eq!(sub.len(), 2);
+    assert_eq!(sub.get(0), None);
+    assert_eq!(sub.get(1).as_deref(), Some("gamma"));
+    assert_eq!(sub.null_count(), 1);
+    // Clamp past the end.
+    assert_eq!(words.slice(3, 9).len(), 1);
+    assert_eq!(words.slice(2, 9).get(1).as_deref(), Some("delta"));
+
+    // FixedSizeSerie slice copies the fixed-stride block + validity.
+    let codes = FixedSizeSerie::<FixedUtf8>::from_options(
+        3,
+        &[
+            Some("ab".to_string()),
+            None,
+            Some("xyz".to_string()),
+            Some("qrs".to_string()),
+        ],
+    );
+    let block = codes.slice(1, 2);
+    assert_eq!(block.width(), 3);
+    assert_eq!(block.len(), 2);
+    assert_eq!(block.get(0), None);
+    assert_eq!(block.get(1).as_deref(), Some("xyz"));
+
+    // FixedSizeSerie in-place set (zero-pad / truncate to the fixed width) + out-of-range guard.
+    let mut fx =
+        FixedSizeSerie::<FixedBinary>::from_values(4, &[b"aaaa".to_vec(), b"bbbb".to_vec()]);
+    fx.set(0, b"cd").unwrap();
+    assert_eq!(fx.get(0), Some(b"cd\0\0".to_vec())); // zero-padded to width 4
+    fx.set_checked(1, b"zzzzzz"); // truncated to width 4
+    assert_eq!(fx.get(1), Some(b"zzzz".to_vec()));
+    assert!(matches!(
+        fx.set(2, b"x").unwrap_err(),
+        IoError::SliceOutOfBounds { .. }
+    ));
 }
