@@ -17,7 +17,7 @@ use crate::typed::fixedbyte::{
 };
 use crate::typed::nested::{ColumnField, ListSerie, MapSerie, StructSerie, Value};
 use crate::typed::varbyte::{Binary, LargeBinary, LargeUtf8, Utf8};
-use crate::typed::{FixedSerie, HeaderField, Scalar, VarSerie};
+use crate::typed::{FixedSerie, HeaderField, NullSerie, Scalar, VarSerie};
 
 /// Generates the [`Column`] enum's **leaf arms** and their uniform method dispatch + [`From`] impls
 /// from a table of `Variant: CarrierType => ValueWrap` rows — one row per concrete flat column. Every
@@ -101,12 +101,13 @@ macro_rules! leaf_columns {
                 }
             }
 
-            /// The element [`DataTypeId`] — [`Unknown`](DataTypeId::Unknown) for a bufferless
-            /// [`Null`](Column::Null) column, or the nested tag ([`Struct`](DataTypeId::Struct) /
-            /// [`List`](DataTypeId::List) / [`Map`](DataTypeId::Map)) for a nested child.
+            /// The element [`DataTypeId`] — [`Null`](DataTypeId::Null) (the typed all-null) for a
+            /// bufferless [`Null`](Column::Null) column, or the nested tag
+            /// ([`Struct`](DataTypeId::Struct) / [`List`](DataTypeId::List) / [`Map`](DataTypeId::Map))
+            /// for a nested child.
             pub fn data_type_id(&self) -> DataTypeId {
                 match self {
-                    Column::Null(_) => DataTypeId::Unknown,
+                    Column::Null(_) => DataTypeId::Null,
                     $( Column::$variant(serie) => serie.data_type_id(), )+
                     Column::Struct(_) => DataTypeId::Struct,
                     Column::List(_) => DataTypeId::List,
@@ -120,7 +121,7 @@ macro_rules! leaf_columns {
             pub fn field(&self) -> ColumnField {
                 match self {
                     Column::Null(_) => {
-                        ColumnField::Leaf(HeaderField::new(None, DataTypeId::Unknown, true))
+                        ColumnField::Leaf(HeaderField::new(None, DataTypeId::Null, true))
                     }
                     $( Column::$variant(serie) => ColumnField::Leaf(serie.field()), )+
                     Column::Struct(serie) => ColumnField::Struct(serie.field()),
@@ -221,6 +222,14 @@ impl Column {
     /// Whether the column has no elements.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl From<NullSerie> for Column {
+    /// Erases a typed [`NullSerie`] into the bufferless [`Column::Null`] of the same length. The
+    /// null column has no values to carry, so only its length crosses over.
+    fn from(serie: NullSerie) -> Self {
+        Column::Null(serie.len())
     }
 }
 

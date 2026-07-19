@@ -11,7 +11,8 @@ use core::marker::PhantomData;
 
 use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
-use crate::typed::{HeaderField, Scalar, Serie, VarType};
+use crate::typed::nested::set_any_dtype_error;
+use crate::typed::{FromValue, HeaderField, Scalar, Serie, Value, VarType};
 
 /// Fixed-size **binary** — each element is exactly the column's byte width (`Vec<u8>`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -149,39 +150,6 @@ impl<T: VarType> FixedSizeSerie<T, Heap> {
         }
     }
 
-    /// Replaces the element at `index` **in place** with `bytes`, zero-padded (or truncated) to the
-    /// fixed width (must be `< len`, else a guided [`IoError::SliceOutOfBounds`] naming the window and
-    /// length). The fixed stride makes this a **direct slot write** — no tail rewrite (unlike a
-    /// variable-length [`VarSerie`](crate::typed::VarSerie), which is append-only); when the column is
-    /// nullable it also **marks the slot valid**.
-    pub fn set(&mut self, index: usize, bytes: &[u8]) -> Result<(), IoError> {
-        if index >= self.len {
-            return Err(IoError::SliceOutOfBounds {
-                offset: index as u64,
-                len: 1,
-                available: self.len as u64,
-            });
-        }
-        self.set_checked(index, bytes);
-        Ok(())
-    }
-
-    /// The **unchecked fast path** of [`set`](FixedSizeSerie::set): the same slot write with **no
-    /// bounds check** (the caller guarantees `index < len`) and validity mark. An out-of-range `index`
-    /// is a **silent logic error** here — it would write past the column.
-    pub fn set_checked(&mut self, index: usize, bytes: &[u8]) {
-        let mut slot = vec![0u8; self.width];
-        let take = bytes.len().min(self.width);
-        slot[..take].copy_from_slice(&bytes[..take]);
-        self.data
-            .pwrite_byte_array(index as u64 * self.width as u64, &slot);
-        if let Some(validity) = self.validity.as_mut() {
-            validity
-                .pwrite_bit(index as u64, true)
-                .expect("bit write into a heap");
-        }
-    }
-
     /// A fresh sub-column copying elements `[start, start + len)` into a new in-heap
     /// [`FixedSizeSerie`] — one contiguous copy of the fixed-stride block — carrying the validity
     /// bits. The window is **clamped** to the column's length (an out-of-range window yields a
@@ -228,6 +196,39 @@ impl<T: VarType, D: IOBase> FixedSizeSerie<T, D> {
     /// The fixed byte **width** of one element.
     pub fn width(&self) -> usize {
         self.width
+    }
+
+    /// Replaces the element at `index` **in place** with `bytes`, zero-padded (or truncated) to the
+    /// fixed width (must be `< len`, else a guided [`IoError::SliceOutOfBounds`] naming the window and
+    /// length). The fixed stride makes this a **direct slot write** — no tail rewrite (unlike a
+    /// variable-length [`VarSerie`](crate::typed::VarSerie), which is append-only); when the column is
+    /// nullable it also **marks the slot valid**.
+    pub fn set(&mut self, index: usize, bytes: &[u8]) -> Result<(), IoError> {
+        if index >= self.len {
+            return Err(IoError::SliceOutOfBounds {
+                offset: index as u64,
+                len: 1,
+                available: self.len as u64,
+            });
+        }
+        self.set_checked(index, bytes);
+        Ok(())
+    }
+
+    /// The **unchecked fast path** of [`set`](FixedSizeSerie::set): the same slot write with **no
+    /// bounds check** (the caller guarantees `index < len`) and validity mark. An out-of-range `index`
+    /// is a **silent logic error** here — it would write past the column.
+    pub fn set_checked(&mut self, index: usize, bytes: &[u8]) {
+        let mut slot = vec![0u8; self.width];
+        let take = bytes.len().min(self.width);
+        slot[..take].copy_from_slice(&bytes[..take]);
+        self.data
+            .pwrite_byte_array(index as u64 * self.width as u64, &slot);
+        if let Some(validity) = self.validity.as_mut() {
+            validity
+                .pwrite_bit(index as u64, true)
+                .expect("bit write into a heap");
+        }
     }
 
     fn valid(&self, index: usize) -> bool {
@@ -306,4 +307,17 @@ impl<T: VarType, D: IOBase> Scalar for FixedSizeSerie<T, D> {
     }
 }
 
-impl<T: VarType, D: IOBase> Serie for FixedSizeSerie<T, D> {}
+impl<T: VarType, D: IOBase> Serie for FixedSizeSerie<T, D> {
+    /// Sets the element at `index` from an erased [`Value`] — extracts the owned value via
+    /// [`FromValue`] (guided error on a dtype mismatch, naming both sides), then the fixed-stride
+    /// in-place [`set`](FixedSizeSerie::set) (zero-padded / truncated to the width). Overrides the
+    /// append-only default (a fixed-stride column has no tail to rewrite).
+    fn set_any_scalar_at(&mut self, index: usize, value: &Value) -> Result<(), IoError>
+    where
+        Self::Value: FromValue,
+    {
+        let owned = <T::Owned as FromValue>::from_value(value)
+            .ok_or_else(|| set_any_dtype_error(T::DATA_TYPE_ID, value))?;
+        self.set(index, T::owned_bytes(&owned))
+    }
+}

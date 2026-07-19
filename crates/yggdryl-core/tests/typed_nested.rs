@@ -280,7 +280,8 @@ fn all_null_child_column() {
     assert_eq!(null_col.null_count(), 3);
     assert!(null_col.is_null(0));
     assert_eq!(null_col.get(0), Value::Null);
-    assert_eq!(null_col.data_type_id(), DataTypeId::Unknown);
+    // A bufferless Null column reports the typed all-null dtype (distinct from Unknown / raw bytes).
+    assert_eq!(null_col.data_type_id(), DataTypeId::Null);
     // The real column alongside it still reads through.
     assert_eq!(
         table.row(2).unwrap().get_by_name("id"),

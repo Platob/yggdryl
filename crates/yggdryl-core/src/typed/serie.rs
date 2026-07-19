@@ -14,12 +14,13 @@ use core::marker::PhantomData;
 
 use super::field::{cast_dtype_error, cast_null_error};
 use super::{
-    DataType, Decimal, Decoder, Encoder, Field, FlexibleFromStr, FlexibleToStr, HeaderField,
-    Reduce, Scalar,
+    AnyScalar, Column, DataType, Decimal, Decoder, Encoder, Field, FlexibleFromStr, FlexibleToStr,
+    FromValue, HeaderField, Reduce, Scalar, ToValue, Value,
 };
 use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
 use crate::io::memory::{Heap, IOBase, IoError};
+use crate::typed::nested::set_any_dtype_error;
 
 /// The bulk surface a [`Scalar`] gains as a column.
 ///
@@ -101,6 +102,71 @@ pub trait Serie: Scalar {
         Self::Value: Ord,
     {
         (0..self.len()).filter_map(|index| self.get(index)).max()
+    }
+
+    /// The element at `index` **erased** into a [`Value`] — the generic bridge from this
+    /// concrete typed column to the [`Any`](crate::typed::AnySerie) surface. It redirects to this
+    /// series' **own** [`get`](Scalar::get) (its optimized decode) and wraps the native through
+    /// [`ToValue`], so every carrier inherits it with no slow fallback. A null or out-of-range slot
+    /// is [`Value::Null`].
+    ///
+    /// ```
+    /// use yggdryl_core::typed::{FixedSerie, Serie, Value};
+    /// use yggdryl_core::typed::fixedbyte::Int64;
+    ///
+    /// let col = FixedSerie::<Int64>::from_values(&[10, 20, 30]);
+    /// assert_eq!(col.get_any_value_at(1), Value::Int64(20));
+    /// assert_eq!(col.get_any_value_at(9), Value::Null); // out of range
+    /// ```
+    fn get_any_value_at(&self, index: usize) -> Value
+    where
+        Self::Value: ToValue,
+    {
+        self.get(index)
+            .map(ToValue::to_value)
+            .unwrap_or(Value::Null)
+    }
+
+    /// The element at `index` as an [`AnyScalar`] (the erased [`Value`]) — the `Any`-typed reading of
+    /// [`get_any_value_at`](Serie::get_any_value_at).
+    fn get_any_scalar_at(&self, index: usize) -> AnyScalar
+    where
+        Self::Value: ToValue,
+    {
+        self.get_any_value_at(index)
+    }
+
+    /// Sets the element at `index` from an **erased** [`Value`] — extracts this series' native via
+    /// [`FromValue`] (a guided error, naming **both** the column's and the value's dtype, when they
+    /// do not match), then applies the column's own `set`.
+    ///
+    /// The **default is a guided refusal** for an **append-only / read-only** carrier — a
+    /// variable-length [`VarSerie`](crate::typed::VarSerie) (replacing an element would rewrite the
+    /// whole tail) or a bufferless [`NullSerie`](crate::typed::NullSerie). The **settable** carriers
+    /// ([`FixedSerie`], [`FixedSizeSerie`](crate::typed::FixedSizeSerie)) override it with their
+    /// in-place `set`.
+    fn set_any_scalar_at(&mut self, index: usize, value: &Value) -> Result<(), IoError>
+    where
+        Self::Value: FromValue,
+    {
+        let _ = (index, value);
+        Err(IoError::TypedCast {
+            detail: format!(
+                "this {} column is append-only: rebuild it from values (its bytes cannot be \
+                 replaced in place)",
+                self.data_type_id()
+            ),
+        })
+    }
+
+    /// Erases this column into the [`Any`](crate::typed::AnySerie) carrier — the erased [`Column`]
+    /// that wraps every concrete type. A thin `self.into()`, available for any series with a
+    /// [`From`] into [`Column`].
+    fn into_any(self) -> Column
+    where
+        Self: Sized + Into<Column>,
+    {
+        self.into()
     }
 }
 
@@ -693,7 +759,19 @@ impl<T: Decoder, D: IOBase> Scalar for FixedSerie<T, D> {
     }
 }
 
-impl<T: Decoder, D: IOBase> Serie for FixedSerie<T, D> {}
+impl<T: Encoder + Decoder, D: IOBase> Serie for FixedSerie<T, D> {
+    /// Sets the element at `index` from an erased [`Value`] — extracts the fixed-width native via
+    /// [`FromValue`] (guided error on a dtype mismatch, naming both sides), then the vectorized
+    /// in-place [`set`](FixedSerie::set). Overrides the append-only default with the fast path.
+    fn set_any_scalar_at(&mut self, index: usize, value: &Value) -> Result<(), IoError>
+    where
+        Self::Value: FromValue,
+    {
+        let native = <T::Native as FromValue>::from_value(value)
+            .ok_or_else(|| set_any_dtype_error(T::DATA_TYPE_ID, value))?;
+        self.set(index, native)
+    }
+}
 
 /// Numeric reductions — routed to the data buffer's [`Aggregate`](crate::io::memory::Aggregate)
 /// kernels. DESIGN: these reduce over the **physical** buffer (a null slot contributes its stored

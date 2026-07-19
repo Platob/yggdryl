@@ -11,8 +11,9 @@ use yggdryl_core::typed::fixedbyte::{
     UInt8, I256,
 };
 use yggdryl_core::typed::{
-    Binary, Decimal, Decoder, Encoder, Field, FixedBinary, FixedScalar, FixedSerie, FixedSizeSerie,
-    FixedUtf8, FlexibleFromStr, HeaderField, Scalar, Serie, Utf8, VarScalar, VarSerie,
+    AnyScalar, AnySerie, Binary, Column, Decimal, Decoder, Encoder, Field, FixedBinary,
+    FixedScalar, FixedSerie, FixedSizeSerie, FixedUtf8, FlexibleFromStr, HeaderField, NullSerie,
+    Scalar, Serie, Utf8, Value, VarScalar, VarSerie,
 };
 
 // -------------------------------------------------------------------------------------
@@ -1209,4 +1210,109 @@ fn from_options_null_free_is_non_nullable() {
     assert!(some_null.field().nullable());
     assert_eq!(some_null.null_count(), 1);
     assert!(some_null.validity().is_some());
+}
+
+// -------------------------------------------------------------------------------------
+// NullSerie — the first-class 0-width all-null column
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn null_serie_is_all_null_bufferless() {
+    let nulls = NullSerie::new(5);
+    assert_eq!(nulls.len(), 5);
+    assert!(!nulls.is_empty());
+    assert_eq!(nulls.null_count(), 5); // every element is null
+    for index in 0..5 {
+        assert!(!nulls.is_valid(index));
+        assert!(nulls.is_null(index));
+        assert_eq!(nulls.get(index), None);
+    }
+    // Its element type is the typed all-null `Null` (distinct from Unknown / raw bytes).
+    assert_eq!(nulls.data_type_id(), DataTypeId::Null);
+    assert_eq!(nulls.field().data_type_id(), DataTypeId::Null);
+    assert!(nulls.field().nullable());
+
+    // Ergonomic builders: with_name / with_len, and push_null grows the run.
+    let mut named = NullSerie::new(0).with_name("blanks").with_len(2);
+    assert_eq!(named.name(), Some("blanks"));
+    assert_eq!(named.len(), 2);
+    named.push_null();
+    assert_eq!(named.len(), 3);
+    assert_eq!(named.field().data_type_id(), DataTypeId::Null);
+
+    // Erases into the bufferless Column::Null of the same length, reading Value::Null.
+    let column = Column::from(NullSerie::new(3));
+    assert!(matches!(column, Column::Null(3)));
+    assert_eq!(column.len(), 3);
+    assert_eq!(column.null_count(), 3);
+    assert_eq!(column.get(0), Value::Null);
+    assert_eq!(column.data_type_id(), DataTypeId::Null);
+}
+
+// -------------------------------------------------------------------------------------
+// Any — the erased get_*_at / set_any_scalar_at accessors + the AnySerie / AnyScalar aliases
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn any_accessors_on_fixed_and_var_series() {
+    // A concrete Int64 column erases each element into a Value via get_any_value_at / _scalar_at.
+    let mut col = FixedSerie::<Int64>::from_values(&[10, 20, 30]);
+    let scalar: AnyScalar = col.get_any_scalar_at(1);
+    assert_eq!(col.get_any_value_at(1), Value::Int64(20));
+    assert_eq!(scalar, Value::Int64(20));
+    assert_eq!(col.get_any_value_at(9), Value::Null); // out of range -> Null
+
+    // set_any_scalar_at extracts the native from a matching Value and writes it in place.
+    col.set_any_scalar_at(0, &Value::Int64(99)).unwrap();
+    assert_eq!(col.get(0), Some(99));
+    assert_eq!(col.get_any_value_at(0), Value::Int64(99));
+
+    // A dtype mismatch is a guided error naming both the column and the value type.
+    let err = col
+        .set_any_scalar_at(0, &Value::Utf8("x".into()))
+        .unwrap_err();
+    let message = err.to_string();
+    assert!(
+        message.contains("utf8") && message.contains("i64"),
+        "{message}"
+    );
+    assert_eq!(col.get(0), Some(99)); // unchanged after the rejected set
+
+    // A variable-length Utf8 column erases into Value::Utf8, and its in-place set is refused
+    // (append-only) with a guided error.
+    let mut words = VarSerie::<Utf8>::from_values(&["hi".to_string(), "world".to_string()]);
+    assert_eq!(words.get_any_value_at(0), Value::Utf8("hi".to_string()));
+    assert_eq!(words.get_any_scalar_at(1), Value::Utf8("world".to_string()));
+    let refused = words
+        .set_any_scalar_at(0, &Value::Utf8("x".into()))
+        .unwrap_err();
+    assert!(refused.to_string().contains("append-only"), "{refused}");
+
+    // into_any erases the concrete carrier into the AnySerie (== Column) surface.
+    let erased: AnySerie = FixedSerie::<Int64>::from_values(&[1, 2]).into_any();
+    assert_eq!(erased.len(), 2);
+    assert_eq!(erased.get(1), Value::Int64(2));
+}
+
+#[test]
+fn cast_to_any_is_a_no_op() {
+    // The byte-level dtype cast path: a target of `Any` returns the source unchanged (bytes and
+    // declared element type kept — the erased layer already holds any type).
+    let mut src = Heap::new();
+    src.pwrite_i64_array(0, &[1, -2, 3]).unwrap();
+    src.set_dtype(DataTypeId::I64);
+
+    let same = src.resize_dtype(DataTypeId::Any).unwrap();
+    assert_eq!(same.byte_size(), src.byte_size()); // 24 bytes, no reinterpret
+    assert_eq!(same.dtype(), DataTypeId::I64); // element type unchanged
+    let mut back = [0i64; 3];
+    same.pread_i64_array(0, &mut back).unwrap();
+    assert_eq!(back, [1, -2, 3]);
+
+    // In place: casting to Any keeps the count and the dtype.
+    let mut heap = src;
+    let count = heap.resize_dtype_in_place(DataTypeId::Any).unwrap();
+    assert_eq!(count, 3);
+    assert_eq!(heap.dtype(), DataTypeId::I64);
+    assert_eq!(heap.byte_size(), 24);
 }

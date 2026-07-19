@@ -609,11 +609,15 @@ pub trait IOBase: Sized {
     /// auto-resizable backing, no extra copy) and updates the `Type-Id` header. Returns the
     /// element count. Values convert numerically: a narrowing integer target **saturates** (never
     /// wraps), a float target rounds; conversions carry through `f64`, so integer magnitudes beyond
-    /// 2^53 may lose precision. Errors with a guided [`IoError::FileIo`] when either side has no
-    /// known element type (call [`set_dtype`](IOBase::set_dtype) first).
+    /// 2^53 may lose precision. A target of [`Any`](DataTypeId::Any) is a **no-op** — the erased
+    /// "holds any type" tag keeps the bytes and current element type unchanged. Errors with a
+    /// guided [`IoError::FileIo`] when either side has no known element type (call
+    /// [`set_dtype`](IOBase::set_dtype) first).
     fn resize_dtype_in_place(&mut self, to: DataTypeId) -> Result<u64, IoError> {
         let from = self.dtype();
-        if from == to {
+        // A cast to the erased `Any` type is a **no-op** — the source already "holds any type", so
+        // its bytes and declared element type are kept unchanged (no reinterpretation).
+        if from == to || to.is_any() {
             return Ok(self.element_count());
         }
         if !from.is_fixed_width() || !to.is_fixed_width() {
@@ -1714,7 +1718,7 @@ fn elem_as_f64<S: IOBase>(src: &S, dtype: DataTypeId, off: u64) -> Result<f64, I
         Decimal64 => src.pread_i64(off)? as f64,
         Decimal128 => src.pread_i128(off)? as f64,
         Decimal256 | Binary | LargeBinary | Utf8 | LargeUtf8 | FixedBinary | FixedUtf8 | Struct
-        | List | Map | Unknown => 0.0,
+        | List | Map | Unknown | Null | Any => 0.0,
     })
 }
 
@@ -1742,7 +1746,7 @@ fn write_f64_as(out: &mut [u8], dtype: DataTypeId, value: f64) {
         Decimal64 => out[..8].copy_from_slice(&(value as i64).to_le_bytes()),
         Decimal128 => out[..16].copy_from_slice(&(value as i128).to_le_bytes()),
         Decimal256 | Binary | LargeBinary | Utf8 | LargeUtf8 | FixedBinary | FixedUtf8 | Struct
-        | List | Map | Unknown => {}
+        | List | Map | Unknown | Null | Any => {}
     }
 }
 

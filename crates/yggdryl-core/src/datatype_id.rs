@@ -13,7 +13,7 @@
 //!
 //! | band | category | members |
 //! |---|---|---|
-//! | `0x0000` | [`Null`](DataTypeCategory::Null) | `Unknown` |
+//! | `0x0000` | [`Null`](DataTypeCategory::Null) | `Unknown`, `Null` (`0x0001`), `Any` (`0x00F0`) |
 //! | `0x0010` | [`Boolean`](DataTypeCategory::Boolean) | `Bool` |
 //! | `0x0100` | [`Integer`](DataTypeCategory::Integer) | `I8`…`U128` |
 //! | `0x0200` | [`Float`](DataTypeCategory::Float) | `F32`, `F64` (`0x0200` reserved for `F16`) |
@@ -90,6 +90,19 @@ pub enum DataTypeId {
     #[default]
     Unknown = 0x0000,
 
+    /// The **typed all-null** element type — a first-class, 0-width, all-null column (every element
+    /// is null, no data buffer). Distinct from [`Unknown`](DataTypeId::Unknown): `Unknown` is *raw
+    /// bytes with no declared type*, whereas `Null` is the *declared "all values are null" type*.
+    /// Band `0x0000` (`0x0001`).
+    Null = 0x0001,
+
+    /// The **erased "holds any type"** meta-tag — the runtime tag of the erased
+    /// [`Column`](crate::typed::Column) / [`Value`](crate::typed::Value) that wraps every concrete
+    /// type. It is **not** a stored element type (it has no byte width and never appears in a
+    /// source's `Type-Id` as a real layout); it marks a value / column that can carry any of the
+    /// other types. Band `0x0000` (`0x00F0`).
+    Any = 0x00F0,
+
     // ---- boolean band (0x0010) --------------------------------------------------------
     /// A boolean — 1 byte in storage, 1 bit logically.
     Bool = 0x0010,
@@ -164,8 +177,12 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every non-`Unknown` type, in id order — the canonical set (used by tests and registries).
-    pub const ALL: [DataTypeId; 26] = [
+    /// Includes the special-band [`Null`](DataTypeId::Null) (the typed all-null) and
+    /// [`Any`](DataTypeId::Any) (the erased "holds any type" meta-tag).
+    pub const ALL: [DataTypeId; 28] = [
+        DataTypeId::Null,
         DataTypeId::Bool,
+        DataTypeId::Any,
         DataTypeId::I8,
         DataTypeId::U8,
         DataTypeId::I16,
@@ -202,6 +219,8 @@ impl DataTypeId {
     /// value (total, never panics — a foreign/newer id degrades to raw bytes).
     pub fn from_u16(value: u16) -> DataTypeId {
         match value {
+            0x0001 => DataTypeId::Null,
+            0x00F0 => DataTypeId::Any,
             0x0010 => DataTypeId::Bool,
             0x0100 => DataTypeId::I8,
             0x0101 => DataTypeId::U8,
@@ -236,6 +255,8 @@ impl DataTypeId {
     pub fn name(self) -> &'static str {
         match self {
             DataTypeId::Unknown => "unknown",
+            DataTypeId::Null => "null",
+            DataTypeId::Any => "any",
             DataTypeId::Bool => "bool",
             DataTypeId::I8 => "i8",
             DataTypeId::U8 => "u8",
@@ -321,6 +342,8 @@ impl DataTypeId {
             // id-derivable element width (a fixed-size type's width lives in the field metadata; a
             // nested type's layout is in its children, not a single fixed stride).
             DataTypeId::Unknown
+            | DataTypeId::Null
+            | DataTypeId::Any
             | DataTypeId::Binary
             | DataTypeId::LargeBinary
             | DataTypeId::Utf8
@@ -453,6 +476,19 @@ impl DataTypeId {
     /// Whether this is the boolean type.
     pub fn is_bool(self) -> bool {
         self == DataTypeId::Bool
+    }
+
+    /// Whether this is the **typed all-null** type ([`Null`](DataTypeId::Null)) — the first-class
+    /// all-null column. **Not** the same as [`Unknown`](DataTypeId::Unknown) (raw bytes): only
+    /// `Null` answers `true` here.
+    pub fn is_null_type(self) -> bool {
+        self == DataTypeId::Null
+    }
+
+    /// Whether this is the erased **"holds any type"** meta-tag ([`Any`](DataTypeId::Any)) — the
+    /// runtime tag of the erased [`Column`](crate::typed::Column) / [`Value`](crate::typed::Value).
+    pub fn is_any(self) -> bool {
+        self == DataTypeId::Any
     }
 
     /// Whether this is a **numeric** type — an integer, a float, or a decimal (not `bool`, not a

@@ -458,7 +458,9 @@ pub fn column_from_arrow(array: &ArrayRef, field: &ColumnField) -> Result<Column
     let nullable = leaf.nullable();
 
     match leaf.data_type_id() {
-        DataTypeId::Unknown => Ok(Column::Null(array.len())),
+        // Raw bytes, the typed all-null, and the erased "holds any" tag all rebuild as a bufferless
+        // null column (the closest leaf carrier — a NullArray has no values to restore).
+        DataTypeId::Unknown | DataTypeId::Null | DataTypeId::Any => Ok(Column::Null(array.len())),
         DataTypeId::Bool => {
             let arr = downcast::<BooleanArray>(array, "BooleanArray")?;
             let len = arr.len();

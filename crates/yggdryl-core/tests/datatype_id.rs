@@ -139,6 +139,37 @@ fn large_variants() {
 }
 
 #[test]
+fn null_and_any_special_band() {
+    // The typed all-null `Null` (0x0001) and the erased "holds any type" `Any` (0x00F0) live in the
+    // special band next to `Unknown` (0x0000), each with a stable name and a u16 round-trip.
+    assert_eq!(DataTypeId::Null.as_u16(), 0x0001);
+    assert_eq!(DataTypeId::Any.as_u16(), 0x00F0);
+    assert_eq!(DataTypeId::from_u16(0x0001), DataTypeId::Null);
+    assert_eq!(DataTypeId::from_u16(0x00F0), DataTypeId::Any);
+    assert_eq!(DataTypeId::Null.name(), "null");
+    assert_eq!(DataTypeId::Any.name(), "any");
+    assert_eq!(DataTypeId::from_name("null"), Some(DataTypeId::Null));
+    assert_eq!(DataTypeId::from_name("ANY"), Some(DataTypeId::Any)); // case-insensitive
+    assert_eq!(DataTypeId::Null.to_string(), "null");
+
+    // Predicates: only `Null` is the typed all-null, only `Any` is the erased meta-tag; `Unknown`
+    // is neither (it is raw bytes).
+    assert!(DataTypeId::Null.is_null_type() && !DataTypeId::Null.is_any());
+    assert!(DataTypeId::Any.is_any() && !DataTypeId::Any.is_null_type());
+    assert!(!DataTypeId::Unknown.is_null_type() && !DataTypeId::Unknown.is_any());
+    assert!(!DataTypeId::I64.is_null_type() && !DataTypeId::I64.is_any());
+
+    // Both fold into the special `Null` category, carry no element width, and are not fixed-width.
+    assert_eq!(DataTypeId::Null.category(), DataTypeCategory::Null);
+    assert_eq!(DataTypeId::Any.category(), DataTypeCategory::Null);
+    assert_eq!(DataTypeId::Null.byte_size(), 0);
+    assert_eq!(DataTypeId::Any.byte_size(), 0);
+    assert!(!DataTypeId::Null.is_fixed_width() && !DataTypeId::Any.is_fixed_width());
+    // Neither is numeric / nested / byte-like.
+    assert!(!DataTypeId::Null.is_numeric() && !DataTypeId::Any.is_nested());
+}
+
+#[test]
 fn nested_categories_split_struct_list_map() {
     // The nested band splits into three distinct categories.
     assert_eq!(DataTypeId::Struct.category(), DataTypeCategory::Struct);

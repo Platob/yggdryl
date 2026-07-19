@@ -5,6 +5,7 @@
 //! `Vec<Value>`. It carries the value **by value** (an owned `Vec<u8>` / `String` for the byte types,
 //! a nested [`StructScalar`] for a struct row), so a `Value` outlives the column it came from.
 
+use crate::datatype_id::DataTypeId;
 use crate::typed::fixedbyte::I256;
 use crate::typed::nested::{ListScalar, MapScalar, StructScalar};
 
@@ -69,5 +70,36 @@ impl Value {
     /// Whether this is the [`Null`](Value::Null) element.
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
+    }
+
+    /// The element [`DataTypeId`] this value carries — [`Null`](DataTypeId::Null) for
+    /// [`Value::Null`], the matching primitive / byte / nested id otherwise. The runtime dtype of an
+    /// erased value, used (among others) to name both sides of a `set_any_scalar_at` type mismatch.
+    pub fn data_type_id(&self) -> DataTypeId {
+        match self {
+            Value::Null => DataTypeId::Null,
+            Value::Int8(_) => DataTypeId::I8,
+            Value::UInt8(_) => DataTypeId::U8,
+            Value::Int16(_) => DataTypeId::I16,
+            Value::UInt16(_) => DataTypeId::U16,
+            Value::Int32(_) => DataTypeId::I32,
+            Value::UInt32(_) => DataTypeId::U32,
+            Value::Int64(_) => DataTypeId::I64,
+            Value::UInt64(_) => DataTypeId::U64,
+            Value::Int128(_) => DataTypeId::I128,
+            Value::UInt128(_) => DataTypeId::U128,
+            Value::Float32(_) => DataTypeId::F32,
+            Value::Float64(_) => DataTypeId::F64,
+            Value::Bool(_) => DataTypeId::Bool,
+            Value::Decimal32(_) => DataTypeId::Decimal32,
+            Value::Decimal64(_) => DataTypeId::Decimal64,
+            Value::Decimal128(_) => DataTypeId::Decimal128,
+            Value::Decimal256(_) => DataTypeId::Decimal256,
+            Value::Binary(_) => DataTypeId::Binary,
+            Value::Utf8(_) => DataTypeId::Utf8,
+            Value::Row(_) => DataTypeId::Struct,
+            Value::List(_) => DataTypeId::List,
+            Value::Map(_) => DataTypeId::Map,
+        }
     }
 }

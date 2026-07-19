@@ -45,7 +45,9 @@ pub fn to_arrow_data_type(
     };
 
     match id {
-        DataTypeId::Unknown => DataType::Null,
+        // Raw bytes, the typed all-null, and the erased "holds any" tag map to Arrow's `Null`
+        // (Arrow has no distinct all-null-typed nor "any" type — `Null` is the closest).
+        DataTypeId::Unknown | DataTypeId::Null | DataTypeId::Any => DataType::Null,
         DataTypeId::Bool => DataType::Boolean,
         DataTypeId::I8 => DataType::Int8,
         DataTypeId::U8 => DataType::UInt8,

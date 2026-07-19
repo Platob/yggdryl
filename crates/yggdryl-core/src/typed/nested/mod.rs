@@ -21,6 +21,7 @@
 
 mod column;
 mod column_field;
+mod convert;
 mod value;
 
 pub mod list;
@@ -29,6 +30,8 @@ pub mod struct_;
 
 pub use column::Column;
 pub use column_field::ColumnField;
+pub(crate) use convert::set_any_dtype_error;
+pub use convert::{FromValue, ToValue};
 pub use list::{ListField, ListScalar, ListSerie};
 pub use map::{MapField, MapScalar, MapSerie};
 pub use struct_::{StructField, StructScalar, StructSerie};
