@@ -301,8 +301,8 @@ fn from_vec_is_zero_copy_into_vec_roundtrips() {
 
 #[test]
 fn uri_is_always_the_synthetic_mem_heap() {
-    // A heap stores no address: every heap reports the stable synthetic mem:// address
-    // (deterministic), regardless of contents or state.
+    // An anonymous heap stores no address (empty headers): it reports the stable synthetic
+    // mem:// address (deterministic), regardless of contents or state.
     assert_eq!(Heap::new().uri().to_string(), "mem://heap");
     assert_eq!(Heap::new().uri().scheme(), "mem");
     assert_eq!(Heap::new().uri().host(), Some("heap"));
@@ -311,6 +311,43 @@ fn uri_is_always_the_synthetic_mem_heap() {
     assert_eq!(
         Uri::parse_str("mem://heap").unwrap().to_string(),
         Heap::new().uri().to_string()
+    );
+}
+
+#[test]
+fn heap_addresses_itself_through_its_headers_not_a_boxed_uri() {
+    // A re-addressed heap carries its address in the ONE metadata map (Content-Location), not a
+    // separate boxed Uri: `uri()` resolves from `headers()`, and the address survives a headers
+    // round-trip.
+    let child = Heap::new().join("logs/app.bin").unwrap();
+    assert_eq!(child.uri().to_string(), "mem://heap/logs/app.bin");
+
+    // The address lives in the headers — readable both as the raw Content-Location string and
+    // the parsed source_uri, each matching the reported uri().
+    assert_eq!(
+        child.headers().content_location(),
+        "mem://heap/logs/app.bin"
+    );
+    assert_eq!(child.headers().source_uri(), child.uri());
+
+    // An anonymous heap stores nothing: empty headers, the synthetic default address.
+    let anon = Heap::new();
+    assert_eq!(anon.headers().content_location(), "");
+    assert!(anon.headers().is_empty());
+    assert_eq!(anon.uri().to_string(), "mem://heap");
+
+    // The address IS exactly the headers' Content-Location: copying the headers onto a fresh
+    // heap reproduces the address — proving there is no separate field behind uri().
+    let mut rebound = Heap::new();
+    rebound.set_headers(child.headers().clone());
+    assert_eq!(rebound.uri(), child.uri());
+
+    // No separate boxed Uri field: the heap is only its bytes, cursor, headers, and mode. With a
+    // boxed address this struct was 72 bytes on a 64-bit target; without it, it fits in 64.
+    assert!(
+        std::mem::size_of::<Heap>() <= 64,
+        "Heap is {} bytes — a boxed address field looks to have regressed",
+        std::mem::size_of::<Heap>()
     );
 }
 
@@ -391,7 +428,8 @@ fn heap_join_composes_addresses_over_an_in_memory_buffer() {
         "mem://heap/my%20dir"
     );
 
-    // An untouched heap still allocates nothing for its address (None → the static default).
+    // An untouched heap still allocates nothing for its address (empty headers → the static
+    // default).
     assert_eq!(Heap::new().uri().to_string(), "mem://heap");
 }
 

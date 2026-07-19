@@ -6,6 +6,7 @@ use core::fmt;
 use crate::io::{IoError, Serializable};
 use crate::mediatype::MediaType;
 use crate::mimetype::MimeType;
+use crate::uri::Uri;
 
 /// One `name: value` entry — both stored as owned byte strings.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -55,6 +56,11 @@ impl Headers {
     pub const CONTENT_LENGTH: &'static str = "Content-Length";
     /// The `Content-Encoding` header name.
     pub const CONTENT_ENCODING: &'static str = "Content-Encoding";
+    /// The `Content-Location` header name — the **address of this representation** (its source
+    /// URI). The HTTP header for "where this content lives"; promoted so a source stores its own
+    /// address in the one metadata map rather than a separate boxed field
+    /// ([`content_location`](Headers::content_location) / [`source_uri`](Headers::source_uri)).
+    pub const CONTENT_LOCATION: &'static str = "Content-Location";
     /// The `Host` header name.
     pub const HOST: &'static str = "Host";
     /// The `Accept` header name.
@@ -262,6 +268,59 @@ impl Headers {
     /// Sets the `Content-Encoding` header (replace semantics).
     pub fn set_content_encoding(&mut self, value: &str) {
         self.insert(Self::CONTENT_ENCODING, value);
+    }
+
+    /// The `Content-Location` value — the **address of this representation** — as `&str`,
+    /// **empty when unset** (the total-accessor style, like [`Url::host`](crate::uri::Url::host)).
+    /// This is the one place a source keeps its own [`uri`](crate::io::memory::IOBase::uri): the
+    /// address lives in the metadata map, not a separate field.
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    ///
+    /// let mut headers = Headers::new();
+    /// assert_eq!(headers.content_location(), ""); // unset -> empty
+    /// headers.set_content_location("mem://x");
+    /// assert_eq!(headers.content_location(), "mem://x");
+    /// ```
+    pub fn content_location(&self) -> &str {
+        self.get(Self::CONTENT_LOCATION).unwrap_or("")
+    }
+
+    /// Sets the `Content-Location` header — the source address string (replace semantics).
+    pub fn set_content_location(&mut self, value: &str) {
+        self.insert(Self::CONTENT_LOCATION, value);
+    }
+
+    /// The source address as a parsed [`Uri`] — the
+    /// [`Content-Location`](Headers::CONTENT_LOCATION) value expanded from its **portable** form,
+    /// or [`Uri::default`] when unset (or unparseable). The typed counterpart of
+    /// [`content_location`](Headers::content_location); the exact inverse of
+    /// [`set_source_uri`](Headers::set_source_uri).
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let mut headers = Headers::new();
+    /// assert_eq!(headers.source_uri(), Uri::default()); // unset -> the default URI
+    /// headers.set_source_uri(&Uri::parse_str("file:///a/b").unwrap());
+    /// assert_eq!(headers.source_uri(), Uri::parse_str("file:///a/b").unwrap());
+    /// ```
+    pub fn source_uri(&self) -> Uri {
+        let location = self.content_location();
+        if location.is_empty() {
+            return Uri::default();
+        }
+        Uri::from_portable_str(location).unwrap_or_default()
+    }
+
+    /// Stores `uri` as the source address under [`Content-Location`](Headers::CONTENT_LOCATION) —
+    /// its **portable string** (a `file://` under the current home / temp root folds to `~` /
+    /// `$TMP` so the address relocates across machines). The inverse of
+    /// [`source_uri`](Headers::source_uri).
+    pub fn set_source_uri(&mut self, uri: &Uri) {
+        self.set_content_location(&uri.to_portable_str());
     }
 
     /// The `Content-Length` value parsed as a `u64`, if present and numeric.

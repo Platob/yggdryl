@@ -21,9 +21,11 @@ use crate::uri::Uri;
 /// [`capacity`](IOBase::capacity) reports the current allocation, and
 /// [`reserve`](IOBase::reserve) amortizes future writes.
 ///
-/// DESIGN: a heap stores **no address** — its [`uri`](IOBase::uri) is always the trait's
-/// stable synthetic `mem://heap` (an anonymous in-memory buffer has no other identity; a
-/// source with a real address, like a future file source, stores and reports its own).
+/// DESIGN: an **anonymous** heap stores no address — its [`uri`](IOBase::uri) is the stable
+/// synthetic `mem://heap` (an anonymous in-memory buffer has no other identity). A heap
+/// **re-addressed** by [`join`](IOBase::join) carries its URI in its own [`Headers`] under
+/// [`Content-Location`](Headers::CONTENT_LOCATION) — the one metadata map holds the address, not
+/// a separate boxed field — and [`uri`](IOBase::uri) reads it back from there.
 ///
 /// DESIGN: equality is over the **stored bytes only** — the cursor position, [`Headers`], and
 /// [`IOMode`] are transient/metadata, so two heaps holding the same bytes compare equal
@@ -49,15 +51,13 @@ pub struct Heap {
     /// The built-in cursor — bytes from the start; may sit past the end after a seek.
     position: u64,
     /// The source's metadata map — initialized **empty** (an empty `Headers` allocates
-    /// nothing, so an untouched heap stays allocation-free).
+    /// nothing, so an untouched heap stays allocation-free). It also **holds this heap's
+    /// address**: a heap re-addressed by [`join`](IOBase::join) stores its URI here under
+    /// [`Content-Location`](Headers::CONTENT_LOCATION) (no separate boxed field), and
+    /// [`uri`](IOBase::uri) reads it back — the address is metadata, not part of equality.
     headers: Headers,
     /// How this source may be accessed (`ReadWrite` by default — it is in-memory).
     mode: IOMode,
-    /// The optional address — `None` for the synthetic `mem://heap` (the lightweight
-    /// default, allocation-free), `Some` for a heap re-addressed by [`join`](IOBase::join)
-    /// so navigation composes through the URI. Boxed so an untouched heap stays small, and
-    /// **not** part of equality (a heap is its bytes; the address is transient metadata).
-    address: Option<Box<Uri>>,
 }
 
 impl Default for Heap {
@@ -67,7 +67,6 @@ impl Default for Heap {
             position: 0,
             headers: Headers::new(),
             mode: IOMode::ReadWrite,
-            address: None,
         }
     }
 }
@@ -113,14 +112,16 @@ impl Heap {
 
     /// An empty buffer **addressed** by `uri` — the child form [`join`](IOBase::join) builds,
     /// so a heap can carry a place in a URI graph (`mem://heap/logs/app.bin`) while staying an
-    /// independent in-memory buffer. A `mem://heap` address is normalized back to the
-    /// lightweight default (no stored URI).
+    /// independent in-memory buffer. The address is stored in the heap's [`Headers`] under
+    /// [`Content-Location`](Headers::CONTENT_LOCATION) — the one metadata map, no separate
+    /// field. A `mem://heap` address is normalized back to the lightweight default (no stored
+    /// URI, so an anonymous heap keeps empty, allocation-free headers).
     pub fn at_uri(uri: Uri) -> Self {
-        let address = (uri != *super::base::default_uri()).then(|| Box::new(uri));
-        Self {
-            address,
-            ..Self::default()
+        let mut heap = Self::default();
+        if uri != *super::base::default_uri() {
+            heap.headers.set_source_uri(&uri);
         }
+        heap
     }
 
     /// The stored bytes as a slice — zero-copy.
@@ -394,11 +395,14 @@ impl IOBase for Heap {
     }
 
     /// An untouched heap reports the stable synthetic `mem://heap`; a heap re-addressed by
-    /// [`join`](IOBase::join) reports its place in the URI graph.
+    /// [`join`](IOBase::join) reports the address stored in its [`Headers`]
+    /// ([`Content-Location`](Headers::CONTENT_LOCATION)) — resolved through the one metadata
+    /// map, with no separate boxed field.
     fn uri(&self) -> Uri {
-        match &self.address {
-            Some(uri) => (**uri).clone(),
-            None => super::base::default_uri().clone(),
+        if self.headers.content_location().is_empty() {
+            super::base::default_uri().clone()
+        } else {
+            self.headers.source_uri()
         }
     }
 
@@ -644,9 +648,9 @@ impl IOBase for Heap {
     );
 }
 
-// Value equality over the stored bytes only — the cursor, address `Uri`, `Headers`, and `IOMode`
-// are transient/metadata
-// (see the type's DESIGN note). `Heap` is mutable, so it is deliberately not `Hash`.
+// Value equality over the stored bytes only — the cursor, `Headers` (which now also holds the
+// address), and `IOMode` are transient/metadata (see the type's DESIGN note). `Heap` is mutable,
+// so it is deliberately not `Hash`.
 impl PartialEq for Heap {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data

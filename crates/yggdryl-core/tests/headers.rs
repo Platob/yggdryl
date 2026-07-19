@@ -263,3 +263,45 @@ fn nullable_flag_defaults_false_and_round_trips() {
     h.set_nullable(false);
     assert!(!h.nullable());
 }
+
+#[test]
+fn content_location_and_source_uri_round_trip() {
+    use yggdryl_core::uri::Uri;
+
+    let mut headers = Headers::new();
+    // Unset -> the total accessor is empty and source_uri is the default URI.
+    assert_eq!(headers.content_location(), "");
+    assert_eq!(headers.source_uri(), Uri::default());
+
+    // The raw string accessor stores under Content-Location.
+    headers.set_content_location("mem://x");
+    assert_eq!(headers.content_location(), "mem://x");
+    assert_eq!(headers.get(Headers::CONTENT_LOCATION), Some("mem://x"));
+
+    // The typed Uri accessor round-trips through the stored portable string.
+    let uri = Uri::parse_str("file:///a/b").unwrap();
+    headers.set_source_uri(&uri);
+    assert_eq!(headers.source_uri(), uri);
+
+    // Promoted key = single-valued: set replaces (append == replace), never accumulates.
+    headers.set_content_location("mem://y");
+    assert_eq!(headers.get_all(Headers::CONTENT_LOCATION).len(), 1);
+    assert_eq!(headers.content_location(), "mem://y");
+}
+
+#[test]
+fn content_location_serializes_in_canonical_order_and_equal_maps_equal() {
+    // The promoted key is an ordinary entry in the one ordered map: two maps built with the same
+    // address in the same position serialize identically and compare/hash equal.
+    let a = Headers::new()
+        .with(Headers::CONTENT_TYPE, "application/json")
+        .with(Headers::CONTENT_LOCATION, "mem://heap/x");
+    let b = Headers::new()
+        .with(Headers::CONTENT_TYPE, "application/json")
+        .with(Headers::CONTENT_LOCATION, "mem://heap/x");
+    assert_eq!(a, b);
+    assert_eq!(hash_of(&a), hash_of(&b));
+    assert_eq!(a.serialize_bytes(), b.serialize_bytes());
+    // The byte codec round-trips the promoted entry like any other.
+    assert_eq!(Headers::deserialize_bytes(&a.serialize_bytes()).unwrap(), a);
+}
