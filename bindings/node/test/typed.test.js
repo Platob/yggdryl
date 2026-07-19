@@ -728,3 +728,107 @@ test('ByteSerie: set on a variable-length column throws the append-only error', 
   const utf8 = ByteSerie.fromValues(['a', 'b'], DataTypeId.Utf8())
   assert.throws(() => utf8.setChecked(0, 'z'), /variable-length column is append-only/)
 })
+
+// -------------------------------------------------------------------------------------
+// Field metadata accessors / mutators
+// -------------------------------------------------------------------------------------
+
+test('Field metadata: setMetadata / metadata / withMetadata round-trip', () => {
+  const field = new Field('price', DataTypeId.I64(), true)
+  assert.equal(field.metadata('unit'), null) // absent -> null
+
+  field.setMetadata('unit', 'USD') // in-place set
+  assert.equal(field.metadata('unit'), 'USD')
+
+  // withMetadata is a non-mutating copy that carries existing annotations across
+  const annotated = field.withMetadata('source', 'ledger')
+  assert.equal(annotated.metadata('source'), 'ledger')
+  assert.equal(annotated.metadata('unit'), 'USD')
+  assert.equal(field.metadata('source'), null) // the receiver is unchanged
+})
+
+test('Field setName / setNullable / withNullable reflect and copy', () => {
+  const field = new Field('a', DataTypeId.I32(), false)
+
+  field.setName('b')
+  assert.equal(field.name(), 'b')
+
+  field.setNullable(true)
+  assert.equal(field.nullable(), true)
+
+  // withNullable is a non-mutating copy
+  const nonNullable = field.withNullable(false)
+  assert.equal(nonNullable.nullable(), false)
+  assert.equal(field.nullable(), true) // the receiver is unchanged
+})
+
+// -------------------------------------------------------------------------------------
+// Serie.castField — the field-driven cast
+// -------------------------------------------------------------------------------------
+
+test('castField same dtype: non-nullable -> nullable applies validity, name, and metadata', () => {
+  const col = Serie.fromValues([1n, 2n, 3n], DataTypeId.I64())
+  assert.equal(col.field().nullable(), false)
+
+  const field = new Field('id', DataTypeId.I64(), true).withMetadata('unit', 'count')
+  const cast = col.castField(field)
+  assert.ok(cast.dtype().equals(DataTypeId.I64()))
+  assert.equal(cast.field().name(), 'id')
+  assert.equal(cast.field().nullable(), true) // gained a validity buffer
+  assert.equal(cast.field().metadata('unit'), 'count') // the annotation carried across
+  assert.deepEqual(cast.toList(), [1n, 2n, 3n]) // values preserved
+
+  assert.equal(col.field().nullable(), false) // the original is unchanged
+})
+
+test('castField same dtype: nullable-with-nulls -> non-nullable throws the guided Error', () => {
+  const col = Serie.fromOptions([1n, null, 3n], DataTypeId.I64())
+  assert.equal(col.nullCount(), 1)
+  const nonNullable = new Field('id', DataTypeId.I64(), false)
+  assert.throws(() => col.castField(nonNullable), /cannot cast a column with 1 nulls/)
+})
+
+test('castField dtype change: I32 -> I64 widens, values preserved', () => {
+  const col = Serie.fromValues([10, 20, 30], DataTypeId.I32())
+  const wider = col.castField(new Field('id', DataTypeId.I64(), false))
+  assert.ok(wider.dtype().equals(DataTypeId.I64()))
+  assert.deepEqual(wider.toList(), [10n, 20n, 30n]) // i64 elements cross as BigInt
+  assert.equal(wider.field().name(), 'id')
+
+  // the original i32 column is unchanged
+  assert.ok(col.dtype().equals(DataTypeId.I32()))
+  assert.deepEqual(col.toList(), [10, 20, 30])
+})
+
+test('castField dtype change: I64 -> F64 gives floats', () => {
+  const col = Serie.fromValues([1n, 2n, 3n], DataTypeId.I64())
+  const floats = col.castField(new Field(null, DataTypeId.F64(), false))
+  assert.ok(floats.dtype().equals(DataTypeId.F64()))
+  assert.deepEqual(floats.toList(), [1.0, 2.0, 3.0]) // f64 elements cross as number
+  assert.equal(floats.get(0), 1.0)
+})
+
+test('castField dtype change: numeric -> Utf8 throws the guided Error', () => {
+  const col = Serie.fromValues([1n, 2n, 3n], DataTypeId.I64())
+  assert.throws(
+    () => col.castField(new Field(null, DataTypeId.Utf8(), false)),
+    /a byte\/string target needs a ByteSerie/
+  )
+})
+
+test('castField dtype change to Bool is refused, but a Bool -> Bool nullable cast still works', () => {
+  // A dtype change touching Bool (bit-packed) does not survive the numeric resize -> guarded.
+  const ints = Serie.fromValues([1n, 0n, 1n], DataTypeId.I64())
+  assert.throws(
+    () => ints.castField(new Field(null, DataTypeId.Bool(), false)),
+    /does not convert through the numeric resize/
+  )
+
+  // A same-dtype Bool -> Bool cast is a metadata reshape and stays fine (adds a validity buffer).
+  const flags = Serie.fromValues([true, false, true], DataTypeId.Bool())
+  const nullable = flags.castField(new Field('flag', DataTypeId.Bool(), true))
+  assert.ok(nullable.dtype().equals(DataTypeId.Bool()))
+  assert.equal(nullable.field().name(), 'flag')
+  assert.equal(nullable.field().nullable(), true)
+  assert.deepEqual(nullable.toList(), [true, false, true])
+})

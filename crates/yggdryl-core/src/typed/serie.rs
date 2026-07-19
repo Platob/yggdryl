@@ -12,8 +12,10 @@
 
 use core::marker::PhantomData;
 
-use super::{DataType, Decimal, Decoder, Encoder, HeaderField, Reduce, Scalar};
+use super::field::{cast_dtype_error, cast_null_error};
+use super::{DataType, Decimal, Decoder, Encoder, Field, HeaderField, Reduce, Scalar};
 use crate::datatype_id::DataTypeId;
+use crate::headers::Headers;
 use crate::io::memory::{Heap, IOBase, IoError};
 
 /// The bulk surface a [`Scalar`] gains as a column.
@@ -93,6 +95,7 @@ pub trait Serie: Scalar {
 /// A **typed column** over an [`IOBase`] data buffer `D` (default [`Heap`]) plus an optional
 /// validity buffer. Elements are packed at the type's stride; reads/writes/reductions all forward
 /// to the byte layer's vectorized kernels.
+#[derive(Clone)]
 pub struct FixedSerie<T: DataType, D: IOBase = Heap> {
     data: D,
     validity: Option<D>,
@@ -102,6 +105,11 @@ pub struct FixedSerie<T: DataType, D: IOBase = Heap> {
     /// [`with_precision_scale`](FixedSerie::with_precision_scale)).
     precision: Option<u32>,
     scale: Option<i32>,
+    /// Free-form annotations beyond the promoted name / type / nullable / precision / scale —
+    /// carried onto the [`field`](FixedSerie::field) and set by a
+    /// [`cast_field`](FixedSerie::cast_field). Empty for a plain column (an empty [`Headers`]
+    /// allocates nothing).
+    metadata: Headers,
     _type: PhantomData<T>,
 }
 
@@ -117,6 +125,7 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
             name: None,
             precision: None,
             scale: None,
+            metadata: Headers::new(),
             _type: PhantomData,
         }
     }
@@ -130,6 +139,7 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
             name: None,
             precision: None,
             scale: None,
+            metadata: Headers::new(),
             _type: PhantomData,
         }
     }
@@ -266,6 +276,7 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
             name: None,
             precision: None,
             scale: None,
+            metadata: Headers::new(),
             _type: PhantomData,
         }
     }
@@ -299,11 +310,12 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
         self.validity.as_ref()
     }
 
-    /// The column's [`Field`] metadata — its `name`, `type_id`, `nullable` flag, and (for a decimal
-    /// column) its `precision` / `scale`.
+    /// The column's [`Field`] metadata — its `name`, `type_id`, `nullable` flag, (for a decimal
+    /// column) its `precision` / `scale`, and any free-form annotations carried by a
+    /// [`cast_field`](FixedSerie::cast_field).
     pub fn field(&self) -> HeaderField {
         let nullable = self.validity.is_some();
-        match (self.precision, self.scale) {
+        let mut field = match (self.precision, self.scale) {
             (Some(precision), Some(scale)) => HeaderField::decimal(
                 self.name.as_deref(),
                 T::DATA_TYPE_ID,
@@ -312,7 +324,12 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
                 nullable,
             ),
             _ => HeaderField::new(self.name.as_deref(), T::DATA_TYPE_ID, nullable),
+        };
+        // Overlay the free-form annotations (the promoted name / type / nullable stay structural).
+        for (name, value) in self.metadata.iter() {
+            field.metadata_mut().append_bytes(name, value);
         }
+        field
     }
 }
 
@@ -501,6 +518,76 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
                 }
             }
         }
+        Ok(())
+    }
+}
+
+/// Field-driven **cast** — reshape a column's *metadata* (nullability, name, annotations) to a
+/// target [`HeaderField`] while **keeping the element type**. The copy front door
+/// ([`cast_field`](FixedSerie::cast_field)) is a thin `clone → `[`cast_field_in_place`](FixedSerie::cast_field_in_place),
+/// so the in-place form is the single implementation.
+impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
+    /// A fresh column reshaped to `field` — the non-mutating front door of
+    /// [`cast_field_in_place`](FixedSerie::cast_field_in_place) (`clone → cast_field_in_place`).
+    pub fn cast_field(&self, field: &HeaderField) -> Result<Self, IoError>
+    where
+        D: Default + Clone,
+    {
+        let mut out = self.clone();
+        out.cast_field_in_place(field)?;
+        Ok(out)
+    }
+
+    /// Reshapes this column **in place** to match `field`'s metadata, keeping the element type:
+    ///
+    /// - **No-op** when `field` already matches — same dtype, nullability, name, and annotations —
+    ///   returning `Ok(())` without touching the backing.
+    /// - **Same dtype** ([`data_type_id`](super::Field::data_type_id) equals `T`'s): applies the
+    ///   target **nullability** (non-nullable → nullable adds an all-valid validity buffer;
+    ///   nullable → non-nullable requires [`null_count`](Scalar::null_count) `== 0`, else the guided
+    ///   [`IoError::TypedCast`]), the target **name**, and the target's free-form **annotations** —
+    ///   reusing the data backing (no element copy, only validity / metadata change).
+    /// - **Different dtype**: the guided [`IoError::TypedCast`] — the typed column keeps its
+    ///   element type; a runtime dtype change belongs to the erased layer.
+    // DESIGN: `FixedSerie<T>` is compile-time-typed, so `cast_field` deliberately cannot change the
+    // element type — that is the erased `Serie.cast_field` (bindings) / `IOBase::resize_dtype`'s job.
+    pub fn cast_field_in_place(&mut self, field: &HeaderField) -> Result<(), IoError>
+    where
+        D: Default,
+    {
+        let target = field.data_type_id();
+        if target != T::DATA_TYPE_ID {
+            return Err(cast_dtype_error("FixedSerie", T::DATA_TYPE_ID, target));
+        }
+
+        let to_nullable = field.nullable();
+        let is_nullable = self.validity.is_some();
+        let extra = field.extra_annotations();
+
+        // Same dtype, nullability, name, and annotations — nothing to do (skip all work).
+        if is_nullable == to_nullable
+            && field.name() == self.name.as_deref()
+            && extra == self.metadata
+        {
+            return Ok(());
+        }
+
+        // Validate the one fallible step first, so a rejected cast leaves `self` untouched.
+        if is_nullable && !to_nullable {
+            let nulls = self.null_count();
+            if nulls > 0 {
+                return Err(cast_null_error(nulls));
+            }
+        }
+
+        // Apply the (now infallible) changes: nullability, then name, then annotations.
+        if !is_nullable && to_nullable {
+            self.ensure_validity();
+        } else if is_nullable && !to_nullable {
+            self.validity = None; // verified null-free above
+        }
+        self.name = field.name().map(Into::into);
+        self.metadata = extra;
         Ok(())
     }
 }

@@ -9,6 +9,20 @@
 
 use crate::datatype_id::DataTypeId;
 use crate::headers::Headers;
+use crate::io::memory::IoError;
+
+/// The **promoted / structural** header keys a [`HeaderField`] represents through its typed
+/// accessors (name / type / nullable + the decimal precision·scale + the fixed-size byte width) —
+/// the ones handled structurally by a `cast_field`, and therefore **excluded** from the free-form
+/// annotations it copies (see [`HeaderField::extra_annotations`]).
+const STRUCTURAL_KEYS: [&str; 6] = [
+    Headers::NAME,
+    Headers::TYPE_ID,
+    Headers::NULLABLE,
+    Headers::PRECISION,
+    Headers::SCALE,
+    Headers::BYTE_WIDTH,
+];
 
 /// A typed column descriptor: `name`, element type, and nullability — plus the open [`Headers`] map
 /// the metadata lives in.
@@ -111,6 +125,129 @@ impl HeaderField {
     /// Consumes the field into its [`Headers`].
     pub fn into_headers(self) -> Headers {
         self.headers
+    }
+
+    // ---- metadata (the whole backing map + single-key annotations) ----------------------
+
+    /// The whole backing metadata map (borrowed) — the field's `name` / `type_id` / `nullable`
+    /// entries plus any extra annotations. The read counterpart of
+    /// [`metadata_mut`](HeaderField::metadata_mut) (and a synonym of the [`Field`] trait's
+    /// [`headers`](Field::headers)).
+    pub fn metadata(&self) -> &Headers {
+        &self.headers
+    }
+
+    /// The whole backing metadata map (mutable) — set any header on the field. Aliases
+    /// [`headers_mut`](HeaderField::headers_mut).
+    pub fn metadata_mut(&mut self) -> &mut Headers {
+        &mut self.headers
+    }
+
+    /// Sets one arbitrary annotation `key` to `value` (replace semantics) — delegates to
+    /// [`Headers::insert`](Headers::insert).
+    ///
+    /// ```
+    /// use yggdryl_core::typed::HeaderField;
+    /// use yggdryl_core::datatype_id::DataTypeId;
+    ///
+    /// let mut field = HeaderField::new(Some("price"), DataTypeId::I64, true);
+    /// field.set_metadata("unit", "USD");
+    /// assert_eq!(field.metadata_value("unit").as_deref(), Some("USD"));
+    /// ```
+    pub fn set_metadata(&mut self, key: &str, value: &str) {
+        self.headers.insert(key, value);
+    }
+
+    /// The value of one arbitrary annotation `key`, if present and valid UTF-8 — delegates to
+    /// [`Headers::get`](Headers::get).
+    pub fn metadata_value(&self, key: &str) -> Option<String> {
+        self.headers.get(key).map(str::to_owned)
+    }
+
+    /// [`set_metadata`](HeaderField::set_metadata), chainable.
+    pub fn with_metadata(mut self, key: &str, value: &str) -> Self {
+        self.set_metadata(key, value);
+        self
+    }
+
+    // ---- the ergonomic set_* / with_* trio over the promoted typed fields ---------------
+
+    /// Sets the field **name** (the promoted [`Headers::NAME`](Headers::NAME) entry).
+    pub fn set_name(&mut self, name: &str) {
+        self.headers.set_name(name);
+    }
+
+    /// [`set_name`](HeaderField::set_name), chainable.
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.set_name(name);
+        self
+    }
+
+    /// Sets whether the field admits nulls (the promoted [`Headers::NULLABLE`](Headers::NULLABLE) entry).
+    pub fn set_nullable(&mut self, nullable: bool) {
+        self.headers.set_nullable(nullable);
+    }
+
+    /// [`set_nullable`](HeaderField::set_nullable), chainable.
+    pub fn with_nullable(mut self, nullable: bool) -> Self {
+        self.set_nullable(nullable);
+        self
+    }
+
+    /// Sets the element [`DataTypeId`] (the promoted [`Headers::TYPE_ID`](Headers::TYPE_ID) entry).
+    pub fn set_data_type_id(&mut self, type_id: DataTypeId) {
+        self.headers.set_type_id(type_id);
+    }
+
+    /// [`set_data_type_id`](HeaderField::set_data_type_id), chainable.
+    pub fn with_data_type_id(mut self, type_id: DataTypeId) -> Self {
+        self.set_data_type_id(type_id);
+        self
+    }
+
+    /// The **non-structural** annotations — every entry but the promoted `name` / `type_id` /
+    /// `nullable` / `precision` / `scale` / `byte_width` keys — collected into a fresh [`Headers`]
+    /// in insertion order. The free-form metadata a `cast_field` copies onto a column.
+    pub(crate) fn extra_annotations(&self) -> Headers {
+        let mut extra = Headers::new();
+        for (name, value) in self.headers.iter() {
+            let structural = STRUCTURAL_KEYS
+                .iter()
+                .any(|key| name.eq_ignore_ascii_case(key.as_bytes()));
+            if !structural {
+                extra.append_bytes(name, value);
+            }
+        }
+        extra
+    }
+}
+
+/// The guided [`IoError::TypedCast`] for a **nullable → non-nullable** cast that still holds
+/// `nulls` real nulls — names the offending count and the fix. Shared by the column and scalar
+/// casts so their messages read identically.
+pub(crate) fn cast_null_error(nulls: usize) -> IoError {
+    IoError::TypedCast {
+        detail: format!(
+            "cannot cast a column with {nulls} nulls to a non-nullable field: fill or drop the \
+             nulls first"
+        ),
+    }
+}
+
+/// The guided [`IoError::TypedCast`] for a `cast_field` whose target names a **different element
+/// type** than the compile-time-typed `container` (`"FixedSerie"` / `"FixedScalar"`) carries —
+/// the typed layer keeps its element type, so a dtype change belongs to the erased layer.
+pub(crate) fn cast_dtype_error(
+    container: &str,
+    current: DataTypeId,
+    target: DataTypeId,
+) -> IoError {
+    IoError::TypedCast {
+        detail: format!(
+            "cast_field on a typed {container}<{current}> keeps its element type: change dtype \
+             through the erased Serie.cast_field (bindings) or resize the buffer with \
+             IOBase::resize_dtype — target {target} != column {current}"
+        ),
     }
 }
 

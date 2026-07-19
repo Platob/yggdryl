@@ -113,6 +113,17 @@ pub enum IoError {
         /// The underlying detail (the codec error, or why no codec was available).
         detail: String,
     },
+    /// A typed [`cast_field`](crate::typed::Serie) on a compile-time-typed column
+    /// ([`FixedSerie`](crate::typed::FixedSerie)) or scalar ([`FixedScalar`](crate::typed::FixedScalar))
+    /// was asked to do something the typed layer cannot express: **change the element type** (which
+    /// belongs to the erased `Serie.cast_field` / [`resize_dtype`](crate::io::memory::IOBase::resize_dtype)),
+    /// or **drop nulls** a non-nullable target forbids. The `detail` is a self-contained guided
+    /// message — it names the offending value and the concrete next step, so it reads well as a
+    /// Python `ValueError` / a thrown Node `Error` with no code around it.
+    TypedCast {
+        /// The complete, guided message (the offending value + the fix).
+        detail: String,
+    },
 }
 
 impl fmt::Display for IoError {
@@ -172,6 +183,8 @@ impl fmt::Display for IoError {
                 f,
                 "cannot {op} with codec {codec:?}: {detail}"
             ),
+            // The detail is already a complete, guided sentence — render it verbatim.
+            Self::TypedCast { detail } => f.write_str(detail),
         }
     }
 }

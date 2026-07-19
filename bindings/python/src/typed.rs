@@ -670,6 +670,83 @@ impl Serie {
         }
     }
 
+    /// A **fresh** column reshaped to `field`. When `field`'s dtype **matches** this column's, the
+    /// metadata is reshaped in place (nullability, `name`, and free-form annotations) over the same
+    /// bytes — non-nullable → nullable adds an all-valid bitmap, and nullable → non-nullable requires
+    /// zero nulls (else a guided `ValueError`). When `field`'s dtype is a **different fixed-width**
+    /// numeric / decimal (32/64/128) type, the data is reinterpreted at the new width (widening /
+    /// narrowing saturating, via `f64`) and then the `field` metadata is applied. A cross-dtype cast
+    /// touching `bool` (bit-packed) or `decimal256` (256-bit, beyond the `f64` carrier) raises a
+    /// guided `ValueError` (build that column directly). A **byte / string** target (`binary` /
+    /// `utf8` / `fixed_binary` / `fixed_utf8`) or `unknown` raises a guided `ValueError` (that needs
+    /// a `ByteSerie`, not a numeric `Serie`).
+    fn cast_field(&self, field: &Field) -> PyResult<Serie> {
+        let target = field.inner.data_type_id();
+        let current = dispatch!(self, s => s.data_type_id());
+
+        // Same dtype: reshape metadata (nullability / name / annotations) over the same bytes.
+        if target == current {
+            return Ok(Serie {
+                inner: map_variant!(self, s => s.cast_field(&field.inner).map_err(ioerr)?),
+            });
+        }
+
+        // A different, non-fixed-width target (a byte / string dtype, or Unknown) is not a numeric
+        // cast — it belongs to `ByteSerie`.
+        if !target.is_fixed_width() {
+            return Err(PyValueError::new_err(format!(
+                "cannot cast a numeric column to the {} dtype: a byte/string target needs a \
+                 ByteSerie, not a numeric Serie",
+                target.name()
+            )));
+        }
+
+        // A `Bool` (bit-packed) or `Decimal256` (256-bit, beyond the `f64` carrier) on either side
+        // does not convert faithfully through the numeric resize — refuse the cross-representation
+        // cast (the same-dtype bool→bool / decimal256→decimal256 reshape above stays fine).
+        if current == CoreId::Bool
+            || target == CoreId::Bool
+            || current == CoreId::Decimal256
+            || target == CoreId::Decimal256
+        {
+            return Err(PyValueError::new_err(format!(
+                "cannot cast between {} and {}: a bool (bit-packed) or decimal256 (256-bit) \
+                 representation does not convert through the numeric resize — build the {} column \
+                 directly",
+                current.name(),
+                target.name(),
+                target.name()
+            )));
+        }
+
+        // A different fixed-width numeric / bool / decimal target: reinterpret the data at the new
+        // width, then apply the field's nullability / name / annotations.
+        let mut buf = dispatch!(self, s => s.data().clone());
+        buf.set_dtype(current);
+        let resized = buf.resize_dtype(target).map_err(ioerr)?;
+        let validity = dispatch!(self, s => s.validity().cloned());
+        let len = dispatch!(self, s => s.len());
+        macro_rules! mk {
+            (@i256) => {
+                Inner::Decimal256(
+                    FixedSerie::<Decimal256>::from_data(resized, validity, len)
+                        .cast_field(&field.inner)
+                        .map_err(ioerr)?,
+                )
+            };
+            ($variant:ident, $marker:ty, $native:ty) => {
+                Inner::$variant(
+                    FixedSerie::<$marker>::from_data(resized, validity, len)
+                        .cast_field(&field.inner)
+                        .map_err(ioerr)?,
+                )
+            };
+        }
+        Ok(Serie {
+            inner: by_dtype!(target, mk),
+        })
+    }
+
     /// A **fresh** decimal column addressing the same bytes with its `precision` (max significant
     /// digits) and `scale` (decimal places) set — the metadata [`field`](Serie::field) reports and
     /// [`to_decimal_string`](Serie::to_decimal_string) uses to place the decimal point. Raises
@@ -1480,6 +1557,45 @@ impl Field {
     fn headers(&self) -> Headers {
         Headers {
             inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// The free-form metadata annotation for `key` (case-insensitive), or `None` when the field
+    /// carries no such entry. The promoted `name` / `dtype` / `nullable` keys have their own
+    /// accessors.
+    fn metadata(&self, key: &str) -> Option<String> {
+        self.inner.metadata_value(key)
+    }
+
+    /// Sets the free-form metadata annotation `key` = `value` **in place** (replace semantics;
+    /// case-insensitive key).
+    fn set_metadata(&mut self, key: &str, value: &str) {
+        self.inner.set_metadata(key, value);
+    }
+
+    /// A **fresh** field with the metadata annotation `key` = `value` added (the
+    /// clone-with-override front door); leaves this field untouched.
+    fn with_metadata(&self, key: &str, value: &str) -> Field {
+        Field {
+            inner: self.inner.clone().with_metadata(key, value),
+        }
+    }
+
+    /// Sets the column `name` **in place**.
+    fn set_name(&mut self, name: &str) {
+        self.inner.set_name(name);
+    }
+
+    /// Sets whether the column admits nulls **in place**.
+    fn set_nullable(&mut self, nullable: bool) {
+        self.inner.set_nullable(nullable);
+    }
+
+    /// A **fresh** field with its `nullable` flag set (the clone-with-override front door); leaves
+    /// this field untouched.
+    fn with_nullable(&self, nullable: bool) -> Field {
+        Field {
+            inner: self.inner.clone().with_nullable(nullable),
         }
     }
 

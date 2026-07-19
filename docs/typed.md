@@ -229,6 +229,62 @@ A `Field` describes a column: its `name`, element type, and nullability — thre
     assert!(!col.field().nullable()); // no nulls -> non-nullable
     ```
 
+## Casting a column to a target `Field`
+
+`cast_field(field)` retypes a column toward a target `Field` — its element **dtype** (numeric
+widen/narrow, saturating), its **nullability** (add a validity buffer, or drop it when the column
+has no nulls — else a guided error), its **name**, and its **metadata**. Casting to a field the
+column already matches is a **no-op**. A `Field` also carries arbitrary annotations through
+`metadata` / `set_metadata`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie, Field
+    from yggdryl.datatype_id import DataTypeId
+
+    col = Serie.from_values([1, 2, 3], DataTypeId.I32)
+    wide = col.cast_field(Field("id", DataTypeId.I64, nullable=True))  # widen + name + nullable
+    assert wide.dtype() == DataTypeId.I64
+    assert wide.field().name() == "id" and wide.field().nullable()
+    assert wide.to_list() == [1, 2, 3]
+
+    field = Field("price", DataTypeId.I64).with_metadata("unit", "cents")
+    assert field.metadata("unit") == "cents"
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie, Field } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const col = Serie.fromValues([1, 2, 3], DataTypeId.I32())
+    const wide = col.castField(new Field('id', DataTypeId.I64(), true))  // widen + name + nullable
+    console.assert(wide.dtype().equals(DataTypeId.I64()))
+    console.assert(wide.field().name() === 'id' && wide.field().nullable())
+    console.assert(wide.get(0) === 1n && wide.get(2) === 3n) // I64 elements cross as BigInt
+
+    const field = new Field('price', DataTypeId.I64()).withMetadata('unit', 'cents')
+    console.assert(field.metadata('unit') === 'cents')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{FixedSerie, HeaderField, Serie};
+    use yggdryl_core::typed::fixedbyte::Int32;
+    use yggdryl_core::datatype_id::DataTypeId;
+
+    let col = FixedSerie::<Int32>::from_values(&[1, 2, 3]);
+    // The typed core cast keeps the element type — nullability / name / metadata:
+    let nullable = col
+        .cast_field(&HeaderField::new(Some("id"), DataTypeId::I32, true))
+        .unwrap();
+    assert!(nullable.field().nullable());
+    // A dtype change is the erased Serie.cast_field (bindings) or IOBase::resize_dtype on the buffer.
+    ```
+
 ## Fixed-point decimals
 
 A **decimal** stores a signed *unscaled integer* plus a **precision** (max significant digits) and

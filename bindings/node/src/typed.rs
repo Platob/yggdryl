@@ -765,6 +765,151 @@ impl Serie {
         dispatch!(self, serie => Field { inner: serie.field() })
     }
 
+    /// A **field-driven cast** — reshapes this column to match `field`, returning a fresh column:
+    ///
+    /// - **Same dtype** as `field`'s: a pure metadata reshape — applies the target **nullability**
+    ///   (non-nullable → nullable adds an all-valid validity buffer; nullable → non-nullable
+    ///   requires zero nulls, else the guided `Error`), the target **name**, and any free-form
+    ///   **annotations**, reusing the data backing (no element copy).
+    /// - **Different fixed-width numeric / bool / decimal dtype**: reinterprets the data buffer at
+    ///   the new element width (via the byte layer's `resize_dtype`, converting across families
+    ///   through `f64` — a narrowing integer saturates), then applies `field`.
+    /// - **A byte / string target** (`Binary` / `Utf8` / `FixedBinary` / `FixedUtf8`, or `Unknown`):
+    ///   the guided `Error` — a numeric `Serie` cannot become a byte column (build a [`ByteSerie`]).
+    #[napi]
+    pub fn cast_field(&self, field: &Field) -> napi::Result<Serie> {
+        let target = field.inner.data_type_id();
+        let current = dispatch!(self, s => s.data_type_id());
+
+        // Same dtype — a per-variant metadata reshape (nullability / name / annotations), no data copy.
+        if target == current {
+            let inner = dispatch_rebuild!(self, s => s.cast_field(&field.inner).map_err(to_error)?);
+            return Ok(Serie { inner });
+        }
+
+        // A byte / string (or Unknown) target has no numeric column — refuse before touching the data.
+        if !target.is_fixed_width() {
+            return Err(to_error(format!(
+                "cannot cast a numeric column to the {target} dtype: a byte/string target needs a \
+                 ByteSerie, not a numeric Serie"
+            )));
+        }
+
+        // A dtype **change** touching a `Bool` (bit-packed data) or `Decimal256` (256-bit, exceeds
+        // the f64 carrier) does not survive the numeric `resize_dtype` — refuse it rather than
+        // produce garbage. A same-dtype cast (bool→bool, decimal256→decimal256) is handled above.
+        let unresizable = |dtype: DtId| dtype == DtId::Bool || dtype == DtId::Decimal256;
+        if unresizable(current) || unresizable(target) {
+            return Err(to_error(format!(
+                "cannot cast between {current} and {target}: a bool (bit-packed) or decimal256 \
+                 (256-bit) representation does not convert through the numeric resize — build the \
+                 {target} column directly"
+            )));
+        }
+
+        // A different fixed-width numeric / decimal (32/64/128) target: reinterpret the data buffer
+        // at the new element width (through `resize_dtype`), then rebuild the matching column and
+        // apply `field`. `resized` / `validity` / `len` move into whichever single arm the target
+        // selects. The `Bool` / `Decimal256` arms are now unreachable for a dtype change (guarded
+        // above) but stay in the match for soundness (`DataTypeId` is `#[non_exhaustive]`).
+        let mut buf = dispatch!(self, s => s.data().clone());
+        buf.set_dtype(current);
+        let resized = buf.resize_dtype(target).map_err(to_error)?;
+        let validity = dispatch!(self, s => s.validity().cloned());
+        let len = dispatch!(self, s => s.len());
+        let inner = match target {
+            DtId::I8 => SerieInner::I8(
+                FixedSerie::<Int8>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::U8 => SerieInner::U8(
+                FixedSerie::<UInt8>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::I16 => SerieInner::I16(
+                FixedSerie::<Int16>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::U16 => SerieInner::U16(
+                FixedSerie::<UInt16>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::I32 => SerieInner::I32(
+                FixedSerie::<Int32>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::U32 => SerieInner::U32(
+                FixedSerie::<UInt32>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::I64 => SerieInner::I64(
+                FixedSerie::<Int64>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::U64 => SerieInner::U64(
+                FixedSerie::<UInt64>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::I128 => SerieInner::I128(
+                FixedSerie::<Int128>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::U128 => SerieInner::U128(
+                FixedSerie::<UInt128>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::F32 => SerieInner::F32(
+                FixedSerie::<Float32>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::F64 => SerieInner::F64(
+                FixedSerie::<Float64>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::Bool => SerieInner::Bool(
+                FixedSerie::<Bit>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::Decimal32 => SerieInner::Decimal32(
+                FixedSerie::<Decimal32>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::Decimal64 => SerieInner::Decimal64(
+                FixedSerie::<Decimal64>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::Decimal128 => SerieInner::Decimal128(
+                FixedSerie::<Decimal128>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            DtId::Decimal256 => SerieInner::Decimal256(
+                FixedSerie::<Decimal256>::from_data(resized, validity, len)
+                    .cast_field(&field.inner)
+                    .map_err(to_error)?,
+            ),
+            _ => {
+                unreachable!("target.is_fixed_width() guarantees one of the fixed-width arms above")
+            }
+        };
+        Ok(Serie { inner })
+    }
+
     /// The **unscaled** decimal value at `index` formatted with the column's scale (e.g. `"123.45"`
     /// at scale 2), or `null` when the element is null or out of range. Throws the guided `Error` on
     /// a non-decimal column.
@@ -1151,6 +1296,50 @@ impl Field {
     pub fn headers(&self) -> Headers {
         Headers {
             inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// The value of one arbitrary metadata annotation `key`, or `null` when absent — reads the
+    /// backing [`Headers`](crate::headers::Headers) map (the promoted `name` / `type` / `nullable`
+    /// entries are visible through it too).
+    #[napi]
+    pub fn metadata(&self, key: String) -> Option<String> {
+        self.inner.metadata_value(&key)
+    }
+
+    /// Sets one arbitrary metadata annotation `key` to `value` **in place** (replace semantics).
+    #[napi]
+    pub fn set_metadata(&mut self, key: String, value: String) {
+        self.inner.set_metadata(&key, &value);
+    }
+
+    /// A copy of this field with the annotation `key` set to `value` — the chainable, non-mutating
+    /// counterpart of [`setMetadata`](Field::set_metadata).
+    #[napi]
+    pub fn with_metadata(&self, key: String, value: String) -> Field {
+        Field {
+            inner: self.inner.clone().with_metadata(&key, &value),
+        }
+    }
+
+    /// Sets the field **name** in place (the promoted `name` metadata entry).
+    #[napi]
+    pub fn set_name(&mut self, name: String) {
+        self.inner.set_name(&name);
+    }
+
+    /// Sets whether the field admits nulls **in place** (the promoted `nullable` metadata entry).
+    #[napi]
+    pub fn set_nullable(&mut self, nullable: bool) {
+        self.inner.set_nullable(nullable);
+    }
+
+    /// A copy of this field with its **nullable** flag set — the chainable, non-mutating counterpart
+    /// of [`setNullable`](Field::set_nullable).
+    #[napi]
+    pub fn with_nullable(&self, nullable: bool) -> Field {
+        Field {
+            inner: self.inner.clone().with_nullable(nullable),
         }
     }
 

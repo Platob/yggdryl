@@ -1016,3 +1016,113 @@ def test_variable_utf8_set_is_append_only():
     col = ByteSerie.from_values(["a", "bb"], DataTypeId.Utf8)
     with pytest.raises(ValueError):
         col.set(0, "x")
+
+
+# =====================================================================================
+# Field — metadata accessors / mutators
+# =====================================================================================
+
+
+def test_field_metadata_round_trip():
+    f = Field("price", DataTypeId.I64, nullable=True)
+    assert f.metadata("unit") is None  # no annotation yet
+    f.set_metadata("unit", "usd")
+    assert f.metadata("unit") == "usd"  # set / get round-trip
+    # with_metadata returns a fresh field, leaving the original untouched.
+    g = f.with_metadata("currency", "USD")
+    assert g.metadata("currency") == "USD"
+    assert g.metadata("unit") == "usd"  # carried over from the clone
+    assert f.metadata("currency") is None  # original untouched
+
+
+def test_field_set_name_and_nullable():
+    f = Field("a", DataTypeId.I32, nullable=False)
+    f.set_name("b")
+    assert f.name() == "b"  # set_name reflected
+    f.set_nullable(True)
+    assert f.nullable() is True  # set_nullable reflected
+    # with_nullable is the clone-with-override front door.
+    g = f.with_nullable(False)
+    assert g.nullable() is False
+    assert f.nullable() is True  # original untouched
+
+
+# =====================================================================================
+# Serie.cast_field — same-dtype metadata reshape + fixed-width dtype change
+# =====================================================================================
+
+
+def test_cast_field_same_dtype_adds_nullability():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)  # non-nullable
+    assert col.field().nullable() is False
+    out = col.cast_field(Field("x", DataTypeId.I64, nullable=True))
+    assert out.dtype() == DataTypeId.I64
+    assert out.field().nullable() is True  # became nullable
+    assert out.field().name() == "x"
+    assert out.to_list() == [1, 2, 3]  # values intact
+    assert out.null_count() == 0  # all valid
+
+
+def test_cast_field_same_dtype_name_and_metadata():
+    col = Serie.from_values([10, 20], DataTypeId.I32)
+    target = Field("amount", DataTypeId.I32).with_metadata("unit", "usd")
+    out = col.cast_field(target)
+    assert out.field().name() == "amount"
+    assert out.field().metadata("unit") == "usd"  # annotation carried through
+    assert out.to_list() == [10, 20]
+
+
+def test_cast_field_nullable_with_nulls_to_nonnullable_raises():
+    col = Serie.from_options([1, None, 3], DataTypeId.I64)  # a null present
+    with pytest.raises(ValueError):
+        col.cast_field(Field("x", DataTypeId.I64, nullable=False))
+
+
+def test_cast_field_widen_i32_to_i64():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I32)
+    out = col.cast_field(Field("x", DataTypeId.I64))
+    assert out.dtype() == DataTypeId.I64  # widened
+    assert out.to_list() == [1, 2, 3]  # values preserved
+    assert out.field().name() == "x"
+
+
+def test_cast_field_i64_to_f64():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    out = col.cast_field(Field(dtype=DataTypeId.F64))
+    assert out.dtype() == DataTypeId.F64
+    assert out.to_list() == [1.0, 2.0, 3.0]  # floats
+
+
+def test_cast_field_narrowing_saturates():
+    col = Serie.from_values([300, -5, 100], DataTypeId.I64)
+    out = col.cast_field(Field(dtype=DataTypeId.I8))  # i8 range -128..127
+    assert out.dtype() == DataTypeId.I8
+    assert out.to_list() == [127, -5, 100]  # 300 saturates to the i8 max
+
+
+def test_cast_field_dtype_change_preserves_nulls():
+    col = Serie.from_options([1, None, 3], DataTypeId.I32)
+    out = col.cast_field(Field("x", DataTypeId.I64, nullable=True))
+    assert out.dtype() == DataTypeId.I64
+    assert out.to_list() == [1, None, 3]  # the null survives the width change
+    assert out.null_count() == 1
+
+
+def test_cast_field_to_byte_dtype_raises():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    with pytest.raises(ValueError):
+        col.cast_field(Field(dtype=DataTypeId.Utf8))
+
+
+def test_cast_field_bool_or_decimal256_cross_dtype_guard():
+    # A cross-dtype cast touching bool (bit-packed) does not convert through the numeric resize.
+    col = Serie.from_values([1, 0, 1], DataTypeId.I64)
+    with pytest.raises(ValueError):
+        col.cast_field(Field(dtype=DataTypeId.Bool))
+    # But a same-dtype bool -> bool reshape (adding nullability) still works.
+    bools = Serie.from_values([True, False, True], DataTypeId.Bool)
+    out = bools.cast_field(Field("flag", DataTypeId.Bool, nullable=True))
+    assert out.dtype() == DataTypeId.Bool
+    assert out.field().nullable() is True
+    assert out.field().name() == "flag"
+    assert out.to_list() == [True, False, True]

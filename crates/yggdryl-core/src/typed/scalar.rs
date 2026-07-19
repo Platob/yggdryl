@@ -7,9 +7,11 @@
 
 use core::marker::PhantomData;
 
-use super::{DataType, Decoder, Encoder};
+use super::field::{cast_dtype_error, cast_null_error};
+use super::{DataType, Decoder, Encoder, Field, HeaderField};
 use crate::datatype_id::DataTypeId;
-use crate::io::memory::{Heap, IOBase};
+use crate::headers::Headers;
+use crate::io::memory::{Heap, IOBase, IoError};
 
 /// A typed, indexed, possibly-null value surface. A single value has [`len`](Scalar::len) `1`; a
 /// [`Serie`](super::Serie) has `n`. `Value` is the native scalar an element decodes to.
@@ -48,10 +50,17 @@ pub trait Scalar {
 /// A **single typed element** over an [`IOBase`] data buffer (and an optional validity bit) — the
 /// one-element [`Scalar`]. It borrows the byte layer: [`value`](FixedScalar::value) decodes on
 /// demand via the type's [`Decoder`], never copying eagerly.
+#[derive(Clone)]
 pub struct FixedScalar<T: DataType, D: IOBase = Heap> {
     data: D,
     validity: Option<D>,
     index: u64,
+    /// The scalar's field **name**, if set — reported by [`field`](FixedScalar::field), set by a
+    /// [`cast_field`](FixedScalar::cast_field).
+    name: Option<Box<str>>,
+    /// Free-form field annotations — carried onto the [`field`](FixedScalar::field) and set by a
+    /// [`cast_field`](FixedScalar::cast_field). Empty for a plain scalar.
+    metadata: Headers,
     _type: PhantomData<T>,
 }
 
@@ -64,6 +73,8 @@ impl<T: Encoder + Decoder> FixedScalar<T, Heap> {
             data,
             validity: None,
             index: 0,
+            name: None,
+            metadata: Headers::new(),
             _type: PhantomData,
         }
     }
@@ -78,6 +89,8 @@ impl<T: Encoder + Decoder> FixedScalar<T, Heap> {
             data: Heap::new(),
             validity: Some(validity),
             index: 0,
+            name: None,
+            metadata: Headers::new(),
             _type: PhantomData,
         }
     }
@@ -112,6 +125,82 @@ impl<T: Decoder, D: IOBase> FixedScalar<T, D> {
     /// The backing data buffer (borrowed).
     pub fn data(&self) -> &D {
         &self.data
+    }
+
+    /// The scalar's [`Field`](super::Field) metadata — its `name`, `type_id`, `nullable` flag
+    /// (whether it carries a validity bit), and any free-form annotations carried by a
+    /// [`cast_field`](FixedScalar::cast_field).
+    pub fn field(&self) -> HeaderField {
+        let nullable = self.validity.is_some();
+        let mut field = HeaderField::new(self.name.as_deref(), T::DATA_TYPE_ID, nullable);
+        for (name, value) in self.metadata.iter() {
+            field.metadata_mut().append_bytes(name, value);
+        }
+        field
+    }
+
+    /// A fresh scalar reshaped to `field` — the non-mutating front door of
+    /// [`cast_field_in_place`](FixedScalar::cast_field_in_place) (`clone → cast_field_in_place`).
+    pub fn cast_field(&self, field: &HeaderField) -> Result<Self, IoError>
+    where
+        D: Default + Clone,
+    {
+        let mut out = self.clone();
+        out.cast_field_in_place(field)?;
+        Ok(out)
+    }
+
+    /// Reshapes this scalar **in place** to match `field`'s metadata, keeping the element type: a
+    /// no-op when `field` already matches (same dtype, nullability, name, annotations); otherwise
+    /// applies the target **nullability** (non-nullable → nullable marks the element valid;
+    /// nullable → non-nullable requires the element be non-null, else the guided
+    /// [`IoError::TypedCast`]), the target **name**, and the target's free-form **annotations**. A
+    /// **different dtype** is the guided [`IoError::TypedCast`] (the typed scalar keeps its element
+    /// type — a runtime dtype change belongs to the erased layer).
+    // DESIGN: mirrors `FixedSerie::cast_field_in_place` — a scalar is the one-element column, so its
+    // nullability toggles whether the single value is a null.
+    pub fn cast_field_in_place(&mut self, field: &HeaderField) -> Result<(), IoError>
+    where
+        D: Default,
+    {
+        let target = field.data_type_id();
+        if target != T::DATA_TYPE_ID {
+            return Err(cast_dtype_error("FixedScalar", T::DATA_TYPE_ID, target));
+        }
+
+        let to_nullable = field.nullable();
+        let is_nullable = self.validity.is_some();
+        let extra = field.extra_annotations();
+
+        // Same dtype, nullability, name, and annotations — nothing to do.
+        if is_nullable == to_nullable
+            && field.name() == self.name.as_deref()
+            && extra == self.metadata
+        {
+            return Ok(());
+        }
+
+        // Validate the fallible step first (a rejected cast leaves `self` untouched).
+        if is_nullable && !to_nullable {
+            let nulls = self.null_count();
+            if nulls > 0 {
+                return Err(cast_null_error(nulls));
+            }
+        }
+
+        if !is_nullable && to_nullable {
+            // Add a validity buffer marking the one element valid (it carries a value).
+            let mut validity = D::default();
+            validity
+                .pwrite_bit(self.index, true)
+                .expect("bit write into a fresh backing never fails");
+            self.validity = Some(validity);
+        } else if is_nullable && !to_nullable {
+            self.validity = None; // verified non-null above
+        }
+        self.name = field.name().map(Into::into);
+        self.metadata = extra;
+        Ok(())
     }
 }
 

@@ -353,6 +353,156 @@ fn header_field_metadata_and_serie_field() {
 }
 
 // -------------------------------------------------------------------------------------
+// HeaderField — metadata accessors / mutators + the set_* / with_* trio
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn header_field_metadata_accessors_and_trio() {
+    let mut field = HeaderField::new(Some("price"), DataTypeId::I64, false);
+
+    // set_metadata / metadata_value round-trip (an arbitrary annotation key).
+    field.set_metadata("unit", "USD");
+    assert_eq!(field.metadata_value("unit").as_deref(), Some("USD"));
+    assert_eq!(field.metadata_value("missing"), None);
+
+    // metadata() exposes the whole backing map; metadata_mut() mutates it, and the change reflects.
+    assert_eq!(field.metadata().get("unit"), Some("USD"));
+    field.metadata_mut().insert("currency", "fiat");
+    assert_eq!(field.metadata_value("currency").as_deref(), Some("fiat"));
+
+    // with_metadata is the chainable form.
+    let annotated = HeaderField::new(None, DataTypeId::I32, false)
+        .with_metadata("a", "1")
+        .with_metadata("b", "2");
+    assert_eq!(annotated.metadata_value("a").as_deref(), Some("1"));
+    assert_eq!(annotated.metadata_value("b").as_deref(), Some("2"));
+
+    // The set_* / with_* trio over the promoted typed fields (name / nullable / data_type_id).
+    let built = HeaderField::new(None, DataTypeId::Unknown, false)
+        .with_name("id")
+        .with_nullable(true)
+        .with_data_type_id(DataTypeId::I32);
+    assert_eq!(built.name(), Some("id"));
+    assert!(built.nullable());
+    assert_eq!(built.data_type_id(), DataTypeId::I32);
+
+    let mut mutated = built.clone();
+    mutated.set_name("key");
+    mutated.set_nullable(false);
+    mutated.set_data_type_id(DataTypeId::I64);
+    assert_eq!(mutated.name(), Some("key"));
+    assert!(!mutated.nullable());
+    assert_eq!(mutated.data_type_id(), DataTypeId::I64);
+}
+
+// -------------------------------------------------------------------------------------
+// Field-driven cast — FixedSerie / FixedScalar cast_field (metadata reshape, element type kept)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn serie_cast_field_nullability_name_metadata() {
+    // non-nullable -> nullable: adds an all-valid validity buffer (no nulls introduced).
+    let base = FixedSerie::<Int64>::from_values(&[1, 2, 3]);
+    assert!(!base.field().nullable());
+    let nullable = base
+        .cast_field(&HeaderField::new(None, DataTypeId::I64, true))
+        .unwrap();
+    assert!(nullable.field().nullable());
+    assert_eq!(nullable.null_count(), 0);
+    assert!(nullable.is_valid(0) && nullable.is_valid(1) && nullable.is_valid(2));
+    assert_eq!(nullable.values(), vec![1, 2, 3]);
+
+    // nullable (but clean) -> non-nullable: drops the validity buffer.
+    let clean = FixedSerie::<Int32>::from_options(&[Some(1), Some(2)]);
+    assert!(clean.field().nullable());
+    let non_null = clean
+        .cast_field(&HeaderField::new(None, DataTypeId::I32, false))
+        .unwrap();
+    assert!(!non_null.field().nullable());
+    assert_eq!(non_null.values(), vec![1, 2]);
+
+    // A name + metadata cast: the new field reports both.
+    let named = FixedSerie::<Int64>::from_values(&[10, 20])
+        .cast_field(
+            &HeaderField::new(Some("price"), DataTypeId::I64, false).with_metadata("unit", "USD"),
+        )
+        .unwrap();
+    assert_eq!(named.field().name(), Some("price"));
+    assert_eq!(named.field().metadata_value("unit").as_deref(), Some("USD"));
+}
+
+#[test]
+fn serie_cast_field_guided_errors_and_noop() {
+    // nullable -> non-nullable with a real null: the guided TypedCast error naming the count.
+    // (`.err().unwrap()` avoids requiring the Ok column type to be Debug.)
+    let with_null = FixedSerie::<Int32>::from_options(&[Some(1), None, Some(3)]);
+    let err = with_null
+        .cast_field(&HeaderField::new(None, DataTypeId::I32, false))
+        .err()
+        .unwrap();
+    assert!(matches!(err, IoError::TypedCast { .. }));
+    assert!(err.to_string().contains("nulls"));
+
+    // Different dtype: the guided TypedCast error (the typed column keeps its element type).
+    let mut col = FixedSerie::<Int64>::from_values(&[1, 2, 3]);
+    let dtype_err = col
+        .cast_field_in_place(&HeaderField::new(None, DataTypeId::F64, false))
+        .unwrap_err();
+    assert!(matches!(dtype_err, IoError::TypedCast { .. }));
+    assert!(dtype_err.to_string().contains("resize_dtype"));
+
+    // No-op when the field already matches: the backing bytes are untouched (same allocation).
+    let mut named = FixedSerie::<Int64>::from_values(&[4, 5, 6]).with_name("x");
+    let same = named.field();
+    let ptr_before = named.data().as_slice().as_ptr();
+    named.cast_field_in_place(&same).unwrap();
+    assert_eq!(named.data().as_slice().as_ptr(), ptr_before); // no reallocation
+    assert_eq!(named.values(), vec![4, 5, 6]);
+
+    // The copy front door is a no-op in content and name too.
+    let copy = named.cast_field(&same).unwrap();
+    assert_eq!(copy.values(), named.values());
+    assert_eq!(copy.field().name(), Some("x"));
+}
+
+#[test]
+fn scalar_cast_field_nullability_name_and_errors() {
+    // non-nullable scalar -> nullable field: marks the one element valid, keeps its value + name +
+    // annotation.
+    let some = FixedScalar::<Int32>::of(42);
+    assert!(!some.field().nullable());
+    let nullable = some
+        .cast_field(
+            &HeaderField::new(Some("answer"), DataTypeId::I32, true).with_metadata("src", "quiz"),
+        )
+        .unwrap();
+    assert!(nullable.field().nullable());
+    assert_eq!(nullable.field().name(), Some("answer"));
+    assert_eq!(
+        nullable.field().metadata_value("src").as_deref(),
+        Some("quiz")
+    );
+    assert_eq!(nullable.value(), Some(42));
+    assert!(nullable.is_valid(0));
+
+    // a null scalar -> non-nullable field: the guided TypedCast error (a real null).
+    let null = FixedScalar::<Int32>::null();
+    let err = null
+        .cast_field(&HeaderField::new(None, DataTypeId::I32, false))
+        .err()
+        .unwrap();
+    assert!(matches!(err, IoError::TypedCast { .. }));
+
+    // different dtype: the guided TypedCast error (names the FixedScalar container).
+    let dtype_err = some
+        .cast_field(&HeaderField::new(None, DataTypeId::I64, false))
+        .err()
+        .unwrap();
+    assert!(matches!(dtype_err, IoError::TypedCast { .. }));
+    assert!(dtype_err.to_string().contains("FixedScalar"));
+}
+
+// -------------------------------------------------------------------------------------
 // Wrapping any IOBase as a typed column (zero-copy view)
 // -------------------------------------------------------------------------------------
 
