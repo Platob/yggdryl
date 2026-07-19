@@ -9,55 +9,55 @@ use crate::typed::{DataType, Decoder, Encoder, Reduce};
 fixed_numeric!(
     /// The signed 8-bit integer type (`i8`).
     Int8, i8, I8, i64,
-    pwrite_i8_array, pread_i8_array, sum_i8, min_i8, max_i8, mean_i8,
+    pwrite_i8_array, pread_i8_array, pwrite_i8_repeat, sum_i8, min_i8, max_i8, mean_i8,
     std_i8, var_i8, median_i8, first_i8, last_i8, count_ge_i8
 );
 fixed_numeric!(
     /// The signed 16-bit integer type (`i16`).
     Int16, i16, I16, i64,
-    pwrite_i16_array, pread_i16_array, sum_i16, min_i16, max_i16, mean_i16,
+    pwrite_i16_array, pread_i16_array, pwrite_i16_repeat, sum_i16, min_i16, max_i16, mean_i16,
     std_i16, var_i16, median_i16, first_i16, last_i16, count_ge_i16
 );
 fixed_numeric!(
     /// The unsigned 16-bit integer type (`u16`).
     UInt16, u16, U16, i64,
-    pwrite_u16_array, pread_u16_array, sum_u16, min_u16, max_u16, mean_u16,
+    pwrite_u16_array, pread_u16_array, pwrite_u16_repeat, sum_u16, min_u16, max_u16, mean_u16,
     std_u16, var_u16, median_u16, first_u16, last_u16, count_ge_u16
 );
 fixed_numeric!(
     /// The signed 32-bit integer type (`i32`).
     Int32, i32, I32, i64,
-    pwrite_i32_array, pread_i32_array, sum_i32, min_i32, max_i32, mean_i32,
+    pwrite_i32_array, pread_i32_array, pwrite_i32_repeat, sum_i32, min_i32, max_i32, mean_i32,
     std_i32, var_i32, median_i32, first_i32, last_i32, count_ge_i32
 );
 fixed_numeric!(
     /// The unsigned 32-bit integer type (`u32`).
     UInt32, u32, U32, i64,
-    pwrite_u32_array, pread_u32_array, sum_u32, min_u32, max_u32, mean_u32,
+    pwrite_u32_array, pread_u32_array, pwrite_u32_repeat, sum_u32, min_u32, max_u32, mean_u32,
     std_u32, var_u32, median_u32, first_u32, last_u32, count_ge_u32
 );
 fixed_numeric!(
     /// The signed 64-bit integer type (`i64`).
     Int64, i64, I64, i128,
-    pwrite_i64_array, pread_i64_array, sum_i64, min_i64, max_i64, mean_i64,
+    pwrite_i64_array, pread_i64_array, pwrite_i64_repeat, sum_i64, min_i64, max_i64, mean_i64,
     std_i64, var_i64, median_i64, first_i64, last_i64, count_ge_i64
 );
 fixed_numeric!(
     /// The unsigned 64-bit integer type (`u64`).
     UInt64, u64, U64, i128,
-    pwrite_u64_array, pread_u64_array, sum_u64, min_u64, max_u64, mean_u64,
+    pwrite_u64_array, pread_u64_array, pwrite_u64_repeat, sum_u64, min_u64, max_u64, mean_u64,
     std_u64, var_u64, median_u64, first_u64, last_u64, count_ge_u64
 );
 fixed_numeric!(
     /// The signed 128-bit integer type (`i128`).
     Int128, i128, I128, i128,
-    pwrite_i128_array, pread_i128_array, sum_i128, min_i128, max_i128, mean_i128,
+    pwrite_i128_array, pread_i128_array, pwrite_i128_repeat, sum_i128, min_i128, max_i128, mean_i128,
     std_i128, var_i128, median_i128, first_i128, last_i128, count_ge_i128
 );
 fixed_numeric!(
     /// The unsigned 128-bit integer type (`u128`).
     UInt128, u128, U128, u128,
-    pwrite_u128_array, pread_u128_array, sum_u128, min_u128, max_u128, mean_u128,
+    pwrite_u128_array, pread_u128_array, pwrite_u128_repeat, sum_u128, min_u128, max_u128, mean_u128,
     std_u128, var_u128, median_u128, first_u128, last_u128, count_ge_u128
 );
 

@@ -1296,10 +1296,10 @@ impl Serie {
     /// of booleans (`1` = keep) or a boolean [`Serie`]. Throws when a `Serie` mask is not a boolean
     /// column.
     #[napi]
-    pub fn filter(&self, mask: Either<Vec<bool>, &Serie>) -> napi::Result<Serie> {
+    pub fn mask_filter(&self, mask: Either<Vec<bool>, &Serie>) -> napi::Result<Serie> {
         let mask_heap = build_mask(mask)?;
         Ok(Serie {
-            inner: dispatch_rebuild!(self, serie => serie.filter(&mask_heap)),
+            inner: dispatch_rebuild!(self, serie => serie.mask_filter(&mask_heap)),
         })
     }
 
@@ -1416,6 +1416,183 @@ impl Serie {
             }
         }
         .map_err(to_error)
+    }
+
+    /// **Appends `values`** at the end **in place**, in one vectorized bulk write (the batch
+    /// counterpart of a per-element push) — each element crosses in the column's element shape,
+    /// converted to its native type. All appended elements are non-null (a nullable column marks the
+    /// new range valid). Throws the guided `Error` on the wrong JS shape.
+    #[napi]
+    pub fn append(&mut self, values: Vec<Either3<f64, BigInt, bool>>) -> napi::Result<()> {
+        set_dispatch!(self, serie, conv => serie.append(&convert_values(values, conv)?));
+        Ok(())
+    }
+
+    /// **Concatenates another column** onto the end **in place** — appends `other`'s elements (values
+    /// **and** per-element validity) in one bulk write. `other` must have the same element type as
+    /// this column (else the guided dtype-mismatch `Error`).
+    #[napi]
+    pub fn extend(&mut self, other: &Serie) -> napi::Result<()> {
+        let self_dtype = dispatch!(self, serie => serie.data_type_id());
+        let other_dtype = dispatch!(other, serie => serie.data_type_id());
+        match (&mut self.inner, &other.inner) {
+            (SerieInner::I8(dst), SerieInner::I8(src)) => dst.extend(src),
+            (SerieInner::U8(dst), SerieInner::U8(src)) => dst.extend(src),
+            (SerieInner::I16(dst), SerieInner::I16(src)) => dst.extend(src),
+            (SerieInner::U16(dst), SerieInner::U16(src)) => dst.extend(src),
+            (SerieInner::I32(dst), SerieInner::I32(src)) => dst.extend(src),
+            (SerieInner::U32(dst), SerieInner::U32(src)) => dst.extend(src),
+            (SerieInner::I64(dst), SerieInner::I64(src)) => dst.extend(src),
+            (SerieInner::U64(dst), SerieInner::U64(src)) => dst.extend(src),
+            (SerieInner::I128(dst), SerieInner::I128(src)) => dst.extend(src),
+            (SerieInner::U128(dst), SerieInner::U128(src)) => dst.extend(src),
+            (SerieInner::F32(dst), SerieInner::F32(src)) => dst.extend(src),
+            (SerieInner::F64(dst), SerieInner::F64(src)) => dst.extend(src),
+            (SerieInner::Bool(dst), SerieInner::Bool(src)) => dst.extend(src),
+            (SerieInner::Decimal32(dst), SerieInner::Decimal32(src)) => dst.extend(src),
+            (SerieInner::Decimal64(dst), SerieInner::Decimal64(src)) => dst.extend(src),
+            (SerieInner::Decimal128(dst), SerieInner::Decimal128(src)) => dst.extend(src),
+            (SerieInner::Decimal256(dst), SerieInner::Decimal256(src)) => dst.extend(src),
+            _ => {
+                return Err(to_error(format!(
+                "dtype mismatch: cannot extend an {self_dtype} column with a {other_dtype} column"
+            )))
+            }
+        }
+        Ok(())
+    }
+
+    /// **Appends `count` copies of `value`** at the end **in place** — the repeated-value fill,
+    /// routed through the type's allocation-free repeat kernel (the `count`-element array is never
+    /// materialized). `value` crosses in the column's element shape. Throws on the wrong JS shape.
+    #[napi]
+    pub fn push_repeat(
+        &mut self,
+        value: Either3<f64, BigInt, bool>,
+        count: u32,
+    ) -> napi::Result<()> {
+        let count = count as usize;
+        set_dispatch!(self, serie, conv => serie.push_repeat(conv(value)?, count));
+        Ok(())
+    }
+
+    /// A **new non-null column** of `count` copies of `value`, each an element of `dtype` — the
+    /// builder counterpart of [`pushRepeat`](Serie::push_repeat), pre-sized to the final length and
+    /// filled through the allocation-free repeat kernel. `value` follows the same per-`dtype` shape as
+    /// [`fromValues`](Serie::from_values); a byte / `Unknown` dtype has no typed column and throws.
+    #[napi(factory)]
+    pub fn repeat(
+        value: Either3<f64, BigInt, bool>,
+        count: u32,
+        dtype: &DataTypeId,
+    ) -> napi::Result<Serie> {
+        let count = count as usize;
+        let inner = match dtype.inner {
+            DtId::I8 => SerieInner::I8(FixedSerie::<Int8>::repeat(to_i8(value)?, count)),
+            DtId::U8 => SerieInner::U8(FixedSerie::<UInt8>::repeat(to_u8(value)?, count)),
+            DtId::I16 => SerieInner::I16(FixedSerie::<Int16>::repeat(to_i16(value)?, count)),
+            DtId::U16 => SerieInner::U16(FixedSerie::<UInt16>::repeat(to_u16(value)?, count)),
+            DtId::I32 => SerieInner::I32(FixedSerie::<Int32>::repeat(to_i32(value)?, count)),
+            DtId::U32 => SerieInner::U32(FixedSerie::<UInt32>::repeat(to_u32(value)?, count)),
+            DtId::I64 => SerieInner::I64(FixedSerie::<Int64>::repeat(to_i64(value)?, count)),
+            DtId::U64 => SerieInner::U64(FixedSerie::<UInt64>::repeat(to_u64(value)?, count)),
+            DtId::I128 => SerieInner::I128(FixedSerie::<Int128>::repeat(to_i128(value)?, count)),
+            DtId::U128 => SerieInner::U128(FixedSerie::<UInt128>::repeat(to_u128(value)?, count)),
+            DtId::F32 => SerieInner::F32(FixedSerie::<Float32>::repeat(to_f32(value)?, count)),
+            DtId::F64 => SerieInner::F64(FixedSerie::<Float64>::repeat(to_f64(value)?, count)),
+            DtId::Bool => {
+                SerieInner::Bool(FixedSerie::<Bit>::repeat(to_bool_native(value)?, count))
+            }
+            DtId::Decimal32 => {
+                SerieInner::Decimal32(FixedSerie::<Decimal32>::repeat(to_i32(value)?, count))
+            }
+            DtId::Decimal64 => {
+                SerieInner::Decimal64(FixedSerie::<Decimal64>::repeat(to_i64(value)?, count))
+            }
+            DtId::Decimal128 => {
+                SerieInner::Decimal128(FixedSerie::<Decimal128>::repeat(to_i128(value)?, count))
+            }
+            DtId::Decimal256 => {
+                SerieInner::Decimal256(FixedSerie::<Decimal256>::repeat(to_i256(value)?, count))
+            }
+            _ => {
+                return Err(to_error(
+                    "this DataTypeId has no typed Serie: pass a concrete fixed-width element type \
+                     (e.g. DataTypeId.I64())",
+                ))
+            }
+        };
+        Ok(Serie { inner })
+    }
+
+    /// A **fresh copy with every null replaced by `value`**, dropping the validity buffer (so the
+    /// result is **non-nullable**). `value` crosses in the column's element shape. When the column is
+    /// already null-free this is a cheap no-op copy. Throws the guided `Error` on the wrong JS shape.
+    #[napi]
+    pub fn fill_null(&self, value: Either3<f64, BigInt, bool>) -> napi::Result<Serie> {
+        let inner = match &self.inner {
+            SerieInner::I8(s) => SerieInner::I8(s.fill_null(to_i8(value)?)),
+            SerieInner::U8(s) => SerieInner::U8(s.fill_null(to_u8(value)?)),
+            SerieInner::I16(s) => SerieInner::I16(s.fill_null(to_i16(value)?)),
+            SerieInner::U16(s) => SerieInner::U16(s.fill_null(to_u16(value)?)),
+            SerieInner::I32(s) => SerieInner::I32(s.fill_null(to_i32(value)?)),
+            SerieInner::U32(s) => SerieInner::U32(s.fill_null(to_u32(value)?)),
+            SerieInner::I64(s) => SerieInner::I64(s.fill_null(to_i64(value)?)),
+            SerieInner::U64(s) => SerieInner::U64(s.fill_null(to_u64(value)?)),
+            SerieInner::I128(s) => SerieInner::I128(s.fill_null(to_i128(value)?)),
+            SerieInner::U128(s) => SerieInner::U128(s.fill_null(to_u128(value)?)),
+            SerieInner::F32(s) => SerieInner::F32(s.fill_null(to_f32(value)?)),
+            SerieInner::F64(s) => SerieInner::F64(s.fill_null(to_f64(value)?)),
+            SerieInner::Bool(s) => SerieInner::Bool(s.fill_null(to_bool_native(value)?)),
+            SerieInner::Decimal32(s) => SerieInner::Decimal32(s.fill_null(to_i32(value)?)),
+            SerieInner::Decimal64(s) => SerieInner::Decimal64(s.fill_null(to_i64(value)?)),
+            SerieInner::Decimal128(s) => SerieInner::Decimal128(s.fill_null(to_i128(value)?)),
+            SerieInner::Decimal256(s) => SerieInner::Decimal256(s.fill_null(to_i256(value)?)),
+        };
+        Ok(Serie { inner })
+    }
+
+    /// A **fresh forward-filled copy** — each null slot takes the previous non-null value (carried
+    /// forward); leading nulls (before any non-null) stay null. A null-free column is a cheap no-op
+    /// copy. Works for every element type.
+    #[napi]
+    pub fn fill_null_forward(&self) -> Serie {
+        Serie {
+            inner: dispatch_rebuild!(self, serie => serie.fill_null_forward()),
+        }
+    }
+
+    /// A **fresh reversed copy** — the elements (and their validity) in reverse order. Works for every
+    /// element type.
+    #[napi]
+    pub fn reverse(&self) -> Serie {
+        Serie {
+            inner: dispatch_rebuild!(self, serie => serie.reverse()),
+        }
+    }
+
+    /// A **fresh sorted copy** — `ascending` (default `true`) picks the direction. **Stable** (equal
+    /// elements keep input order), with nulls last and (for a float column) NaN last in both
+    /// directions. Works for every element type.
+    #[napi]
+    pub fn sort(&self, ascending: Option<bool>) -> Serie {
+        let ascending = ascending.unwrap_or(true);
+        Serie {
+            inner: dispatch_rebuild!(self, serie => serie.take(&serie.sort_indices(ascending))),
+        }
+    }
+
+    /// The **permutation that sorts** the column — `sortIndices(true)[k]` is the source index of the
+    /// `k`-th smallest element. **Stable**, with nulls last and (for a float column) NaN last in both
+    /// directions. `ascending` defaults to `true`. Works for every element type.
+    #[napi]
+    pub fn sort_indices(&self, ascending: Option<bool>) -> Vec<u32> {
+        let ascending = ascending.unwrap_or(true);
+        dispatch!(self, serie => serie
+            .sort_indices(ascending)
+            .into_iter()
+            .map(|index| index as u32)
+            .collect())
     }
 
     /// A short debug string — the column's name, element type, length, and null count.
@@ -2151,6 +2328,92 @@ impl ByteSerie {
             | ByteInner::LargeUtf8(_) => return Err(var_set_error()),
         };
         Ok(())
+    }
+
+    /// A fresh column keeping only the elements where `mask` is truthy — `mask` is either an array of
+    /// booleans (`1` = keep) or a boolean [`Serie`]. Throws when a `Serie` mask is not a boolean
+    /// column.
+    #[napi]
+    pub fn mask_filter(&self, mask: Either<Vec<bool>, &Serie>) -> napi::Result<ByteSerie> {
+        let mask_heap = build_mask(mask)?;
+        Ok(ByteSerie {
+            inner: byte_rebuild!(self, serie => serie.mask_filter(&mask_heap)),
+        })
+    }
+
+    /// **Appends `values`** at the end **in place** — a binary element is a `Buffer`, a utf8 element a
+    /// `string`, each zero-padded / truncated to the fixed width on a fixed-size column. All appended
+    /// elements are non-null. Throws the guided `Error` on the wrong JS shape.
+    #[napi]
+    pub fn append(&mut self, values: Vec<Either<Buffer, String>>) -> napi::Result<()> {
+        match &mut self.inner {
+            ByteInner::Binary(serie) => serie.append(&binary_values(values)?),
+            ByteInner::Utf8(serie) => serie.append(&utf8_values(values)?),
+            ByteInner::LargeBinary(serie) => serie.append(&binary_values(values)?),
+            ByteInner::LargeUtf8(serie) => serie.append(&utf8_values(values)?),
+            ByteInner::FixedBinary(serie) => serie.append(&binary_values(values)?),
+            ByteInner::FixedUtf8(serie) => serie.append(&utf8_values(values)?),
+        }
+        Ok(())
+    }
+
+    /// **Concatenates another byte column** onto the end **in place** — appends `other`'s elements
+    /// (values **and** per-element validity). `other` must have the same carrier (element type) as
+    /// this column (else the guided dtype-mismatch `Error`).
+    #[napi]
+    pub fn extend(&mut self, other: &ByteSerie) -> napi::Result<()> {
+        let self_dtype = byte_dispatch!(self, serie => serie.data_type_id());
+        let other_dtype = byte_dispatch!(other, serie => serie.data_type_id());
+        match (&mut self.inner, &other.inner) {
+            (ByteInner::Binary(dst), ByteInner::Binary(src)) => dst.extend(src),
+            (ByteInner::Utf8(dst), ByteInner::Utf8(src)) => dst.extend(src),
+            (ByteInner::LargeBinary(dst), ByteInner::LargeBinary(src)) => dst.extend(src),
+            (ByteInner::LargeUtf8(dst), ByteInner::LargeUtf8(src)) => dst.extend(src),
+            (ByteInner::FixedBinary(dst), ByteInner::FixedBinary(src)) => dst.extend(src),
+            (ByteInner::FixedUtf8(dst), ByteInner::FixedUtf8(src)) => dst.extend(src),
+            _ => {
+                return Err(to_error(format!(
+                "dtype mismatch: cannot extend a {self_dtype} column with a {other_dtype} column"
+            )))
+            }
+        }
+        Ok(())
+    }
+
+    /// **Appends `count` copies of `value`** at the end **in place** — a binary element is a `Buffer`,
+    /// a utf8 element a `string` (zero-padded / truncated to the fixed width on a fixed-size column),
+    /// written without materializing the `count`-element array. Throws on the wrong JS shape.
+    #[napi]
+    pub fn push_repeat(&mut self, value: Either<Buffer, String>, count: u32) -> napi::Result<()> {
+        let count = count as usize;
+        match &mut self.inner {
+            ByteInner::Binary(serie) => serie.push_repeat(&as_binary_element(value)?, count),
+            ByteInner::Utf8(serie) => serie.push_repeat(&as_utf8_element(value)?, count),
+            ByteInner::LargeBinary(serie) => serie.push_repeat(&as_binary_element(value)?, count),
+            ByteInner::LargeUtf8(serie) => serie.push_repeat(&as_utf8_element(value)?, count),
+            ByteInner::FixedBinary(serie) => serie.push_repeat(&as_binary_element(value)?, count),
+            ByteInner::FixedUtf8(serie) => serie.push_repeat(&as_utf8_element(value)?, count),
+        }
+        Ok(())
+    }
+
+    /// A **fresh reversed copy** — the elements (and their validity) in reverse order.
+    #[napi]
+    pub fn reverse(&self) -> ByteSerie {
+        ByteSerie {
+            inner: byte_rebuild!(self, serie => serie.reverse()),
+        }
+    }
+
+    /// A **fresh sorted copy** — sorted **lexicographically** over the element bytes (a `utf8` column
+    /// by code point, a `binary` column by byte order); `ascending` (default `true`) picks the
+    /// direction. **Stable**, with nulls last in both directions.
+    #[napi]
+    pub fn sort(&self, ascending: Option<bool>) -> ByteSerie {
+        let ascending = ascending.unwrap_or(true);
+        ByteSerie {
+            inner: byte_rebuild!(self, serie => serie.take(&serie.sort_indices(ascending))),
+        }
     }
 
     /// A short debug string — the column's name, element type, length, null count, and (for a

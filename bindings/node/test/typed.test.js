@@ -179,18 +179,18 @@ test('a boolean column stores/reads booleans and refuses to reduce', () => {
   assert.throws(() => col.mean(), /boolean column does not reduce/)
 })
 
-test('filter compacts by a boolean array or a boolean Serie mask', () => {
+test('maskFilter compacts by a boolean array or a boolean Serie mask', () => {
   const col = Serie.fromValues([4n, 8n, 15n, 16n, 23n, 42n], DataTypeId.I64())
 
-  const byArray = col.filter([true, false, true, false, true, false])
+  const byArray = col.maskFilter([true, false, true, false, true, false])
   assert.deepEqual(byArray.toList(), [4n, 15n, 23n])
 
   const mask = Serie.fromValues([false, false, false, true, true, true], DataTypeId.Bool())
-  const bySerie = col.filter(mask)
+  const bySerie = col.maskFilter(mask)
   assert.deepEqual(bySerie.toList(), [16n, 23n, 42n])
 
   // a non-boolean Serie mask is refused with a guided error
-  assert.throws(() => col.filter(Serie.fromValues([1n], DataTypeId.I64())), /boolean column/)
+  assert.throws(() => col.maskFilter(Serie.fromValues([1n], DataTypeId.I64())), /boolean column/)
 })
 
 test('withName does not mutate the original and clears no data', () => {
@@ -1015,4 +1015,166 @@ test('castField dtype change to Bool is refused, but a Bool -> Bool nullable cas
   assert.equal(nullable.field().name(), 'flag')
   assert.equal(nullable.field().nullable(), true)
   assert.deepEqual(nullable.toList(), [true, false, true])
+})
+
+// -------------------------------------------------------------------------------------
+// Growth surface — append / extend / pushRepeat / repeat / fillNull / reverse / sort
+// -------------------------------------------------------------------------------------
+
+test('append grows a column in place with converted values (and preserves existing nulls)', () => {
+  const col = Serie.fromValues([1, 2, 3], DataTypeId.I32())
+  col.append([4, 5])
+  assert.deepEqual(col.toList(), [1, 2, 3, 4, 5])
+  assert.equal(col.len(), 5)
+
+  // a wide-integer column appends BigInts
+  const big = Serie.fromValues([1n, 2n], DataTypeId.I64())
+  big.append([3n, 4n])
+  assert.deepEqual(big.toList(), [1n, 2n, 3n, 4n])
+
+  // appended elements onto a nullable column are valid; existing nulls are preserved
+  const nullable = Serie.fromOptions([1, null], DataTypeId.I32())
+  nullable.append([9])
+  assert.deepEqual(nullable.toList(), [1, null, 9])
+  assert.equal(nullable.nullCount(), 1)
+})
+
+test('extend concatenates another column values and validity', () => {
+  const a = Serie.fromValues([1, 2], DataTypeId.I32())
+  const b = Serie.fromValues([3, 4], DataTypeId.I32())
+  a.extend(b)
+  assert.deepEqual(a.toList(), [1, 2, 3, 4])
+  assert.deepEqual(b.toList(), [3, 4]) // the source is unchanged
+
+  // a nullable source carries its nulls across the appended range
+  const target = Serie.fromValues([1, 2], DataTypeId.I32())
+  const nullableSrc = Serie.fromOptions([null, 5], DataTypeId.I32())
+  target.extend(nullableSrc)
+  assert.deepEqual(target.toList(), [1, 2, null, 5])
+  assert.equal(target.nullCount(), 1)
+})
+
+test('extend throws a guided dtype-mismatch error', () => {
+  const i32 = Serie.fromValues([1, 2], DataTypeId.I32())
+  const i64 = Serie.fromValues([9n], DataTypeId.I64())
+  assert.throws(
+    () => i32.extend(i64),
+    /dtype mismatch: cannot extend an i32 column with a i64 column/
+  )
+})
+
+test('pushRepeat appends copies; repeat builds a new non-nullable column', () => {
+  const col = Serie.fromValues([1, 2], DataTypeId.I32())
+  col.pushRepeat(7, 3)
+  assert.deepEqual(col.toList(), [1, 2, 7, 7, 7])
+
+  const built = Serie.repeat(9n, 4, DataTypeId.I64())
+  assert.equal(built.len(), 4)
+  assert.deepEqual(built.toList(), [9n, 9n, 9n, 9n])
+  assert.equal(built.nullCount(), 0) // repeat is non-nullable
+
+  // a byte / Unknown dtype has no typed Serie
+  assert.throws(() => Serie.repeat(1n, 2, DataTypeId.Utf8()), /no typed Serie/)
+})
+
+test('fillNull replaces nulls with a value and drops nullability; null-free is a no-op', () => {
+  const col = Serie.fromOptions([1, null, 3, null], DataTypeId.I32())
+  assert.equal(col.nullCount(), 2)
+  const filled = col.fillNull(-1)
+  assert.deepEqual(filled.toList(), [1, -1, 3, -1])
+  assert.equal(filled.nullCount(), 0) // now non-nullable
+  assert.equal(filled.field().nullable(), false)
+  assert.equal(col.nullCount(), 2) // the original is unchanged
+
+  // a null-free column is a no-op copy
+  const noNull = Serie.fromValues([1, 2, 3], DataTypeId.I32())
+  assert.deepEqual(noNull.fillNull(0).toList(), [1, 2, 3])
+
+  // a decimal column fills its raw unscaled value
+  const dec = Serie.fromOptions([12345n, null], DataTypeId.Decimal128()).withPrecisionScale(10, 2)
+  const decFilled = dec.fillNull(0n)
+  assert.equal(decFilled.nullCount(), 0)
+  assert.deepEqual(decFilled.values(), [12345n, 0n])
+})
+
+test('fillNullForward carries the previous non-null value forward; leading nulls stay null', () => {
+  const col = Serie.fromOptions([1, null, null, 4, null], DataTypeId.I32())
+  const filled = col.fillNullForward()
+  assert.deepEqual(filled.toList(), [1, 1, 1, 4, 4])
+  assert.equal(filled.nullCount(), 0)
+
+  const leading = Serie.fromOptions([null, 2, null], DataTypeId.I32())
+  assert.deepEqual(leading.fillNullForward().toList(), [null, 2, 2])
+})
+
+test('reverse returns a fresh reversed column carrying validity', () => {
+  const col = Serie.fromValues([1, 2, 3, 4], DataTypeId.I32())
+  assert.deepEqual(col.reverse().toList(), [4, 3, 2, 1])
+  assert.deepEqual(col.toList(), [1, 2, 3, 4]) // the original is unchanged
+
+  const nullable = Serie.fromOptions([1, null, 3], DataTypeId.I32())
+  assert.deepEqual(nullable.reverse().toList(), [3, null, 1])
+})
+
+test('sort ascending / descending; sortIndices returns the permutation (nulls last)', () => {
+  const col = Serie.fromValues([30, 10, 20], DataTypeId.I32())
+  assert.deepEqual(col.sort().toList(), [10, 20, 30]) // default ascending
+  assert.deepEqual(col.sort(true).toList(), [10, 20, 30])
+  assert.deepEqual(col.sort(false).toList(), [30, 20, 10]) // descending
+  assert.deepEqual(col.toList(), [30, 10, 20]) // the original is unchanged
+
+  assert.deepEqual(col.sortIndices(true), [1, 2, 0])
+  assert.deepEqual(col.sortIndices(false), [0, 2, 1])
+
+  // nulls sort last in both directions
+  const nullable = Serie.fromOptions([3, null, 1], DataTypeId.I32())
+  assert.deepEqual(nullable.sort(true).toList(), [1, 3, null])
+})
+
+// -------------------------------------------------------------------------------------
+// ByteSerie growth — maskFilter / append / extend / reverse / sort / pushRepeat
+// -------------------------------------------------------------------------------------
+
+test('ByteSerie: maskFilter compacts a utf8 column by an array or a boolean Serie', () => {
+  const col = ByteSerie.fromValues(['a', 'b', 'c', 'd'], DataTypeId.Utf8())
+  assert.deepEqual(col.maskFilter([true, false, true, false]).toList(), ['a', 'c'])
+
+  const mask = Serie.fromValues([false, true, true, false], DataTypeId.Bool())
+  assert.deepEqual(col.maskFilter(mask).toList(), ['b', 'c'])
+})
+
+test('ByteSerie: append and extend grow a utf8 column (values + nulls)', () => {
+  const col = ByteSerie.fromValues(['a', 'b'], DataTypeId.Utf8())
+  col.append(['c', 'd'])
+  assert.deepEqual(col.toList(), ['a', 'b', 'c', 'd'])
+
+  const other = ByteSerie.fromOptions(['e', null], DataTypeId.Utf8())
+  col.extend(other)
+  assert.deepEqual(col.toList(), ['a', 'b', 'c', 'd', 'e', null])
+  assert.equal(col.nullCount(), 1)
+
+  // a binary column appends Buffers
+  const bin = ByteSerie.fromValues([Buffer.from([1])], DataTypeId.Binary())
+  bin.append([Buffer.from([2, 3])])
+  assert.deepEqual(bin.toList(), [Buffer.from([1]), Buffer.from([2, 3])])
+})
+
+test('ByteSerie: extend throws a guided dtype-mismatch error', () => {
+  const utf8 = ByteSerie.fromValues(['a'], DataTypeId.Utf8())
+  const binary = ByteSerie.fromValues([Buffer.from([1])], DataTypeId.Binary())
+  assert.throws(() => utf8.extend(binary), /dtype mismatch/)
+})
+
+test('ByteSerie: pushRepeat appends copies of a value', () => {
+  const col = ByteSerie.fromValues(['x'], DataTypeId.Utf8())
+  col.pushRepeat('y', 3)
+  assert.deepEqual(col.toList(), ['x', 'y', 'y', 'y'])
+})
+
+test('ByteSerie: reverse and lexicographic sort (ascending / descending)', () => {
+  const col = ByteSerie.fromValues(['banana', 'apple', 'cherry'], DataTypeId.Utf8())
+  assert.deepEqual(col.reverse().toList(), ['cherry', 'apple', 'banana'])
+  assert.deepEqual(col.sort().toList(), ['apple', 'banana', 'cherry']) // ascending lexicographic
+  assert.deepEqual(col.sort(false).toList(), ['cherry', 'banana', 'apple']) // descending
+  assert.deepEqual(col.toList(), ['banana', 'apple', 'cherry']) // the original is unchanged
 })

@@ -417,6 +417,63 @@ A variable-length `Binary` / `Utf8` column can also declare an **optional maximu
 appends enforce and the `Field` records as its `byte_width`, raising a guided error if any element
 exceeds it. (A fixed-size column's `byte_width` is instead its *exact* stride.)
 
+## Growing and reshaping a column
+
+A column grows and reshapes through the memory layer, vectorized: `append` (bulk-add values),
+`extend` (concatenate another column), `repeat` / `push_repeat` (a constant fill, allocation-free),
+`fill_null` (replace nulls — the column becomes non-nullable), `mask_filter` (keep by a bool mask),
+`reverse`, and `sort` (`sort_indices` + `take` under the hood; nulls/NaN last). `with_capacity`
+pre-sizes the backing so a build never reallocates.
+
+=== "Python"
+
+    ```python
+    from yggdryl.typed import Serie
+    from yggdryl.datatype_id import DataTypeId
+
+    col = Serie.from_values([3, 1, 2], DataTypeId.I64)
+    col.append([4, 5])                          # one bulk append
+    assert col.to_list() == [3, 1, 2, 4, 5]
+    assert col.sort().to_list() == [1, 2, 3, 4, 5]
+    assert col.reverse().to_list() == [5, 4, 2, 1, 3]
+
+    nullable = Serie.from_options([1, None, 3], DataTypeId.I64)
+    assert nullable.fill_null(0).to_list() == [1, 0, 3]   # nulls -> 0, now non-nullable
+
+    assert Serie.repeat(7, 3, DataTypeId.I32).to_list() == [7, 7, 7]  # constant column
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl').typed
+    const { DataTypeId } = require('yggdryl').datatype_id
+
+    const col = Serie.fromValues([3n, 1n, 2n], DataTypeId.I64())
+    col.append([4n, 5n])                                   // one bulk append
+    console.assert(col.sort().get(0) === 1n)               // ascending; nulls/NaN last
+    console.assert(Serie.repeat(7, 3, DataTypeId.I32()).len() === 3)
+
+    const nullable = Serie.fromOptions([1n, null, 3n], DataTypeId.I64())
+    console.assert(nullable.fillNull(0n).nullCount() === 0)  // nulls -> 0
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::typed::{FixedSerie, Serie};
+    use yggdryl_core::typed::fixedbyte::Int64;
+
+    let mut col = FixedSerie::<Int64>::with_capacity(8);  // pre-sized backing, no realloc on append
+    col.append(&[3, 1, 2]);
+    col.append(&[4, 5]);
+    assert_eq!(col.sort().values(), vec![1, 2, 3, 4, 5]);
+    assert_eq!(col.reverse().values(), vec![5, 4, 2, 1, 3]);
+
+    let filled = FixedSerie::<Int64>::from_options(&[Some(1), None, Some(3)]).fill_null(0);
+    assert_eq!(filled.values(), vec![1, 0, 3]);           // non-nullable
+    ```
+
 ## Parsing strings into a column
 
 `Serie.parse(strings, dtype)` builds a column by **flexibly** parsing text — accepting the mainstream

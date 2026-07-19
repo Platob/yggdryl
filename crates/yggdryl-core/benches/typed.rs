@@ -196,10 +196,10 @@ fn main() {
         }),
     );
     row(
-        "extend i64 (batch, bulk)",
+        "append i64 (batch, bulk)",
         measure(n, iters, || {
             let mut s = FixedSerie::<Int64>::with_capacity(n);
-            s.extend(black_box(&ints));
+            s.append(black_box(&ints));
             black_box(s);
         }),
     );

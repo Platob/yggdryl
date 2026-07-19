@@ -3,7 +3,7 @@
 Mirrors ``crates/yggdryl-core/src/typed`` on the Python surface: a ``Serie`` (a typed
 column built ``from_values`` / ``from_options``, with the null-aware ``get`` / ``to_list`` /
 ``is_null`` / ``is_valid`` / ``null_count``, the raw ``values``, the vectorized reductions
-``sum`` / ``min`` / ``max`` / ``mean``, ``with_name`` / ``field`` / ``dtype`` / ``filter``)
+``sum`` / ``min`` / ``max`` / ``mean``, ``with_name`` / ``field`` / ``dtype`` / ``mask_filter``)
 and its ``Field`` (``name`` / ``dtype`` / ``nullable`` / ``headers``). The ``docs/typed.md``
 Python examples are reproduced verbatim, then the edge cases (empty / all-null / out-of-range,
 the wide 128-bit types, float NaN reductions, and the non-reducible bool column).
@@ -265,28 +265,162 @@ def test_bool_reduction_raises():
 
 
 # -------------------------------------------------------------------------------------
-# filter — by a bool list and by a bool Serie
+# mask_filter — by a bool list and by a bool Serie
 # -------------------------------------------------------------------------------------
 
 
-def test_filter_by_list():
+def test_mask_filter_by_list():
     col = Serie.from_values([1, 2, 3, 4], DataTypeId.I64)
-    kept = col.filter([True, False, True, False])
+    kept = col.mask_filter([True, False, True, False])
     assert kept.to_list() == [1, 3]
     assert kept.dtype() == DataTypeId.I64
 
 
-def test_filter_by_bool_serie():
+def test_mask_filter_by_bool_serie():
     col = Serie.from_values([10, 20, 30, 40], DataTypeId.I32)
     mask = Serie.from_values([False, True, True, False], DataTypeId.Bool)
-    assert col.filter(mask).to_list() == [20, 30]
+    assert col.mask_filter(mask).to_list() == [20, 30]
 
 
-def test_filter_preserves_nulls():
+def test_mask_filter_preserves_nulls():
     col = Serie.from_options([1, None, 3, None], DataTypeId.I64)
-    kept = col.filter([True, True, False, True])
+    kept = col.mask_filter([True, True, False, True])
     assert kept.to_list() == [1, None, None]
     assert kept.null_count() == 2
+
+
+# -------------------------------------------------------------------------------------
+# Serie growth — append / extend / push_repeat / repeat
+# -------------------------------------------------------------------------------------
+
+
+def test_append_grows_column():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    col.append([4, 5, 6])
+    assert col.len() == 6
+    assert col.to_list() == [1, 2, 3, 4, 5, 6]
+
+
+def test_append_marks_range_valid_on_nullable():
+    col = Serie.from_options([1, None], DataTypeId.I64)
+    col.append([7, 8])
+    assert col.len() == 4
+    assert col.to_list() == [1, None, 7, 8]
+    assert col.null_count() == 1  # only the original null
+
+
+def test_extend_concatenates_values_and_nulls():
+    col = Serie.from_values([1, 2], DataTypeId.I64)
+    other = Serie.from_options([None, 9], DataTypeId.I64)
+    col.extend(other)
+    assert col.to_list() == [1, 2, None, 9]
+    assert col.null_count() == 1
+
+
+def test_extend_dtype_mismatch_raises():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    other = Serie.from_values([1, 2], DataTypeId.I32)
+    with pytest.raises(ValueError):
+        col.extend(other)
+
+
+def test_push_repeat_mutates():
+    col = Serie.from_values([1, 2], DataTypeId.I32)
+    col.push_repeat(9, 3)
+    assert col.to_list() == [1, 2, 9, 9, 9]
+
+
+def test_repeat_builder():
+    col = Serie.repeat(7, 4, DataTypeId.I64)
+    assert col.len() == 4
+    assert col.to_list() == [7, 7, 7, 7]
+    assert col.dtype() == DataTypeId.I64
+    # A type-name str dtype works too.
+    assert Serie.repeat(1, 2, "u8").to_list() == [1, 1]
+
+
+def test_repeat_decimal():
+    col = Serie.repeat(12345, 2, DataTypeId.Decimal128)
+    assert col.to_list() == [12345, 12345]
+
+
+# -------------------------------------------------------------------------------------
+# Serie — fill_null / fill_null_forward
+# -------------------------------------------------------------------------------------
+
+
+def test_fill_null_replaces_nulls():
+    col = Serie.from_options([1, None, 3, None], DataTypeId.I32)
+    filled = col.fill_null(-1)
+    assert filled.to_list() == [1, -1, 3, -1]
+    assert filled.null_count() == 0  # became non-nullable
+    assert filled.field().nullable() is False
+    # The original is untouched.
+    assert col.null_count() == 2
+
+
+def test_fill_null_null_free_is_noop():
+    col = Serie.from_values([1, 2, 3], DataTypeId.I64)
+    filled = col.fill_null(0)
+    assert filled.to_list() == [1, 2, 3]
+    assert filled.null_count() == 0
+
+
+def test_fill_null_forward():
+    col = Serie.from_options([1, None, None, 4, None], DataTypeId.I64)
+    filled = col.fill_null_forward()
+    assert filled.to_list() == [1, 1, 1, 4, 4]
+    assert filled.null_count() == 0
+
+
+def test_fill_null_forward_leading_nulls_stay():
+    col = Serie.from_options([None, 2, None], DataTypeId.I64)
+    filled = col.fill_null_forward()
+    assert filled.to_list() == [None, 2, 2]  # leading null carries nothing
+    assert filled.null_count() == 1
+
+
+def test_fill_null_decimal():
+    col = Serie.from_options([100, None, 300], DataTypeId.Decimal128)
+    filled = col.fill_null(0)
+    assert filled.to_list() == [100, 0, 300]
+    assert filled.null_count() == 0
+
+
+# -------------------------------------------------------------------------------------
+# Serie — reverse / sort / sort_indices
+# -------------------------------------------------------------------------------------
+
+
+def test_reverse():
+    col = Serie.from_values([1, 2, 3, 4], DataTypeId.I64)
+    rev = col.reverse()
+    assert rev.to_list() == [4, 3, 2, 1]
+    assert col.to_list() == [1, 2, 3, 4]  # original untouched
+
+
+def test_reverse_preserves_nulls():
+    col = Serie.from_options([1, None, 3], DataTypeId.I64)
+    assert col.reverse().to_list() == [3, None, 1]
+
+
+def test_sort_ascending_and_descending():
+    col = Serie.from_values([30, 10, 20, 10], DataTypeId.I64)
+    assert col.sort().to_list() == [10, 10, 20, 30]  # ascending default
+    assert col.sort(ascending=False).to_list() == [30, 20, 10, 10]
+    assert col.to_list() == [30, 10, 20, 10]  # original untouched
+
+
+def test_sort_nulls_last():
+    col = Serie.from_options([3, None, 1, 2], DataTypeId.I64)
+    assert col.sort().to_list() == [1, 2, 3, None]
+    assert col.sort(ascending=False).to_list() == [3, 2, 1, None]  # nulls last both ways
+
+
+def test_sort_indices():
+    col = Serie.from_values([30, 10, 20], DataTypeId.I32)
+    assert col.sort_indices() == [1, 2, 0]  # ascending
+    assert col.sort_indices(ascending=False) == [0, 2, 1]
 
 
 # -------------------------------------------------------------------------------------
@@ -1311,3 +1445,74 @@ def test_to_strings_round_trip():
     col = Serie.from_values([10, 20, 30], DataTypeId.I32)
     assert col.to_strings() == ["10", "20", "30"]
     assert Serie.parse(col.to_strings(), DataTypeId.I32).to_list() == [10, 20, 30]
+
+
+# =====================================================================================
+# ByteSerie growth — mask_filter / append / extend / push_repeat / reverse / sort
+# =====================================================================================
+
+
+def test_bytes_mask_filter_utf8():
+    col = ByteSerie.from_values(["a", "bb", "ccc", "dddd"], DataTypeId.Utf8)
+    kept = col.mask_filter([True, False, True, False])
+    assert kept.to_list() == ["a", "ccc"]
+    assert kept.dtype() == DataTypeId.Utf8
+
+
+def test_bytes_mask_filter_by_bool_serie_preserves_nulls():
+    col = ByteSerie.from_options([b"a", None, b"ccc", b"dddd"], DataTypeId.Binary)
+    mask = Serie.from_values([True, True, False, True], DataTypeId.Bool)
+    kept = col.mask_filter(mask)
+    assert kept.to_list() == [b"a", None, b"dddd"]
+    assert kept.null_count() == 1
+
+
+def test_bytes_append_grows_column():
+    col = ByteSerie.from_values(["a", "bb"], DataTypeId.Utf8)
+    col.append(["ccc", "dddd"])
+    assert col.len() == 4
+    assert col.to_list() == ["a", "bb", "ccc", "dddd"]
+
+
+def test_bytes_append_fixed_pads_and_truncates():
+    col = ByteSerie.from_values([b"aa"], DataTypeId.FixedBinary, width=4)
+    col.append([b"z", b"abcdef"])  # zero-pad "z", truncate "abcdef"
+    assert col.to_list() == [b"aa\x00\x00", b"z\x00\x00\x00", b"abcd"]
+
+
+def test_bytes_extend_concatenates():
+    col = ByteSerie.from_values(["a", "bb"], DataTypeId.Utf8)
+    other = ByteSerie.from_options(["ccc", None], DataTypeId.Utf8)
+    col.extend(other)
+    assert col.to_list() == ["a", "bb", "ccc", None]
+    assert col.null_count() == 1
+
+
+def test_bytes_extend_dtype_mismatch_raises():
+    col = ByteSerie.from_values([b"a"], DataTypeId.Binary)
+    other = ByteSerie.from_values(["a"], DataTypeId.Utf8)
+    with pytest.raises(ValueError):
+        col.extend(other)
+
+
+def test_bytes_push_repeat():
+    col = ByteSerie.from_values([b"a"], DataTypeId.Binary)
+    col.push_repeat(b"xy", 3)
+    assert col.to_list() == [b"a", b"xy", b"xy", b"xy"]
+
+
+def test_bytes_reverse():
+    col = ByteSerie.from_values(["a", "bb", "ccc"], DataTypeId.Utf8)
+    assert col.reverse().to_list() == ["ccc", "bb", "a"]
+    assert col.to_list() == ["a", "bb", "ccc"]  # original untouched
+
+
+def test_bytes_sort_lexicographic():
+    col = ByteSerie.from_values(["banana", "apple", "cherry"], DataTypeId.Utf8)
+    assert col.sort().to_list() == ["apple", "banana", "cherry"]
+    assert col.sort(ascending=False).to_list() == ["cherry", "banana", "apple"]
+
+
+def test_bytes_sort_nulls_last():
+    col = ByteSerie.from_options(["b", None, "a"], DataTypeId.Utf8)
+    assert col.sort().to_list() == ["a", "b", None]

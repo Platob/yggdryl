@@ -76,6 +76,20 @@ impl<T: VarType> FixedSizeSerie<T, Heap> {
         }
     }
 
+    /// An empty non-nullable column of fixed `width` pre-sized for `capacity` elements — the data
+    /// buffer reserves `capacity * width` bytes, so a bounded `push` / [`append`](FixedSizeSerie::append)
+    /// run does not reallocate.
+    pub fn with_capacity(width: usize, capacity: usize) -> Self {
+        FixedSizeSerie {
+            data: Heap::with_capacity(capacity * width),
+            validity: None,
+            len: 0,
+            width,
+            name: None,
+            _type: PhantomData,
+        }
+    }
+
     /// A non-nullable column of fixed `width` holding `values` (each zero-padded / truncated).
     pub fn from_values(width: usize, values: &[T::Owned]) -> Self {
         let mut column = Self::new(width);
@@ -179,6 +193,115 @@ impl<T: VarType> FixedSizeSerie<T, Heap> {
         }
         out
     }
+
+    /// Appends `values` at the end (each zero-padded / truncated to the fixed width) — the batch
+    /// counterpart of [`push`](FixedSizeSerie::push), pre-reserving the data block. All appended
+    /// elements are non-null.
+    pub fn append(&mut self, values: &[T::Owned]) {
+        self.data.reserve((values.len() * self.width) as u64);
+        for value in values {
+            self.push(value);
+        }
+    }
+
+    /// Appends **another column's** elements (values **and** validity). When both columns share the
+    /// same fixed width the whole data block transfers in **one**
+    /// [`pwrite_from`](crate::io::memory::IOBase::pwrite_from) (zero-copy when `other` is contiguous);
+    /// a differing width re-pads each element. The source's per-element null-ness is reflected.
+    pub fn extend<D2: IOBase>(&mut self, other: &FixedSizeSerie<T, D2>) {
+        let count = other.len;
+        if count == 0 {
+            return;
+        }
+        let start = self.len;
+        if other.width == self.width {
+            // One bulk block copy of the contiguous fixed-stride data.
+            self.data
+                .pwrite_from(
+                    start as u64 * self.width as u64,
+                    &other.data,
+                    0,
+                    count as u64 * self.width as u64,
+                )
+                .expect("copy other's data block");
+            match other.validity.as_ref() {
+                Some(src_bits) => {
+                    self.ensure_validity();
+                    let dst_bits = self.validity.as_mut().expect("validity ensured");
+                    for k in 0..count as u64 {
+                        dst_bits
+                            .pwrite_bit(start as u64 + k, src_bits.pread_bit(k).unwrap_or(false))
+                            .expect("bit write into a heap");
+                    }
+                }
+                None => {
+                    if let Some(dst_bits) = self.validity.as_mut() {
+                        for k in 0..count as u64 {
+                            dst_bits
+                                .pwrite_bit(start as u64 + k, true)
+                                .expect("bit write into a heap");
+                        }
+                    }
+                }
+            }
+            self.len += count;
+        } else {
+            // Widths differ — re-pad each element into this column's stride.
+            self.data.reserve((count * self.width) as u64);
+            for index in 0..count {
+                if other.valid(index) {
+                    self.push_bytes(&other.bytes_at(index).unwrap_or_default());
+                } else {
+                    self.push_null();
+                }
+            }
+        }
+    }
+
+    /// Appends `count` copies of `value` at the end (zero-padded / truncated to the fixed width) —
+    /// the **repeated-value fill**: the padded slot is written `count` times, never a materialized
+    /// `count`-element array.
+    pub fn push_repeat(&mut self, value: &T::Owned, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let bytes = T::owned_bytes(value);
+        let mut slot = vec![0u8; self.width];
+        let take = bytes.len().min(self.width);
+        slot[..take].copy_from_slice(&bytes[..take]);
+        self.data.reserve((count * self.width) as u64);
+        for k in 0..count {
+            self.data
+                .pwrite_byte_array((self.len + k) as u64 * self.width as u64, &slot);
+        }
+        if let Some(validity) = self.validity.as_mut() {
+            for k in 0..count as u64 {
+                validity
+                    .pwrite_bit(self.len as u64 + k, true)
+                    .expect("bit write into a heap");
+            }
+        }
+        self.len += count;
+    }
+
+    /// A **non-nullable** column of fixed `width` holding `count` copies of `value` — the builder
+    /// counterpart of [`push_repeat`](FixedSizeSerie::push_repeat).
+    pub fn repeat(width: usize, value: &T::Owned, count: usize) -> Self {
+        let mut column = Self::with_capacity(width, count);
+        column.push_repeat(value, count);
+        column
+    }
+
+    /// **Reverses element order in place** — rebuilds the fixed-stride data in reverse (see
+    /// [`reverse`](FixedSizeSerie::reverse)).
+    pub fn reverse_in_place(&mut self) {
+        *self = self.reverse();
+    }
+
+    /// **Sorts the column ascending (lexicographically) in place** — see [`sort`](FixedSizeSerie::sort).
+    pub fn sort_in_place(&mut self) {
+        *self = self.sort();
+    }
 }
 
 impl<T: VarType, D: IOBase> FixedSizeSerie<T, D> {
@@ -281,6 +404,85 @@ impl<T: VarType, D: IOBase> FixedSizeSerie<T, D> {
             self.width as u32,
             self.validity.is_some(),
         )
+    }
+
+    /// **Gathers** the elements at `indices` (a permutation or any selection) into a fresh in-heap
+    /// column of the same fixed width, carrying validity. An index past the column length (or a
+    /// selected null) becomes a null in the result. The shared dense back end of
+    /// [`mask_filter`](FixedSizeSerie::mask_filter) / [`reverse`](FixedSizeSerie::reverse) /
+    /// [`sort`](FixedSizeSerie::sort).
+    pub fn take(&self, indices: &[usize]) -> FixedSizeSerie<T, Heap> {
+        let mut out = FixedSizeSerie::<T, Heap>::with_capacity(self.width, indices.len());
+        for &index in indices {
+            if index < self.len && self.valid(index) {
+                out.push_bytes(&self.bytes_at(index).unwrap_or_default());
+            } else {
+                out.push_null();
+            }
+        }
+        out
+    }
+
+    /// **Filters** the column by a boolean `mask` (an LSB-first bit source, `1` = keep), returning a
+    /// fresh compacted in-heap column carrying the surviving elements' validity.
+    pub fn mask_filter<M: IOBase>(&self, mask: &M) -> FixedSizeSerie<T, Heap> {
+        let indices: Vec<usize> = (0..self.len)
+            .filter(|&index| mask.pread_bit(index as u64).unwrap_or(false))
+            .collect();
+        self.take(&indices)
+    }
+
+    /// A fresh **reversed** copy — the fixed-stride data rebuilt in reverse element order (the copy
+    /// front door of [`reverse_in_place`](FixedSizeSerie::reverse_in_place)).
+    pub fn reverse(&self) -> FixedSizeSerie<T, Heap> {
+        let indices: Vec<usize> = (0..self.len).rev().collect();
+        self.take(&indices)
+    }
+
+    /// The **permutation that sorts** the column **lexicographically** over the element bytes.
+    /// **Stable**, with **nulls last** in both directions.
+    pub fn sort_indices(&self, ascending: bool) -> Vec<usize> {
+        let elements: Vec<Vec<u8>> = (0..self.len)
+            .map(|index| self.bytes_at(index).unwrap_or_default())
+            .collect();
+        let valid: Vec<bool> = (0..self.len).map(|index| self.valid(index)).collect();
+        let mut indices: Vec<usize> = (0..self.len).collect();
+        indices.sort_by(|&i, &j| {
+            cmp_bytes_slot(valid[i], &elements[i], valid[j], &elements[j], ascending)
+        });
+        indices
+    }
+
+    /// A fresh **ascending-sorted** (lexicographic) copy — `take(sort_indices(true))`, the copy front
+    /// door of [`sort_in_place`](FixedSizeSerie::sort_in_place). Nulls sort last.
+    pub fn sort(&self) -> FixedSizeSerie<T, Heap> {
+        self.take(&self.sort_indices(true))
+    }
+}
+
+/// The null-aware **lexicographic** comparison of two fixed-size slots for
+/// [`FixedSizeSerie::sort_indices`] — **nulls sort last** (both directions); among the non-null
+/// values the `ascending` flag picks the direction over the raw element bytes.
+fn cmp_bytes_slot(
+    a_valid: bool,
+    a: &[u8],
+    b_valid: bool,
+    b: &[u8],
+    ascending: bool,
+) -> core::cmp::Ordering {
+    use core::cmp::Ordering;
+    match (a_valid, b_valid) {
+        (false, false) => Ordering::Equal,
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (true, true) => {
+            let base = a.cmp(b);
+            if ascending {
+                base
+            } else {
+                base.reverse()
+            }
+        }
     }
 }
 

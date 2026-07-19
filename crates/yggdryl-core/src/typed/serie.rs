@@ -334,10 +334,10 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
         }
     }
 
-    /// Appends `values` in **one vectorized bulk write** — the batch counterpart of
-    /// [`push`](FixedSerie::push), avoiding the per-element call overhead when growing a column
-    /// from a slice. All appended elements are non-null.
-    pub fn extend(&mut self, values: &[T::Native]) {
+    /// Appends `values` at the end in **one vectorized bulk write** — the batch counterpart of
+    /// [`push`](FixedSerie::push), avoiding the per-element call overhead when growing a column from
+    /// a slice. All appended elements are non-null (a nullable column marks the new range valid).
+    pub fn append(&mut self, values: &[T::Native]) {
         T::encode_slice(&mut self.data, self.len as u64, values)
             .expect("encode into a heap never fails");
         if let Some(validity) = self.validity.as_mut() {
@@ -350,19 +350,106 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
         self.len += values.len();
     }
 
-    /// **Filters** the column by a boolean `mask` (an LSB-first bit source, `1` = keep), returning a
-    /// fresh compacted column. DESIGN: the scaffold compacts element-by-element; the vectorized path
-    /// is [`IOBase::mask_filter`](crate::io::memory::IOBase::mask_filter) over the data buffer with a
-    /// rebuilt validity — wired here once the null-aware bitmap compaction lands.
-    pub fn filter<M: IOBase>(&self, mask: &M) -> Self {
-        let mut out = Self::new();
-        if self.validity.is_some() {
-            out.ensure_validity();
+    /// Appends **another column's** elements (values **and** per-element validity) onto the end — a
+    /// bulk column-into-column concatenation. The values transfer in **one vectorized bulk write**
+    /// (`other`'s data decoded once, re-encoded into `self`'s tail); the source's null-ness is
+    /// reflected across the appended range (a nullable `other` back-fills a validity buffer on
+    /// `self` if it had none — an all-valid `other` marks the appended range valid).
+    pub fn extend<D2: IOBase>(&mut self, other: &FixedSerie<T, D2>) {
+        let start = self.len;
+        let count = other.len;
+        if count == 0 {
+            return;
         }
-        for index in 0..self.len {
-            if mask.pread_bit(index as u64).unwrap_or(false) {
-                out.push_option(self.get(index));
+        let values = other.values(); // one bulk decode out of `other`
+        T::encode_slice(&mut self.data, start as u64, &values)
+            .expect("encode into a heap never fails");
+        match other.validity.as_ref() {
+            Some(src_bits) => {
+                self.ensure_validity();
+                let dst_bits = self.validity.as_mut().expect("validity ensured");
+                for offset in 0..count as u64 {
+                    let valid = src_bits.pread_bit(offset).unwrap_or(false);
+                    dst_bits
+                        .pwrite_bit(start as u64 + offset, valid)
+                        .expect("bit write never fails");
+                }
             }
+            None => {
+                if let Some(dst_bits) = self.validity.as_mut() {
+                    for offset in 0..count as u64 {
+                        dst_bits
+                            .pwrite_bit(start as u64 + offset, true)
+                            .expect("bit write never fails");
+                    }
+                }
+            }
+        }
+        self.len += count;
+    }
+
+    /// Appends `count` copies of `value` at the end — the **repeated-value fill**, routed through
+    /// the type's allocation-free [`encode_repeat`](Encoder::encode_repeat) (the numeric byte
+    /// layer's `pwrite_*_repeat` kernel) so the `count`-element array is **never materialized**. A
+    /// nullable column marks the appended range valid.
+    pub fn push_repeat(&mut self, value: T::Native, count: usize) {
+        if count == 0 {
+            return;
+        }
+        T::encode_repeat(&mut self.data, self.len as u64, value, count)
+            .expect("encode into a heap never fails");
+        if let Some(validity) = self.validity.as_mut() {
+            for offset in 0..count as u64 {
+                validity
+                    .pwrite_bit(self.len as u64 + offset, true)
+                    .expect("bit write never fails");
+            }
+        }
+        self.len += count;
+    }
+
+    /// A **non-nullable** column of `count` copies of `value` — the builder counterpart of
+    /// [`push_repeat`](FixedSerie::push_repeat), pre-sized to the final length and filled through
+    /// the allocation-free [`encode_repeat`](Encoder::encode_repeat) (no materialized array).
+    ///
+    /// ```
+    /// use yggdryl_core::typed::{FixedSerie, Scalar, Serie};
+    /// use yggdryl_core::typed::fixedbyte::Int64;
+    ///
+    /// let col = FixedSerie::<Int64>::repeat(9, 1000);
+    /// assert_eq!(col.len(), 1000);
+    /// assert_eq!(col.get(0), Some(9));
+    /// assert_eq!(col.get(999), Some(9));
+    /// ```
+    pub fn repeat(value: T::Native, count: usize) -> Self {
+        let mut column = Self::with_capacity(count);
+        T::encode_repeat(&mut column.data, 0, value, count)
+            .expect("encode into a fresh heap never fails");
+        column.len = count;
+        column
+    }
+
+    /// Builds a fresh in-heap column from already-gathered `values` and an optional per-element
+    /// `validity` mask — the shared **dense** back end of [`mask_filter`](FixedSerie::mask_filter) /
+    /// [`take`](FixedSerie::take): one vectorized bulk data write, then (when nullable) one packed
+    /// validity write. A present `validity` makes the result nullable.
+    fn from_values_and_validity(
+        values: &[T::Native],
+        validity: Option<&[bool]>,
+    ) -> FixedSerie<T, Heap> {
+        let mut out = FixedSerie::<T, Heap>::with_capacity(values.len());
+        T::encode_slice(&mut out.data, 0, values).expect("encode into a fresh heap never fails");
+        out.len = values.len();
+        if let Some(valid) = validity {
+            let mut bits = vec![0u8; values.len().div_ceil(8)];
+            for (index, &is_valid) in valid.iter().enumerate() {
+                if is_valid {
+                    bits[index / 8] |= 1 << (index % 8);
+                }
+            }
+            let mut buffer = Heap::with_capacity(bits.len());
+            buffer.pwrite_byte_array(0, &bits);
+            out.validity = Some(buffer);
         }
         out
     }
@@ -665,6 +752,302 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
     }
 }
 
+/// The null-/NaN-aware comparison of two column slots for [`sort_indices`](FixedSerie::sort_indices):
+/// **nulls sort last** and (for a float column) **NaN sorts last**, in both directions; among the
+/// finite, non-null values the `ascending` flag picks the direction. Total and stable-compatible
+/// (equal slots compare `Equal`, so a stable sort keeps their input order).
+fn cmp_slot<V: PartialOrd>(
+    a_valid: bool,
+    a: &V,
+    b_valid: bool,
+    b: &V,
+    ascending: bool,
+) -> core::cmp::Ordering {
+    use core::cmp::Ordering;
+    match (a_valid, b_valid) {
+        (false, false) => Ordering::Equal,
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (true, true) => {
+            // A value that does not compare equal to itself is NaN — push it last, both directions.
+            let a_nan = a.partial_cmp(a).is_none();
+            let b_nan = b.partial_cmp(b).is_none();
+            match (a_nan, b_nan) {
+                (true, true) => Ordering::Equal,
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                (false, false) => {
+                    let base = a.partial_cmp(b).unwrap_or(Ordering::Equal);
+                    if ascending {
+                        base
+                    } else {
+                        base.reverse()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// **Reshape** — the dense, vectorized column transforms: compaction ([`mask_filter`](FixedSerie::mask_filter)),
+/// null-filling ([`fill_null`](FixedSerie::fill_null) / [`fill_null_forward`](FixedSerie::fill_null_forward)),
+/// order reversal ([`reverse`](FixedSerie::reverse)), and sorting ([`sort_indices`](FixedSerie::sort_indices)
+/// / [`take`](FixedSerie::take) / [`sort`](FixedSerie::sort)). Each is guided by the column's metadata
+/// but does the work on the **raw buffer** — one bulk decode + one bulk (re-)encode, never a
+/// per-element push loop — and follows the crate's copy-front-door / `_in_place`-twin pairing.
+impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
+    /// **Filters** the column by a boolean `mask` (an LSB-first bit source, `1` = keep), returning a
+    /// fresh **compacted** in-heap column carrying the surviving elements' validity. Dense gather:
+    /// one bulk decode, one gather pass, one bulk write into the pre-sized result (see
+    /// [`from_values_and_validity`](FixedSerie::from_values_and_validity)). Mirrors
+    /// [`IOBase::mask_filter`](crate::io::memory::IOBase::mask_filter) at the typed layer.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    /// use yggdryl_core::typed::{FixedSerie, Serie};
+    /// use yggdryl_core::typed::fixedbyte::Int32;
+    ///
+    /// let col = FixedSerie::<Int32>::from_values(&[10, 20, 30, 40]);
+    /// let mut mask = Heap::new();
+    /// mask.pwrite_byte_array(0, &[0b0000_1010]); // keep indices 1 and 3
+    /// assert_eq!(col.mask_filter(&mask).values(), vec![20, 40]);
+    /// ```
+    pub fn mask_filter<M: IOBase>(&self, mask: &M) -> FixedSerie<T, Heap> {
+        let values = self.values();
+        let nullable = self.validity.is_some();
+        let mut kept_vals: Vec<T::Native> = Vec::with_capacity(self.len);
+        let mut kept_valid: Vec<bool> = Vec::new();
+        if nullable {
+            kept_valid.reserve(self.len);
+        }
+        for (index, &value) in values.iter().enumerate() {
+            if mask.pread_bit(index as u64).unwrap_or(false) {
+                kept_vals.push(value);
+                if nullable {
+                    kept_valid.push(self.valid(index));
+                }
+            }
+        }
+        FixedSerie::<T, Heap>::from_values_and_validity(
+            &kept_vals,
+            nullable.then_some(kept_valid.as_slice()),
+        )
+    }
+
+    /// **Reverses element order in place** — a dense reversed re-encode of the data buffer (one bulk
+    /// decode, one bulk write into the existing backing) with the validity bits reversed alongside.
+    /// A column shorter than two elements is a no-op.
+    pub fn reverse_in_place(&mut self) {
+        if self.len < 2 {
+            return;
+        }
+        let mut values = self.values();
+        values.reverse();
+        T::encode_slice(&mut self.data, 0, &values).expect("re-encode into the existing buffer");
+        // Reverse the validity bits alongside — collect them (already reversed) before the mutable
+        // borrow of the buffer.
+        let nullable = self.validity.is_some();
+        let reversed_valid: Vec<bool> = if nullable {
+            (0..self.len).rev().map(|index| self.valid(index)).collect()
+        } else {
+            Vec::new()
+        };
+        if let Some(bits) = self.validity.as_mut() {
+            for (index, &is_valid) in reversed_valid.iter().enumerate() {
+                bits.pwrite_bit(index as u64, is_valid)
+                    .expect("bit write never fails");
+            }
+        }
+    }
+
+    /// A fresh **reversed** copy — the non-mutating front door of
+    /// [`reverse_in_place`](FixedSerie::reverse_in_place) (`clone → reverse_in_place`).
+    pub fn reverse(&self) -> Self
+    where
+        D: Clone,
+    {
+        let mut out = self.clone();
+        out.reverse_in_place();
+        out
+    }
+
+    /// **Replaces every null with `value` in place** and drops the validity buffer, so the column
+    /// becomes **non-nullable**. Only the null slots are rewritten (their data byte gets `value`);
+    /// the non-null slots keep their bytes untouched. **When the column is already null-free this is
+    /// a cheap no-op** — it skips the validity scan entirely.
+    pub fn fill_null_in_place(&mut self, value: T::Native) {
+        if self.validity.is_none() {
+            return; // already non-nullable — no validity to scan, nothing to fill
+        }
+        for index in 0..self.len {
+            if !self.valid(index) {
+                T::encode(&mut self.data, index as u64, value)
+                    .expect("encode into an existing slot");
+            }
+        }
+        self.validity = None;
+    }
+
+    /// A fresh copy with every null replaced by `value` (and the validity dropped) — the
+    /// non-mutating front door of [`fill_null_in_place`](FixedSerie::fill_null_in_place)
+    /// (`clone → fill_null_in_place`).
+    ///
+    /// ```
+    /// use yggdryl_core::typed::{FixedSerie, Scalar, Serie};
+    /// use yggdryl_core::typed::fixedbyte::Int32;
+    ///
+    /// let col = FixedSerie::<Int32>::from_options(&[Some(1), None, Some(3)]);
+    /// let filled = col.fill_null(-1);
+    /// assert_eq!(filled.to_options(), vec![Some(1), Some(-1), Some(3)]);
+    /// assert_eq!(filled.null_count(), 0); // now non-nullable
+    /// ```
+    pub fn fill_null(&self, value: T::Native) -> Self
+    where
+        D: Clone,
+    {
+        let mut out = self.clone();
+        out.fill_null_in_place(value);
+        out
+    }
+
+    /// **Forward-fills nulls in place** — each null slot takes the **previous non-null** value
+    /// (carried forward). **Leading** nulls (before any non-null) stay null. A null-free column is a
+    /// cheap no-op; when the carry closes every null the validity buffer is dropped (the column
+    /// becomes non-nullable), otherwise the remaining leading nulls keep it.
+    pub fn fill_null_forward_in_place(&mut self) {
+        if self.validity.is_none() {
+            return; // already null-free
+        }
+        let mut values = self.values();
+        let mut valid: Vec<bool> = (0..self.len).map(|index| self.valid(index)).collect();
+        let mut carry: Option<T::Native> = None;
+        let mut changed = false;
+        for index in 0..self.len {
+            if valid[index] {
+                carry = Some(values[index]);
+            } else if let Some(previous) = carry {
+                values[index] = previous;
+                valid[index] = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            return; // only leading nulls (or none) — nothing was carried
+        }
+        T::encode_slice(&mut self.data, 0, &values).expect("re-encode into the existing buffer");
+        if valid.iter().all(|&is_valid| is_valid) {
+            self.validity = None; // no nulls remain — drop the bitmap
+        } else {
+            let bits = self.validity.as_mut().expect("validity present");
+            for (index, &is_valid) in valid.iter().enumerate() {
+                bits.pwrite_bit(index as u64, is_valid)
+                    .expect("bit write never fails");
+            }
+        }
+    }
+
+    /// A fresh forward-filled copy — the non-mutating front door of
+    /// [`fill_null_forward_in_place`](FixedSerie::fill_null_forward_in_place).
+    pub fn fill_null_forward(&self) -> Self
+    where
+        D: Clone,
+    {
+        let mut out = self.clone();
+        out.fill_null_forward_in_place();
+        out
+    }
+
+    /// The **permutation that sorts** the column — `sort_indices(true)[k]` is the source index of the
+    /// `k`-th smallest element. **Stable** (equal elements keep input order), with **nulls last** and
+    /// (for a float column) **NaN last**, in both directions. Decodes the column once, then sorts an
+    /// index vector, so the values are never moved during the compare.
+    ///
+    /// ```
+    /// use yggdryl_core::typed::FixedSerie;
+    /// use yggdryl_core::typed::fixedbyte::Int32;
+    ///
+    /// let col = FixedSerie::<Int32>::from_values(&[30, 10, 20]);
+    /// assert_eq!(col.sort_indices(true), vec![1, 2, 0]);
+    /// assert_eq!(col.sort_indices(false), vec![0, 2, 1]);
+    /// ```
+    pub fn sort_indices(&self, ascending: bool) -> Vec<usize>
+    where
+        T::Native: PartialOrd,
+    {
+        let values = self.values();
+        let valid: Vec<bool> = (0..self.len).map(|index| self.valid(index)).collect();
+        let mut indices: Vec<usize> = (0..self.len).collect();
+        indices.sort_by(|&i, &j| cmp_slot(valid[i], &values[i], valid[j], &values[j], ascending));
+        indices
+    }
+
+    /// **Gathers** the elements at `indices` (a permutation or any selection) into a fresh in-heap
+    /// column, carrying validity. Dense: one bulk decode, one gather pass, one bulk write. An index
+    /// past the column length yields a null (a nullable result) or the type default (a non-nullable
+    /// one) — for a permutation from [`sort_indices`](FixedSerie::sort_indices) every index is in range.
+    pub fn take(&self, indices: &[usize]) -> FixedSerie<T, Heap> {
+        let values = self.values();
+        let nullable = self.validity.is_some();
+        let mut out_vals: Vec<T::Native> = Vec::with_capacity(indices.len());
+        let mut out_valid: Vec<bool> = Vec::new();
+        if nullable {
+            out_valid.reserve(indices.len());
+        }
+        for &index in indices {
+            if index < self.len {
+                out_vals.push(values[index]);
+                if nullable {
+                    out_valid.push(self.valid(index));
+                }
+            } else {
+                out_vals.push(T::Native::default());
+                if nullable {
+                    out_valid.push(false);
+                }
+            }
+        }
+        FixedSerie::<T, Heap>::from_values_and_validity(
+            &out_vals,
+            nullable.then_some(out_valid.as_slice()),
+        )
+    }
+
+    /// A fresh **ascending-sorted** copy — `take(sort_indices(true))`, the copy front door of
+    /// [`sort_in_place`](FixedSerie::sort_in_place). Nulls / NaN sort last (see
+    /// [`sort_indices`](FixedSerie::sort_indices)).
+    pub fn sort(&self) -> FixedSerie<T, Heap>
+    where
+        T::Native: PartialOrd,
+    {
+        self.take(&self.sort_indices(true))
+    }
+
+    /// **Sorts the column ascending in place** — reorders the raw data buffer (and validity) by the
+    /// [`sort_indices`](FixedSerie::sort_indices) permutation with one bulk decode + one bulk write.
+    pub fn sort_in_place(&mut self)
+    where
+        T::Native: PartialOrd,
+    {
+        let indices = self.sort_indices(true);
+        let values = self.values();
+        let nullable = self.validity.is_some();
+        let gathered: Vec<T::Native> = indices.iter().map(|&index| values[index]).collect();
+        let valid: Vec<bool> = if nullable {
+            indices.iter().map(|&index| self.valid(index)).collect()
+        } else {
+            Vec::new()
+        };
+        T::encode_slice(&mut self.data, 0, &gathered).expect("re-encode into the existing buffer");
+        if nullable {
+            let bits = self.validity.as_mut().expect("validity present");
+            for (index, &is_valid) in valid.iter().enumerate() {
+                bits.pwrite_bit(index as u64, is_valid)
+                    .expect("bit write never fails");
+            }
+        }
+    }
+}
+
 /// Field-driven **cast** — reshape a column's *metadata* (nullability, name, annotations) to a
 /// target [`HeaderField`] while **keeping the element type**. The copy front door
 /// ([`cast_field`](FixedSerie::cast_field)) is a thin `clone → `[`cast_field_in_place`](FixedSerie::cast_field_in_place),
@@ -681,6 +1064,18 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
         Ok(out)
     }
 
+    /// A fresh column reshaped to `field`, **filling nulls with `fill`** when the target is
+    /// non-nullable — the copy front door of
+    /// [`cast_field_fill_in_place`](FixedSerie::cast_field_fill_in_place).
+    pub fn cast_field_filled(&self, field: &HeaderField, fill: T::Native) -> Result<Self, IoError>
+    where
+        D: Default + Clone,
+    {
+        let mut out = self.clone();
+        out.cast_field_fill_in_place(field, fill)?;
+        Ok(out)
+    }
+
     /// Reshapes this column **in place** to match `field`'s metadata, keeping the element type:
     ///
     /// - **No-op** when `field` already matches — same dtype, nullability, name, and annotations —
@@ -688,13 +1083,44 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
     /// - **Same dtype** ([`data_type_id`](super::Field::data_type_id) equals `T`'s): applies the
     ///   target **nullability** (non-nullable → nullable adds an all-valid validity buffer;
     ///   nullable → non-nullable requires [`null_count`](Scalar::null_count) `== 0`, else the guided
-    ///   [`IoError::TypedCast`]), the target **name**, and the target's free-form **annotations** —
+    ///   [`IoError::TypedCast`] — use [`cast_field_fill_in_place`](FixedSerie::cast_field_fill_in_place)
+    ///   to fill instead of error), the target **name**, and the target's free-form **annotations** —
     ///   reusing the data backing (no element copy, only validity / metadata change).
     /// - **Different dtype**: the guided [`IoError::TypedCast`] — the typed column keeps its
     ///   element type; a runtime dtype change belongs to the erased layer.
     // DESIGN: `FixedSerie<T>` is compile-time-typed, so `cast_field` deliberately cannot change the
     // element type — that is the erased `Serie.cast_field` (bindings) / `IOBase::resize_dtype`'s job.
     pub fn cast_field_in_place(&mut self, field: &HeaderField) -> Result<(), IoError>
+    where
+        D: Default,
+    {
+        self.cast_field_in_place_with(field, None)
+    }
+
+    /// [`cast_field_in_place`](FixedSerie::cast_field_in_place) that **fills nulls with `fill`**
+    /// instead of erroring when the target field is non-nullable and the column still holds nulls —
+    /// the nullable→non-nullable cast then succeeds by [`fill_null`](FixedSerie::fill_null)-ing (the
+    /// column becomes non-nullable with `fill` in the former null slots). Every other case behaves
+    /// exactly like [`cast_field_in_place`](FixedSerie::cast_field_in_place).
+    pub fn cast_field_fill_in_place(
+        &mut self,
+        field: &HeaderField,
+        fill: T::Native,
+    ) -> Result<(), IoError>
+    where
+        D: Default,
+    {
+        self.cast_field_in_place_with(field, Some(fill))
+    }
+
+    /// The single implementation behind [`cast_field_in_place`](FixedSerie::cast_field_in_place) and
+    /// [`cast_field_fill_in_place`](FixedSerie::cast_field_fill_in_place): `fill` is `None` for the
+    /// erroring form and `Some(value)` for the null-filling form.
+    fn cast_field_in_place_with(
+        &mut self,
+        field: &HeaderField,
+        fill: Option<T::Native>,
+    ) -> Result<(), IoError>
     where
         D: Default,
     {
@@ -715,18 +1141,21 @@ impl<T: Encoder + Decoder, D: IOBase> FixedSerie<T, D> {
             return Ok(());
         }
 
-        // Validate the one fallible step first, so a rejected cast leaves `self` untouched.
+        // Validate the one fallible step first, so a rejected cast leaves `self` untouched. A
+        // nullable → non-nullable cast either fills the nulls (when `fill` is given) or errors.
+        let mut drop_validity = false;
         if is_nullable && !to_nullable {
-            let nulls = self.null_count();
-            if nulls > 0 {
-                return Err(cast_null_error(nulls));
+            match (self.null_count(), fill) {
+                (0, _) => drop_validity = true,
+                (_, Some(value)) => self.fill_null_in_place(value), // fills + drops validity
+                (nulls, None) => return Err(cast_null_error(nulls)),
             }
         }
 
         // Apply the (now infallible) changes: nullability, then name, then annotations.
         if !is_nullable && to_nullable {
             self.ensure_validity();
-        } else if is_nullable && !to_nullable {
+        } else if drop_validity {
             self.validity = None; // verified null-free above
         }
         self.name = field.headers().name().map(Into::into);

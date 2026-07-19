@@ -259,7 +259,8 @@ macro_rules! dispatch {
 }
 
 /// Like [`dispatch!`], but re-wraps the per-variant `FixedSerie` that `$make` produces back into
-/// the **matching** [`Inner`] variant — the column-returning dispatch (`with_name`, `filter`).
+/// the **matching** [`Inner`] variant — the column-returning dispatch (`with_name`, `mask_filter`,
+/// `reverse`, `sort`).
 macro_rules! map_variant {
     ($self:expr, $s:ident => $make:expr) => {
         match &$self.inner {
@@ -280,6 +281,85 @@ macro_rules! map_variant {
             Inner::Decimal64($s) => Inner::Decimal64($make),
             Inner::Decimal128($s) => Inner::Decimal128($make),
             Inner::Decimal256($s) => Inner::Decimal256($make),
+        }
+    };
+}
+
+/// Like [`map_variant!`], but first **extracts** `$value` as the active variant's native type
+/// (binding it to `$native`, the same per-variant marshalling [`set_dispatch!`] uses) and then
+/// re-wraps the `FixedSerie` that `$make` builds back into the matching [`Inner`] variant — the
+/// value-taking column-returning dispatch (behind [`fill_null`](Serie::fill_null)).
+macro_rules! value_map_variant {
+    ($self:expr, $value:expr, ($s:ident, $native:ident) => $make:expr) => {
+        match &$self.inner {
+            Inner::I8($s) => {
+                let $native = $value.extract::<i8>()?;
+                Inner::I8($make)
+            }
+            Inner::U8($s) => {
+                let $native = $value.extract::<u8>()?;
+                Inner::U8($make)
+            }
+            Inner::I16($s) => {
+                let $native = $value.extract::<i16>()?;
+                Inner::I16($make)
+            }
+            Inner::U16($s) => {
+                let $native = $value.extract::<u16>()?;
+                Inner::U16($make)
+            }
+            Inner::I32($s) => {
+                let $native = $value.extract::<i32>()?;
+                Inner::I32($make)
+            }
+            Inner::U32($s) => {
+                let $native = $value.extract::<u32>()?;
+                Inner::U32($make)
+            }
+            Inner::I64($s) => {
+                let $native = $value.extract::<i64>()?;
+                Inner::I64($make)
+            }
+            Inner::U64($s) => {
+                let $native = $value.extract::<u64>()?;
+                Inner::U64($make)
+            }
+            Inner::I128($s) => {
+                let $native = $value.extract::<i128>()?;
+                Inner::I128($make)
+            }
+            Inner::U128($s) => {
+                let $native = $value.extract::<u128>()?;
+                Inner::U128($make)
+            }
+            Inner::F32($s) => {
+                let $native = $value.extract::<f32>()?;
+                Inner::F32($make)
+            }
+            Inner::F64($s) => {
+                let $native = $value.extract::<f64>()?;
+                Inner::F64($make)
+            }
+            Inner::Bool($s) => {
+                let $native = $value.extract::<bool>()?;
+                Inner::Bool($make)
+            }
+            Inner::Decimal32($s) => {
+                let $native = $value.extract::<i32>()?;
+                Inner::Decimal32($make)
+            }
+            Inner::Decimal64($s) => {
+                let $native = $value.extract::<i64>()?;
+                Inner::Decimal64($make)
+            }
+            Inner::Decimal128($s) => {
+                let $native = $value.extract::<i128>()?;
+                Inner::Decimal128($make)
+            }
+            Inner::Decimal256($s) => {
+                let $native = i256_from_py($value)?;
+                Inner::Decimal256($make)
+            }
         }
     };
 }
@@ -527,6 +607,31 @@ macro_rules! decimal_dispatch {
             }
         }
     };
+}
+
+/// Builds an LSB-first bit [`Heap`](memory::Heap) from `mask` — a Python list of `bool` (or a
+/// `bool` [`Serie`]) — the shared mask source behind [`Serie::mask_filter`] and
+/// [`ByteSerie::mask_filter`]. A non-`bool` `Serie`, or a value that is neither a bool list nor a
+/// bool `Serie`, raises a guided `TypeError`.
+fn build_mask(mask: &Bound<'_, PyAny>) -> PyResult<memory::Heap> {
+    let bits: Vec<bool> = if let Ok(other) = mask.extract::<PyRef<'_, Serie>>() {
+        match &other.inner {
+            Inner::Bool(s) => (0..s.len()).map(|i| s.get(i).unwrap_or(false)).collect(),
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "mask Serie must be a bool serie: build it with dtype=DataTypeId.Bool",
+                ))
+            }
+        }
+    } else {
+        mask.extract::<Vec<bool>>()
+            .map_err(|_| PyTypeError::new_err("mask must be a list of bool or a bool Serie"))?
+    };
+    let mut heap = memory::Heap::new();
+    for (index, &keep) in bits.iter().enumerate() {
+        heap.pwrite_bit(index as u64, keep).map_err(ioerr)?;
+    }
+    Ok(heap)
 }
 
 /// A **typed column** — many elements of one [`DataTypeId`](crate::datatype_id::DataTypeId) over a
@@ -904,27 +1009,131 @@ impl Serie {
     }
 
     /// **Filters** the column by `mask` — a list of `bool` (or another `bool` `Serie`), keeping
-    /// each element whose mask entry is `True` — returning a fresh compacted column.
-    fn filter(&self, mask: &Bound<'_, PyAny>) -> PyResult<Serie> {
-        let bits: Vec<bool> = if let Ok(other) = mask.extract::<PyRef<'_, Serie>>() {
-            match &other.inner {
-                Inner::Bool(s) => (0..s.len()).map(|i| s.get(i).unwrap_or(false)).collect(),
-                _ => return Err(PyTypeError::new_err(
-                    "filter mask Serie must be a bool serie: build it with dtype=DataTypeId.Bool",
-                )),
+    /// each element whose mask entry is `True` — returning a fresh compacted column. Delegates to
+    /// the core dense [`mask_filter`](yggdryl_core::typed::FixedSerie::mask_filter).
+    fn mask_filter(&self, mask: &Bound<'_, PyAny>) -> PyResult<Serie> {
+        let heap = build_mask(mask)?;
+        Ok(Serie {
+            inner: map_variant!(self, s => s.mask_filter(&heap)),
+        })
+    }
+
+    /// **Bulk-appends** `values` (a Python list of the column's dtype) at the end **in place**, in
+    /// one vectorized core [`append`](yggdryl_core::typed::FixedSerie::append) — each element
+    /// converted to the column's native type (the conversion *is* the type check). A nullable column
+    /// marks the appended range valid.
+    fn append(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        set_range_dispatch!(self, values, (s, v) => s.append(&v));
+        Ok(())
+    }
+
+    /// **Concatenates** another `Serie`'s elements (values **and** per-element validity) onto the
+    /// end **in place** — the core column-into-column [`extend`](yggdryl_core::typed::FixedSerie::extend).
+    /// `other` must share this column's dtype, else a guided `ValueError` naming both dtypes.
+    fn extend(&mut self, other: &Serie) -> PyResult<()> {
+        let self_dtype = dispatch!(self, s => s.data_type_id()).name();
+        let other_dtype = dispatch!(other, s => s.data_type_id()).name();
+        match (&mut self.inner, &other.inner) {
+            (Inner::I8(a), Inner::I8(b)) => a.extend(b),
+            (Inner::U8(a), Inner::U8(b)) => a.extend(b),
+            (Inner::I16(a), Inner::I16(b)) => a.extend(b),
+            (Inner::U16(a), Inner::U16(b)) => a.extend(b),
+            (Inner::I32(a), Inner::I32(b)) => a.extend(b),
+            (Inner::U32(a), Inner::U32(b)) => a.extend(b),
+            (Inner::I64(a), Inner::I64(b)) => a.extend(b),
+            (Inner::U64(a), Inner::U64(b)) => a.extend(b),
+            (Inner::I128(a), Inner::I128(b)) => a.extend(b),
+            (Inner::U128(a), Inner::U128(b)) => a.extend(b),
+            (Inner::F32(a), Inner::F32(b)) => a.extend(b),
+            (Inner::F64(a), Inner::F64(b)) => a.extend(b),
+            (Inner::Bool(a), Inner::Bool(b)) => a.extend(b),
+            (Inner::Decimal32(a), Inner::Decimal32(b)) => a.extend(b),
+            (Inner::Decimal64(a), Inner::Decimal64(b)) => a.extend(b),
+            (Inner::Decimal128(a), Inner::Decimal128(b)) => a.extend(b),
+            (Inner::Decimal256(a), Inner::Decimal256(b)) => a.extend(b),
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                "dtype mismatch: cannot extend a {self_dtype} column with a {other_dtype} column"
+            )))
             }
-        } else {
-            mask.extract::<Vec<bool>>().map_err(|_| {
-                PyTypeError::new_err("filter mask must be a list of bool or a bool Serie")
-            })?
-        };
-        let mut heap = memory::Heap::new();
-        for (index, &keep) in bits.iter().enumerate() {
-            heap.pwrite_bit(index as u64, keep).map_err(ioerr)?;
+        }
+        Ok(())
+    }
+
+    /// **Appends `count` copies of `value`** at the end **in place** — the core
+    /// [`push_repeat`](yggdryl_core::typed::FixedSerie::push_repeat) (an allocation-free repeated
+    /// fill, never materializing the `count`-element array). `value` is converted to the column's
+    /// native type (a decimal takes the raw unscaled integer).
+    fn push_repeat(&mut self, value: &Bound<'_, PyAny>, count: usize) -> PyResult<()> {
+        set_dispatch!(self, value, (s, v) => s.push_repeat(v, count));
+        Ok(())
+    }
+
+    /// A **new** non-nullable column of `count` copies of `value`, encoded as `dtype` (a
+    /// `DataTypeId` or a type-name `str` like `"i64"`) — the builder counterpart of
+    /// [`push_repeat`](Serie::push_repeat), the core [`repeat`](yggdryl_core::typed::FixedSerie::repeat).
+    #[staticmethod]
+    fn repeat(value: &Bound<'_, PyAny>, count: usize, dtype: &Bound<'_, PyAny>) -> PyResult<Serie> {
+        let id = resolve_dtype(dtype)?;
+        macro_rules! mk {
+            (@i256) => {{
+                let v = i256_from_py(value)?;
+                Inner::Decimal256(FixedSerie::<Decimal256>::repeat(v, count))
+            }};
+            ($variant:ident, $marker:ty, $native:ty) => {{
+                let v: $native = value.extract()?;
+                Inner::$variant(FixedSerie::<$marker>::repeat(v, count))
+            }};
         }
         Ok(Serie {
-            inner: map_variant!(self, s => s.filter(&heap)),
+            inner: by_dtype!(id, mk),
         })
+    }
+
+    /// A **fresh** column with every null replaced by `value` (and the validity dropped, so the
+    /// result is non-nullable) — the core [`fill_null`](yggdryl_core::typed::FixedSerie::fill_null).
+    /// A null-free column is returned unchanged (a cheap clone). `value` is converted to the
+    /// column's native type (a decimal takes the raw unscaled integer).
+    fn fill_null(&self, value: &Bound<'_, PyAny>) -> PyResult<Serie> {
+        Ok(Serie {
+            inner: value_map_variant!(self, value, (s, v) => s.fill_null(v)),
+        })
+    }
+
+    /// A **fresh** forward-filled column — each null takes the previous non-null value (leading
+    /// nulls before any value stay null) — the core
+    /// [`fill_null_forward`](yggdryl_core::typed::FixedSerie::fill_null_forward).
+    fn fill_null_forward(&self) -> Serie {
+        Serie {
+            inner: map_variant!(self, s => s.fill_null_forward()),
+        }
+    }
+
+    /// A **fresh** column with element order reversed — the core
+    /// [`reverse`](yggdryl_core::typed::FixedSerie::reverse) (validity reversed alongside).
+    fn reverse(&self) -> Serie {
+        Serie {
+            inner: map_variant!(self, s => s.reverse()),
+        }
+    }
+
+    /// A **fresh** sorted column (ascending by default) — the core stable sort via
+    /// [`sort_indices`](yggdryl_core::typed::FixedSerie::sort_indices) +
+    /// [`take`](yggdryl_core::typed::FixedSerie::take). **Nulls sort last** (and, for a float column,
+    /// NaN sorts last) in both directions.
+    #[pyo3(signature = (ascending = true))]
+    fn sort(&self, ascending: bool) -> Serie {
+        Serie {
+            inner: map_variant!(self, s => s.take(&s.sort_indices(ascending))),
+        }
+    }
+
+    /// The **permutation that sorts** the column — a Python `list[int]` where entry `k` is the
+    /// source index of the `k`-th element in sorted order (the core
+    /// [`sort_indices`](yggdryl_core::typed::FixedSerie::sort_indices)). Stable; nulls (and NaN) last.
+    #[pyo3(signature = (ascending = true))]
+    fn sort_indices(&self, ascending: bool) -> Vec<usize> {
+        dispatch!(self, s => s.sort_indices(ascending))
     }
 
     /// Replaces the element at `index` **in place** with `value` (a Python number / bool converted
@@ -1632,6 +1841,123 @@ impl ByteSerie {
             | ByteInner::LargeUtf8(_) => return Err(var_set_error()),
         }
         Ok(())
+    }
+
+    /// **Filters** the column by `mask` — a list of `bool` (or a `bool` `Serie`), keeping each
+    /// element whose mask entry is `True` — returning a fresh compacted byte column. Delegates to
+    /// the core dense [`mask_filter`](yggdryl_core::typed::VarSerie::mask_filter).
+    fn mask_filter(&self, mask: &Bound<'_, PyAny>) -> PyResult<ByteSerie> {
+        let heap = build_mask(mask)?;
+        Ok(ByteSerie {
+            inner: byte_map!(self, s => s.mask_filter(&heap)),
+        })
+    }
+
+    /// **Bulk-appends** `values` (a list of `bytes` for a binary dtype, `str` for a utf8 dtype) at
+    /// the end **in place** — the core [`append`](yggdryl_core::typed::VarSerie::append). All
+    /// appended elements are non-null (a fixed-size column zero-pads / truncates each to its width).
+    fn append(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        match &mut self.inner {
+            ByteInner::Binary(s) => {
+                let v: Vec<Vec<u8>> = values.extract()?;
+                s.append(&v);
+            }
+            ByteInner::LargeBinary(s) => {
+                let v: Vec<Vec<u8>> = values.extract()?;
+                s.append(&v);
+            }
+            ByteInner::Utf8(s) => {
+                let v: Vec<String> = values.extract()?;
+                s.append(&v);
+            }
+            ByteInner::LargeUtf8(s) => {
+                let v: Vec<String> = values.extract()?;
+                s.append(&v);
+            }
+            ByteInner::FixedBinary(s) => {
+                let v: Vec<Vec<u8>> = values.extract()?;
+                s.append(&v);
+            }
+            ByteInner::FixedUtf8(s) => {
+                let v: Vec<String> = values.extract()?;
+                s.append(&v);
+            }
+        }
+        Ok(())
+    }
+
+    /// **Concatenates** another `ByteSerie`'s elements (values **and** validity) onto the end **in
+    /// place** — the core column-into-column [`extend`](yggdryl_core::typed::VarSerie::extend).
+    /// `other` must share this column's dtype, else a guided `ValueError` naming both dtypes.
+    fn extend(&mut self, other: &ByteSerie) -> PyResult<()> {
+        let self_dtype = byte_dispatch!(self, s => s.data_type_id()).name();
+        let other_dtype = byte_dispatch!(other, s => s.data_type_id()).name();
+        match (&mut self.inner, &other.inner) {
+            (ByteInner::Binary(a), ByteInner::Binary(b)) => a.extend(b),
+            (ByteInner::LargeBinary(a), ByteInner::LargeBinary(b)) => a.extend(b),
+            (ByteInner::Utf8(a), ByteInner::Utf8(b)) => a.extend(b),
+            (ByteInner::LargeUtf8(a), ByteInner::LargeUtf8(b)) => a.extend(b),
+            (ByteInner::FixedBinary(a), ByteInner::FixedBinary(b)) => a.extend(b),
+            (ByteInner::FixedUtf8(a), ByteInner::FixedUtf8(b)) => a.extend(b),
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                "dtype mismatch: cannot extend a {self_dtype} column with a {other_dtype} column"
+            )))
+            }
+        }
+        Ok(())
+    }
+
+    /// **Appends `count` copies of `value`** (`bytes` for a binary dtype, `str` for a utf8 dtype) at
+    /// the end **in place** — the core [`push_repeat`](yggdryl_core::typed::VarSerie::push_repeat)
+    /// (the element bytes written `count` times, never a materialized array).
+    fn push_repeat(&mut self, value: &Bound<'_, PyAny>, count: usize) -> PyResult<()> {
+        match &mut self.inner {
+            ByteInner::Binary(s) => {
+                let v: Vec<u8> = value.extract()?;
+                s.push_repeat(&v, count);
+            }
+            ByteInner::LargeBinary(s) => {
+                let v: Vec<u8> = value.extract()?;
+                s.push_repeat(&v, count);
+            }
+            ByteInner::Utf8(s) => {
+                let v: String = value.extract()?;
+                s.push_repeat(&v, count);
+            }
+            ByteInner::LargeUtf8(s) => {
+                let v: String = value.extract()?;
+                s.push_repeat(&v, count);
+            }
+            ByteInner::FixedBinary(s) => {
+                let v: Vec<u8> = value.extract()?;
+                s.push_repeat(&v, count);
+            }
+            ByteInner::FixedUtf8(s) => {
+                let v: String = value.extract()?;
+                s.push_repeat(&v, count);
+            }
+        }
+        Ok(())
+    }
+
+    /// A **fresh** byte column with element order reversed — the core
+    /// [`reverse`](yggdryl_core::typed::VarSerie::reverse) (validity reversed alongside).
+    fn reverse(&self) -> ByteSerie {
+        ByteSerie {
+            inner: byte_map!(self, s => s.reverse()),
+        }
+    }
+
+    /// A **fresh** **lexicographically** sorted byte column (ascending by default; `Utf8` by code
+    /// point, `Binary` by byte order) — the core stable sort via
+    /// [`sort_indices`](yggdryl_core::typed::VarSerie::sort_indices) +
+    /// [`take`](yggdryl_core::typed::VarSerie::take). **Nulls sort last** in both directions.
+    #[pyo3(signature = (ascending = true))]
+    fn sort(&self, ascending: bool) -> ByteSerie {
+        ByteSerie {
+            inner: byte_map!(self, s => s.take(&s.sort_indices(ascending))),
+        }
     }
 
     /// A **fresh** column addressing the same bytes with its column `name` set — the metadata a

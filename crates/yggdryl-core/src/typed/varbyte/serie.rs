@@ -65,6 +65,23 @@ impl<T: VarLenType> VarSerie<T, Heap> {
         }
     }
 
+    /// An empty non-nullable column pre-sized for `capacity` elements: the **offsets** buffer holds
+    /// `capacity + 1` entries and the **data** buffer reserves `capacity` bytes (a one-byte-per-element
+    /// lower bound), so a bounded `push` / [`append`](VarSerie::append) run does not reallocate.
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut offsets = Heap::with_capacity((capacity + 1) * T::Offset::WIDTH as usize);
+        T::Offset::write(&mut offsets, 0, 0).expect("offset[0] into a fresh heap");
+        VarSerie {
+            offsets,
+            data: Heap::with_capacity(capacity),
+            validity: None,
+            len: 0,
+            name: None,
+            max_width: None,
+            _type: PhantomData,
+        }
+    }
+
     /// A non-nullable column holding `values`.
     pub fn from_values(values: &[T::Owned]) -> Self {
         let mut column = Self::new();
@@ -225,6 +242,121 @@ impl<T: VarLenType> VarSerie<T, Heap> {
         }
         out
     }
+
+    /// Appends `values` at the end — the batch counterpart of [`push`](VarSerie::push). Pre-reserves
+    /// the offsets (`values.len()` more) and the data (the values' total byte length) in one pass, so
+    /// the run never reallocates, then appends each element through the offsets+data path. All
+    /// appended elements are non-null.
+    pub fn append(&mut self, values: &[T::Owned]) {
+        let total: usize = values.iter().map(|value| T::owned_bytes(value).len()).sum();
+        self.data.reserve(total as u64);
+        self.offsets.reserve(values.len() as u64 * T::Offset::WIDTH);
+        for value in values {
+            self.push(value);
+        }
+    }
+
+    /// Appends **another column's** elements (values **and** validity) — a bulk column concatenation.
+    /// The whole data block of `other` transfers in **one** [`pwrite_from`](crate::io::memory::IOBase::pwrite_from)
+    /// (zero-copy when `other` is contiguous), its offsets are re-based onto this column's data end,
+    /// and its per-element null-ness is reflected (a nullable `other` back-fills a validity buffer on
+    /// `self` if it had none).
+    pub fn extend<D2: IOBase>(&mut self, other: &VarSerie<T, D2>) {
+        let count = other.len;
+        if count == 0 {
+            return;
+        }
+        let base = self.end_offset();
+        // `other`'s used data byte length (its final offset) — bulk-copy that block in one pass.
+        let other_len = T::Offset::read(&other.offsets, count as u64 * T::Offset::WIDTH).max(0);
+        self.data
+            .pwrite_from(base as u64, &other.data, 0, other_len as u64)
+            .expect("copy other's data block");
+        self.offsets.reserve(count as u64 * T::Offset::WIDTH);
+        for k in 1..=count as u64 {
+            let offset = T::Offset::read(&other.offsets, k * T::Offset::WIDTH);
+            T::Offset::write(
+                &mut self.offsets,
+                (self.len as u64 + k) * T::Offset::WIDTH,
+                base + offset,
+            )
+            .expect("offset write into a heap");
+        }
+        match other.validity.as_ref() {
+            Some(src_bits) => {
+                self.ensure_validity();
+                let dst_bits = self.validity.as_mut().expect("validity ensured");
+                for k in 0..count as u64 {
+                    dst_bits
+                        .pwrite_bit(self.len as u64 + k, src_bits.pread_bit(k).unwrap_or(false))
+                        .expect("bit write into a heap");
+                }
+            }
+            None => {
+                if let Some(dst_bits) = self.validity.as_mut() {
+                    for k in 0..count as u64 {
+                        dst_bits
+                            .pwrite_bit(self.len as u64 + k, true)
+                            .expect("bit write into a heap");
+                    }
+                }
+            }
+        }
+        self.len += count;
+    }
+
+    /// Appends `count` copies of `value` at the end — the **repeated-value fill** for a variable-length
+    /// column: the element bytes are written `count` times into the data buffer and the `count` new
+    /// offsets are filled by arithmetic (no materialized `count`-element array).
+    pub fn push_repeat(&mut self, value: &T::Owned, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let bytes = T::owned_bytes(value);
+        let width = bytes.len();
+        let base = self.end_offset();
+        self.data.reserve((width * count) as u64);
+        self.offsets.reserve(count as u64 * T::Offset::WIDTH);
+        for k in 0..count {
+            self.data
+                .pwrite_byte_array(base as u64 + (k * width) as u64, bytes);
+        }
+        for k in 1..=count {
+            T::Offset::write(
+                &mut self.offsets,
+                (self.len as u64 + k as u64) * T::Offset::WIDTH,
+                base + (k * width) as i64,
+            )
+            .expect("offset write into a heap");
+        }
+        if let Some(validity) = self.validity.as_mut() {
+            for k in 0..count as u64 {
+                validity
+                    .pwrite_bit(self.len as u64 + k, true)
+                    .expect("bit write into a heap");
+            }
+        }
+        self.len += count;
+    }
+
+    /// A **non-nullable** column of `count` copies of `value` — the builder counterpart of
+    /// [`push_repeat`](VarSerie::push_repeat).
+    pub fn repeat(value: &T::Owned, count: usize) -> Self {
+        let mut column = Self::with_capacity(count);
+        column.push_repeat(value, count);
+        column
+    }
+
+    /// **Reverses element order in place** — rebuilds the offsets + data in reverse (see
+    /// [`reverse`](VarSerie::reverse)).
+    pub fn reverse_in_place(&mut self) {
+        *self = self.reverse();
+    }
+
+    /// **Sorts the column ascending (lexicographically) in place** — see [`sort`](VarSerie::sort).
+    pub fn sort_in_place(&mut self) {
+        *self = self.sort();
+    }
 }
 
 impl<T: VarLenType> Default for VarSerie<T, Heap> {
@@ -376,6 +508,86 @@ impl<T: VarLenType, D: IOBase> VarSerie<T, D> {
                 T::DATA_TYPE_ID,
                 self.validity.is_some(),
             ),
+        }
+    }
+
+    /// **Gathers** the elements at `indices` (a permutation or any selection) into a fresh in-heap
+    /// column, carrying validity by rebuilding the offsets + data. An index past the column length
+    /// (or a selected null) becomes a null in the result. This is the shared dense back end of
+    /// [`mask_filter`](VarSerie::mask_filter) / [`reverse`](VarSerie::reverse) / [`sort`](VarSerie::sort).
+    pub fn take(&self, indices: &[usize]) -> VarSerie<T, Heap> {
+        let mut out = VarSerie::<T, Heap>::with_capacity(indices.len());
+        for &index in indices {
+            if index < self.len && self.valid(index) {
+                out.push_bytes(&self.bytes_at(index).unwrap_or_default());
+            } else {
+                out.push_null();
+            }
+        }
+        out
+    }
+
+    /// **Filters** the column by a boolean `mask` (an LSB-first bit source, `1` = keep), returning a
+    /// fresh compacted in-heap column carrying the surviving elements' validity.
+    pub fn mask_filter<M: IOBase>(&self, mask: &M) -> VarSerie<T, Heap> {
+        let indices: Vec<usize> = (0..self.len)
+            .filter(|&index| mask.pread_bit(index as u64).unwrap_or(false))
+            .collect();
+        self.take(&indices)
+    }
+
+    /// A fresh **reversed** copy — the offsets + data rebuilt in reverse element order (the copy front
+    /// door of [`reverse_in_place`](VarSerie::reverse_in_place)).
+    pub fn reverse(&self) -> VarSerie<T, Heap> {
+        let indices: Vec<usize> = (0..self.len).rev().collect();
+        self.take(&indices)
+    }
+
+    /// The **permutation that sorts** the column **lexicographically** over the element bytes (so
+    /// `Utf8` sorts by code point, `Binary` by byte order). **Stable**, with **nulls last** in both
+    /// directions.
+    pub fn sort_indices(&self, ascending: bool) -> Vec<usize> {
+        let elements: Vec<Vec<u8>> = (0..self.len)
+            .map(|index| self.bytes_at(index).unwrap_or_default())
+            .collect();
+        let valid: Vec<bool> = (0..self.len).map(|index| self.valid(index)).collect();
+        let mut indices: Vec<usize> = (0..self.len).collect();
+        indices.sort_by(|&i, &j| {
+            cmp_bytes_slot(valid[i], &elements[i], valid[j], &elements[j], ascending)
+        });
+        indices
+    }
+
+    /// A fresh **ascending-sorted** (lexicographic) copy — `take(sort_indices(true))`, the copy front
+    /// door of [`sort_in_place`](VarSerie::sort_in_place). Nulls sort last.
+    pub fn sort(&self) -> VarSerie<T, Heap> {
+        self.take(&self.sort_indices(true))
+    }
+}
+
+/// The null-aware **lexicographic** comparison of two variable-length slots for
+/// [`VarSerie::sort_indices`] — **nulls sort last** (both directions); among the non-null values the
+/// `ascending` flag picks the direction over the raw element bytes (`Utf8` code-point order, `Binary`
+/// byte order). Total and stable-compatible.
+fn cmp_bytes_slot(
+    a_valid: bool,
+    a: &[u8],
+    b_valid: bool,
+    b: &[u8],
+    ascending: bool,
+) -> core::cmp::Ordering {
+    use core::cmp::Ordering;
+    match (a_valid, b_valid) {
+        (false, false) => Ordering::Equal,
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (true, true) => {
+            let base = a.cmp(b);
+            if ascending {
+                base
+            } else {
+                base.reverse()
+            }
         }
     }
 }

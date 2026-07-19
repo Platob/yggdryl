@@ -16,7 +16,7 @@ macro_rules! fixed_numeric {
     (
         $(#[$doc:meta])*
         $marker:ident, $native:ty, $id:ident, $sum:ty,
-        $warr:ident, $rarr:ident, $summ:ident, $minm:ident, $maxm:ident, $meanm:ident,
+        $warr:ident, $rarr:ident, $reparr:ident, $summ:ident, $minm:ident, $maxm:ident, $meanm:ident,
         $stdm:ident, $varm:ident, $medianm:ident, $firstm:ident, $lastm:ident, $countgem:ident
     ) => {
         $(#[$doc])*
@@ -43,6 +43,16 @@ macro_rules! fixed_numeric {
                 values: &[$native],
             ) -> Result<(), $crate::io::memory::IoError> {
                 dst.$warr(start * core::mem::size_of::<$native>() as u64, values)
+            }
+            fn encode_repeat<W: $crate::io::memory::IOBase>(
+                dst: &mut W,
+                start: u64,
+                value: $native,
+                count: usize,
+            ) -> Result<(), $crate::io::memory::IoError> {
+                // Forward straight to the source's allocation-free repeated-value fill kernel — no
+                // staging buffer, no materialized array.
+                dst.$reparr(start * core::mem::size_of::<$native>() as u64, value, count)
             }
         }
 

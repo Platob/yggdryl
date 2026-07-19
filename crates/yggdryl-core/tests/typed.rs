@@ -425,7 +425,7 @@ fn serie_filter_by_bit_mask() {
     for (index, keep) in [true, false, true, false, true].iter().enumerate() {
         mask.pwrite_bit(index as u64, *keep).unwrap();
     }
-    let filtered = col.filter(&mask);
+    let filtered = col.mask_filter(&mask);
     assert_eq!(filtered.len(), 3);
     assert_eq!(filtered.values(), vec![10, 30, 50]);
 
@@ -435,7 +435,7 @@ fn serie_filter_by_bit_mask() {
     for i in 0..4 {
         keep_all.pwrite_bit(i, true).unwrap();
     }
-    let kept = nullable.filter(&keep_all);
+    let kept = nullable.mask_filter(&keep_all);
     assert_eq!(kept.to_options(), vec![Some(1), None, Some(3), None]);
 }
 

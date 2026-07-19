@@ -22,6 +22,46 @@ pub trait Encoder: DataType {
         values: &[Self::Native],
     ) -> Result<(), IoError>;
 
+    /// Writes `count` copies of `value` as contiguous elements starting at element `start` — the
+    /// **repeated-value fill**, the counterpart of [`encode_slice`](Encoder::encode_slice) that
+    /// **never materializes** the `count`-element array. The default stages **one fixed stack
+    /// chunk** of the repeated value (zero heap allocation, since `Native: Copy`) and writes it in
+    /// bounded passes through the source's vectorized [`encode_slice`](Encoder::encode_slice); the
+    /// numeric types override it to forward straight to the source's `pwrite_*_repeat` kernel.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::Heap;
+    /// use yggdryl_core::typed::{Decoder, Encoder};
+    /// use yggdryl_core::typed::fixedbyte::Int32;
+    ///
+    /// let mut h = Heap::new();
+    /// Int32::encode_repeat(&mut h, 0, 7, 4).unwrap();
+    /// let mut out = [0i32; 4];
+    /// Int32::decode_slice(&h, 0, &mut out).unwrap();
+    /// assert_eq!(out, [7, 7, 7, 7]);
+    /// ```
+    fn encode_repeat<W: IOBase>(
+        dst: &mut W,
+        start: u64,
+        value: Self::Native,
+        count: usize,
+    ) -> Result<(), IoError> {
+        if count == 0 {
+            return Ok(());
+        }
+        // One fixed **stack** chunk of the repeated value (no heap: `Native: Copy`), streamed in
+        // bounded passes — peak extra memory is one chunk, never the full `count` elements.
+        const CHUNK: usize = 256;
+        let staged = [value; CHUNK];
+        let mut written = 0usize;
+        while written < count {
+            let take = (count - written).min(CHUNK);
+            Self::encode_slice(dst, start + written as u64, &staged[..take])?;
+            written += take;
+        }
+        Ok(())
+    }
+
     /// Parses `s` with the tolerant [`parse_flexible`](FlexibleFromStr::parse_flexible) (thousands
     /// separators, `0x`/`0b`/`0o` radices, `1e3` scientific, `+`/whitespace) and writes the value as
     /// the element at `index`. A value the type cannot represent surfaces the guided

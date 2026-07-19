@@ -19,6 +19,10 @@ name = "typed"
 harness = false
 
 [[bench]]
+name = "typed_growth"
+harness = false
+
+[[bench]]
 name = "typed_nested"
 harness = false
 
