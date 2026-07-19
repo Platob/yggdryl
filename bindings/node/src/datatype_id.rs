@@ -329,6 +329,45 @@ impl DataTypeId {
         self.inner.is_variable_length()
     }
 
+    /// The **category** this type's band belongs to, as a lowercase name (`"integer"`, `"float"`,
+    /// `"decimal"`, `"binary"`, `"utf8"`, `"boolean"`, `"null"`, plus the reserved `"temporal"` /
+    /// `"nested"`).
+    #[napi]
+    pub fn category(&self) -> String {
+        self.inner.category().name().to_string()
+    }
+
+    /// Whether this is a **numeric** type — an integer, a float, or a decimal (not `bool`, not a
+    /// byte/string type).
+    #[napi]
+    pub fn is_numeric(&self) -> bool {
+        self.inner.is_numeric()
+    }
+
+    /// Whether this is a **byte / string** type (binary or UTF-8).
+    #[napi]
+    pub fn is_byte_like(&self) -> bool {
+        self.inner.is_byte_like()
+    }
+
+    /// Whether this is a **fixed-size** byte / string type (`FixedBinary` / `FixedUtf8`).
+    #[napi]
+    pub fn is_fixed_size(&self) -> bool {
+        self.inner.is_fixed_size()
+    }
+
+    /// Whether this is a **temporal** type (the reserved date / time / timestamp band).
+    #[napi]
+    pub fn is_temporal(&self) -> bool {
+        self.inner.is_temporal()
+    }
+
+    /// Whether this is a **nested / composite** type (the reserved struct / list / map band).
+    #[napi]
+    pub fn is_nested(&self) -> bool {
+        self.inner.is_nested()
+    }
+
     /// How many whole elements of this type fit in `bytes` — `bytes / byteSize`, or `0` for
     /// [`Unknown`](DataTypeId::unknown). `bytes` and the result are `i64`s (JS numbers); a
     /// negative `bytes` counts as `0`.

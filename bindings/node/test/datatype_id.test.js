@@ -12,21 +12,22 @@ const { DataTypeId } = yggdryl.datatype_id
 
 test('the datatype_id namespace exposes DataTypeId with a factory per variant', () => {
   assert.equal(typeof DataTypeId, 'function')
+  // Ids live in per-category bands with reserved gaps, not a dense 0..N counter.
   const variants = [
-    ['Unknown', 0, 'unknown'],
-    ['Bool', 1, 'bool'],
-    ['I8', 2, 'i8'],
-    ['U8', 3, 'u8'],
-    ['I16', 4, 'i16'],
-    ['U16', 5, 'u16'],
-    ['I32', 6, 'i32'],
-    ['U32', 7, 'u32'],
-    ['I64', 8, 'i64'],
-    ['U64', 9, 'u64'],
-    ['I128', 10, 'i128'],
-    ['U128', 11, 'u128'],
-    ['F32', 12, 'f32'],
-    ['F64', 13, 'f64'],
+    ['Unknown', 0x0000, 'unknown'],
+    ['Bool', 0x0010, 'bool'],
+    ['I8', 0x0100, 'i8'],
+    ['U8', 0x0101, 'u8'],
+    ['I16', 0x0102, 'i16'],
+    ['U16', 0x0103, 'u16'],
+    ['I32', 0x0104, 'i32'],
+    ['U32', 0x0105, 'u32'],
+    ['I64', 0x0106, 'i64'],
+    ['U64', 0x0107, 'u64'],
+    ['I128', 0x0108, 'i128'],
+    ['U128', 0x0109, 'u128'],
+    ['F32', 0x0201, 'f32'],
+    ['F64', 0x0202, 'f64'],
   ]
   for (const [factory, id, name] of variants) {
     const d = DataTypeId[factory]()
@@ -43,12 +44,28 @@ test('the datatype_id namespace exposes DataTypeId with a factory per variant', 
 // -------------------------------------------------------------------------------------
 
 test('constructor + fromU16 round-trip the u16 id; unknown ids degrade to Unknown', () => {
-  assert.ok(new DataTypeId(8).equals(DataTypeId.I64()))
-  assert.ok(DataTypeId.fromU16(13).equals(DataTypeId.F64()))
+  assert.ok(new DataTypeId(0x0106).equals(DataTypeId.I64()))
+  assert.ok(DataTypeId.fromU16(0x0202).equals(DataTypeId.F64()))
   assert.equal(DataTypeId.fromU16(0).name(), 'unknown')
   // A foreign / newer id degrades to raw bytes (Unknown), never throws.
   assert.equal(DataTypeId.fromU16(999).name(), 'unknown')
+  assert.equal(DataTypeId.fromU16(0x0011).name(), 'unknown') // a reserved gap in the bool band
   assert.equal(new DataTypeId(999).name(), 'unknown')
+})
+
+test('category names each type’s band; numeric / byte-like / fixed-size predicates', () => {
+  assert.equal(DataTypeId.Unknown().category(), 'null')
+  assert.equal(DataTypeId.Bool().category(), 'boolean')
+  assert.equal(DataTypeId.I64().category(), 'integer')
+  assert.equal(DataTypeId.F64().category(), 'float')
+  assert.equal(DataTypeId.Decimal128().category(), 'decimal')
+  assert.equal(DataTypeId.Binary().category(), 'binary')
+  assert.equal(DataTypeId.FixedUtf8().category(), 'utf8')
+  assert.ok(DataTypeId.I64().isNumeric() && DataTypeId.Decimal32().isNumeric())
+  assert.ok(!DataTypeId.Bool().isNumeric() && !DataTypeId.Utf8().isNumeric())
+  assert.ok(DataTypeId.FixedBinary().isByteLike() && DataTypeId.FixedBinary().isFixedSize())
+  assert.ok(!DataTypeId.Binary().isFixedSize())
+  assert.ok(!DataTypeId.I64().isTemporal() && !DataTypeId.I64().isNested())
 })
 
 test('fromName parses (case-insensitive); an unknown token throws the guided error', () => {
@@ -101,12 +118,12 @@ test('elementCount divides bytes by the width; Unknown and negatives are 0', () 
 // Byte types — variable-length + fixed-size binary / utf8
 // -------------------------------------------------------------------------------------
 
-test('the byte-type factories name their ids (18-21) and round-trip', () => {
+test('the byte-type factories name their band ids and round-trip', () => {
   const byteTypes = [
-    ['Binary', 18, 'binary'],
-    ['Utf8', 19, 'utf8'],
-    ['FixedBinary', 20, 'fixed_binary'],
-    ['FixedUtf8', 21, 'fixed_utf8'],
+    ['Binary', 0x0500, 'binary'],
+    ['Utf8', 0x0600, 'utf8'],
+    ['FixedBinary', 0x0510, 'fixed_binary'],
+    ['FixedUtf8', 0x0610, 'fixed_utf8'],
   ]
   for (const [factory, id, name] of byteTypes) {
     const d = DataTypeId[factory]()
@@ -156,7 +173,7 @@ test('byte-type predicates: isBinary / isUtf8 / isVariableLength', () => {
 // -------------------------------------------------------------------------------------
 
 test('equals is identity over the element type', () => {
-  assert.ok(DataTypeId.I64().equals(DataTypeId.fromU16(8)))
+  assert.ok(DataTypeId.I64().equals(DataTypeId.fromU16(0x0106)))
   assert.ok(!DataTypeId.I64().equals(DataTypeId.U64()))
   assert.ok(!DataTypeId.I32().equals(DataTypeId.F32()))
 })

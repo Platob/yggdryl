@@ -302,10 +302,10 @@ def test_doc_decimal_money():
 
 
 def test_datatype_id_decimal_variants():
-    assert int(DataTypeId.Decimal32) == 14
-    assert int(DataTypeId.Decimal64) == 15
-    assert int(DataTypeId.Decimal128) == 16
-    assert int(DataTypeId.Decimal256) == 17
+    assert int(DataTypeId.Decimal32) == 0x0300
+    assert int(DataTypeId.Decimal64) == 0x0301
+    assert int(DataTypeId.Decimal128) == 0x0302
+    assert int(DataTypeId.Decimal256) == 0x0303
     assert DataTypeId.Decimal128.name() == "decimal128"
     assert DataTypeId.from_name("decimal256") == DataTypeId.Decimal256
     assert DataTypeId.Decimal32.byte_size() == 4

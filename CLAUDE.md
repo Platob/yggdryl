@@ -15,8 +15,9 @@ file, network, compressed, …) is written once and works everywhere.
 From here the library scales up: absorb bytes from as many sources as possible behind this
 single contract, then grow **typed data serialization** on top — a precise internal type
 system, columns, and Arrow interop over these bytes — so ingestion is broad at the edge, the
-representation is exact underneath, and everything downstream is fast. `arrow` is **not** a
-current dependency.
+representation is exact underneath, and everything downstream is fast. Arrow interop lives
+behind the **opt-in `arrow` feature** (the core stays dependency-free by default); when the
+feature is on, every internal type converts **to and from** its closest Arrow equivalent.
 
 ## Layout — one tree, mirrored everywhere
 
@@ -101,6 +102,15 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
    type, add a time+memory benchmark and a deterministic allocation check (see
    `benches/io_memory_heap.rs`, `tests/io_memory_heap_alloc.rs`, and the report under
    `benchmarks/yggdryl-core/`).
+
+**A feature is not done until it is proven by all three of: a benchmark, edge-case tests, and
+documentation code samples.** Every substantive feature ships (a) a **benchmark** measuring
+both time and memory with a deterministic allocation check, (b) **tests covering the edges**
+(empty, single, all-null, out-of-range, boundary widths, malformed input, the recursive/nested
+case), and (c) **runnable documentation examples** graded **easy → complex** in the mirrored
+`docs/` page's synced `=== "Python"` / `=== "Node"` / `=== "Rust"` tabs (the Rust tab a
+compiling doctest, the binding tabs reproduced verbatim in the binding test suites). A change
+that lacks any of the three is incomplete — do not consider it landed.
 
 ## Coding rules
 
@@ -260,6 +270,60 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   `set_query()` address the raw query **string**, while `param` / `params` / `set_param` /
   `has_param` / … address the parsed key-value **map**. Apply the same split anywhere a raw
   form and a parsed map coexist.
+- **`DataTypeId` is a categorized `u16` range — bands with reserved gaps, never a dense
+  counter.** Ids are laid out in **per-category bands** (`0x00xx` special/bool, `0x01xx`
+  integers, `0x02xx` floats, `0x03xx` decimals, `0x04xx` temporal, `0x05xx` byte/string,
+  `0x06xx` nested), each band holding related types with **placeholder gaps** so a new width
+  slots in beside its neighbours without renumbering. Every id belongs to exactly one
+  [`DataTypeCategory`] (`category()`), and the predicates (`is_integer` / `is_float` /
+  `is_decimal` / `is_binary` / `is_utf8` / `is_temporal` / `is_nested` / `is_variable_length` /
+  `is_large` / …) are **bounded range checks against the band**, not long `matches!` lists.
+  Adding a type means picking its band slot + wiring `from_u16` / `name` / `category` / the
+  relevant predicate — never shifting an existing id.
+- **Every internal type converts to and from its closest Arrow equivalent (feature `arrow`).**
+  Behind the opt-in `arrow` feature, each level has a total, **zero-copy where possible**
+  bridge: a `DataTypeId` (+ its field metadata) ↔ an Arrow `DataType`; a `Field` ↔ an Arrow
+  `Field`; an `IOBase` byte region ↔ an Arrow `Buffer` (share the allocation, never re-copy);
+  a `Serie` ↔ an Arrow `Array` (offsets + data + validity handed over, `bulk` and
+  allocation-free on the hot path); a struct column ↔ an Arrow `StructArray` / `RecordBatch`
+  and its schema ↔ an Arrow `Schema`. **When there is no exact Arrow match, map to the closest
+  type and document the lossy edge** (e.g. a `FixedUtf8` → `FixedSizeBinary`, a `Decimal256`
+  narrowing, an internal-only width → the nearest wider Arrow width) with a `// DESIGN:` note;
+  the reverse direction restores the internal type from the field metadata. The bindings expose
+  the bridge as a real interop surface (Python the Arrow **PyCapsule** interface for pyarrow;
+  Node an Arrow **IPC** `Buffer` for apache-arrow).
+- **Parsing is flexible at the edge, exact underneath.** A string→value parse accepts the
+  **mainstream real-world formats** — a leading `+`, surrounding whitespace, scientific /
+  exponent notation (`1.5e3`), thousands separators (`1,000,000` and locale `1_000`), a
+  trailing/leading sign, `%`/currency-adjacent trimming where sensible, `inf`/`nan`, hex/binary
+  integer prefixes — via a tolerant front door that **normalizes then delegates to the fast
+  native parse**; once parsed, everything downstream runs on the internal **optimized**
+  (vectorized, allocation-free) operations. Never hand-roll a slow per-char numeric loop where a
+  normalize-then-`str::parse` (or a bulk kernel) serves. Keep the tolerant rules **common and
+  documented** (add a mainstream format the moment a real input needs it), and the strict
+  `*_exact` counterpart stays available for callers that want no coercion.
+- **A node knows its graph — `parent()` / `children()` on `Field` / `Scalar` / `Serie`.** Every
+  typed node exposes graph-discovery accessors so a caller navigates the tree from any node:
+  `children()` streams the immediate child nodes (a leaf yields none; a `struct`/`list`/`map`
+  yields its inner series/fields), `child(index)` / `child_by_name(name)` address one (recursing
+  into sub-nodes for a dotted path), and mutation returns **`&mut` references that deep-mutate an
+  inner series in place — no copy**. The pattern is the typed-layer mirror of `IOBase`'s
+  `ls`/`parent` graph surface; nested containers are memory trees the same way a directory is.
+- **Cast is field-driven — `cast_field(Field)` / `cast_field_in_place(Field)`.** A `Scalar` /
+  `Serie` casts toward a **target `Field`**: it retypes the element dtype (via the byte layer's
+  `resize_dtype` / a typed re-encode), applies the target **nullability** (widen to nullable, or
+  drop the validity when the target is non-nullable and no nulls remain — else a guided error),
+  the **name**, and any other `Headers` metadata — and is a **no-op when the field already
+  matches** (skip the work). `Field` carries a `metadata()` / `metadata_mut()` accessor over its
+  backing `Headers` so arbitrary annotations ride along. `Encoder`/`Decoder` gain the matching
+  `encode_cast` / `decode_cast` helpers that convert through the target dtype on the fly.
+- **Series carry element accessors + mutators — indexed and ranged, checked and `_checked`.** A
+  `Serie` reads/writes one element (`get` / `set`, by index, as a `Scalar` **or** the native
+  value) and a **range** (`get_range` / `set_range`, filled from a `Vec` or another `Serie`), each
+  **type-checking** the incoming dtype and returning a guided error on mismatch; the **`*_checked`
+  twin skips validation** for a caller that has already verified the dtype (the fast path), the
+  same way the byte layer pairs a guarded op with its unchecked kernel. A bulk `set_range` is a
+  dense, allocation-free copy, never element-by-element.
 - Mark underdetermined decisions with a `// DESIGN:` comment.
 
 ## Toolchain (this environment is Windows)
@@ -273,6 +337,7 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test                                    # default-members = core only (no Python/Node headers)
+cargo test -p yggdryl-core --features arrow   # the Arrow interop bridge (feature-gated)
 (cd bindings/python && uv run maturin develop && uv run pytest)
 (cd bindings/node && npm run build && npm test)
 uv run --no-project --with mkdocs-material mkdocs build --strict   # docs check

@@ -1,64 +1,141 @@
-//! `dtype` — the primitive **element data types** a byte region can be interpreted as.
+//! `datatype_id` — the primitive **element data types** a byte region can be interpreted as.
 //!
-//! [`DataTypeId`] is a compact `#[repr(u16)]` int enum naming every native fixed-width primitive
-//! (`bool`, the signed/unsigned integers `i8`…`u128`, the floats `f32`/`f64`). It round-trips
-//! through a `u16` — the value a source stores in its [`Headers`](crate::headers::Headers) as the
-//! `Type-Id` — so the byte layer knows its **element width** (the size the typed accessors and
-//! the vectorized aggregations step by), can compute an element count, and can safely widen /
-//! shrink a region between widths.
+//! [`DataTypeId`] is a compact `#[repr(u16)]` int enum naming every element type — the numeric
+//! primitives (`bool`, the signed/unsigned integers `i8`…`u128`, the floats `f32`/`f64`, the
+//! fixed-point decimals) and the byte/string types (variable-length and fixed-size binary / UTF-8).
+//! It round-trips through a `u16` — the value a source stores in its [`Headers`](crate::headers::Headers)
+//! as the `Type-Id` — so the byte layer knows its **element width** (the size the typed accessors and
+//! the vectorized aggregations step by), can compute an element count, and can safely widen / shrink
+//! a region between widths.
+//!
+//! The ids are laid out in **per-category bands** with reserved gaps ([`DataTypeCategory`]), so a new
+//! width slots in beside its neighbours without renumbering an existing id:
+//!
+//! | band | category | members |
+//! |---|---|---|
+//! | `0x0000` | [`Null`](DataTypeCategory::Null) | `Unknown` |
+//! | `0x0010` | [`Boolean`](DataTypeCategory::Boolean) | `Bool` |
+//! | `0x0100` | [`Integer`](DataTypeCategory::Integer) | `I8`…`U128` |
+//! | `0x0200` | [`Float`](DataTypeCategory::Float) | `F32`, `F64` (`0x0200` reserved for `F16`) |
+//! | `0x0300` | [`Decimal`](DataTypeCategory::Decimal) | `Decimal32`…`Decimal256` |
+//! | `0x0400` | [`Temporal`](DataTypeCategory::Temporal) | *(reserved — date / time / timestamp)* |
+//! | `0x0500` | [`Binary`](DataTypeCategory::Binary) | `Binary`, `FixedBinary` (`Large*` reserved) |
+//! | `0x0600` | [`Utf8`](DataTypeCategory::Utf8) | `Utf8`, `FixedUtf8` (`Large*` reserved) |
+//! | `0x0700` | [`Nested`](DataTypeCategory::Nested) | *(reserved — struct / list / map)* |
 
-/// A **primitive element data type** — the interpretation of a fixed-width value in a byte region.
-/// A plain `#[repr(u16)]` int enum (`Unknown = 0` is the default "raw bytes" state): it converts
-/// to/from a `u16`, keys a map, sits in a set, and travels over a wire.
+/// The **broad family** a [`DataTypeId`] belongs to — one per band. `category()` returns it, and the
+/// coarse predicates (`is_integer` / `is_float` / …) are band membership checks against it.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum DataTypeCategory {
+    /// `Unknown` — raw bytes, no declared element type.
+    Null = 0,
+    /// The boolean type.
+    Boolean = 1,
+    /// The signed / unsigned integers (`i8`…`u128`).
+    Integer = 2,
+    /// The IEEE-754 floats (`f32` / `f64`).
+    Float = 3,
+    /// The fixed-point decimals (`decimal32`…`decimal256`).
+    Decimal = 4,
+    /// Date / time / timestamp types *(reserved band)*.
+    Temporal = 5,
+    /// Binary byte blobs (`binary` / `fixed_binary` / `large_binary`).
+    Binary = 6,
+    /// UTF-8 strings (`utf8` / `fixed_utf8` / `large_utf8`).
+    Utf8 = 7,
+    /// Composite types — `struct` / `list` / `map` *(reserved band)*.
+    Nested = 8,
+}
+
+impl DataTypeCategory {
+    /// The stable lowercase token (`"integer"`, `"utf8"`, `"null"`).
+    pub fn name(self) -> &'static str {
+        match self {
+            DataTypeCategory::Null => "null",
+            DataTypeCategory::Boolean => "boolean",
+            DataTypeCategory::Integer => "integer",
+            DataTypeCategory::Float => "float",
+            DataTypeCategory::Decimal => "decimal",
+            DataTypeCategory::Temporal => "temporal",
+            DataTypeCategory::Binary => "binary",
+            DataTypeCategory::Utf8 => "utf8",
+            DataTypeCategory::Nested => "nested",
+        }
+    }
+}
+
+impl core::fmt::Display for DataTypeCategory {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+/// A **primitive element data type** — the interpretation of a value in a byte region. A plain
+/// `#[repr(u16)]` int enum laid out in per-category bands (`Unknown = 0` is the default "raw bytes"
+/// state): it converts to/from a `u16`, keys a map, sits in a set, and travels over a wire.
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum DataTypeId {
-    /// Unknown / raw bytes — no declared element type (the default).
+    /// Unknown / raw bytes — no declared element type (the default). Band `0x0000`.
     #[default]
-    Unknown = 0,
+    Unknown = 0x0000,
+
+    // ---- boolean band (0x0010) --------------------------------------------------------
     /// A boolean — 1 byte in storage, 1 bit logically.
-    Bool = 1,
+    Bool = 0x0010,
+
+    // ---- integer band (0x0100) --------------------------------------------------------
     /// Signed 8-bit integer.
-    I8 = 2,
+    I8 = 0x0100,
     /// Unsigned 8-bit integer.
-    U8 = 3,
+    U8 = 0x0101,
     /// Signed 16-bit integer.
-    I16 = 4,
+    I16 = 0x0102,
     /// Unsigned 16-bit integer.
-    U16 = 5,
+    U16 = 0x0103,
     /// Signed 32-bit integer.
-    I32 = 6,
+    I32 = 0x0104,
     /// Unsigned 32-bit integer.
-    U32 = 7,
+    U32 = 0x0105,
     /// Signed 64-bit integer.
-    I64 = 8,
+    I64 = 0x0106,
     /// Unsigned 64-bit integer.
-    U64 = 9,
+    U64 = 0x0107,
     /// Signed 128-bit integer.
-    I128 = 10,
+    I128 = 0x0108,
     /// Unsigned 128-bit integer.
-    U128 = 11,
+    U128 = 0x0109,
+
+    // ---- float band (0x0200; 0x0200 reserved for F16) ---------------------------------
     /// 32-bit IEEE-754 float.
-    F32 = 12,
+    F32 = 0x0201,
     /// 64-bit IEEE-754 float.
-    F64 = 13,
+    F64 = 0x0202,
+
+    // ---- decimal band (0x0300) --------------------------------------------------------
     /// 32-bit fixed-point **decimal** — a signed `i32` unscaled value (precision/scale in metadata).
-    Decimal32 = 14,
+    Decimal32 = 0x0300,
     /// 64-bit fixed-point **decimal** — a signed `i64` unscaled value.
-    Decimal64 = 15,
+    Decimal64 = 0x0301,
     /// 128-bit fixed-point **decimal** — a signed `i128` unscaled value.
-    Decimal128 = 16,
+    Decimal128 = 0x0302,
     /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value.
-    Decimal256 = 17,
+    Decimal256 = 0x0303,
+
+    // ---- binary band (0x0500; 0x0502/0x0503 reserved for Large*) ----------------------
     /// **Variable-length binary** — an `i32`-offsets + data byte layout (`Vec<u8>` elements).
-    Binary = 18,
-    /// **Variable-length UTF-8** string — the same offsets + data layout (`String` elements).
-    Utf8 = 19,
+    Binary = 0x0500,
     /// **Fixed-length binary** — a fixed byte width per element (the width in the field metadata).
-    FixedBinary = 20,
+    FixedBinary = 0x0510,
+
+    // ---- utf8 band (0x0600; 0x0602/0x0603 reserved for Large*) -------------------------
+    /// **Variable-length UTF-8** string — the same offsets + data layout (`String` elements).
+    Utf8 = 0x0600,
     /// **Fixed-length UTF-8** — a fixed byte width per element (the width in the field metadata).
-    FixedUtf8 = 21,
+    FixedUtf8 = 0x0610,
 }
 
 impl DataTypeId {
@@ -82,8 +159,8 @@ impl DataTypeId {
         DataTypeId::Decimal128,
         DataTypeId::Decimal256,
         DataTypeId::Binary,
-        DataTypeId::Utf8,
         DataTypeId::FixedBinary,
+        DataTypeId::Utf8,
         DataTypeId::FixedUtf8,
     ];
 
@@ -96,27 +173,27 @@ impl DataTypeId {
     /// value (total, never panics — a foreign/newer id degrades to raw bytes).
     pub fn from_u16(value: u16) -> DataTypeId {
         match value {
-            1 => DataTypeId::Bool,
-            2 => DataTypeId::I8,
-            3 => DataTypeId::U8,
-            4 => DataTypeId::I16,
-            5 => DataTypeId::U16,
-            6 => DataTypeId::I32,
-            7 => DataTypeId::U32,
-            8 => DataTypeId::I64,
-            9 => DataTypeId::U64,
-            10 => DataTypeId::I128,
-            11 => DataTypeId::U128,
-            12 => DataTypeId::F32,
-            13 => DataTypeId::F64,
-            14 => DataTypeId::Decimal32,
-            15 => DataTypeId::Decimal64,
-            16 => DataTypeId::Decimal128,
-            17 => DataTypeId::Decimal256,
-            18 => DataTypeId::Binary,
-            19 => DataTypeId::Utf8,
-            20 => DataTypeId::FixedBinary,
-            21 => DataTypeId::FixedUtf8,
+            0x0010 => DataTypeId::Bool,
+            0x0100 => DataTypeId::I8,
+            0x0101 => DataTypeId::U8,
+            0x0102 => DataTypeId::I16,
+            0x0103 => DataTypeId::U16,
+            0x0104 => DataTypeId::I32,
+            0x0105 => DataTypeId::U32,
+            0x0106 => DataTypeId::I64,
+            0x0107 => DataTypeId::U64,
+            0x0108 => DataTypeId::I128,
+            0x0109 => DataTypeId::U128,
+            0x0201 => DataTypeId::F32,
+            0x0202 => DataTypeId::F64,
+            0x0300 => DataTypeId::Decimal32,
+            0x0301 => DataTypeId::Decimal64,
+            0x0302 => DataTypeId::Decimal128,
+            0x0303 => DataTypeId::Decimal256,
+            0x0500 => DataTypeId::Binary,
+            0x0510 => DataTypeId::FixedBinary,
+            0x0600 => DataTypeId::Utf8,
+            0x0610 => DataTypeId::FixedUtf8,
             _ => DataTypeId::Unknown,
         }
     }
@@ -161,11 +238,32 @@ impl DataTypeId {
             })
     }
 
+    /// The **broad family** this type belongs to — its band's [`DataTypeCategory`].
+    pub fn category(self) -> DataTypeCategory {
+        match (self as u16) >> 8 {
+            0x00 => {
+                if self == DataTypeId::Bool {
+                    DataTypeCategory::Boolean
+                } else {
+                    DataTypeCategory::Null
+                }
+            }
+            0x01 => DataTypeCategory::Integer,
+            0x02 => DataTypeCategory::Float,
+            0x03 => DataTypeCategory::Decimal,
+            0x04 => DataTypeCategory::Temporal,
+            0x05 => DataTypeCategory::Binary,
+            0x06 => DataTypeCategory::Utf8,
+            0x07 => DataTypeCategory::Nested,
+            _ => DataTypeCategory::Null,
+        }
+    }
+
     /// The **storage width** of one element in bytes (`i32` → 4, `i128` → 16, `bool` → 1); `0` for
-    /// [`Unknown`](DataTypeId::Unknown) (raw bytes have no fixed element width).
+    /// [`Unknown`](DataTypeId::Unknown) and the byte/string types (raw bytes / a variable or
+    /// field-metadata width have no id-derivable fixed element width).
     pub fn byte_size(self) -> u64 {
         match self {
-            DataTypeId::Unknown => 0,
             DataTypeId::Bool | DataTypeId::I8 | DataTypeId::U8 => 1,
             DataTypeId::I16 | DataTypeId::U16 => 2,
             DataTypeId::I32 | DataTypeId::U32 | DataTypeId::F32 => 4,
@@ -175,9 +273,10 @@ impl DataTypeId {
             DataTypeId::Decimal64 => 8,
             DataTypeId::Decimal128 => 16,
             DataTypeId::Decimal256 => 32,
-            // Variable-length + fixed-size byte types have no id-derivable element width (a
-            // fixed-size type's width lives in the field metadata).
-            DataTypeId::Binary
+            // Unknown + the variable-length / fixed-size byte types have no id-derivable element
+            // width (a fixed-size type's width lives in the field metadata).
+            DataTypeId::Unknown
+            | DataTypeId::Binary
             | DataTypeId::Utf8
             | DataTypeId::FixedBinary
             | DataTypeId::FixedUtf8 => 0,
@@ -201,36 +300,54 @@ impl DataTypeId {
         self.byte_size() > 0
     }
 
-    /// Whether this is a **binary** byte type (`Binary` / `FixedBinary`).
+    /// Whether this is a **binary** byte type (the [`Binary`](DataTypeCategory::Binary) band —
+    /// `Binary` / `FixedBinary`).
     pub fn is_binary(self) -> bool {
-        matches!(self, DataTypeId::Binary | DataTypeId::FixedBinary)
+        self.category() == DataTypeCategory::Binary
     }
 
-    /// Whether this is a **UTF-8 string** type (`Utf8` / `FixedUtf8`).
+    /// Whether this is a **UTF-8 string** type (the [`Utf8`](DataTypeCategory::Utf8) band — `Utf8` /
+    /// `FixedUtf8`).
     pub fn is_utf8(self) -> bool {
-        matches!(self, DataTypeId::Utf8 | DataTypeId::FixedUtf8)
+        self.category() == DataTypeCategory::Utf8
     }
 
-    /// Whether this is a **variable-length** type (`Binary` / `Utf8`) — an offsets + data layout.
+    /// Whether this is a **byte / string** type (binary or UTF-8) — a blob whose width is not
+    /// id-derivable.
+    pub fn is_byte_like(self) -> bool {
+        matches!(
+            self.category(),
+            DataTypeCategory::Binary | DataTypeCategory::Utf8
+        )
+    }
+
+    /// Whether this is a **fixed-size** byte / string type (`FixedBinary` / `FixedUtf8`) — packed at
+    /// a per-column byte width (in the field metadata), no offsets buffer.
+    pub fn is_fixed_size(self) -> bool {
+        matches!(self, DataTypeId::FixedBinary | DataTypeId::FixedUtf8)
+    }
+
+    /// Whether this is a **variable-length** byte / string type — an offsets + data layout (`Binary`
+    /// / `Utf8`, and the reserved `Large*`), i.e. a byte-like type that is not fixed-size.
     pub fn is_variable_length(self) -> bool {
-        matches!(self, DataTypeId::Binary | DataTypeId::Utf8)
+        self.is_byte_like() && !self.is_fixed_size()
+    }
+
+    /// Whether this is a **temporal** type (the reserved [`Temporal`](DataTypeCategory::Temporal)
+    /// band — date / time / timestamp).
+    pub fn is_temporal(self) -> bool {
+        self.category() == DataTypeCategory::Temporal
+    }
+
+    /// Whether this is a **nested / composite** type (the reserved [`Nested`](DataTypeCategory::Nested)
+    /// band — struct / list / map).
+    pub fn is_nested(self) -> bool {
+        self.category() == DataTypeCategory::Nested
     }
 
     /// Whether this is an integer type (`bool` is **not** counted as an integer).
     pub fn is_integer(self) -> bool {
-        matches!(
-            self,
-            DataTypeId::I8
-                | DataTypeId::U8
-                | DataTypeId::I16
-                | DataTypeId::U16
-                | DataTypeId::I32
-                | DataTypeId::U32
-                | DataTypeId::I64
-                | DataTypeId::U64
-                | DataTypeId::I128
-                | DataTypeId::U128
-        )
+        self.category() == DataTypeCategory::Integer
     }
 
     /// Whether this is a **signed** numeric type (the signed integers, the floats, and the decimals).
@@ -249,23 +366,26 @@ impl DataTypeId {
 
     /// Whether this is a floating-point type (`f32` / `f64`).
     pub fn is_float(self) -> bool {
-        matches!(self, DataTypeId::F32 | DataTypeId::F64)
+        self.category() == DataTypeCategory::Float
     }
 
     /// Whether this is a fixed-point **decimal** type (`decimal32`…`decimal256`).
     pub fn is_decimal(self) -> bool {
-        matches!(
-            self,
-            DataTypeId::Decimal32
-                | DataTypeId::Decimal64
-                | DataTypeId::Decimal128
-                | DataTypeId::Decimal256
-        )
+        self.category() == DataTypeCategory::Decimal
     }
 
     /// Whether this is the boolean type.
     pub fn is_bool(self) -> bool {
         self == DataTypeId::Bool
+    }
+
+    /// Whether this is a **numeric** type — an integer, a float, or a decimal (not `bool`, not a
+    /// byte/string type). The set the vectorized numeric reductions run over.
+    pub fn is_numeric(self) -> bool {
+        matches!(
+            self.category(),
+            DataTypeCategory::Integer | DataTypeCategory::Float | DataTypeCategory::Decimal
+        )
     }
 
     /// How many whole elements of this type fit in `bytes` — `bytes / byte_size()`, or `0` for

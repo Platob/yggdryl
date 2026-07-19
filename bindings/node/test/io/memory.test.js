@@ -1293,7 +1293,7 @@ test('dtype defaults to Unknown; setDtype declares it; elementCount steps by the
 
   h.setDtype(DataTypeId.I64())
   assert.ok(h.dtype().equals(DataTypeId.I64()))
-  assert.equal(h.dtype().asU16(), 8)
+  assert.equal(h.dtype().asU16(), 0x0106) // I64 in the integer band
   assert.equal(h.elementCount(), 3) // 24 bytes / 8
   // The type is stored in the headers as X-Type-Id.
   assert.equal(h.headers.typeId().name(), 'i64')

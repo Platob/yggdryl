@@ -15,31 +15,45 @@ import pytest
 import yggdryl.datatype_id
 from yggdryl.datatype_id import DataTypeId
 
-# Every variant in id order, with its wire-stable value.
+# Every variant, with its wire-stable value — ids live in per-category bands with reserved gaps.
 ALL_TYPES = [
-    (DataTypeId.Unknown, 0, "unknown"),
-    (DataTypeId.Bool, 1, "bool"),
-    (DataTypeId.I8, 2, "i8"),
-    (DataTypeId.U8, 3, "u8"),
-    (DataTypeId.I16, 4, "i16"),
-    (DataTypeId.U16, 5, "u16"),
-    (DataTypeId.I32, 6, "i32"),
-    (DataTypeId.U32, 7, "u32"),
-    (DataTypeId.I64, 8, "i64"),
-    (DataTypeId.U64, 9, "u64"),
-    (DataTypeId.I128, 10, "i128"),
-    (DataTypeId.U128, 11, "u128"),
-    (DataTypeId.F32, 12, "f32"),
-    (DataTypeId.F64, 13, "f64"),
-    (DataTypeId.Decimal32, 14, "decimal32"),
-    (DataTypeId.Decimal64, 15, "decimal64"),
-    (DataTypeId.Decimal128, 16, "decimal128"),
-    (DataTypeId.Decimal256, 17, "decimal256"),
-    (DataTypeId.Binary, 18, "binary"),
-    (DataTypeId.Utf8, 19, "utf8"),
-    (DataTypeId.FixedBinary, 20, "fixed_binary"),
-    (DataTypeId.FixedUtf8, 21, "fixed_utf8"),
+    (DataTypeId.Unknown, 0x0000, "unknown"),
+    (DataTypeId.Bool, 0x0010, "bool"),
+    (DataTypeId.I8, 0x0100, "i8"),
+    (DataTypeId.U8, 0x0101, "u8"),
+    (DataTypeId.I16, 0x0102, "i16"),
+    (DataTypeId.U16, 0x0103, "u16"),
+    (DataTypeId.I32, 0x0104, "i32"),
+    (DataTypeId.U32, 0x0105, "u32"),
+    (DataTypeId.I64, 0x0106, "i64"),
+    (DataTypeId.U64, 0x0107, "u64"),
+    (DataTypeId.I128, 0x0108, "i128"),
+    (DataTypeId.U128, 0x0109, "u128"),
+    (DataTypeId.F32, 0x0201, "f32"),
+    (DataTypeId.F64, 0x0202, "f64"),
+    (DataTypeId.Decimal32, 0x0300, "decimal32"),
+    (DataTypeId.Decimal64, 0x0301, "decimal64"),
+    (DataTypeId.Decimal128, 0x0302, "decimal128"),
+    (DataTypeId.Decimal256, 0x0303, "decimal256"),
+    (DataTypeId.Binary, 0x0500, "binary"),
+    (DataTypeId.FixedBinary, 0x0510, "fixed_binary"),
+    (DataTypeId.Utf8, 0x0600, "utf8"),
+    (DataTypeId.FixedUtf8, 0x0610, "fixed_utf8"),
 ]
+
+# The band-name each type's category() reports.
+CATEGORIES = {
+    DataTypeId.Unknown: "null",
+    DataTypeId.Bool: "boolean",
+    DataTypeId.I32: "integer",
+    DataTypeId.U128: "integer",
+    DataTypeId.F64: "float",
+    DataTypeId.Decimal128: "decimal",
+    DataTypeId.Binary: "binary",
+    DataTypeId.FixedBinary: "binary",
+    DataTypeId.Utf8: "utf8",
+    DataTypeId.FixedUtf8: "utf8",
+}
 
 
 def test_module_surface():
@@ -62,7 +76,19 @@ def test_as_u16_from_u16_round_trip():
         assert DataTypeId.from_u16(value) == dtype
     # An unrecognized id degrades to Unknown (total, never raises).
     assert DataTypeId.from_u16(999) == DataTypeId.Unknown
-    assert DataTypeId.from_u16(22) == DataTypeId.Unknown  # one past FixedUtf8 (21)
+    assert DataTypeId.from_u16(0x0011) == DataTypeId.Unknown  # a reserved gap in the bool band
+
+
+def test_category_bands():
+    for dtype, expected in CATEGORIES.items():
+        assert dtype.category() == expected
+    assert DataTypeId.I64.is_numeric() and DataTypeId.F64.is_numeric()
+    assert DataTypeId.Decimal32.is_numeric()
+    assert not DataTypeId.Bool.is_numeric() and not DataTypeId.Utf8.is_numeric()
+    assert DataTypeId.FixedBinary.is_byte_like() and DataTypeId.FixedBinary.is_fixed_size()
+    assert not DataTypeId.Binary.is_fixed_size()
+    # The reserved bands answer their predicates with no member yet.
+    assert not DataTypeId.I64.is_temporal() and not DataTypeId.I64.is_nested()
 
 
 def test_names_and_from_name():
@@ -154,7 +180,7 @@ def test_str_and_repr():
 def test_hashable_and_frozen():
     assert {DataTypeId.I32, DataTypeId.I32, DataTypeId.F64} == {DataTypeId.I32, DataTypeId.F64}
     lookup = {DataTypeId.I64: "wide"}
-    assert lookup[DataTypeId.from_u16(8)] == "wide"  # equal values hash equal
+    assert lookup[DataTypeId.from_u16(0x0106)] == "wide"  # equal values hash equal
 
 
 # -------------------------------------------------------------------------------------
@@ -164,10 +190,10 @@ def test_hashable_and_frozen():
 
 def test_byte_variants():
     byte_types = [
-        (DataTypeId.Binary, 18, "binary"),
-        (DataTypeId.Utf8, 19, "utf8"),
-        (DataTypeId.FixedBinary, 20, "fixed_binary"),
-        (DataTypeId.FixedUtf8, 21, "fixed_utf8"),
+        (DataTypeId.Binary, 0x0500, "binary"),
+        (DataTypeId.Utf8, 0x0600, "utf8"),
+        (DataTypeId.FixedBinary, 0x0510, "fixed_binary"),
+        (DataTypeId.FixedUtf8, 0x0610, "fixed_utf8"),
     ]
     for dtype, value, name in byte_types:
         assert int(dtype) == value

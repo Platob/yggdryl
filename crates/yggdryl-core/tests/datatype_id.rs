@@ -1,7 +1,7 @@
 //! Functional tests for [`DataTypeId`](yggdryl_core::datatype_id::DataTypeId) — the primitive element
 //! data types: the `u16` round-trip, names, widths, predicates, and element counting.
 
-use yggdryl_core::datatype_id::DataTypeId;
+use yggdryl_core::datatype_id::{DataTypeCategory, DataTypeId};
 
 #[test]
 fn u16_round_trip_is_total() {
@@ -10,6 +10,33 @@ fn u16_round_trip_is_total() {
     }
     assert_eq!(DataTypeId::from_u16(0), DataTypeId::Unknown);
     assert_eq!(DataTypeId::from_u16(9999), DataTypeId::Unknown); // foreign id degrades to raw
+
+    // Ids live in per-category bands with reserved gaps, not a dense 0..N counter.
+    assert_eq!(DataTypeId::I8.as_u16(), 0x0100);
+    assert_eq!(DataTypeId::F32.as_u16(), 0x0201);
+    assert_eq!(DataTypeId::Utf8.as_u16(), 0x0600);
+    assert_eq!(DataTypeId::from_u16(0x0011), DataTypeId::Unknown); // a gap in the bool band
+}
+
+#[test]
+fn categories_partition_the_bands() {
+    assert_eq!(DataTypeId::Unknown.category(), DataTypeCategory::Null);
+    assert_eq!(DataTypeId::Bool.category(), DataTypeCategory::Boolean);
+    assert_eq!(DataTypeId::I64.category(), DataTypeCategory::Integer);
+    assert_eq!(DataTypeId::F32.category(), DataTypeCategory::Float);
+    assert_eq!(DataTypeId::Decimal128.category(), DataTypeCategory::Decimal);
+    assert_eq!(DataTypeId::Binary.category(), DataTypeCategory::Binary);
+    assert_eq!(DataTypeId::FixedUtf8.category(), DataTypeCategory::Utf8);
+    assert_eq!(DataTypeCategory::Integer.name(), "integer");
+    // Numeric = integer | float | decimal (not bool, not byte-like).
+    assert!(
+        DataTypeId::I64.is_numeric()
+            && DataTypeId::F64.is_numeric()
+            && DataTypeId::Decimal32.is_numeric()
+    );
+    assert!(!DataTypeId::Bool.is_numeric() && !DataTypeId::Utf8.is_numeric());
+    // The reserved bands answer their predicates without any member yet.
+    assert!(!DataTypeId::I64.is_temporal() && !DataTypeId::I64.is_nested());
 }
 
 #[test]
@@ -54,8 +81,8 @@ fn decimal_variants() {
         Some(DataTypeId::Decimal256)
     );
     assert_eq!(DataTypeId::Decimal64.to_string(), "decimal64");
-    // Still round-trips through u16 (ALL now covers the 4 decimals).
-    assert_eq!(DataTypeId::from_u16(16), DataTypeId::Decimal128);
+    // Still round-trips through u16 (the decimal band is 0x0300..).
+    assert_eq!(DataTypeId::from_u16(0x0302), DataTypeId::Decimal128);
 }
 
 #[test]
@@ -72,6 +99,7 @@ fn variable_and_fixed_size_variants() {
         DataTypeId::from_name("fixed_binary"),
         Some(DataTypeId::FixedBinary)
     );
-    assert_eq!(DataTypeId::from_u16(20), DataTypeId::FixedBinary);
+    assert_eq!(DataTypeId::from_u16(0x0510), DataTypeId::FixedBinary);
+    assert!(DataTypeId::FixedBinary.is_fixed_size() && !DataTypeId::Binary.is_fixed_size());
     assert_eq!(DataTypeId::Utf8.to_string(), "utf8");
 }

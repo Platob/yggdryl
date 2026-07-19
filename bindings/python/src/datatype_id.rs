@@ -21,61 +21,64 @@ use pyo3::prelude::*;
 use yggdryl_core::datatype_id;
 
 /// A **primitive element data type** — the interpretation of a value in a byte region, with the
-/// same wire-stable numeric values as the core (`Unknown = 0`, `Bool = 1`, … `F64 = 13`,
-/// `Decimal32 = 14`, … `Decimal256 = 17`, `Binary = 18`, … `FixedUtf8 = 21`), so `DataTypeId.I32 ==
-/// 6` and `int(DataTypeId.I32) == 6`. `Unknown` is the default "raw bytes" state. The four byte
-/// columns (`Binary` / `Utf8` / `FixedBinary` / `FixedUtf8`) are **not** fixed-width (their
-/// `byte_size()` is `0`; a fixed-size column's width lives in its field metadata). Hashable and
-/// frozen like an int enum.
+/// same wire-stable numeric values as the core. The ids are laid out in **per-category bands** with
+/// reserved gaps — `0x0000` special (`Unknown = 0`), `0x0010` boolean (`Bool = 16`), `0x0100`
+/// integers (`I8 = 256` … `U128 = 265`), `0x0200` floats (`F32 = 513`, `F64 = 514`), `0x0300`
+/// decimals (`Decimal32 = 768` … `Decimal256 = 771`), `0x0500` binary (`Binary = 1280`,
+/// `FixedBinary = 1296`), `0x0600` UTF-8 (`Utf8 = 1536`, `FixedUtf8 = 1552`) — so `DataTypeId.I32 ==
+/// 260` and `int(DataTypeId.I32) == 260` (`category()` names the band). `Unknown` is the default
+/// "raw bytes" state. The four byte columns are **not** fixed-width (their `byte_size()` is `0`; a
+/// fixed-size column's width lives in its field metadata). Hashable and frozen like an int enum.
 #[pyclass(module = "yggdryl.datatype_id", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DataTypeId {
-    /// Unknown / raw bytes — no declared element type (the default). Value `0`.
-    Unknown = 0,
-    /// A boolean — 1 byte in storage, 1 bit logically. Value `1`.
-    Bool = 1,
-    /// Signed 8-bit integer. Value `2`.
-    I8 = 2,
-    /// Unsigned 8-bit integer. Value `3`.
-    U8 = 3,
-    /// Signed 16-bit integer. Value `4`.
-    I16 = 4,
-    /// Unsigned 16-bit integer. Value `5`.
-    U16 = 5,
-    /// Signed 32-bit integer. Value `6`.
-    I32 = 6,
-    /// Unsigned 32-bit integer. Value `7`.
-    U32 = 7,
-    /// Signed 64-bit integer. Value `8`.
-    I64 = 8,
-    /// Unsigned 64-bit integer. Value `9`.
-    U64 = 9,
-    /// Signed 128-bit integer. Value `10`.
-    I128 = 10,
-    /// Unsigned 128-bit integer. Value `11`.
-    U128 = 11,
-    /// 32-bit IEEE-754 float. Value `12`.
-    F32 = 12,
-    /// 64-bit IEEE-754 float. Value `13`.
-    F64 = 13,
+    /// Unknown / raw bytes — no declared element type (the default). Value `0` (band `0x0000`).
+    Unknown = 0x0000,
+    /// A boolean — 1 byte in storage, 1 bit logically. Value `16` (band `0x0010`).
+    Bool = 0x0010,
+    /// Signed 8-bit integer. Value `256` (integer band `0x0100`).
+    I8 = 0x0100,
+    /// Unsigned 8-bit integer. Value `257`.
+    U8 = 0x0101,
+    /// Signed 16-bit integer. Value `258`.
+    I16 = 0x0102,
+    /// Unsigned 16-bit integer. Value `259`.
+    U16 = 0x0103,
+    /// Signed 32-bit integer. Value `260`.
+    I32 = 0x0104,
+    /// Unsigned 32-bit integer. Value `261`.
+    U32 = 0x0105,
+    /// Signed 64-bit integer. Value `262`.
+    I64 = 0x0106,
+    /// Unsigned 64-bit integer. Value `263`.
+    U64 = 0x0107,
+    /// Signed 128-bit integer. Value `264`.
+    I128 = 0x0108,
+    /// Unsigned 128-bit integer. Value `265`.
+    U128 = 0x0109,
+    /// 32-bit IEEE-754 float. Value `513` (float band `0x0200`; `0x0200` reserved for `f16`).
+    F32 = 0x0201,
+    /// 64-bit IEEE-754 float. Value `514`.
+    F64 = 0x0202,
     /// 32-bit fixed-point **decimal** — a signed `i32` unscaled value (precision/scale in metadata).
-    /// Value `14`.
-    Decimal32 = 14,
-    /// 64-bit fixed-point **decimal** — a signed `i64` unscaled value. Value `15`.
-    Decimal64 = 15,
-    /// 128-bit fixed-point **decimal** — a signed `i128` unscaled value. Value `16`.
-    Decimal128 = 16,
-    /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value. Value `17`.
-    Decimal256 = 17,
-    /// **Variable-length binary** — an offsets + data byte blob (`bytes` elements). Value `18`.
-    Binary = 18,
+    /// Value `768` (decimal band `0x0300`).
+    Decimal32 = 0x0300,
+    /// 64-bit fixed-point **decimal** — a signed `i64` unscaled value. Value `769`.
+    Decimal64 = 0x0301,
+    /// 128-bit fixed-point **decimal** — a signed `i128` unscaled value. Value `770`.
+    Decimal128 = 0x0302,
+    /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value. Value `771`.
+    Decimal256 = 0x0303,
+    /// **Variable-length binary** — an offsets + data byte blob (`bytes` elements). Value `1280`
+    /// (binary band `0x0500`).
+    Binary = 0x0500,
+    /// **Fixed-length binary** — a fixed per-column byte width (`bytes` elements). Value `1296`.
+    FixedBinary = 0x0510,
     /// **Variable-length UTF-8** string — the same offsets + data layout (`str` elements). Value
-    /// `19`.
-    Utf8 = 19,
-    /// **Fixed-length binary** — a fixed per-column byte width (`bytes` elements). Value `20`.
-    FixedBinary = 20,
-    /// **Fixed-length UTF-8** string — a fixed per-column byte width (`str` elements). Value `21`.
-    FixedUtf8 = 21,
+    /// `1536` (UTF-8 band `0x0600`).
+    Utf8 = 0x0600,
+    /// **Fixed-length UTF-8** string — a fixed per-column byte width (`str` elements). Value `1552`.
+    FixedUtf8 = 0x0610,
 }
 
 impl From<DataTypeId> for datatype_id::DataTypeId {
@@ -216,6 +219,39 @@ impl DataTypeId {
     /// layout (a fixed-size column packs at a fixed stride instead).
     fn is_variable_length(&self) -> bool {
         datatype_id::DataTypeId::from(*self).is_variable_length()
+    }
+
+    /// The **category** this type's band belongs to, as a lowercase name (`"integer"`, `"float"`,
+    /// `"decimal"`, `"binary"`, `"utf8"`, `"boolean"`, `"null"`, plus the reserved `"temporal"` /
+    /// `"nested"`).
+    fn category(&self) -> &'static str {
+        datatype_id::DataTypeId::from(*self).category().name()
+    }
+
+    /// Whether this is a **numeric** type — an integer, a float, or a decimal (not `bool`, not a
+    /// byte/string type).
+    fn is_numeric(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_numeric()
+    }
+
+    /// Whether this is a **byte / string** type (binary or UTF-8).
+    fn is_byte_like(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_byte_like()
+    }
+
+    /// Whether this is a **fixed-size** byte / string type (`FixedBinary` / `FixedUtf8`).
+    fn is_fixed_size(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_fixed_size()
+    }
+
+    /// Whether this is a **temporal** type (the reserved date / time / timestamp band).
+    fn is_temporal(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_temporal()
+    }
+
+    /// Whether this is a **nested / composite** type (the reserved struct / list / map band).
+    fn is_nested(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_nested()
     }
 
     /// How many whole elements of this type fit in `bytes` — `bytes / byte_size()`, or `0` for
