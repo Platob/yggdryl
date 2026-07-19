@@ -4,7 +4,8 @@
 //! Mirrors `yggdryl_core::datatype_id::DataTypeId`, a compact `#[repr(u16)]` int enum naming every native
 //! fixed-width primitive (`bool`, the signed/unsigned integers `i8`…`u128`, the floats
 //! `f32`/`f64`, the fixed-point `decimal32`…`decimal256`) plus the **byte types** (variable-length
-//! `binary` / `utf8` and fixed-size `fixed_binary` / `fixed_utf8`). napi cannot attach methods to a
+//! `binary` / `utf8`, the large-offset `large_binary` / `large_utf8`, and fixed-size `fixed_binary` /
+//! `fixed_utf8`). napi cannot attach methods to a
 //! bare enum, so — like the core — the type is
 //! exposed as a thin `#[napi]` **class** carrying its `u16` `id`: each variant is a named static
 //! factory (`DataTypeId.I64()`), and the width / classification helpers are methods
@@ -22,8 +23,9 @@ use yggdryl_core::datatype_id as core;
 /// through a `u16` (the value a source stores in its `Headers` as `Type-Id`), so the byte layer
 /// knows its element width, can compute an element count, and can widen / shrink a region between
 /// widths. Beyond the fixed-width numeric / decimal types it also names the **byte types**
-/// (variable-length `binary` / `utf8`, fixed-size `fixed_binary` / `fixed_utf8`). Equatable and
-/// stringly named; the id keys a map or travels over a wire.
+/// (variable-length `binary` / `utf8`, the large-offset `large_binary` / `large_utf8`, fixed-size
+/// `fixed_binary` / `fixed_utf8`). Equatable and stringly named; the id keys a map or travels over a
+/// wire.
 #[napi(namespace = "datatype_id")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct DataTypeId {
@@ -204,6 +206,26 @@ impl DataTypeId {
         }
     }
 
+    /// **Large variable-length binary** — an arbitrary byte blob per element with **`i64` offsets**
+    /// (the same layout as `Binary`, for a column whose total data bytes exceed the `i32` offset
+    /// range; id `0x0502`).
+    #[napi(factory, js_name = "LargeBinary")]
+    pub fn variant_large_binary() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::LargeBinary,
+        }
+    }
+
+    /// **Large variable-length UTF-8** — a string per element with **`i64` offsets** (the same
+    /// layout as `Utf8`, for a column whose total data bytes exceed the `i32` offset range;
+    /// id `0x0602`).
+    #[napi(factory, js_name = "LargeUtf8")]
+    pub fn variant_large_utf8() -> DataTypeId {
+        DataTypeId {
+            inner: core::DataTypeId::LargeUtf8,
+        }
+    }
+
     /// **Fixed-size binary** — a byte blob at a per-column fixed byte width (id `20`).
     #[napi(factory, js_name = "FixedBinary")]
     pub fn variant_fixed_binary() -> DataTypeId {
@@ -259,7 +281,8 @@ impl DataTypeId {
                 napi::Error::from_reason(format!(
                     "unknown data type name {token:?}: expected one of unknown, bool, i8, u8, \
                      i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, decimal32, decimal64, \
-                     decimal128, decimal256, binary, utf8, fixed_binary, fixed_utf8"
+                     decimal128, decimal256, binary, utf8, large_binary, large_utf8, fixed_binary, \
+                     fixed_utf8"
                 ))
             })
     }
@@ -354,6 +377,13 @@ impl DataTypeId {
     #[napi]
     pub fn is_fixed_size(&self) -> bool {
         self.inner.is_fixed_size()
+    }
+
+    /// Whether this is a **large** variable-length byte / string type (`LargeBinary` / `LargeUtf8`) —
+    /// the offsets + data layout with **`i64` offsets**, for data past the `i32` offset range.
+    #[napi]
+    pub fn is_large(&self) -> bool {
+        self.inner.is_large()
     }
 
     /// Whether this is a **temporal** type (the reserved date / time / timestamp band).

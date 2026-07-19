@@ -103,3 +103,37 @@ fn variable_and_fixed_size_variants() {
     assert!(DataTypeId::FixedBinary.is_fixed_size() && !DataTypeId::Binary.is_fixed_size());
     assert_eq!(DataTypeId::Utf8.to_string(), "utf8");
 }
+
+#[test]
+fn large_variants() {
+    // Ids, names, and the u16 / name round-trips (the reserved 0x0502 / 0x0602 slots).
+    assert_eq!(DataTypeId::LargeBinary.as_u16(), 0x0502);
+    assert_eq!(DataTypeId::LargeUtf8.as_u16(), 0x0602);
+    assert_eq!(DataTypeId::LargeBinary.name(), "large_binary");
+    assert_eq!(DataTypeId::LargeUtf8.name(), "large_utf8");
+    assert_eq!(DataTypeId::from_u16(0x0502), DataTypeId::LargeBinary);
+    assert_eq!(DataTypeId::from_u16(0x0602), DataTypeId::LargeUtf8);
+    assert_eq!(
+        DataTypeId::from_name("large_binary"),
+        Some(DataTypeId::LargeBinary)
+    );
+    assert_eq!(
+        DataTypeId::from_name("LARGE_UTF8"), // case-insensitive
+        Some(DataTypeId::LargeUtf8)
+    );
+
+    // They fall in the Binary / Utf8 bands automatically via the `>>8` category.
+    assert_eq!(DataTypeId::LargeBinary.category(), DataTypeCategory::Binary);
+    assert_eq!(DataTypeId::LargeUtf8.category(), DataTypeCategory::Utf8);
+
+    // Binary / Utf8 + variable-length + large; NOT fixed-size, no id-derivable width.
+    assert!(DataTypeId::LargeBinary.is_binary() && DataTypeId::LargeBinary.is_variable_length());
+    assert!(DataTypeId::LargeUtf8.is_utf8() && DataTypeId::LargeUtf8.is_variable_length());
+    assert!(DataTypeId::LargeBinary.is_large() && DataTypeId::LargeUtf8.is_large());
+    assert!(!DataTypeId::Binary.is_large() && !DataTypeId::FixedBinary.is_large());
+    assert!(!DataTypeId::LargeBinary.is_fixed_size() && !DataTypeId::LargeUtf8.is_fixed_size());
+    assert_eq!(DataTypeId::LargeBinary.byte_size(), 0);
+    assert_eq!(DataTypeId::LargeUtf8.byte_size(), 0);
+    assert!(!DataTypeId::LargeBinary.is_fixed_width());
+    assert_eq!(DataTypeId::LargeBinary.to_string(), "large_binary");
+}

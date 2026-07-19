@@ -511,6 +511,53 @@ def test_utf8_str_dtype():
 
 
 # -------------------------------------------------------------------------------------
+# The large (i64-offset) variable-length columns — LargeBinary / LargeUtf8
+# -------------------------------------------------------------------------------------
+
+
+def test_large_utf8_column_multibyte():
+    col = ByteSerie.from_values(["héllo", "世界", "", "ok"], DataTypeId.LargeUtf8)
+    assert col.dtype() == DataTypeId.LargeUtf8
+    assert col.get(0) == "héllo"
+    assert col.get(1) == "世界"  # multibyte survives the byte round-trip
+    assert col.get(2) == ""
+    assert col.to_list() == ["héllo", "世界", "", "ok"]
+    assert col.values() == ["héllo", "世界", "", "ok"]
+    assert col.width() is None  # variable-length — sizes each element itself
+    # A str dtype name resolves to the same large column.
+    assert ByteSerie.from_values(["a"], "large_utf8").dtype() == DataTypeId.LargeUtf8
+
+
+def test_large_binary_nullable():
+    col = ByteSerie.from_options([b"a", None, b"ccc"], DataTypeId.LargeBinary)
+    assert col.dtype() == DataTypeId.LargeBinary
+    assert col.len() == 3
+    assert col.null_count() == 1
+    assert col.get(0) == b"a"
+    assert col.get(1) is None  # the null
+    assert col.is_null(1) and col.is_valid(0)
+    assert col.to_list() == [b"a", None, b"ccc"]
+
+
+def test_large_utf8_with_max_width():
+    col = ByteSerie.from_values(["a", "bb", "ccc"], DataTypeId.LargeUtf8)
+    assert col.max_width() is None
+    bounded = col.with_max_width(3)  # every element already fits within 3 bytes
+    assert bounded.max_width() == 3
+    assert bounded.to_list() == ["a", "bb", "ccc"]  # bytes untouched
+    with pytest.raises(ValueError):
+        col.with_max_width(2)  # "ccc" is 3 bytes > 2
+
+
+def test_large_binary_set_is_append_only():
+    col = ByteSerie.from_values([b"a", b"bb", b"ccc"], DataTypeId.LargeBinary)
+    with pytest.raises(ValueError):
+        col.set(0, b"x")
+    with pytest.raises(ValueError):
+        col.set_checked(0, b"x")
+
+
+# -------------------------------------------------------------------------------------
 # A nullable column via from_options
 # -------------------------------------------------------------------------------------
 

@@ -19,8 +19,8 @@
 //! | `0x0200` | [`Float`](DataTypeCategory::Float) | `F32`, `F64` (`0x0200` reserved for `F16`) |
 //! | `0x0300` | [`Decimal`](DataTypeCategory::Decimal) | `Decimal32`…`Decimal256` |
 //! | `0x0400` | [`Temporal`](DataTypeCategory::Temporal) | *(reserved — date / time / timestamp)* |
-//! | `0x0500` | [`Binary`](DataTypeCategory::Binary) | `Binary`, `FixedBinary` (`Large*` reserved) |
-//! | `0x0600` | [`Utf8`](DataTypeCategory::Utf8) | `Utf8`, `FixedUtf8` (`Large*` reserved) |
+//! | `0x0500` | [`Binary`](DataTypeCategory::Binary) | `Binary`, `LargeBinary`, `FixedBinary` |
+//! | `0x0600` | [`Utf8`](DataTypeCategory::Utf8) | `Utf8`, `LargeUtf8`, `FixedUtf8` |
 //! | `0x0700` | [`Nested`](DataTypeCategory::Nested) | *(reserved — struct / list / map)* |
 
 /// The **broad family** a [`DataTypeId`] belongs to — one per band. `category()` returns it, and the
@@ -125,22 +125,28 @@ pub enum DataTypeId {
     /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value.
     Decimal256 = 0x0303,
 
-    // ---- binary band (0x0500; 0x0502/0x0503 reserved for Large*) ----------------------
+    // ---- binary band (0x0500; 0x0503 reserved for a future large-fixed slot) ----------
     /// **Variable-length binary** — an `i32`-offsets + data byte layout (`Vec<u8>` elements).
     Binary = 0x0500,
+    /// **Large variable-length binary** — the `Binary` layout with **`i64` offsets** (Arrow's
+    /// `LargeBinary`), for a column whose total data bytes exceed the `i32` offset range.
+    LargeBinary = 0x0502,
     /// **Fixed-length binary** — a fixed byte width per element (the width in the field metadata).
     FixedBinary = 0x0510,
 
-    // ---- utf8 band (0x0600; 0x0602/0x0603 reserved for Large*) -------------------------
+    // ---- utf8 band (0x0600; 0x0603 reserved for a future large-fixed slot) -------------
     /// **Variable-length UTF-8** string — the same offsets + data layout (`String` elements).
     Utf8 = 0x0600,
+    /// **Large variable-length UTF-8** string — the `Utf8` layout with **`i64` offsets** (Arrow's
+    /// `LargeUtf8`), for a column whose total data bytes exceed the `i32` offset range.
+    LargeUtf8 = 0x0602,
     /// **Fixed-length UTF-8** — a fixed byte width per element (the width in the field metadata).
     FixedUtf8 = 0x0610,
 }
 
 impl DataTypeId {
     /// Every non-`Unknown` type, in id order — the canonical set (used by tests and registries).
-    pub const ALL: [DataTypeId; 21] = [
+    pub const ALL: [DataTypeId; 23] = [
         DataTypeId::Bool,
         DataTypeId::I8,
         DataTypeId::U8,
@@ -159,8 +165,10 @@ impl DataTypeId {
         DataTypeId::Decimal128,
         DataTypeId::Decimal256,
         DataTypeId::Binary,
+        DataTypeId::LargeBinary,
         DataTypeId::FixedBinary,
         DataTypeId::Utf8,
+        DataTypeId::LargeUtf8,
         DataTypeId::FixedUtf8,
     ];
 
@@ -191,8 +199,10 @@ impl DataTypeId {
             0x0302 => DataTypeId::Decimal128,
             0x0303 => DataTypeId::Decimal256,
             0x0500 => DataTypeId::Binary,
+            0x0502 => DataTypeId::LargeBinary,
             0x0510 => DataTypeId::FixedBinary,
             0x0600 => DataTypeId::Utf8,
+            0x0602 => DataTypeId::LargeUtf8,
             0x0610 => DataTypeId::FixedUtf8,
             _ => DataTypeId::Unknown,
         }
@@ -220,7 +230,9 @@ impl DataTypeId {
             DataTypeId::Decimal128 => "decimal128",
             DataTypeId::Decimal256 => "decimal256",
             DataTypeId::Binary => "binary",
+            DataTypeId::LargeBinary => "large_binary",
             DataTypeId::Utf8 => "utf8",
+            DataTypeId::LargeUtf8 => "large_utf8",
             DataTypeId::FixedBinary => "fixed_binary",
             DataTypeId::FixedUtf8 => "fixed_utf8",
         }
@@ -277,7 +289,9 @@ impl DataTypeId {
             // width (a fixed-size type's width lives in the field metadata).
             DataTypeId::Unknown
             | DataTypeId::Binary
+            | DataTypeId::LargeBinary
             | DataTypeId::Utf8
+            | DataTypeId::LargeUtf8
             | DataTypeId::FixedBinary
             | DataTypeId::FixedUtf8 => 0,
         }
@@ -327,8 +341,16 @@ impl DataTypeId {
         matches!(self, DataTypeId::FixedBinary | DataTypeId::FixedUtf8)
     }
 
+    /// Whether this is a **large** variable-length byte / string type (`LargeBinary` / `LargeUtf8`) —
+    /// the offsets + data layout with **`i64` offsets** (Arrow's `Large*`), for data past the `i32`
+    /// offset range.
+    pub fn is_large(self) -> bool {
+        matches!(self, DataTypeId::LargeBinary | DataTypeId::LargeUtf8)
+    }
+
     /// Whether this is a **variable-length** byte / string type — an offsets + data layout (`Binary`
-    /// / `Utf8`, and the reserved `Large*`), i.e. a byte-like type that is not fixed-size.
+    /// / `Utf8` with `i32` offsets, `LargeBinary` / `LargeUtf8` with `i64` offsets), i.e. a byte-like
+    /// type that is not fixed-size.
     pub fn is_variable_length(self) -> bool {
         self.is_byte_like() && !self.is_fixed_size()
     }

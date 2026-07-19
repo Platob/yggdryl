@@ -1,21 +1,27 @@
-//! [`VarSerie`] — a **variable-length typed column**: an `i32` **offsets** buffer + a **data**
-//! buffer (element `i` is `data[offsets[i]..offsets[i + 1]]`), plus an optional validity bit buffer.
+//! [`VarSerie`] — a **variable-length typed column**: an **offsets** buffer + a **data** buffer
+//! (element `i` is `data[offsets[i]..offsets[i + 1]]`), plus an optional validity bit buffer.
 //!
 //! This is the Arrow variable-length layout over the [`IOBase`] contract: the offsets and data are
 //! each an `IOBase` source, so a `Binary` / `Utf8` column is in-heap, memory-mapped, or on device
 //! memory with no change to its surface. It implements the same [`Scalar`] / [`Serie`] traits the
 //! fixed families do — its `Value` is the type's owned form (`Vec<u8>` / `String`).
+//!
+//! The **offset element width** is generic, chosen by the marker's [`VarLenType::Offset`]: the
+//! default `Binary` / `Utf8` use `i32` offsets (4 bytes each), the `LargeBinary` / `LargeUtf8` use
+//! `i64` offsets (8 bytes — Arrow's `Large*`), for data past the `i32` offset range. Every offset op
+//! goes through [`VarOffset`], so the carrier is one implementation across both widths.
 
 use core::marker::PhantomData;
 
 use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
-use crate::typed::{HeaderField, Scalar, Serie, VarType};
+use crate::typed::{HeaderField, Scalar, Serie, VarLenType, VarOffset};
 
-/// A **variable-length column** over an `i32` offsets buffer + a data buffer (default [`Heap`]),
-/// plus an optional validity buffer. Element `i` occupies `data[offsets[i]..offsets[i + 1]]`.
-pub struct VarSerie<T: VarType, D: IOBase = Heap> {
-    /// `len + 1` little-endian `i32` offsets; `offsets[0] == 0`.
+/// A **variable-length column** over an offsets buffer + a data buffer (default [`Heap`]), plus an
+/// optional validity buffer. Element `i` occupies `data[offsets[i]..offsets[i + 1]]`. The offset
+/// element width (`i32` or `i64`) is the marker's [`VarLenType::Offset`].
+pub struct VarSerie<T: VarLenType, D: IOBase = Heap> {
+    /// `len + 1` little-endian offsets of width `T::Offset::WIDTH`; `offsets[0] == 0`.
     offsets: D,
     /// The concatenated element bytes.
     data: D,
@@ -42,13 +48,11 @@ fn max_width_error(index: usize, width: usize, max: usize) -> IoError {
     }
 }
 
-impl<T: VarType> VarSerie<T, Heap> {
+impl<T: VarLenType> VarSerie<T, Heap> {
     /// An empty non-nullable column.
     pub fn new() -> Self {
         let mut offsets = Heap::new();
-        offsets
-            .pwrite_i32(0, 0)
-            .expect("offset[0] into a fresh heap");
+        T::Offset::write(&mut offsets, 0, 0).expect("offset[0] into a fresh heap");
         VarSerie {
             offsets,
             data: Heap::new(),
@@ -88,9 +92,9 @@ impl<T: VarType> VarSerie<T, Heap> {
         self
     }
 
-    /// The byte end of the current content — `offsets[len]`.
-    fn end_offset(&self) -> i32 {
-        self.offsets.pread_i32(self.len as u64 * 4).unwrap_or(0)
+    /// The byte end of the current content — `offsets[len]` (widened to `i64`).
+    fn end_offset(&self) -> i64 {
+        T::Offset::read(&self.offsets, self.len as u64 * T::Offset::WIDTH)
     }
 
     /// Appends the **raw bytes** of a non-null element (the type-agnostic front door). This is the
@@ -99,10 +103,13 @@ impl<T: VarType> VarSerie<T, Heap> {
     pub fn push_bytes(&mut self, bytes: &[u8]) {
         let start = self.end_offset();
         self.data.pwrite_byte_array(start as u64, bytes);
-        let end = start + bytes.len() as i32;
-        self.offsets
-            .pwrite_i32((self.len as u64 + 1) * 4, end)
-            .expect("offset write into a heap");
+        let end = start + bytes.len() as i64;
+        T::Offset::write(
+            &mut self.offsets,
+            (self.len as u64 + 1) * T::Offset::WIDTH,
+            end,
+        )
+        .expect("offset write into a heap");
         if let Some(validity) = self.validity.as_mut() {
             validity
                 .pwrite_bit(self.len as u64, true)
@@ -143,9 +150,13 @@ impl<T: VarType> VarSerie<T, Heap> {
     pub fn push_null(&mut self) {
         self.ensure_validity();
         let start = self.end_offset();
-        self.offsets
-            .pwrite_i32((self.len as u64 + 1) * 4, start) // empty span: offset[len+1] == offset[len]
-            .expect("offset write into a heap");
+        // empty span: offset[len+1] == offset[len]
+        T::Offset::write(
+            &mut self.offsets,
+            (self.len as u64 + 1) * T::Offset::WIDTH,
+            start,
+        )
+        .expect("offset write into a heap");
         self.validity
             .as_mut()
             .expect("validity ensured")
@@ -194,13 +205,11 @@ impl<T: VarType> VarSerie<T, Heap> {
             out.ensure_validity();
         }
         // Pre-size: the copy holds `count + 1` offsets and the range's byte span in data.
-        out.offsets.reserve(((count + 1) * 4) as u64);
+        out.offsets.reserve((count as u64 + 1) * T::Offset::WIDTH);
         if count > 0 {
-            let data_start = self.offsets.pread_i32(start as u64 * 4).unwrap_or(0).max(0) as u64;
-            let data_end = self
-                .offsets
-                .pread_i32((start + count) as u64 * 4)
-                .unwrap_or(0)
+            let data_start =
+                T::Offset::read(&self.offsets, start as u64 * T::Offset::WIDTH).max(0) as u64;
+            let data_end = T::Offset::read(&self.offsets, (start + count) as u64 * T::Offset::WIDTH)
                 .max(0) as u64;
             out.data.reserve(data_end.saturating_sub(data_start));
         }
@@ -215,13 +224,13 @@ impl<T: VarType> VarSerie<T, Heap> {
     }
 }
 
-impl<T: VarType> Default for VarSerie<T, Heap> {
+impl<T: VarLenType> Default for VarSerie<T, Heap> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: VarType, D: IOBase> VarSerie<T, D> {
+impl<T: VarLenType, D: IOBase> VarSerie<T, D> {
     /// Wraps existing offsets + data (+ optional validity) as a `len`-element column — the zero-copy
     /// "view any [`IOBase`] pair as a variable-length column" front door. The wrapped column is
     /// **unbounded** ([`max_width`](VarSerie::max_width) is `None`); declare a bound afterwards with
@@ -270,11 +279,9 @@ impl<T: VarType, D: IOBase> VarSerie<T, D> {
     pub fn set_max_width(&mut self, max_width: Option<usize>) -> Result<(), IoError> {
         if let Some(max) = max_width {
             for index in 0..self.len {
-                let start = self.offsets.pread_i32(index as u64 * 4).unwrap_or(0).max(0) as usize;
-                let end = self
-                    .offsets
-                    .pread_i32((index as u64 + 1) * 4)
-                    .unwrap_or(0)
+                let start =
+                    T::Offset::read(&self.offsets, index as u64 * T::Offset::WIDTH).max(0) as usize;
+                let end = T::Offset::read(&self.offsets, (index as u64 + 1) * T::Offset::WIDTH)
                     .max(0) as usize;
                 let width = end.saturating_sub(start);
                 if width > max {
@@ -308,8 +315,9 @@ impl<T: VarType, D: IOBase> VarSerie<T, D> {
         if index >= self.len {
             return None;
         }
-        let start = self.offsets.pread_i32(index as u64 * 4).ok()?.max(0) as u64;
-        let end = self.offsets.pread_i32((index as u64 + 1) * 4).ok()?.max(0) as u64;
+        let start = T::Offset::read(&self.offsets, index as u64 * T::Offset::WIDTH).max(0) as u64;
+        let end =
+            T::Offset::read(&self.offsets, (index as u64 + 1) * T::Offset::WIDTH).max(0) as u64;
         Some(
             self.data
                 .pread_vec(start, end.saturating_sub(start) as usize),
@@ -363,7 +371,7 @@ impl<T: VarType, D: IOBase> VarSerie<T, D> {
     }
 }
 
-impl<T: VarType, D: IOBase> Scalar for VarSerie<T, D> {
+impl<T: VarLenType, D: IOBase> Scalar for VarSerie<T, D> {
     type Value = T::Owned;
 
     fn data_type_id(&self) -> DataTypeId {
@@ -387,4 +395,4 @@ impl<T: VarType, D: IOBase> Scalar for VarSerie<T, D> {
     }
 }
 
-impl<T: VarType, D: IOBase> Serie for VarSerie<T, D> {}
+impl<T: VarLenType, D: IOBase> Serie for VarSerie<T, D> {}

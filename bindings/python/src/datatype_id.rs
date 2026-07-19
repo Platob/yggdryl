@@ -25,10 +25,12 @@ use yggdryl_core::datatype_id;
 /// reserved gaps — `0x0000` special (`Unknown = 0`), `0x0010` boolean (`Bool = 16`), `0x0100`
 /// integers (`I8 = 256` … `U128 = 265`), `0x0200` floats (`F32 = 513`, `F64 = 514`), `0x0300`
 /// decimals (`Decimal32 = 768` … `Decimal256 = 771`), `0x0500` binary (`Binary = 1280`,
-/// `FixedBinary = 1296`), `0x0600` UTF-8 (`Utf8 = 1536`, `FixedUtf8 = 1552`) — so `DataTypeId.I32 ==
-/// 260` and `int(DataTypeId.I32) == 260` (`category()` names the band). `Unknown` is the default
-/// "raw bytes" state. The four byte columns are **not** fixed-width (their `byte_size()` is `0`; a
-/// fixed-size column's width lives in its field metadata). Hashable and frozen like an int enum.
+/// `LargeBinary = 1282`, `FixedBinary = 1296`), `0x0600` UTF-8 (`Utf8 = 1536`, `LargeUtf8 = 1538`,
+/// `FixedUtf8 = 1552`) — so `DataTypeId.I32 == 260` and `int(DataTypeId.I32) == 260` (`category()`
+/// names the band). `Unknown` is the default "raw bytes" state. The six byte columns are **not**
+/// fixed-width (their `byte_size()` is `0`; a fixed-size column's width lives in its field metadata).
+/// A `Large*` column uses `i64` offsets (Arrow's `Large*`) for data beyond the `i32` offset range.
+/// Hashable and frozen like an int enum.
 #[pyclass(module = "yggdryl.datatype_id", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DataTypeId {
@@ -72,11 +74,19 @@ pub enum DataTypeId {
     /// **Variable-length binary** — an offsets + data byte blob (`bytes` elements). Value `1280`
     /// (binary band `0x0500`).
     Binary = 0x0500,
+    /// **Large variable-length binary** — the `Binary` offsets + data layout with **`i64` offsets**
+    /// (Arrow's `LargeBinary`), for a column whose packed data exceeds the `i32` offset range
+    /// (`bytes` elements). Value `1282`.
+    LargeBinary = 0x0502,
     /// **Fixed-length binary** — a fixed per-column byte width (`bytes` elements). Value `1296`.
     FixedBinary = 0x0510,
     /// **Variable-length UTF-8** string — the same offsets + data layout (`str` elements). Value
     /// `1536` (UTF-8 band `0x0600`).
     Utf8 = 0x0600,
+    /// **Large variable-length UTF-8** string — the `Utf8` layout with **`i64` offsets** (Arrow's
+    /// `LargeUtf8`), for a column whose packed data exceeds the `i32` offset range (`str` elements).
+    /// Value `1538`.
+    LargeUtf8 = 0x0602,
     /// **Fixed-length UTF-8** string — a fixed per-column byte width (`str` elements). Value `1552`.
     FixedUtf8 = 0x0610,
 }
@@ -103,7 +113,9 @@ impl From<DataTypeId> for datatype_id::DataTypeId {
             DataTypeId::Decimal128 => datatype_id::DataTypeId::Decimal128,
             DataTypeId::Decimal256 => datatype_id::DataTypeId::Decimal256,
             DataTypeId::Binary => datatype_id::DataTypeId::Binary,
+            DataTypeId::LargeBinary => datatype_id::DataTypeId::LargeBinary,
             DataTypeId::Utf8 => datatype_id::DataTypeId::Utf8,
+            DataTypeId::LargeUtf8 => datatype_id::DataTypeId::LargeUtf8,
             DataTypeId::FixedBinary => datatype_id::DataTypeId::FixedBinary,
             DataTypeId::FixedUtf8 => datatype_id::DataTypeId::FixedUtf8,
         }
@@ -132,7 +144,9 @@ impl From<datatype_id::DataTypeId> for DataTypeId {
             datatype_id::DataTypeId::Decimal128 => DataTypeId::Decimal128,
             datatype_id::DataTypeId::Decimal256 => DataTypeId::Decimal256,
             datatype_id::DataTypeId::Binary => DataTypeId::Binary,
+            datatype_id::DataTypeId::LargeBinary => DataTypeId::LargeBinary,
             datatype_id::DataTypeId::Utf8 => DataTypeId::Utf8,
+            datatype_id::DataTypeId::LargeUtf8 => DataTypeId::LargeUtf8,
             datatype_id::DataTypeId::FixedBinary => DataTypeId::FixedBinary,
             datatype_id::DataTypeId::FixedUtf8 => DataTypeId::FixedUtf8,
             // The core enum is `#[non_exhaustive]`; a newer/foreign id degrades to raw bytes.
@@ -242,6 +256,12 @@ impl DataTypeId {
     /// Whether this is a **fixed-size** byte / string type (`FixedBinary` / `FixedUtf8`).
     fn is_fixed_size(&self) -> bool {
         datatype_id::DataTypeId::from(*self).is_fixed_size()
+    }
+
+    /// Whether this is a **large** variable-length byte / string type (`LargeBinary` / `LargeUtf8`)
+    /// — the `i64`-offsets layout for a column whose packed data exceeds the `i32` offset range.
+    fn is_large(&self) -> bool {
+        datatype_id::DataTypeId::from(*self).is_large()
     }
 
     /// Whether this is a **temporal** type (the reserved date / time / timestamp band).

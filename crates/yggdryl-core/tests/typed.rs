@@ -806,6 +806,58 @@ fn var_scalar() {
 }
 
 // -------------------------------------------------------------------------------------
+// Large variable-length: LargeBinary / LargeUtf8 (the same layout, i64 offsets — Arrow's Large*)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn var_large_utf8_and_binary_use_i64_offsets() {
+    use yggdryl_core::typed::{LargeBinary, LargeUtf8};
+
+    // A LargeUtf8 column round-trips values exactly like a Utf8 column (get / values / to_options).
+    let col = VarSerie::<LargeUtf8>::from_values(&["héllo".to_string(), "世界".to_string()]);
+    assert_eq!(col.len(), 2);
+    assert_eq!(col.get(0).as_deref(), Some("héllo")); // multibyte
+    assert_eq!(col.get(1).as_deref(), Some("世界"));
+    assert_eq!(col.values(), vec!["héllo", "世界"]);
+    assert_eq!(
+        col.to_options(),
+        vec![Some("héllo".to_string()), Some("世界".to_string())]
+    );
+    assert_eq!(col.data_type_id(), DataTypeId::LargeUtf8);
+    assert_eq!(col.field().data_type_id(), DataTypeId::LargeUtf8);
+
+    // The key i64 point: the offsets buffer uses 8-byte offsets. Two pushes leave `len + 1 == 3`
+    // offsets → 3 * 8 = 24 bytes, versus a normal Utf8 column's 3 * 4 = 12 (its i32 offsets).
+    assert_eq!(col.offsets().byte_size(), 3 * 8);
+    let narrow = VarSerie::<Utf8>::from_values(&["héllo".to_string(), "世界".to_string()]);
+    assert_eq!(narrow.offsets().byte_size(), 3 * 4);
+
+    // A nullable LargeBinary via from_options — a null is an empty span, null_count is correct.
+    let bin = VarSerie::<LargeBinary>::from_options(&[
+        Some(b"ab".to_vec()),
+        None,
+        Some(b"cdef".to_vec()),
+    ]);
+    assert_eq!(bin.len(), 3);
+    assert_eq!(bin.null_count(), 1);
+    assert_eq!(bin.get(0), Some(b"ab".to_vec()));
+    assert_eq!(bin.get(1), None); // the null
+    assert_eq!(bin.get(2), Some(b"cdef".to_vec()));
+    assert_eq!(bin.data_type_id(), DataTypeId::LargeBinary);
+    // Nullable offsets are i64 too: `len + 1 == 4` offsets → 4 * 8 = 32 bytes.
+    assert_eq!(bin.offsets().byte_size(), 4 * 8);
+
+    // The universal aggregations still work over a large column (lexicographic min, distinct count).
+    let words = VarSerie::<LargeUtf8>::from_values(&[
+        "pear".to_string(),
+        "apple".to_string(),
+        "pear".to_string(),
+    ]);
+    assert_eq!(words.min_value().as_deref(), Some("apple")); // lexicographic
+    assert_eq!(words.n_unique(), 2); // {pear, apple}
+}
+
+// -------------------------------------------------------------------------------------
 // Variable-length max element width — the optional schema bound on VarSerie (Binary / Utf8)
 // -------------------------------------------------------------------------------------
 

@@ -536,12 +536,14 @@ values), `first_value` / `last_value`, and — for any orderable element — `mi
 |---|---|---|
 | `fixedbyte` | `Int8`…`UInt128`, `Float32`, `Float64`, `Decimal32`…`Decimal256`, `FixedBinary`, `FixedUtf8` | fixed length, byte-packed |
 | `fixedbit` | `Bit` (bool) | fixed length, bit-packed |
-| `varbyte` | `Binary`, `Utf8` | variable length (offsets + data) |
+| `varbyte` | `Binary`, `Utf8`, `LargeBinary`, `LargeUtf8` | variable length (offsets + data) |
 | `varbit` *(reserved)* | bit-lists | variable length, bit-packed |
 
 A **decimal** carries precision/scale in its `Field`; `Decimal256` uses the native 256-bit `I256`. A
 **fixed-size** `FixedBinary` / `FixedUtf8` carries its byte `width` in its `Field`; a **variable-length**
-`Binary` / `Utf8` sizes each element through its offsets buffer.
+`Binary` / `Utf8` sizes each element through an **i32**-offsets buffer, and `LargeBinary` / `LargeUtf8`
+through an **i64**-offsets buffer (Arrow's `Large*` — for a column whose total data exceeds the i32
+offset range). The offset width is chosen by the marker, so the carrier (`VarSerie`) is one type.
 
 Booleans do not reduce (`Bit` is not `Reduce`); the numeric types run `sum` / `min` / `max` / `mean`
 over the source's vectorized, NaN-safe `Aggregate` kernels. A column is generic over its backing

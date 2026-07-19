@@ -3,10 +3,10 @@
 //!
 //! Where a `DataType` element is a fixed-width `Copy` scalar, a `VarType` element is a **byte
 //! sequence** whose owned form is a `Vec<u8>` (binary) or `String` (UTF-8). The same descriptor
-//! backs both layouts built on it: the variable-length [`VarSerie`](super::VarSerie) (an `i32`
-//! offsets + data buffer) and the fixed-size [`FixedSizeSerie`](super::FixedSizeSerie) (a fixed byte
-//! stride) — a marker declares only its tag and the bytes↔value conversion; the carrier picks the
-//! layout.
+//! backs both layouts built on it: the variable-length [`VarSerie`](super::VarSerie) (an offsets +
+//! data buffer, `i32` or `i64` offsets per the marker's [`VarLenType`](super::VarLenType)) and the
+//! fixed-size [`FixedSizeSerie`](super::FixedSizeSerie) (a fixed byte stride) — a marker declares only
+//! its tag and the bytes↔value conversion; the carrier picks the layout.
 
 use crate::datatype_id::DataTypeId;
 

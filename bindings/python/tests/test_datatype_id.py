@@ -4,7 +4,8 @@ Mirrors ``crates/yggdryl-core/src/datatype_id.rs`` on the Python surface: the wi
 numeric values, the ``u16`` id round-trip (``as_u16`` / ``from_u16``), the lowercase token
 names (``name`` / ``from_name``), the storage widths (``byte_size`` / ``bit_size``), the
 category predicates (``is_integer`` / ``is_signed`` / ``is_float`` / ``is_bool`` /
-``is_fixed_width`` / ``is_binary`` / ``is_utf8`` / ``is_variable_length``), the element count,
+``is_fixed_width`` / ``is_binary`` / ``is_utf8`` / ``is_variable_length`` / ``is_large``), the
+element count,
 and the int/index/str/repr dunders.
 """
 
@@ -36,8 +37,10 @@ ALL_TYPES = [
     (DataTypeId.Decimal128, 0x0302, "decimal128"),
     (DataTypeId.Decimal256, 0x0303, "decimal256"),
     (DataTypeId.Binary, 0x0500, "binary"),
+    (DataTypeId.LargeBinary, 0x0502, "large_binary"),
     (DataTypeId.FixedBinary, 0x0510, "fixed_binary"),
     (DataTypeId.Utf8, 0x0600, "utf8"),
+    (DataTypeId.LargeUtf8, 0x0602, "large_utf8"),
     (DataTypeId.FixedUtf8, 0x0610, "fixed_utf8"),
 ]
 
@@ -50,8 +53,10 @@ CATEGORIES = {
     DataTypeId.F64: "float",
     DataTypeId.Decimal128: "decimal",
     DataTypeId.Binary: "binary",
+    DataTypeId.LargeBinary: "binary",
     DataTypeId.FixedBinary: "binary",
     DataTypeId.Utf8: "utf8",
+    DataTypeId.LargeUtf8: "utf8",
     DataTypeId.FixedUtf8: "utf8",
 }
 
@@ -191,7 +196,9 @@ def test_hashable_and_frozen():
 def test_byte_variants():
     byte_types = [
         (DataTypeId.Binary, 0x0500, "binary"),
+        (DataTypeId.LargeBinary, 0x0502, "large_binary"),
         (DataTypeId.Utf8, 0x0600, "utf8"),
+        (DataTypeId.LargeUtf8, 0x0602, "large_utf8"),
         (DataTypeId.FixedBinary, 0x0510, "fixed_binary"),
         (DataTypeId.FixedUtf8, 0x0610, "fixed_utf8"),
     ]
@@ -210,21 +217,58 @@ def test_byte_variants():
 
 
 def test_byte_category_predicates():
-    # is_binary: Binary / FixedBinary.
+    # is_binary: Binary / LargeBinary / FixedBinary.
     assert DataTypeId.Binary.is_binary()
+    assert DataTypeId.LargeBinary.is_binary()
     assert DataTypeId.FixedBinary.is_binary()
     assert not DataTypeId.Utf8.is_binary()
     assert not DataTypeId.I32.is_binary()
 
-    # is_utf8: Utf8 / FixedUtf8.
+    # is_utf8: Utf8 / LargeUtf8 / FixedUtf8.
     assert DataTypeId.Utf8.is_utf8()
+    assert DataTypeId.LargeUtf8.is_utf8()
     assert DataTypeId.FixedUtf8.is_utf8()
     assert not DataTypeId.Binary.is_utf8()
     assert not DataTypeId.I32.is_utf8()
 
-    # is_variable_length: only the offsets + data layouts (Binary / Utf8).
+    # is_variable_length: the offsets + data layouts (Binary / Utf8 / LargeBinary / LargeUtf8).
     assert DataTypeId.Binary.is_variable_length()
     assert DataTypeId.Utf8.is_variable_length()
+    assert DataTypeId.LargeBinary.is_variable_length()
+    assert DataTypeId.LargeUtf8.is_variable_length()
     assert not DataTypeId.FixedBinary.is_variable_length()
     assert not DataTypeId.FixedUtf8.is_variable_length()
     assert not DataTypeId.I32.is_variable_length()
+
+
+def test_large_byte_variants():
+    # The i64-offset large columns — ids, names, and the u16 / name round-trips.
+    for dtype, value, name in [
+        (DataTypeId.LargeBinary, 0x0502, "large_binary"),
+        (DataTypeId.LargeUtf8, 0x0602, "large_utf8"),
+    ]:
+        assert int(dtype) == value
+        assert dtype.name() == name
+        assert DataTypeId.from_u16(value) == dtype
+        assert DataTypeId.from_name(name) == dtype
+        # Variable-length + large, but not a fixed-size stride.
+        assert dtype.is_variable_length()
+        assert dtype.is_large()
+        assert dtype.is_fixed_size() is False
+        # Not fixed-width — no id-derivable element width.
+        assert dtype.byte_size() == 0
+        assert dtype.is_fixed_width() is False
+
+    # is_binary / is_utf8 split the two large columns.
+    assert DataTypeId.LargeBinary.is_binary() and not DataTypeId.LargeBinary.is_utf8()
+    assert DataTypeId.LargeUtf8.is_utf8() and not DataTypeId.LargeUtf8.is_binary()
+
+    # is_large is false for the i32 / fixed byte columns and for a numeric type.
+    for dtype in (
+        DataTypeId.Binary,
+        DataTypeId.Utf8,
+        DataTypeId.FixedBinary,
+        DataTypeId.FixedUtf8,
+        DataTypeId.I32,
+    ):
+        assert dtype.is_large() is False

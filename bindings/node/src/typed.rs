@@ -19,8 +19,9 @@
 //! `mean` throw the core's guided `Error`.
 //!
 //! A **byte column** ([`ByteSerie`]) is the variable-length / fixed-size counterpart of [`Serie`],
-//! type-erased over the four byte carriers: variable-length `Binary` / `Utf8` (an `i32` offsets +
-//! data buffer) and fixed-size `FixedBinary` / `FixedUtf8` (a fixed byte stride, short values
+//! type-erased over the six byte carriers: variable-length `Binary` / `Utf8` (an `i32` offsets +
+//! data buffer), their **large** twins `LargeBinary` / `LargeUtf8` (`i64` offsets, for data past the
+//! `i32` offset range), and fixed-size `FixedBinary` / `FixedUtf8` (a fixed byte stride, short values
 //! zero-padded and long ones truncated). A binary element crosses as a JS `Buffer`, a UTF-8 element
 //! as a JS `string`; it shares the same null-aware `get` / `toList` / `field` surface.
 //!
@@ -46,7 +47,8 @@ use yggdryl_core::typed::fixedbyte::{
 };
 use yggdryl_core::typed::{
     Binary, Decoder, Encoder, Field as FieldTrait, FixedBinary, FixedSerie, FixedSizeSerie,
-    FixedUtf8, HeaderField, Scalar, Serie as SerieTrait, Utf8, VarSerie, VarType,
+    FixedUtf8, HeaderField, LargeBinary, LargeUtf8, Scalar, Serie as SerieTrait, Utf8, VarLenType,
+    VarSerie, VarType,
 };
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
@@ -1687,7 +1689,7 @@ trait RebuildNamed {
     fn rebuild_named(&self, name: &str) -> Self;
 }
 
-impl<T: VarType> RebuildNamed for VarSerie<T> {
+impl<T: VarLenType> RebuildNamed for VarSerie<T> {
     fn rebuild_named(&self, name: &str) -> Self {
         VarSerie::from_parts(
             self.offsets().clone(),
@@ -1713,21 +1715,28 @@ impl<T: VarType> RebuildNamed for FixedSizeSerie<T> {
 
 // ---- the erased byte column + its dispatch ---------------------------------------------
 
-/// A byte column for each of the four byte carriers — the type-erased backing of [`ByteSerie`].
+/// A byte column for each of the six byte carriers — the type-erased backing of [`ByteSerie`]. The
+/// variable-length carriers come in two offset widths: `Binary` / `Utf8` (`i32` offsets) and their
+/// **large** twins `LargeBinary` / `LargeUtf8` (`i64` offsets, for data past the `i32` offset range);
+/// the fixed-size carriers (`FixedBinary` / `FixedUtf8`) have no offsets.
 enum ByteInner {
     Binary(VarSerie<Binary>),
     Utf8(VarSerie<Utf8>),
+    LargeBinary(VarSerie<LargeBinary>),
+    LargeUtf8(VarSerie<LargeUtf8>),
     FixedBinary(FixedSizeSerie<FixedBinary>),
     FixedUtf8(FixedSizeSerie<FixedUtf8>),
 }
 
 /// Runs `$body` against the inner byte column (`$serie`) of whichever variant is present — the
-/// four-way match, written once. Every arm must yield the same type.
+/// six-way match, written once. Every arm must yield the same type.
 macro_rules! byte_dispatch {
     ($self:expr, $serie:ident => $body:expr) => {
         match &$self.inner {
             ByteInner::Binary($serie) => $body,
             ByteInner::Utf8($serie) => $body,
+            ByteInner::LargeBinary($serie) => $body,
+            ByteInner::LargeUtf8($serie) => $body,
             ByteInner::FixedBinary($serie) => $body,
             ByteInner::FixedUtf8($serie) => $body,
         }
@@ -1741,6 +1750,8 @@ macro_rules! byte_rebuild {
         match &$self.inner {
             ByteInner::Binary($serie) => ByteInner::Binary($build),
             ByteInner::Utf8($serie) => ByteInner::Utf8($build),
+            ByteInner::LargeBinary($serie) => ByteInner::LargeBinary($build),
+            ByteInner::LargeUtf8($serie) => ByteInner::LargeUtf8($build),
             ByteInner::FixedBinary($serie) => ByteInner::FixedBinary($build),
             ByteInner::FixedUtf8($serie) => ByteInner::FixedUtf8($build),
         }
@@ -1748,8 +1759,9 @@ macro_rules! byte_rebuild {
 }
 
 /// A **byte-blob typed column** — the variable-length / fixed-size counterpart of [`Serie`], over the
-/// four byte carriers: variable-length `Binary` (an `i32` offsets + data buffer) / `Utf8`, and
-/// fixed-size `FixedBinary` / `FixedUtf8` (a fixed byte stride). A binary element crosses as a JS
+/// six byte carriers: variable-length `Binary` (an `i32` offsets + data buffer) / `Utf8`, their
+/// **large** twins `LargeBinary` / `LargeUtf8` (`i64` offsets, for data past the `i32` offset range),
+/// and fixed-size `FixedBinary` / `FixedUtf8` (a fixed byte stride). A binary element crosses as a JS
 /// `Buffer`, a UTF-8 element as a JS `string`; a null element is `null`. Built from a value list
 /// ([`fromValues`](ByteSerie::from_values)) or an option list
 /// ([`fromOptions`](ByteSerie::from_options)).
@@ -1761,9 +1773,9 @@ pub struct ByteSerie {
 #[napi(namespace = "typed")]
 impl ByteSerie {
     /// A **non-null** byte column of `values`, each an element of `dtype` (`DataTypeId.Binary()`,
-    /// `Utf8()`, `FixedBinary()`, `FixedUtf8()`). Binary elements arrive as `Buffer`s, UTF-8 elements
-    /// as `string`s. A fixed-size `dtype` requires `width` (the fixed element byte length); a
-    /// variable-length one takes no `width`.
+    /// `Utf8()`, `LargeBinary()`, `LargeUtf8()`, `FixedBinary()`, `FixedUtf8()`). Binary elements
+    /// arrive as `Buffer`s, UTF-8 elements as `string`s. A fixed-size `dtype` requires `width` (the
+    /// fixed element byte length); a variable-length one (including the large twins) takes no `width`.
     #[napi(factory)]
     pub fn from_values(
         values: Vec<Either<Buffer, String>>,
@@ -1778,6 +1790,16 @@ impl ByteSerie {
             DtId::Utf8 => {
                 reject_width(width)?;
                 ByteInner::Utf8(VarSerie::<Utf8>::from_values(&utf8_values(values)?))
+            }
+            DtId::LargeBinary => {
+                reject_width(width)?;
+                ByteInner::LargeBinary(VarSerie::<LargeBinary>::from_values(&binary_values(
+                    values,
+                )?))
+            }
+            DtId::LargeUtf8 => {
+                reject_width(width)?;
+                ByteInner::LargeUtf8(VarSerie::<LargeUtf8>::from_values(&utf8_values(values)?))
             }
             DtId::FixedBinary => {
                 let width = require_width(width)?;
@@ -1814,6 +1836,16 @@ impl ByteSerie {
             DtId::Utf8 => {
                 reject_width(width)?;
                 ByteInner::Utf8(VarSerie::<Utf8>::from_options(&utf8_options(values)?))
+            }
+            DtId::LargeBinary => {
+                reject_width(width)?;
+                ByteInner::LargeBinary(VarSerie::<LargeBinary>::from_options(&binary_options(
+                    values,
+                )?))
+            }
+            DtId::LargeUtf8 => {
+                reject_width(width)?;
+                ByteInner::LargeUtf8(VarSerie::<LargeUtf8>::from_options(&utf8_options(values)?))
             }
             DtId::FixedBinary => {
                 let width = require_width(width)?;
@@ -1949,11 +1981,14 @@ impl ByteSerie {
     }
 
     /// The fixed element **byte width** for a fixed-size column (`FixedBinary` / `FixedUtf8`), or
-    /// `null` for a variable-length one (`Binary` / `Utf8`).
+    /// `null` for a variable-length one (`Binary` / `Utf8` / `LargeBinary` / `LargeUtf8`).
     #[napi]
     pub fn width(&self) -> Option<u32> {
         match &self.inner {
-            ByteInner::Binary(_) | ByteInner::Utf8(_) => None,
+            ByteInner::Binary(_)
+            | ByteInner::Utf8(_)
+            | ByteInner::LargeBinary(_)
+            | ByteInner::LargeUtf8(_) => None,
             ByteInner::FixedBinary(serie) => Some(serie.width() as u32),
             ByteInner::FixedUtf8(serie) => Some(serie.width() as u32),
         }
@@ -1968,7 +2003,8 @@ impl ByteSerie {
         }
     }
 
-    /// A copy of this **variable-length** byte column (`Binary` / `Utf8`) with its optional **max
+    /// A copy of this **variable-length** byte column (`Binary` / `Utf8` / `LargeBinary` /
+    /// `LargeUtf8`) with its optional **max
     /// element byte width** set — a fresh column sharing the same bytes, **validating** every
     /// existing element against `maxWidth` (an element already wider throws the guided `Error`
     /// naming its index, width, the max, and the fix). The max is recorded as the field's
@@ -2000,6 +2036,26 @@ impl ByteSerie {
                     .with_max_width(max_width)
                     .map_err(to_error)?,
                 ),
+                ByteInner::LargeBinary(serie) => ByteInner::LargeBinary(
+                    VarSerie::<LargeBinary>::from_parts(
+                        serie.offsets().clone(),
+                        serie.data().clone(),
+                        serie.validity().cloned(),
+                        serie.len(),
+                    )
+                    .with_max_width(max_width)
+                    .map_err(to_error)?,
+                ),
+                ByteInner::LargeUtf8(serie) => ByteInner::LargeUtf8(
+                    VarSerie::<LargeUtf8>::from_parts(
+                        serie.offsets().clone(),
+                        serie.data().clone(),
+                        serie.validity().cloned(),
+                        serie.len(),
+                    )
+                    .with_max_width(max_width)
+                    .map_err(to_error)?,
+                ),
                 ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => return Err(to_error(
                     "a fixed-size column already has a fixed width: max_width applies only to a \
                      variable binary / utf8 column (its width() is the fixed stride)",
@@ -2008,15 +2064,17 @@ impl ByteSerie {
         Ok(ByteSerie { inner })
     }
 
-    /// The optional **max element byte width** for a **variable-length** column (`Binary` /
-    /// `Utf8`) — the value set by [`withMaxWidth`](ByteSerie::with_max_width), or `null` when
-    /// unbounded. Always `null` for a **fixed-size** column (`FixedBinary` / `FixedUtf8`), whose
-    /// width is exact — read its stride with [`width`](ByteSerie::width).
+    /// The optional **max element byte width** for a **variable-length** column (`Binary` / `Utf8` /
+    /// `LargeBinary` / `LargeUtf8`) — the value set by [`withMaxWidth`](ByteSerie::with_max_width), or
+    /// `null` when unbounded. Always `null` for a **fixed-size** column (`FixedBinary` / `FixedUtf8`),
+    /// whose width is exact — read its stride with [`width`](ByteSerie::width).
     #[napi]
     pub fn max_width(&self) -> Option<u32> {
         match &self.inner {
             ByteInner::Binary(serie) => serie.max_width().map(|max| max as u32),
             ByteInner::Utf8(serie) => serie.max_width().map(|max| max as u32),
+            ByteInner::LargeBinary(serie) => serie.max_width().map(|max| max as u32),
+            ByteInner::LargeUtf8(serie) => serie.max_width().map(|max| max as u32),
             ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => None,
         }
     }
@@ -2049,7 +2107,10 @@ impl ByteSerie {
         match &mut self.inner {
             ByteInner::FixedBinary(serie) => serie.set(index, &as_binary_element(value)?),
             ByteInner::FixedUtf8(serie) => serie.set(index, as_utf8_element(value)?.as_bytes()),
-            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+            ByteInner::Binary(_)
+            | ByteInner::Utf8(_)
+            | ByteInner::LargeBinary(_)
+            | ByteInner::LargeUtf8(_) => return Err(var_set_error()),
         }
         .map_err(to_error)
     }
@@ -2066,7 +2127,10 @@ impl ByteSerie {
             ByteInner::FixedUtf8(serie) => {
                 serie.set_checked(index, as_utf8_element(value)?.as_bytes())
             }
-            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+            ByteInner::Binary(_)
+            | ByteInner::Utf8(_)
+            | ByteInner::LargeBinary(_)
+            | ByteInner::LargeUtf8(_) => return Err(var_set_error()),
         };
         Ok(())
     }

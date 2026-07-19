@@ -168,6 +168,49 @@ test('byte-type predicates: isBinary / isUtf8 / isVariableLength', () => {
   assert.equal(DataTypeId.I64().isVariableLength(), false)
 })
 
+test('the large byte-type factories name their band ids and round-trip', () => {
+  const largeTypes = [
+    ['LargeBinary', 0x0502, 'large_binary'],
+    ['LargeUtf8', 0x0602, 'large_utf8'],
+  ]
+  for (const [factory, id, name] of largeTypes) {
+    const d = DataTypeId[factory]()
+    assert.ok(d instanceof DataTypeId)
+    assert.equal(d.asU16(), id, `${factory}.asU16()`)
+    assert.equal(d.name(), name, `${factory}.name()`)
+    assert.ok(DataTypeId.fromU16(id).equals(d), `fromU16(${id})`)
+    assert.ok(DataTypeId.fromName(name).equals(d), `fromName(${name})`)
+    // large byte types have no id-derivable element width and are not fixed-width
+    assert.equal(d.byteSize(), 0, `${factory}.byteSize()`)
+    assert.equal(d.isFixedWidth(), false, `${factory}.isFixedWidth()`)
+  }
+})
+
+test('large byte-type predicates: isBinary / isUtf8 / isVariableLength / isLarge', () => {
+  const largeBinary = DataTypeId.LargeBinary()
+  const largeUtf8 = DataTypeId.LargeUtf8()
+
+  // isLarge — LargeBinary | LargeUtf8 only
+  assert.equal(largeBinary.isLarge(), true)
+  assert.equal(largeUtf8.isLarge(), true)
+  assert.equal(DataTypeId.Binary().isLarge(), false)
+  assert.equal(DataTypeId.Utf8().isLarge(), false)
+  assert.equal(DataTypeId.FixedBinary().isLarge(), false)
+  assert.equal(DataTypeId.I64().isLarge(), false)
+
+  // a large binary is a binary, variable-length, not fixed-size
+  assert.equal(largeBinary.isBinary(), true)
+  assert.equal(largeBinary.isUtf8(), false)
+  assert.equal(largeBinary.isVariableLength(), true)
+  assert.equal(largeBinary.isFixedSize(), false)
+
+  // a large utf8 is a utf8, variable-length, not fixed-size
+  assert.equal(largeUtf8.isUtf8(), true)
+  assert.equal(largeUtf8.isBinary(), false)
+  assert.equal(largeUtf8.isVariableLength(), true)
+  assert.equal(largeUtf8.isFixedSize(), false)
+})
+
 // -------------------------------------------------------------------------------------
 // Value semantics
 // -------------------------------------------------------------------------------------

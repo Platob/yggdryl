@@ -46,6 +46,12 @@ impl VarType for FixedUtf8 {
 /// A **fixed-size column** over one data buffer `D` (default [`Heap`]) at a fixed byte `width` per
 /// element, plus an optional validity buffer. Element `i` is `data[i * width..(i + 1) * width]`; a
 /// shorter pushed value is zero-padded, a longer one truncated.
+///
+// DESIGN: there is **no separate "large fixed" type**. Unlike the variable-length family — where
+// `LargeBinary` / `LargeUtf8` add a distinct marker for the wider (`i64`) offset element — a
+// fixed-size column has no offsets buffer, so a large fixed-width column is simply a `FixedBinary` /
+// `FixedUtf8` constructed with a big `width` (the `usize` stride is already unbounded). No new
+// marker is warranted.
 pub struct FixedSizeSerie<T: VarType, D: IOBase = Heap> {
     data: D,
     validity: Option<D>,

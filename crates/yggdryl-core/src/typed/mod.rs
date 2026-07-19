@@ -64,4 +64,6 @@ pub use reduce::Reduce;
 pub use scalar::{FixedScalar, Scalar};
 pub use serie::{FixedSerie, Serie};
 pub use var_type::VarType;
-pub use varbyte::{Binary, Utf8, VarScalar, VarSerie};
+pub use varbyte::{
+    Binary, LargeBinary, LargeUtf8, Utf8, VarLenType, VarOffset, VarScalar, VarSerie,
+};

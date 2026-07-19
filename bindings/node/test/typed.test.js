@@ -495,6 +495,74 @@ test('ByteSerie: a nullable fixed_utf8 column', () => {
   assert.equal(col.field().byteWidth(), 4)
 })
 
+test('ByteSerie: a large_utf8 column round-trips a multibyte string', () => {
+  const col = ByteSerie.fromValues(['hello', 'café', '日本語', ''], DataTypeId.LargeUtf8())
+  assert.equal(col.len(), 4)
+  assert.equal(col.get(0), 'hello')
+  assert.equal(col.get(1), 'café') // é is 2 UTF-8 bytes
+  assert.equal(col.get(2), '日本語') // 3 chars, 9 bytes
+  assert.equal(col.get(3), '') // empty string
+  assert.deepEqual(col.toList(), ['hello', 'café', '日本語', ''])
+  assert.deepEqual(col.values(), ['hello', 'café', '日本語', ''])
+  assert.ok(col.dtype().equals(DataTypeId.LargeUtf8()))
+  assert.equal(col.width(), null) // variable-length: no fixed stride
+
+  // withName produces a named copy over the same bytes; the original is unchanged
+  const named = col.withName('greeting')
+  assert.equal(named.field().name(), 'greeting')
+  assert.equal(named.get(2), '日本語')
+  assert.equal(col.field().name(), null)
+
+  // slice copies a sub-column, preserving the large dtype
+  const tail = col.slice(1, 2)
+  assert.equal(tail.len(), 2)
+  assert.deepEqual(tail.toList(), ['café', '日本語'])
+  assert.ok(tail.dtype().equals(DataTypeId.LargeUtf8()))
+})
+
+test('ByteSerie: a nullable large_binary column via fromOptions', () => {
+  const col = ByteSerie.fromOptions(
+    [Buffer.from([1]), null, Buffer.from([2, 3])],
+    DataTypeId.LargeBinary()
+  )
+  assert.equal(col.len(), 3)
+  assert.equal(col.nullCount(), 1)
+  assert.deepEqual(col.get(0), Buffer.from([1]))
+  assert.equal(col.get(1), null) // the null
+  assert.deepEqual(col.get(2), Buffer.from([2, 3]))
+  assert.ok(col.isNull(1) && col.isValid(0))
+  assert.equal(col.isValid(1), false)
+  assert.deepEqual(col.toList(), [Buffer.from([1]), null, Buffer.from([2, 3])])
+  assert.ok(col.dtype().equals(DataTypeId.LargeBinary()))
+  assert.equal(col.width(), null)
+  assert.equal(col.field().nullable(), true)
+})
+
+test('ByteSerie: withMaxWidth bounds a large_utf8 column, recorded as the field byteWidth', () => {
+  const col = ByteSerie.fromValues(['a', 'bb', 'ccc'], DataTypeId.LargeUtf8())
+  assert.equal(col.maxWidth(), null) // unbounded to start
+
+  const bounded = col.withMaxWidth(3)
+  assert.equal(bounded.maxWidth(), 3)
+  assert.equal(bounded.field().byteWidth(), 3) // the max lives in the field metadata
+  assert.deepEqual(bounded.toList(), ['a', 'bb', 'ccc']) // bytes shared, unchanged
+  assert.ok(bounded.dtype().equals(DataTypeId.LargeUtf8()))
+  assert.equal(col.maxWidth(), null) // the original is unchanged
+
+  // a max that an existing element exceeds throws the guided error
+  assert.throws(() => col.withMaxWidth(2), /max width/)
+})
+
+test('ByteSerie: set on a large variable-length column throws the append-only error', () => {
+  const largeBinary = ByteSerie.fromValues(
+    [Buffer.from([1]), Buffer.from([2])],
+    DataTypeId.LargeBinary()
+  )
+  assert.throws(() => largeBinary.set(0, Buffer.from([9])), /variable-length column is append-only/)
+  const largeUtf8 = ByteSerie.fromValues(['a', 'b'], DataTypeId.LargeUtf8())
+  assert.throws(() => largeUtf8.setChecked(0, 'z'), /variable-length column is append-only/)
+})
+
 test('ByteSerie: guided errors on the build side', () => {
   // a fixed-size dtype needs a width
   assert.throws(

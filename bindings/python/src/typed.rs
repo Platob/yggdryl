@@ -3,12 +3,13 @@
 //! Mirrors `yggdryl_core::typed`'s column surface: a [`Serie`] (a typed column — many elements of
 //! one [`DataTypeId`](crate::datatype_id::DataTypeId) over a byte buffer, plus an optional validity
 //! bitmap for nulls), the byte-column [`ByteSerie`] (`bytes` / `str` elements — the variable-length
-//! `Binary` / `Utf8` and the fixed-size `FixedBinary` / `FixedUtf8`), and their [`Field`] (the
+//! `Binary` / `Utf8` (`i32` offsets) and `LargeBinary` / `LargeUtf8` (`i64` offsets), plus the
+//! fixed-size `FixedBinary` / `FixedUtf8`), and their [`Field`] (the
 //! column's `name` / `type` / `nullable` metadata, carried in a [`Headers`](crate::headers::Headers)).
 //! Where the core `FixedSerie<T>` is generic over its compile-time element type `T`, the binding
 //! erases `T` into an [`Inner`] enum — one variant per fixed-width type — and dispatches each method
 //! across the variants, so one dynamic `Serie` class covers every dtype; [`ByteSerie`] does the same
-//! over its four byte carriers ([`ByteInner`]).
+//! over its six byte carriers ([`ByteInner`]).
 //!
 //! Every method is one or two lines over `yggdryl_core`; a reduction on a `bool` (or decimal) column
 //! raises a guided `TypeError` (they do not reduce), and a hard-fill read error surfaces as a
@@ -37,7 +38,7 @@ use yggdryl_core::typed::{
         Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
     },
     Binary, Decoder, Encoder, Field as _, FixedBinary, FixedSerie, FixedSizeSerie, FixedUtf8,
-    HeaderField, Scalar, Serie as _, Utf8, VarSerie, VarType,
+    HeaderField, LargeBinary, LargeUtf8, Scalar, Serie as _, Utf8, VarLenType, VarSerie, VarType,
 };
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
@@ -1183,12 +1184,15 @@ reduce_methods!(
 );
 
 /// The **type-erased** column backing [`ByteSerie`] — one variant per byte carrier: the
-/// variable-length [`VarSerie`] (`Binary` / `Utf8`, offsets + data) and the fixed-stride
-/// [`FixedSizeSerie`] (`FixedBinary` / `FixedUtf8`). A method dispatches across the variants (see the
-/// [`byte_dispatch!`] / [`byte_map!`] helpers), so the single dynamic class serves every byte dtype.
+/// variable-length [`VarSerie`] (`Binary` / `Utf8` with `i32` offsets, `LargeBinary` / `LargeUtf8`
+/// with `i64` offsets — same offsets + data layout) and the fixed-stride [`FixedSizeSerie`]
+/// (`FixedBinary` / `FixedUtf8`). A method dispatches across the variants (see the [`byte_dispatch!`]
+/// / [`byte_map!`] helpers), so the single dynamic class serves every byte dtype.
 enum ByteInner {
     Binary(VarSerie<Binary>),
+    LargeBinary(VarSerie<LargeBinary>),
     Utf8(VarSerie<Utf8>),
+    LargeUtf8(VarSerie<LargeUtf8>),
     FixedBinary(FixedSizeSerie<FixedBinary>),
     FixedUtf8(FixedSizeSerie<FixedUtf8>),
 }
@@ -1200,7 +1204,9 @@ macro_rules! byte_dispatch {
     ($self:expr, $s:ident => $body:expr) => {
         match &$self.inner {
             ByteInner::Binary($s) => $body,
+            ByteInner::LargeBinary($s) => $body,
             ByteInner::Utf8($s) => $body,
+            ByteInner::LargeUtf8($s) => $body,
             ByteInner::FixedBinary($s) => $body,
             ByteInner::FixedUtf8($s) => $body,
         }
@@ -1214,7 +1220,9 @@ macro_rules! byte_map {
     ($self:expr, $s:ident => $make:expr) => {
         match &$self.inner {
             ByteInner::Binary($s) => ByteInner::Binary($make),
+            ByteInner::LargeBinary($s) => ByteInner::LargeBinary($make),
             ByteInner::Utf8($s) => ByteInner::Utf8($make),
+            ByteInner::LargeUtf8($s) => ByteInner::LargeUtf8($make),
             ByteInner::FixedBinary($s) => ByteInner::FixedBinary($make),
             ByteInner::FixedUtf8($s) => ByteInner::FixedUtf8($make),
         }
@@ -1265,7 +1273,7 @@ trait RebuildByteSerie {
     fn rebuild_with_name(&self, name: &str) -> Self;
 }
 
-impl<T: VarType> RebuildByteSerie for VarSerie<T, memory::Heap> {
+impl<T: VarLenType> RebuildByteSerie for VarSerie<T, memory::Heap> {
     fn rebuild_with_name(&self, name: &str) -> Self {
         VarSerie::from_parts(
             self.offsets().clone(),
@@ -1291,7 +1299,8 @@ impl<T: VarType> RebuildByteSerie for FixedSizeSerie<T, memory::Heap> {
 
 /// A **byte-column** — the variable-length + fixed-size analogue of [`Serie`]: many `bytes` / `str`
 /// elements of one byte [`DataTypeId`](crate::datatype_id::DataTypeId) (`Binary` / `Utf8` /
-/// `FixedBinary` / `FixedUtf8`) over an offsets + data (or fixed-stride) buffer, with an optional
+/// `LargeBinary` / `LargeUtf8` / `FixedBinary` / `FixedUtf8`) over an offsets + data (or
+/// fixed-stride) buffer, with an optional
 /// validity bitmap for nulls. Built from a list of `bytes` / `str` (or a list of options, for
 /// nulls); `get` / `to_list` are null-aware and `values` reads the raw buffer. A variable-length
 /// column sizes each element itself; a fixed-size column packs at a per-column byte `width`
@@ -1323,12 +1332,26 @@ impl ByteSerie {
                 let v: Vec<Vec<u8>> = values.extract()?;
                 ByteInner::Binary(VarSerie::<Binary>::from_values(&v))
             }
+            CoreId::LargeBinary => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<Vec<u8>> = values.extract()?;
+                ByteInner::LargeBinary(VarSerie::<LargeBinary>::from_values(&v))
+            }
             CoreId::Utf8 => {
                 if width.is_some() {
                     return Err(var_width_error());
                 }
                 let v: Vec<String> = values.extract()?;
                 ByteInner::Utf8(VarSerie::<Utf8>::from_values(&v))
+            }
+            CoreId::LargeUtf8 => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<String> = values.extract()?;
+                ByteInner::LargeUtf8(VarSerie::<LargeUtf8>::from_values(&v))
             }
             CoreId::FixedBinary => {
                 let width = width.ok_or_else(fixed_width_missing)?;
@@ -1364,12 +1387,26 @@ impl ByteSerie {
                 let v: Vec<Option<Vec<u8>>> = values.extract()?;
                 ByteInner::Binary(VarSerie::<Binary>::from_options(&v))
             }
+            CoreId::LargeBinary => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<Option<Vec<u8>>> = values.extract()?;
+                ByteInner::LargeBinary(VarSerie::<LargeBinary>::from_options(&v))
+            }
             CoreId::Utf8 => {
                 if width.is_some() {
                     return Err(var_width_error());
                 }
                 let v: Vec<Option<String>> = values.extract()?;
                 ByteInner::Utf8(VarSerie::<Utf8>::from_options(&v))
+            }
+            CoreId::LargeUtf8 => {
+                if width.is_some() {
+                    return Err(var_width_error());
+                }
+                let v: Vec<Option<String>> = values.extract()?;
+                ByteInner::LargeUtf8(VarSerie::<LargeUtf8>::from_options(&v))
             }
             CoreId::FixedBinary => {
                 let width = width.ok_or_else(fixed_width_missing)?;
@@ -1462,7 +1499,10 @@ impl ByteSerie {
     /// `None` for a variable-length column (`Binary` / `Utf8`, whose elements size themselves).
     fn width(&self) -> Option<usize> {
         match &self.inner {
-            ByteInner::Binary(_) | ByteInner::Utf8(_) => None,
+            ByteInner::Binary(_)
+            | ByteInner::LargeBinary(_)
+            | ByteInner::Utf8(_)
+            | ByteInner::LargeUtf8(_) => None,
             ByteInner::FixedBinary(s) => Some(s.width()),
             ByteInner::FixedUtf8(s) => Some(s.width()),
         }
@@ -1486,8 +1526,28 @@ impl ByteSerie {
                 .with_max_width(max_width)
                 .map_err(ioerr)?,
             ),
+            ByteInner::LargeBinary(s) => ByteInner::LargeBinary(
+                VarSerie::<LargeBinary>::from_parts(
+                    s.offsets().clone(),
+                    s.data().clone(),
+                    s.validity().cloned(),
+                    s.len(),
+                )
+                .with_max_width(max_width)
+                .map_err(ioerr)?,
+            ),
             ByteInner::Utf8(s) => ByteInner::Utf8(
                 VarSerie::<Utf8>::from_parts(
+                    s.offsets().clone(),
+                    s.data().clone(),
+                    s.validity().cloned(),
+                    s.len(),
+                )
+                .with_max_width(max_width)
+                .map_err(ioerr)?,
+            ),
+            ByteInner::LargeUtf8(s) => ByteInner::LargeUtf8(
+                VarSerie::<LargeUtf8>::from_parts(
                     s.offsets().clone(),
                     s.data().clone(),
                     s.validity().cloned(),
@@ -1513,7 +1573,9 @@ impl ByteSerie {
     fn max_width(&self) -> Option<usize> {
         match &self.inner {
             ByteInner::Binary(s) => s.max_width(),
+            ByteInner::LargeBinary(s) => s.max_width(),
             ByteInner::Utf8(s) => s.max_width(),
+            ByteInner::LargeUtf8(s) => s.max_width(),
             ByteInner::FixedBinary(_) | ByteInner::FixedUtf8(_) => None,
         }
     }
@@ -1543,7 +1605,10 @@ impl ByteSerie {
                 let text: String = value.extract()?;
                 s.set(index, text.as_bytes()).map_err(ioerr)?;
             }
-            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+            ByteInner::Binary(_)
+            | ByteInner::LargeBinary(_)
+            | ByteInner::Utf8(_)
+            | ByteInner::LargeUtf8(_) => return Err(var_set_error()),
         }
         Ok(())
     }
@@ -1561,7 +1626,10 @@ impl ByteSerie {
                 let text: String = value.extract()?;
                 s.set_checked(index, text.as_bytes());
             }
-            ByteInner::Binary(_) | ByteInner::Utf8(_) => return Err(var_set_error()),
+            ByteInner::Binary(_)
+            | ByteInner::LargeBinary(_)
+            | ByteInner::Utf8(_)
+            | ByteInner::LargeUtf8(_) => return Err(var_set_error()),
         }
         Ok(())
     }
