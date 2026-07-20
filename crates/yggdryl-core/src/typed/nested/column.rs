@@ -12,8 +12,9 @@
 use crate::datatype_id::DataTypeId;
 use crate::typed::fixedbit::Bit;
 use crate::typed::fixedbyte::{
-    Decimal128, Decimal256, Decimal32, Decimal64, FixedBinary, FixedSizeSerie, FixedUtf8, Float32,
-    Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8,
+    Decimal128, Decimal16, Decimal256, Decimal32, Decimal64, Decimal8, FixedBinary, FixedSizeSerie,
+    FixedUtf8, Float16, Float32, Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16,
+    UInt32, UInt64, UInt8,
 };
 use crate::typed::nested::{ColumnField, ListSerie, MapSerie, StructSerie, Value};
 use crate::typed::varbyte::{Binary, LargeBinary, LargeUtf8, Utf8};
@@ -190,12 +191,18 @@ leaf_columns! {
     Int128: FixedSerie<Int128> => Value::Int128,
     /// An unsigned 128-bit integer column.
     UInt128: FixedSerie<UInt128> => Value::UInt128,
+    /// A 16-bit half-precision float column.
+    Float16: FixedSerie<Float16> => Value::Float16,
     /// A 32-bit float column.
     Float32: FixedSerie<Float32> => Value::Float32,
     /// A 64-bit float column.
     Float64: FixedSerie<Float64> => Value::Float64,
     /// A boolean column (one bit per element).
     Bool: FixedSerie<Bit> => Value::Bool,
+    /// An 8-bit fixed-point decimal column.
+    Decimal8: FixedSerie<Decimal8> => Value::Decimal8,
+    /// A 16-bit fixed-point decimal column.
+    Decimal16: FixedSerie<Decimal16> => Value::Decimal16,
     /// A 32-bit fixed-point decimal column.
     Decimal32: FixedSerie<Decimal32> => Value::Decimal32,
     /// A 64-bit fixed-point decimal column.

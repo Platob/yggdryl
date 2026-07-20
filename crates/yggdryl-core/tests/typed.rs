@@ -7,8 +7,8 @@ use yggdryl_core::datatype_id::DataTypeId;
 use yggdryl_core::io::memory::{Heap, IOBase, IoError};
 use yggdryl_core::typed::fixedbit::Bit;
 use yggdryl_core::typed::fixedbyte::{
-    Decimal128, Decimal256, Decimal32, Decimal64, Float64, Int128, Int32, Int64, Int8, UInt128,
-    UInt8, I256,
+    Decimal128, Decimal16, Decimal256, Decimal32, Decimal64, Decimal8, Float16, Float64, Int128,
+    Int32, Int64, Int8, UInt128, UInt8, F16, I256,
 };
 use yggdryl_core::typed::{
     AnyScalar, AnySerie, Binary, Column, Decimal, Decoder, Encoder, Field, FixedBinary,
@@ -740,6 +740,171 @@ fn decimal_encoder_decoder_direct() {
     assert_eq!(nullable.to_decimal_string(0).as_deref(), Some("1.00"));
     assert_eq!(nullable.to_decimal_string(1), None); // null
     assert_eq!(nullable.to_decimal_string(2).as_deref(), Some("2.50"));
+}
+
+// -------------------------------------------------------------------------------------
+// F16 — the manual half-precision float + its Float16 column
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn f16_native_conversions_and_round_trip() {
+    // Exact-in-half values round-trip through f32 losslessly.
+    assert_eq!(F16::from_f32(1.5).to_f32(), 1.5);
+    assert_eq!(F16::from_f32(-2.0).to_f32(), -2.0);
+    assert_eq!(F16::from_f32(0.0).to_f32(), 0.0);
+    assert_eq!(F16::ZERO.to_f32(), 0.0);
+    assert_eq!(F16::default(), F16::ZERO);
+
+    // Smallest positive subnormal (2^-24) survives (not flushed to zero).
+    let subnormal = F16::from_f32(2f32.powi(-24));
+    assert_eq!(subnormal.to_f32(), 2f32.powi(-24));
+    assert_ne!(subnormal.to_bits(), 0);
+
+    // Infinity + NaN handled per float semantics.
+    assert!(F16::from_f32(f32::INFINITY).to_f32().is_infinite());
+    assert!(F16::from_f32(f32::INFINITY).to_f32() > 0.0);
+    assert!(F16::from_f32(f32::NEG_INFINITY).to_f32().is_infinite());
+    let nan = F16::from_f32(f32::NAN);
+    assert!(nan.to_f32().is_nan() && nan.is_nan());
+    // A value beyond the half's max (~65504) overflows to +inf.
+    assert!(F16::from_f32(1.0e6).to_f32().is_infinite());
+
+    // Byte + bit round-trips (the wire form).
+    let bytes = F16::from_f32(1.5).to_le_bytes();
+    assert_eq!(F16::from_le_bytes(bytes), F16::from_f32(1.5));
+    assert_eq!(
+        F16::from_bits(F16::from_f32(-2.0).to_bits()),
+        F16::from_f32(-2.0)
+    );
+
+    // Value-ordering (through f32): -2 < 0 < 1.5.
+    assert!(F16::from_f32(-2.0) < F16::from_f32(0.0));
+    assert!(F16::from_f32(0.0) < F16::from_f32(1.5));
+    // Bitwise Eq makes it hashable + a map key.
+    use std::collections::HashSet;
+    let set: HashSet<F16> = [F16::from_f32(1.5), F16::from_f32(1.5), F16::from_f32(2.0)]
+        .into_iter()
+        .collect();
+    assert_eq!(set.len(), 2);
+}
+
+#[test]
+fn float16_serie_build_reads_and_reduces() {
+    // Build from f32-ish values (all exact in half precision).
+    let values: Vec<F16> = [1.5f32, 2.5, 0.5, 4.0]
+        .iter()
+        .map(|&v| F16::from_f32(v))
+        .collect();
+    let col = FixedSerie::<Float16>::from_values(&values);
+    assert_eq!(col.len(), 4);
+    assert_eq!(col.data_type_id(), DataTypeId::Float16);
+    assert_eq!(col.get(0), Some(F16::from_f32(1.5)));
+    assert_eq!(col.get(3), Some(F16::from_f32(4.0)));
+    assert_eq!(col.values(), values);
+
+    // Aggregations WIDEN to f64 (sum / mean over to_f32()).
+    assert_eq!(col.sum().unwrap(), 8.5f64); // 1.5 + 2.5 + 0.5 + 4.0
+    assert_eq!(col.mean().unwrap(), Some(2.125));
+    // min / max order by value (through F16), returning the F16.
+    assert_eq!(col.min().unwrap(), Some(F16::from_f32(0.5)));
+    assert_eq!(col.max().unwrap(), Some(F16::from_f32(4.0)));
+    assert_eq!(col.first().unwrap(), Some(F16::from_f32(1.5)));
+    assert_eq!(col.last().unwrap(), Some(F16::from_f32(4.0)));
+    assert_eq!(col.count_ge(F16::from_f32(2.0)).unwrap(), 2); // 2.5, 4.0
+    assert_eq!(col.median().unwrap(), Some(2.0)); // sorted [0.5,1.5,2.5,4.0] -> (1.5+2.5)/2
+
+    // min / max ignore NaN, order-independently.
+    let with_nan = FixedSerie::<Float16>::from_values(&[
+        F16::from_f32(1.0),
+        F16::from_f32(f32::NAN),
+        F16::from_f32(-3.0),
+        F16::from_f32(2.0),
+    ]);
+    assert_eq!(with_nan.min().unwrap(), Some(F16::from_f32(-3.0)));
+    assert_eq!(with_nan.max().unwrap(), Some(F16::from_f32(2.0)));
+    assert!(with_nan.sum().unwrap().is_nan()); // a NaN summand poisons the sum
+
+    // Nullable half column via from_options.
+    let nullable = FixedSerie::<Float16>::from_options(&[
+        Some(F16::from_f32(1.0)),
+        None,
+        Some(F16::from_f32(3.0)),
+    ]);
+    assert_eq!(nullable.null_count(), 1);
+    assert_eq!(
+        nullable.to_options(),
+        vec![Some(F16::from_f32(1.0)), None, Some(F16::from_f32(3.0))]
+    );
+}
+
+#[test]
+fn decimal8_and_decimal16_series() {
+    // Decimal8: an unscaled i8 with scale 1 (e.g. 125 unscaled, scale 1 -> "12.5").
+    let d8 = FixedSerie::<Decimal8>::from_values(&[125, -5, 0, i8::MIN])
+        .with_name("tiny")
+        .with_precision_scale(2, 1);
+    assert_eq!(d8.len(), 4);
+    assert_eq!(d8.get(0), Some(125i8)); // the raw unscaled value
+    assert_eq!(d8.data_type_id(), DataTypeId::Decimal8);
+    assert_eq!(d8.to_decimal_string(0).as_deref(), Some("12.5"));
+    assert_eq!(d8.to_decimal_string(1).as_deref(), Some("-0.5"));
+    assert_eq!(d8.to_decimal_string(2).as_deref(), Some("0.0"));
+    assert_eq!(d8.to_decimal_string(3).as_deref(), Some("-12.8")); // i8::MIN = -128
+    assert_eq!(d8.decimal_scale(), 1);
+    assert_eq!(d8.decimal_precision(), 2);
+    assert_eq!(d8.field().data_type_id(), DataTypeId::Decimal8);
+    assert!(d8.field().data_type_id().is_decimal());
+
+    // Decimal16: an unscaled i16 with scale 2 (e.g. 12345 -> "123.45").
+    let d16 = FixedSerie::<Decimal16>::from_values(&[12345, -5, 32767]).with_precision_scale(4, 2);
+    assert_eq!(d16.get(2), Some(32767i16));
+    assert_eq!(d16.data_type_id(), DataTypeId::Decimal16);
+    assert_eq!(d16.to_decimal_string(0).as_deref(), Some("123.45"));
+    assert_eq!(d16.to_decimal_string(1).as_deref(), Some("-0.05"));
+    assert_eq!(d16.to_decimal_string(2).as_deref(), Some("327.67"));
+
+    // The shared Decimal trait: max precision per width + scale-aware format.
+    assert_eq!(Decimal8::MAX_PRECISION, 2);
+    assert_eq!(Decimal16::MAX_PRECISION, 4);
+    assert_eq!(Decimal8::format(-5, 1), "-0.5");
+    assert_eq!(Decimal16::format(12345, 2), "123.45");
+
+    // A nullable small-decimal column via from_options.
+    let nullable = FixedSerie::<Decimal16>::from_options(&[Some(100), None, Some(250)])
+        .with_precision_scale(4, 2);
+    assert_eq!(nullable.null_count(), 1);
+    assert_eq!(nullable.to_decimal_string(0).as_deref(), Some("1.00"));
+    assert_eq!(nullable.to_decimal_string(1), None);
+    assert_eq!(nullable.to_decimal_string(2).as_deref(), Some("2.50"));
+}
+
+#[test]
+fn erased_column_arms_for_new_types() {
+    // Each new type erases into its own Column variant and yields its own Value variant.
+    let half: Column =
+        FixedSerie::<Float16>::from_values(&[F16::from_f32(1.5), F16::from_f32(2.5)]).into();
+    assert_eq!(half.len(), 2);
+    assert_eq!(half.data_type_id(), DataTypeId::Float16);
+    assert_eq!(half.get(0), Value::Float16(F16::from_f32(1.5)));
+    assert_eq!(half.field().data_type_id(), DataTypeId::Float16);
+
+    let d8: Column = FixedSerie::<Decimal8>::from_values(&[12, -3]).into();
+    assert_eq!(d8.data_type_id(), DataTypeId::Decimal8);
+    assert_eq!(d8.get(1), Value::Decimal8(-3));
+
+    let d16: Column = FixedSerie::<Decimal16>::from_options(&[Some(100), None]).into();
+    assert_eq!(d16.data_type_id(), DataTypeId::Decimal16);
+    assert_eq!(d16.get(0), Value::Decimal16(100));
+    assert_eq!(d16.get(1), Value::Null);
+    assert_eq!(d16.null_count(), 1);
+
+    // The erased Value carries the right dtype id.
+    assert_eq!(
+        Value::Float16(F16::ZERO).data_type_id(),
+        DataTypeId::Float16
+    );
+    assert_eq!(Value::Decimal8(1).data_type_id(), DataTypeId::Decimal8);
+    assert_eq!(Value::Decimal16(1).data_type_id(), DataTypeId::Decimal16);
 }
 
 // -------------------------------------------------------------------------------------

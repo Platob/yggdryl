@@ -1710,10 +1710,14 @@ fn elem_as_f64<S: IOBase>(src: &S, dtype: DataTypeId, off: u64) -> Result<f64, I
         U64 => src.pread_u64(off)? as f64,
         I128 => src.pread_i128(off)? as f64,
         U128 => src.pread_u128(off)? as f64,
+        // A half is stored as its raw 16 bits; widen through `f32` to the `f64` carrier.
+        Float16 => crate::typed::fixedbyte::F16::from_bits(src.pread_u16(off)?).to_f32() as f64,
         F32 => src.pread_f32(off)? as f64,
         F64 => src.pread_f64(off)?,
         // A decimal's raw carrier is its unscaled backing integer (same-scale reinterpretation);
         // Decimal256 exceeds f64 exactly, so the raw carrier treats it as unsupported.
+        Decimal8 => src.pread_i8(off)? as f64,
+        Decimal16 => src.pread_i16(off)? as f64,
         Decimal32 => src.pread_i32(off)? as f64,
         Decimal64 => src.pread_i64(off)? as f64,
         Decimal128 => src.pread_i128(off)? as f64,
@@ -1738,10 +1742,18 @@ fn write_f64_as(out: &mut [u8], dtype: DataTypeId, value: f64) {
         U64 => out[..8].copy_from_slice(&(value as u64).to_le_bytes()),
         I128 => out[..16].copy_from_slice(&(value as i128).to_le_bytes()),
         U128 => out[..16].copy_from_slice(&(value as u128).to_le_bytes()),
+        // A half target rounds to nearest-even through `f32`, storing the raw 16 bits.
+        Float16 => out[..2].copy_from_slice(
+            &crate::typed::fixedbyte::F16::from_f32(value as f32)
+                .to_bits()
+                .to_le_bytes(),
+        ),
         F32 => out[..4].copy_from_slice(&(value as f32).to_le_bytes()),
         F64 => out[..8].copy_from_slice(&value.to_le_bytes()),
         // A decimal target stores the (saturated) unscaled backing integer; Decimal256 is left
         // untouched (its 256-bit value cannot round-trip through the f64 carrier).
+        Decimal8 => out[..1].copy_from_slice(&(value as i8).to_le_bytes()),
+        Decimal16 => out[..2].copy_from_slice(&(value as i16).to_le_bytes()),
         Decimal32 => out[..4].copy_from_slice(&(value as i32).to_le_bytes()),
         Decimal64 => out[..8].copy_from_slice(&(value as i64).to_le_bytes()),
         Decimal128 => out[..16].copy_from_slice(&(value as i128).to_le_bytes()),

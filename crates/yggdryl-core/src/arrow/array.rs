@@ -10,11 +10,12 @@
 
 use std::sync::Arc;
 
+use arrow_array::types::{ArrowPrimitiveType, Float16Type};
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Decimal128Array, Decimal256Array,
-    FixedSizeBinaryArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, LargeBinaryArray, LargeStringArray, ListArray, MapArray, NullArray, StringArray,
-    StructArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+    FixedSizeBinaryArray, Float16Array, Float32Array, Float64Array, Int16Array, Int32Array,
+    Int64Array, Int8Array, LargeBinaryArray, LargeStringArray, ListArray, MapArray, NullArray,
+    StringArray, StructArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_buffer::{i256, BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{ArrowError, DataType, Field, Fields};
@@ -23,8 +24,9 @@ use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
 use crate::typed::fixedbit::Bit;
 use crate::typed::fixedbyte::{
-    Decimal128, Decimal256, Decimal32, Decimal64, FixedBinary, FixedSizeSerie, FixedUtf8, Float32,
-    Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, I256,
+    Decimal128, Decimal16, Decimal256, Decimal32, Decimal64, Decimal8, FixedBinary, FixedSizeSerie,
+    FixedUtf8, Float16, Float32, Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16,
+    UInt32, UInt64, UInt8, F16, I256,
 };
 use crate::typed::nested::{
     Column, ColumnField, ListField, ListSerie, MapField, MapSerie, StructField, StructSerie,
@@ -208,6 +210,7 @@ pub fn column_to_arrow(column: &Column) -> Result<ArrayRef, IoError> {
         Column::UInt128(serie) => {
             decimal128_to_arrow(serie.data(), serie.validity(), serie.len(), 38, 0)
         }
+        Column::Float16(serie) => float16_to_arrow(serie),
         Column::Float32(serie) => primitive_to_arrow!(serie, Float32Array, f32),
         Column::Float64(serie) => primitive_to_arrow!(serie, Float64Array, f64),
         Column::Bool(serie) => {
@@ -219,7 +222,25 @@ pub fn column_to_arrow(column: &Column) -> Result<ArrayRef, IoError> {
             ));
             Ok(array)
         }
-        // Decimal32/64 widen i32/i64 -> i128 (one owned Vec); Decimal128 reinterprets its bytes.
+        // Decimal8/16/32/64 widen their signed int -> i128 (one owned Vec); Decimal128 reinterprets.
+        Column::Decimal8(serie) => {
+            let widened: Vec<i128> = serie.values().into_iter().map(i128::from).collect();
+            decimal128_from_i128(
+                widened,
+                serie.validity(),
+                serie.decimal_precision(),
+                serie.decimal_scale(),
+            )
+        }
+        Column::Decimal16(serie) => {
+            let widened: Vec<i128> = serie.values().into_iter().map(i128::from).collect();
+            decimal128_from_i128(
+                widened,
+                serie.validity(),
+                serie.decimal_precision(),
+                serie.decimal_scale(),
+            )
+        }
         Column::Decimal32(serie) => {
             let widened: Vec<i128> = serie.values().into_iter().map(i128::from).collect();
             decimal128_from_i128(
@@ -371,6 +392,25 @@ fn map_to_arrow(serie: &MapSerie) -> Result<ArrayRef, IoError> {
     Ok(Arc::new(array))
 }
 
+/// A `Float16Array` from an in-heap `F16` column — each raw half `u16` is rebuilt into Arrow's
+/// `half::f16` (reached through the `Float16Type` associated `Native`, so the crate needs no direct
+/// `half` dependency) by **identical raw bits**, then handed over with the validity. One owned `Vec`.
+fn float16_to_arrow(serie: &FixedSerie<Float16>) -> Result<ArrayRef, IoError> {
+    type ArrowHalf = <Float16Type as ArrowPrimitiveType>::Native;
+    let len = serie.len();
+    let values: Vec<ArrowHalf> = serie
+        .values()
+        .iter()
+        .map(|v| ArrowHalf::from_bits(v.to_bits()))
+        .collect();
+    let array = Float16Array::try_new(
+        ScalarBuffer::from(values),
+        null_buffer(serie.validity(), len),
+    )
+    .map_err(build_error)?;
+    Ok(Arc::new(array))
+}
+
 /// A `Decimal128Array` over an in-heap `i128` value buffer (reinterpreted, one copy) + validity.
 fn decimal128_to_arrow(
     data: &Heap,
@@ -487,6 +527,23 @@ pub fn column_from_arrow(array: &ArrayRef, field: &ColumnField) -> Result<Column
         DataTypeId::U64 => primitive_from_arrow!(array, UInt64Array, UInt64, name, nullable),
         DataTypeId::F32 => primitive_from_arrow!(array, Float32Array, Float32, name, nullable),
         DataTypeId::F64 => primitive_from_arrow!(array, Float64Array, Float64, name, nullable),
+        // A half rebuilds from Arrow's `Float16Array` by identical raw `u16` bits.
+        DataTypeId::Float16 => {
+            let arr = downcast::<Float16Array>(array, "Float16Array")?;
+            let len = arr.len();
+            let values: Vec<F16> = arr
+                .values()
+                .iter()
+                .map(|v| F16::from_bits(v.to_bits()))
+                .collect();
+            let mut data = Heap::with_capacity(len * 2);
+            <Float16 as Encoder>::encode_slice(&mut data, 0, &values)?;
+            let validity = validity_heap(arr.nulls(), len, nullable);
+            Ok(Column::from(named(
+                FixedSerie::<Float16>::from_data(data, validity, len),
+                name,
+            )))
+        }
         // I128/U128 came from a Decimal128 (scale-0) carrying the raw 16 bytes.
         DataTypeId::I128 => {
             let arr = downcast::<Decimal128Array>(array, "Decimal128Array (from Int128)")?;
@@ -510,6 +567,33 @@ pub fn column_from_arrow(array: &ArrayRef, field: &ColumnField) -> Result<Column
                 FixedSerie::<UInt128>::from_data(data, validity, len),
                 name,
             )))
+        }
+        DataTypeId::Decimal8 => {
+            let arr = downcast::<Decimal128Array>(array, "Decimal128Array (widened Decimal8)")?;
+            let len = arr.len();
+            let narrowed: Vec<i8> = arr.values().iter().map(|&v| v as i8).collect();
+            let mut data = Heap::with_capacity(len);
+            <Decimal8 as Encoder>::encode_slice(&mut data, 0, &narrowed)?;
+            let validity = validity_heap(arr.nulls(), len, nullable);
+            let (precision, scale) = decimal_ps(leaf, arr.precision(), arr.scale());
+            let serie = named(FixedSerie::<Decimal8>::from_data(data, validity, len), name)
+                .with_precision_scale(precision, scale);
+            Ok(Column::from(serie))
+        }
+        DataTypeId::Decimal16 => {
+            let arr = downcast::<Decimal128Array>(array, "Decimal128Array (widened Decimal16)")?;
+            let len = arr.len();
+            let narrowed: Vec<i16> = arr.values().iter().map(|&v| v as i16).collect();
+            let mut data = Heap::with_capacity(len * 2);
+            <Decimal16 as Encoder>::encode_slice(&mut data, 0, &narrowed)?;
+            let validity = validity_heap(arr.nulls(), len, nullable);
+            let (precision, scale) = decimal_ps(leaf, arr.precision(), arr.scale());
+            let serie = named(
+                FixedSerie::<Decimal16>::from_data(data, validity, len),
+                name,
+            )
+            .with_precision_scale(precision, scale);
+            Ok(Column::from(serie))
         }
         DataTypeId::Decimal32 => {
             let arr = downcast::<Decimal128Array>(array, "Decimal128Array (widened Decimal32)")?;

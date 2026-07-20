@@ -193,13 +193,15 @@ macro_rules! fixed_numeric {
 }
 
 mod decimal;
+mod f16;
 mod fixed_size;
 mod float;
 mod i256;
 mod integer;
 
-pub use decimal::{Decimal128, Decimal256, Decimal32, Decimal64};
+pub use decimal::{Decimal128, Decimal16, Decimal256, Decimal32, Decimal64, Decimal8};
+pub use f16::F16;
 pub use fixed_size::{FixedBinary, FixedSizeSerie, FixedUtf8};
-pub use float::{Float32, Float64};
+pub use float::{Float16, Float32, Float64};
 pub use i256::I256;
 pub use integer::{Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8};

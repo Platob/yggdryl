@@ -22,7 +22,10 @@
 //! | `I8`/`U8`/`I16`/`U16`/`I32`/`U32`/`I64`/`U64` | `Int*` / `UInt*` | exact |
 //! | `I128` | `Decimal128(38, 0)` | **lossy:** Arrow has no 128-bit integer; a scale-0 decimal is the closest (an `i128` **is** a scale-0 `Decimal128`). The reverse maps `Decimal128` → `Decimal128`. |
 //! | `U128` | `Decimal128(38, 0)` | **lossy:** as `I128`, and a `u128` ≥ 2¹²⁷ shows as **negative** on the Arrow side — the 16 raw bytes still round-trip losslessly. |
+//! | `Float16` | `Float16` | exact — arrow-rs's `Float16Array` (`half::f16`); the raw 16 bits round-trip (the crate reaches `half::f16` through `Float16Type`'s `Native`, so it needs no direct `half` dep). |
 //! | `F32`/`F64` | `Float32` / `Float64` | exact |
+//! | `Decimal8` | `Decimal128(precision, scale)` | **lossy (widened):** Arrow has no 8-bit decimal; the unscaled `i8` widens into an `i128` (the reverse narrows back, driven by our field's `Decimal8` id). |
+//! | `Decimal16` | `Decimal128(precision, scale)` | **lossy (widened):** Arrow has no 16-bit decimal; as `Decimal8` but for the `i16` unscaled value. |
 //! | `Decimal32` | `Decimal128(precision, scale)` | **lossy (widened):** per spec, `Decimal32` maps to `Decimal128` (the reverse maps `Decimal128` → `Decimal128`). Note arrow-rs v56 *does* have a native `Decimal32`; this crate follows the spec's Decimal128 target. |
 //! | `Decimal64` | `Decimal128(precision, scale)` | **lossy (widened):** as `Decimal32`. |
 //! | `Decimal128` | `Decimal128(precision, scale)` | exact |

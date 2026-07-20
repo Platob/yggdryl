@@ -23,8 +23,9 @@ use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
 use crate::typed::fixedbit::Bit;
 use crate::typed::fixedbyte::{
-    Decimal128, Decimal256, Decimal32, Decimal64, FixedBinary, FixedUtf8, Float32, Float64, Int128,
-    Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8,
+    Decimal128, Decimal16, Decimal256, Decimal32, Decimal64, Decimal8, FixedBinary, FixedUtf8,
+    Float16, Float32, Float64, Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64,
+    UInt8,
 };
 use crate::typed::varbyte::{Binary, LargeBinary, LargeUtf8, Utf8};
 use crate::typed::{
@@ -39,6 +40,8 @@ use crate::typed::{
 /// 256-bit physical has no numeric dtype) is its own physical.
 pub(crate) fn physical_dtype(id: DataTypeId) -> DataTypeId {
     match id {
+        DataTypeId::Decimal8 => DataTypeId::I8,
+        DataTypeId::Decimal16 => DataTypeId::I16,
         DataTypeId::Decimal32 => DataTypeId::I32,
         DataTypeId::Decimal64 => DataTypeId::I64,
         DataTypeId::Decimal128 => DataTypeId::I128,
@@ -227,8 +230,11 @@ fn numeric_parts(src: &Column) -> Option<(Heap, Option<Heap>, usize)> {
         Column::UInt64(s) => parts!(s),
         Column::Int128(s) => parts!(s),
         Column::UInt128(s) => parts!(s),
+        Column::Float16(s) => parts!(s),
         Column::Float32(s) => parts!(s),
         Column::Float64(s) => parts!(s),
+        Column::Decimal8(s) => parts!(s),
+        Column::Decimal16(s) => parts!(s),
         Column::Decimal32(s) => parts!(s),
         Column::Decimal64(s) => parts!(s),
         Column::Decimal128(s) => parts!(s),
@@ -254,8 +260,11 @@ fn build_numeric(to: DataTypeId, data: Heap, validity: Option<Heap>, len: usize)
         DataTypeId::U64 => b!(UInt64),
         DataTypeId::I128 => b!(Int128),
         DataTypeId::U128 => b!(UInt128),
+        DataTypeId::Float16 => b!(Float16),
         DataTypeId::F32 => b!(Float32),
         DataTypeId::F64 => b!(Float64),
+        DataTypeId::Decimal8 => b!(Decimal8),
+        DataTypeId::Decimal16 => b!(Decimal16),
         DataTypeId::Decimal32 => b!(Decimal32),
         DataTypeId::Decimal64 => b!(Decimal64),
         DataTypeId::Decimal128 => b!(Decimal128),
@@ -304,6 +313,7 @@ fn numeric_string_options(src: &Column) -> Result<Vec<Option<String>>, IoError> 
         Column::UInt64(s) => s!(s),
         Column::Int128(s) => s!(s),
         Column::UInt128(s) => s!(s),
+        Column::Float16(s) => s!(s),
         Column::Float32(s) => s!(s),
         Column::Float64(s) => s!(s),
         _ => unreachable!("numeric_string_options only serves int/float sources"),
@@ -319,6 +329,8 @@ fn decimal_string_options(src: &Column) -> Vec<Option<String>> {
         };
     }
     match src {
+        Column::Decimal8(s) => s!(s),
+        Column::Decimal16(s) => s!(s),
         Column::Decimal32(s) => s!(s),
         Column::Decimal64(s) => s!(s),
         Column::Decimal128(s) => s!(s),
@@ -392,9 +404,12 @@ fn utf8_to_numeric(src: &Column, to: DataTypeId) -> Result<Column, IoError> {
         DataTypeId::U64 => b!(UInt64),
         DataTypeId::I128 => b!(Int128),
         DataTypeId::U128 => b!(UInt128),
+        DataTypeId::Float16 => b!(Float16),
         DataTypeId::F32 => b!(Float32),
         DataTypeId::F64 => b!(Float64),
         // A decimal target parses the **unscaled** integer string (the decimal's physical).
+        DataTypeId::Decimal8 => b!(Decimal8),
+        DataTypeId::Decimal16 => b!(Decimal16),
         DataTypeId::Decimal32 => b!(Decimal32),
         DataTypeId::Decimal64 => b!(Decimal64),
         DataTypeId::Decimal128 => b!(Decimal128),
@@ -430,8 +445,18 @@ fn numeric_to_bool_options(src: &Column) -> Option<Vec<Option<bool>>> {
         Column::UInt64(s) => opts!(s),
         Column::Int128(s) => opts!(s),
         Column::UInt128(s) => opts!(s),
+        // A half unpacks to `value != 0` by **value** (through `f32`), so `-0.0` is `false` and NaN
+        // is `true` — matching the `f32` / `f64` bool cast (their `!= 0.0` is IEEE, not bitwise).
+        Column::Float16(s) => Some(
+            s.to_options()
+                .into_iter()
+                .map(|o| o.map(|v| v.to_f32() != 0.0))
+                .collect(),
+        ),
         Column::Float32(s) => opts!(s),
         Column::Float64(s) => opts!(s),
+        Column::Decimal8(s) => opts!(s),
+        Column::Decimal16(s) => opts!(s),
         Column::Decimal32(s) => opts!(s),
         Column::Decimal64(s) => opts!(s),
         Column::Decimal128(s) => opts!(s),
@@ -705,8 +730,11 @@ fn all_null_of(to: DataTypeId, len: usize) -> Column {
         DataTypeId::U64 => num!(UInt64),
         DataTypeId::I128 => num!(Int128),
         DataTypeId::U128 => num!(UInt128),
+        DataTypeId::Float16 => num!(Float16),
         DataTypeId::F32 => num!(Float32),
         DataTypeId::F64 => num!(Float64),
+        DataTypeId::Decimal8 => num!(Decimal8),
+        DataTypeId::Decimal16 => num!(Decimal16),
         DataTypeId::Decimal32 => num!(Decimal32),
         DataTypeId::Decimal64 => num!(Decimal64),
         DataTypeId::Decimal128 => num!(Decimal128),
@@ -766,9 +794,12 @@ fn apply_field(col: Column, field: Option<&ColumnField>) -> Result<Column, IoErr
         Column::UInt64(s) => reshape!(s),
         Column::Int128(s) => reshape!(s),
         Column::UInt128(s) => reshape!(s),
+        Column::Float16(s) => reshape!(s),
         Column::Float32(s) => reshape!(s),
         Column::Float64(s) => reshape!(s),
         Column::Bool(s) => reshape!(s),
+        Column::Decimal8(s) => reshape_decimal!(s),
+        Column::Decimal16(s) => reshape_decimal!(s),
         Column::Decimal32(s) => reshape_decimal!(s),
         Column::Decimal64(s) => reshape_decimal!(s),
         Column::Decimal128(s) => reshape_decimal!(s),

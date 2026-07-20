@@ -6,8 +6,8 @@
 #![cfg(feature = "arrow")]
 
 use arrow_array::{
-    Array, BinaryArray, BooleanArray, Decimal128Array, FixedSizeBinaryArray, Float64Array,
-    Int32Array, Int64Array, ListArray, MapArray, StringArray, StructArray,
+    Array, BinaryArray, BooleanArray, Decimal128Array, FixedSizeBinaryArray, Float16Array,
+    Float64Array, Int32Array, Int64Array, ListArray, MapArray, StringArray, StructArray,
 };
 use arrow_schema::{DataType, Field as ArrowField};
 
@@ -17,7 +17,9 @@ use yggdryl_core::arrow::{
     struct_serie_to_record_batch, to_arrow_data_type, to_arrow_field,
 };
 use yggdryl_core::datatype_id::DataTypeId;
-use yggdryl_core::typed::fixedbyte::{Decimal128, FixedBinary, Float64, Int32, Int64};
+use yggdryl_core::typed::fixedbyte::{
+    Decimal128, Decimal16, Decimal8, FixedBinary, Float16, Float64, Int32, Int64, F16,
+};
 use yggdryl_core::typed::varbyte::{Binary, Utf8};
 use yggdryl_core::typed::{
     Column, Field, FixedSerie, FixedSizeSerie, HeaderField, ListSerie, MapSerie, StructSerie,
@@ -108,6 +110,58 @@ fn bool_column_round_trips() {
     assert_eq!(back.get(1), Value::Bool(false));
     assert_eq!(back.get(2), Value::Null);
     assert_eq!(back.get(3), Value::Bool(true));
+}
+
+#[test]
+fn float16_column_round_trips() {
+    let column = Column::from(FixedSerie::<Float16>::from_values(&[
+        F16::from_f32(1.5),
+        F16::from_f32(-2.0),
+        F16::from_f32(0.5),
+    ]));
+    let field = column.field();
+
+    let array = column_to_arrow(&column).unwrap();
+    let halves = array.as_any().downcast_ref::<Float16Array>().unwrap();
+    assert_eq!(halves.len(), 3);
+    assert_eq!(halves.value(0).to_f32(), 1.5);
+    assert_eq!(halves.value(1).to_f32(), -2.0);
+    assert_eq!(array.data_type(), &DataType::Float16);
+
+    let back = column_from_arrow(&array, &field).unwrap();
+    assert_eq!(back.len(), 3);
+    assert_eq!(back.get(0), Value::Float16(F16::from_f32(1.5)));
+    assert_eq!(back.get(2), Value::Float16(F16::from_f32(0.5)));
+}
+
+#[test]
+fn small_decimal_columns_widen_and_restore() {
+    // Decimal8 widens to Decimal128 on the way out, and the field's Decimal8 id restores it back.
+    let column =
+        Column::from(FixedSerie::<Decimal8>::from_values(&[125, -5, 0]).with_precision_scale(2, 1));
+    let field = column.field();
+    let array = column_to_arrow(&column).unwrap();
+    let dec = array.as_any().downcast_ref::<Decimal128Array>().unwrap();
+    assert_eq!(dec.value(0), 125); // widened i8 -> i128, unscaled preserved
+    assert_eq!(dec.value(1), -5);
+    let back = column_from_arrow(&array, &field).unwrap();
+    assert_eq!(back.data_type_id(), DataTypeId::Decimal8);
+    assert_eq!(back.get(0), Value::Decimal8(125));
+    assert_eq!(back.get(1), Value::Decimal8(-5));
+
+    // Decimal16 likewise, with a null preserved.
+    let column16 = Column::from(
+        FixedSerie::<Decimal16>::from_options(&[Some(12345), None, Some(-5)])
+            .with_precision_scale(4, 2),
+    );
+    let field16 = column16.field();
+    let array16 = column_to_arrow(&column16).unwrap();
+    let back16 = column_from_arrow(&array16, &field16).unwrap();
+    assert_eq!(back16.data_type_id(), DataTypeId::Decimal16);
+    assert_eq!(back16.get(0), Value::Decimal16(12345));
+    assert_eq!(back16.get(1), Value::Null);
+    assert_eq!(back16.get(2), Value::Decimal16(-5));
+    assert_eq!(back16.null_count(), 1);
 }
 
 #[test]
@@ -291,9 +345,27 @@ fn data_type_map_representatives() {
         from_arrow_data_type(&DataType::FixedSizeBinary(8)),
         (DataTypeId::FixedBinary, None, None, Some(8))
     );
-    // An Arrow type with no leaf here degrades to Unknown.
+    // Float16 now maps to our native half type (arrow-rs's Float16 <-> our Float16).
+    assert_eq!(
+        to_arrow_data_type(DataTypeId::Float16, None, None, None),
+        DataType::Float16
+    );
     assert_eq!(
         from_arrow_data_type(&DataType::Float16),
+        (DataTypeId::Float16, None, None, None)
+    );
+    // Decimal8 / Decimal16 widen to Decimal128 (Arrow has no 8/16-bit decimal).
+    assert_eq!(
+        to_arrow_data_type(DataTypeId::Decimal8, Some(2), Some(1), None),
+        DataType::Decimal128(2, 1)
+    );
+    assert_eq!(
+        to_arrow_data_type(DataTypeId::Decimal16, Some(4), Some(2), None),
+        DataType::Decimal128(4, 2)
+    );
+    // An Arrow type with no leaf here still degrades to Unknown.
+    assert_eq!(
+        from_arrow_data_type(&DataType::Duration(arrow_schema::TimeUnit::Second)),
         (DataTypeId::Unknown, None, None, None)
     );
 }

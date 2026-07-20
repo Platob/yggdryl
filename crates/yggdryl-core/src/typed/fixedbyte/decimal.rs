@@ -1,7 +1,8 @@
-//! The fixed-point **decimal** element types — `Decimal32` / `Decimal64` / `Decimal128` /
-//! `Decimal256` — each a signed unscaled integer (`i32` / `i64` / `i128` / [`I256`]) packed at its
-//! byte width. `Decimal32`…`Decimal128` are one [`fixed_decimal!`] line over the source's typed
-//! integer arrays; `Decimal256` writes its 32 bytes directly. All four share the
+//! The fixed-point **decimal** element types — `Decimal8` / `Decimal16` / `Decimal32` / `Decimal64` /
+//! `Decimal128` / `Decimal256` — each a signed unscaled integer (`i8` / `i16` / `i32` / `i64` /
+//! `i128` / [`I256`]) packed at its byte width. `Decimal8`…`Decimal128` are one [`fixed_decimal!`]
+//! line over the source's typed integer arrays; `Decimal256` writes its 32 bytes directly. All share
+//! the
 //! [`Decimal`](crate::typed::Decimal) trait (precision + scale-aware `format`); precision/scale live
 //! in the [`Field`](crate::typed::Field) metadata.
 
@@ -61,6 +62,28 @@ macro_rules! fixed_decimal {
     };
 }
 
+fixed_decimal!(
+    /// 8-bit fixed-point decimal — an unscaled `i8` (up to 2 significant digits — `i8` spans
+    /// `-128..=127`, so 2 base-10 digits fit without overflow).
+    ///
+    /// ```
+    /// use yggdryl_core::typed::Decimal;
+    /// use yggdryl_core::typed::fixedbyte::Decimal8;
+    ///
+    /// // The unscaled `i8` 125 at scale 1 is "12.5"; the trait pins the width's max precision.
+    /// assert_eq!(Decimal8::format(125, 1), "12.5");
+    /// assert_eq!(Decimal8::format(-5, 1), "-0.5");
+    /// assert_eq!(Decimal8::MAX_PRECISION, 2);
+    /// ```
+    Decimal8, i8, Decimal8, 2,
+    pwrite_i8_array, pread_i8_array
+);
+fixed_decimal!(
+    /// 16-bit fixed-point decimal — an unscaled `i16` (up to 4 significant digits — `i16` spans
+    /// `-32768..=32767`, so 4 base-10 digits fit without overflow).
+    Decimal16, i16, Decimal16, 4,
+    pwrite_i16_array, pread_i16_array
+);
 fixed_decimal!(
     /// 32-bit fixed-point decimal — an unscaled `i32` (up to 9 significant digits).
     Decimal32, i32, Decimal32, 9,

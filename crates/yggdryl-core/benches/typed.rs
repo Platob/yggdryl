@@ -15,7 +15,8 @@ use std::time::Instant;
 use yggdryl_core::io::memory::Heap;
 use yggdryl_core::typed::fixedbit::Bit;
 use yggdryl_core::typed::fixedbyte::{
-    Decimal128, Decimal256, Float64, Int128, Int32, Int64, Int8, UInt128, I256,
+    Decimal128, Decimal16, Decimal256, Decimal8, Float16, Float64, Int128, Int32, Int64, Int8,
+    UInt128, F16, I256,
 };
 use yggdryl_core::typed::{Decoder, Encoder, FixedScalar, FixedSerie, Scalar, Serie};
 
@@ -172,6 +173,43 @@ fn main() {
         "from_values Decimal256 (I256, 32B)",
         measure(n, iters, || {
             black_box(FixedSerie::<Decimal256>::from_values(black_box(&dec256)));
+        }),
+    );
+
+    // -- Encodings: the new narrow fixed-width types (Float16 / Decimal8 / Decimal16) --
+    println!("\n  -- encode/decode/reduce: Float16 + small decimals --");
+    let halves: Vec<F16> = (0..n).map(|i| F16::from_f32(i as f32)).collect();
+    let dec8: Vec<i8> = (0..n).map(|i| i as i8).collect();
+    let dec16: Vec<i16> = (0..n).map(|i| i as i16).collect();
+    let f16col = FixedSerie::<Float16>::from_values(&halves);
+    row(
+        "from_values Float16 (2B, u16 reinterpret)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Float16>::from_values(black_box(&halves)));
+        }),
+    );
+    row(
+        "Serie::values (decode Float16)",
+        measure(n, iters, || {
+            black_box(f16col.values());
+        }),
+    );
+    row(
+        "Serie::sum (reduce Float16 -> f64)",
+        measure(n, iters, || {
+            black_box(f16col.sum().unwrap());
+        }),
+    );
+    row(
+        "from_values Decimal8 (1B, i8 array)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Decimal8>::from_values(black_box(&dec8)));
+        }),
+    );
+    row(
+        "from_values Decimal16 (2B, i16 array)",
+        measure(n, iters, || {
+            black_box(FixedSerie::<Decimal16>::from_values(black_box(&dec16)));
         }),
     );
 

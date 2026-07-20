@@ -61,9 +61,13 @@ pub fn to_arrow_data_type(
         // scale-0 decimal). A u128 ≥ 2^127 presents as negative on the Arrow side, but the 16 raw
         // bytes round-trip losslessly. See the module docs.
         DataTypeId::I128 | DataTypeId::U128 => DataType::Decimal128(38, 0),
+        // Arrow has a native half — an exact match (bits round-trip by raw `u16`).
+        DataTypeId::Float16 => DataType::Float16,
         DataTypeId::F32 => DataType::Float32,
         DataTypeId::F64 => DataType::Float64,
-        // Decimal32/64/128 -> Decimal128 (documented widening); Decimal256 -> Decimal256.
+        // Decimal8/16/32/64/128 -> Decimal128 (documented widening); Decimal256 -> Decimal256.
+        DataTypeId::Decimal8 => decimal128(2),
+        DataTypeId::Decimal16 => decimal128(4),
         DataTypeId::Decimal32 => decimal128(9),
         DataTypeId::Decimal64 => decimal128(18),
         DataTypeId::Decimal128 => decimal128(38),
@@ -98,7 +102,7 @@ pub fn to_arrow_data_type(
 
 /// The **leaf-only inverse** of [`to_arrow_data_type`]: an Arrow [`DataType`] → the matching
 /// [`DataTypeId`] and its params `(precision, scale, byte_width)`. Total — an Arrow type this crate
-/// has no leaf for (e.g. `Float16`, the temporal / view / union types) degrades to
+/// has no leaf for (the temporal / view / union types) degrades to
 /// [`Unknown`](DataTypeId::Unknown); the nested `Struct` / `List` / `Map` types return their marker
 /// id (the nested phase owns the real mapping).
 ///
@@ -133,6 +137,7 @@ pub fn from_arrow_data_type(dt: &DataType) -> (DataTypeId, Option<u32>, Option<i
         DataType::UInt32 => (DataTypeId::U32, None, None, None),
         DataType::Int64 => (DataTypeId::I64, None, None, None),
         DataType::UInt64 => (DataTypeId::U64, None, None, None),
+        DataType::Float16 => (DataTypeId::Float16, None, None, None),
         DataType::Float32 => (DataTypeId::F32, None, None, None),
         DataType::Float64 => (DataTypeId::F64, None, None, None),
         DataType::Decimal32(p, s) => (
@@ -174,8 +179,8 @@ pub fn from_arrow_data_type(dt: &DataType) -> (DataTypeId, Option<u32>, Option<i
             (DataTypeId::List, None, None, None)
         }
         DataType::Map(_, _) => (DataTypeId::Map, None, None, None),
-        // Every other Arrow type (Float16, temporal, view, union, dictionary, run-end, …) has no
-        // leaf here yet — degrade to raw bytes.
+        // Every other Arrow type (temporal, view, union, dictionary, run-end, …) has no leaf here
+        // yet — degrade to raw bytes.
         _ => (DataTypeId::Unknown, None, None, None),
     }
 }

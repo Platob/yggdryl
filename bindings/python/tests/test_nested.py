@@ -29,6 +29,30 @@ def test_module_surface():
         assert cls.__module__ == "yggdryl.typed"
 
 
+def test_value_marshalling_covers_float_and_decimal_arms():
+    """The ``Value`` -> Python marshaller handles float and decimal element values.
+
+    The core ``Value`` enum carries ``Float16`` / ``Decimal8`` / ``Decimal16`` variants that the
+    marshaller (``value_to_py``) matches exhaustively; a ``Float16`` surfaces as a Python ``float``
+    and a ``Decimal8`` / ``Decimal16`` as its raw unscaled ``int``. Those three dtypes are not yet
+    exposed as constructible ``Serie`` dtypes on the Python surface (``DataTypeId`` has no
+    ``Float16`` / ``Decimal8`` / ``Decimal16`` member), so a row cannot yet carry them from Python;
+    this test exercises the nearest constructible neighbours — ``Float32`` -> ``float`` and
+    ``Decimal32`` -> unscaled ``int`` — proving the float and decimal marshalling paths work.
+    """
+    assert not hasattr(DataTypeId, "Float16")
+    assert not hasattr(DataTypeId, "Decimal8")
+    assert not hasattr(DataTypeId, "Decimal16")
+
+    floats = Serie.from_values([1.5, 2.5], DataTypeId.F32)
+    decimals = Serie.from_values([125, -5], DataTypeId.Decimal32)
+    table = StructSerie.from_columns([floats, decimals], names=["f", "d"])
+
+    row = table.row(0)
+    assert isinstance(row[0], float) and row[0] == pytest.approx(1.5)
+    assert isinstance(row[1], int) and row[1] == 125
+
+
 # -------------------------------------------------------------------------------------
 # StructSerie — the table
 # -------------------------------------------------------------------------------------

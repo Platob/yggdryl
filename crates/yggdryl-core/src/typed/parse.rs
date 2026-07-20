@@ -182,6 +182,18 @@ macro_rules! impl_float_flexible {
 
 impl_float_flexible!(f32, f64);
 
+impl FlexibleFromStr for crate::typed::fixedbyte::F16 {
+    /// Parses the tolerant `f32` forms, then rounds to the nearest half via
+    /// [`F16::from_f32`](crate::typed::fixedbyte::F16::from_f32).
+    fn parse_flexible(s: &str) -> Result<Self, IoError> {
+        f32::parse_flexible(s).map(crate::typed::fixedbyte::F16::from_f32)
+    }
+
+    fn parse_exact(s: &str) -> Result<Self, IoError> {
+        f32::parse_exact(s).map(crate::typed::fixedbyte::F16::from_f32)
+    }
+}
+
 impl FlexibleFromStr for bool {
     fn parse_flexible(s: &str) -> Result<Self, IoError> {
         let t = s.trim();
@@ -228,3 +240,10 @@ macro_rules! impl_to_str {
 }
 
 impl_to_str!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64, bool);
+
+impl FlexibleToStr for crate::typed::fixedbyte::F16 {
+    /// Renders through the half's `f32` value (its [`Display`](std::fmt::Display)).
+    fn to_flexible_string(&self) -> String {
+        self.to_string()
+    }
+}

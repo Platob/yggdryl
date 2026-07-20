@@ -14,7 +14,7 @@
 
 use crate::datatype_id::DataTypeId;
 use crate::io::memory::IoError;
-use crate::typed::fixedbyte::I256;
+use crate::typed::fixedbyte::{F16, I256};
 use crate::typed::nested::Value;
 
 /// Erases a concrete **native scalar** into the tagged [`Value`] union — the forward half of the
@@ -68,6 +68,7 @@ copy_bridge! {
     f32 => Float32,
     f64 => Float64,
     bool => Bool,
+    F16 => Float16,
     I256 => Decimal256,
 }
 

@@ -65,7 +65,7 @@ pub use decimal::{apply_scale, Decimal};
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use field::{Field, HeaderField};
-pub use fixedbyte::{FixedBinary, FixedSizeSerie, FixedUtf8};
+pub use fixedbyte::{Decimal16, Decimal8, FixedBinary, FixedSizeSerie, FixedUtf8, Float16, F16};
 pub use logical::LogicalType;
 pub use nested::{
     Column, ColumnField, FromValue, ListField, ListScalar, ListSerie, MapField, MapScalar,

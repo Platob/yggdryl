@@ -16,8 +16,8 @@
 //! | `0x0000` | [`Null`](DataTypeCategory::Null) | `Unknown`, `Null` (`0x0001`), `Any` (`0x00F0`) |
 //! | `0x0010` | [`Boolean`](DataTypeCategory::Boolean) | `Bool` |
 //! | `0x0100` | [`Integer`](DataTypeCategory::Integer) | `I8`…`U128` |
-//! | `0x0200` | [`Float`](DataTypeCategory::Float) | `F32`, `F64` (`0x0200` reserved for `F16`) |
-//! | `0x0300` | [`Decimal`](DataTypeCategory::Decimal) | `Decimal32`…`Decimal256` |
+//! | `0x0200` | [`Float`](DataTypeCategory::Float) | `Float16` (`0x0200`), `F32`, `F64` |
+//! | `0x0300` | [`Decimal`](DataTypeCategory::Decimal) | `Decimal32`…`Decimal256`, `Decimal8`/`Decimal16` |
 //! | `0x0400` | [`Temporal`](DataTypeCategory::Temporal) | *(reserved — date / time / timestamp)* |
 //! | `0x0500` | [`Binary`](DataTypeCategory::Binary) | `Binary`, `LargeBinary`, `FixedBinary` |
 //! | `0x0600` | [`Utf8`](DataTypeCategory::Utf8) | `Utf8`, `LargeUtf8`, `FixedUtf8` |
@@ -129,7 +129,9 @@ pub enum DataTypeId {
     /// Unsigned 128-bit integer.
     U128 = 0x0109,
 
-    // ---- float band (0x0200; 0x0200 reserved for F16) ---------------------------------
+    // ---- float band (0x0200) ----------------------------------------------------------
+    /// 16-bit IEEE-754 **half-precision** float (the reserved f16 slot).
+    Float16 = 0x0200,
     /// 32-bit IEEE-754 float.
     F32 = 0x0201,
     /// 64-bit IEEE-754 float.
@@ -144,6 +146,10 @@ pub enum DataTypeId {
     Decimal128 = 0x0302,
     /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value.
     Decimal256 = 0x0303,
+    /// 8-bit fixed-point **decimal** — a signed `i8` unscaled value.
+    Decimal8 = 0x0304,
+    /// 16-bit fixed-point **decimal** — a signed `i16` unscaled value.
+    Decimal16 = 0x0305,
 
     // ---- binary band (0x0500; 0x0503 reserved for a future large-fixed slot) ----------
     /// **Variable-length binary** — an `i32`-offsets + data byte layout (`Vec<u8>` elements).
@@ -179,7 +185,7 @@ impl DataTypeId {
     /// Every non-`Unknown` type, in id order — the canonical set (used by tests and registries).
     /// Includes the special-band [`Null`](DataTypeId::Null) (the typed all-null) and
     /// [`Any`](DataTypeId::Any) (the erased "holds any type" meta-tag).
-    pub const ALL: [DataTypeId; 28] = [
+    pub const ALL: [DataTypeId; 31] = [
         DataTypeId::Null,
         DataTypeId::Bool,
         DataTypeId::Any,
@@ -193,8 +199,11 @@ impl DataTypeId {
         DataTypeId::U64,
         DataTypeId::I128,
         DataTypeId::U128,
+        DataTypeId::Float16,
         DataTypeId::F32,
         DataTypeId::F64,
+        DataTypeId::Decimal8,
+        DataTypeId::Decimal16,
         DataTypeId::Decimal32,
         DataTypeId::Decimal64,
         DataTypeId::Decimal128,
@@ -232,12 +241,15 @@ impl DataTypeId {
             0x0107 => DataTypeId::U64,
             0x0108 => DataTypeId::I128,
             0x0109 => DataTypeId::U128,
+            0x0200 => DataTypeId::Float16,
             0x0201 => DataTypeId::F32,
             0x0202 => DataTypeId::F64,
             0x0300 => DataTypeId::Decimal32,
             0x0301 => DataTypeId::Decimal64,
             0x0302 => DataTypeId::Decimal128,
             0x0303 => DataTypeId::Decimal256,
+            0x0304 => DataTypeId::Decimal8,
+            0x0305 => DataTypeId::Decimal16,
             0x0500 => DataTypeId::Binary,
             0x0502 => DataTypeId::LargeBinary,
             0x0510 => DataTypeId::FixedBinary,
@@ -268,12 +280,15 @@ impl DataTypeId {
             DataTypeId::U64 => "u64",
             DataTypeId::I128 => "i128",
             DataTypeId::U128 => "u128",
+            DataTypeId::Float16 => "float16",
             DataTypeId::F32 => "f32",
             DataTypeId::F64 => "f64",
             DataTypeId::Decimal32 => "decimal32",
             DataTypeId::Decimal64 => "decimal64",
             DataTypeId::Decimal128 => "decimal128",
             DataTypeId::Decimal256 => "decimal256",
+            DataTypeId::Decimal8 => "decimal8",
+            DataTypeId::Decimal16 => "decimal16",
             DataTypeId::Binary => "binary",
             DataTypeId::LargeBinary => "large_binary",
             DataTypeId::Utf8 => "utf8",
@@ -329,8 +344,8 @@ impl DataTypeId {
     /// field-metadata width have no id-derivable fixed element width).
     pub fn byte_size(self) -> u64 {
         match self {
-            DataTypeId::Bool | DataTypeId::I8 | DataTypeId::U8 => 1,
-            DataTypeId::I16 | DataTypeId::U16 => 2,
+            DataTypeId::Bool | DataTypeId::I8 | DataTypeId::U8 | DataTypeId::Decimal8 => 1,
+            DataTypeId::I16 | DataTypeId::U16 | DataTypeId::Float16 | DataTypeId::Decimal16 => 2,
             DataTypeId::I32 | DataTypeId::U32 | DataTypeId::F32 => 4,
             DataTypeId::I64 | DataTypeId::U64 | DataTypeId::F64 => 8,
             DataTypeId::I128 | DataTypeId::U128 => 16,
@@ -458,6 +473,7 @@ impl DataTypeId {
                 | DataTypeId::I32
                 | DataTypeId::I64
                 | DataTypeId::I128
+                | DataTypeId::Float16
                 | DataTypeId::F32
                 | DataTypeId::F64
         ) || self.is_decimal()

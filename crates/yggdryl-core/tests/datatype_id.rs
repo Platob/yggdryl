@@ -86,6 +86,46 @@ fn decimal_variants() {
 }
 
 #[test]
+fn float16_and_small_decimal_variants() {
+    // Float16 is the reserved f16 slot (0x0200) at the head of the float band.
+    assert_eq!(DataTypeId::Float16.as_u16(), 0x0200);
+    assert_eq!(DataTypeId::from_u16(0x0200), DataTypeId::Float16);
+    assert_eq!(DataTypeId::Float16.name(), "float16");
+    assert_eq!(DataTypeId::from_name("FLOAT16"), Some(DataTypeId::Float16)); // case-insensitive
+    assert_eq!(DataTypeId::Float16.category(), DataTypeCategory::Float);
+    assert!(DataTypeId::Float16.is_float() && DataTypeId::Float16.is_signed());
+    assert!(DataTypeId::Float16.is_numeric() && !DataTypeId::Float16.is_decimal());
+    assert_eq!(DataTypeId::Float16.byte_size(), 2);
+    assert_eq!(DataTypeId::Float16.bit_size(), 16);
+    assert!(DataTypeId::Float16.is_fixed_width());
+    assert_eq!(DataTypeId::Float16.to_string(), "float16");
+
+    // Decimal8 / Decimal16 extend the decimal band (0x0304 / 0x0305).
+    assert_eq!(DataTypeId::Decimal8.as_u16(), 0x0304);
+    assert_eq!(DataTypeId::Decimal16.as_u16(), 0x0305);
+    assert_eq!(DataTypeId::from_u16(0x0304), DataTypeId::Decimal8);
+    assert_eq!(DataTypeId::from_u16(0x0305), DataTypeId::Decimal16);
+    assert_eq!(DataTypeId::Decimal8.name(), "decimal8");
+    assert_eq!(DataTypeId::Decimal16.name(), "decimal16");
+    assert_eq!(
+        DataTypeId::from_name("decimal8"),
+        Some(DataTypeId::Decimal8)
+    );
+    assert_eq!(
+        DataTypeId::from_name("decimal16"),
+        Some(DataTypeId::Decimal16)
+    );
+    assert_eq!(DataTypeId::Decimal8.byte_size(), 1);
+    assert_eq!(DataTypeId::Decimal16.byte_size(), 2);
+    for dt in [DataTypeId::Decimal8, DataTypeId::Decimal16] {
+        assert_eq!(dt.category(), DataTypeCategory::Decimal);
+        assert!(dt.is_decimal() && dt.is_signed() && dt.is_numeric());
+        assert!(!dt.is_integer() && !dt.is_float());
+        assert!(dt.is_fixed_width());
+    }
+}
+
+#[test]
 fn variable_and_fixed_size_variants() {
     assert!(DataTypeId::Binary.is_binary() && DataTypeId::Binary.is_variable_length());
     assert!(DataTypeId::Utf8.is_utf8() && DataTypeId::Utf8.is_variable_length());

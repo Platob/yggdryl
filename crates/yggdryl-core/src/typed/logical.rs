@@ -61,11 +61,15 @@ macro_rules! impl_logical {
     )+};
 }
 
-use crate::typed::fixedbyte::{Decimal128, Decimal256, Decimal32, Decimal64, FixedUtf8};
+use crate::typed::fixedbyte::{
+    Decimal128, Decimal16, Decimal256, Decimal32, Decimal64, Decimal8, FixedUtf8,
+};
 use crate::typed::varbyte::{LargeUtf8, Utf8};
 
 impl_logical! {
     // Decimals decay to their unscaled backing integer (same bytes, same width).
+    Decimal8   => (Decimal8, I8),
+    Decimal16  => (Decimal16, I16),
     Decimal32  => (Decimal32, I32),
     Decimal64  => (Decimal64, I64),
     Decimal128 => (Decimal128, I128),

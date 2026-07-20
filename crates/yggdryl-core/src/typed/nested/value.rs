@@ -6,7 +6,7 @@
 //! a nested [`StructScalar`] for a struct row), so a `Value` outlives the column it came from.
 
 use crate::datatype_id::DataTypeId;
-use crate::typed::fixedbyte::I256;
+use crate::typed::fixedbyte::{F16, I256};
 use crate::typed::nested::{ListScalar, MapScalar, StructScalar};
 
 /// One erased, possibly-null typed value — the element a [`Column::get`](super::Column::get) yields
@@ -36,12 +36,18 @@ pub enum Value {
     Int128(i128),
     /// An unsigned 128-bit integer element.
     UInt128(u128),
+    /// A 16-bit **half-precision** float element (its raw [`F16`] bits).
+    Float16(F16),
     /// A 32-bit float element.
     Float32(f32),
     /// A 64-bit float element.
     Float64(f64),
     /// A boolean element.
     Bool(bool),
+    /// An 8-bit fixed-point decimal element (its unscaled `i8`).
+    Decimal8(i8),
+    /// A 16-bit fixed-point decimal element (its unscaled `i16`).
+    Decimal16(i16),
     /// A 32-bit fixed-point decimal element (its unscaled `i32`).
     Decimal32(i32),
     /// A 64-bit fixed-point decimal element (its unscaled `i64`).
@@ -88,9 +94,12 @@ impl Value {
             Value::UInt64(_) => DataTypeId::U64,
             Value::Int128(_) => DataTypeId::I128,
             Value::UInt128(_) => DataTypeId::U128,
+            Value::Float16(_) => DataTypeId::Float16,
             Value::Float32(_) => DataTypeId::F32,
             Value::Float64(_) => DataTypeId::F64,
             Value::Bool(_) => DataTypeId::Bool,
+            Value::Decimal8(_) => DataTypeId::Decimal8,
+            Value::Decimal16(_) => DataTypeId::Decimal16,
             Value::Decimal32(_) => DataTypeId::Decimal32,
             Value::Decimal64(_) => DataTypeId::Decimal64,
             Value::Decimal128(_) => DataTypeId::Decimal128,
