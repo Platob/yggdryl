@@ -1,17 +1,14 @@
 name: Documentation
 
+# A pull request only builds the site when it touches something the site is
+# built from. `main` publishes on every push instead: the pages carry examples
+# and versions from the whole tree, so a change anywhere - a release bump, a
+# renamed package, a reworded error - can leave the published site stale, and a
+# path list is a guess about which changes those are.
 on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/docs.yml"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "README.md"
-      - "requirements-docs.txt"
-      - "scripts/build_docs_notebooks.py"
-      - "scripts/check_docs_examples.py"
   pull_request:
     paths:
       - ".github/workflows/docs.yml"
