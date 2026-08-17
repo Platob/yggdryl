@@ -121,6 +121,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<io::PyIOBaseIterator>()?;
     module.add_class::<record::PyRecordOptions>()?;
     module.add_class::<iceberg::PyCatalog>()?;
+    module.add_class::<iceberg::PyNamespace>()?;
     module.add_class::<iceberg::PyTable>()?;
     module.add_class::<iceberg::PySchemaUpdate>()?;
     module.add_class::<iceberg::PyCompaction>()?;

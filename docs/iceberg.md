@@ -1431,6 +1431,70 @@ delete or move primitive, and a catalog must not emulate either by leaving a hal
 behind; and no catalog *service* client, because the module holds no network code. A REST catalog
 is future work behind an HTTP storage backend.
 
+### The map-like spelling
+
+A catalog is namespaces of tables, so it also reads as the mapping it is. `namespace(name)` hands
+back a lazy view - it exists whether or not the folder does, exactly as a handle describes a
+location without proof - and in Python the brackets do the rest: `catalog["ns"]["table"]` opens a
+table, a missing one is a `KeyError`, and *assigning* gets-or-creates. A schema-like value opens
+the table, creating it with that schema when absent; anything rows-like replaces the table's rows,
+creating it from the rows' own schema on first write.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::Catalog;
+    use yggdryl::local::Folder;
+
+    let catalog = Catalog::new(Folder::new(std::env::temp_dir().join("warehouse"))?);
+    let analytics = catalog.namespace("analytics");
+
+    // The view resolves `analytics.trades` at the moment each call runs.
+    assert!(!analytics.has_table("trades")?);
+    assert_eq!(analytics.list_tables()?.len(), 0);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field
+    from yggdryl.iceberg import Catalog
+
+    catalog = Catalog("warehouse")
+    analytics = catalog["analytics"]
+
+    # Assigning a schema gets or creates; assigning again is the same table.
+    analytics["trades"] = Field(
+        "row",
+        DataType.from_fields([Field("id", "int64", nullable=False)]),
+        nullable=False,
+    )
+    # Assigning rows replaces them, creating the table on first write.
+    analytics["quotes"] = pa.table({"symbol": ["AAPL"], "price": [12.5]})
+
+    assert "trades" in analytics
+    assert sorted(analytics) == ["quotes", "trades"]
+    table = catalog["analytics"]["trades"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const { Field, iceberg } = require('yggdryl')
+
+    const catalog = new iceberg.Catalog('warehouse')
+    const analytics = catalog.namespace('analytics')
+
+    // set() gets or creates: a schema opens the table, rows replace them.
+    analytics.set('trades', new Field('row', 'struct<id: int64>', false))
+    analytics.set('quotes', rows)
+
+    assert.ok(analytics.has('trades'))
+    const table = analytics.get('trades')
+    ```
+
 ## Data files aim at a size
 
 !!! note "All three"

@@ -352,6 +352,46 @@ class TestScans:
 class TestCatalog:
     """A catalog is a warehouse folder, and a dotted name is nested folders."""
 
+    def test_a_catalog_is_a_map_of_namespaces_of_tables(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import pyarrow as pa
+
+        catalog = Catalog(tmp_path / "warehouse")
+        analytics = catalog["analytics"]
+        assert analytics.name == "analytics"
+
+        # Assigning a schema gets or creates; assigning again is the same
+        # table, not a second one.
+        schema = Field(
+            "row",
+            DataType.from_fields(
+                [Field("id", "int64", nullable=False), Field("venue", "string")]
+            ),
+            nullable=False,
+        )
+        analytics["trades"] = schema
+        analytics["trades"] = schema
+        assert "trades" in analytics
+        assert list(analytics) == ["trades"]
+        assert len(analytics) == 1
+
+        # Indexing opens the table; a missing one is a KeyError, as a map
+        # spells absence.
+        table = catalog["analytics"]["trades"]
+        table.append(pa.table({"id": [1, 2], "venue": ["XNAS", None]}))
+        assert catalog["analytics"]["trades"].scan().read_all().num_rows == 2
+        with pytest.raises(KeyError):
+            catalog["analytics"]["absent"]
+
+        # Assigning rows replaces the table's rows - and creates a table the
+        # namespace never had, from the rows' own schema.
+        analytics["quotes"] = pa.table({"symbol": ["AAPL"], "price": [12.5]})
+        assert sorted(analytics) == ["quotes", "trades"]
+        assert "analytics" in catalog
+        assert [namespace.name for namespace in catalog] == ["analytics"]
+        assert len(catalog) == 1
+
     def test_a_pyarrow_append_creates_a_partitioned_table_on_first_write(
         self, tmp_path: pathlib.Path
     ) -> None:

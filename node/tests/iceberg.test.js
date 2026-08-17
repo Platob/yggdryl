@@ -509,3 +509,26 @@ test('a schema is a document in both directions', () => {
   assert.equal(imported.dataType.length, 1)
   assert.equal(imported.dataType.at(0).nullable, false)
 })
+
+test('a namespace is the map-like half of the catalog', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const catalog = new iceberg.Catalog(root)
+  const analytics = catalog.namespace('analytics')
+  assert.equal(analytics.name, 'analytics')
+
+  // Setting a schema gets or creates; setting again is the same table.
+  const schema = new Field('row', 'struct<id: int64, venue: utf8>', false)
+  analytics.set('trades', schema)
+  analytics.set('trades', schema)
+  assert.ok(analytics.has('trades'))
+  assert.deepEqual(analytics.tables(), ['trades'])
+
+  // Setting rows replaces the table's rows, creating a table the namespace
+  // never had from the rows' own schema.
+  analytics.set('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
+  assert.equal(analytics.get('quotes').scan().toTable().numRows, 2)
+  assert.deepEqual(analytics.tables().sort(), ['quotes', 'trades'])
+  assert.deepEqual(catalog.listNamespaces(), ['analytics'])
+})

@@ -85,6 +85,13 @@ export declare class Catalog {
    * A namespace that does not exist lists nothing rather than failing.
    */
   listTables(namespace: string): Array<string>
+  /**
+   * One namespace as a view: `catalog.namespace('analytics')`.
+   *
+   * The view exists whether or not the folder does, exactly as a handle
+   * describes a location without proof, so asking for one never fails.
+   */
+  namespace(name: string): JsNamespace
 }
 export type JsCatalog = Catalog
 
@@ -868,6 +875,32 @@ export declare class MimeType {
   toJSON(): any
 }
 export type JsMimeType = MimeType
+
+/**
+ * One namespace of a catalog: the first half of `catalog[ns][table]`.
+ *
+ * `get` opens a table, `set` gets-or-creates - a schema opens the table,
+ * creating it when absent, and rows replace the table's rows, creating it
+ * from their own schema on first write - and `has`, `tables`, and
+ * `namespaces` answer the map questions.
+ */
+export declare class Namespace {
+  /** The namespace's dotted name. */
+  get name(): string
+  /** Open the named table. */
+  table(name: string): Table
+  /** Open the named table, as a map reads one. */
+  get(name: string): Table
+  /** Return whether the named table exists here. */
+  has(name: string): boolean
+  /** Open the named table, creating it with `schema` when absent. */
+  openOrCreateTable(name: string, schema: Field): Table
+  /** This namespace's tables, as bare names. */
+  tables(): Array<string>
+  /** The namespaces one level below this one, as bare names. */
+  namespaces(): Array<string>
+}
+export type JsNamespace = Namespace
 
 /** How a table turns column values into the directories it writes. */
 export declare class PartitionSpec {

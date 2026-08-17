@@ -105,7 +105,7 @@ mod table;
 mod types;
 mod value;
 
-pub use catalog::Catalog;
+pub use catalog::{Catalog, Namespace};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
     DataFile, EntryStatus, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,

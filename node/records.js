@@ -64,7 +64,7 @@ function arrowKind(value) {
   return null
 }
 
-function installRecords({ BatchReader, Field, IOBase, RecordOptions, Table }) {
+function installRecords({ BatchReader, Field, IOBase, Namespace, RecordOptions, Table }) {
   const nextIpc = BatchReader.prototype._nextIpcNative
   if (typeof nextIpc !== 'function') {
     throw new TypeError('native binding is missing BatchReader._nextIpcNative')
@@ -392,6 +392,21 @@ function installRecords({ BatchReader, Field, IOBase, RecordOptions, Table }) {
       configurable: true,
       value(rows, options) {
         return this[target](rows, options)
+      },
+    })
+  }
+
+  // The setter half of the map-like catalog: a schema opens the table,
+  // creating it when absent; anything rows-like replaces the table's rows,
+  // creating it from their own schema on first write.
+  if (Namespace) {
+    Object.defineProperty(Namespace.prototype, 'set', {
+      configurable: true,
+      value(name, value) {
+        if (value instanceof Field || typeof value === 'string') {
+          return this.openOrCreateTable(name, Field.from(value))
+        }
+        return this._setIpc(name, batchReader(value).toIpc())
       },
     })
   }

@@ -1705,6 +1705,7 @@ installRecords({
   BatchReader,
   Field,
   IOBase,
+  Namespace: binding.Namespace,
   RecordOptions,
   Table: binding.Table,
 })

@@ -359,6 +359,54 @@ impl PyCatalog {
         self.inner.list_tables(namespace).map_err(value_error)
     }
 
+    /// One namespace as a view: `catalog["analytics"]`.
+    ///
+    /// The view exists whether or not the folder does, exactly as a handle
+    /// describes a location without proof, so indexing never fails.
+    fn namespace(slf: &Bound<'_, Self>, name: &str) -> PyNamespace {
+        PyNamespace {
+            catalog: slf.clone().unbind(),
+            name: name.to_owned(),
+        }
+    }
+
+    /// `catalog["analytics"]` is [`namespace`](Self::namespace).
+    fn __getitem__(slf: &Bound<'_, Self>, name: &str) -> PyNamespace {
+        Self::namespace(slf, name)
+    }
+
+    /// `"analytics" in catalog` asks whether the namespace is listed.
+    fn __contains__(&self, name: &str) -> PyResult<bool> {
+        Ok(self
+            .inner
+            .list_namespaces(None)
+            .map_err(value_error)?
+            .iter()
+            .any(|namespace| namespace == name))
+    }
+
+    /// Iterating a catalog yields its top-level namespace views.
+    fn __iter__(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let names = slf
+            .borrow()
+            .inner
+            .list_namespaces(None)
+            .map_err(value_error)?;
+        let namespaces: Vec<PyNamespace> = names
+            .into_iter()
+            .map(|name| PyNamespace {
+                catalog: slf.clone().unbind(),
+                name,
+            })
+            .collect();
+        let list = pyo3::types::PyList::new(slf.py(), namespaces)?;
+        Ok(list.as_any().try_iter()?.unbind().into_any())
+    }
+
+    fn __len__(&self) -> PyResult<usize> {
+        Ok(self.inner.list_namespaces(None).map_err(value_error)?.len())
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "Catalog({:?})",
@@ -1503,5 +1551,141 @@ impl PyDataFile {
             self.inner.file_path.as_str(),
             self.inner.record_count,
         )
+    }
+}
+
+/// One namespace of a catalog: the first half of `catalog[ns][table]`.
+///
+/// Indexing reads - `namespace["trades"]` opens the table or raises
+/// `KeyError` - and assigning gets-or-creates: a schema-like value opens the
+/// table, creating it with that schema when absent, and a rows-like value
+/// replaces the table's rows, creating it from the rows' own schema on first
+/// write.
+#[pyclass(name = "Namespace", module = "yggdryl._native", skip_from_py_object)]
+pub(crate) struct PyNamespace {
+    catalog: Py<PyCatalog>,
+    name: String,
+}
+
+#[pymethods]
+impl PyNamespace {
+    /// The namespace's dotted name.
+    #[getter]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Open the named table.
+    fn table(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespace(&self.name)
+            .table(name)
+            .map(PyTable::from_core)
+            .map_err(value_error)
+    }
+
+    /// Return whether the named table exists here.
+    fn has_table(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespace(&self.name)
+            .has_table(name)
+            .map_err(value_error)
+    }
+
+    /// Open the named table, creating it with `schema` when absent.
+    fn open_or_create_table(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        schema: &Bound<'_, PyAny>,
+    ) -> PyResult<PyTable> {
+        let schema = catalog_schema_from_value(schema)?;
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespace(&self.name)
+            .open_or_create_table(name, schema)
+            .map(PyTable::from_core)
+            .map_err(value_error)
+    }
+
+    /// This namespace's tables, as bare names.
+    fn list_tables(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespace(&self.name)
+            .list_tables()
+            .map_err(value_error)
+    }
+
+    /// The namespaces one level below this one, as bare names.
+    fn list_namespaces(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespace(&self.name)
+            .list_namespaces()
+            .map_err(value_error)
+    }
+
+    /// `namespace["trades"]` opens the table; a missing one is a `KeyError`.
+    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
+        if !self.has_table(py, name)? {
+            return Err(pyo3::exceptions::PyKeyError::new_err(format!(
+                "no table named {name:?} in namespace {:?}",
+                self.name
+            )));
+        }
+        self.table(py, name)
+    }
+
+    /// Assigning gets or creates.
+    ///
+    /// A schema-like value - a `Field`, `DataType`, `pyarrow` schema, or
+    /// datatype string - opens the table, creating it with that schema when
+    /// absent. Anything rows-like replaces the table's rows, creating the
+    /// table from the rows' own schema on first write.
+    fn __setitem__(&self, py: Python<'_>, name: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        if let Ok(schema) = catalog_schema_from_value(value) {
+            let catalog = self.catalog.borrow(py);
+            catalog
+                .inner
+                .namespace(&self.name)
+                .open_or_create_table(name, schema)
+                .map_err(value_error)?;
+            return Ok(());
+        }
+        let data = batch_reader_from_value(value)?;
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespace(&self.name)
+            .overwrite(name, data)
+            .map_err(value_error)?;
+        Ok(())
+    }
+
+    /// `"trades" in namespace` asks whether the table exists.
+    fn __contains__(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
+        self.has_table(py, name)
+    }
+
+    /// Iterating a namespace yields its bare table names.
+    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let list = pyo3::types::PyList::new(py, self.list_tables(py)?)?;
+        Ok(list.as_any().try_iter()?.unbind().into_any())
+    }
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        Ok(self.list_tables(py)?.len())
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Namespace({:?})", self.name)
     }
 }

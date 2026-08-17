@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use napi::bindgen_prelude::{BigInt, Buffer, ClassInstance, Either, Either3, Result};
+use napi::bindgen_prelude::{BigInt, Buffer, ClassInstance, Either, Either3, Reference, Result};
 use napi_derive::napi;
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
@@ -1090,6 +1090,113 @@ impl JsCatalog {
     #[napi]
     pub fn list_tables(&self, namespace: String) -> Result<Vec<String>> {
         self.inner.list_tables(&namespace).map_err(napi_error)
+    }
+
+    /// One namespace as a view: `catalog.namespace('analytics')`.
+    ///
+    /// The view exists whether or not the folder does, exactly as a handle
+    /// describes a location without proof, so asking for one never fails.
+    #[napi]
+    pub fn namespace(&self, reference: Reference<JsCatalog>, name: String) -> JsNamespace {
+        JsNamespace {
+            catalog: reference,
+            name,
+        }
+    }
+}
+
+/// One namespace of a catalog: the first half of `catalog[ns][table]`.
+///
+/// `get` opens a table, `set` gets-or-creates - a schema opens the table,
+/// creating it when absent, and rows replace the table's rows, creating it
+/// from their own schema on first write - and `has`, `tables`, and
+/// `namespaces` answer the map questions.
+#[napi(js_name = "Namespace")]
+pub struct JsNamespace {
+    catalog: Reference<JsCatalog>,
+    name: String,
+}
+
+#[napi]
+impl JsNamespace {
+    /// The namespace's dotted name.
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// Open the named table.
+    #[napi]
+    pub fn table(&self, name: String) -> Result<JsTable> {
+        self.catalog
+            .inner
+            .namespace(&self.name)
+            .table(&name)
+            .map(JsTable::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Open the named table, as a map reads one.
+    #[napi]
+    pub fn get(&self, name: String) -> Result<JsTable> {
+        self.table(name)
+    }
+
+    /// Return whether the named table exists here.
+    #[napi]
+    pub fn has(&self, name: String) -> Result<bool> {
+        self.catalog
+            .inner
+            .namespace(&self.name)
+            .has_table(&name)
+            .map_err(napi_error)
+    }
+
+    /// Open the named table, creating it with `schema` when absent.
+    #[napi]
+    pub fn open_or_create_table(&self, name: String, schema: &JsField) -> Result<JsTable> {
+        self.catalog
+            .inner
+            .namespace(&self.name)
+            .open_or_create_table(&name, schema.inner.clone())
+            .map(JsTable::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The setter half of the map-like spelling, as raw IPC crossings.
+    ///
+    /// The loader widens this to `set(name, schemaOrRows)`: a schema opens
+    /// the table, creating it when absent; rows replace the table's rows,
+    /// creating it from their own schema on first write.
+    #[napi(js_name = "_setIpc", skip_typescript)]
+    pub fn set_ipc(&self, name: String, rows: Buffer) -> Result<JsTable> {
+        let reader = crate::arrow::JsBatchReader::decoded(rows.as_ref(), "row")?.take()?;
+        self.catalog
+            .inner
+            .namespace(&self.name)
+            .overwrite(&name, reader)
+            .map(JsTable::from_core)
+            .map_err(napi_error)
+    }
+
+    /// This namespace's tables, as bare names.
+    #[napi]
+    pub fn tables(&self) -> Result<Vec<String>> {
+        self.catalog
+            .inner
+            .namespace(&self.name)
+            .list_tables()
+            .map_err(napi_error)
+    }
+
+    /// The namespaces one level below this one, as bare names.
+    #[napi]
+    pub fn namespaces(&self) -> Result<Vec<String>> {
+        self.catalog
+            .inner
+            .namespace(&self.name)
+            .list_namespaces()
+            .map_err(napi_error)
     }
 }
 

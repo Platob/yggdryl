@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from ._native import (
     Catalog,
+    Namespace,
     Compaction,
     DataFile,
     ManifestFile,
@@ -27,6 +28,7 @@ from ._native import (
 
 __all__ = [
     "Catalog",
+    "Namespace",
     "Compaction",
     "DataFile",
     "ManifestFile",

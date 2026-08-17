@@ -210,6 +210,20 @@ impl<H: IOBase> Catalog<H> {
         self.list_children(Some(namespace), true)
     }
 
+    /// Borrow one namespace as a view, touching nothing.
+    ///
+    /// A namespace is a folder name, so the view exists whether or not the
+    /// folder does - exactly as a handle describes a location without proof -
+    /// and every operation resolves `name.table` at the moment it runs. The
+    /// bindings index a catalog by namespace and a namespace by table, and
+    /// this view is what the first index returns.
+    pub fn namespace(&self, name: &str) -> Namespace<'_, H> {
+        Namespace {
+            catalog: self,
+            name: SmolStr::new(name),
+        }
+    }
+
     /// Resolve the folder a dotted name addresses, touching nothing.
     ///
     /// A dotted name addresses a container by definition - a namespace is a
@@ -345,6 +359,124 @@ fn invalid(reason: SmolStr) -> Error {
         format: "iceberg",
         position: 0,
         reason,
+    }
+}
+
+/// One namespace of a catalog: the first half of `catalog[ns][table]`.
+///
+/// The view borrows the catalog and holds only the namespace's dotted name;
+/// each operation resolves `namespace.table` against the warehouse at the
+/// moment it runs, so the view is as lazy as the catalog itself.
+pub struct Namespace<'catalog, H: IOBase> {
+    catalog: &'catalog Catalog<H>,
+    name: SmolStr,
+}
+
+impl<H: IOBase> Namespace<'_, H> {
+    /// The namespace's dotted name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Spell one table's full dotted name under this namespace.
+    fn dotted(&self, table: &str) -> SmolStr {
+        format_smolstr!("{}.{table}", self.name)
+    }
+
+    /// Open the named table.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no table is there or its metadata cannot be read.
+    pub fn table(&self, name: &str) -> Result<Table<Holder>> {
+        self.catalog.table(&self.dotted(name))
+    }
+
+    /// Return whether the named table exists here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the name is refused or the probe fails.
+    pub fn has_table(&self, name: &str) -> Result<bool> {
+        self.catalog.has_table(&self.dotted(name))
+    }
+
+    /// Create the named table.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Catalog::create_table`] returns.
+    pub fn create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>> {
+        self.catalog.create_table(&self.dotted(name), schema)
+    }
+
+    /// Open the named table, creating it with `schema` when absent.
+    ///
+    /// This is the setter half of the map-like spelling: assigning a schema
+    /// to `catalog[ns][table]` means exactly this.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Catalog::open_or_create_table`] returns.
+    pub fn open_or_create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>> {
+        self.catalog
+            .open_or_create_table(&self.dotted(name), schema)
+    }
+
+    /// Append `batches` to the named table, creating it on first write.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Catalog::append`] returns.
+    pub fn append(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>> {
+        self.catalog.append(&self.dotted(name), batches)
+    }
+
+    /// Replace the named table's rows, creating it on first write.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Catalog::overwrite`] returns.
+    pub fn overwrite(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>> {
+        self.catalog.overwrite(&self.dotted(name), batches)
+    }
+
+    /// List this namespace's tables, as bare names.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Catalog::list_tables`] returns.
+    pub fn list_tables(&self) -> Result<Vec<String>> {
+        let prefix = format!("{}.", self.name);
+        Ok(self
+            .catalog
+            .list_tables(&self.name)?
+            .into_iter()
+            .map(|table| {
+                table
+                    .strip_prefix(&prefix)
+                    .map_or_else(|| table.clone(), ToOwned::to_owned)
+            })
+            .collect())
+    }
+
+    /// List the namespaces one level below this one, as bare names.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Catalog::list_namespaces`] returns.
+    pub fn list_namespaces(&self) -> Result<Vec<String>> {
+        let prefix = format!("{}.", self.name);
+        Ok(self
+            .catalog
+            .list_namespaces(Some(&self.name))?
+            .into_iter()
+            .map(|child| {
+                child
+                    .strip_prefix(&prefix)
+                    .map_or_else(|| child.clone(), ToOwned::to_owned)
+            })
+            .collect())
     }
 }
 
