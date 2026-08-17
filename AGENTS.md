@@ -167,6 +167,51 @@ layer compiling annotations into native values.
   compressed via `IOBase::codec`. Parquet compresses internally, so an outer
   coding on it is rejected, not double-compressed.
 
+## Media implementation standard
+
+Every record encoding (media) implementation - `Ipc`, `Parquet`, the next one -
+meets all of these; a new media that cannot yet is not done:
+
+- **It is a wrapping handle first.** `Media<H: IOBase>` owns its handle,
+  mirrors bytes via `delegate_iobase!`, and exposes the encoded value raw - so
+  the file can be copied, uploaded, or handed to a foreign reader without
+  unwrapping. The encoding's smarts live behind the same three record methods
+  as every other, never as extra public entry points.
+- **Rich metadata, contextually cached.** Whatever the format keeps re-reading
+  - IPC's schema, Parquet's footer, statistics - is answered from a cache
+  *only between `open` and `close`*: open fills it, close releases it, and a
+  closed handle fetches fresh on every ask. Nothing fills the cache as a side
+  effect of an ordinary read; a cache nobody asked for is how a handle serves
+  a stale answer after the resource changes underneath it. Metadata reads
+  (schema, statistics, row counts) never decode rows.
+- **Deep, flexible access.** The declared schema drives the encoding's own
+  projection so unread columns are never decoded; `select_by_names` narrows
+  and orders; option-driven casting has exactly one definition -
+  `IORecordOptions::cast_arrow_batch` / `cast_arrow_reader` (declared schema,
+  then selection, then completion onto the stored shape) - and a media routes
+  through it rather than growing a private variant.
+- **Full Arrow interop, streamed.** Reads hand back a `BatchReader` and
+  writes take one; nothing that could stream is collected, and anything a
+  caller holds (tables, datasets, scanners, frames, record instances) is
+  widened *into* a reader at the binding boundary, never into a second write
+  path. Casts preserve the caller's kind: a table casts to a table, a lazy
+  frame stays lazy (schema via `collect_schema`, work mapped over the
+  engine's batches), a polars crossing uses the newest compat level so view
+  arrays stay view arrays.
+- **Easiest usage is the default path.** The encoding is derived from the
+  media type, never passed as a format argument; options default from the
+  handle; absence reads as empty and writes create - so the happy path is a
+  constructor and one method call, with no existence checks, no format
+  strings, and no mode flags anywhere.
+- **Internal optimizations are invisible and stated.** Exact-schema casts
+  return the same arrays; an already-open handle's `open` is a no-op; a
+  memory-bound step (a merge side, a footer) says *why* it is held in a
+  comment. An optimization that changes observable behavior is a bug, and a
+  silent cap (top-N, sampling) is worse than none.
+- **Benchmarked against something the reader trusts** (the stdlib, PyArrow,
+  the native library), in release builds, with the numbers regenerated -
+  never edited - into `docs/benchmarks.md`.
+
 ## Table format contract
 
 - **A table is a folder, reached through `IOBase` only.** `Table` finds
