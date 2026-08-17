@@ -122,13 +122,18 @@ impl<H: IOBase> Table<H> {
     /// Create a table, writing its first metadata document.
     ///
     /// The table has a schema and a partition spec but no snapshot, which is
-    /// exactly what a newly created Iceberg table is.
+    /// exactly what a newly created Iceberg table is. Unnumbered schema
+    /// columns are numbered automatically - a schema that already carries
+    /// field identifiers keeps every one of them - so a schema projected from
+    /// Arrow needs no ceremony first. A caller building a [`PartitionSpec`]
+    /// by hand still numbers first with [`super::assign_field_ids`], because
+    /// a spec names its source columns by identifier.
     ///
     /// # Errors
     ///
     /// Returns an error when the handle is not a container, when the schema is
-    /// not a non-null struct root carrying field identifiers, or when the
-    /// metadata document cannot be written.
+    /// not a non-null struct root, or when the metadata document cannot be
+    /// written.
     pub fn create(
         root: H,
         format_version: FormatVersion,

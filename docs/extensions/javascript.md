@@ -444,11 +444,9 @@ const path = require('node:path')
 const arrow = require('apache-arrow')
 const { Field, fields, iceberg } = require('yggdryl')
 
-const schema = iceberg.assignFieldIds(
-  fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
-    nullable: false,
-  }),
-)
+const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+  nullable: false,
+})
 
 const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 const table = iceberg.Table.create(root, schema, ['venue'])

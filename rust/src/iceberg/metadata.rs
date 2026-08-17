@@ -231,14 +231,22 @@ impl TableMetadata {
     ///
     /// # Errors
     ///
-    /// Returns an error when the schema is not a valid non-null struct root.
+    /// Returns an error when the schema is not a valid non-null struct root or
+    /// a column identifier would overflow.
     pub fn new(
         format_version: FormatVersion,
         location: impl Into<SmolStr>,
-        schema: Field,
+        mut schema: Field,
         spec: PartitionSpec,
     ) -> Result<Self> {
         schema.validate_struct_root()?;
+        // Iceberg resolves a column by identifier, so every column needs one
+        // before this document can be written. Numbering continues above the
+        // highest identifier already assigned - exactly as [`Self::add_schema`]
+        // numbers an evolution - so a schema that arrives numbered keeps every
+        // id it came with and a plain Arrow schema needs no ceremony first.
+        let start = super::last_field_id(&schema)?.saturating_add(1);
+        super::assign_field_ids(&mut schema, start)?;
         let last_column_id = super::last_field_id(&schema)?;
         // The schema says how the table is laid out, so the columns the spec
         // partitions on are marked on it rather than only named beside it.

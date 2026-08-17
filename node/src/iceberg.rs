@@ -14,7 +14,8 @@ use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
     Catalog as CoreCatalog, DataFile, FormatVersion, ManifestContent, ManifestFile,
     PartitionSpec as CorePartitionSpec, SchemaUpdate as CoreSchemaUpdate, Snapshot,
-    Table as CoreTable, assign_field_ids, can_promote, schema_from_json, schema_to_json,
+    Table as CoreTable, assign_field_ids, can_promote, last_field_id, schema_from_json,
+    schema_to_json,
 };
 use yggdryl::{DataType as CoreDataType, Field as CoreField};
 
@@ -67,6 +68,20 @@ fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
                 .required_field(ROOT_NAME))
         }
     }
+}
+
+/// Number a schema the way `Table.create` needs it.
+///
+/// Numbering continues above the highest identifier already assigned, so a
+/// numbered schema keeps every id it came with and a plain schema arrives with
+/// none and leaves with all of them. It happens at this boundary because the
+/// spec builder resolves `partitionBy` names to identifiers.
+fn numbered_schema(mut schema: CoreField) -> Result<CoreField> {
+    let start = last_field_id(&schema)
+        .map_err(napi_error)?
+        .saturating_add(1);
+    assign_field_ids(&mut schema, start).map_err(napi_error)?;
+    Ok(schema)
 }
 
 /// Read the field an input names, exactly as `Field.from` infers one.
@@ -471,8 +486,9 @@ impl JsTable {
     /// Create a table, writing its first metadata document.
     ///
     /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the column
-    /// names to partition on, and defaults to unpartitioned. The schema must
-    /// carry field identifiers, which `assignFieldIds` supplies.
+    /// names to partition on, and defaults to unpartitioned. Unnumbered schema
+    /// columns are numbered automatically, so a plain schema works as it is; a
+    /// schema that already carries field identifiers keeps every one of them.
     #[napi(factory)]
     pub fn create(
         root: LocationInput<'_>,
@@ -480,11 +496,13 @@ impl JsTable {
         partition_by: Option<PartitionInput<'_>>,
         version: Option<u32>,
     ) -> Result<Self> {
+        let schema = numbered_schema(schema.inner.clone())?;
+        let spec = partition_spec(partition_by, &schema)?;
         CoreTable::create(
             folder_from_input(root)?,
             format_version(version)?,
-            schema.inner.clone(),
-            partition_spec(partition_by, &schema.inner)?,
+            schema,
+            spec,
         )
         .map(Self::from_core)
         .map_err(napi_error)
@@ -499,6 +517,10 @@ impl JsTable {
     }
 
     /// Open the table if it exists, creating it otherwise.
+    ///
+    /// Like [`create`](Self::create), unnumbered schema columns are numbered
+    /// automatically; an existing table is opened as it is and `schema`
+    /// describes only the table this call would create.
     #[napi(factory)]
     pub fn open_or_create(
         root: LocationInput<'_>,
@@ -506,11 +528,13 @@ impl JsTable {
         partition_by: Option<PartitionInput<'_>>,
         version: Option<u32>,
     ) -> Result<Self> {
+        let schema = numbered_schema(schema.inner.clone())?;
+        let spec = partition_spec(partition_by, &schema)?;
         CoreTable::open_or_create(
             folder_from_input(root)?,
             format_version(version)?,
-            schema.inner.clone(),
-            partition_spec(partition_by, &schema.inner)?,
+            schema,
+            spec,
         )
         .map(Self::from_core)
         .map_err(napi_error)

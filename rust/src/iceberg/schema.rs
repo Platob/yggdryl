@@ -6,9 +6,12 @@
 //! field the rest of the crate already understands, and writing one reads the
 //! ids back off that field.
 //!
-//! Identifier assignment is explicit. [`assign_field_ids`] numbers a field tree
-//! depth-first from a starting id, which is what a table creation needs; a
-//! field that already carries an id keeps it.
+//! Identifier assignment is automatic where the table can do it itself - a
+//! creation or an evolution numbers whatever arrives unnumbered - and
+//! [`assign_field_ids`] remains for the caller who needs the numbering before
+//! the table exists, such as building a [`super::PartitionSpec`] by hand or
+//! emitting a schema document for another system. It numbers a field tree
+//! depth-first from a starting id; a field that already carries an id keeps it.
 //!
 //! Everything a field cannot hold structurally - the schema identifier, a
 //! column's documentation, the v3 default values - is kept as Iceberg protocol

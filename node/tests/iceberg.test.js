@@ -47,6 +47,25 @@ test('numbering a schema is a copy, and the numbers are Arrow field ids', () => 
   assert.equal(later.dataType.at(0).parquetFieldId, 10)
 })
 
+test('creating a table numbers a plain schema itself, partitioning included', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const plain = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+    nullable: false,
+  })
+  const table = iceberg.Table.create(path.join(root, 'trades'), plain, ['venue'])
+
+  // Depth-first from 1, and the spec resolved 'venue' against the numbering.
+  assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
+  assert.equal(table.schema.dataType.at(1).parquetFieldId, 2)
+  assert.equal(table.spec.fields[0].sourceId, 2)
+
+  // The numbered table is a working table.
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  assert.equal(table.scan().toTable().numRows, 2)
+})
+
 test('a table is a folder, and a new one has no current snapshot', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

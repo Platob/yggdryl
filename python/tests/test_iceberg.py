@@ -123,6 +123,19 @@ class TestCreatingAndOpening:
         # An empty table reads as no rows rather than as a failure.
         assert table.scan().read_all().num_rows == 0
 
+    def test_create_numbers_a_plain_pyarrow_schema_itself(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """A schema without ids is numbered at create, partitioning included."""
+        table = Table.create(IOBase(tmp_path / "plain"), SCHEMA, ["venue"])
+
+        ids = [child.parquet_field_id for child in table.schema.data_type]
+        assert ids == [1, 2]
+        assert [field.name for field in table.spec.fields] == ["venue"]
+
+        table.append(_rows())
+        assert table.scan().read_all().num_rows == 3
+
     def test_the_metadata_document_is_where_a_reader_looks(
         self, table: Table, tmp_path: pathlib.Path
     ) -> None:

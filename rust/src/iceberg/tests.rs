@@ -717,6 +717,72 @@ mod tables {
     use crate::{DataType, Value};
 
     #[test]
+    fn create_numbers_an_unnumbered_schema_itself() {
+        let path = root("unnumbered-create");
+        // The schema a user projects straight from Arrow: no ids anywhere.
+        let schema = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.nullable_field("venue"),
+        ])
+        .unwrap()
+        .required_field("row");
+
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        // Depth-first from 1, and the document records the numbering.
+        let stored = table.schema().unwrap();
+        let ids: Vec<i32> = stored
+            .fields()
+            .iter()
+            .map(|child| child.parquet_field_id().unwrap().unwrap())
+            .collect();
+        assert_eq!(ids, [1, 2]);
+        assert_eq!(table.metadata().last_column_id, 2);
+
+        // The numbered table is a working table, not merely a written one.
+        let batch = trades(&[7], &[None], &[Some("X")]);
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(collect(reopened.scan(None).unwrap()).len(), 1);
+    }
+
+    #[test]
+    fn create_keeps_the_ids_a_partly_numbered_schema_carries() {
+        let path = root("partly-numbered-create");
+        let mut id = DataType::Int64.required_field("id");
+        id.set_parquet_field_id(7);
+        let schema = DataType::from_fields([id, DataType::Utf8.nullable_field("venue")])
+            .unwrap()
+            .required_field("row");
+
+        let table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        // The carried id stays, the fresh one lands above it.
+        let stored = table.schema().unwrap();
+        let ids: Vec<i32> = stored
+            .fields()
+            .iter()
+            .map(|child| child.parquet_field_id().unwrap().unwrap())
+            .collect();
+        assert_eq!(ids, [7, 8]);
+        assert_eq!(table.metadata().last_column_id, 8);
+    }
+
+    #[test]
     fn an_empty_table_has_no_snapshot_and_reads_as_no_rows() {
         let path = root("empty");
         let schema = trade_schema();

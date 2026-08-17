@@ -65,13 +65,12 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
-    # Iceberg resolves a column by identifier, so a schema is numbered first.
-    schema = assign_field_ids(pa.schema([
+    schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("venue", pa.string()),
-    ]))
+    ])
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
 
@@ -111,12 +110,9 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    // Iceberg resolves a column by identifier, so a schema is numbered first.
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
-        nullable: false,
-      }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+      nullable: false,
+    })
 
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
@@ -174,7 +170,7 @@ a consumer that only needs schemas never compiles it.
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
@@ -182,9 +178,8 @@ a consumer that only needs schemas never compiles it.
     use arrow_array::{Int64Array, RecordBatch};
     use std::sync::Arc;
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
 
     let path = std::env::temp_dir().join("yggdryl-docs-iceberg-layout");
     let _ = std::fs::remove_dir_all(&path);
@@ -227,9 +222,9 @@ a consumer that only needs schemas never compiles it.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
-    schema = assign_field_ids(pa.schema([pa.field("id", pa.int64(), nullable=False)]))
+    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
 
     table = Table.create(root, schema)
@@ -266,9 +261,7 @@ a consumer that only needs schemas never compiles it.
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64')], { nullable: false }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, schema)
@@ -304,12 +297,11 @@ the previous snapshot still readable afterwards. `Table::open` finds the current
     version a table declares as its `format_version`.
 
 ```rust
-use yggdryl::iceberg::{FormatVersion, PartitionSpec, TableMetadata, assign_field_ids};
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, TableMetadata};
 use yggdryl::DataType;
 
-let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
     .required_field("row");
-assign_field_ids(&mut schema, 1)?;
 
 // v1 keeps the singular `schema` and `partition-spec` keys and has no
 // sequence numbers.
@@ -367,12 +359,11 @@ The v3 additions this module implements are `next-row-id` on the table, `first-r
     its snapshots - rather than off a metadata document.
 
 ```rust
-use yggdryl::iceberg::{FormatVersion, PartitionSpec, TableMetadata, assign_field_ids};
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, TableMetadata};
 use yggdryl::DataType;
 
-let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
     .required_field("row");
-assign_field_ids(&mut schema, 1)?;
 let metadata = TableMetadata::new(
     FormatVersion::V2,
     "file:///lake/trades",
@@ -464,13 +455,13 @@ must yield no rows rather than fail.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("venue", pa.string()),
     ])
-    schema = assign_field_ids(columns)
+    schema = columns
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
     table = Table.create(root, schema, ["venue"])
@@ -506,11 +497,9 @@ must yield no rows rather than fail.
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
-        nullable: false,
-      }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+      nullable: false,
+    })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, schema, ['venue'])
@@ -687,13 +676,13 @@ value:
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("venue", pa.string()),
     ])
-    schema = assign_field_ids(columns)
+    schema = columns
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
     table = Table.create(root, schema, ["venue"])
@@ -716,11 +705,9 @@ value:
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
-        nullable: false,
-      }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+      nullable: false,
+    })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, schema, ['venue'])
@@ -745,19 +732,18 @@ value:
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
     use std::sync::Arc;
 
-    let mut schema = DataType::from_fields([
+    let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),
     ])?
     .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
 
     let path = std::env::temp_dir().join("yggdryl-docs-iceberg-pushdown");
     let _ = std::fs::remove_dir_all(&path);
@@ -799,13 +785,13 @@ value:
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("symbol", pa.string()),
     ])
-    schema = assign_field_ids(columns)
+    schema = columns
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
     table = Table.create(root, schema)
@@ -834,11 +820,9 @@ value:
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
-        nullable: false,
-      }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
+      nullable: false,
+    })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, schema)
@@ -962,16 +946,15 @@ Reading one is an ordinary scan with the snapshot named:
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = std::env::temp_dir().join("yggdryl-doc-time-travel");
     let _ = std::fs::remove_dir_all(&root);
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
     let mut table = Table::create(
         Folder::new(&root)?,
         FormatVersion::V2,
@@ -1014,12 +997,12 @@ Reading one is an ordinary scan with the snapshot named:
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
 
-    table = Table.create(IOBase(root), assign_field_ids(columns))
+    table = Table.create(IOBase(root), columns)
     table.append(pa.record_batch({"id": [1]}, schema=columns))
     past = table.current_snapshot.snapshot_id
     table.overwrite(pa.record_batch({"id": [9]}, schema=columns))
@@ -1052,9 +1035,7 @@ Reading one is an ordinary scan with the snapshot named:
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64')], { nullable: false }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
 
     const table = iceberg.Table.create(root, schema)
@@ -1160,13 +1141,13 @@ drains a scan drains them.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("venue", pa.string()),
     ])
-    schema = assign_field_ids(columns)
+    schema = columns
     rows = lambda ids, venues: pa.record_batch(
         {"id": ids, "venue": venues}, schema=columns
     )
@@ -1202,11 +1183,9 @@ drains a scan drains them.
     const arrow = require('apache-arrow')
     const { BatchReader, Field, IOBase, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
-        nullable: false,
-      }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
+      nullable: false,
+    })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
     iceberg.Table.create(root, schema, ['venue'])
 
@@ -1607,7 +1586,7 @@ another engine wrote configures this reader too:
 
     ```rust
     use yggdryl::iceberg::{
-        FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids,
+        FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
     use yggdryl::local::Folder;
     use yggdryl::DataType;
@@ -1615,9 +1594,8 @@ another engine wrote configures this reader too:
     let root = std::env::temp_dir().join("yggdryl-doc-options");
     let _ = std::fs::remove_dir_all(&root);
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
     let mut table = Table::create(
         Folder::new(&root)?,
         FormatVersion::V2,
@@ -1669,16 +1647,15 @@ history:
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = std::env::temp_dir().join("yggdryl-doc-concurrency");
     let _ = std::fs::remove_dir_all(&root);
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
     Table::create(
         Folder::new(&root)?,
         FormatVersion::V2,
@@ -1743,16 +1720,15 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = std::env::temp_dir().join("yggdryl-doc-branching");
     let _ = std::fs::remove_dir_all(&root);
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
     let mut table = Table::create(
         Folder::new(&root)?,
         FormatVersion::V2,
@@ -1823,7 +1799,7 @@ is the host's own parallelism, clamped to 1..=8. The order is the plan's order e
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{
-        FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids,
+        FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
     use yggdryl::local::Folder;
     use yggdryl::DataType;
@@ -1831,9 +1807,8 @@ is the host's own parallelism, clamped to 1..=8. The order is the plan's order e
     let root = std::env::temp_dir().join("yggdryl-doc-parallel-read");
     let _ = std::fs::remove_dir_all(&root);
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
     let mut table = Table::create(
         Folder::new(&root)?,
         FormatVersion::V2,
@@ -2014,16 +1989,15 @@ commit writes is ever mutated in place.
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
     use std::sync::Arc;
 
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
 
     let path = std::env::temp_dir().join("yggdryl-docs-iceberg-evolution");
     let _ = std::fs::remove_dir_all(&path);
@@ -2042,12 +2016,11 @@ commit writes is ever mutated in place.
 
     // Add a column. Numbering continues above `last-column-id`, so the new column
     // can never be confused with a dropped one.
-    let mut evolved = DataType::from_fields([
+    let evolved = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Int64.nullable_field("quantity"),
     ])?
     .required_field("row");
-    assign_field_ids(&mut evolved, 1)?;
     assert_eq!(table.evolve_schema(evolved)?, 1, "the new schema's id");
 
     // The old schema is retained, so the snapshot written under it still reads.
@@ -2071,10 +2044,10 @@ commit writes is ever mutated in place.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    schema = assign_field_ids(columns)
+    schema = columns
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
     table = Table.create(root, schema)
@@ -2082,10 +2055,10 @@ commit writes is ever mutated in place.
 
     # Add a column. Numbering continues above `last-column-id`, so the new column
     # can never be confused with a dropped one.
-    evolved = assign_field_ids(pa.schema([
+    evolved = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("quantity", pa.int64()),
-    ]))
+    ])
     assert table.evolve_schema(evolved) == 1, "the new schema's id"
 
     # The old schema is retained, so the snapshot written under it still reads.
@@ -2108,9 +2081,7 @@ commit writes is ever mutated in place.
     const arrow = require('apache-arrow')
     const { Field, fields, iceberg } = require('yggdryl')
 
-    const schema = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64')], { nullable: false }),
-    )
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, schema)
@@ -2118,11 +2089,9 @@ commit writes is ever mutated in place.
 
     // Add a column. Numbering continues above `last-column-id`, so the new column
     // can never be confused with a dropped one.
-    const evolved = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int64'), Field.from('quantity: int64')], {
-        nullable: false,
-      }),
-    )
+    const evolved = fields.struct('row', [Field.from('id: int64'), Field.from('quantity: int64')], {
+      nullable: false,
+    })
     assert.equal(table.evolveSchema(evolved), 1, "the new schema's id")
 
     // The old schema is retained, so the snapshot written under it still reads.
@@ -2220,11 +2189,15 @@ by id survives a rename, and a new column can never reuse a retired id.
     assert.equal(iceberg.assignFieldIds(schema, 100).dataType.at(0).parquetFieldId, 1)
     ```
 
-Numbering is explicit, never implicit: a field tree built in Rust has no ids until `assign_field_ids`
-puts them there, which is what creating a table needs. Because an existing id is preserved, the same
-call also fills the gaps in a tree you extended, and the returned id is where the next call starts.
+Creating and evolving a table numbers whatever arrives unnumbered, continuing above the highest id
+already present, so the common path never spells numbering out. `assign_field_ids` remains for the
+caller who needs the ids *before* the table exists - building a `PartitionSpec` by hand, or emitting
+a schema document for another system. Because an existing id is preserved, the same call also fills
+the gaps in a tree you extended, and the returned id is where the next call starts.
 
-Writing a schema whose columns were never numbered fails, and says so:
+Emitting a schema *document* from a tree whose columns were never numbered still fails, because the
+document's ids are the table's identity and inventing them silently would bind that identity to
+chance; creating a table numbers first, which is why the same schema is fine there:
 
 === "Rust"
 
@@ -2246,15 +2219,15 @@ Writing a schema whose columns were never numbered fails, and says so:
     import tempfile
 
     import pyarrow as pa
-    import pytest
 
     from yggdryl import IOBase
     from yggdryl.iceberg import Table
 
+    # A plain PyArrow schema carries no ids; creating the table numbers it.
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    table = Table.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), columns)
 
-    with pytest.raises(ValueError, match="assign_field_ids"):
-        Table.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), columns)
+    assert [child.parquet_field_id for child in table.schema.data_type] == [1]
     ```
 
 === "JavaScript"
@@ -2266,10 +2239,12 @@ Writing a schema whose columns were never numbered fails, and says so:
     const path = require('node:path')
     const { Field, fields, iceberg } = require('yggdryl')
 
+    // A plain schema carries no ids; creating the table numbers it.
     const unnumbered = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
-    assert.throws(() => iceberg.Table.create(root, unnumbered), /assign_field_ids/)
+    const table = iceberg.Table.create(root, unnumbered)
+    assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -2288,18 +2263,17 @@ accepted, so a change that would reinterpret stored values is refused naming bot
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table, assign_field_ids};
+    use yggdryl::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = std::env::temp_dir().join("yggdryl-doc-evolution");
     let _ = std::fs::remove_dir_all(&root);
-    let mut schema = DataType::from_fields([
+    let schema = DataType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),
     ])?
     .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
     let mut table = Table::create(
         Folder::new(&root)?,
         FormatVersion::V2,
@@ -2345,7 +2319,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     import pytest
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids, can_promote
+    from yggdryl.iceberg import Table, can_promote
 
     # Legal promotions pass; anything else is refused naming both sides.
     assert can_promote("int32", "int64") is None
@@ -2358,7 +2332,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
         pa.field("symbol", pa.string()),
     ])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
-    table = Table.create(IOBase(root), assign_field_ids(columns))
+    table = Table.create(IOBase(root), columns)
 
     # Widen id, rename symbol, add venue - one evolved schema, one commit.
     with table.update_schema() as update:
@@ -2388,11 +2362,9 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     iceberg.canPromote('decimal128(10, 2)', 'decimal128(18, 2)')
     assert.throws(() => iceberg.canPromote('int64', 'int32'), /int64 to int32/)
 
-    const declared = iceberg.assignFieldIds(
-      fields.struct('row', [Field.from('id: int32'), Field.from('symbol: utf8')], {
-        nullable: false,
-      }),
-    )
+    const declared = fields.struct('row', [Field.from('id: int32'), Field.from('symbol: utf8')], {
+      nullable: false,
+    })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
     const table = iceberg.Table.create(root, declared)
 

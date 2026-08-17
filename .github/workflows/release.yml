@@ -268,11 +268,11 @@ jobs:
           import pyarrow as pa
 
           from yggdryl import IOBase
-          from yggdryl.iceberg import Table, assign_field_ids
+          from yggdryl.iceberg import Table
 
           columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
           root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-release-")) / "smoke"
-          table = Table.create(IOBase(root), assign_field_ids(columns))
+          table = Table.create(IOBase(root), columns)
           table.append(pa.record_batch({"id": [1, 2]}, schema=columns))
           assert table.scan().read_all().column("id").to_pylist() == [1, 2]
           print("wheel smoke: ok")

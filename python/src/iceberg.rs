@@ -18,8 +18,8 @@ use pyo3::types::{PyDict, PyTuple, PyType};
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
     Catalog, Compaction, DataFile, FormatVersion, ManifestContent, ManifestFile, PartitionField,
-    PartitionSpec, SchemaUpdate, Snapshot, Table, assign_field_ids, can_promote, schema_from_json,
-    schema_to_json,
+    PartitionSpec, SchemaUpdate, Snapshot, Table, assign_field_ids, can_promote, last_field_id,
+    schema_from_json, schema_to_json,
 };
 use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Value};
@@ -180,6 +180,24 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
         return Ok(data_type.required_field(SCHEMA_ROOT_NAME));
     }
     core_root_field_from_value(value, SCHEMA_ROOT_NAME)
+}
+
+/// Read a schema root the way [`PyTable::create`] needs it: numbered.
+///
+/// Numbering continues above the highest identifier already assigned - the
+/// same rule [`catalog_schema_from_value`]'s callers apply through the core -
+/// so a numbered schema keeps every id it came with, and a plain `PyArrow`
+/// schema arrives here with none and leaves with all of them. The spec
+/// builders resolve `partition_by` names to identifiers, which is why the
+/// numbering happens at this boundary rather than inside [`Table::create`]'s
+/// metadata alone.
+fn numbered_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
+    let mut schema = core_root_field_from_value(value, SCHEMA_ROOT_NAME)?;
+    let start = last_field_id(&schema)
+        .map_err(value_error)?
+        .saturating_add(1);
+    assign_field_ids(&mut schema, start).map_err(value_error)?;
+    Ok(schema)
 }
 
 /// Read `(key, value)` string pairs out of a mapping or an iterable of pairs.
@@ -369,8 +387,9 @@ impl PyTable {
     /// Create a table, writing its first metadata document.
     ///
     /// `partition_by` accepts a [`PartitionSpec`] or the column names to
-    /// partition on; the default is unpartitioned. The schema must carry field
-    /// identifiers, which [`assign_field_ids`] supplies.
+    /// partition on; the default is unpartitioned. Unnumbered schema columns
+    /// are numbered automatically, so a plain `PyArrow` schema works as it is;
+    /// a schema that already carries field identifiers keeps every one of them.
     #[classmethod]
     #[pyo3(signature = (root, schema, partition_by = None, *, format_version = None))]
     fn create(
@@ -380,7 +399,7 @@ impl PyTable {
         partition_by: Option<&Bound<'_, PyAny>>,
         format_version: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let schema = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
+        let schema = numbered_schema_from_value(schema)?;
         let spec = match partition_by {
             Some(value) => spec_from_value(value, &schema)?,
             None => PartitionSpec::unpartitioned(),
@@ -403,6 +422,10 @@ impl PyTable {
     }
 
     /// Open the table if it exists, creating it otherwise.
+    ///
+    /// Like [`Self::create`], unnumbered schema columns are numbered
+    /// automatically; an existing table is opened as it is and `schema`
+    /// describes only the table this call would create.
     #[classmethod]
     #[pyo3(signature = (root, schema, partition_by = None, *, format_version = None))]
     fn open_or_create(
@@ -412,7 +435,7 @@ impl PyTable {
         partition_by: Option<&Bound<'_, PyAny>>,
         format_version: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let schema = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
+        let schema = numbered_schema_from_value(schema)?;
         let spec = match partition_by {
             Some(value) => spec_from_value(value, &schema)?,
             None => PartitionSpec::unpartitioned(),
