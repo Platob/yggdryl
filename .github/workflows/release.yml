@@ -387,7 +387,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
+          # No registry-url: that input writes an `_authToken` placeholder
+          # into .npmrc, and npm prefers any configured token over the OIDC
+          # exchange - which is exactly the wrong precedence here.
           package-manager-cache: false
       - name: Install an npm that speaks trusted publishing
         # OIDC exchange arrived in npm 11.5; node 22 bundles an older one.

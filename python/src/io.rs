@@ -85,15 +85,50 @@ impl PyIOBase {
 
 #[pymethods]
 impl PyIOBase {
-    /// Describe a location without touching it.
+    /// Describe a resource by whatever already names or holds it.
     ///
-    /// Accepts anything that names one: a string, a `pathlib.Path`, a
-    /// [`Url`][crate::uri::PyUrl], or another handle. Per the laziness
-    /// contract, nothing is opened, created, or read here.
+    /// Accepts anything that names a location - a string, a `pathlib.Path`, a
+    /// [`Url`][crate::uri::PyUrl], or another handle - and, because callers
+    /// hold open files more often than paths, anything file-like too. A
+    /// file-like object with a real filesystem name captures the *location*;
+    /// a nameless stream - `io.BytesIO`, a socket wrapper, a decompressor -
+    /// captures its *content*. An in-memory handle likewise captures content,
+    /// media type included. For named locations nothing is opened, created,
+    /// or read here, per the laziness contract.
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         if let Ok(handle) = value.extract::<PyRef<'_, Self>>() {
-            return handle.rebuilt();
+            if handle.inner.kind() != yggdryl::IOKind::Memory {
+                return handle.rebuilt();
+            }
+            // No location to rebuild from, so the content is what is taken.
+            let bytes = handle.inner.read_all().map_err(value_error)?;
+            let mut buffer = Holder::Buffer(yggdryl::io::Buffer::from_bytes(bytes));
+            buffer.set_media_type(handle.inner.media_type().clone());
+            return Ok(Self::from_core(buffer));
+        }
+        if value.hasattr("read")? && !value.is_instance_of::<pyo3::types::PyString>() {
+            // An open file knows where it lives; `name` is an `int` for a
+            // descriptor-opened one and absent on a plain stream, and neither
+            // of those names a place.
+            if let Ok(name) = value.getattr("name") {
+                if name.is_instance_of::<pyo3::types::PyString>() {
+                    return Self::located(&name.extract::<std::path::PathBuf>()?);
+                }
+            }
+            let content = value.call_method0("read")?;
+            let bytes = if let Ok(bytes) = content.extract::<Vec<u8>>() {
+                bytes
+            } else if let Ok(text) = content.extract::<String>() {
+                text.into_bytes()
+            } else {
+                return Err(PyValueError::new_err(
+                    "a file-like resource must read bytes or text",
+                ));
+            };
+            return Ok(Self::from_core(Holder::Buffer(
+                yggdryl::io::Buffer::from_bytes(bytes),
+            )));
         }
         let url = core_url_from_value(value)?;
         Self::located(&url.to_path().map_err(value_error)?)

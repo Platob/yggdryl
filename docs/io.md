@@ -69,6 +69,30 @@ Three invariants hold for every implementation:
   the current size creates.
 - `size` never exceeds `capacity`, and `reserve` changes only `capacity`.
 
+## Built from what you already hold
+
+In Python, `IOBase(...)` accepts more than a path: callers hold open files and streams more often
+than the strings that named them, so the constructor takes those directly. A file-like object with a
+real filesystem name captures the *location* - nothing is read, per the laziness contract - while a
+nameless stream such as `io.BytesIO` captures its *content* into an in-memory handle. Passing
+another handle rebuilds it, and passing an in-memory handle captures its content and media type.
+
+```python
+import io
+
+from yggdryl import IOBase
+
+# An open file names its own location, so the handle addresses the path.
+with open("quotes.json", "rb") as stream:
+    handle = IOBase(stream)
+assert handle.name == "quotes.json"
+
+# A nameless stream holds only content, so the content is what is taken.
+buffered = IOBase(io.BytesIO(b'{"symbol": "AAPL"}'))
+buffered.media_type = "application/json"
+assert buffered.read_text() == '{"symbol": "AAPL"}'
+```
+
 ## Laziness
 
 === "Rust"

@@ -25,6 +25,47 @@ def lake(tmp_path: pathlib.Path) -> pathlib.Path:
     return root
 
 
+class TestConstructionFromWhatIsAlreadyHeld:
+    """A handle is built from whatever already names or holds the resource."""
+
+    def test_an_open_file_captures_its_location(self, tmp_path: pathlib.Path) -> None:
+        # A file object with a real filesystem name is a spelling of the
+        # path, so the handle addresses the location - nothing is read.
+        quotes = tmp_path / "quotes.json"
+        quotes.write_text('{"symbol": "AAPL"}', encoding="utf-8")
+
+        with quotes.open("rb") as stream:
+            handle = IOBase(stream)
+
+        assert handle.url is not None
+        assert handle.name == "quotes.json"
+        assert handle.read_text() == '{"symbol": "AAPL"}'
+
+    def test_a_nameless_stream_captures_its_content(self) -> None:
+        import io
+
+        # A BytesIO names no location, so what it holds is what is taken.
+        handle = IOBase(io.BytesIO(b"\x00\xff"))
+        assert str(handle.url).startswith("mem://")
+        assert handle.read_bytes() == b"\x00\xff"
+
+        # A text stream captures as UTF-8 bytes.
+        text = IOBase(io.StringIO("symbol,price\nAAPL,12.5\n"))
+        assert text.read_text() == "symbol,price\nAAPL,12.5\n"
+
+    def test_an_in_memory_handle_captures_content_and_media_type(self) -> None:
+        source = IOBase.from_bytes(b'{"symbol": "AAPL"}')
+        source.media_type = "application/json"
+
+        captured = IOBase(source)
+
+        assert captured.read_bytes() == b'{"symbol": "AAPL"}'
+        assert str(captured.media_type) == str(source.media_type)
+        # The capture is a copy: growing the source does not move the capture.
+        source.write_bytes(b"{}")
+        assert captured.read_bytes() == b'{"symbol": "AAPL"}'
+
+
 class TestPathlibParity:
     """The same calls a ``Path`` answers, answered by the core."""
 

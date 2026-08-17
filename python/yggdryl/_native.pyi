@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from os import PathLike
-from typing import Any, ClassVar, Literal, SupportsIndex, overload
+from typing import IO, Any, ClassVar, Literal, SupportsIndex, overload
 
 import pyarrow  # type: ignore[import-untyped]
 
@@ -860,7 +860,7 @@ class Urn:
 
 class IOBase:
     def __init__(
-        self, value: IOBase | Url | Uri | Urn | str | PathLike[str]
+        self, value: IOBase | Url | Uri | Urn | str | PathLike[str] | IO[Any]
     ) -> None: ...
     @classmethod
     def from_bytes(
