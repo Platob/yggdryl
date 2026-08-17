@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{
-    BigInt, ClassInstance, Either, Either4, Env, Error, Reference, Result, Unknown,
+    BigInt, Buffer, ClassInstance, Either, Either4, Env, Error, Reference, Result, Uint8Array,
+    Unknown,
 };
 use napi_derive::napi;
 use yggdryl::arrow::DefaultArrowScalar;
@@ -138,6 +139,32 @@ impl JsField {
         CoreField::from_str(&value)
             .map(Self::from_core)
             .map_err(napi_error)
+    }
+
+    /// Cast one Arrow IPC stream to this exact Field, batch by batch.
+    ///
+    /// The loader wraps this as `castArrow`/`cast`, which hand over whatever
+    /// Arrow JS holds and read the result back as a `Table`.
+    #[napi(js_name = "_castArrowIpc", skip_typescript)]
+    pub fn cast_arrow_ipc(&self, bytes: Uint8Array, safe: Option<bool>) -> Result<Buffer> {
+        use arrow_ipc::reader::StreamReader;
+        use arrow_ipc::writer::StreamWriter;
+        use yggdryl::ArrowCast;
+
+        let safe = safe.unwrap_or(true);
+        let reader = StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
+            .map_err(napi_error)?;
+        let schema = yggdryl::arrow::schema_from_field(&self.inner).map_err(napi_error)?;
+        let mut writer = StreamWriter::try_new(Vec::new(), schema.as_ref()).map_err(napi_error)?;
+        for batch in reader {
+            let cast = self
+                .inner
+                .cast_arrow_batch(batch.map_err(napi_error)?, safe)
+                .map_err(napi_error)?;
+            writer.write(&cast).map_err(napi_error)?;
+        }
+        writer.finish().map_err(napi_error)?;
+        Ok(Buffer::from(writer.into_inner().map_err(napi_error)?))
     }
 
     /// Deserialize the native structural JSON representation.

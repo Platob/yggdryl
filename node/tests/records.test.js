@@ -320,3 +320,22 @@ test('rows read back as records, plain or through a runtime class', (t) => {
   assert.equal([...handle.readRecords()].length, 3)
   assert.deepEqual([...new IOBase(path.join(root, 'absent.arrows')).readRecords()], [])
 })
+
+test('a field casts whatever Arrow JS holds, batch by batch', () => {
+  const target = fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('symbol: utf8')],
+    { nullable: false },
+  )
+
+  // A table of narrower rows widens onto the field and stays a table.
+  const source = rows([1n, 2n], ['AAPL', 'MSFT'], ['XNAS', 'XNAS'])
+  const cast = target.castArrow(source)
+  assert.equal(cast.numRows, 2)
+  assert.deepEqual(
+    cast.schema.fields.map((field) => field.name),
+    ['id', 'symbol'],
+  )
+  // `cast` is the same call under the generic name.
+  assert.equal(target.cast(source).numRows, 2)
+})

@@ -310,3 +310,44 @@ class TestReadLines:
             "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one",
             "2024-02-01 10:00:01.000_000 [ii] [beta] fine",
         ]
+
+
+class TestScans:
+    """Lazy scans over any holder: native pushdown when possible."""
+
+    def test_scan_polars_is_a_lazy_frame_over_a_local_leaf(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        pl = __import__("pytest").importorskip("polars")
+        import pyarrow as pa
+
+        handle = IOBase(tmp_path / "trades.parquet")
+        handle.write_arrow(pa.table({"id": [1, 2], "venue": ["XNAS", "XPAR"]}))
+
+        lazy = handle.scan_polars()
+        assert isinstance(lazy, pl.LazyFrame)
+        # Projection stays lazy and pushes down into the native scan.
+        assert lazy.select("id").collect().to_series().to_list() == [1, 2]
+
+        # A memory holder answers too, through the native reader.
+        buffered = IOBase.from_bytes(handle.read_bytes())
+        buffered.media_type = "application/vnd.apache.parquet"
+        assert isinstance(buffered.scan_polars(), pl.LazyFrame)
+
+    def test_scan_arrow_is_a_dataset_scanner(self, tmp_path: pathlib.Path) -> None:
+        import pyarrow as pa
+        import pyarrow.dataset as pads
+
+        # An Arrow *stream* is not a dataset format, so it streams through
+        # the native reader; the file format scans natively.
+        stream = IOBase(tmp_path / "trades.arrows")
+        stream.write_arrow(pa.table({"id": [3, 4]}))
+        scanner = stream.scan_arrow()
+        assert isinstance(scanner, pads.Scanner)
+        assert scanner.to_table().num_rows == 2
+
+        handle = IOBase(tmp_path / "trades.parquet")
+        handle.write_arrow(pa.table({"id": [5, 6, 7]}))
+        native = handle.scan_arrow()
+        assert isinstance(native, pads.Scanner)
+        assert native.to_table().num_rows == 3

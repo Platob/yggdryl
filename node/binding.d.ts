@@ -239,6 +239,13 @@ declare module './index' {
     defaultJSHint(): JSValueHint
     defaultArrowScalar(): unknown
     toSchemeCompat(target: CompatibilityScheme): Field
+    /**
+     * Cast whatever Arrow JS holds - a Table, RecordBatch, BatchReader, or
+     * IPC bytes - to this exact Field, batch by batch, as a Table.
+     */
+    castArrow(rows: BatchSource, options?: { safe?: boolean }): unknown
+    /** The same cast under the generic name. */
+    cast(rows: BatchSource, options?: { safe?: boolean }): unknown
   }
 }
 

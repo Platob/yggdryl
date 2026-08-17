@@ -1070,6 +1070,33 @@ JavaScript the same three names read rows as plain objects or through any constr
 one, and the writes widen exactly as `writeArrow` does. In both languages an absent resource reads
 as empty and an empty write is a no-op, so nothing needs an existence check first.
 
+## Lazy scans
+
+!!! note "Python only"
+
+```python
+from yggdryl import IOBase
+
+# A local Parquet leaf becomes the real lazy scan - projection and
+# predicate pushdown belong to the engine, and the handle publishes its
+# bytes at their exact length first so the foreign reader sees a whole file.
+lazy = IOBase("lake/trades.parquet").scan_polars()
+first = lazy.select("symbol").head(10).collect()
+
+# The pyarrow spelling of the same idea, as a dataset Scanner.
+scanner = IOBase("lake/trades.parquet").scan_arrow()
+
+# Anything a foreign scanner cannot mmap - an in-memory buffer, a
+# compressed name, an Arrow stream - streams through the native reader
+# instead, so both calls answer for every holder.
+buffered = IOBase.from_bytes(b"...").scan_arrow
+```
+
+`scan_polars` hands back a `polars.LazyFrame` and `scan_arrow` a `pyarrow.dataset.Scanner`. A
+plain local Parquet resource is scanned natively; everything else reads through the same native
+reader every other read uses and arrives as the lazy shape anyway, so callers never branch on
+where the bytes live.
+
 ## Column pushdown
 
 === "Rust"

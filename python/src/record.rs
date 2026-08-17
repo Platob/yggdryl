@@ -190,7 +190,7 @@ fn inside_package(module: &str, package: &str) -> bool {
 /// importing `package` to compare against its classes, which is what keeps a
 /// caller who never installed that package from paying an import for it - and
 /// from being handed an `ImportError` about a library they are not using.
-fn declared_by(value: &Bound<'_, PyAny>, package: &str, qualname: &str) -> bool {
+pub(crate) fn declared_by(value: &Bound<'_, PyAny>, package: &str, qualname: &str) -> bool {
     let class = value.get_type();
     let named = class
         .qualname()
@@ -239,13 +239,34 @@ fn frame_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>>
         return frame.call_method0("collect")?.call_method0("to_arrow");
     }
     if declared_by(frame, "polars", "DataFrame") {
-        return frame.call_method0("to_arrow");
+        return polars_to_arrow(frame);
     }
     frame
         .py()
         .import("pyarrow")?
         .getattr("Table")?
         .call_method1("from_pandas", (frame,))
+}
+
+/// Hand a polars frame over as Arrow at the newest compat level.
+///
+/// The newest level keeps polars' view arrays as Arrow view types instead of
+/// downgrading them to the offset layouts, so the crossing moves no bytes. A
+/// polars old enough to lack `CompatLevel` falls back to its default.
+pub(crate) fn polars_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let py = frame.py();
+    if let Ok(level) = py
+        .import("polars")
+        .and_then(|polars| polars.getattr("CompatLevel"))
+        .and_then(|compat| compat.call_method0("newest"))
+    {
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("compat_level", level)?;
+        if let Ok(table) = frame.call_method("to_arrow", (), Some(&kwargs)) {
+            return Ok(table);
+        }
+    }
+    frame.call_method0("to_arrow")
 }
 
 /// Read a core batch reader out of anything Python holds rows in.

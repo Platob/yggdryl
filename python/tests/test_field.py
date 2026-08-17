@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import pickle
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -706,3 +707,67 @@ def test_dictionary_options_are_owned_and_validated_by_core() -> None:
     )
     assert wide.dictionary_id == 9_007_199_254_740_993
     assert json.loads(wide.to_json())["dictionary_id"] == "9007199254740993"
+
+
+class TestGenericCast:
+    """One generic cast, the kind inferred and kept."""
+
+    @staticmethod
+    def _root() -> Any:
+        return Field("row", DataType("struct<id: int64, symbol: string>"), False)
+
+    def test_every_pyarrow_kind_comes_back_as_itself(self) -> None:
+        import pyarrow as pa
+
+        root = self._root()
+        batch = pa.table(
+            {"id": pa.array([1, 2], pa.int32()), "symbol": ["AAPL", "MSFT"]}
+        ).to_batches()[0]
+
+        # A batch, a table, and a reader keep their kinds; the int32 widens.
+        cast_batch = root.cast_arrow(batch)
+        assert isinstance(cast_batch, pa.RecordBatch)
+        assert cast_batch.schema.field("id").type == pa.int64()
+        assert root.cast_arrow_record_batch(batch).equals(cast_batch)
+
+        table = pa.Table.from_batches([batch])
+        cast_table = root.cast_arrow(table)
+        assert isinstance(cast_table, pa.Table)
+
+        reader = root.cast_arrow(table.to_reader())
+        assert isinstance(reader, pa.RecordBatchReader)
+        assert reader.read_all().num_rows == 2
+
+        # An array casts as an array, a scalar as a scalar - and `cast` is
+        # the same dispatch with plain Python values allowed too.
+        price = Field("price", DataType("int64"), False)
+        assert price.cast_arrow(pa.array([5], pa.int32())).type == pa.int64()
+        assert price.cast_arrow_scalar(pa.scalar(5, pa.int32())).as_py() == 5
+        assert price.cast(5).as_py() == 5
+
+    def test_polars_frames_stay_polars_and_lazy_stays_lazy(self) -> None:
+        pl = pytest.importorskip("polars")
+
+        root = self._root()
+        frame = pl.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
+
+        cast = root.cast_arrow(frame)
+        assert isinstance(cast, pl.DataFrame)
+        assert cast.schema["id"] == pl.Int64
+
+        # The lazy frame answers schema questions without collecting, and the
+        # cast is deferred until the caller collects.
+        lazy = root.cast_arrow(frame.lazy())
+        assert isinstance(lazy, pl.LazyFrame)
+        collected = lazy.collect()
+        assert collected.schema["id"] == pl.Int64
+        assert collected.height == 2
+
+    def test_pandas_frames_cross_through_arrow_and_back(self) -> None:
+        pd = pytest.importorskip("pandas")
+
+        root = self._root()
+        frame = pd.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
+        cast = root.cast_arrow(frame)
+        assert isinstance(cast, pd.DataFrame)
+        assert list(cast.columns) == ["id", "symbol"]

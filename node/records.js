@@ -343,6 +343,20 @@ function installRecords({ BatchReader, Field, IOBase, RecordOptions, Table }) {
     })
   }
 
+  // The generic cast: whatever Arrow JS holds - a Table, a RecordBatch, a
+  // BatchReader, IPC bytes - casts to this exact Field batch by batch and
+  // comes back a Table. `cast` is the same call under the generic name.
+  for (const name of ['castArrow', 'cast']) {
+    Object.defineProperty(Field.prototype, name, {
+      configurable: true,
+      value(rows, options) {
+        const safe = options?.safe ?? true
+        const bytes = batchReader(rows, this.name).toIpc()
+        return arrow().tableFromIPC(this._castArrowIpc(bytes, safe))
+      },
+    })
+  }
+
   // Rows as records: each stored row as one plain object, or as one instance
   // of the class you pass - `new cls(row)` receives the plain row, so any
   // constructor that takes named fields is a runtime record class. Rows come

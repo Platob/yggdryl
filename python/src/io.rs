@@ -82,6 +82,38 @@ impl PyIOBase {
         }
     }
 
+    /// Name the path and base type a native scanner can open directly,
+    /// with the bytes published at their exact length first.
+    ///
+    /// `None` means the resource is not one a foreign scanner mmaps - it
+    /// lives in memory, carries content codings, or is an Arrow *stream*,
+    /// which the dataset scanners do not read - and the caller streams
+    /// through the native reader instead. When a target exists the handle is
+    /// closed first: closing publishes the bytes at their exact length,
+    /// which is what handing the path to another reader means.
+    fn published_scan_target(&mut self) -> PyResult<Option<(String, yggdryl::MimeType)>> {
+        let media_type = self.inner.media_type();
+        if !media_type.encodings().is_empty() {
+            return Ok(None);
+        }
+        let base = media_type.base().clone();
+        // Parquet is the one format both foreign scanners mmap today: the
+        // IPC media writes stream framing whichever suffix names it, and a
+        // stream is read through the native reader, not off the file.
+        if base != yggdryl::MimeType::PARQUET {
+            return Ok(None);
+        }
+        let Some(url) = self.inner.url() else {
+            return Ok(None);
+        };
+        let Ok(path) = url.to_path() else {
+            return Ok(None);
+        };
+        let path = path.to_string_lossy().into_owned();
+        self.inner.close().map_err(value_error)?;
+        Ok(Some((path, base)))
+    }
+
     /// Turn an iterable of record instances into one streamed batch reader.
     ///
     /// The first row is peeked to infer the class when none was named, then
@@ -831,6 +863,54 @@ impl PyIOBase {
             .read_arrow_batch_reader(&options)
             .map_err(value_error)?;
         frame_from_reader(py, reader, Frames::Polars)
+    }
+
+    /// Scan this resource as a `polars.LazyFrame`.
+    ///
+    /// A local Parquet or Arrow leaf becomes the real lazy scan -
+    /// `scan_parquet` or `scan_ipc`, predicate and projection pushdown
+    /// included - and a local folder scans the matching leaves beneath it.
+    /// Anything polars cannot scan natively - an in-memory buffer, a
+    /// compressed name - reads through the native reader and turns lazy, so
+    /// the call answers for every holder.
+    #[pyo3(signature = (*, options = None))]
+    fn scan_polars<'py>(
+        &mut self,
+        py: Python<'py>,
+        options: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let polars = py.import("polars")?;
+        if let Some((path, _)) = self.published_scan_target()? {
+            return polars.call_method1("scan_parquet", (path,));
+        }
+        self.read_polars_frame(py, options)?.call_method0("lazy")
+    }
+
+    /// Scan this resource as a `pyarrow.dataset.Scanner`.
+    ///
+    /// A local Parquet or Arrow resource becomes a real dataset scan -
+    /// column projection and predicate pushdown belong to the scanner - and
+    /// anything else streams through the native reader, so the call answers
+    /// for every holder.
+    #[pyo3(signature = (*, options = None))]
+    fn scan_arrow<'py>(
+        &mut self,
+        py: Python<'py>,
+        options: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let dataset = py.import("pyarrow.dataset")?;
+        if let Some((path, _)) = self.published_scan_target()? {
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("format", "parquet")?;
+            let opened = dataset.call_method("dataset", (path,), Some(&kwargs))?;
+            return opened.call_method0("scanner");
+        }
+        // A RecordBatchReader carries its own schema, and the scanner takes
+        // it as it stands.
+        let reader = self.read_arrow_batch_reader(py, options)?;
+        dataset
+            .getattr("Scanner")?
+            .call_method1("from_batches", (reader,))
     }
 
     /// Replace or merge this resource's rows with a stream of `polars` frames.

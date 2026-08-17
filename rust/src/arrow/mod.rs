@@ -431,7 +431,7 @@ impl arrow_array::RecordBatchReader for Cast {
 /// # Errors
 ///
 /// Returns an error unless `field` is a bounded, non-nullable Struct root.
-pub(crate) fn cast_reader(inner: BatchReader, field: &Field, safe: bool) -> Result<BatchReader> {
+pub fn cast_reader(inner: BatchReader, field: &Field, safe: bool) -> Result<BatchReader> {
     let schema = schema_from_field(field)?;
     if inner.schema() == schema {
         // An exact reader is already the declared shape, so casting each batch

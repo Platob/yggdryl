@@ -58,6 +58,36 @@ pub trait ArrowCast {
     /// Returns an error unless this value is a Struct schema, or when a child
     /// cast or missing-column default cannot be materialized.
     fn cast_arrow_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch>;
+
+    /// Casts a one-row Arrow array to this exact schema, as a scalar.
+    ///
+    /// A scalar is a one-row array with the row pinned, so the cast is
+    /// [`cast_arrow_array`](Self::cast_arrow_array) plus the length check
+    /// that makes the pinning honest.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the array does not hold exactly one row, or any
+    /// error the array cast returns.
+    fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<ArrayRef>> {
+        if array.len() != 1 {
+            return Err(Error::IncompatibleSchema(format!(
+                "a scalar cast takes exactly one row, got {}",
+                array.len()
+            )));
+        }
+        Ok(Scalar::new(self.cast_arrow_array(array, safe)?))
+    }
+
+    /// The full name of [`cast_arrow_batch`](Self::cast_arrow_batch), for
+    /// callers spelling out what the batch is.
+    ///
+    /// # Errors
+    ///
+    /// Returns exactly what `cast_arrow_batch` returns.
+    fn cast_arrow_record_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch> {
+        self.cast_arrow_batch(batch, safe)
+    }
 }
 
 impl ArrowCast for DataType {
