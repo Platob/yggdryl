@@ -8,7 +8,9 @@
 //! runs against a bucket when that backend lands, because only the handle
 //! changes.
 
-use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Either3, Result, Uint8Array};
+use napi::bindgen_prelude::{
+    Buffer, ClassInstance, Either, Either3, Reference, Result, Uint8Array,
+};
 use napi_derive::napi;
 
 use yggdryl::generic::{Holder, IORecordOptions as _};
@@ -402,6 +404,22 @@ impl JsIOBase {
     /// Any content codings the resource's name declares - `trades.jsonl.gz`,
     /// `log.txt.zst` - decode as streams, so a compressed resource is read
     /// without ever holding its decompressed value. A line is what `\n` ends,
+    /// A positioned view over this resource.
+    ///
+    /// The cursor shares this handle - a write through the cursor is a write
+    /// here - and owns only its position: `read`/`write` advance it, `seek`
+    /// and `tell` move and report it, and two cursors advance independently.
+    #[napi]
+    // The position crosses as a JavaScript number, exact to 2^53 - the same
+    // contract `size` already publishes.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn cursor(&self, reference: Reference<JsIOBase>, position: Option<f64>) -> JsIOCursor {
+        JsIOCursor {
+            handle: reference,
+            position: position.map_or(0, |position| position.max(0.0) as u64),
+        }
+    }
+
     /// a trailing `\r` belongs to the terminator, and the last line needs no
     /// terminator. The returned iterator owns a rebuilt handle, so it stays
     /// valid however long the caller keeps it.
@@ -541,5 +559,86 @@ impl JsLineIterator {
     #[napi]
     pub fn next(&mut self) -> Result<Option<String>> {
         self.inner.next().transpose().map_err(napi_error)
+    }
+}
+
+/// A positioned view over one handle, sharing the handle's bytes.
+///
+/// Reads and writes advance the position; `seek`/`tell` move and report it;
+/// two cursors over one handle advance independently, exactly as two `pread`
+/// callers do.
+#[napi(js_name = "IOCursor")]
+pub struct JsIOCursor {
+    handle: Reference<JsIOBase>,
+    position: u64,
+}
+
+// Positions cross as JavaScript numbers, exact to 2^53 - the same contract
+// `size` already publishes - so the casts here are the boundary, not a loss.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+#[napi]
+impl JsIOCursor {
+    /// The current position, in bytes from the start.
+    #[napi(getter)]
+    pub fn position(&self) -> f64 {
+        self.position as f64
+    }
+
+    /// Set the absolute position; past the end is allowed.
+    #[napi(setter)]
+    pub fn set_position(&mut self, position: f64) {
+        self.position = position.max(0.0) as u64;
+    }
+
+    /// The current position, as `tell` spells it everywhere else.
+    #[napi]
+    pub fn tell(&self) -> f64 {
+        self.position as f64
+    }
+
+    /// Set the absolute position, returning it.
+    #[napi]
+    pub fn seek(&mut self, position: f64) -> f64 {
+        self.set_position(position);
+        self.position as f64
+    }
+
+    /// Read from the position, advancing it; omit `length` to read to the end.
+    #[napi]
+    pub fn read(&mut self, length: Option<f64>) -> Result<Buffer> {
+        let size = self.handle.inner.size();
+        let remaining = size.saturating_sub(self.position);
+        let wanted = length.map_or(remaining, |length| remaining.min(length.max(0.0) as u64));
+        let mut buffer = vec![0_u8; wanted as usize];
+        let read = self
+            .handle
+            .inner
+            .pread(self.position, &mut buffer)
+            .map_err(napi_error)?;
+        buffer.truncate(read);
+        self.position += read as u64;
+        Ok(Buffer::from(buffer))
+    }
+
+    /// Write at the position, advancing it, returning the bytes written.
+    #[napi]
+    pub fn write(&mut self, data: Uint8Array) -> Result<f64> {
+        let written = self
+            .handle
+            .inner
+            .pwrite(self.position, data.as_ref())
+            .map_err(napi_error)?;
+        self.position += written as u64;
+        Ok(written as f64)
+    }
+
+    /// Flush the handle the cursor writes through.
+    #[napi]
+    pub fn flush(&mut self) -> Result<()> {
+        self.handle.inner.flush().map_err(napi_error)
     }
 }

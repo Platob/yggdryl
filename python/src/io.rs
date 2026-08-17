@@ -528,6 +528,19 @@ impl PyIOBase {
         self.inner.copy_into(&mut target.inner).map_err(value_error)
     }
 
+    /// A positioned view over this resource, as Python files position them.
+    ///
+    /// The cursor shares this handle - a write through the cursor is a write
+    /// here - and owns only its position: `read`/`write` advance it, `seek`
+    /// and `tell` move and report it, and two cursors advance independently.
+    #[pyo3(signature = (position = 0))]
+    fn cursor(slf: &Bound<'_, Self>, position: u64) -> PyIOCursor {
+        PyIOCursor {
+            handle: slf.clone().unbind(),
+            position: std::sync::atomic::AtomicU64::new(position),
+        }
+    }
+
     /// The record settings for the encoding this handle's media type names.
     ///
     /// Every record method below defaults to exactly this, so the encoding is
@@ -1027,5 +1040,104 @@ impl PyLineIterator {
             Some(Ok(line)) => Ok(Some(line)),
             Some(Err(error)) => Err(value_error(error)),
         }
+    }
+}
+
+/// A positioned view over one [`PyIOBase`], following Python's file protocol.
+///
+/// The cursor holds the handle itself, so its reads and writes land on the
+/// same resource the handle addresses; the position is the cursor's own.
+#[pyclass(name = "IOCursor", module = "yggdryl._native")]
+pub(crate) struct PyIOCursor {
+    handle: Py<PyIOBase>,
+    position: std::sync::atomic::AtomicU64,
+}
+
+impl PyIOCursor {
+    fn load(&self) -> u64 {
+        self.position.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    fn store(&self, position: u64) {
+        self.position
+            .store(position, std::sync::atomic::Ordering::Release);
+    }
+}
+
+#[pymethods]
+impl PyIOCursor {
+    /// The current position, in bytes from the start.
+    fn tell(&self) -> u64 {
+        self.load()
+    }
+
+    /// The same position as an attribute, settable.
+    #[getter]
+    fn position(&self) -> u64 {
+        self.load()
+    }
+
+    #[setter]
+    fn set_position(&self, position: u64) {
+        self.store(position);
+    }
+
+    /// Move the position, as `io.IOBase.seek` moves one, returning it.
+    #[pyo3(signature = (offset, whence = 0))]
+    fn seek(&self, py: Python<'_>, offset: i64, whence: u8) -> PyResult<u64> {
+        let origin = match whence {
+            0 => 0,
+            1 => self.load(),
+            2 => self.handle.borrow(py).inner.size(),
+            _ => {
+                return Err(PyValueError::new_err(
+                    "whence must be 0 (start), 1 (current), or 2 (end)",
+                ));
+            }
+        };
+        let target = origin
+            .checked_add_signed(offset)
+            .ok_or_else(|| PyValueError::new_err("a seek cannot land before the start"))?;
+        self.store(target);
+        Ok(target)
+    }
+
+    /// Read from the position, advancing it; `-1` reads to the end.
+    #[pyo3(signature = (size = -1))]
+    fn read<'py>(&self, py: Python<'py>, size: i64) -> PyResult<Bound<'py, PyBytes>> {
+        let handle = self.handle.borrow(py);
+        let position = self.load();
+        let remaining = handle.inner.size().saturating_sub(position);
+        let wanted = match u64::try_from(size) {
+            Ok(size) => remaining.min(size),
+            // A negative size reads to the end, as io.RawIOBase spells it.
+            Err(_) => remaining,
+        };
+        let mut buffer = vec![0_u8; usize::try_from(wanted).map_err(value_error)?];
+        let read = handle
+            .inner
+            .pread(position, &mut buffer)
+            .map_err(value_error)?;
+        buffer.truncate(read);
+        self.store(position + read as u64);
+        Ok(PyBytes::new(py, &buffer))
+    }
+
+    /// Write at the position, advancing it, returning the bytes written.
+    fn write(&self, py: Python<'_>, data: &[u8]) -> PyResult<u64> {
+        let mut handle = self.handle.borrow_mut(py);
+        let position = self.load();
+        let written = handle.inner.pwrite(position, data).map_err(value_error)?;
+        self.store(position + written as u64);
+        Ok(written as u64)
+    }
+
+    /// Flush the handle the cursor writes through.
+    fn flush(&self, py: Python<'_>) -> PyResult<()> {
+        self.handle
+            .borrow_mut(py)
+            .inner
+            .flush()
+            .map_err(value_error)
     }
 }

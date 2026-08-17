@@ -337,6 +337,75 @@ assert_eq!(text, "AAPL,1\n");
 unaffected. `compress_into` and `decompress_into` move bytes between two handles through a coding in
 the same chunked way.
 
+## Cursors
+
+A handle is positional - `pread`/`pwrite` take an offset - so a *position* is
+state a caller opts into, not something two readers fight over. A cursor is
+that position made explicit: `tell` and `seek` move it, reads and writes
+advance it, and two cursors over one resource advance independently.
+
+=== "Rust"
+
+    ```rust
+    use std::io::Read;
+
+    use yggdryl::io::{Buffer, IOBase, IOCursor};
+
+    let mut cursor = Buffer::new().cursor();
+    cursor.write_next(b"symbol,price
+")?;
+    assert_eq!(cursor.tell(), 13);
+
+    cursor.seek_to(7);
+    let mut word = [0_u8; 5];
+    cursor.read_exact(&mut word)?; // std::io::Read rides the same position
+    assert_eq!(&word, b"price");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes()
+    cursor = handle.cursor()
+    cursor.write(b"symbol,price
+")
+
+    # The write landed on the handle itself; the position is the cursor's.
+    assert handle.read_bytes() == b"symbol,price
+"
+    assert cursor.seek(-6, 2) == 7
+    assert cursor.read(5) == b"price"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const handle = IOBase.fromBytes()
+    const cursor = handle.cursor()
+    cursor.write(Buffer.from('symbol,price
+'))
+
+    assert.equal(handle.readBytes().toString(), 'symbol,price
+')
+    cursor.seek(7)
+    assert.equal(cursor.read(5).toString(), 'price')
+    ```
+
+In Rust, `IOCursor` is the trait - `tell`, `seek_to`, `seek`, `read_next`,
+`write_next` - and `Cursor<H>` is the one wrapper every implementation shares:
+built by `IOBase::cursor`/`cursor_at`, it stays a full handle over the same
+bytes and implements `std::io::Read`, `Write`, and `Seek` over its own
+position, so it goes wherever standard readers go; the owned line iterator is
+built on exactly it. In Python and JavaScript the cursor *shares the handle*
+- a write through it is a write there - and follows each language's file
+conventions: `seek(offset, whence)` and `read(size=-1)` in Python, `seek`,
+`tell`, and a `position` property in JavaScript.
+
 ## Lines
 
 `read_lines` iterates a resource's decoded text lines with one line in memory at a time. Bytes

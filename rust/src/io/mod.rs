@@ -41,6 +41,7 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 
 mod buffer;
 mod coding;
+mod cursor;
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
@@ -51,6 +52,7 @@ mod roles;
 
 pub use buffer::Buffer;
 pub use coding::Coded;
+pub use cursor::{Cursor, IOCursor};
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -683,6 +685,25 @@ pub trait IOBase: Send {
         }
     }
 
+    /// Consume this handle into a [`Cursor`] positioned at the start.
+    ///
+    /// The cursor owns one explicit position - `tell`, `seek`, and reads and
+    /// writes that advance it - and stays a full handle over the same bytes.
+    fn cursor(self) -> Cursor<Self>
+    where
+        Self: Sized,
+    {
+        Cursor::new(self)
+    }
+
+    /// Consume this handle into a [`Cursor`] positioned at `position`.
+    fn cursor_at(self, position: u64) -> Cursor<Self>
+    where
+        Self: Sized,
+    {
+        Cursor::at(self, position)
+    }
+
     /// Borrow a streaming writer positioned at `offset`.
     fn writer_at(&mut self, offset: u64) -> Writer<'_>
     where
@@ -788,13 +809,7 @@ pub trait IOBase: Send {
         Self: Sized + 'static,
     {
         let encodings = self.media_type().encodings().to_vec();
-        Ok(Lines::over(decoded_stream(
-            IntoReader {
-                source: self,
-                offset: 0,
-            },
-            &encodings,
-        )))
+        Ok(Lines::over(decoded_stream(Cursor::new(self), &encodings)))
     }
 
     // (decoded_stream peels the codings for the owned variant; the borrowed
@@ -1359,23 +1374,6 @@ impl<R: Read> Iterator for LineRecords<R> {
                 }
             }
         }
-    }
-}
-
-/// A streaming reader that owns its handle, for lines that outlive a borrow.
-pub struct IntoReader<H: IOBase> {
-    source: H,
-    offset: u64,
-}
-
-impl<H: IOBase> Read for IntoReader<H> {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        let read = self
-            .source
-            .pread(self.offset, buffer)
-            .map_err(std::io::Error::other)?;
-        self.offset += read as u64;
-        Ok(read)
     }
 }
 

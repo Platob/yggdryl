@@ -274,3 +274,24 @@ test('readLines with a pattern groups log entries', (t) => {
     '2024-02-01 10:00:01.000_000 [ii] [beta] fine',
   ])
 })
+
+test('a cursor shares the handle and owns its position', () => {
+  const handle = IOBase.fromBytes()
+  const cursor = handle.cursor()
+
+  assert.equal(cursor.write(Buffer.from('symbol,')), 7)
+  assert.equal(cursor.write(Buffer.from('price\n')), 6)
+  assert.equal(cursor.tell(), 13)
+  // The write landed on the handle itself, not on a copy.
+  assert.equal(handle.readBytes().toString(), 'symbol,price\n')
+
+  assert.equal(cursor.seek(7), 7)
+  assert.equal(cursor.read(5).toString(), 'price')
+  assert.equal(cursor.read().toString(), '\n')
+  assert.equal(cursor.read().length, 0)
+
+  // Two cursors advance independently.
+  const ahead = handle.cursor(7)
+  assert.equal(ahead.read(5).toString(), 'price')
+  assert.equal(cursor.tell(), 13)
+})

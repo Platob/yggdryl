@@ -600,6 +600,14 @@ export declare class IOBase {
    * `log.txt.zst` - decode as streams, so a compressed resource is read
    * without ever holding its decompressed value. A line is what `
   ` ends,
+   * A positioned view over this resource.
+   *
+   * The cursor shares this handle - a write through the cursor is a write
+   * here - and owns only its position: `read`/`write` advance it, `seek`
+   * and `tell` move and report it, and two cursors advance independently.
+   */
+  cursor(position?: number | undefined | null): JsIOCursor
+  /**
    * a trailing `\r` belongs to the terminator, and the last line needs no
    * terminator. The returned iterator owns a rebuilt handle, so it stays
    * valid however long the caller keeps it.
@@ -649,6 +657,31 @@ export declare class IOBase {
   toString(): string
 }
 export type JsIOBase = IOBase
+
+/**
+ * A positioned view over one handle, sharing the handle's bytes.
+ *
+ * Reads and writes advance the position; `seek`/`tell` move and report it;
+ * two cursors over one handle advance independently, exactly as two `pread`
+ * callers do.
+ */
+export declare class IOCursor {
+  /** The current position, in bytes from the start. */
+  get position(): number
+  /** Set the absolute position; past the end is allowed. */
+  set position(position: number)
+  /** The current position, as `tell` spells it everywhere else. */
+  tell(): number
+  /** Set the absolute position, returning it. */
+  seek(position: number): number
+  /** Read from the position, advancing it; omit `length` to read to the end. */
+  read(length?: number | undefined | null): Buffer
+  /** Write at the position, advancing it, returning the bytes written. */
+  write(data: Uint8Array): number
+  /** Flush the handle the cursor writes through. */
+  flush(): void
+}
+export type JsIOCursor = IOCursor
 
 /**
  * Iterator over a resource's decoded text lines, one line at a time.

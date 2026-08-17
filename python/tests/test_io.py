@@ -351,3 +351,28 @@ class TestScans:
         native = handle.scan_arrow()
         assert isinstance(native, pads.Scanner)
         assert native.to_table().num_rows == 3
+
+
+class TestCursor:
+    """One position over the same handle, advancing with reads and writes."""
+
+    def test_a_cursor_shares_the_handle_and_owns_its_position(self) -> None:
+        handle = IOBase.from_bytes()
+        cursor = handle.cursor()
+
+        assert cursor.write(b"symbol,") == 7
+        assert cursor.write(b"price\n") == 6
+        assert cursor.tell() == 13
+        # The write landed on the handle itself, not on a copy.
+        assert handle.read_bytes() == b"symbol,price\n"
+
+        assert cursor.seek(7) == 7
+        assert cursor.read(5) == b"price"
+        assert cursor.seek(-6, 2) == 7
+        assert cursor.read() == b"price\n"
+        assert cursor.read() == b""
+
+        # Two cursors advance independently.
+        ahead = handle.cursor(7)
+        assert ahead.read(5) == b"price"
+        assert cursor.tell() == 13
