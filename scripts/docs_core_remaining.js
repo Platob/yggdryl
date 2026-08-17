@@ -9,7 +9,9 @@ export const meta = {
   ],
 }
 
-const REPO = 'c:/Users/ASUS/Python/rkp'
+// Agents run from the repository root, so the relative root works on any
+// checkout. Pass a path as the workflow's args to point somewhere else.
+const REPO = (typeof args === 'string' ? args : args?.repo) || '.'
 
 const ARCHITECTURE = `
 PROJECT yggdryl. Rust core at ${REPO}/rust (crate "yggdryl"), Python package at ${REPO}/python
@@ -177,7 +179,7 @@ It documents the Rust module \`yggdryl::${page.module}\` (source: rust/src/${pag
 
 Title: "${page.title}"
 ${page.bindings
-  ? 'This module IS exposed to Python and JavaScript - every example needs all three tabs, and you must check ${REPO}/.api-bindings.txt for the exact names.'
+  ? `This module IS exposed to Python and JavaScript - every example needs all three tabs, and you must check ${REPO}/.api-bindings.txt for the exact names.`
   : 'This module is Rust-only: use the "Rust only" note from the contract and write Rust examples alone.'}
 
 Read first: ${REPO}/.api-inventory.txt (the yggdryl::${page.module} sections)${page.bindings ? ` and ${REPO}/.api-bindings.txt` : ''}.
