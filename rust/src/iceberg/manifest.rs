@@ -1,0 +1,1080 @@
+//! Manifest lists, manifests, and the data files they describe.
+//!
+//! Iceberg puts two levels of indirection between a snapshot and its rows. A
+//! snapshot names one *manifest list*; each row of that list is a *manifest*;
+//! each row of a manifest is one *data file* with its partition tuple and its
+//! statistics. Both levels are Avro, both are read and written here through
+//! [`super::avro`], and both are reached through the handle the table was
+//! constructed from - never by opening a path.
+//!
+//! The Avro schemas are built rather than stored, because the `partition`
+//! column's shape comes from the table's partition spec. Everything else is the
+//! specification's fixed field numbering, which is what lets another
+//! implementation read a manifest this module wrote: an Avro reader matches
+//! fields by `field-id`, not by name or position.
+
+use std::fmt;
+use std::str::FromStr;
+
+use smol_str::{SmolStr, format_smolstr};
+
+use super::FormatVersion;
+use super::partition::PartitionSpec;
+use crate::io::IOBase;
+use crate::{Error, Field, Result, Value};
+
+/// What a manifest's entries describe.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum ManifestContent {
+    /// Data files holding rows.
+    #[default]
+    Data,
+    /// Delete files removing rows.
+    Deletes,
+}
+
+impl ManifestContent {
+    /// Return the integer Iceberg stores for this content.
+    pub const fn code(self) -> i32 {
+        match self {
+            Self::Data => 0,
+            Self::Deletes => 1,
+        }
+    }
+
+    /// Read the content one stored integer names.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the value when it is neither zero nor one.
+    pub fn from_code(code: i64) -> Result<Self> {
+        match code {
+            0 => Ok(Self::Data),
+            1 => Ok(Self::Deletes),
+            other => Err(invalid(format_smolstr!(
+                "expected a manifest content of 0 (data) or 1 (deletes), got {other}"
+            ))),
+        }
+    }
+}
+
+/// What one snapshot did to a data file.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum EntryStatus {
+    /// Carried over from an earlier snapshot.
+    #[default]
+    Existing,
+    /// Added by the snapshot that wrote this manifest.
+    Added,
+    /// Removed by the snapshot that wrote this manifest.
+    Deleted,
+}
+
+impl EntryStatus {
+    /// Return the integer Iceberg stores for this status.
+    pub const fn code(self) -> i32 {
+        match self {
+            Self::Existing => 0,
+            Self::Added => 1,
+            Self::Deleted => 2,
+        }
+    }
+
+    /// Read the status one stored integer names.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the value when it is outside zero through two.
+    pub fn from_code(code: i64) -> Result<Self> {
+        match code {
+            0 => Ok(Self::Existing),
+            1 => Ok(Self::Added),
+            2 => Ok(Self::Deleted),
+            other => Err(invalid(format_smolstr!(
+                "expected a manifest entry status of 0 (existing), 1 (added), or 2 (deleted), got \
+                 {other}"
+            ))),
+        }
+    }
+}
+
+/// The encoding one data file uses.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum FileFormat {
+    /// Apache Parquet, which is what this module writes.
+    #[default]
+    Parquet,
+    /// Apache Avro.
+    Avro,
+    /// Apache ORC.
+    Orc,
+}
+
+impl FromStr for FileFormat {
+    type Err = Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value.to_ascii_uppercase().as_str() {
+            "PARQUET" => Ok(Self::Parquet),
+            "AVRO" => Ok(Self::Avro),
+            "ORC" => Ok(Self::Orc),
+            other => Err(invalid(format_smolstr!(
+                "expected an Iceberg file format of PARQUET, AVRO, or ORC, got {other:?}"
+            ))),
+        }
+    }
+}
+
+impl fmt::Display for FileFormat {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Parquet => "PARQUET",
+            Self::Avro => "AVRO",
+            Self::Orc => "ORC",
+        })
+    }
+}
+
+/// One data file, its partition tuple, and the statistics its writer reported.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DataFile {
+    /// Zero for rows, one for position deletes, two for equality deletes.
+    pub content: i32,
+    /// The file's location, as a URI.
+    pub file_path: SmolStr,
+    /// The encoding the file uses.
+    pub file_format: FileFormat,
+    /// One value per partition field of the spec, in spec order.
+    pub partition: Vec<Value>,
+    /// Rows in the file.
+    pub record_count: i64,
+    /// Size of the file in bytes.
+    pub file_size_in_bytes: i64,
+    /// Stored bytes per column, keyed by field id.
+    pub column_sizes: Vec<(i32, i64)>,
+    /// Values per column, keyed by field id.
+    pub value_counts: Vec<(i32, i64)>,
+    /// Nulls per column, keyed by field id.
+    pub null_value_counts: Vec<(i32, i64)>,
+    /// Not-a-number values per column, keyed by field id.
+    pub nan_value_counts: Vec<(i32, i64)>,
+    /// Serialized minimum per column, keyed by field id.
+    pub lower_bounds: Vec<(i32, Vec<u8>)>,
+    /// Serialized maximum per column, keyed by field id.
+    pub upper_bounds: Vec<(i32, Vec<u8>)>,
+    /// Byte offsets a reader may split the file at.
+    pub split_offsets: Vec<i64>,
+    /// The sort order the file was written in, when one applies.
+    pub sort_order_id: Option<i32>,
+    /// First assigned row identifier, added in v3 for row lineage.
+    pub first_row_id: Option<i64>,
+}
+
+/// One manifest row: a data file plus what the snapshot did to it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ManifestEntry {
+    /// Whether the snapshot added, kept, or removed the file.
+    pub status: EntryStatus,
+    /// The snapshot that produced this entry.
+    pub snapshot_id: Option<i64>,
+    /// Commit order of the data, inherited from the manifest when absent.
+    pub sequence_number: Option<i64>,
+    /// Commit order of the file, inherited from the manifest when absent.
+    pub file_sequence_number: Option<i64>,
+    /// The file itself.
+    pub data_file: DataFile,
+}
+
+impl ManifestEntry {
+    /// Describe a newly written data file.
+    pub const fn added(snapshot_id: i64, data_file: DataFile) -> Self {
+        Self {
+            status: EntryStatus::Added,
+            snapshot_id: Some(snapshot_id),
+            sequence_number: None,
+            file_sequence_number: None,
+            data_file,
+        }
+    }
+
+    /// Carry an entry an earlier snapshot wrote into a new manifest.
+    ///
+    /// A rewritten manifest keeps the commit order the file was first written
+    /// with, because that order is what tells a reader which data a delete file
+    /// applies to. Inheritance only fills in an entry the *current* snapshot
+    /// added, so an existing entry has to spell its numbers out.
+    pub fn existing(&self) -> Self {
+        Self {
+            status: EntryStatus::Existing,
+            snapshot_id: self.snapshot_id,
+            sequence_number: self.sequence_number,
+            file_sequence_number: self.file_sequence_number,
+            data_file: self.data_file.clone(),
+        }
+    }
+
+    /// Fill in the numbers the manifest records rather than the entry.
+    ///
+    /// An added entry leaves its snapshot and sequence numbers null so one
+    /// manifest can be reused by the commit that adds it; the manifest list row
+    /// carries them instead. A reader has to apply that inheritance before the
+    /// numbers mean anything, and this is where it happens - once, in the one
+    /// place manifests are read.
+    pub const fn inherit(&mut self, manifest: &ManifestFile) {
+        if self.snapshot_id.is_none() {
+            self.snapshot_id = Some(manifest.added_snapshot_id);
+        }
+        if self.sequence_number.is_none() {
+            self.sequence_number = Some(manifest.sequence_number);
+        }
+        if self.file_sequence_number.is_none() {
+            self.file_sequence_number = Some(manifest.sequence_number);
+        }
+    }
+
+    /// Return whether this entry still contributes rows to a scan.
+    pub const fn is_live(&self) -> bool {
+        !matches!(self.status, EntryStatus::Deleted)
+    }
+}
+
+/// What one manifest holds for one partition field, across all its files.
+///
+/// This is the level a planner prunes at first: a manifest whose summary for a
+/// partition column excludes a value cannot name a file that holds it, so the
+/// whole manifest is skipped without being read.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FieldSummary {
+    /// Whether any file in the manifest has a null value for the field.
+    pub contains_null: bool,
+    /// Whether any file has a not-a-number value, when the writer knew.
+    pub contains_nan: Option<bool>,
+    /// Serialized minimum across the manifest's files, when one applies.
+    pub lower_bound: Option<Vec<u8>>,
+    /// Serialized maximum across the manifest's files, when one applies.
+    pub upper_bound: Option<Vec<u8>>,
+}
+
+/// One row of a manifest list: a manifest and what it summarizes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ManifestFile {
+    /// The manifest's location, as a URI.
+    pub manifest_path: SmolStr,
+    /// Size of the manifest in bytes.
+    pub manifest_length: i64,
+    /// The partition spec the manifest's entries were written under.
+    pub partition_spec_id: i32,
+    /// Whether the manifest lists data files or delete files.
+    pub content: ManifestContent,
+    /// Commit order assigned when the manifest was added.
+    pub sequence_number: i64,
+    /// Lowest commit order of any entry in the manifest.
+    pub min_sequence_number: i64,
+    /// The snapshot that added the manifest.
+    pub added_snapshot_id: i64,
+    /// Files the manifest marks added.
+    pub added_files_count: i32,
+    /// Files the manifest marks existing.
+    pub existing_files_count: i32,
+    /// Files the manifest marks deleted.
+    pub deleted_files_count: i32,
+    /// Rows in the added files.
+    pub added_rows_count: i64,
+    /// Rows in the existing files.
+    pub existing_rows_count: i64,
+    /// Rows in the deleted files.
+    pub deleted_rows_count: i64,
+    /// One summary per partition field of the manifest's spec, in spec order.
+    pub partitions: Vec<FieldSummary>,
+    /// First assigned row identifier, added in v3 for row lineage.
+    pub first_row_id: Option<i64>,
+}
+
+/// Read every entry of the manifest a handle holds.
+///
+/// # Errors
+///
+/// Returns an error when the bytes are not an Avro manifest or an entry is
+/// missing a field the specification requires.
+pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry>> {
+    let container = super::avro::read_container(handle)?;
+    let mut entries = Vec::with_capacity(container.rows.len());
+    for row in &container.rows {
+        entries.push(entry_from_value(row)?);
+    }
+    Ok(entries)
+}
+
+/// Read the partition spec a manifest declares in its Avro header.
+///
+/// # Errors
+///
+/// Returns an error when the header's `partition-spec` is not a spec document.
+pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpec> {
+    let container = super::avro::read_container(handle)?;
+    let Some(encoded) = container.get("partition-spec") else {
+        return Ok(PartitionSpec::unpartitioned());
+    };
+    let mut spec = PartitionSpec::from_json(&crate::json::from_str(encoded)?)?;
+    if let Some(id) = container
+        .get("partition-spec-id")
+        .and_then(|id| id.parse::<i32>().ok())
+    {
+        spec.spec_id = id;
+    }
+    Ok(spec)
+}
+
+/// Replace a handle's bytes with a manifest listing `entries`.
+///
+/// The manifest carries the table schema and the partition spec in its Avro
+/// header, which is what makes it self-describing: a reader recovers the
+/// partition tuple's shape without consulting the table metadata again.
+///
+/// # Errors
+///
+/// Returns an error when the schema or spec cannot be projected, when an entry
+/// does not fit the derived Avro schema, or when the write fails.
+pub fn write_manifest<H: IOBase + ?Sized>(
+    handle: &mut H,
+    version: FormatVersion,
+    schema: &Field,
+    spec: &PartitionSpec,
+    entries: &[ManifestEntry],
+) -> Result<()> {
+    let partition = spec.partition_field(schema)?;
+    let avro_schema = manifest_entry_schema(version, &partition)?;
+
+    let mut rows = Vec::with_capacity(entries.len());
+    for entry in entries {
+        rows.push(entry_to_value(entry, version, &partition)?);
+    }
+
+    let schema_json = super::schema_to_json(schema)?;
+    let metadata = [
+        (
+            "schema",
+            String::from_utf8_lossy(&crate::json::to_vec(&schema_json)?).into_owned(),
+        ),
+        (
+            "schema-id",
+            schema
+                .iceberg()
+                .get(super::schema::SCHEMA_ID)
+                .unwrap_or("0")
+                .to_owned(),
+        ),
+        (
+            "partition-spec",
+            String::from_utf8_lossy(&crate::json::to_vec(&spec.to_v1_json()?)?).into_owned(),
+        ),
+        ("partition-spec-id", spec.spec_id.to_string()),
+        ("format-version", version.number().to_string()),
+        ("content", "data".to_owned()),
+    ];
+    super::avro::write_container(handle, &avro_schema, &metadata, &rows)
+}
+
+/// Read every manifest a manifest list names.
+///
+/// # Errors
+///
+/// Returns an error when the bytes are not an Avro manifest list or a row is
+/// missing a field the specification requires.
+pub fn read_manifest_list<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestFile>> {
+    let container = super::avro::read_container(handle)?;
+    let mut manifests = Vec::with_capacity(container.rows.len());
+    for row in &container.rows {
+        manifests.push(manifest_from_value(row)?);
+    }
+    Ok(manifests)
+}
+
+/// Replace a handle's bytes with a manifest list naming `manifests`.
+///
+/// # Errors
+///
+/// Returns an error when a row does not fit the derived Avro schema or when
+/// the write fails.
+pub fn write_manifest_list<H: IOBase + ?Sized>(
+    handle: &mut H,
+    version: FormatVersion,
+    snapshot_id: i64,
+    parent_snapshot_id: Option<i64>,
+    sequence_number: i64,
+    manifests: &[ManifestFile],
+) -> Result<()> {
+    let avro_schema = manifest_list_schema(version)?;
+    let mut rows = Vec::with_capacity(manifests.len());
+    for manifest in manifests {
+        rows.push(manifest_to_value(manifest, version)?);
+    }
+    let mut metadata = vec![
+        ("snapshot-id", snapshot_id.to_string()),
+        (
+            "parent-snapshot-id",
+            parent_snapshot_id.map_or_else(|| "null".to_owned(), |id| id.to_string()),
+        ),
+        ("format-version", version.number().to_string()),
+    ];
+    if version >= FormatVersion::V2 {
+        metadata.insert(2, ("sequence-number", sequence_number.to_string()));
+    }
+    super::avro::write_container(handle, &avro_schema, &metadata, &rows)
+}
+
+/// Build the Avro schema one manifest's entries are written against.
+///
+/// # Errors
+///
+/// Returns an error only when a mapping cannot be built.
+fn manifest_entry_schema(version: FormatVersion, partition: &Field) -> Result<Value> {
+    let mut data_file = Vec::new();
+    if version >= FormatVersion::V2 {
+        data_file.push(required("content", 134, Value::from("int"))?);
+    }
+    data_file.push(required("file_path", 100, Value::from("string"))?);
+    data_file.push(required("file_format", 101, Value::from("string"))?);
+    data_file.push(required(
+        "partition",
+        102,
+        partition_record(partition, "r102")?,
+    )?);
+    data_file.push(required("record_count", 103, Value::from("long"))?);
+    data_file.push(required("file_size_in_bytes", 104, Value::from("long"))?);
+    if version == FormatVersion::V1 {
+        // v1 required a block size that no reader has ever used.
+        data_file.push(required("block_size_in_bytes", 105, Value::from("long"))?);
+    }
+    data_file.push(optional("column_sizes", 108, avro_map(117, 118, "long")?)?);
+    data_file.push(optional("value_counts", 109, avro_map(119, 120, "long")?)?);
+    data_file.push(optional(
+        "null_value_counts",
+        110,
+        avro_map(121, 122, "long")?,
+    )?);
+    data_file.push(optional(
+        "nan_value_counts",
+        137,
+        avro_map(138, 139, "long")?,
+    )?);
+    data_file.push(optional("lower_bounds", 125, avro_map(126, 127, "bytes")?)?);
+    data_file.push(optional("upper_bounds", 128, avro_map(129, 130, "bytes")?)?);
+    data_file.push(optional("key_metadata", 131, Value::from("bytes"))?);
+    data_file.push(optional(
+        "split_offsets",
+        132,
+        avro_array(133, Value::from("long"))?,
+    )?);
+    if version >= FormatVersion::V2 {
+        data_file.push(optional(
+            "equality_ids",
+            135,
+            avro_array(136, Value::from("long"))?,
+        )?);
+    }
+    data_file.push(optional("sort_order_id", 140, Value::from("int"))?);
+    if version >= FormatVersion::V3 {
+        data_file.push(optional("first_row_id", 142, Value::from("long"))?);
+        data_file.push(optional(
+            "referenced_data_file",
+            143,
+            Value::from("string"),
+        )?);
+        data_file.push(optional("content_offset", 144, Value::from("long"))?);
+        data_file.push(optional("content_size_in_bytes", 145, Value::from("long"))?);
+    }
+
+    let mut fields = vec![required("status", 0, Value::from("int"))?];
+    if version == FormatVersion::V1 {
+        fields.push(required("snapshot_id", 1, Value::from("long"))?);
+    } else {
+        fields.push(optional("snapshot_id", 1, Value::from("long"))?);
+        fields.push(optional("sequence_number", 3, Value::from("long"))?);
+        fields.push(optional("file_sequence_number", 4, Value::from("long"))?);
+    }
+    fields.push(required(
+        "data_file",
+        2,
+        record("r2", Value::from_sequence(data_file))?,
+    )?);
+
+    record("manifest_entry", Value::from_sequence(fields))
+}
+
+/// Build the Avro schema a manifest list is written against.
+///
+/// # Errors
+///
+/// Returns an error only when a mapping cannot be built.
+fn manifest_list_schema(version: FormatVersion) -> Result<Value> {
+    let summary = record(
+        "r508",
+        Value::from_sequence(vec![
+            required("contains_null", 509, Value::from("boolean"))?,
+            optional("contains_nan", 518, Value::from("boolean"))?,
+            optional("lower_bound", 510, Value::from("bytes"))?,
+            optional("upper_bound", 511, Value::from("bytes"))?,
+        ]),
+    )?;
+
+    let mut fields = vec![
+        required("manifest_path", 500, Value::from("string"))?,
+        required("manifest_length", 501, Value::from("long"))?,
+        required("partition_spec_id", 502, Value::from("int"))?,
+    ];
+    if version >= FormatVersion::V2 {
+        fields.push(required("content", 517, Value::from("int"))?);
+        fields.push(required("sequence_number", 515, Value::from("long"))?);
+        fields.push(required("min_sequence_number", 516, Value::from("long"))?);
+    }
+    fields.push(required("added_snapshot_id", 503, Value::from("long"))?);
+    let counts: [(&str, i32, &str); 6] = [
+        ("added_files_count", 504, "int"),
+        ("existing_files_count", 505, "int"),
+        ("deleted_files_count", 506, "int"),
+        ("added_rows_count", 512, "long"),
+        ("existing_rows_count", 513, "long"),
+        ("deleted_rows_count", 514, "long"),
+    ];
+    for (name, id, kind) in counts {
+        // v1 left every count optional; v2 made them all required.
+        if version == FormatVersion::V1 {
+            fields.push(optional(name, id, Value::from(kind))?);
+        } else {
+            fields.push(required(name, id, Value::from(kind))?);
+        }
+    }
+    fields.push(optional("partitions", 507, avro_array(508, summary)?)?);
+    fields.push(optional("key_metadata", 519, Value::from("bytes"))?);
+    if version >= FormatVersion::V3 {
+        fields.push(optional("first_row_id", 520, Value::from("long"))?);
+    }
+
+    record("manifest_file", Value::from_sequence(fields))
+}
+
+/// Build the Avro record a partition tuple is stored as.
+fn partition_record(partition: &Field, name: &str) -> Result<Value> {
+    let mut fields = Vec::with_capacity(partition.field_len());
+    for child in partition.fields() {
+        let id = child.parquet_field_id()?.ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a field id on the partition column {:?}",
+                child.name()
+            ))
+        })?;
+        // Every partition value is optional, because a spec may retire a field
+        // and `void` produces nothing else.
+        fields.push(optional(
+            child.name(),
+            id,
+            Value::from(super::PrimitiveType::from_data_type(child.data_type())?.to_string()),
+        )?);
+    }
+    record(name, Value::from_sequence(fields))
+}
+
+/// Build one Avro record schema.
+fn record(name: &str, fields: Value) -> Result<Value> {
+    Value::from_mapping([
+        (Value::from("type"), Value::from("record")),
+        (Value::from("name"), Value::from(name)),
+        (Value::from("fields"), fields),
+    ])
+}
+
+/// Build one required Avro record field carrying its Iceberg field id.
+fn required(name: &str, id: i32, schema: Value) -> Result<Value> {
+    Value::from_mapping([
+        (Value::from("name"), Value::from(name)),
+        (Value::from("field-id"), Value::from(i64::from(id))),
+        (Value::from("type"), schema),
+    ])
+}
+
+/// Build one optional Avro record field: a null-first union defaulting to null.
+fn optional(name: &str, id: i32, schema: Value) -> Result<Value> {
+    Value::from_mapping([
+        (Value::from("name"), Value::from(name)),
+        (Value::from("field-id"), Value::from(i64::from(id))),
+        (
+            Value::from("type"),
+            Value::from_sequence([Value::from("null"), schema]),
+        ),
+        (Value::from("default"), Value::Null),
+    ])
+}
+
+/// Build an Avro array with the element id a reader needs.
+fn avro_array(element_id: i32, items: Value) -> Result<Value> {
+    Value::from_mapping([
+        (Value::from("type"), Value::from("array")),
+        (
+            Value::from("element-id"),
+            Value::from(i64::from(element_id)),
+        ),
+        (Value::from("items"), items),
+    ])
+}
+
+/// Build the array-of-pairs Iceberg uses where Avro cannot key a map by an int.
+fn avro_map(key_id: i32, value_id: i32, value_type: &str) -> Result<Value> {
+    let entry = Value::from_mapping([
+        (Value::from("type"), Value::from("record")),
+        (
+            Value::from("name"),
+            Value::from(format_smolstr!("k{key_id}_v{value_id}")),
+        ),
+        (
+            Value::from("fields"),
+            Value::from_sequence([
+                Value::from_mapping([
+                    (Value::from("name"), Value::from("key")),
+                    (Value::from("type"), Value::from("int")),
+                    (Value::from("field-id"), Value::from(i64::from(key_id))),
+                ])?,
+                Value::from_mapping([
+                    (Value::from("name"), Value::from("value")),
+                    (Value::from("type"), Value::from(value_type)),
+                    (Value::from("field-id"), Value::from(i64::from(value_id))),
+                ])?,
+            ]),
+        ),
+    ])?;
+    Value::from_mapping([
+        (Value::from("type"), Value::from("array")),
+        (Value::from("items"), entry),
+        (Value::from("logicalType"), Value::from("map")),
+    ])
+}
+
+/// Render an integer-keyed statistics map as the pair array Avro stores.
+fn pairs<V: Clone + Into<Value>>(entries: &[(i32, V)]) -> Result<Value> {
+    if entries.is_empty() {
+        return Ok(Value::Null);
+    }
+    let mut rows = Vec::with_capacity(entries.len());
+    for (key, value) in entries {
+        rows.push(Value::from_mapping([
+            (Value::from("key"), Value::from(i64::from(*key))),
+            (Value::from("value"), value.clone().into()),
+        ])?);
+    }
+    Ok(Value::from_sequence(rows))
+}
+
+/// Read a pair array back into an integer-keyed statistics map.
+fn from_pairs(value: Option<&Value>) -> Vec<(i32, Value)> {
+    value
+        .map(|value| {
+            value
+                .sequence_iter()
+                .filter_map(|row| {
+                    let key = row.get_key_str("key")?.as_i64()?;
+                    Some((i32::try_from(key).ok()?, row.get_key_str("value")?.clone()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Render one manifest entry as the Avro record it is stored as.
+fn entry_to_value(
+    entry: &ManifestEntry,
+    version: FormatVersion,
+    partition: &Field,
+) -> Result<Value> {
+    let file = &entry.data_file;
+    if file.partition.len() != partition.field_len() {
+        return Err(invalid(format_smolstr!(
+            "expected {} partition values for {:?}, got {}",
+            partition.field_len(),
+            file.file_path,
+            file.partition.len()
+        )));
+    }
+    let mut tuple = Vec::with_capacity(file.partition.len());
+    for (column, value) in partition.fields().iter().zip(&file.partition) {
+        tuple.push((Value::from(column.name()), value.clone()));
+    }
+
+    let mut data_file = Vec::new();
+    if version >= FormatVersion::V2 {
+        data_file.push((Value::from("content"), Value::from(i64::from(file.content))));
+    }
+    data_file.push((
+        Value::from("file_path"),
+        Value::from(file.file_path.clone()),
+    ));
+    data_file.push((
+        Value::from("file_format"),
+        Value::from(file.file_format.to_string()),
+    ));
+    data_file.push((Value::from("partition"), Value::from_mapping(tuple)?));
+    data_file.push((Value::from("record_count"), Value::from(file.record_count)));
+    data_file.push((
+        Value::from("file_size_in_bytes"),
+        Value::from(file.file_size_in_bytes),
+    ));
+    if version == FormatVersion::V1 {
+        data_file.push((Value::from("block_size_in_bytes"), Value::from(0_i64)));
+    }
+    data_file.push((Value::from("column_sizes"), pairs(&file.column_sizes)?));
+    data_file.push((Value::from("value_counts"), pairs(&file.value_counts)?));
+    data_file.push((
+        Value::from("null_value_counts"),
+        pairs(&file.null_value_counts)?,
+    ));
+    data_file.push((
+        Value::from("nan_value_counts"),
+        pairs(&file.nan_value_counts)?,
+    ));
+    data_file.push((Value::from("lower_bounds"), pairs(&file.lower_bounds)?));
+    data_file.push((Value::from("upper_bounds"), pairs(&file.upper_bounds)?));
+    data_file.push((Value::from("key_metadata"), Value::Null));
+    data_file.push((
+        Value::from("split_offsets"),
+        if file.split_offsets.is_empty() {
+            Value::Null
+        } else {
+            Value::from_sequence(file.split_offsets.iter().map(|offset| Value::from(*offset)))
+        },
+    ));
+    if version >= FormatVersion::V2 {
+        data_file.push((Value::from("equality_ids"), Value::Null));
+    }
+    data_file.push((
+        Value::from("sort_order_id"),
+        file.sort_order_id
+            .map_or(Value::Null, |id| Value::from(i64::from(id))),
+    ));
+    if version >= FormatVersion::V3 {
+        data_file.push((
+            Value::from("first_row_id"),
+            file.first_row_id.map_or(Value::Null, Value::from),
+        ));
+        data_file.push((Value::from("referenced_data_file"), Value::Null));
+        data_file.push((Value::from("content_offset"), Value::Null));
+        data_file.push((Value::from("content_size_in_bytes"), Value::Null));
+    }
+
+    let mut row = vec![(
+        Value::from("status"),
+        Value::from(i64::from(entry.status.code())),
+    )];
+    row.push((
+        Value::from("snapshot_id"),
+        entry.snapshot_id.map_or(Value::Null, Value::from),
+    ));
+    if version >= FormatVersion::V2 {
+        row.push((
+            Value::from("sequence_number"),
+            entry.sequence_number.map_or(Value::Null, Value::from),
+        ));
+        row.push((
+            Value::from("file_sequence_number"),
+            entry.file_sequence_number.map_or(Value::Null, Value::from),
+        ));
+    }
+    row.push((Value::from("data_file"), Value::from_mapping(data_file)?));
+    Value::from_mapping(row)
+}
+
+/// Read one manifest entry back from its Avro record.
+fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
+    let status = EntryStatus::from_code(
+        row.get_key_str("status")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| invalid(SmolStr::new_static("expected a manifest entry \"status\"")))?,
+    )?;
+    let file = row.get_key_str("data_file").ok_or_else(|| {
+        invalid(SmolStr::new_static(
+            "expected a manifest entry \"data_file\"",
+        ))
+    })?;
+
+    let file_path = file
+        .get_key_str("file_path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(SmolStr::new_static("expected a data file \"file_path\"")))?;
+    let partition = file
+        .get_key_str("partition")
+        .map(|tuple| {
+            tuple
+                .mapping_iter()
+                .map(|(_, value)| value.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(ManifestEntry {
+        status,
+        snapshot_id: row.get_key_str("snapshot_id").and_then(Value::as_i64),
+        sequence_number: row.get_key_str("sequence_number").and_then(Value::as_i64),
+        file_sequence_number: row
+            .get_key_str("file_sequence_number")
+            .and_then(Value::as_i64),
+        data_file: DataFile {
+            content: file
+                .get_key_str("content")
+                .and_then(Value::as_i64)
+                .and_then(|code| i32::try_from(code).ok())
+                .unwrap_or_default(),
+            file_path: SmolStr::new(file_path),
+            file_format: FileFormat::from_str(
+                file.get_key_str("file_format")
+                    .and_then(Value::as_str)
+                    .unwrap_or("PARQUET"),
+            )?,
+            partition,
+            record_count: file
+                .get_key_str("record_count")
+                .and_then(Value::as_i64)
+                .unwrap_or_default(),
+            file_size_in_bytes: file
+                .get_key_str("file_size_in_bytes")
+                .and_then(Value::as_i64)
+                .unwrap_or_default(),
+            column_sizes: counts(file.get_key_str("column_sizes")),
+            value_counts: counts(file.get_key_str("value_counts")),
+            null_value_counts: counts(file.get_key_str("null_value_counts")),
+            nan_value_counts: counts(file.get_key_str("nan_value_counts")),
+            lower_bounds: bounds(file.get_key_str("lower_bounds")),
+            upper_bounds: bounds(file.get_key_str("upper_bounds")),
+            split_offsets: file
+                .get_key_str("split_offsets")
+                .map(|offsets| offsets.sequence_iter().filter_map(Value::as_i64).collect())
+                .unwrap_or_default(),
+            sort_order_id: file
+                .get_key_str("sort_order_id")
+                .and_then(Value::as_i64)
+                .and_then(|id| i32::try_from(id).ok()),
+            first_row_id: file.get_key_str("first_row_id").and_then(Value::as_i64),
+        },
+    })
+}
+
+/// Read a pair array as integer counts.
+fn counts(value: Option<&Value>) -> Vec<(i32, i64)> {
+    from_pairs(value)
+        .into_iter()
+        .filter_map(|(key, value)| Some((key, value.as_i64()?)))
+        .collect()
+}
+
+/// Read a pair array as serialized bounds.
+fn bounds(value: Option<&Value>) -> Vec<(i32, Vec<u8>)> {
+    from_pairs(value)
+        .into_iter()
+        .filter_map(|(key, value)| Some((key, value.as_bytes()?.to_vec())))
+        .collect()
+}
+
+/// Render one manifest list row as the Avro record it is stored as.
+fn manifest_to_value(manifest: &ManifestFile, version: FormatVersion) -> Result<Value> {
+    let mut row = vec![
+        (
+            Value::from("manifest_path"),
+            Value::from(manifest.manifest_path.clone()),
+        ),
+        (
+            Value::from("manifest_length"),
+            Value::from(manifest.manifest_length),
+        ),
+        (
+            Value::from("partition_spec_id"),
+            Value::from(i64::from(manifest.partition_spec_id)),
+        ),
+    ];
+    if version >= FormatVersion::V2 {
+        row.push((
+            Value::from("content"),
+            Value::from(i64::from(manifest.content.code())),
+        ));
+        row.push((
+            Value::from("sequence_number"),
+            Value::from(manifest.sequence_number),
+        ));
+        row.push((
+            Value::from("min_sequence_number"),
+            Value::from(manifest.min_sequence_number),
+        ));
+    }
+    row.push((
+        Value::from("added_snapshot_id"),
+        Value::from(manifest.added_snapshot_id),
+    ));
+    row.push((
+        Value::from("added_files_count"),
+        Value::from(i64::from(manifest.added_files_count)),
+    ));
+    row.push((
+        Value::from("existing_files_count"),
+        Value::from(i64::from(manifest.existing_files_count)),
+    ));
+    row.push((
+        Value::from("deleted_files_count"),
+        Value::from(i64::from(manifest.deleted_files_count)),
+    ));
+    row.push((
+        Value::from("added_rows_count"),
+        Value::from(manifest.added_rows_count),
+    ));
+    row.push((
+        Value::from("existing_rows_count"),
+        Value::from(manifest.existing_rows_count),
+    ));
+    row.push((
+        Value::from("deleted_rows_count"),
+        Value::from(manifest.deleted_rows_count),
+    ));
+    row.push((
+        Value::from("partitions"),
+        summaries_to_value(&manifest.partitions)?,
+    ));
+    row.push((Value::from("key_metadata"), Value::Null));
+    if version >= FormatVersion::V3 {
+        row.push((
+            Value::from("first_row_id"),
+            manifest.first_row_id.map_or(Value::Null, Value::from),
+        ));
+    }
+    Value::from_mapping(row)
+}
+
+/// Read one manifest list row back from its Avro record.
+fn manifest_from_value(row: &Value) -> Result<ManifestFile> {
+    let manifest_path = row
+        .get_key_str("manifest_path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            invalid(SmolStr::new_static(
+                "expected a manifest list \"manifest_path\"",
+            ))
+        })?;
+    // v1 named the file counts `added_data_files_count`; v2 renamed them.
+    let count = |primary: &str, legacy: &str| -> i32 {
+        row.get_key_str(primary)
+            .or_else(|| row.get_key_str(legacy))
+            .and_then(Value::as_i64)
+            .and_then(|value| i32::try_from(value).ok())
+            .unwrap_or_default()
+    };
+    Ok(ManifestFile {
+        manifest_path: SmolStr::new(manifest_path),
+        manifest_length: row
+            .get_key_str("manifest_length")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        partition_spec_id: row
+            .get_key_str("partition_spec_id")
+            .and_then(Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok())
+            .unwrap_or_default(),
+        content: ManifestContent::from_code(
+            row.get_key_str("content")
+                .and_then(Value::as_i64)
+                .unwrap_or_default(),
+        )?,
+        sequence_number: row
+            .get_key_str("sequence_number")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        min_sequence_number: row
+            .get_key_str("min_sequence_number")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        added_snapshot_id: row
+            .get_key_str("added_snapshot_id")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        added_files_count: count("added_files_count", "added_data_files_count"),
+        existing_files_count: count("existing_files_count", "existing_data_files_count"),
+        deleted_files_count: count("deleted_files_count", "deleted_data_files_count"),
+        added_rows_count: row
+            .get_key_str("added_rows_count")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        existing_rows_count: row
+            .get_key_str("existing_rows_count")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        deleted_rows_count: row
+            .get_key_str("deleted_rows_count")
+            .and_then(Value::as_i64)
+            .unwrap_or_default(),
+        partitions: summaries_from_value(row.get_key_str("partitions")),
+        first_row_id: row.get_key_str("first_row_id").and_then(Value::as_i64),
+    })
+}
+
+/// Render the per-partition-field summaries a manifest list row carries.
+fn summaries_to_value(summaries: &[FieldSummary]) -> Result<Value> {
+    if summaries.is_empty() {
+        return Ok(Value::Null);
+    }
+    let mut rows = Vec::with_capacity(summaries.len());
+    for summary in summaries {
+        let bound = |bytes: Option<&Vec<u8>>| {
+            bytes.map_or(Value::Null, |bytes| Value::from(bytes.as_slice()))
+        };
+        rows.push(Value::from_mapping([
+            (
+                Value::from("contains_null"),
+                Value::Bool(summary.contains_null),
+            ),
+            (
+                Value::from("contains_nan"),
+                summary.contains_nan.map_or(Value::Null, Value::Bool),
+            ),
+            (
+                Value::from("lower_bound"),
+                bound(summary.lower_bound.as_ref()),
+            ),
+            (
+                Value::from("upper_bound"),
+                bound(summary.upper_bound.as_ref()),
+            ),
+        ])?);
+    }
+    Ok(Value::from_sequence(rows))
+}
+
+/// Read the per-partition-field summaries back, in spec order.
+fn summaries_from_value(value: Option<&Value>) -> Vec<FieldSummary> {
+    value
+        .map(|value| {
+            value
+                .sequence_iter()
+                .map(|row| FieldSummary {
+                    contains_null: row
+                        .get_key_str("contains_null")
+                        .and_then(Value::as_bool)
+                        .unwrap_or_default(),
+                    contains_nan: row.get_key_str("contains_nan").and_then(Value::as_bool),
+                    lower_bound: row
+                        .get_key_str("lower_bound")
+                        .and_then(Value::as_bytes)
+                        .map(<[u8]>::to_vec),
+                    upper_bound: row
+                        .get_key_str("upper_bound")
+                        .and_then(Value::as_bytes)
+                        .map(<[u8]>::to_vec),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Report a malformed Iceberg manifest document.
+fn invalid(reason: SmolStr) -> Error {
+    Error::Codec {
+        format: "iceberg",
+        position: 0,
+        reason,
+    }
+}

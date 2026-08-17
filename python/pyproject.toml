@@ -1,0 +1,45 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "yggdryl"
+version = "0.1.0"
+description = "Native Yggdryl schemas, dataclass-compatible records, identifiers, and byte codecs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Typing :: Typed",
+]
+dependencies = [
+  "pyarrow>=18",
+  "typing_extensions>=4.4; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+# `pandas` and `polars` are the two frame libraries the generic entry points
+# convert, and neither is a runtime dependency: they are installed here so the
+# tests and the documentation examples that exercise that boundary can run.
+# `tzdata` supplies the zone database on a platform whose Python has none.
+test = [
+  "mypy>=1.15",
+  "pandas>=2",
+  "polars>=1",
+  "pytest>=8",
+  "tzdata",
+]
+
+[tool.maturin]
+bindings = "pyo3"
+exclude = ["**/__pycache__", "**/__pycache__/**", "**/*.pyc"]
+module-name = "yggdryl._native"
+python-source = "."
+strip = true
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+testpaths = ["tests"]

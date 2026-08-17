@@ -1,0 +1,220 @@
+//! A local directory as a container [`IOBase`].
+
+use std::path::PathBuf;
+
+use crate::{MediaType, Result, Url};
+
+use crate::generic::Holder;
+use crate::io::{IOBase, IOFolder};
+
+/// A local directory addressed as a container rather than as bytes.
+///
+/// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
+/// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
+/// [`IOBase::child_by`], and [`IOBase::parent`] - which resolve children as
+/// further [`Folder`] values for subdirectories and mapped files for leaves.
+///
+/// Its whole state is one [`Url`]. The platform path is derived from it on
+/// demand through [`Url::to_path`], so there is exactly one spelling of the
+/// location and no way for a stored path and URL to disagree.
+///
+/// Like every handle it is lazy: construction touches nothing, listing a
+/// directory that does not exist yields nothing rather than failing, and
+/// [`IOBase::truncate`] or a write to a child creates the directory on demand.
+///
+/// ```
+/// use yggdryl::io::IOBase;
+/// use yggdryl::local::Folder;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let root = Folder::new(std::env::temp_dir())?;
+/// assert!(root.is_container());
+/// assert_eq!(root.size(), 0);
+/// assert_eq!(root.media_type().base(), &yggdryl::MimeType::DIRECTORY);
+///
+/// // A directory that does not exist lists nothing instead of failing.
+/// let missing = root.child_by("yggdryl-absent-directory")?;
+/// assert!(missing.ls(false, false)?.is_empty());
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug)]
+pub struct Folder {
+    url: Url,
+}
+
+impl Folder {
+    /// Describe a local directory without touching it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when the path cannot be expressed as a canonical
+    /// `file:` URL.
+    pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self> {
+        Ok(Self {
+            url: Url::from_path(path)?,
+        })
+    }
+
+    /// Describe a local directory named by an existing URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the URL is not local, because a directory listing
+    /// resolves through the file system.
+    pub fn from_url(url: Url) -> Result<Self> {
+        // Converting eagerly is the one check worth paying for: it rejects a
+        // URL no later call could ever resolve.
+        url.to_path()?;
+        Ok(Self { url })
+    }
+
+    /// Borrow the described location.
+    pub const fn url(&self) -> &Url {
+        &self.url
+    }
+
+    /// Return the described platform path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the URL cannot be expressed as a platform path.
+    pub fn path(&self) -> Result<PathBuf> {
+        self.url.to_path()
+    }
+
+    /// Return whether the directory exists yet.
+    pub fn exists(&self) -> bool {
+        self.url.is_dir()
+    }
+
+    /// Create the directory and every missing parent.
+    ///
+    /// # Errors
+    ///
+    /// Returns the file system's creation failure.
+    pub fn create(&self) -> Result<()> {
+        std::fs::create_dir_all(self.path()?)?;
+        Ok(())
+    }
+
+    /// Resolve one entry into the holder that fits it.
+    fn hold(url: &Url) -> Result<Holder> {
+        if url.is_dir() {
+            return Ok(Holder::Folder(Self { url: url.clone() }));
+        }
+        Holder::file(url.to_path()?)
+    }
+
+    /// Collect entries, optionally descending into subdirectories.
+    fn collect(
+        url: &Url,
+        recursive: bool,
+        include_private: bool,
+        found: &mut Vec<Holder>,
+    ) -> Result<()> {
+        // A directory that does not exist contains nothing; that is not an error.
+        if !url.is_dir() {
+            return Ok(());
+        }
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(url.to_path()?)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        // `read_dir` order is platform-defined; sort so listings are stable.
+        entries.sort();
+
+        for entry in entries {
+            let entry = Url::from_path(entry)?;
+            // A dot-prefixed name is private, and a private directory is not
+            // descended into either.
+            if !include_private && entry.is_private() {
+                continue;
+            }
+            let is_directory = entry.is_dir();
+            found.push(Self::hold(&entry)?);
+            if recursive && is_directory {
+                Self::collect(&entry, true, include_private, found)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A local directory is the container role over the file system.
+impl IOFolder for Folder {
+    fn folder_url(&self) -> &Url {
+        &self.url
+    }
+
+    fn folder_exists(&self) -> bool {
+        self.url.is_dir()
+    }
+
+    fn create_folder(&self) -> Result<()> {
+        self.create()
+    }
+
+    fn list_folder(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+        let mut found = Vec::new();
+        Self::collect(&self.url, recursive, include_private, &mut found)?;
+        Ok(found)
+    }
+}
+
+impl IOBase for Folder {
+    fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
+        self.folder_pread()
+    }
+
+    fn pwrite(&mut self, _offset: u64, bytes: &[u8]) -> Result<usize> {
+        self.folder_pwrite(bytes.len())
+    }
+
+    fn size(&self) -> u64 {
+        0
+    }
+
+    fn capacity(&self) -> u64 {
+        0
+    }
+
+    fn reserve(&mut self, _capacity: u64) -> Result<()> {
+        // Reserving space in a container is meaningless but harmless.
+        Ok(())
+    }
+
+    fn truncate(&mut self, size: u64) -> Result<()> {
+        // Truncating to zero is the write that brings a directory into being.
+        self.folder_truncate(size)
+    }
+
+    fn url(&self) -> Option<&Url> {
+        Some(&self.url)
+    }
+
+    fn media_type(&self) -> &MediaType {
+        self.folder_media_type()
+    }
+
+    fn set_media_type(&mut self, _media_type: MediaType) {
+        // A directory is a directory; it has no content type to declare.
+    }
+
+    fn parent(&self) -> Option<Holder> {
+        self.url.parent().map(|url| Holder::Folder(Self { url }))
+    }
+
+    fn child_by(&self, name: &str) -> Result<Holder> {
+        // Resolve through the URL so `.` and `..` behave as they do everywhere
+        // else in the crate.
+        Self::hold(&self.url.joinpath(name)?)
+    }
+
+    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+        self.folder_ls(recursive, include_private)
+    }
+
+    fn kind(&self) -> crate::IOKind {
+        self.folder_kind()
+    }
+}

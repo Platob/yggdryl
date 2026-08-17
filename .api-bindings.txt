@@ -1,0 +1,83 @@
+# Binding API inventory (generated; do not edit)
+
+### python: yggdryl
+  DataType: arrow_scalar, cast_arrow_array, cast_arrow_batch, decimal, default_arrow_scalar, default_pyhint, default_pyvalue, equals, from_arrow, from_fields, from_json, from_pyhint, from_str, from_value, id, into_arrow, into_json, is_nested, kind, show_diff, show_diffs, time, to_arrow, to_json, to_scheme_compat, variant
+  Field: accept, accept_encoding, accept_language, accept_ranges, alias, arrow, arrow_scalar, az, cache_control, cast_arrow_array, cast_arrow_batch, catalog_name, clear, clear_properties, content_disposition, content_encoding, content_language, content_length, content_location, content_range, content_type, data_type, default_arrow_scalar, default_pyhint, default_pyvalue, dictionary_id, dictionary_is_ordered, dtype, equals, etag, expires, field, file, fix, from_arrow, from_json, from_pyhint, from_str, from_value, get, get_property, glue, gs, has_partition_fields, has_property, http, http_location, iceberg, into_arrow, into_json, is_partition, items, keys, last_modified, location, media_type, mime_type, mysql, name, nullable, only_partition_fields, pandas, parquet_field_id, partition_field_len, partition_field_names, partition_fields, polars, postgres, postgresql, property_iter, protocol, range, remove_accept, remove_accept_encoding, remove_accept_language, remove_accept_ranges, remove_alias, remove_cache_control, remove_catalog_name, remove_content_disposition, remove_content_encoding, remove_content_language, remove_content_length, remove_content_location, remove_content_range, remove_content_type, remove_etag, remove_expires, remove_http_location, remove_last_modified, remove_location, remove_media_type, remove_mime_type, remove_parquet_field_id, remove_property, remove_range, remove_schema_name, remove_table_name, remove_vary, s3, schema_name, set_accept, set_accept_encoding, set_accept_language, set_accept_ranges, set_alias, set_cache_control, set_catalog_name, set_content_disposition, set_content_encoding, set_content_language, set_content_length, set_content_location, set_content_range, set_content_type, set_dictionary_options, set_etag, set_expires, set_http_location, set_last_modified, set_location, set_media_type, set_mime_type, set_parquet_field_id, set_partition, set_property, set_range, set_schema_name, set_table_name, set_vary, show_diff, show_diffs, spark, sql, table_name, to_arrow, to_json, to_scheme_compat, update, urn, values, vary, with_partition_fields, without_partition_fields
+  IOBase: append, append_arrow, append_arrow_batch_reader, children_where, close, copy_into, exists, flush, from_bytes, glob, is_dir, is_file, is_open, iterdir, joinpath, ls, media_type, mkdir, name, open, parent, partitions, pread, pwrite, read_arrow, read_arrow_batch_reader, read_arrow_field, read_bytes, read_pandas, read_pandas_frame, read_polars, read_polars_frame, read_text, record_options, rglob, size, touch, truncate, unlink, url, write_arrow, write_arrow_batch_reader, write_bytes, write_pandas, write_pandas_frame, write_polars, write_polars_frame, write_text
+  MediaType: base, clear_encodings, encoding, encodings, extension, extensions, from_content_headers, from_extension, from_extensions, from_file_name, from_json, from_parts, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_encoded, is_encoding, is_font, is_haptics, is_image, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, push_encoding, set_base, set_encodings, stable_hash, to_json
+  ProtocolMetadata: __bool__, __contains__, __delitem__, __eq__, __getitem__, __iter__, __len__, __repr__, __setitem__, __str__, clear, get, items, key, keys, prefix, scheme, update, values
+  MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, CSS, CSV, DOC, DOCX, FLAC, GIF, GZIP, HTML, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, SVG, TAR, TOML, TSV, TTF, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD, content_coding, extension, format, from_content_coding, from_content_type, from_extension, from_json, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_encoding, is_font, is_haptics, is_image, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, stable_hash, structured_suffix, subtype, to_json, top_level
+  Record: from_, from_arrow, from_arrow_field, from_arrow_record_batch, from_arrow_record_batch_reader, from_arrow_schema, from_arrow_table, from_dict, from_dicts, from_json, from_toml, from_yaml, into_, into_arrow_field, into_arrow_record_batch, into_arrow_record_batch_reader, into_arrow_record_batches, into_arrow_schema, into_arrow_table, into_json, into_toml, into_yaml, schema_field, schema_fields, to_dict
+  RecordOptions: batch_size, compression, for_media_type, key_value_metadata, level, max_row_group_size, merge_by, mime_type, root_name, safe, schema
+  Timezone: UTC, abbreviation_at, aliases, from_offset, from_value, is_fixed, is_known, is_saving_at, is_utc, key, observes_saving, offset_at, registered, stable_hash, standard_offset, to_local, to_utc, utcoffset
+  Uri: authority, clear_extensions, extension, extensions, file_name, fragment, from_json, from_path, from_str, from_value, into_json, into_path, into_url, into_urn, media_type, mime_type, path, path_segments, query, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stem, to_json, to_path, to_url, to_urn
+  Url: authority, clear_extensions, extension, extensions, file_name, fragment, from_json, from_path, from_str, from_uri, from_value, into_json, into_path, into_uri, media_type, mime_type, path, path_segments, query, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stem, to_json, to_path, to_uri
+  Urn: authority, clear_extensions, extension, extensions, file_name, fragment, from_json, from_str, from_uri, from_value, into_json, into_uri, media_type, mime_type, namespace, namespace_specific, path, path_segments, query, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stem, to_json, to_uri
+  __version__: (module or value)
+  fields: BinaryField, BinaryViewField, BooleanField, Date32Field, Date64Field, Decimal128Field, Decimal256Field, Decimal32Field, Decimal64Field, DecimalField, DictionaryField, DurationField, FixedSizeBinaryField, FixedSizeListField, Float16Field, Float32Field, Float64Field, Int16Field, Int32Field, Int64Field, Int8Field, IntervalField, LargeBinaryField, LargeListField, LargeListViewField, LargeUtf8Field, ListField, ListViewField, MapField, NullField, RunEndEncodedField, StructField, Time32Field, Time64Field, TimeField, TimestampField, TypedDataType, TypedField, UInt16Field, UInt32Field, UInt64Field, UInt8Field, UnionField, Utf8Field, Utf8ViewField, VariantField, binary, binary_view, boolean, date32, date64, decimal, decimal128, decimal256, decimal32, decimal64, dictionary, duration, fixed_size_binary, fixed_size_list, float16, float32, float64, floating, int16, int32, int64, int8, integer, interval, large_binary, large_list, large_list_view, large_utf8, list, list_view, map, map_of, nested, null, run_end_encoded, scalar, struct, temporal, time, time32, time64, timestamp, uint16, uint32, uint64, uint8, union, utf8, utf8_view, variant
+  from_dict: (module or value)
+  iceberg: Catalog, Compaction, DataFile, ManifestFile, PartitionField, PartitionSpec, SchemaUpdate, Snapshot, Table, annotations, assign_field_ids, can_promote, schema_from_json, schema_to_json
+  json: Any, Buffer, Callable, Destination, Iterable, Iterator, Literal, Mapping, Readable, Source, TypeVar, Writable, annotations, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
+  record: (module or value)
+  schema_field: (module or value)
+  schema_fields: (module or value)
+  to_dict: (module or value)
+  toml: Any, Buffer, Callable, Destination, Literal, Mapping, Readable, Source, TypeVar, Writable, annotations, dump, dumps, load, loads
+  yaml: Any, Buffer, Callable, Destination, Iterable, Iterator, Literal, Mapping, Readable, Source, TypeVar, Writable, annotations, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
+### javascript: @yggdryl/node
+  Uri
+    statics: from, fromPath, fromString, fromJSON
+    instance: at, authority, clearExtensions, clone, compare, equals, extension, extensions, fileName, fragment, length, mediaType, mimeType, path, pathSegments, query, removeExtension, scheme, setExtension, setExtensions, setFileName, setMediaType, setMimeType, setStem, stableHash, stem, toJSON, toPath, toString, toUrl, toUrn
+  MediaType
+    statics: from, fromContentHeaders, fromExtension, fromFileName, fromPath, fromString, fromJSON, fromParts, fromExtensions
+    instance: at, base, clearEncodings, clone, compare, contains, encoding, encodings, equals, extension, extensions, getEncoding, isApplication, isArchive, isAudio, isBinary, isEncoded, isEncoding, isFont, isHaptics, isImage, isMessage, isModel, isMultipart, isStructured, isTabular, isText, isTextual, isVideo, length, pushEncoding, setBase, stableHash, toJSON, toString, setEncodings
+  Url
+    statics: from, fromPath, fromString, fromUri, fromJSON
+    instance: at, authority, clearExtensions, clone, compare, equals, extension, extensions, fileName, fragment, length, mediaType, mimeType, path, pathSegments, query, removeExtension, scheme, setExtension, setExtensions, setFileName, setMediaType, setMimeType, setStem, stableHash, stem, toJSON, toPath, toString, toUri
+  DataType
+    statics: from, fromString, time, fromJSON, fromFields, variant, fromArrow
+    instance: at, clone, compare, contains, equals, get, getByName, id, keys, kind, length, nested, showDiff, stableHash, toJSON, toSchemeCompat, toString, values, defaultJSValue, defaultJSHint, defaultArrowScalar, showDiffs
+  Urn
+    statics: from, fromString, fromUri, fromJSON
+    instance: at, authority, clearExtensions, clone, compare, equals, extension, extensions, fileName, fragment, length, mediaType, mimeType, namespace, namespaceSpecific, path, pathSegments, query, removeExtension, scheme, setExtension, setExtensions, setFileName, setMediaType, setMimeType, setStem, stableHash, stem, toJSON, toString, toUri
+  Field
+    statics: from, fromString, fromJSON, fromArrow
+    instance: accept, acceptEncoding, acceptLanguage, acceptRanges, alias, arrow, az, cacheControl, catalogName, clear, clearProperties, clone, compare, contentDisposition, contentEncoding, contentLanguage, contentLength, contentLocation, contentRange, contentType, dataType, defaultArrowScalar, defaultJSHint, defaultJSValue, delete, dictionaryId, dictionaryIsOrdered, dtype, entries, equals, etag, expires, field, file, fix, get, getProperty, glue, gs, has, hasPartitionFields, hasProperty, http, httpLocation, iceberg, isPartition, keys, lastModified, location, mediaType, mimeType, mysql, name, nullable, onlyPartitionFields, pandas, parquetFieldId, partitionFieldLen, partitionFieldNames, partitionFields, polars, postgres, postgresql, propertyIter, protocol, range, removeAccept, removeAcceptEncoding, removeAcceptLanguage, removeAcceptRanges, removeAlias, removeCacheControl, removeCatalogName, removeContentDisposition, removeContentEncoding, removeContentLanguage, removeContentLength, removeContentLocation, removeContentRange, removeContentType, removeEtag, removeExpires, removeHttpLocation, removeLastModified, removeLocation, removeMediaType, removeMimeType, removeParquetFieldId, removeProperty, removeRange, removeSchemaName, removeTableName, removeVary, s3, schemaName, set, setAccept, setAcceptEncoding, setAcceptLanguage, setAcceptRanges, setAlias, setCacheControl, setCatalogName, setContentDisposition, setContentEncoding, setContentLanguage, setContentLength, setContentLocation, setContentRange, setContentType, setDataType, setDictionaryOptions, setEtag, setExpires, setHttpLocation, setLastModified, setLocation, setMediaType, setMimeType, setName, setNullable, setParquetFieldId, setPartition, setProperty, setRange, setSchemaName, setTableName, setVary, showDiff, showDiffs, size, spark, sql, stableHash, tableName, toJSON, toSchemeCompat, toString, update, urn, values, vary, withPartition, withPartitionFields, withoutPartitionFields
+  ProtocolMetadata
+    instance: clear, delete, entries, get, has, key, keys, prefix, scheme, set, size, toJSON, toString, update, values
+  MimeType
+    statics: from, fromContentCoding, fromContentType, fromExtension, fromPath, fromString, fromJSON, OCTET_STREAM, JSON, JSON_LINES, YAML, TOML, CSV, TSV, PARQUET, ARROW_FILE, ARROW_STREAM, AVRO, ORC, PLAIN_TEXT, MARKDOWN, HTML, CSS, JAVASCRIPT, XML, PDF, CBOR, MESSAGE_PACK, PROTOBUF, SQLITE3, PNG, JPEG, GIF, WEBP, SVG, MP3, WAV, OGG, FLAC, MP4, WEBM, WOFF, WOFF2, TTF, OTF, XLS, XLSX, ODS, DOC, DOCX, GZIP, ZSTD, BROTLI, ZLIB, COMPRESS, BZIP2, XZ, LZ4, SNAPPY, ZIP, SEVEN_ZIP, RAR, TAR
+    instance: clone, compare, contentCoding, equals, extension, format, isApplication, isArchive, isAudio, isBinary, isEncoding, isFont, isHaptics, isImage, isKnown, isMessage, isModel, isMultipart, isStructured, isTabular, isText, isTextual, isVideo, stableHash, structuredSuffix, subtype, toJSON, toString, topLevel
+  IOBase
+    statics: from, fromBytes
+    instance: append, appendArrow, appendArrowBatchReader, childrenWhere, copyInto, exists, flush, glob, isDir, isFile, iterdir, joinpath, ls, mediaType, mkdir, name, parent, partitions, pread, pwrite, readArrow, readArrowBatchReader, readArrowField, readBytes, readText, recordOptions, rglob, size, toPath, toString, touch, truncate, unlink, url, writeArrow, writeArrowBatchReader, writeBytes, writeText
+  BatchReader
+    statics: fromIpc, from
+    instance: consumed, field, toIpc, toTable
+  RecordOptions
+    statics: forMediaType, forMimeType, from
+    instance: batchSize, compression, keyValueMetadata, level, maxRowGroupSize, mergeBy, mimeType, rootName, safe, schema, toString, withBatchSize, withCompression, withKeyValue, withLevel, withMaxRowGroupSize, withMergeBy, withRootName, withSafe, withSchema
+  iceberg
+    statics: Table, Catalog, PartitionSpec, DataFile, assignFieldIds, canPromote, schemaFromJson, schemaToJson
+  iceberg.Catalog
+    instance: append, createTable, hasTable, listNamespaces, listTables, openOrCreateTable, overwrite, table
+  iceberg.Table
+    statics: create, open, openOrCreate
+    instance: append, compact, currentSnapshot, dataFiles, evolveSchema, formatVersion, inspectFiles, inspectHistory, inspectSnapshots, location, manifests, metadataFileName, metadataLocation, overwrite, properties, root, scan, scanAt, schema, schemas, snapshotByRef, snapshots, spec, tableUuid, targetFileSize, toString, updateProperties, updateSchema, version
+  iceberg.SchemaUpdate (via table.updateSchema())
+    instance: addColumn, commit, dropColumn, makeNullable, renameColumn, updateDoc, updateType
+  iceberg.PartitionSpec
+    statics: identity, unpartitioned
+    instance: fields, isUnpartitioned, specId
+  iceberg.DataFile
+    instance: columnSizes, content, fileFormat, filePath, fileSizeInBytes, lowerBounds, nullValueCounts, partition, partitionNames, recordCount, sortOrderId, toString, upperBounds, valueCounts
+  codec
+    statics: from, into, fromStream, intoStream
+  fields
+    statics: null, boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float16, float32, float64, timestamp, date32, date64, time, time32, time64, duration, interval, binary, fixedSizeBinary, largeBinary, binaryView, utf8, largeUtf8, utf8View, list, listView, fixedSizeList, largeList, largeListView, struct, union, variant, dictionary, decimal, decimal32, decimal64, decimal128, decimal256, map, mapOf, runEndEncoded
+  json
+    statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream
+  toml
+    statics: loads, load, dumps, dump, loadStream, dumpStream
+  yaml
+    statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream

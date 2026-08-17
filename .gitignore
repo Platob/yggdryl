@@ -1,0 +1,29 @@
+/target/
+/rust/target/
+/site/
+
+# Native extension build products
+*.node
+*.pdb
+*.so
+*.dylib
+*.dll
+.venv/
+rust/.pyhint-venv/
+python/dist/
+python/yggdryl/*.pyd
+python/yggdryl/*.so
+node/npm/
+
+# Tool caches
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+node_modules/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/

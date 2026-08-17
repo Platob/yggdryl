@@ -1,0 +1,140 @@
+[package]
+name = "yggdryl"
+description = "Allocation-conscious Arrow schemas, fields, resource identifiers, byte-oriented values, and record I/O"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["arrow", "schema", "field", "uri", "codec"]
+categories = ["data-structures", "encoding"]
+
+[features]
+default = ["arrow"]
+arrow = [
+    "dep:arrow-array",
+    "dep:arrow-buffer",
+    "dep:arrow-cast",
+    "dep:arrow-data",
+    "dep:arrow-ipc",
+    "dep:arrow-ord",
+    "dep:arrow-row",
+    "dep:arrow-select",
+]
+# Apache Parquet data files. Not default: the codec is version-locked to the
+# pinned Arrow release and pulls a thrift/compression stack a schema-only
+# consumer does not need.
+parquet = ["arrow", "dep:bytes", "dep:parquet"]
+# Apache Iceberg table interoperability. Not default: it is a table format on
+# top of the record encodings, and a schema-only consumer never reaches it.
+iceberg = ["arrow", "parquet"]
+
+[dependencies]
+arrow-array = { workspace = true, optional = true }
+arrow-buffer = { workspace = true, optional = true }
+arrow-cast = { workspace = true, optional = true }
+arrow-data = { workspace = true, optional = true }
+arrow-ipc = { workspace = true, optional = true }
+arrow-ord = { workspace = true, optional = true }
+arrow-row = { workspace = true, optional = true }
+arrow-schema.workspace = true
+arrow-select = { workspace = true, optional = true }
+base64 = "0.22"
+bytes = { version = "1", optional = true }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+half.workspace = true
+memmap2 = "0.9"
+serde = { version = "1.0", features = ["derive", "rc"] }
+saphyr-parser = "=0.0.11"
+parquet = { version = "59.2.0", default-features = false, features = [
+    "arrow",
+    "base64",
+    "brotli",
+    "flate2-rust_backend",
+    "lz4",
+    "snap",
+    "zstd",
+], optional = true }
+serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
+smol_str = { version = "=0.3.2", features = ["serde"] }
+zstd = { version = "0.13", default-features = false }
+toml = { version = "=1.1.4", features = ["preserve_order"] }
+
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "datatype"
+path = "benchmarks/datatype.rs"
+harness = false
+
+[[bench]]
+name = "field"
+path = "benchmarks/field.rs"
+harness = false
+
+[[bench]]
+name = "enums"
+path = "benchmarks/enums.rs"
+harness = false
+
+[[bench]]
+name = "uri"
+path = "benchmarks/uri.rs"
+harness = false
+
+[[bench]]
+name = "json"
+path = "benchmarks/json.rs"
+harness = false
+
+[[bench]]
+name = "text"
+path = "benchmarks/text.rs"
+harness = false
+
+[[bench]]
+name = "yaml"
+path = "benchmarks/yaml.rs"
+harness = false
+
+[[bench]]
+name = "toml"
+path = "benchmarks/toml.rs"
+harness = false
+
+# Record I/O over a handle, including the column pushdown comparison. It needs
+# the Parquet encoding, because Parquet is where a projection also skips
+# reading rather than only skipping allocation.
+[[bench]]
+name = "io"
+path = "benchmarks/io.rs"
+harness = false
+required-features = ["parquet"]
+
+# The Iceberg table format: scan planning, metadata parsing, manifest
+# decoding, and the partition-text renderer. It needs the table format, which
+# implies Parquet, so it is not compiled in a default build.
+[[bench]]
+name = "iceberg"
+path = "benchmarks/iceberg.rs"
+harness = false
+required-features = ["iceberg"]
+
+[[test]]
+name = "batch_cast"
+required-features = ["arrow"]
+
+[[test]]
+name = "default_scalar"
+required-features = ["arrow"]
+
+[[test]]
+name = "value_bounds"
+required-features = ["arrow"]
+
+# The Iceberg exchange with an external implementation. It needs the table
+# format, which needs Parquet, so it is not compiled in a default build.
+[[test]]
+name = "iceberg_interop"
+required-features = ["iceberg"]

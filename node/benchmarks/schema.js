@@ -1,0 +1,84 @@
+'use strict'
+
+const { performance } = require('node:perf_hooks')
+const { DataType, Field, MediaType, MimeType, fields } = require('..')
+
+const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '100000', 10)
+if (!Number.isSafeInteger(iterations) || iterations <= 0) {
+  throw new RangeError('YGGDRYL_BENCH_ITERATIONS must be a positive safe integer')
+}
+
+function benchmark(name, operation) {
+  for (let index = 0; index < Math.min(iterations, 1_000); index += 1) operation()
+  const started = performance.now()
+  for (let index = 0; index < iterations; index += 1) operation()
+  const elapsed = performance.now() - started
+  const rate = Math.round((iterations * 1_000) / elapsed)
+  console.log(`${name}: ${rate.toLocaleString('en-US')} operations/second`)
+}
+
+const id = fields.int32('id', { nullable: false, metadata: { source: 'event' } })
+const name = fields.utf8('name')
+const struct = DataType.fromFields([id, name])
+const structuralJson = struct.toJSON()
+const wideLeft = DataType.fromFields(
+  Array.from({ length: 1_024 }, (_, index) =>
+    fields.int32(`left_${index.toString().padStart(4, '0')}`),
+  ),
+)
+const wideRight = DataType.fromFields(
+  Array.from({ length: 1_024 }, (_, index) =>
+    fields.int32(`right_${index.toString().padStart(4, '0')}`),
+  ),
+)
+// The protocol view crosses the boundary once and then answers by bare name,
+// so both halves are measured: taking the view, and reading or writing through
+// one already held next to the two-argument property call it replaces.
+const property = fields.decimal128('price', 18, 6, {
+  metadata: {
+    'iceberg:doc': 'closing price',
+    'iceberg:field-id': '7',
+    'iceberg:schema-id': '3',
+    'postgres:type': 'numeric(18,6)',
+  },
+})
+const iceberg = property.iceberg
+const partitioned = Field.from(
+  'row: struct<year: int32 not null, price: float64 not null> not null',
+).withPartitionFields(['year'])
+
+const knownMime = 'application/json'
+const customMime = 'application/vnd.benchmark+json'
+const compoundMedia = 'text/csv;encodings=application/gzip,application/zstd'
+const contentType = 'text/csv; charset=utf-8'
+const contentEncoding = 'gzip, zstd'
+
+benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
+benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
+benchmark('schema/time_infer_time32', () => DataType.time('ms'))
+benchmark('schema/time_infer_time64', () => DataType.time('ns'))
+benchmark('schema/variant_dense_2', () => DataType.variant([id, name]))
+benchmark('schema/time_field_infer_time32', () => fields.time('clock', 'ms'))
+benchmark('schema/time_field_infer_time64', () => fields.time('clock', 'ns'))
+benchmark('schema/from_json', () => DataType.fromJSON(structuralJson))
+benchmark('schema/metadata_ignored_equals', () => struct.equals(struct, false))
+benchmark('schema/diff_first_wide_struct_1024', () =>
+  wideLeft.showDiffs(wideRight, false).next(),
+)
+benchmark('schema/protocol_view', () => property.iceberg)
+benchmark('schema/protocol_view_get', () => iceberg.get('doc'))
+benchmark('schema/protocol_property_get', () =>
+  property.getProperty('iceberg', 'doc'),
+)
+benchmark('schema/protocol_view_set', () => iceberg.set('doc', 'closing price'))
+benchmark('schema/protocol_view_entries', () => iceberg.entries())
+benchmark('schema/partition_field_names', () => partitioned.partitionFieldNames())
+benchmark('schema/without_partition_fields', () =>
+  partitioned.withoutPartitionFields(),
+)
+benchmark('schema/mime_known_parse', () => MimeType.fromString(knownMime))
+benchmark('schema/mime_custom_parse', () => MimeType.fromString(customMime))
+benchmark('schema/media_compound_parse', () => MediaType.fromString(compoundMedia))
+benchmark('schema/media_header_inference', () =>
+  MediaType.fromContentHeaders(contentType, contentEncoding),
+)

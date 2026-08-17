@@ -1,0 +1,32 @@
+[package]
+name = "yggdryl-python"
+description = "Python bindings for Yggdryl schemas, records, identifiers, and byte codecs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+arrow-array.workspace = true
+arrow-data.workspace = true
+arrow-pyarrow.workspace = true
+arrow-schema.workspace = true
+pyo3.workspace = true
+# Only for naming a page compression: the codec value is a Parquet type, and
+# spelling it here beats re-deriving its name from foreign `Display` text.
+parquet = { version = "59.2.0", default-features = false }
+yggdryl = { path = "../rust", default-features = false, features = [
+    "arrow",
+    "parquet",
+    "iceberg",
+] }
+serde_json = "1"
+
+[lints]
+workspace = true

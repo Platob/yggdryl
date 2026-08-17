@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Yggdryl">
+  <!-- A trunk with three branchings: the schema, the storage, and the values. -->
+  <g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24 44V16" />
+    <path d="M24 30 12 20" />
+    <path d="M24 30 36 20" />
+    <path d="M24 20 16 10" />
+    <path d="M24 20 32 10" />
+  </g>
+  <circle cx="24" cy="9" r="4" fill="#d81e28" />
+</svg>

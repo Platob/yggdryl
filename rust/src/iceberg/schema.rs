@@ -1,0 +1,395 @@
+//! Iceberg schemas as core [`Field`] values.
+//!
+//! An Iceberg schema is a struct with numbered fields. That is exactly a
+//! non-null struct [`Field`] whose children carry `PARQUET:field_id`, so this
+//! module converts rather than mirrors: reading an Iceberg schema produces a
+//! field the rest of the crate already understands, and writing one reads the
+//! ids back off that field.
+//!
+//! Identifier assignment is explicit. [`assign_field_ids`] numbers a field tree
+//! depth-first from a starting id, which is what a table creation needs; a
+//! field that already carries an id keeps it.
+//!
+//! Everything a field cannot hold structurally - the schema identifier, a
+//! column's documentation, the v3 default values - is kept as Iceberg protocol
+//! properties, so re-emitting a document reproduces it rather than quietly
+//! dropping what the field model has no slot for. Those properties are reached
+//! through [`Field::iceberg`] and [`Field::iceberg_mut`], which remember the
+//! `iceberg:` prefix so this module never spells a metadata key itself.
+
+use smol_str::{SmolStr, format_smolstr};
+
+use super::PrimitiveType;
+use crate::{DataType, Error, Field, Result, Value};
+
+/// The Iceberg property naming a schema identifier.
+pub(super) const SCHEMA_ID: &str = "schema-id";
+
+/// The Iceberg property holding a column's documentation string.
+pub(super) const DOC: &str = "doc";
+
+/// The Iceberg property holding a v3 `initial-default`, as encoded JSON.
+const INITIAL_DEFAULT: &str = "initial-default";
+
+/// The Iceberg property holding a v3 `write-default`, as encoded JSON.
+const WRITE_DEFAULT: &str = "write-default";
+
+/// The Iceberg property listing the identifier field ids of a schema root.
+const IDENTIFIER: &str = "identifier-field-ids";
+
+/// Read an Iceberg schema object into a non-null struct root field.
+///
+/// The root takes `name`, because an Iceberg schema names its columns but not
+/// itself. Every column keeps its Iceberg id in `PARQUET:field_id`, so a later
+/// Parquet write carries the ids into the file.
+///
+/// # Errors
+///
+/// Returns an error when the JSON is not a `struct` schema object, when a
+/// field is missing `id`, `name`, `required`, or `type`, or when a type has no
+/// core representation.
+pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field> {
+    if schema.as_mapping().is_none() {
+        return Err(invalid(format_smolstr!(
+            "expected an Iceberg schema object, got {}",
+            schema.kind()
+        )));
+    }
+
+    let type_name = schema
+        .get_key_str("type")
+        .and_then(Value::as_str)
+        .unwrap_or("struct");
+    if type_name != "struct" {
+        return Err(invalid(format_smolstr!(
+            "expected an Iceberg schema of type \"struct\", got {type_name:?}"
+        )));
+    }
+
+    let mut root = struct_field_from_json(name, schema, false)?;
+    if let Some(id) = schema.get_key_str("schema-id").and_then(Value::as_i64) {
+        root.iceberg_mut().insert(SCHEMA_ID, id.to_string())?;
+    }
+    if let Some(ids) = schema
+        .get_key_str("identifier-field-ids")
+        .and_then(Value::as_sequence)
+    {
+        let joined: Vec<String> = ids
+            .iter()
+            .filter_map(Value::as_i64)
+            .map(|id| id.to_string())
+            .collect();
+        root.iceberg_mut().insert(IDENTIFIER, joined.join(","))?;
+    }
+    Ok(root)
+}
+
+/// Write a non-null struct root field as an Iceberg schema object.
+///
+/// # Errors
+///
+/// Returns an error when the field is not a non-null struct root, when a
+/// column has no field id, or when a datatype has no Iceberg spelling.
+pub fn schema_to_json(root: &Field) -> Result<Value> {
+    root.validate_struct_root()?;
+
+    let mut entries = vec![(Value::from("type"), Value::from("struct"))];
+    if let Some(id) = root.iceberg().get(SCHEMA_ID) {
+        let id = id.parse::<i64>().map_err(|_| {
+            invalid(format_smolstr!(
+                "expected an integer {:?}, got {id:?}",
+                root.iceberg().key(SCHEMA_ID)
+            ))
+        })?;
+        entries.push((Value::from("schema-id"), Value::from(id)));
+    }
+    entries.push((
+        Value::from("fields"),
+        Value::from_sequence(fields_to_json(root)?),
+    ));
+    if let Some(ids) = root.iceberg().get(IDENTIFIER) {
+        let mut parsed = Vec::new();
+        for id in ids.split(',').filter(|id| !id.is_empty()) {
+            parsed.push(Value::from(id.trim().parse::<i64>().map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected comma-separated integers in {:?}, got {ids:?}",
+                    root.iceberg().key(IDENTIFIER)
+                ))
+            })?));
+        }
+        entries.push((
+            Value::from("identifier-field-ids"),
+            Value::from_sequence(parsed),
+        ));
+    }
+    Value::from_mapping(entries)
+}
+
+/// Number every field in a tree that does not already carry an identifier.
+///
+/// Returns the next unused identifier, which a table metadata document records
+/// as `last-column-id`.
+///
+/// # Errors
+///
+/// Returns an error when the field tree is not a valid schema root or an
+/// identifier would overflow.
+pub fn assign_field_ids(root: &mut Field, start: i32) -> Result<i32> {
+    root.require_struct()?;
+    root.assign_parquet_field_ids(start)
+}
+
+/// Return the highest field identifier anywhere in a schema tree.
+///
+/// A table records this as `last-column-id`, and a schema evolution starts
+/// numbering above it so an identifier is never reused for a different column.
+///
+/// # Errors
+///
+/// Returns an error when a stored identifier is not a canonical integer.
+pub fn last_field_id(root: &Field) -> Result<i32> {
+    Ok(root.max_parquet_field_id()?.unwrap_or_default())
+}
+
+/// Build a struct field from an Iceberg `fields` array.
+fn struct_field_from_json(name: &str, object: &Value, nullable: bool) -> Result<Field> {
+    let entries = object
+        .get_key_str("fields")
+        .and_then(Value::as_sequence)
+        .ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected an Iceberg \"fields\" array in {name}"
+            ))
+        })?;
+
+    let mut children = Vec::with_capacity(entries.len());
+    for entry in entries {
+        children.push(field_from_json(entry)?);
+    }
+    Ok(Field::new(name, DataType::from_fields(children)?, nullable))
+}
+
+/// Build one column from an Iceberg field object.
+fn field_from_json(entry: &Value) -> Result<Field> {
+    if entry.as_mapping().is_none() {
+        return Err(invalid(format_smolstr!(
+            "expected an Iceberg field object, got {}",
+            entry.kind()
+        )));
+    }
+
+    let name = entry
+        .get_key_str("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(SmolStr::new_static("expected an Iceberg field \"name\"")))?;
+    let id = entry
+        .get_key_str("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected an Iceberg field \"id\" on {name:?}"
+            ))
+        })?;
+    // Iceberg states requirement; the core states nullability.
+    let required = entry
+        .get_key_str("required")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected an Iceberg field \"required\" flag on {name:?}"
+            ))
+        })?;
+
+    let type_json = entry.get_key_str("type").ok_or_else(|| {
+        invalid(format_smolstr!(
+            "expected an Iceberg field \"type\" on {name:?}"
+        ))
+    })?;
+
+    let mut field = typed_field_from_json(name, type_json, !required)?;
+    field.set_parquet_field_id(field_id(id, name)?);
+    if let Some(doc) = entry.get_key_str("doc").and_then(Value::as_str) {
+        field.iceberg_mut().insert(DOC, doc)?;
+    }
+    // The v3 defaults are values, not schema, so they travel as encoded JSON
+    // rather than as a second parallel value model.
+    for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
+        if let Some(default) = entry.get_key_str(property) {
+            let encoded = crate::json::to_vec(default)?;
+            let encoded = String::from_utf8(encoded).map_err(|error| {
+                invalid(format_smolstr!(
+                    "expected UTF-8 in an Iceberg {property} on {name:?}, got {error}"
+                ))
+            })?;
+            field.iceberg_mut().insert(property, encoded)?;
+        }
+    }
+    Ok(field)
+}
+
+/// Build a field from an Iceberg type, primitive or nested.
+fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Result<Field> {
+    if let Some(primitive) = type_json.as_str() {
+        let data_type = PrimitiveType::from_str(primitive)?.to_data_type()?;
+        return Ok(Field::new(name, data_type, nullable));
+    }
+
+    if type_json.as_mapping().is_none() {
+        return Err(invalid(format_smolstr!(
+            "expected an Iceberg type name or object on {name:?}, got {}",
+            type_json.kind()
+        )));
+    }
+
+    match type_json.get_key_str("type").and_then(Value::as_str) {
+        Some("struct") => struct_field_from_json(name, type_json, nullable),
+        Some("list") => {
+            let element = type_json.get_key_str("element").ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a list \"element\" type on {name:?}"
+                ))
+            })?;
+            let required = type_json
+                .get_key_str("element-required")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let mut item = typed_field_from_json("element", element, !required)?;
+            if let Some(id) = type_json.get_key_str("element-id").and_then(Value::as_i64) {
+                item.set_parquet_field_id(field_id(id, name)?);
+            }
+            Ok(Field::new(name, DataType::list(item), nullable))
+        }
+        Some("map") => {
+            let key_json = type_json.get_key_str("key").ok_or_else(|| {
+                invalid(format_smolstr!("expected a map \"key\" type on {name:?}"))
+            })?;
+            let value_json = type_json.get_key_str("value").ok_or_else(|| {
+                invalid(format_smolstr!("expected a map \"value\" type on {name:?}"))
+            })?;
+            // A map key is always required; only the value carries a flag.
+            let mut key = typed_field_from_json("key", key_json, false)?;
+            let value_required = type_json
+                .get_key_str("value-required")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let mut value = typed_field_from_json("value", value_json, !value_required)?;
+            if let Some(id) = type_json.get_key_str("key-id").and_then(Value::as_i64) {
+                key.set_parquet_field_id(field_id(id, name)?);
+            }
+            if let Some(id) = type_json.get_key_str("value-id").and_then(Value::as_i64) {
+                value.set_parquet_field_id(field_id(id, name)?);
+            }
+            let entries = Field::new("entries", DataType::from_fields([key, value])?, false);
+            Ok(Field::new(name, DataType::map(entries, false)?, nullable))
+        }
+        other => Err(invalid(format_smolstr!(
+            "expected an Iceberg nested type of \"struct\", \"list\", or \"map\" on {name:?}, \
+             got {other:?}"
+        ))),
+    }
+}
+
+/// Render a struct field's children as Iceberg field objects.
+fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
+    let fields = root.fields();
+    let mut entries = Vec::with_capacity(fields.len());
+    for field in fields {
+        let id = field.parquet_field_id()?.ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a PARQUET:field_id on {:?}; call assign_field_ids first",
+                field.name()
+            ))
+        })?;
+        let mut object = vec![
+            (Value::from("id"), Value::from(i64::from(id))),
+            (Value::from("name"), Value::from(field.name())),
+            (Value::from("required"), Value::from(!field.is_nullable())),
+            (Value::from("type"), type_to_json(field)?),
+        ];
+        if let Some(doc) = field.iceberg().get(DOC) {
+            object.push((Value::from("doc"), Value::from(doc)));
+        }
+        for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
+            if let Some(encoded) = field.iceberg().get(property) {
+                object.push((Value::from(property), crate::json::from_str(encoded)?));
+            }
+        }
+        entries.push(Value::from_mapping(object)?);
+    }
+    Ok(entries)
+}
+
+/// Render one field's datatype as an Iceberg type.
+fn type_to_json(field: &Field) -> Result<Value> {
+    match field.data_type() {
+        DataType::Struct(_) => Value::from_mapping([
+            (Value::from("type"), Value::from("struct")),
+            (
+                Value::from("fields"),
+                Value::from_sequence(fields_to_json(field)?),
+            ),
+        ]),
+        DataType::List(item) | DataType::LargeList(item) | DataType::ListView(item) => {
+            let mut object = vec![(Value::from("type"), Value::from("list"))];
+            if let Some(id) = item.parquet_field_id()? {
+                object.push((Value::from("element-id"), Value::from(i64::from(id))));
+            }
+            object.push((Value::from("element"), type_to_json(item)?));
+            object.push((
+                Value::from("element-required"),
+                Value::from(!item.is_nullable()),
+            ));
+            Value::from_mapping(object)
+        }
+        DataType::Map(map) => {
+            let entries = map.entries();
+            let key = entries.get_field(0).ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a map key field on {:?}",
+                    field.name()
+                ))
+            })?;
+            let value = entries.get_field(1).ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a map value field on {:?}",
+                    field.name()
+                ))
+            })?;
+            let mut object = vec![(Value::from("type"), Value::from("map"))];
+            if let Some(id) = key.parquet_field_id()? {
+                object.push((Value::from("key-id"), Value::from(i64::from(id))));
+            }
+            object.push((Value::from("key"), type_to_json(key)?));
+            if let Some(id) = value.parquet_field_id()? {
+                object.push((Value::from("value-id"), Value::from(i64::from(id))));
+            }
+            object.push((Value::from("value"), type_to_json(value)?));
+            object.push((
+                Value::from("value-required"),
+                Value::from(!value.is_nullable()),
+            ));
+            Value::from_mapping(object)
+        }
+        other => Ok(Value::from(
+            PrimitiveType::from_data_type(other)?.to_string(),
+        )),
+    }
+}
+
+/// Narrow an identifier read from JSON.
+fn field_id(id: i64, name: &str) -> Result<i32> {
+    i32::try_from(id).map_err(|_| {
+        invalid(format_smolstr!(
+            "expected a field identifier that fits 32 bits on {name:?}, got {id}"
+        ))
+    })
+}
+
+/// Report a malformed Iceberg schema document.
+fn invalid(reason: SmolStr) -> Error {
+    Error::Codec {
+        format: "iceberg",
+        position: 0,
+        reason,
+    }
+}

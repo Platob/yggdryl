@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    # The Parquet encoding and the Iceberg table format over it are behind
+    # non-default features, so a single-configuration job never compiles them
+    # at all: their code, their tests, and their documentation are only checked
+    # by the second leg.
+    name: Rust quality (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default features
+            flags: ""
+          - name: parquet iceberg
+            flags: --features "parquet iceberg"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - name: Formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+      - name: Clippy
+        run: cargo clippy --locked --manifest-path rust/Cargo.toml --workspace --all-targets ${{ matrix.flags }} -- -D warnings
+      - name: Tests
+        run: cargo test --locked --manifest-path rust/Cargo.toml --workspace --all-targets ${{ matrix.flags }}
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --manifest-path rust/Cargo.toml --workspace --no-deps ${{ matrix.flags }}
+      - name: Compile benchmarks
+        run: cargo bench --locked --manifest-path rust/Cargo.toml --benches --no-run ${{ matrix.flags }}
+
+  core-msrv:
+    name: Core Rust 1.85
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install core MSRV
+        run: rustup toolchain install 1.85.0 --profile minimal
+      - name: Check core at its declared MSRV
+        run: |
+          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets
+          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --lib
+
+  python:
+    name: Python binding (${{ matrix.pyarrow }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pyarrow:
+          - "pyarrow==18.*"
+          - "pyarrow>=18"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      # `pandas` and `polars` are not runtime dependencies; they are installed
+      # so the tests covering the frame entry points run here instead of
+      # skipping. Both are optional for PyArrow itself, so the pinned PyArrow
+      # in the matrix still decides which one is used.
+      - name: Install build and test tools
+        run: >-
+          python -m pip install "maturin>=1.9,<2" "${{ matrix.pyarrow }}"
+          "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata
+      - name: Build wheel
+        run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
+      - name: Install wheel
+        run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
+      - name: Smoke tests
+        run: python -m pytest python/tests
+      - name: Static typing
+        run: >-
+          python -m mypy --strict
+          python/yggdryl
+          python/tests/typing_bindings.py
+          python/tests/typing_records.py
+
+  node:
+    name: Node.js binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Install Node.js build tooling
+        run: npm ci --prefix node
+      - name: Regenerate native module and audit package
+        run: npm run --prefix node test:package
+      - name: Smoke tests
+        run: npm test --prefix node

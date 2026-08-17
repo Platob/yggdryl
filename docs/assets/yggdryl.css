@@ -1,0 +1,164 @@
+/* Yggdryl: black, white, and one red.
+ *
+ * Material's black primary already gives the header and sidebar their weight;
+ * everything here is the accent, the code surface, and the small amount of
+ * shaping that makes a technical page easy to scan.
+ */
+
+:root {
+  --yggdryl-red: #d81e28;
+  --yggdryl-red-bright: #ff4a52;
+  --md-accent-fg-color: var(--yggdryl-red);
+  --md-accent-fg-color--transparent: rgba(216, 30, 40, 0.1);
+  --md-typeset-a-color: var(--yggdryl-red);
+}
+
+/* Dark mode leans on a brighter red so it survives the darker ground. */
+[data-md-color-scheme="slate"] {
+  --md-hue: 220;
+  --md-accent-fg-color: var(--yggdryl-red-bright);
+  --md-accent-fg-color--transparent: rgba(255, 74, 82, 0.14);
+  --md-typeset-a-color: var(--yggdryl-red-bright);
+  --md-default-bg-color: #0d0f12;
+  --md-code-bg-color: #15181d;
+  --md-code-fg-color: #e6e9ef;
+}
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #ffffff;
+  --md-code-bg-color: #f5f6f8;
+}
+
+/* The header keeps a hairline of red, which is the only chrome that needs it. */
+.md-header {
+  border-bottom: 2px solid var(--yggdryl-red);
+  box-shadow: none;
+}
+
+.md-tabs {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Headings: tighter tracking, and a red rule under the page title. */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--md-default-fg-color);
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--yggdryl-red);
+}
+
+.md-typeset h2 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-top: 2.2em;
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+}
+
+/* The lead sentence under an H1 carries the page, so it reads a size up. */
+.md-typeset h1 + p {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Code: a defined surface rather than a floating block. */
+.md-typeset pre > code {
+  border-radius: 0.3rem;
+}
+
+.md-typeset .highlight {
+  border-radius: 0.3rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset code {
+  border-radius: 0.2rem;
+  font-size: 0.85em;
+}
+
+/* Language tabs read as a real switch, with the active one marked in red. */
+.md-typeset .tabbed-set > input:checked + label {
+  color: var(--md-accent-fg-color);
+  border-bottom-color: var(--md-accent-fg-color);
+  font-weight: 650;
+}
+
+.md-typeset .tabbed-labels > label {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: color 120ms ease;
+}
+
+.md-typeset .tabbed-content {
+  padding-top: 0.4rem;
+}
+
+/* Tables: header rules instead of fills, which keeps the page quiet. */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.3rem;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: transparent;
+  border-bottom: 2px solid var(--yggdryl-red);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+/* Admonitions: a red bar for notes, since the palette has one colour to spend. */
+.md-typeset .admonition,
+.md-typeset details {
+  border-width: 0 0 0 3px;
+  border-radius: 0.3rem;
+  box-shadow: none;
+  border-left-color: var(--md-accent-fg-color);
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background-color: var(--md-accent-fg-color--transparent);
+}
+
+.md-typeset .admonition-title::before,
+.md-typeset summary::before {
+  background-color: var(--md-accent-fg-color);
+}
+
+/* Navigation: the active page is the only red item in the sidebar. */
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+  color: var(--md-accent-fg-color);
+  font-weight: 600;
+}
+
+.md-nav__title {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+/* Links underline on hover rather than by default, so prose stays readable. */
+.md-typeset a {
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms ease;
+}
+
+.md-typeset a:hover {
+  border-bottom-color: var(--md-accent-fg-color);
+}
+
+/* The search field picks up the accent when focused. */
+.md-search__form:focus-within {
+  box-shadow: 0 0 0 2px var(--md-accent-fg-color);
+}
+
+/* Footer: a thin red rule to close the page. */
+.md-footer-meta {
+  border-top: 2px solid var(--yggdryl-red);
+}

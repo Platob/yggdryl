@@ -1,0 +1,1565 @@
+# Public Rust API inventory (generated; do not edit)
+#
+# One entry per public item, grouped by module. Use this to check a
+# name before writing it into the documentation.
+
+### yggdryl::arrow  [rust\src\arrow\mod.rs]
+  pub enum Error
+  pub fn external(error: impl std::error::Error + Send + Sync + 'static) -> Self
+  pub fn schema_from_field(field: &Field) -> Result<SchemaRef>
+  pub type BatchReader = Box<dyn arrow_array::RecordBatchReader + Send>;
+  pub fn batch_reader<I>(schema: SchemaRef, batches: I) -> BatchReader where I: IntoIterator<Item = arrow_array::RecordBatch>, I::IntoIter: Send + 'static,
+  pub type Result<T> = std::result::Result<T, Error>;
+  pub struct ArrowScalar
+  pub fn from_parts(field: Field, array: ArrayRef) -> Result<Self>
+  pub fn from_value(field: Field, value: Value) -> Result<Self>
+  pub const fn field(&self) -> &Field
+  pub fn data_type(&self) -> &DataType
+  pub const fn array(&self) -> &ArrayRef
+  pub fn to_array(&self) -> ArrayRef
+  pub fn into_array(self) -> ArrayRef
+  pub fn to_value(&self) -> Result<Value>
+  pub fn into_value(self) -> Result<Value>
+  pub fn into_parts(self) -> (Field, ArrayRef)
+  pub trait DefaultArrowScalar
+  pub struct StructScalar
+  pub fn from_parts(schema: Field, array: StructArray) -> Result<Self>
+  pub const fn schema(&self) -> &Field
+  pub fn field(&self) -> &Field
+  pub const fn array(&self) -> &StructArray
+  pub fn get(&self, index: usize) -> Option<ArrayRef>
+  pub fn get_by_name(&self, name: &str) -> Option<ArrayRef>
+  pub fn entry(&self, index: usize) -> Option<(&Field, ArrayRef)>
+  pub fn to_arrow_scalar(&self) -> Scalar<StructArray>
+  pub fn into_arrow_scalar(self) -> Scalar<StructArray>
+  pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field>
+  pub fn record_schema_to_arrow(schema: &Field) -> Result<Schema>
+
+### yggdryl::datatype::arrow  [rust\src\datatype\arrow.rs]
+  pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
+  pub fn to_arrow(&self) -> Result<ArrowDataType>
+  pub fn to_arrow_ffi(&self) -> Result<FFI_ArrowSchema>
+  pub fn into_arrow(self) -> Result<ArrowDataType>
+
+### yggdryl::datatype::comparison  [rust\src\datatype\comparison.rs]
+  pub fn equals(&self, other: &Self, with_metadata: bool) -> bool
+  pub fn show_diffs<'schema>( &'schema self, other: &'schema Self, with_metadata: bool, return_equal: bool, ) -> Differences<'schema>
+  pub fn show_diff(&self, other: &Self, with_metadata: bool, return_equal: bool) -> String
+
+### yggdryl::datatype::compatibility  [rust\src\datatype\compatibility.rs]
+  pub fn to_scheme_compat(&self, scheme: &Scheme) -> Result<Self>
+  pub fn to_scheme_compat(&self, scheme: &Scheme) -> Result<Self>
+
+### yggdryl::datatype::default  [rust\src\datatype\default.rs]
+  pub fn default_value(&self) -> Result<Value>
+  pub fn is_default_value(&self, value: &Value) -> Result<bool>
+  pub fn validate_bounded(&self) -> Result<()>
+  pub fn default_union_type_id(&self) -> Result<Option<i8>>
+
+### yggdryl::datatype::floating  [rust\src\datatype\floating.rs]
+  pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
+  pub fn decimal64(precision: u8, scale: i8) -> Result<Self>
+  pub fn decimal(precision: u8, scale: i8) -> Result<Self>
+  pub fn decimal128(precision: u8, scale: i8) -> Result<Self>
+  pub fn decimal256(precision: u8, scale: i8) -> Result<Self>
+
+### yggdryl::datatype::integer  [rust\src\datatype\integer.rs]
+  pub const fn is_integer(&self) -> bool
+
+### yggdryl::datatype  [rust\src\datatype\mod.rs]
+  pub enum DataType
+
+### yggdryl::datatype::nested  [rust\src\datatype\nested.rs]
+  pub const fn new() -> Self
+  pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn as_fields(&self) -> &[Field]
+  pub fn get(&self, index: usize) -> Option<&Field>
+  pub fn get_by_name(&self, name: &str) -> Option<&Field>
+  pub fn iter(&self) -> std::slice::Iter<'_, Field>
+  pub fn into_fields(self) -> Vec<Field>
+  pub fn from_fields<I>(values: I) -> Result<Self> where I: IntoIterator<Item = (i8, Field)>,
+  pub fn iter(&self) -> impl ExactSizeIterator<Item = (i8, &Field)>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, index: usize) -> Option<(i8, &Field)>
+  pub fn get_by_name(&self, name: &str) -> Option<(i8, &Field)>
+  pub fn as_fields(&self) -> &[(i8, Field)]
+  pub fn into_fields(self) -> Vec<(i8, Field)>
+  pub struct DictionaryType
+  pub const fn key(&self) -> &DataType
+  pub const fn value(&self) -> &DataType
+  pub struct MapType
+  pub const fn entries(&self) -> &Field
+  pub const fn keys_sorted(&self) -> bool
+  pub struct RunEndEncodedType
+  pub const fn run_ends(&self) -> &Field
+  pub const fn values(&self) -> &Field
+  pub fn list(item: Field) -> Self
+  pub fn list_view(item: Field) -> Self
+  pub fn fixed_size_list(item: Field, length: i32) -> Result<Self>
+  pub fn large_list(item: Field) -> Self
+  pub fn large_list_view(item: Field) -> Self
+  pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
+  pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self> where I: IntoIterator<Item = (i8, Field)>,
+  pub fn variant<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
+  pub fn dictionary(key: Self, value: Self) -> Result<Self>
+  pub fn map(entries: Field, keys_sorted: bool) -> Result<Self>
+  pub fn map_of(key: Self, value: Self, keys_sorted: bool) -> Result<Self>
+  pub fn run_end_encoded(run_ends: Field, values: Field) -> Result<Self>
+  pub fn as_fields(&self) -> Option<&[Field]>
+  pub fn field_len(&self) -> usize
+  pub fn get_field(&self, index: usize) -> Option<&Field>
+  pub fn get_field_by_name(&self, name: &str) -> Option<&Field>
+
+### yggdryl::io::partition  [rust\src\io\partition.rs]
+  pub const NULL_PARTITION: &str = "null";
+  pub fn partition_text(value: &Value) -> Result<SmolStr>
+  pub fn with_partitions( batch: &RecordBatch, partitions: &[(String, String)], field: Option<&Field>, ) -> Result<RecordBatch>
+  pub fn without_partitions( batch: &RecordBatch, partitions: &[(String, String)], ) -> Result<RecordBatch>
+  pub fn partitioned_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, field: Option<Field>, ) -> Result<crate::arrow::BatchReader>
+  pub fn narrowed_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, schema: Arc<Schema>, ) -> crate::arrow::BatchReader
+
+### yggdryl::generic::typed  [rust\src\generic\typed.rs]
+  pub struct TypedValue<K: FieldType = AnyType>
+  pub fn try_from_parts(data_type: DataType, value: Value) -> Result<Self>
+  pub fn try_from_value(value: Value) -> Result<Self>
+  pub fn from_parts(data_type: DataType, value: Value) -> Result<Self>
+  pub fn from_value(value: Value) -> Result<Self>
+  pub const fn data_type(&self) -> &DataType
+  pub const fn value(&self) -> &Value
+  pub const fn is_null(&self) -> bool
+  pub fn into_parts(self) -> (DataType, Value)
+  pub fn into_value(self) -> Value
+  pub fn into_any(self) -> TypedValue
+  pub fn try_into_typed<J: FieldType>(self) -> Result<TypedValue<J>>
+  pub fn new(value: Value) -> Result<Self>
+  pub type NullValue = TypedValue<scalar::Null>;  // one alias per datatype, through RunEndEncodedValue
+
+### yggdryl::datatype::parser  [rust\src\datatype\parser.rs]
+  pub const PARSE_RECURSION_LIMIT: usize = 64;
+  pub fn from_str(input: &str) -> Result<Self>
+
+### yggdryl::datatype::scalar  [rust\src\datatype\scalar.rs]
+  pub fn stable_hash(&self) -> u64
+  pub const fn id(&self) -> DataTypeId
+  pub const fn kind(&self) -> DataTypeKind
+  pub const fn name(&self) -> &'static str
+  pub fn is_nested(&self) -> bool
+  pub fn field(self, name: impl Into<SmolStr>, nullable: bool) -> Field
+  pub fn nullable_field(self, name: impl Into<SmolStr>) -> Field
+  pub fn required_field(self, name: impl Into<SmolStr>) -> Field
+  pub fn fixed_size_binary(width: i32) -> Result<Self>
+  pub fn validate(&self) -> Result<()>
+
+### yggdryl::datatype::serde  [rust\src\datatype\serde.rs]
+  pub fn from_json(input: &str) -> Result<Self>
+  pub fn to_json(&self) -> Result<String>
+  pub fn into_json(self) -> Result<String>
+
+### yggdryl::datatype::temporal  [rust\src\datatype\temporal.rs]
+  pub fn time(unit: TimeUnit) -> Result<Self>
+  pub fn time32(unit: TimeUnit) -> Result<Self>
+  pub fn time64(unit: TimeUnit) -> Result<Self>
+
+### yggdryl::enums::codec  [rust\src\enums\codec.rs]
+  pub struct Level(u8);
+  pub const NONE: Self = Self(0);
+  pub const FAST: Self = Self(1);
+  pub const DEFAULT: Self = Self(6);
+  pub const BEST: Self = Self(9);
+  pub const fn new(level: u8) -> Self
+  pub const fn get(self) -> u8
+  pub enum Codec
+  pub const ALL: [Self; 5] = [ Self::Identity, Self::Gzip, Self::Zlib, Self::Deflate, Self::Zstd, ];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn extension(self) -> Option<&'static str>
+  pub const fn is_identity(self) -> bool
+  pub fn from_mime_type(value: &MimeType) -> Self
+  pub fn from_media_type(value: &MediaType) -> Self
+  pub fn from_url(value: &Url) -> Self
+  pub fn load(self, input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump(self, input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump_with_level(self, input: &[u8], level: Level) -> Result<Vec<u8>>
+  pub fn reader<'source, R: Read + 'source>(self, source: R) -> Box<dyn Read + 'source>
+  pub fn writer<'target, W: Write + 'target>(self, target: W) -> Encoder<'target>
+  pub fn writer_with_level<'target, W: Write + 'target>( self, target: W, level: Level, ) -> Encoder<'target>
+  pub fn finish(self) -> Result<()>
+
+### yggdryl::enums::datatype_id  [rust\src\enums\datatype_id.rs]
+  pub enum DataTypeId
+  pub const ALL: [Self; 41] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn kind(self) -> DataTypeKind
+  pub const fn is_parameterized(self) -> bool
+  pub const fn is_integer(self) -> bool
+  pub const fn is_signed_integer(self) -> bool
+  pub const fn is_unsigned_integer(self) -> bool
+  pub const fn is_floating(self) -> bool
+  pub const fn is_decimal(self) -> bool
+  pub const fn is_temporal(self) -> bool
+  pub const fn is_binary(self) -> bool
+  pub const fn is_string(self) -> bool
+  pub const fn is_nested(self) -> bool
+  pub const fn is_wrapper(self) -> bool
+  pub const fn fixed_byte_width(self) -> Option<usize>
+
+### yggdryl::enums::datatype_kind  [rust\src\enums\datatype_kind.rs]
+  pub enum DataTypeKind
+  pub const ALL: [Self; 14] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Binary,
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn is_nested(self) -> bool
+  pub const fn is_wrapper(self) -> bool
+  pub const fn is_numeric(self) -> bool
+  pub const fn is_bytes(self) -> bool
+  pub const fn is_ordered(self) -> bool
+
+### yggdryl::enums::io_kind  [rust\src\enums\io_kind.rs]
+  pub enum IOKind
+  pub const ALL: [Self; 4] = [Self::Memory, Self::File, Self::Directory, Self::Unknown];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn is_container(self) -> bool
+  pub const fn is_leaf(self) -> bool
+  pub const fn is_known(self) -> bool
+
+### yggdryl::enums::magic  [rust\src\enums\magic.rs]
+  pub const MAGIC_PROBE_LEN: usize = 64;
+  pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
+  pub fn from_text_bytes(input: &[u8]) -> Option<Self>
+  pub fn from_bytes(input: &[u8]) -> Option<Self>
+  pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
+
+### yggdryl::enums::media_type  [rust\src\enums\media_type.rs]
+  pub struct MediaType
+  pub fn new(base: MimeType) -> Self
+  pub fn from_parts<I>(base: MimeType, encodings: I) -> Result<Self> where I: IntoIterator<Item = MimeType>,
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_extension(extension: &str) -> Self
+  pub fn from_extensions<I, S>(extensions: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn from_file_name(file_name: &str) -> Self
+  pub fn from_path(path: impl AsRef<Path>) -> Result<Self>
+  pub fn from_content_headers( content_type: Option<&str>, content_encoding: Option<&str>, ) -> Result<Self>
+  pub const fn base(&self) -> &MimeType
+  pub fn encodings(&self) -> &[MimeType]
+  pub fn get_encoding(&self, index: usize) -> Option<&MimeType>
+  pub fn encoding(&self) -> Option<&MimeType>
+  pub fn encoding_len(&self) -> usize
+  pub const fn is_encoded(&self) -> bool
+  pub fn extension(&self) -> Option<&'static str>
+  pub fn extensions(&self) -> impl Iterator<Item = &'static str> + '_
+  pub fn set_base(&mut self, base: MimeType)
+  pub fn set_encodings<I>(&mut self, encodings: I) -> Result<()> where I: IntoIterator<Item = MimeType>,
+  pub fn push_encoding(&mut self, encoding: MimeType) -> Result<()>
+  pub fn clear_encodings(&mut self) -> bool
+  pub fn with_base(mut self, base: MimeType) -> Self
+  pub fn try_with_encodings<I>(mut self, encodings: I) -> Result<Self> where I: IntoIterator<Item = MimeType>,
+  pub fn is_application(&self) -> bool
+  pub fn is_audio(&self) -> bool
+  pub fn is_font(&self) -> bool
+  pub fn is_haptics(&self) -> bool
+  pub fn is_image(&self) -> bool
+  pub fn is_message(&self) -> bool
+  pub fn is_model(&self) -> bool
+  pub fn is_multipart(&self) -> bool
+  pub fn is_text(&self) -> bool
+  pub fn is_video(&self) -> bool
+  pub fn is_textual(&self) -> bool
+  pub fn is_structured(&self) -> bool
+  pub const fn is_tabular(&self) -> bool
+  pub const fn is_encoding(&self) -> bool
+  pub const fn is_archive(&self) -> bool
+  pub fn is_binary(&self) -> bool
+  pub fn stable_hash(&self) -> u64
+
+### yggdryl::enums::mime_type  [rust\src\enums\mime_type.rs]
+  pub struct MimeType(MimeTypeValue);
+  pub const OCTET_STREAM: Self = Self(MimeTypeValue::OctetStream);
+  pub const JSON: Self = Self(MimeTypeValue::Json);
+  pub const JSON_LINES: Self = Self(MimeTypeValue::JsonLines);
+  pub const YAML: Self = Self(MimeTypeValue::Yaml);
+  pub const TOML: Self = Self(MimeTypeValue::Toml);
+  pub const CSV: Self = Self(MimeTypeValue::Csv);
+  pub const TSV: Self = Self(MimeTypeValue::Tsv);
+  pub const PARQUET: Self = Self(MimeTypeValue::Parquet);
+  pub const ARROW_FILE: Self = Self(MimeTypeValue::ArrowFile);
+  pub const ARROW_STREAM: Self = Self(MimeTypeValue::ArrowStream);
+  pub const AVRO: Self = Self(MimeTypeValue::Avro);
+  pub const ORC: Self = Self(MimeTypeValue::Orc);
+  pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
+  pub const MARKDOWN: Self = Self(MimeTypeValue::Markdown);
+  pub const HTML: Self = Self(MimeTypeValue::Html);
+  pub const CSS: Self = Self(MimeTypeValue::Css);
+  pub const JAVASCRIPT: Self = Self(MimeTypeValue::JavaScript);
+  pub const XML: Self = Self(MimeTypeValue::Xml);
+  pub const PDF: Self = Self(MimeTypeValue::Pdf);
+  pub const CBOR: Self = Self(MimeTypeValue::Cbor);
+  pub const MESSAGE_PACK: Self = Self(MimeTypeValue::MessagePack);
+  pub const PROTOBUF: Self = Self(MimeTypeValue::Protobuf);
+  pub const SQLITE3: Self = Self(MimeTypeValue::Sqlite3);
+  pub const PNG: Self = Self(MimeTypeValue::Png);
+  pub const JPEG: Self = Self(MimeTypeValue::Jpeg);
+  pub const GIF: Self = Self(MimeTypeValue::Gif);
+  pub const WEBP: Self = Self(MimeTypeValue::WebP);
+  pub const SVG: Self = Self(MimeTypeValue::Svg);
+  pub const MP3: Self = Self(MimeTypeValue::Mp3);
+  pub const WAV: Self = Self(MimeTypeValue::Wav);
+  pub const OGG: Self = Self(MimeTypeValue::Ogg);
+  pub const FLAC: Self = Self(MimeTypeValue::Flac);
+  pub const MP4: Self = Self(MimeTypeValue::Mp4);
+  pub const WEBM: Self = Self(MimeTypeValue::WebM);
+  pub const WOFF: Self = Self(MimeTypeValue::Woff);
+  pub const WOFF2: Self = Self(MimeTypeValue::Woff2);
+  pub const TTF: Self = Self(MimeTypeValue::Ttf);
+  pub const OTF: Self = Self(MimeTypeValue::Otf);
+  pub const XLS: Self = Self(MimeTypeValue::Xls);
+  pub const XLSX: Self = Self(MimeTypeValue::Xlsx);
+  pub const ODS: Self = Self(MimeTypeValue::Ods);
+  pub const DOC: Self = Self(MimeTypeValue::Doc);
+  pub const DOCX: Self = Self(MimeTypeValue::Docx);
+  pub const GZIP: Self = Self(MimeTypeValue::Gzip);
+  pub const ZSTD: Self = Self(MimeTypeValue::Zstd);
+  pub const BROTLI: Self = Self(MimeTypeValue::Brotli);
+  pub const ZLIB: Self = Self(MimeTypeValue::Zlib);
+  pub const COMPRESS: Self = Self(MimeTypeValue::Compress);
+  pub const BZIP2: Self = Self(MimeTypeValue::Bzip2);
+  pub const XZ: Self = Self(MimeTypeValue::Xz);
+  pub const LZ4: Self = Self(MimeTypeValue::Lz4);
+  pub const SNAPPY: Self = Self(MimeTypeValue::Snappy);
+  pub const ZIP: Self = Self(MimeTypeValue::Zip);
+  pub const SEVEN_ZIP: Self = Self(MimeTypeValue::SevenZip);
+  pub const RAR: Self = Self(MimeTypeValue::Rar);
+  pub const TAR: Self = Self(MimeTypeValue::Tar);
+  pub const DIRECTORY: Self = Self(MimeTypeValue::Directory);
+  pub const FILE: Self = Self(MimeTypeValue::File);
+  pub fn from_local_path(path: impl AsRef<Path>) -> Self
+  pub const fn is_filesystem(&self) -> bool
+  pub const fn is_directory(&self) -> bool
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_extension(extension: &str) -> Result<Self>
+  pub fn from_path(path: impl AsRef<Path>) -> Result<Self>
+  pub fn from_content_type(value: &str) -> Result<Self>
+  pub fn from_content_coding(value: &str) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub fn top_level(&self) -> &str
+  pub fn subtype(&self) -> &str
+  pub fn structured_suffix(&self) -> Option<&str>
+  pub fn extension(&self) -> Option<&'static str>
+  pub const fn content_coding(&self) -> Option<&'static str>
+  pub fn format(&self) -> Option<Format>
+  pub const fn is_known(&self) -> bool
+  pub fn is_application(&self) -> bool
+  pub fn is_audio(&self) -> bool
+  pub fn is_font(&self) -> bool
+  pub fn is_haptics(&self) -> bool
+  pub fn is_image(&self) -> bool
+  pub fn is_message(&self) -> bool
+  pub fn is_model(&self) -> bool
+  pub fn is_multipart(&self) -> bool
+  pub fn is_text(&self) -> bool
+  pub fn is_video(&self) -> bool
+  pub fn is_textual(&self) -> bool
+  pub fn is_structured(&self) -> bool
+  pub const fn is_tabular(&self) -> bool
+  pub const fn is_encoding(&self) -> bool
+  pub const fn is_archive(&self) -> bool
+  pub fn is_binary(&self) -> bool
+  pub fn stable_hash(&self) -> u64
+
+### yggdryl::enums::scheme  [rust\src\enums\scheme.rs]
+  pub struct Scheme(SchemeValue);
+  pub const HTTP: Self = Self(SchemeValue::Http);
+  pub const HTTPS: Self = Self(SchemeValue::Https);
+  pub const FILE: Self = Self(SchemeValue::File);
+  pub const URN: Self = Self(SchemeValue::Urn);
+  pub const POSTGRES: Self = Self(SchemeValue::Postgres);
+  pub const POSTGRESQL: Self = Self(SchemeValue::Postgresql);
+  pub const MYSQL: Self = Self(SchemeValue::Mysql);
+  pub const ARROW: Self = Self(SchemeValue::Arrow);
+  pub const SQL: Self = Self(SchemeValue::Sql);
+  pub const GLUE: Self = Self(SchemeValue::Glue);
+  pub const ICEBERG: Self = Self(SchemeValue::Iceberg);
+  pub const FIX: Self = Self(SchemeValue::Fix);
+  pub const FIELD: Self = Self(SchemeValue::Field);
+  pub const DTYPE: Self = Self(SchemeValue::Dtype);
+  pub const S3: Self = Self(SchemeValue::S3);
+  pub const GS: Self = Self(SchemeValue::Gs);
+  pub const AZ: Self = Self(SchemeValue::Az);
+  pub const SPARK: Self = Self(SchemeValue::Spark);
+  pub const POLARS: Self = Self(SchemeValue::Polars);
+  pub const PANDAS: Self = Self(SchemeValue::Pandas);
+  pub const COMPATIBILITY_TARGETS: [Self; 5] = [Self::ARROW, Self::SPARK, Self::POLARS, Self::PANDAS, Self::ICEBERG];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn is_known(&self) -> bool
+  pub const fn default_port(&self) -> Option<u16>
+  pub const fn is_storage(&self) -> bool
+  pub const fn is_compatibility_target(&self) -> bool
+  pub fn stable_hash(&self) -> u64
+
+### yggdryl::enums::time_unit  [rust\src\enums\time_unit.rs]
+  pub enum TimeUnit
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn from_arrow_time(value: arrow_schema::TimeUnit) -> Self
+  pub const fn from_arrow_interval(value: arrow_schema::IntervalUnit) -> Self
+  pub fn into_arrow_time(self) -> Result<arrow_schema::TimeUnit>
+  pub fn into_arrow_interval(self) -> Result<arrow_schema::IntervalUnit>
+  pub const fn is_temporal(self) -> bool
+  pub const fn is_interval(self) -> bool
+  pub const fn as_str(self) -> &'static str
+
+### yggdryl::enums::union_mode  [rust\src\enums\union_mode.rs]
+  pub enum UnionMode
+  pub const fn as_str(self) -> &'static str
+
+### yggdryl::error  [rust\src\error.rs]
+  pub enum Error
+  pub type Result<T> = std::result::Result<T, Error>;
+
+### yggdryl::field::arrow  [rust\src\field\arrow.rs]
+  pub fn from_arrow(value: &ArrowField) -> Result<Self>
+  pub fn from_arrow_ref(value: FieldRef) -> Result<Self>
+  pub fn to_arrow_ref(&self) -> Result<FieldRef>
+  pub fn to_arrow(&self) -> Result<ArrowField>
+  pub fn to_arrow_ffi(&self) -> Result<FFI_ArrowSchema>
+  pub fn into_arrow(self) -> Result<ArrowField>
+  pub fn into_arrow_ref(self) -> Result<FieldRef>
+
+### yggdryl::field::cast  [rust\src\field\cast\mod.rs]
+  pub trait ArrowFieldType: FieldType
+  pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
+  pub fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<K::Array>>
+  pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
+  pub fn validate_arrow_batch(field: &Field, batch: &RecordBatch) -> Result<()>
+  pub fn preflight_arrow_batch_cast( source: &Field, target: Option<&Field>, safe: bool, ) -> Result<()>
+
+### yggdryl::field::cast::plan  [rust\src\field\cast\plan.rs]
+  pub trait ArrowCast
+
+### yggdryl::field::diff  [rust\src\field\diff.rs]
+  pub struct Differences<'schema>
+  pub struct OwnedDifferences
+  pub fn from_fields( left: &Field, right: &Field, with_metadata: bool, return_equal: bool, ) -> Self
+  pub fn from_data_types( left: &DataType, right: &DataType, with_metadata: bool, return_equal: bool, ) -> Self
+
+### yggdryl::field  [rust\src\field\mod.rs]
+  pub type NullField = TypedField<scalar::Null>;
+  pub type BooleanField = TypedField<scalar::Boolean>;
+  pub type Int8Field = TypedField<integer::Int8>;
+  pub type Int16Field = TypedField<integer::Int16>;
+  pub type Int32Field = TypedField<integer::Int32>;
+  pub type Int64Field = TypedField<integer::Int64>;
+  pub type UInt8Field = TypedField<integer::UInt8>;
+  pub type UInt16Field = TypedField<integer::UInt16>;
+  pub type UInt32Field = TypedField<integer::UInt32>;
+  pub type UInt64Field = TypedField<integer::UInt64>;
+  pub type Float16Field = TypedField<floating::Float16>;
+  pub type Float32Field = TypedField<floating::Float32>;
+  pub type Float64Field = TypedField<floating::Float64>;
+  pub type TimestampField = TypedField<temporal::Timestamp>;
+  pub type Date32Field = TypedField<temporal::Date32>;
+  pub type Date64Field = TypedField<temporal::Date64>;
+  pub type Time32Field = TypedField<temporal::Time32>;
+  pub type Time64Field = TypedField<temporal::Time64>;
+  pub type DurationField = TypedField<temporal::Duration>;
+  pub type IntervalField = TypedField<temporal::Interval>;
+  pub type BinaryField = TypedField<binary::Binary>;
+  pub type FixedSizeBinaryField = TypedField<binary::FixedSizeBinary>;
+  pub type LargeBinaryField = TypedField<binary::LargeBinary>;
+  pub type BinaryViewField = TypedField<binary::BinaryView>;
+  pub type Utf8Field = TypedField<binary::Utf8>;
+  pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
+  pub type Utf8ViewField = TypedField<binary::Utf8View>;
+  pub type ListField = TypedField<nested::List>;
+  pub type ListViewField = TypedField<nested::ListView>;
+  pub type FixedSizeListField = TypedField<nested::FixedSizeList>;
+  pub type LargeListField = TypedField<nested::LargeList>;
+  pub type LargeListViewField = TypedField<nested::LargeListView>;
+  pub type StructField = TypedField<nested::Struct>;
+  pub type UnionField = TypedField<nested::Union>;
+  pub type DictionaryField = TypedField<nested::Dictionary>;
+  pub type Decimal32Field = TypedField<decimal::Decimal32>;
+  pub type Decimal64Field = TypedField<decimal::Decimal64>;
+  pub type Decimal128Field = TypedField<decimal::Decimal128>;
+  pub type Decimal256Field = TypedField<decimal::Decimal256>;
+  pub type MapField = TypedField<nested::Map>;
+  pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
+  pub type FieldRef = Arc<ArrowField>;
+  pub struct Field
+  pub fn new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Self
+  pub fn default_value(&self) -> Result<Value>
+  pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>>
+  pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>>
+  pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, data_type: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>,
+  pub fn name(&self) -> &str
+  pub const fn data_type(&self) -> &DataType
+  pub const fn is_nullable(&self) -> bool
+  pub fn is_struct(&self) -> bool
+  pub fn fields(&self) -> &[Field]
+  pub fn field_len(&self) -> usize
+  pub fn get_field(&self, index: usize) -> Option<&Field>
+  pub fn get_field_by_name(&self, name: &str) -> Option<&Field>
+  pub fn index_of(&self, name: &str) -> Option<usize>
+  pub fn validate_value(&self, value: &Value) -> Result<()>
+  pub fn canonicalize_value(&self, value: Value) -> Result<Value>
+  pub fn require_struct(&self) -> Result<()>
+  pub fn validate_struct_root(&self) -> Result<()>
+  pub const fn dictionary_id(&self) -> Option<i64>
+  pub const fn dictionary_is_ordered(&self) -> Option<bool>
+  pub fn metadata_len(&self) -> usize
+  pub const fn as_metadata(&self) -> &Metadata
+  pub fn is_metadata_empty(&self) -> bool
+  pub fn metadata_iter(&self) -> MetadataIter<'_>
+  pub fn next_metadata_entry(&self, after_key: Option<&str>) -> Option<(&str, &str)>
+  pub fn get_metadata(&self, key: &str) -> Option<&str>
+  pub fn has_metadata(&self, key: &str) -> bool
+  pub fn alias(&self) -> Option<&str>
+  pub fn catalog_name(&self) -> Option<&str>
+  pub fn schema_name(&self) -> Option<&str>
+  pub fn table_name(&self) -> Option<&str>
+  pub fn parquet_field_id(&self) -> Result<Option<i32>>
+  pub fn field_by_parquet_field_id(&self, id: i32) -> Option<&Self>
+  pub fn max_parquet_field_id(&self) -> Result<Option<i32>>
+  pub fn assign_parquet_field_ids(&mut self, start: i32) -> Result<i32>
+  pub fn is_partition(&self) -> bool
+  pub fn set_partition(&mut self, partition: bool)
+  pub fn with_partition(mut self, partition: bool) -> Self
+  pub fn partition_fields(&self) -> PartitionFields<'_>
+  pub fn partition_field_names(&self) -> PartitionFieldNames<'_>
+  pub fn partition_field_len(&self) -> usize
+  pub fn has_partition_fields(&self) -> bool
+  pub fn only_partition_fields(&self) -> Result<Self>
+  pub fn without_partition_fields(&self) -> Result<Self>
+  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn protocol(&self, scheme: &Scheme) -> ProtocolMetadata<'_>
+  pub fn protocol_mut(&mut self, scheme: &Scheme) -> ProtocolMetadataMut<'_>
+  pub fn iceberg(&self) -> ProtocolMetadata<'_>
+  pub fn iceberg_mut(&mut self) -> ProtocolMetadataMut<'_>
+  pub fn is_init(&self) -> Result<bool>
+  pub fn location(&self) -> Result<Option<Url>>
+  pub fn accept(&self) -> Option<&str>
+  pub fn accept_encoding(&self) -> Option<&str>
+  pub fn accept_language(&self) -> Option<&str>
+  pub fn accept_ranges(&self) -> Option<&str>
+  pub fn cache_control(&self) -> Option<&str>
+  pub fn content_disposition(&self) -> Option<&str>
+  pub fn content_encoding(&self) -> Option<&str>
+  pub fn content_language(&self) -> Option<&str>
+  pub fn content_length(&self) -> Result<Option<u64>>
+  pub fn content_location(&self) -> Option<&str>
+  pub fn content_range(&self) -> Option<&str>
+  pub fn content_type(&self) -> Option<&str>
+  pub fn mime_type(&self) -> Result<MimeType>
+  pub fn media_type(&self) -> Result<MediaType>
+  pub fn etag(&self) -> Option<&str>
+  pub fn expires(&self) -> Option<&str>
+  pub fn last_modified(&self) -> Option<&str>
+  pub fn http_location(&self) -> Result<Option<Url>>
+  pub fn range(&self) -> Option<&str>
+  pub fn vary(&self) -> Option<&str>
+  pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str>
+  pub fn has_property(&self, scheme: &Scheme, name: &str) -> bool
+  pub fn property_iter<'field, 'scheme>( &'field self, scheme: &'scheme Scheme, ) -> PropertyIter<'field, 'scheme>
+  pub fn next_property_entry<'field>( &'field self, scheme: &Scheme, after_name: Option<&str>, ) -> Option<(&'field str, &'field str)>
+  pub fn set_name(&mut self, name: impl Into<SmolStr>)
+  pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
+  pub fn set_data_type(&mut self, data_type: DataType) -> Result<()>
+  pub fn try_with_data_type(mut self, data_type: DataType) -> Result<Self>
+  pub fn set_nullable(&mut self, nullable: bool)
+  pub fn with_nullable(mut self, nullable: bool) -> Self
+  pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()>
+  pub fn try_with_dictionary_options(mut self, id: i64, is_ordered: bool) -> Result<Self>
+  pub fn insert_metadata( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<Option<String>>
+  pub fn set_metadata<I, K, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
+  pub fn update_metadata<I, K, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
+  pub fn try_with_metadata( mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<Self>
+  pub fn try_with_metadata_entries<I, K, V>(mut self, values: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
+  pub fn remove_metadata(&mut self, key: &str) -> Option<String>
+  pub fn with_metadata_removed(mut self, key: &str) -> Self
+  pub fn clear_metadata(&mut self)
+  pub fn set_alias(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn try_with_alias(mut self, value: impl Into<String>) -> Result<Self>
+  pub fn remove_alias(&mut self) -> Option<String>
+  pub fn set_catalog_name(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn try_with_catalog_name(mut self, value: impl Into<String>) -> Result<Self>
+  pub fn remove_catalog_name(&mut self) -> Option<String>
+  pub fn set_schema_name(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn try_with_schema_name(mut self, value: impl Into<String>) -> Result<Self>
+  pub fn remove_schema_name(&mut self) -> Option<String>
+  pub fn set_table_name(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn try_with_table_name(mut self, value: impl Into<String>) -> Result<Self>
+  pub fn remove_table_name(&mut self) -> Option<String>
+  pub fn set_parquet_field_id(&mut self, id: i32)
+  pub fn with_parquet_field_id(mut self, id: i32) -> Self
+  pub fn set_init(&mut self, init: bool)
+  pub fn with_init(mut self, init: bool) -> Self
+  pub fn remove_parquet_field_id(&mut self) -> Result<Option<i32>>
+  pub fn set_location(&mut self, location: Url)
+  pub fn with_location(mut self, location: Url) -> Self
+  pub fn remove_location(&mut self) -> Result<Option<Url>>
+  pub fn set_accept(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_accept(&mut self) -> Option<String>
+  pub fn set_accept_encoding(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_accept_encoding(&mut self) -> Option<String>
+  pub fn set_accept_language(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_accept_language(&mut self) -> Option<String>
+  pub fn set_accept_ranges(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_accept_ranges(&mut self) -> Option<String>
+  pub fn set_cache_control(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_cache_control(&mut self) -> Option<String>
+  pub fn set_content_disposition(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_content_disposition(&mut self) -> Option<String>
+  pub fn set_content_encoding(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_content_encoding(&mut self) -> Option<String>
+  pub fn set_content_language(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_content_language(&mut self) -> Option<String>
+  pub fn set_content_length(&mut self, value: u64)
+  pub fn with_content_length(mut self, value: u64) -> Self
+  pub fn remove_content_length(&mut self) -> Result<Option<u64>>
+  pub fn set_content_location(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_content_location(&mut self) -> Option<String>
+  pub fn set_content_range(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_content_range(&mut self) -> Option<String>
+  pub fn set_content_type(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_content_type(&mut self) -> Option<String>
+  pub fn set_mime_type(&mut self, value: MimeType)
+  pub fn with_mime_type(mut self, value: MimeType) -> Self
+  pub fn remove_mime_type(&mut self) -> Result<Option<MimeType>>
+  pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
+  pub fn try_with_media_type(mut self, value: MediaType) -> Result<Self>
+  pub fn remove_media_type(&mut self) -> Result<Option<MediaType>>
+  pub fn set_etag(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_etag(&mut self) -> Option<String>
+  pub fn set_expires(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_expires(&mut self) -> Option<String>
+  pub fn set_last_modified(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_last_modified(&mut self) -> Option<String>
+  pub fn set_http_location(&mut self, value: Url)
+  pub fn with_http_location(mut self, value: Url) -> Self
+  pub fn remove_http_location(&mut self) -> Result<Option<Url>>
+  pub fn set_range(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_range(&mut self) -> Option<String>
+  pub fn set_vary(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn remove_vary(&mut self) -> Option<String>
+  pub fn set_property( &mut self, scheme: &Scheme, name: &str, value: impl Into<String>, ) -> Result<Option<String>>
+  pub fn try_with_property( mut self, scheme: &Scheme, name: &str, value: impl Into<String>, ) -> Result<Self>
+  pub fn remove_property(&mut self, scheme: &Scheme, name: &str) -> Option<String>
+  pub fn clear_properties(&mut self, scheme: &Scheme)
+  pub fn with_properties_cleared(mut self, scheme: &Scheme) -> Self
+  pub fn validate(&self) -> Result<()>
+  pub fn validate_bounded(&self) -> Result<()>
+  pub fn equals(&self, other: &Self, with_metadata: bool) -> bool
+  pub fn show_diffs<'schema>( &'schema self, other: &'schema Self, with_metadata: bool, return_equal: bool, ) -> Differences<'schema>
+  pub fn show_diff(&self, other: &Self, with_metadata: bool, return_equal: bool) -> String
+  pub fn layout_eq(&self, other: &Self) -> bool
+  pub fn stable_hash(&self) -> u64
+  pub fn stable_layout_hash(&self) -> u64
+
+### yggdryl::field::parser  [rust\src\field\parser.rs]
+  pub fn from_str(value: &str) -> Result<Self>
+
+### yggdryl::field::serde  [rust\src\field\serde.rs]
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn to_json(&self) -> Result<String>
+  pub fn into_json(self) -> Result<String>
+
+### yggdryl::field::typed  [rust\src\field\typed.rs]
+  pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, timestamp unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
+  pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
+  pub struct TypedField<K: FieldType>
+  pub fn try_from_field(field: Field) -> Result<Self>
+  pub fn try_new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Result<Self>
+  pub fn try_from_parts<I, M, V>( name: impl Into<SmolStr>, data_type: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>,
+  pub const fn as_field(&self) -> &Field
+  pub const fn as_typed_ref(&self) -> TypedFieldRef<'_, K>
+  pub fn into_field(self) -> Field
+  pub fn set_name(&mut self, name: impl Into<SmolStr>)
+  pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
+  pub fn set_nullable(&mut self, nullable: bool)
+  pub fn with_nullable(mut self, nullable: bool) -> Self
+  pub fn set_data_type(&mut self, data_type: DataType) -> Result<()>
+  pub fn try_with_data_type(mut self, data_type: DataType) -> Result<Self>
+  pub fn insert_metadata( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<Option<String>>
+  pub fn set_metadata<I, M, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (M, V)>, M: Into<String>, V: Into<String>,
+  pub fn update_metadata<I, M, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (M, V)>, M: Into<String>, V: Into<String>,
+  pub fn remove_metadata(&mut self, key: &str) -> Option<String>
+  pub fn clear_metadata(&mut self)
+  pub struct TypedFieldRef<'field, K: FieldType>
+  pub fn try_from_field(field: &'field Field) -> Result<Self>
+  pub const fn as_field(self) -> &'field Field
+  pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self
+  pub fn from_parts<I, M, V>( name: impl Into<SmolStr>, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>, M: Into<String>,
+
+### yggdryl::generic::codec  [rust\src\generic\codec.rs]
+  pub enum Codec<H: IOBase>
+  pub fn wrap(handle: H, codec: crate::Codec) -> Self
+  pub fn infer(handle: H) -> Self
+  pub const fn codec(&self) -> crate::Codec
+  pub fn with_level(self, level: Level) -> Self
+  pub const fn handle(&self) -> &H
+  pub fn into_handle(self) -> Result<H>
+  pub fn as_io(&self) -> &dyn IOBase
+  pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+
+### yggdryl::generic::holder  [rust\src\generic\holder.rs]
+  pub enum Holder
+  pub const fn buffer(buffer: Buffer) -> Self
+  pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn as_io(&self) -> &dyn IOBase
+  pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+
+### yggdryl::generic::media  [rust\src\generic\media.rs]
+  pub enum Media
+  pub fn open(handle: Holder) -> Result<Self>
+  pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
+  pub fn ipc(handle: Holder) -> Self
+  pub fn parquet(handle: Holder) -> Self
+  pub fn with_schema(self, schema: Field) -> Self
+  pub fn schema(&mut self) -> Result<Field>
+  pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<crate::arrow::BatchReader>
+  pub fn write_batch_reader(&mut self, batches: crate::arrow::BatchReader) -> Result<()>
+  pub fn as_io(&self) -> &dyn IOBase
+  pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+
+### yggdryl::generic::options  [rust\src\generic\options.rs]
+  pub trait IORecordOptions: Sized
+  pub enum RecordOptions
+  pub fn for_media_type(media_type: &MediaType) -> Result<Self>
+  pub fn for_mime_type(base: &MimeType) -> Result<Self>
+  pub const fn mime_type(&self) -> MimeType
+
+### yggdryl::gzip  [rust\src\gzip\mod.rs]
+  pub fn load(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump_with_level(input: &[u8], level: Level) -> Result<Vec<u8>>
+  pub fn reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source>
+  pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target>
+  pub fn writer_with_level<'target, W: Write + 'target>(target: W, level: Level) -> Encoder<'target>
+  pub struct Gzip<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_level(mut self, level: Level) -> Self
+  pub const fn level(&self) -> Level
+  pub const fn handle(&self) -> &H
+  pub fn into_handle(self) -> crate::Result<H>
+
+### yggdryl::iceberg::manifest  [rust\src\iceberg\manifest.rs]
+  pub enum ManifestContent
+  pub const fn code(self) -> i32
+  pub fn from_code(code: i64) -> Result<Self>
+  pub enum EntryStatus
+  pub const fn code(self) -> i32
+  pub fn from_code(code: i64) -> Result<Self>
+  pub enum FileFormat
+  pub struct DataFile
+  pub struct ManifestEntry
+  pub const fn added(snapshot_id: i64, data_file: DataFile) -> Self
+  pub const fn is_live(&self) -> bool
+  pub struct ManifestFile
+  pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry>>
+  pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpec>
+  pub fn write_manifest<H: IOBase + ?Sized>(handle: &mut H, version: FormatVersion, schema: &Field, spec: &PartitionSpec, entries: &[ManifestEntry]) -> Result<()>
+  pub fn read_manifest_list<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestFile>>
+  pub fn write_manifest_list<H: IOBase + ?Sized>(handle: &mut H, version: FormatVersion, snapshot_id: i64, parent_snapshot_id: Option<i64>, sequence_number: i64, manifests: &[ManifestFile]) -> Result<()>
+
+### yggdryl::iceberg::metadata  [rust\src\iceberg\metadata.rs]
+  pub enum FormatVersion
+  pub const fn number(self) -> i32
+  pub fn from_number(number: i64) -> Result<Self>
+  pub struct SortField
+  pub struct SortOrder
+  pub const fn unsorted() -> Self
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn to_json(&self) -> Result<Value>
+  pub struct TableMetadata
+  pub fn new(format_version: FormatVersion, location: impl Into<SmolStr>, schema: Field, spec: PartitionSpec) -> Result<Self>
+  pub fn current_schema(&self) -> Result<&Field>
+  pub fn schema_by_id(&self, schema_id: i32) -> Option<&Field>
+  pub fn current_snapshot(&self) -> Option<&Snapshot>
+  pub fn snapshot_by_id(&self, snapshot_id: i64) -> Option<&Snapshot>
+  pub fn default_spec(&self) -> Result<&PartitionSpec>
+  pub fn spec_by_id(&self, spec_id: i32) -> Option<&PartitionSpec>
+  pub fn property(&self, key: &str) -> Option<&str>
+  pub fn add_schema(&mut self, schema: Field) -> Result<i32>
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn to_json(&self) -> Result<Value>
+  pub fn set_current_snapshot(&mut self, snapshot: Snapshot)
+
+### yggdryl::iceberg::partition  [rust\src\iceberg\partition.rs]
+  pub const FIRST_PARTITION_ID: i32 = 1000;
+  pub enum Transform
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn is_invertible(self) -> bool
+  pub fn result_type(self, source: &DataType) -> Result<DataType>
+  pub struct PartitionField
+  pub fn identity(source_id: i32, field_id: i32, name: impl Into<SmolStr>) -> Self
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn to_json(&self) -> Result<Value>
+  pub struct PartitionSpec
+  pub const fn unpartitioned() -> Self
+  pub fn identity(spec_id: i32, schema: &Field, columns: &[&str]) -> Result<Self>
+  pub fn from_schema(spec_id: i32, schema: &Field) -> Result<Self>
+  pub fn from_field(partition: &Field) -> Result<Self>
+  pub fn mark_partitions(&self, schema: &Field) -> Result<Field>
+  pub fn is_unpartitioned(&self) -> bool
+  pub fn last_field_id(&self) -> i32
+  pub fn source_names(&self, schema: &Field) -> Result<Vec<SmolStr>>
+  pub fn require_writable(&self) -> Result<()>
+  pub fn partition_field(&self, schema: &Field) -> Result<Field>
+  pub fn partition_path(&self, values: &[Value]) -> Result<String>
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn to_json(&self) -> Result<Value>
+  pub fn to_v1_json(&self) -> Result<Value>
+
+### yggdryl::iceberg::table (additions)
+  pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
+  pub fn snapshot_by_ref(&self, name: &str) -> Result<&Snapshot>
+  pub fn plan_at(&self, snapshot_id: i64, filters: &[(&str, &str)]) -> Result<ScanPlan>
+  pub fn scan_at(&self, snapshot_id: i64, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
+  pub fn commit_changes(&mut self, change: impl FnMut(&mut TableMetadata) -> Result<()>) -> Result<()>
+  pub fn inspect_history(&self) -> Result<BatchReader>
+  pub fn inspect_snapshots(&self) -> Result<BatchReader>
+  pub fn inspect_files(&self) -> Result<BatchReader>
+
+### yggdryl::iceberg::evolve  [rust\src\iceberg\evolve.rs]
+  pub fn can_promote(from: &DataType, to: &DataType) -> Result<()>
+  pub struct SchemaUpdate
+  pub fn for_metadata(metadata: &TableMetadata) -> Result<Self>
+  pub fn add_column(&mut self, parent: &str, field: Field)
+  pub fn drop_column(&mut self, path: &str)
+  pub fn rename_column(&mut self, path: &str, name: &str)
+  pub fn update_doc(&mut self, path: &str, doc: &str)
+  pub fn make_nullable(&mut self, path: &str)
+  pub fn update_type(&mut self, path: &str, data_type: DataType)
+  pub fn apply(self) -> Result<Field>
+
+### yggdryl::iceberg::metadata (additions)
+  pub fn set_property(&mut self, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Result<Option<SmolStr>>
+  pub fn remove_property(&mut self, key: &str) -> Option<SmolStr>
+  pub fn set_location(&mut self, location: impl Into<SmolStr>)
+  pub fn assign_uuid(&mut self, uuid: impl Into<SmolStr>) -> Result<()>
+  pub fn upgrade_format_version(&mut self, version: FormatVersion) -> Result<()>
+  pub fn set_current_schema(&mut self, schema_id: i32) -> Result<()>
+  pub fn add_spec(&mut self, spec: PartitionSpec) -> Result<i32>
+  pub fn set_default_spec(&mut self, spec_id: i32) -> Result<()>
+  pub fn add_sort_order(&mut self, order: SortOrder) -> Result<i32>
+  pub fn set_default_sort_order(&mut self, order_id: i32) -> Result<()>
+  pub fn set_snapshot_ref(&mut self, name: impl Into<SmolStr>, reference: SnapshotRef) -> Result<()>
+  pub fn remove_snapshot_ref(&mut self, name: &str) -> Option<SnapshotRef>
+  pub fn remove_snapshots(&mut self, ids: &[i64]) -> Result<()>
+  pub fn validate(&self) -> Result<()>
+
+### yggdryl::iceberg::catalog  [rust\src\iceberg\catalog.rs]
+  pub struct Catalog<H: IOBase>
+  pub const fn new(warehouse: H) -> Self
+  pub const fn warehouse(&self) -> &H
+  pub fn create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>>
+  pub fn table(&self, name: &str) -> Result<Table<Holder>>
+  pub fn has_table(&self, name: &str) -> Result<bool>
+  pub fn open_or_create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>>
+  pub fn append(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
+  pub fn overwrite(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
+  pub fn list_namespaces(&self, parent: Option<&str>) -> Result<Vec<String>>
+  pub fn list_tables(&self, namespace: &str) -> Result<Vec<String>>
+
+### yggdryl::iceberg::table (size and compaction)
+  pub fn target_file_size(&self) -> Result<u64>
+  pub fn compact(&mut self) -> Result<Compaction>
+  pub struct Compaction { pub files_before: usize, pub files_after: usize, pub bytes_rewritten: i64 }
+
+### yggdryl::iceberg::schema  [rust\src\iceberg\schema.rs]
+  pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field>
+  pub fn schema_to_json(root: &Field) -> Result<Value>
+  pub fn assign_field_ids(root: &mut Field, start: i32) -> Result<i32>
+  pub fn last_field_id(root: &Field) -> Result<i32>
+
+### yggdryl::iceberg::snapshot  [rust\src\iceberg\snapshot.rs]
+  pub const MAIN_BRANCH: &str = "main";
+  pub struct Snapshot
+  pub fn summary_value(&self, key: &str) -> Option<&str>
+  pub fn operation(&self) -> &str
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn to_json(&self, version: FormatVersion) -> Result<Value>
+  pub struct SnapshotRef
+  pub fn branch(snapshot_id: i64) -> Self
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn to_json(&self) -> Result<Value>
+
+### yggdryl::iceberg::table  [rust\src\iceberg\table.rs]
+  pub struct Table<H: IOBase>
+  pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
+  pub fn open(root: H) -> Result<Self>
+  pub fn open_or_create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
+  pub const fn root(&self) -> &H
+  pub const fn metadata(&self) -> &TableMetadata
+  pub const fn version(&self) -> u32
+  pub fn metadata_file_name(&self) -> String
+  pub fn metadata_location(&self) -> Result<String>
+  pub fn schema(&self) -> Result<&Field>
+  pub fn current_snapshot(&self) -> Option<&Snapshot>
+  pub fn manifests(&self) -> Result<Vec<ManifestFile>>
+  pub fn data_files(&self) -> Result<Vec<(DataFile, PartitionSpec)>>
+  pub fn scan(&self, field: Option<&Field>) -> Result<BatchReader>
+  pub fn append(&mut self, batches: BatchReader) -> Result<()>
+  pub fn overwrite(&mut self, batches: BatchReader) -> Result<()>
+  pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
+
+### yggdryl::iceberg::snapshot (refs and retention)
+  pub fn tag(snapshot_id: i64) -> Self
+  pub fn is_branch(&self) -> bool
+  pub fn is_tag(&self) -> bool
+  pub fn with_min_snapshots_to_keep(mut self, count: i32) -> Result<Self>
+  pub fn with_max_snapshot_age_ms(mut self, age_ms: i64) -> Result<Self>
+  pub fn with_max_ref_age_ms(mut self, age_ms: i64) -> Result<Self>
+
+### yggdryl::iceberg::metadata (refs and retention)
+  pub fn ref_by_name(&self, name: &str) -> Option<&SnapshotRef>
+  pub fn create_branch(&mut self, name: impl Into<SmolStr>, snapshot_id: i64) -> Result<()>
+  pub fn create_tag(&mut self, name: impl Into<SmolStr>, snapshot_id: i64) -> Result<()>
+  pub fn rename_ref(&mut self, from: &str, to: impl Into<SmolStr>) -> Result<()>
+  pub fn fast_forward_branch(&mut self, name: &str, to_snapshot_id: i64) -> Result<()>
+  pub fn expire_snapshots_older_than(&mut self, older_than_ms: i64) -> Result<Vec<i64>>
+
+### yggdryl::iceberg::options  [rust\src\iceberg\options.rs]
+  pub struct IcebergOptions
+  pub const COMMIT_RETRIES_KEY: &'static str = "commit.retry.num-retries";
+  pub const COMMIT_MIN_BACKOFF_MS_KEY: &'static str = "commit.retry.min-wait-ms";
+  pub const COMMIT_MAX_BACKOFF_MS_KEY: &'static str = "commit.retry.max-wait-ms";
+  pub const TARGET_FILE_SIZE_KEY: &'static str = "write.target-file-size-bytes";
+  pub const READ_PARALLELISM_KEY: &'static str = "read.parallelism";
+  pub const READ_PARALLEL_MIN_FILES_KEY: &'static str = "read.parallel.min-files";
+  pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
+  pub const DEFAULT_COMMIT_RETRIES: u32 = 4;
+  pub const DEFAULT_COMMIT_MIN_BACKOFF_MS: u64 = 100;
+  pub const DEFAULT_COMMIT_MAX_BACKOFF_MS: u64 = 60_000;
+  pub const DEFAULT_TARGET_FILE_SIZE_BYTES: u64 = 512 * 1024 * 1024;
+  pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 16;
+  pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 4 * 1024 * 1024;
+  pub fn new() -> Self
+  pub fn default_read_parallelism() -> usize
+  pub fn commit_retries(&self) -> u32
+  pub fn commit_min_backoff_ms(&self) -> u64
+  pub fn commit_max_backoff_ms(&self) -> u64
+  pub fn target_file_size_bytes(&self) -> u64
+  pub fn read_parallelism(&self) -> usize
+  pub fn read_parallel_min_files(&self) -> usize
+  pub fn read_parallel_min_file_size_bytes(&self) -> u64
+  pub fn set_commit_retries(&mut self, retries: u32)
+  pub fn with_commit_retries(mut self, retries: u32) -> Self
+  pub fn set_commit_min_backoff_ms(&mut self, wait_ms: u64)
+  pub fn with_commit_min_backoff_ms(mut self, wait_ms: u64) -> Self
+  pub fn set_commit_max_backoff_ms(&mut self, wait_ms: u64)
+  pub fn with_commit_max_backoff_ms(mut self, wait_ms: u64) -> Self
+  pub fn set_target_file_size_bytes(&mut self, bytes: u64) -> Result<()>
+  pub fn try_with_target_file_size_bytes(mut self, bytes: u64) -> Result<Self>
+  pub fn set_read_parallelism(&mut self, threads: usize) -> Result<()>
+  pub fn try_with_read_parallelism(mut self, threads: usize) -> Result<Self>
+  pub fn set_read_parallel_min_files(&mut self, files: usize)
+  pub fn with_read_parallel_min_files(mut self, files: usize) -> Self
+  pub fn set_read_parallel_min_file_size_bytes(&mut self, bytes: u64)
+  pub fn with_read_parallel_min_file_size_bytes(mut self, bytes: u64) -> Self
+  pub fn for_metadata(metadata: &TableMetadata) -> Result<Self>
+
+### yggdryl::iceberg::table (options, refs, concurrency)
+  pub fn set_options(&mut self, options: IcebergOptions)
+  pub fn options(&self) -> Result<IcebergOptions>
+  pub fn create_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>
+  pub fn create_tag(&mut self, name: &str, snapshot_id: i64) -> Result<()>
+  pub fn remove_ref(&mut self, name: &str) -> Result<SnapshotRef>
+  pub fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> Result<()>
+  pub fn expire_snapshots(&mut self, older_than_ms: i64) -> Result<Vec<i64>>
+  pub fn scan_ref(&self, name: &str, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
+  pub struct CommitConflict { pub expected_version: u32, pub beaten: u32, pub last_seen_version: u32 }
+
+### yggdryl::iceberg::types  [rust\src\iceberg\types.rs]
+  pub enum PrimitiveType
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn to_data_type(self) -> Result<DataType>
+  pub fn from_data_type(data_type: &DataType) -> Result<Self>
+
+### yggdryl::io::buffer  [rust\src\io\buffer.rs]
+  pub struct Buffer
+  pub fn new() -> Self
+  pub fn with_capacity(capacity: usize) -> Self
+  pub fn from_bytes(bytes: Vec<u8>) -> Self
+  pub fn with_media_type(mut self, media_type: MediaType) -> Self
+  pub fn as_slice(&self) -> &[u8]
+  pub fn as_mut_slice(&mut self) -> &mut [u8]
+  pub fn into_bytes(self) -> Vec<u8>
+
+### yggdryl::io::coding  [rust\src\io\coding.rs]
+  pub struct Coded<H: IOBase>
+  pub fn new(handle: H, codec: Codec) -> Self
+  pub const fn with_level(mut self, level: Level) -> Self
+  pub const fn codec(&self) -> Codec
+  pub const fn level(&self) -> Level
+  pub const fn handle(&self) -> &H
+  pub fn into_handle(mut self) -> Result<H>
+
+### yggdryl::io  [rust\src\io\mod.rs]
+  pub trait IOBase: Send
+  pub struct Reader<'source>
+  pub struct Writer<'target>
+
+### yggdryl::io::roles  [rust\src\io\roles.rs]
+  pub trait IOFolder: IOBase
+  pub trait IOFile: IOBase
+  pub trait IOPath: IOBase
+
+### yggdryl::ipc  [rust\src\ipc\mod.rs]
+  pub const DEFAULT_ROOT_NAME: &str = "row";
+  pub struct IpcOptions
+  pub fn new() -> Self
+  pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &IpcOptions) -> Result<Field>
+  pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &IpcOptions, ) -> Result<BatchReader>
+  pub fn write_batch_reader<H>( handle: &mut H, batches: BatchReader, options: &IpcOptions, ) -> Result<()> where H: IOBase + ?Sized,
+  pub struct Ipc<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(mut self, options: IpcOptions) -> Self
+  pub fn with_schema(mut self, schema: Field) -> Self
+  pub fn with_root_name(mut self, root_name: impl Into<smol_str::SmolStr>) -> Self
+  pub fn with_level(mut self, level: Level) -> Self
+  pub const fn options(&self) -> &IpcOptions
+  pub const fn options_mut(&mut self) -> &mut IpcOptions
+  pub const fn handle(&self) -> &H
+  pub const fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+  pub fn schema(&mut self) -> Result<Field>
+  pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<BatchReader>
+  pub fn write_batch_reader(&mut self, batches: BatchReader) -> Result<()>
+
+### yggdryl::json  [rust\src\json\mod.rs]
+  pub const MAX_PARSER_DEPTH: usize = 384;
+  pub fn from_str(input: &str) -> Result<Value>
+  pub fn from_str_with_limits(input: &str, limits: Limits) -> Result<Value>
+  pub fn from_slice(input: &[u8]) -> Result<Value>
+  pub fn from_slice_with_limits(input: &[u8], limits: Limits) -> Result<Value>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Value>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value>
+  pub fn from_slice_all(input: &[u8]) -> Result<Vec<Value>>
+  pub fn from_str_all(input: &str) -> Result<Vec<Value>>
+  pub fn from_str_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_slice_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
+  pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
+  pub struct Reader<R: Read>
+  pub fn new(reader: R) -> Self
+  pub fn with_limits(reader: R, limits: Limits) -> Self
+  pub fn byte_offset(&self) -> usize
+  pub fn from_lines_slice(input: &[u8]) -> Result<Vec<Value>>
+  pub fn from_lines_str(input: &str) -> Result<Vec<Value>>
+  pub fn from_lines_str_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_lines_slice_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
+  pub fn from_lines_reader<R: Read>(reader: R) -> Result<Vec<Value>>
+  pub fn from_lines_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_lines_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
+  pub fn from_lines_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
+  pub struct LinesReader<R: Read>
+  pub fn new(reader: R) -> Self
+  pub fn with_limits(reader: R, limits: Limits) -> Self
+  pub const fn byte_offset(&self) -> usize
+  pub fn to_vec(value: &Value) -> Result<Vec<u8>>
+  pub fn into_vec(value: Value) -> Result<Vec<u8>>
+  pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()>
+  pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>>
+  pub fn to_writer_all<W, I, V>(mut writer: W, values: I) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
+
+### yggdryl::local::file  [rust\src\local\file.rs]
+  pub struct File
+  pub fn new(path: impl AsRef<Path>) -> Result<Self>
+  pub fn create(path: impl AsRef<Path>) -> Result<Self>
+  pub fn path(&self) -> &Path
+  pub fn exists(&self) -> bool
+
+### yggdryl::local::folder  [rust\src\local\folder.rs]
+  pub struct Folder
+  pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn from_url(url: Url) -> Result<Self>
+  pub const fn url(&self) -> &Url
+  pub fn path(&self) -> Result<PathBuf>
+  pub fn exists(&self) -> bool
+  pub fn create(&self) -> Result<()>
+
+### yggdryl::local::path  [rust\src\local\path.rs]
+  pub struct Path
+  pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn from_url(url: Url) -> Result<Self>
+  pub const fn url(&self) -> &Url
+  pub fn path(&self) -> Result<std::path::PathBuf>
+  pub fn exists(&self) -> bool
+  pub fn as_directory(&self) -> Result<Folder>
+  pub fn as_file(&self) -> Result<File>
+
+### yggdryl::metadata  [rust\src\metadata.rs]
+  pub struct Metadata(Arc<MetadataMap>);
+  pub fn new() -> Self
+  pub fn from_entries<I, K, V>(values: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
+  pub fn from_arrow(values: &HashMap<String, String>) -> Result<Self>
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, key: &str) -> Option<&str>
+  pub fn contains_key(&self, key: &str) -> bool
+  pub fn iter(&self) -> MetadataIter<'_>
+  pub fn next_entry(&self, after_key: Option<&str>) -> Option<(&str, &str)>
+  pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str>
+  pub fn has_property(&self, scheme: &Scheme, name: &str) -> bool
+  pub fn property_iter<'metadata, 'scheme>( &'metadata self, scheme: &'scheme Scheme, ) -> PropertyIter<'metadata, 'scheme>
+  pub fn next_property_entry<'metadata>( &'metadata self, scheme: &Scheme, after_name: Option<&str>, ) -> Option<(&'metadata str, &'metadata str)>
+  pub fn protocol(&self, scheme: &Scheme) -> ProtocolMetadata<'_>
+  pub fn http(&self) -> ProtocolMetadata<'_>
+  pub fn file(&self) -> ProtocolMetadata<'_>
+  pub fn urn(&self) -> ProtocolMetadata<'_>
+  pub fn postgres(&self) -> ProtocolMetadata<'_>
+  pub fn postgresql(&self) -> ProtocolMetadata<'_>
+  pub fn mysql(&self) -> ProtocolMetadata<'_>
+  pub fn arrow(&self) -> ProtocolMetadata<'_>
+  pub fn sql(&self) -> ProtocolMetadata<'_>
+  pub fn glue(&self) -> ProtocolMetadata<'_>
+  pub fn iceberg(&self) -> ProtocolMetadata<'_>
+  pub fn fix(&self) -> ProtocolMetadata<'_>
+  pub fn field(&self) -> ProtocolMetadata<'_>
+  pub fn dtype(&self) -> ProtocolMetadata<'_>
+  pub fn s3(&self) -> ProtocolMetadata<'_>
+  pub fn gs(&self) -> ProtocolMetadata<'_>
+  pub fn az(&self) -> ProtocolMetadata<'_>
+  pub fn spark(&self) -> ProtocolMetadata<'_>
+  pub fn polars(&self) -> ProtocolMetadata<'_>
+  pub fn pandas(&self) -> ProtocolMetadata<'_>
+  pub struct ProtocolMetadata<'metadata>
+  pub const fn scheme(&self) -> &Scheme
+  pub fn prefix(&self) -> &str
+  pub fn key(&self, name: &str) -> String
+  pub fn get(&self, name: &str) -> Option<&'metadata str>
+  pub fn contains_key(&self, name: &str) -> bool
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> PropertyIter<'metadata, '_>
+  pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&'metadata str, &'metadata str)>
+  pub const fn as_metadata(&self) -> &'metadata Metadata
+  pub fn to_metadata(&self) -> Result<Metadata>
+  pub struct ProtocolMetadataMut<'field>
+  pub const fn scheme(&self) -> &Scheme
+  pub fn prefix(&self) -> &str
+  pub fn key(&self, name: &str) -> String
+  pub fn as_protocol(&self) -> ProtocolMetadata<'_>
+  pub fn get(&self, name: &str) -> Option<&str>
+  pub fn contains_key(&self, name: &str) -> bool
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> PropertyIter<'_, '_>
+  pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&str, &str)>
+  pub fn insert(&mut self, name: &str, value: impl Into<String>) -> Result<Option<String>>
+  pub fn update<I, N, V>(&mut self, entries: I) -> Result<()> where I: IntoIterator<Item = (N, V)>, N: AsRef<str>, V: Into<String>,
+  pub fn set<I, N, V>(&mut self, entries: I) -> Result<()> where I: IntoIterator<Item = (N, V)>, N: AsRef<str>, V: Into<String>,
+  pub fn remove(&mut self, name: &str) -> Option<String>
+  pub fn clear(&mut self)
+  pub fn accept(&self) -> Option<&str>
+  pub fn accept_encoding(&self) -> Option<&str>
+  pub fn accept_language(&self) -> Option<&str>
+  pub fn accept_ranges(&self) -> Option<&str>
+  pub fn cache_control(&self) -> Option<&str>
+  pub fn content_disposition(&self) -> Option<&str>
+  pub fn content_encoding(&self) -> Option<&str>
+  pub fn content_language(&self) -> Option<&str>
+  pub fn content_length(&self) -> Result<Option<u64>>
+  pub fn content_location(&self) -> Option<&str>
+  pub fn content_range(&self) -> Option<&str>
+  pub fn content_type(&self) -> Option<&str>
+  pub fn mime_type(&self) -> Result<MimeType>
+  pub fn media_type(&self) -> Result<MediaType>
+  pub fn etag(&self) -> Option<&str>
+  pub fn expires(&self) -> Option<&str>
+  pub fn last_modified(&self) -> Option<&str>
+  pub fn http_location(&self) -> Result<Option<Url>>
+  pub fn range(&self) -> Option<&str>
+  pub fn vary(&self) -> Option<&str>
+  pub fn to_json(&self) -> Result<String>
+  pub fn into_json(self) -> Result<String>
+  pub fn stable_hash(&self) -> u64
+  pub fn to_arrow(&self) -> HashMap<String, String>
+  pub fn into_arrow(self) -> HashMap<String, String>
+  pub struct MetadataIter<'a>(btree_map::Iter<'a, String, String>);
+  pub struct MetadataIntoIter(btree_map::IntoIter<String, String>);
+  pub struct PropertyIter<'metadata, 'scheme>
+
+### yggdryl::parquet::metadata  [rust\src\parquet\metadata.rs]
+  pub struct ColumnStatistics
+  pub struct RowGroupStatistics
+  pub struct FileStatistics
+  pub fn split_offsets(&self) -> Vec<i64>
+  pub fn null_count(&self, path: &str) -> Option<u64>
+
+### yggdryl::parquet  [rust\src\parquet\mod.rs]
+  pub struct ParquetOptions
+  pub fn new() -> Self
+  pub fn with_compression(mut self, compression: Compression) -> Self
+  pub fn with_max_row_group_size(mut self, rows: usize) -> Self
+  pub fn with_key_value(mut self, key: impl Into<String>, value: impl Into<String>) -> Self
+  pub fn read_schema<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<Schema>>
+  pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ParquetOptions) -> Result<Field>
+  pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &ParquetOptions, ) -> Result<BatchReader>
+  pub fn write_batch_reader<H>( handle: &mut H, batches: BatchReader, options: &ParquetOptions, ) -> Result<()> where H: IOBase + ?Sized,
+  pub fn read_statistics<H: IOBase + ?Sized>(handle: &H) -> Result<FileStatistics>
+  pub struct Parquet<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(mut self, options: ParquetOptions) -> Self
+  pub fn with_root_name(mut self, root_name: impl Into<smol_str::SmolStr>) -> Self
+  pub fn with_schema(mut self, schema: Field) -> Self
+  pub const fn handle(&self) -> &H
+  pub const fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+  pub const fn options(&self) -> &ParquetOptions
+  pub const fn options_mut(&mut self) -> &mut ParquetOptions
+  pub fn write_batch_reader(&mut self, batches: BatchReader) -> Result<()>
+  pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<BatchReader>
+  pub fn read_schema(&self) -> Result<Arc<Schema>>
+  pub fn read_field(&self) -> Result<Field>
+  pub fn schema(&mut self) -> Result<Field>
+  pub fn read_statistics(&self) -> Result<FileStatistics>
+
+### yggdryl::text::codec  [rust\src\text\codec.rs]
+  pub trait TextCodec: Copy
+  pub struct Limited<C: TextCodec>
+
+### yggdryl::text::format  [rust\src\text\format.rs]
+  pub enum Format
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_extension(extension: &str) -> Result<Self>
+  pub fn from_path(path: impl AsRef<Path>) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn extension(self) -> &'static str
+  pub const fn mime_type(self) -> MimeType
+
+### yggdryl::text::io  [rust\src\text\io.rs]
+  pub struct Plan
+  pub const fn new(format: Format, codec: Codec) -> Self
+  pub fn from_media_type(media_type: &MediaType) -> Result<Self>
+  pub fn infer(handle: &impl IOBase) -> Result<Self>
+  pub fn detect(handle: &impl IOBase, head: &[u8]) -> Result<Self>
+  pub const fn format(self) -> Format
+  pub const fn codec(self) -> Codec
+  pub fn load(source: &impl IOBase) -> Result<Value>
+  pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value>
+  pub fn load_all(source: &impl IOBase) -> Result<Vec<Value>>
+  pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Value>>
+  pub fn dump(target: &mut impl IOBase, value: &Value) -> Result<()>
+  pub fn dump_with_level(target: &mut impl IOBase, value: &Value, level: Level) -> Result<()>
+  pub fn dump_all(target: &mut impl IOBase, values: &[Value]) -> Result<()>
+
+### yggdryl::text::limits  [rust\src\text\limits.rs]
+  pub struct Limits
+  pub const fn new( max_depth: usize, max_input_bytes: usize, max_nodes: usize, max_documents: usize, ) -> Self
+  pub const fn max_depth(self) -> usize
+  pub const fn max_input_bytes(self) -> usize
+  pub const fn max_nodes(self) -> usize
+  pub const fn max_documents(self) -> usize
+
+### yggdryl::text  [rust\src\text\mod.rs]
+  pub struct ValueIter<'a>
+  pub fn from_str(input: &str, format: Format) -> Result<Value>
+  pub fn from_str_with_limits(input: &str, format: Format, limits: Limits) -> Result<Value>
+  pub fn from_slice(input: &[u8], format: Format) -> Result<Value>
+  pub fn from_slice_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Value>
+  pub fn from_reader<R: Read>(reader: R, format: Format) -> Result<Value>
+  pub fn from_reader_with_limits<R: Read>( reader: R, format: Format, limits: Limits, ) -> Result<Value>
+  pub fn from_slice_all(input: &[u8], format: Format) -> Result<Vec<Value>>
+  pub fn from_slice_all_with_limits( input: &[u8], format: Format, limits: Limits, ) -> Result<Vec<Value>>
+  pub fn from_str_all(input: &str, format: Format) -> Result<Vec<Value>>
+  pub fn from_str_all_with_limits(input: &str, format: Format, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_all<R: Read>(reader: R, format: Format) -> Result<Vec<Value>>
+  pub fn from_reader_all_with_limits<R: Read>( reader: R, format: Format, limits: Limits, ) -> Result<Vec<Value>>
+  pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R, format: Format) -> ValueIter<'a>
+  pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, format: Format, limits: Limits, ) -> ValueIter<'a>
+  pub fn to_vec(value: &Value, format: Format) -> Result<Vec<u8>>
+  pub fn into_vec(value: Value, format: Format) -> Result<Vec<u8>>
+  pub fn to_writer<W: Write>(writer: W, value: &Value, format: Format) -> Result<()>
+  pub fn to_writer_all<W, I, V>(writer: W, values: I, format: Format) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
+  pub fn infer_format(input: &[u8]) -> Result<Format>
+  pub fn from_str_inferred(input: &str) -> Result<(Format, Value)>
+  pub fn from_str_inferred_with_limits(input: &str, limits: Limits) -> Result<(Format, Value)>
+  pub fn from_slice_inferred(input: &[u8]) -> Result<(Format, Value)>
+  pub fn from_slice_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Value)>
+
+### yggdryl::text::value  [rust\src\text\value.rs]
+  pub struct Float(u64);
+  pub fn from_f64(value: f64) -> Self
+  pub const fn as_f64(self) -> f64
+  pub const fn into_f64(self) -> f64
+  pub enum Value
+  pub const fn kind(&self) -> &'static str
+  pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
+  pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self>
+  pub const fn as_bool(&self) -> Option<bool>
+  pub const fn as_i128(&self) -> Option<i128>
+  pub const fn as_u128(&self) -> Option<u128>
+  pub const fn as_f64(&self) -> Option<f64>
+  pub fn as_str(&self) -> Option<&str>
+  pub fn as_bytes(&self) -> Option<&[u8]>
+  pub fn as_sequence(&self) -> Option<&[Self]>
+  pub fn as_mapping(&self) -> Option<&[(Self, Self)]>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, index: usize) -> Option<&Self>
+  pub fn get_key(&self, key: &Self) -> Option<&Self>
+  pub fn get_key_str(&self, key: &str) -> Option<&Self>
+  pub fn iter(&self) -> Children<'_>
+  pub fn sequence_iter(&self) -> std::slice::Iter<'_, Self>
+  pub fn mapping_iter(&self) -> std::slice::Iter<'_, (Self, Self)>
+  pub enum Children<'a>
+
+### yggdryl::toml  [rust\src\toml\mod.rs]
+  pub const MAX_PARSER_DEPTH: usize = 64;
+  pub fn from_str(input: &str) -> Result<Value>
+  pub fn from_str_with_limits(input: &str, limits: Limits) -> Result<Value>
+  pub fn from_slice(input: &[u8]) -> Result<Value>
+  pub fn from_slice_with_limits(input: &[u8], limits: Limits) -> Result<Value>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Value>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value>
+  pub fn from_str_all(input: &str) -> Result<Vec<Value>>
+  pub fn from_str_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_slice_all(input: &[u8]) -> Result<Vec<Value>>
+  pub fn from_slice_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
+  pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
+  pub struct Reader<R: Read>
+  pub fn new(reader: R) -> Self
+  pub const fn with_limits(reader: R, limits: Limits) -> Self
+  pub const fn byte_offset(&self) -> usize
+  pub fn to_vec(value: &Value) -> Result<Vec<u8>>
+  pub fn into_vec(value: Value) -> Result<Vec<u8>>
+  pub fn validate_for_write(value: &Value) -> Result<()>
+  pub fn validate_for_write_with_limits(value: &Value, limits: Limits) -> Result<()>
+  pub fn to_writer<W: Write>(mut writer: W, value: &Value) -> Result<()>
+  pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>>
+  pub fn to_writer_all<W, I, V>(writer: W, values: I) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
+
+### yggdryl::uri  [rust\src\uri.rs]
+  pub struct Authority(SmolStr);
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub fn is_empty(&self) -> bool
+  pub fn stable_hash(&self) -> u64
+  pub struct UriPath(SmolStr);
+  pub struct PathSegments<'a>
+  pub struct Extensions<'a>
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub fn is_empty(&self) -> bool
+  pub fn segments(&self) -> PathSegments<'_>
+  pub fn segment_len(&self) -> usize
+  pub fn get_segment(&self, index: usize) -> Option<&str>
+  pub fn next_segment(&self, cursor: usize) -> Option<(usize, &str)>
+  pub fn contains_segment(&self, value: &str) -> bool
+  pub fn file_name(&self) -> Option<&str>
+  pub fn stem(&self) -> Option<&str>
+  pub fn extension(&self) -> Option<&str>
+  pub fn extensions(&self) -> Extensions<'_>
+  pub fn mime_type(&self) -> MimeType
+  pub fn media_type(&self) -> MediaType
+  pub fn set_file_name(&mut self, value: &str) -> Result<()>
+  pub fn set_stem(&mut self, value: &str) -> Result<()>
+  pub fn set_extension(&mut self, value: &str) -> Result<()>
+  pub fn set_extensions<I, S>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_mime_type(&mut self, value: MimeType) -> Result<()>
+  pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
+  pub fn remove_extension(&mut self) -> bool
+  pub fn clear_extensions(&mut self) -> bool
+  pub fn is_absolute(&self) -> bool
+  pub fn parts(&self) -> Vec<&str>
+  pub fn joinpath(&self, value: &str) -> Result<Self>
+  pub fn normalize(&self) -> Result<Self>
+  pub fn parent(&self) -> Option<Self>
+  pub fn parents(&self) -> Parents
+  pub fn stable_hash(&self) -> u64
+  pub struct Parents
+  pub struct Uri
+  pub fn from_parts( scheme: Scheme, authority: Authority, path: UriPath, query: Option<SmolStr>, fragment: Option<SmolStr>, ) -> Result<Self>
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_path(value: impl AsRef<Path>) -> Result<Self>
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn to_json(&self) -> Result<String>
+  pub fn into_json(self) -> Result<String>
+  pub fn to_url(&self) -> Result<Url>
+  pub fn into_url(self) -> Result<Url>
+  pub fn to_urn(&self) -> Result<Urn>
+  pub fn into_urn(self) -> Result<Urn>
+  pub fn to_path(&self) -> Result<PathBuf>
+  pub fn into_path(self) -> Result<PathBuf>
+  pub fn validate(&self) -> Result<()>
+  pub fn scheme(&self) -> &Scheme
+  pub fn authority(&self) -> &Authority
+  pub fn has_authority(&self) -> bool
+  pub fn path(&self) -> &UriPath
+  pub fn query(&self) -> Option<&str>
+  pub fn fragment(&self) -> Option<&str>
+  pub fn path_segments(&self) -> PathSegments<'_>
+  pub fn next_path_segment(&self, cursor: usize) -> Option<(usize, &str)>
+  pub fn file_name(&self) -> Option<&str>
+  pub fn stem(&self) -> Option<&str>
+  pub fn extension(&self) -> Option<&str>
+  pub fn extensions(&self) -> Extensions<'_>
+  pub fn mime_type(&self) -> MimeType
+  pub fn media_type(&self) -> MediaType
+  pub fn set_file_name(&mut self, value: &str) -> Result<()>
+  pub fn set_stem(&mut self, value: &str) -> Result<()>
+  pub fn set_extension(&mut self, value: &str) -> Result<()>
+  pub fn set_extensions<I, S>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_mime_type(&mut self, value: MimeType) -> Result<()>
+  pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
+  pub fn remove_extension(&mut self) -> bool
+  pub fn clear_extensions(&mut self) -> bool
+  pub fn parts(&self) -> Vec<&str>
+  pub fn joinpath(&self, value: &str) -> Result<Self>
+  pub fn parent(&self) -> Option<Self>
+  pub fn parents(&self) -> UriParents<'_>
+  pub fn default_port(&self) -> Option<u16>
+  pub fn stable_hash(&self) -> u64
+  pub struct UriParents<'a>
+  pub struct Url(Uri);
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_path(value: impl AsRef<Path>) -> Result<Self>
+  pub fn from_uri(value: Uri) -> Result<Self>
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn to_json(&self) -> Result<String>
+  pub fn into_json(self) -> Result<String>
+  pub fn to_uri(&self) -> Uri
+  pub fn into_uri(self) -> Uri
+  pub fn to_path(&self) -> Result<PathBuf>
+  pub fn into_path(self) -> Result<PathBuf>
+  pub fn is_local(&self) -> bool
+  pub fn join_path(&self, path: impl AsRef<Path>) -> Result<Self>
+  pub fn exists(&self) -> bool
+  pub fn is_dir(&self) -> bool
+  pub fn is_file(&self) -> bool
+  pub fn local_mime_type(&self) -> MimeType
+  pub fn scheme(&self) -> &Scheme
+  pub fn authority(&self) -> &Authority
+  pub fn path(&self) -> &UriPath
+  pub fn query(&self) -> Option<&str>
+  pub fn fragment(&self) -> Option<&str>
+  pub fn path_segments(&self) -> PathSegments<'_>
+  pub fn next_path_segment(&self, cursor: usize) -> Option<(usize, &str)>
+  pub fn file_name(&self) -> Option<&str>
+  pub fn stem(&self) -> Option<&str>
+  pub fn extension(&self) -> Option<&str>
+  pub fn extensions(&self) -> Extensions<'_>
+  pub fn mime_type(&self) -> MimeType
+  pub fn media_type(&self) -> MediaType
+  pub fn set_file_name(&mut self, value: &str) -> Result<()>
+  pub fn set_stem(&mut self, value: &str) -> Result<()>
+  pub fn set_extension(&mut self, value: &str) -> Result<()>
+  pub fn set_extensions<I, S>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_mime_type(&mut self, value: MimeType) -> Result<()>
+  pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
+  pub fn remove_extension(&mut self) -> bool
+  pub fn clear_extensions(&mut self) -> bool
+  pub fn parts(&self) -> Vec<&str>
+  pub fn joinpath(&self, value: &str) -> Result<Self>
+  pub fn parent(&self) -> Option<Self>
+  pub fn parents(&self) -> UrlParents<'_>
+  pub fn default_port(&self) -> Option<u16>
+  pub fn stable_hash(&self) -> u64
+  pub struct UrlParents<'a>
+  pub struct Urn(Uri);
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_uri(mut value: Uri) -> Result<Self>
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn to_json(&self) -> Result<String>
+  pub fn into_json(self) -> Result<String>
+  pub fn to_uri(&self) -> Uri
+  pub fn into_uri(self) -> Uri
+  pub fn scheme(&self) -> &Scheme
+  pub fn authority(&self) -> &Authority
+  pub fn path(&self) -> &UriPath
+  pub fn query(&self) -> Option<&str>
+  pub fn fragment(&self) -> Option<&str>
+  pub fn namespace(&self) -> &str
+  pub fn namespace_specific(&self) -> &str
+  pub fn path_segments(&self) -> PathSegments<'_>
+  pub fn next_path_segment(&self, cursor: usize) -> Option<(usize, &str)>
+  pub fn file_name(&self) -> Option<&str>
+  pub fn stem(&self) -> Option<&str>
+  pub fn extension(&self) -> Option<&str>
+  pub fn extensions(&self) -> Extensions<'_>
+  pub fn mime_type(&self) -> MimeType
+  pub fn media_type(&self) -> MediaType
+  pub fn set_file_name(&mut self, value: &str) -> Result<()>
+  pub fn set_stem(&mut self, value: &str) -> Result<()>
+  pub fn set_extension(&mut self, value: &str) -> Result<()>
+  pub fn set_extensions<I, S>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_mime_type(&mut self, value: MimeType) -> Result<()>
+  pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
+  pub fn remove_extension(&mut self) -> bool
+  pub fn clear_extensions(&mut self) -> bool
+  pub fn stable_hash(&self) -> u64
+
+### yggdryl::yaml  [rust\src\yaml\mod.rs]
+  pub const MAX_FLOW_DEPTH: usize = 255;
+  pub const MAX_PARSER_DEPTH: usize = 384;
+  pub fn from_str(input: &str) -> Result<Value>
+  pub fn from_str_with_limits(input: &str, limits: Limits) -> Result<Value>
+  pub fn from_slice(input: &[u8]) -> Result<Value>
+  pub fn from_slice_with_limits(input: &[u8], limits: Limits) -> Result<Value>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Value>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value>
+  pub fn from_slice_all(input: &[u8]) -> Result<Vec<Value>>
+  pub fn from_str_all(input: &str) -> Result<Vec<Value>>
+  pub fn from_str_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_slice_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
+  pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
+  pub struct Reader<'a>
+  pub fn new<R: Read + 'a>(reader: R) -> Self
+  pub fn with_limits<R: Read + 'a>(reader: R, limits: Limits) -> Self
+  pub fn byte_offset(&self) -> usize
+  pub fn to_vec(value: &Value) -> Result<Vec<u8>>
+  pub fn into_vec(value: Value) -> Result<Vec<u8>>
+  pub fn to_writer<W: Write>(mut writer: W, value: &Value) -> Result<()>
+  pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>>
+  pub fn to_writer_all<W, I, V>(mut writer: W, values: I) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Value>,
+
+### yggdryl::zlib  [rust\src\zlib\mod.rs]
+  pub fn load(input: &[u8]) -> Result<Vec<u8>>
+  pub fn load_raw(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump_with_level(input: &[u8], level: Level) -> Result<Vec<u8>>
+  pub fn dump_raw(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump_raw_with_level(input: &[u8], level: Level) -> Result<Vec<u8>>
+  pub fn reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source>
+  pub fn raw_reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source>
+  pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target>
+  pub fn writer_with_level<'target, W: Write + 'target>(target: W, level: Level) -> Encoder<'target>
+  pub fn raw_writer<'target, W: Write + 'target>(target: W) -> Encoder<'target>
+  pub fn raw_writer_with_level<'target, W: Write + 'target>( target: W, level: Level, ) -> Encoder<'target>
+  pub struct Zlib<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_level(mut self, level: Level) -> Self
+  pub const fn level(&self) -> Level
+  pub const fn handle(&self) -> &H
+  pub fn into_handle(self) -> crate::Result<H>
+
+### yggdryl::zstd  [rust\src\zstd\mod.rs]
+  pub fn load(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump(input: &[u8]) -> Result<Vec<u8>>
+  pub fn dump_with_level(input: &[u8], level: Level) -> Result<Vec<u8>>
+  pub fn reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source>
+  pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target>
+  pub fn writer_with_level<'target, W: Write + 'target>(target: W, level: Level) -> Encoder<'target>
+  pub struct Zstd<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_level(mut self, level: Level) -> Self
+  pub const fn level(&self) -> Level
+  pub const fn handle(&self) -> &H
+  pub fn into_handle(self) -> crate::Result<H>
