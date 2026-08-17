@@ -270,6 +270,36 @@ Reading rows out of an Arrow IPC stream and out of a Parquet file need the same 
     assert.equal(RecordOptions.from('trades.arrows').maxRowGroupSize, null)
     ```
 
+The options are also where option-driven casting is *defined*, once. `cast_arrow_batch` - and its
+streaming sibling `cast_arrow_reader` - applies three layers in order: the declared schema says
+what the rows are meant to be, `select_by_names` narrows and orders the columns, and the optional
+`existing` root - a holder's stored shape - is what the rows are finally cast onto, always safely,
+so a value that will not convert into a stored column becomes null rather than redefining that
+column for every reader. Every write path routes through this one definition, which is why a
+declared schema, a selection, and a stored shape can never disagree about what a cast means.
+
+```rust
+use arrow_array::RecordBatch;
+use yggdryl::generic::{IORecordOptions, RecordOptions};
+use yggdryl::{DataType, MimeType};
+
+let declared = DataType::from_fields([
+    DataType::Utf8.required_field("symbol"),
+    DataType::Int64.required_field("price"),
+])?
+.required_field("row");
+
+let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
+    .with_schema(declared.clone())
+    .with_select_by_names(["price"]);
+
+// One call is the whole pipeline: the declared cast, then the selection.
+// Passing a stored root as the second argument adds the completion layer.
+let batch = RecordBatch::new_empty(yggdryl::arrow::schema_from_field(&declared)?);
+let cast = options.cast_arrow_batch(batch, None)?;
+assert_eq!(cast.num_columns(), 1);
+```
+
 There is no shared settings struct threaded through the encodings. Each one stores those five settings as its own flat public fields and implements `IORecordOptions` over them, so a concrete options value takes the same builders the enum does and converts into it. A setting an encoding has no use for is still there and still ignored: [`ParquetOptions::level`](parquet.md) is unused, because Parquet compresses pages inside the file and an outer content coding would produce something no Parquet reader can open.
 
 ```rust

@@ -40,6 +40,7 @@ use crate::arrow::{Error, Result, schema_from_field};
 mod plan;
 
 pub use plan::ArrowCast;
+pub(crate) use plan::cast_record_batch;
 
 /// The Arrow array a field's values materialize into.
 ///

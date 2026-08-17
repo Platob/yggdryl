@@ -86,3 +86,70 @@ fn a_zero_column_batch_keeps_its_row_count() {
     assert_eq!(cast.num_rows(), 3);
     assert_eq!(cast.num_columns(), 0);
 }
+
+#[test]
+fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
+    use yggdryl::MimeType;
+    use yggdryl::generic::{IORecordOptions, RecordOptions};
+
+    // Rows arrive as (symbol utf8, price int32, venue utf8).
+    let source = Arc::new(Schema::new(vec![
+        ArrowField::new("symbol", ArrowDataType::Utf8, false),
+        ArrowField::new("price", ArrowDataType::Int32, false),
+        ArrowField::new("venue", ArrowDataType::Utf8, false),
+    ]));
+    let batch = RecordBatch::try_new(
+        source,
+        vec![
+            Arc::new(StringArray::from(vec!["AAPL"])),
+            Arc::new(Int32Array::from(vec![12])),
+            Arc::new(StringArray::from(vec!["XPAR"])),
+        ],
+    )
+    .unwrap();
+
+    // The declared schema widens the price; the selection narrows and
+    // reorders; the stored shape finally adds the column the resource
+    // already has, defaulted, and every layer is one definition.
+    let declared = root([
+        DataType::Utf8.required_field("symbol"),
+        DataType::Int64.required_field("price"),
+        DataType::Utf8.required_field("venue"),
+    ]);
+    let stored = root([
+        DataType::Int64.required_field("price"),
+        DataType::Utf8.required_field("symbol"),
+        DataType::Int64.required_field("volume"),
+    ]);
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
+        .unwrap()
+        .with_schema(declared)
+        .with_select_by_names(["PRICE", "symbol"]);
+
+    let cast = options.cast_arrow_batch(batch, Some(&stored)).unwrap();
+
+    let names: Vec<_> = cast
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().to_owned())
+        .collect();
+    assert_eq!(names, ["price", "symbol", "volume"]);
+    assert_eq!(cast.column(0).data_type(), &ArrowDataType::Int64);
+    assert_eq!(cast.num_rows(), 1);
+
+    // A name the rows do not have is an error, not a null column.
+    let missing = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
+        .unwrap()
+        .with_select_by_names(["absent"]);
+    let empty = RecordBatch::new_empty(Arc::new(Schema::new(vec![ArrowField::new(
+        "id",
+        ArrowDataType::Int32,
+        false,
+    )])));
+    let error = missing
+        .cast_arrow_batch(empty, None)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("absent"), "{error}");
+}

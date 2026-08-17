@@ -806,6 +806,41 @@ pub fn batch_to_value(batch: &RecordBatch) -> Result<Value> {
     Ok(Value::from_sequence(rows))
 }
 
+/// Build the root a `select_by_names` selection narrows `root` to.
+///
+/// `None` means no narrowing: an empty selection is the rows as they stand.
+/// Names resolve ASCII case-insensitively, the way every cast matches them,
+/// in the order they are asked for; a name the root does not have is an error
+/// listing what is there, because a selection is a claim about the rows
+/// rather than a wish.
+pub(crate) fn selected_root(
+    root: &Field,
+    names: &[String],
+    root_name: &str,
+) -> Result<Option<Field>> {
+    if names.is_empty() {
+        return Ok(None);
+    }
+    let mut selected = Vec::with_capacity(names.len());
+    for name in names {
+        let child = root
+            .fields()
+            .iter()
+            .find(|child| child.name().eq_ignore_ascii_case(name))
+            .ok_or_else(|| crate::Error::InvalidRecord {
+                path: smol_str::format_smolstr!("$.{name}"),
+                reason: smol_str::format_smolstr!(
+                    "expected a column named {name:?} to select, got columns {:?}",
+                    root.fields().iter().map(Field::name).collect::<Vec<_>>()
+                ),
+            })?;
+        selected.push(child.clone());
+    }
+    Ok(Some(
+        crate::DataType::from_fields(selected)?.required_field(root_name),
+    ))
+}
+
 pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field> {
     let fields = schema
         .fields()

@@ -1028,26 +1028,10 @@ pub(crate) fn select_reader(
     }
     let root =
         crate::arrow::record_schema_from_arrow(options.root_name(), reader.schema().as_ref())?;
-    let mut selected = Vec::with_capacity(names.len());
-    for name in names {
-        let child = root
-            .fields()
-            .iter()
-            .find(|child| child.name().eq_ignore_ascii_case(name))
-            .ok_or_else(|| Error::InvalidRecord {
-                path: smol_str::format_smolstr!("$.{name}"),
-                reason: smol_str::format_smolstr!(
-                    "expected a column named {name:?} to select, got columns {:?}",
-                    root.fields()
-                        .iter()
-                        .map(crate::Field::name)
-                        .collect::<Vec<_>>()
-                ),
-            })?;
-        selected.push(child.clone());
+    match crate::arrow::selected_root(&root, names, options.root_name())? {
+        Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
+        None => Ok(reader),
     }
-    let target = crate::DataType::from_fields(selected)?.required_field(options.root_name());
-    Ok(crate::arrow::cast_reader(reader, &target, options.safe())?)
 }
 
 #[cfg(feature = "arrow")]
@@ -1125,19 +1109,12 @@ fn overwrite_leaf(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
-    // The declared schema says what the incoming rows are meant to be, so it is
-    // applied before anything else looks at them.
-    let batches = match options.schema() {
-        Some(field) => crate::arrow::cast_reader(batches, field, options.safe())?,
-        None => batches,
-    };
-    // A resource that already has a shape keeps it. An overwrite replaces rows,
-    // so a value that will not convert into a stored column becomes null rather
-    // than quietly redefining that column for every reader of the resource.
-    let batches = match stored_field(handle, options)? {
-        Some(stored) => crate::arrow::cast_reader(batches, &stored, true)?,
-        None => batches,
-    };
+    // One definition of option-driven casting: the declared schema first,
+    // then the selection, then completion onto the stored shape, so a value
+    // that will not convert into a stored column becomes null rather than
+    // quietly redefining that column for every reader of the resource.
+    let stored = stored_field(handle, options)?;
+    let batches = options.cast_arrow_reader(batches, stored.as_ref())?;
     leaf_writer(handle, batches, options)
 }
 

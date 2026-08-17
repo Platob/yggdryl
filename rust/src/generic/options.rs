@@ -168,6 +168,76 @@ pub trait IORecordOptions: Sized {
         self.set_select_by_names(select_by_names.into_iter().map(Into::into).collect());
         self
     }
+
+    /// Cast one batch the way these options say, completed by what is stored.
+    ///
+    /// This is the one definition of option-driven casting, in three layers
+    /// applied in order: the declared [`schema`](Self::schema) says what the
+    /// rows are meant to be, [`select_by_names`](Self::select_by_names)
+    /// narrows and orders the columns, and `existing` - a holder's stored
+    /// shape - is what the batch is finally cast onto, always safely, so a
+    /// value that will not convert into a stored column becomes null rather
+    /// than quietly redefining that column for every reader of the resource.
+    /// Each absent layer costs nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a cast cannot be planned or a selected name is
+    /// not a column of the rows.
+    fn cast_arrow_batch(
+        &self,
+        batch: arrow_array::RecordBatch,
+        existing: Option<&Field>,
+    ) -> Result<arrow_array::RecordBatch> {
+        let safe = self.safe();
+        let batch = match self.schema() {
+            Some(declared) => crate::field::cast::cast_record_batch(declared, batch, safe)?,
+            None => batch,
+        };
+        let root =
+            crate::arrow::record_schema_from_arrow(self.root_name(), batch.schema().as_ref())?;
+        let batch =
+            match crate::arrow::selected_root(&root, self.select_by_names(), self.root_name())? {
+                Some(target) => crate::field::cast::cast_record_batch(&target, batch, safe)?,
+                None => batch,
+            };
+        match existing {
+            Some(stored) => Ok(crate::field::cast::cast_record_batch(stored, batch, true)?),
+            None => Ok(batch),
+        }
+    }
+
+    /// Cast a whole reader as [`cast_arrow_batch`](Self::cast_arrow_batch)
+    /// casts one batch, streaming - nothing is collected, each batch is cast
+    /// as it is pulled, and a layer whose target already matches costs
+    /// nothing at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a cast cannot be planned or a selected name is
+    /// not a column of the reader.
+    fn cast_arrow_reader(
+        &self,
+        reader: crate::arrow::BatchReader,
+        existing: Option<&Field>,
+    ) -> Result<crate::arrow::BatchReader> {
+        let safe = self.safe();
+        let reader = match self.schema() {
+            Some(declared) => crate::arrow::cast_reader(reader, declared, safe)?,
+            None => reader,
+        };
+        let root =
+            crate::arrow::record_schema_from_arrow(self.root_name(), reader.schema().as_ref())?;
+        let reader =
+            match crate::arrow::selected_root(&root, self.select_by_names(), self.root_name())? {
+                Some(target) => crate::arrow::cast_reader(reader, &target, safe)?,
+                None => reader,
+            };
+        match existing {
+            Some(stored) => Ok(crate::arrow::cast_reader(reader, stored, true)?),
+            None => Ok(reader),
+        }
+    }
 }
 
 /// Implement [`IORecordOptions`] over one struct's own fields.
