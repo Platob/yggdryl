@@ -22,9 +22,9 @@ name: Release
 #   - PyPI: trusted publishing (OIDC) for this repository and workflow,
 #     bound to the `pypi` environment - no stored secret, and the binding
 #     names the repository, so a migrated repository must be re-registered.
-#   - npm: trusted publishing (OIDC) for this repository and workflow -
-#     no stored secret, and the binding names the repository, so a migrated
-#     repository must be re-registered.
+#   - npm: trusted publishing (OIDC) for this repository and workflow,
+#     bound to the `npm` environment - no stored secret, and the binding
+#     names the repository, so a migrated repository must be re-registered.
 
 on:
   push:
@@ -371,25 +371,78 @@ jobs:
           path: node/*.node
           if-no-files-found: error
 
+  npm-oidc-probe:
+    # TEMPORARY diagnostic, removed once npm trusted publishing is green.
+    # Each leg mints this workflow's OIDC token, prints its claims, and runs
+    # the same token exchange npm itself performs - one leg bare, one inside
+    # the `npm` environment - so a single run says whether the npmjs.com
+    # binding matches this workflow and whether it names an environment.
+    name: npm OIDC probe (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    permissions:
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: no environment
+            environment: ""
+          - label: environment npm
+            environment: npm
+    steps:
+      - name: Mint, inspect, and exchange
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "id-token request variables are ABSENT: the permission did not engage"
+            exit 1
+          fi
+          echo "id-token request variables are present"
+          token=$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r .value)
+          TOKEN="$token" python3 - <<'EOF'
+          import base64
+          import json
+          import os
+
+          payload = os.environ["TOKEN"].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          keys = (
+              "sub", "repository", "repository_owner", "workflow_ref",
+              "job_workflow_ref", "environment", "ref", "event_name",
+              "repository_visibility", "aud",
+          )
+          print(json.dumps({key: claims.get(key) for key in keys}, indent=2))
+          EOF
+          status=$(curl -s -o exchange.json -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer $token" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/yggdryl")
+          echo "exchange: HTTP $status"
+          jq 'del(.token)' exchange.json || cat exchange.json
+          [ "$status" = "200" ]
+
   publish-npm:
     name: npm (yggdryl)
     needs: [preflight, node]
     if: needs.preflight.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    environment: npm
     permissions:
       # Trusted publishing: npm accepts this workflow's OIDC token instead of
       # a stored secret, exactly as PyPI does above. The binding names this
-      # repository and workflow on npmjs.com, so a migrated repository must be
-      # re-registered there.
+      # repository, workflow, and the `npm` environment on npmjs.com, so a
+      # migrated repository must be re-registered there.
       id-token: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          # No registry-url: that input writes an `_authToken` placeholder
-          # into .npmrc, and npm prefers any configured token over the OIDC
-          # exchange - which is exactly the wrong precedence here.
+          # No registry-url: npm's OIDC exchange keys off the Actions
+          # id-token request variables alone, and that input only writes an
+          # `_authToken` placeholder into .npmrc that muddies the failure
+          # modes.
           package-manager-cache: false
       - name: Install an npm that speaks trusted publishing
         # OIDC exchange arrived in npm 11.5; node 22 bundles an older one.
@@ -409,6 +462,13 @@ jobs:
             ls node/*.node
             exit 1
           fi
+      - name: The OIDC grant engaged
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "id-token request variables are absent; npm cannot exchange"
+            exit 1
+          fi
+          echo "id-token request variables are present"
       - name: Publish
         working-directory: node
         run: |
@@ -416,7 +476,8 @@ jobs:
           if npm view "yggdryl@$version" version >/dev/null 2>&1; then
             echo "npm already has yggdryl $version; skipping"
           else
-            npm publish --access public
+            # Verbose: npm reports OIDC exchange failures only at this level.
+            npm publish --access public --loglevel verbose
           fi
 
   release:
