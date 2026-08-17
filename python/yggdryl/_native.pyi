@@ -946,6 +946,30 @@ class IOBase:
     def append_arrow(
         self, data: RowsLike, *, options: RecordOptionsLike | None = None
     ) -> None: ...
+    def read_records(
+        self,
+        cls: type[Any] | None = None,
+        *,
+        options: RecordOptionsLike | None = None,
+        safe: bool = True,
+        errors: Literal["raise", "default"] = "raise",
+    ) -> Iterator[Any]: ...
+    def write_records(
+        self,
+        rows: Iterable[Any],
+        *,
+        cls: type[Any] | None = None,
+        options: RecordOptionsLike | None = None,
+        safe: bool = True,
+    ) -> None: ...
+    def append_records(
+        self,
+        rows: Iterable[Any],
+        *,
+        cls: type[Any] | None = None,
+        options: RecordOptionsLike | None = None,
+        safe: bool = True,
+    ) -> None: ...
     def read_pandas(
         self, *, options: RecordOptionsLike | None = None
     ) -> Iterator[Any]: ...

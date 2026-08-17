@@ -343,6 +343,45 @@ function installRecords({ BatchReader, Field, IOBase, RecordOptions, Table }) {
     })
   }
 
+  // Rows as records: each stored row as one plain object, or as one instance
+  // of the class you pass - `new cls(row)` receives the plain row, so any
+  // constructor that takes named fields is a runtime record class. Rows come
+  // batch by batch off the same native reader every other read uses, so
+  // nothing is collected, and a resource that does not exist yields no rows.
+  Object.defineProperty(IOBase.prototype, 'readRecords', {
+    configurable: true,
+    value(cls, options) {
+      if (typeof cls !== 'function' && options === undefined) {
+        options = cls
+        cls = undefined
+      }
+      const reader = this.readArrowBatchReader(options)
+      return (function* records() {
+        for (const batch of reader) {
+          for (const row of batch) {
+            const record = row.toJSON()
+            yield cls ? new cls(record) : record
+          }
+        }
+      })()
+    },
+  })
+
+  // The record writes are the generic writes under the names the read pairs
+  // with: `writeArrow` already widens to plain records and record instances,
+  // so these add vocabulary, never a second path.
+  for (const [name, target] of [
+    ['writeRecords', 'writeArrow'],
+    ['appendRecords', 'appendArrow'],
+  ]) {
+    Object.defineProperty(IOBase.prototype, name, {
+      configurable: true,
+      value(rows, options) {
+        return this[target](rows, options)
+      },
+    })
+  }
+
   for (const name of ['append', 'overwrite']) {
     const native = Table.prototype[name]
     Object.defineProperty(Table.prototype, name, {

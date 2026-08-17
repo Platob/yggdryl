@@ -997,6 +997,79 @@ The encodings `record_options` can return are the ones this build carries: Arrow
 compression level, match key - are shared across encodings through `IORecordOptions`, documented in
 [generic.md](generic.md).
 
+## Rows as record instances
+
+!!! note "Python and JavaScript"
+    Rust reads batches; the record-instance layer is what the bindings add on
+    top of it.
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+    from yggdryl.records import record
+
+    @record
+    class Trade:
+        id: int
+        venue: str | None
+
+    handle = IOBase("trades.arrows")
+    handle.write_records([Trade(1, "XNAS"), Trade(2, None)])
+
+    # Each stored row becomes one instance, batch by batch - nothing is
+    # collected - and rows cast flexibly onto the class: names reconcile,
+    # widths convert, missing columns default.
+    assert [t.id for t in handle.read_records(Trade)] == [1, 2]
+
+    # Omit the class and one is built at runtime from the stored schema.
+    for row in handle.read_records():
+        print(row.id, row.venue)
+
+    # An absent resource yields no rows, and an empty iterable writes
+    # nothing, so conditional pipelines need no existence checks.
+    assert list(IOBase("absent.arrows").read_records()) == []
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const handle = new IOBase('trades.arrows')
+    // Plain objects are rows; `writeRecords` is the generic write under
+    // the record name.
+    handle.writeRecords([
+      { id: 1n, venue: 'XNAS' },
+      { id: 2n, venue: null },
+    ])
+
+    // Plain objects out, streamed batch by batch ...
+    for (const row of handle.readRecords()) console.log(row.id, row.venue)
+
+    // ... or instances of any class whose constructor takes the plain row.
+    class Trade {
+      constructor(row) {
+        Object.assign(this, row)
+      }
+    }
+    const trades = [...handle.readRecords(Trade)]
+    assert.ok(trades.every((t) => t instanceof Trade))
+
+    // An absent resource yields no records rather than raising.
+    assert.deepEqual([...new IOBase('absent.arrows').readRecords()], [])
+    ```
+
+In Python, `read_records` hands back instances of a [record class](extensions/python.md) - the one you pass,
+or one built at runtime from the resource's own schema when you pass none - and `write_records` /
+`append_records` take any iterable of instances, inferring the class from the first row. The rows
+stream batch by batch through the same native reader every other read uses, casting flexibly onto
+the class's schema; `safe` and `errors` say what happens to a value that will not convert. In
+JavaScript the same three names read rows as plain objects or through any constructor that takes
+one, and the writes widen exactly as `writeArrow` does. In both languages an absent resource reads
+as empty and an empty write is a no-op, so nothing needs an existence check first.
+
 ## Column pushdown
 
 === "Rust"

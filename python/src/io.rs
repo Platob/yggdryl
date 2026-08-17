@@ -81,6 +81,48 @@ impl PyIOBase {
             None => self.inner.record_options().map_err(value_error),
         }
     }
+
+    /// Turn an iterable of record instances into one streamed batch reader.
+    ///
+    /// The first row is peeked to infer the class when none was named, then
+    /// chained back in front, so the iterable is pulled exactly once. `None`
+    /// means there was nothing to write and no class to write it with.
+    fn records_reader<'py>(
+        &self,
+        py: Python<'py>,
+        rows: &Bound<'py, PyAny>,
+        cls: Option<&Bound<'py, PyAny>>,
+        options: Option<&Bound<'py, PyAny>>,
+        safe: bool,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        use pyo3::types::PyList;
+
+        let mut iterator = rows.try_iter()?;
+        let first = iterator.next().transpose()?;
+        let cls = match (cls, &first) {
+            (Some(cls), _) => cls.clone(),
+            (None, Some(first)) => first.get_type().into_any(),
+            (None, None) => return Ok(None),
+        };
+        let head = match &first {
+            Some(first) => PyList::new(py, [first])?,
+            None => PyList::empty(py),
+        };
+        let chained = py
+            .import("itertools")?
+            .getattr("chain")?
+            .call1((head, iterator))?;
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("safe", safe)?;
+        if let Some(batch_size) = {
+            use yggdryl::generic::IORecordOptions;
+            self.resolve_options(options)?.batch_size()
+        } {
+            kwargs.set_item("batch_size", batch_size)?;
+        }
+        cls.call_method("into_arrow_record_batch_reader", (chained,), Some(&kwargs))
+            .map(Some)
+    }
 }
 
 #[pymethods]
@@ -569,6 +611,79 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.read_arrow_batch_reader(py, options)
+    }
+
+    /// Read this resource's rows as instances of a record class.
+    ///
+    /// `cls` is any [`yggdryl.records`] record or dataclass; each stored row
+    /// becomes one instance, batch by batch, so nothing is collected. Omitting
+    /// it builds the class at runtime from the resource's own schema - the
+    /// rows then arrive as instances of a class you never had to declare.
+    /// Rows cast flexibly onto the class's schema - names reconcile, widths
+    /// convert, missing columns default - and `safe`/`errors` say how a value
+    /// that will not convert is handled. A resource that does not exist reads
+    /// as empty, so probing a location yields no rows rather than an error.
+    #[pyo3(signature = (cls = None, *, options = None, safe = true, errors = "raise"))]
+    fn read_records<'py>(
+        &self,
+        py: Python<'py>,
+        cls: Option<&Bound<'py, PyAny>>,
+        options: Option<&Bound<'py, PyAny>>,
+        safe: bool,
+        errors: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self.read_arrow_batch_reader(py, options)?;
+        let cls = if let Some(cls) = cls {
+            cls.clone()
+        } else {
+            // The resource's own schema builds the class at runtime.
+            let record = py.import("yggdryl.records")?.getattr("Record")?;
+            record.call_method1("from_arrow_schema", (reader.getattr("schema")?,))?
+        };
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("safe", safe)?;
+        kwargs.set_item("errors", errors)?;
+        kwargs.set_item("validate_schema", false)?;
+        cls.call_method("from_arrow_record_batch_reader", (reader,), Some(&kwargs))
+    }
+
+    /// Replace or merge this resource's rows with record instances.
+    ///
+    /// `rows` is any iterable of record or dataclass instances; they become
+    /// one streamed batch reader - nothing is collected - and are written
+    /// exactly as [`write_arrow`](Self::write_arrow) writes. `cls` names the
+    /// class when the iterable could be empty or mixed; omitted, the first
+    /// row's class is the schema. An empty iterable with no class writes
+    /// nothing at all, so a conditional write needs no emptiness check.
+    #[pyo3(signature = (rows, *, cls = None, options = None, safe = true))]
+    fn write_records(
+        &mut self,
+        py: Python<'_>,
+        rows: &Bound<'_, PyAny>,
+        cls: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+    ) -> PyResult<()> {
+        match self.records_reader(py, rows, cls, options, safe)? {
+            Some(reader) => self.write_arrow_batch_reader(&reader, options),
+            None => Ok(()),
+        }
+    }
+
+    /// Add record instances after the rows this resource holds.
+    #[pyo3(signature = (rows, *, cls = None, options = None, safe = true))]
+    fn append_records(
+        &mut self,
+        py: Python<'_>,
+        rows: &Bound<'_, PyAny>,
+        cls: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+    ) -> PyResult<()> {
+        match self.records_reader(py, rows, cls, options, safe)? {
+            Some(reader) => self.append_arrow_batch_reader(&reader, options),
+            None => Ok(()),
+        }
     }
 
     /// Replace or merge this resource's rows with whatever `data` holds.

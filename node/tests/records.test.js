@@ -278,3 +278,45 @@ test('content coding belongs to the handle rather than to the encoding', (t) => 
   assert.equal(compressed.readArrowBatchReader().toTable().numRows, 2)
   assert.notEqual(compressed.readBytes().subarray(0, 2).toString('hex'), 'ffff')
 })
+
+test('rows read back as records, plain or through a runtime class', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const handle = new IOBase(path.join(root, 'trades.arrows'))
+  // The record write is the generic write under the record name, so plain
+  // objects are rows.
+  handle.writeRecords([
+    { id: 1n, symbol: 'AAPL', venue: 'XNAS' },
+    { id: 2n, symbol: 'MSFT', venue: 'XNAS' },
+  ])
+
+  // Plain objects out, streamed batch by batch.
+  const plain = [...handle.readRecords()]
+  assert.deepEqual(
+    plain.map((row) => row.symbol),
+    ['AAPL', 'MSFT'],
+  )
+
+  // A class whose constructor takes the plain row is a runtime record class.
+  class Trade {
+    constructor(row) {
+      Object.assign(this, row)
+    }
+    flag() {
+      return `${this.symbol}@${this.venue}`
+    }
+  }
+  const typed = [...handle.readRecords(Trade)]
+  assert.ok(typed.every((row) => row instanceof Trade))
+  assert.deepEqual(
+    typed.map((row) => row.flag()),
+    ['AAPL@XNAS', 'MSFT@XNAS'],
+  )
+
+  // Appending speaks the same vocabulary, and an absent resource yields
+  // no records rather than raising.
+  handle.appendRecords([{ id: 3n, symbol: 'NVDA', venue: 'XPAR' }])
+  assert.equal([...handle.readRecords()].length, 3)
+  assert.deepEqual([...new IOBase(path.join(root, 'absent.arrows')).readRecords()], [])
+})

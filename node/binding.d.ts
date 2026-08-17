@@ -1030,6 +1030,27 @@ declare module './index' {
       rows: AsyncIterable<RowSource>,
       options?: RecordOptionsInput | null,
     ): Promise<void>
+
+    /**
+     * Read this resource's rows as records: plain objects, or instances of
+     * the class you pass, whose constructor receives one plain row.
+     */
+    readRecords<T = Record<string, unknown>>(
+      cls?: (new (row: Record<string, unknown>) => T) | RecordOptionsInput | null,
+      options?: RecordOptionsInput | null,
+    ): IterableIterator<T>
+    /** Replace or merge this resource's rows; `writeArrow` under the record name. */
+    writeRecords(rows: RowSource, options?: RecordOptionsInput | null): void
+    writeRecords(
+      rows: AsyncIterable<RowSource>,
+      options?: RecordOptionsInput | null,
+    ): Promise<void>
+    /** Add records after the rows this resource holds. */
+    appendRecords(rows: RowSource, options?: RecordOptionsInput | null): void
+    appendRecords(
+      rows: AsyncIterable<RowSource>,
+      options?: RecordOptionsInput | null,
+    ): Promise<void>
   }
 
   /** Iterating a reader yields one Apache Arrow JS record batch at a time. */

@@ -344,3 +344,64 @@ class TestAbsentLibrary:
 
         with self.without("pandas"), pytest.raises(ImportError, match="needs pandas installed"):
             handle.read_pandas()
+
+
+class TestRecordInstances:
+    """Rows as instances of a record class, declared or built at runtime."""
+
+    def test_records_round_trip_through_a_declared_class(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from yggdryl.records import record
+
+        @record
+        class Trade:
+            id: int
+            venue: str | None
+
+        handle = IOBase(tmp_path / "trades.arrows")
+        handle.write_records([Trade(1, "XNAS"), Trade(2, None)])
+
+        restored = list(handle.read_records(Trade))
+        assert restored == [Trade(1, "XNAS"), Trade(2, None)]
+        assert all(isinstance(row, Trade) for row in restored)
+
+        # Appending keeps streaming through the same class.
+        handle.append_records([Trade(3, "XPAR")])
+        assert [row.id for row in handle.read_records(Trade)] == [1, 2, 3]
+
+    def test_omitting_the_class_builds_one_from_the_stored_schema(
+        self, tmp_path: pathlib.Path, batch: pa.RecordBatch
+    ) -> None:
+        handle = IOBase(tmp_path / "trades.arrows")
+        handle.write_arrow(batch)
+
+        rows = list(handle.read_records())
+        assert [row.id for row in rows] == [1, 2]
+        assert [row.venue for row in rows] == ["XNAS", None]
+        # The class was built at runtime from the resource's own schema.
+        assert type(rows[0]).__name__ != "dict"
+
+    def test_rows_cast_flexibly_onto_the_class(self, tmp_path: pathlib.Path) -> None:
+        from yggdryl.records import record
+
+        # The stored rows are (id int64, venue utf8); the class narrows to a
+        # different width and drops a column, and the read casts onto it.
+        @record
+        class Narrow:
+            id: int
+
+        handle = IOBase(tmp_path / "trades.arrows")
+        handle.write_arrow(rows_batch([7, 8], ["XNAS", None]))
+        assert [row.id for row in handle.read_records(Narrow)] == [7, 8]
+
+    def test_an_absent_resource_and_an_empty_iterable_are_both_skips(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        absent = IOBase(tmp_path / "absent.arrows")
+        # A resource that does not exist yields no rows rather than raising.
+        assert list(absent.read_records()) == []
+        # Writing nothing with no class writes nothing at all.
+        target = IOBase(tmp_path / "target.arrows")
+        target.write_records([])
+        assert target.size == 0
