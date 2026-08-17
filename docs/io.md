@@ -1251,7 +1251,7 @@ default, selects everything.
 
     options = handle.record_options()
     options.select_by_names = ["symbol"]
-    narrowed = handle.read_arrow(options).read_all()
+    narrowed = handle.read_arrow(options=options).read_all()
     assert narrowed.column_names == ["symbol"]
     ```
 

@@ -1852,6 +1852,17 @@ if (binding.LineIterator) {
   })
 }
 
+// The three byte codings, grouped the way the documentation names them. The
+// native halves carry a leading underscore so only these namespaces are the
+// public spelling.
+for (const name of ['gzip', 'zlib', 'zstd']) {
+  const loads = binding[`_${name}Loads`]
+  const dumps = binding[`_${name}Dumps`]
+  delete binding[`_${name}Loads`]
+  delete binding[`_${name}Dumps`]
+  binding[name] = Object.freeze({ loads, dumps })
+}
+
 binding.codec = codec
 binding.fields = fields
 binding.iceberg = iceberg

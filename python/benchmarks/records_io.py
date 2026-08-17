@@ -128,6 +128,21 @@ def _pyarrow_ipc_baseline() -> object:
     return (ROOT / "baseline.arrows").stat().st_size
 
 
+def _pyarrow_parquet_write_baseline() -> object:
+    # The same rows through PyArrow's own Parquet writer, so the parquet
+    # write row above has a trusted number beside it.
+    import pyarrow.parquet as pq
+
+    pq.write_table(TABLE, ROOT / "baseline.parquet")
+    return (ROOT / "baseline.parquet").stat().st_size
+
+
+def _pyarrow_parquet_read_baseline() -> object:
+    import pyarrow.parquet as pq
+
+    return pq.read_table(ROOT / "baseline.parquet").num_rows
+
+
 # The generic entry points cross a wider boundary than the reader pair above:
 # each one infers what it was handed before the same three core methods run, so
 # these numbers say what that inference costs on top of the write itself.
@@ -193,6 +208,18 @@ BENCHMARKS = tuple(
         Benchmark("parquet read whole", _read_file_whole, ROW_COUNT, "row"),
         Benchmark("parquet read subset", _read_file_subset, ROW_COUNT, "row"),
         Benchmark("PyArrow IPC write baseline", _pyarrow_ipc_baseline, ROW_COUNT, "row"),
+        Benchmark(
+            "PyArrow parquet write baseline",
+            _pyarrow_parquet_write_baseline,
+            ROW_COUNT,
+            "row",
+        ),
+        Benchmark(
+            "PyArrow parquet read baseline",
+            _pyarrow_parquet_read_baseline,
+            ROW_COUNT,
+            "row",
+        ),
         Benchmark("generic write table", _write_generic_table, ROW_COUNT, "row"),
         Benchmark("generic write generator", _write_generic_generator, ROW_COUNT, "row"),
         Benchmark("generic write mappings", _write_generic_rows, ROW_COUNT, "row"),

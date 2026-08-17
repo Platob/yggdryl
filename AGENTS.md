@@ -316,6 +316,14 @@ layer compiling annotations into native values.
   pushdown benchmarks report materialized bytes as throughput). Iceberg
   interop is test target `iceberg_interop` (needs `iceberg`). Extension
   tests/benchmarks live in that extension; no root extension examples.
+- **Benchmark against something the reader trusts.** A performance claim in
+  the documentation carries a baseline from outside the project on the same
+  payload and wire: `python/benchmarks/compression.py` beside the stdlib
+  codecs, the PyArrow IPC/Parquet baselines in
+  `python/benchmarks/records_io.py`. Numbers in `docs/benchmarks.md` name the
+  machine, interpreter, and build profile that produced them; a binding is
+  timed only as a **release** build (`maturin build --release`,
+  `napi build --release`), and a stale table is regenerated, never edited.
 - **Every doc example runs**: `python scripts/check_docs_examples.py`
   compiles rust blocks as tests, runs python blocks under `python/.venv`,
   runs javascript blocks with `yggdryl` rewired to the repo. Each block

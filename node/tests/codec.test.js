@@ -1073,3 +1073,15 @@ test('malformed streams and cyclic objects fail deterministically', () => {
   assert.throws(() => json.loads('{"missing":]'), /JSON/i)
   assert.throws(() => yaml.loads('value: [unterminated'), /YAML/i)
 })
+
+test('the byte codings round-trip and read node:zlib output', () => {
+  const zlibNative = require('node:zlib')
+  const { gzip, zlib, zstd } = require('yggdryl')
+  const payload = Buffer.from('{"id":1}\n'.repeat(512))
+
+  assert.deepEqual(gzip.loads(gzip.dumps(payload)), payload)
+  assert.deepEqual(gzip.loads(zlibNative.gzipSync(payload)), payload)
+  assert.deepEqual(zlibNative.gunzipSync(gzip.dumps(payload, 9)), payload)
+  assert.deepEqual(zlib.loads(zlib.dumps(payload)), payload)
+  assert.deepEqual(zstd.loads(zstd.dumps(payload, 9)), payload)
+})

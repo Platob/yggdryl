@@ -11,6 +11,7 @@
 
 mod arrow;
 mod codec;
+mod codings;
 mod datatype;
 mod field;
 mod generic;

@@ -19,6 +19,7 @@ use crate::media::{PyMediaType, PyMediaTypeIterator, PyMimeType};
 use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
 mod codec;
+mod codings;
 mod datatype;
 mod field;
 mod iceberg;
@@ -29,7 +30,7 @@ mod timezone;
 mod uri;
 mod value;
 
-fn value_error(error: impl std::fmt::Display) -> PyErr {
+pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
@@ -127,6 +128,12 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iceberg::PySnapshot>()?;
     module.add_class::<iceberg::PyManifestFile>()?;
     module.add_class::<iceberg::PyDataFile>()?;
+    module.add_function(wrap_pyfunction!(codings::gzip_loads, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::gzip_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::zlib_loads, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::zlib_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::zstd_loads, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::zstd_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_assign_field_ids, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_can_promote, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_from_json, module)?)?;
