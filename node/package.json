@@ -3,6 +3,12 @@
   "version": "0.1.1",
   "description": "Native Yggdryl schemas, fields, Arrow interop, URIs, and structured codecs for Node.js",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Platob/yggdryl.git"
+  },
+  "homepage": "https://platob.github.io/yggdryl/",
+  "bugs": "https://github.com/Platob/yggdryl/issues",
   "main": "binding.js",
   "types": "binding.d.ts",
   "exports": {

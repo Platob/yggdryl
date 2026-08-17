@@ -371,57 +371,6 @@ jobs:
           path: node/*.node
           if-no-files-found: error
 
-  npm-oidc-probe:
-    # TEMPORARY diagnostic, removed once npm trusted publishing is green.
-    # Each leg mints this workflow's OIDC token, prints its claims, and runs
-    # the same token exchange npm itself performs - one leg bare, one inside
-    # the `npm` environment - so a single run says whether the npmjs.com
-    # binding matches this workflow and whether it names an environment.
-    name: npm OIDC probe (${{ matrix.label }})
-    runs-on: ubuntu-latest
-    environment: ${{ matrix.environment }}
-    permissions:
-      id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: no environment
-            environment: ""
-          - label: environment npm
-            environment: npm
-    steps:
-      - name: Mint, inspect, and exchange
-        run: |
-          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
-            echo "id-token request variables are ABSENT: the permission did not engage"
-            exit 1
-          fi
-          echo "id-token request variables are present"
-          token=$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r .value)
-          TOKEN="$token" python3 - <<'EOF'
-          import base64
-          import json
-          import os
-
-          payload = os.environ["TOKEN"].split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload))
-          keys = (
-              "sub", "repository", "repository_owner", "workflow_ref",
-              "job_workflow_ref", "environment", "ref", "event_name",
-              "repository_visibility", "aud",
-          )
-          print(json.dumps({key: claims.get(key) for key in keys}, indent=2))
-          EOF
-          status=$(curl -s -o exchange.json -w "%{http_code}" -X POST \
-            -H "Authorization: Bearer $token" \
-            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/yggdryl")
-          echo "exchange: HTTP $status"
-          jq 'del(.token)' exchange.json || cat exchange.json
-          [ "$status" = "200" ]
-
   publish-npm:
     name: npm (yggdryl)
     needs: [preflight, node]
