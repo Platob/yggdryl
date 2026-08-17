@@ -397,6 +397,21 @@ impl JsIOBase {
         Ok(i64::try_from(copied).unwrap_or(i64::MAX))
     }
 
+    /// Iterate the resource's decoded text lines, one line at a time.
+    ///
+    /// Any content codings the resource's name declares - `trades.jsonl.gz`,
+    /// `log.txt.zst` - decode as streams, so a compressed resource is read
+    /// without ever holding its decompressed value. A line is what `\n` ends,
+    /// a trailing `\r` belongs to the terminator, and the last line needs no
+    /// terminator. The returned iterator owns a rebuilt handle, so it stays
+    /// valid however long the caller keeps it.
+    #[napi]
+    pub fn read_lines(&self) -> Result<JsLineIterator> {
+        let handle = self.rebuilt()?;
+        let lines = handle.inner.into_read_lines().map_err(napi_error)?;
+        Ok(JsLineIterator { inner: lines })
+    }
+
     /// Return the record settings this handle's media type names.
     ///
     /// The encoding is never guessed: it is whatever the handle already says it
@@ -494,5 +509,27 @@ impl JsIOBase {
         self.inner
             .url()
             .map_or_else(|| "<memory>".to_owned(), ToString::to_string)
+    }
+}
+
+/// Iterator over a resource's decoded text lines, one line at a time.
+///
+/// Built by [`JsIOBase::read_lines`]. The handle is rebuilt from its location
+/// and owned here, bytes stream through a fixed buffer, and any content
+/// codings the name declares decode as streams, so a compressed resource is
+/// read without ever holding its decompressed value. `next()` is the native
+/// half of the iteration protocol; the loader wraps it so `for...of` yields
+/// strings.
+#[napi(js_name = "LineIterator")]
+pub struct JsLineIterator {
+    inner: yggdryl::io::Lines<Box<dyn std::io::Read + Send + 'static>>,
+}
+
+#[napi]
+impl JsLineIterator {
+    /// The next line, or `null` when the resource is exhausted.
+    #[napi]
+    pub fn next(&mut self) -> Result<Option<String>> {
+        self.inner.next().transpose().map_err(napi_error)
     }
 }

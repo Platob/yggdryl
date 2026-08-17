@@ -219,3 +219,36 @@ class TestUrlPathlibParity:
         assert url.partitions == (("year", "2024"), ("month", "01"))
         assert url.partition("month") == "01"
         assert url.partition("day") is None
+
+
+class TestReadLines:
+    """Lines stream off any handle, decoded, one line at a time."""
+
+    def test_plain_lines_including_the_unterminated_tail(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        target = tmp_path / "rows.jsonl"
+        target.write_bytes(b'{"id":1}\n{"id":2}\r\n{"id":3}')
+        assert list(IOBase(target).read_lines()) == [
+            '{"id":1}',
+            '{"id":2}',
+            '{"id":3}',
+        ]
+
+    def test_a_gzip_named_resource_streams_its_decoded_lines(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import gzip as stdlib_gzip
+
+        target = tmp_path / "words.txt.gz"
+        target.write_bytes(stdlib_gzip.compress(b"alpha\nbeta\n"))
+        assert list(IOBase(target).read_lines()) == ["alpha", "beta"]
+
+    def test_an_absent_resource_yields_no_lines(self, tmp_path: pathlib.Path) -> None:
+        assert list(IOBase(tmp_path / "missing.txt").read_lines()) == []
+
+    def test_the_iterator_outlives_the_handle(self, tmp_path: pathlib.Path) -> None:
+        target = tmp_path / "kept.txt"
+        target.write_bytes(b"kept\nalive\n")
+        lines = IOBase(target).read_lines()
+        assert list(lines) == ["kept", "alive"]

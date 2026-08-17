@@ -694,6 +694,59 @@ pub trait IOBase: Send {
         }
     }
 
+    /// Iterate the resource's decoded text lines, one line in memory at a time.
+    ///
+    /// Bytes stream through a fixed-size buffer from [`Self::pread`], any
+    /// content codings the resource's media type declares are peeled as
+    /// streaming decoders - a `trades.jsonl.gz` reads its lines without ever
+    /// holding the decompressed value - and each call to the iterator yields
+    /// one line. A resource that does not exist yields no lines, exactly as it
+    /// reads zero bytes. Lines must be UTF-8; the first invalid byte sequence
+    /// ends the iteration with an error.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read,
+    /// decode, or encoding failure of its line.
+    fn read_lines(&self) -> Result<Lines<Box<dyn Read + '_>>>
+    where
+        Self: Sized,
+    {
+        let encodings = self.media_type().encodings().to_vec();
+        let mut stream: Box<dyn Read + '_> = Box::new(self.reader_at(0));
+        for coding in encodings.iter().rev() {
+            stream = Codec::from_mime_type(coding).reader(stream);
+        }
+        Ok(Lines::over(stream))
+    }
+
+    /// [`Self::read_lines`], consuming the handle so the lines own it.
+    ///
+    /// This is the shape a caller needs when the iterator must outlive the
+    /// scope that built the handle - handing lines across an FFI boundary, or
+    /// returning them from a function that constructed the handle itself.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read,
+    /// decode, or encoding failure of its line.
+    fn into_read_lines(self) -> Result<Lines<Box<dyn Read + Send + 'static>>>
+    where
+        Self: Sized + 'static,
+    {
+        let encodings = self.media_type().encodings().to_vec();
+        Ok(Lines::over(decoded_stream(
+            IntoReader {
+                source: self,
+                offset: 0,
+            },
+            &encodings,
+        )))
+    }
+
+    // (decoded_stream peels the codings for the owned variant; the borrowed
+    // one inlines the same walk because its boxes carry no Send.)
+
     /// Return the record options this resource's encoding names.
     ///
     /// This is what a caller supplies when they have no options of their own,
@@ -1154,6 +1207,105 @@ impl Read for Reader<'_> {
         self.offset += read as u64;
         Ok(read)
     }
+}
+
+/// An iterator over the decoded text lines of one resource.
+///
+/// Built by [`IOBase::read_lines`] and [`IOBase::into_read_lines`]. Bytes are
+/// pulled through a fixed-size buffer and any content codings the resource
+/// declares are peeled as streams, so one line is in memory at a time whether
+/// the resource is plain or compressed. A line is what `\n` ends, a trailing
+/// `\r` is part of the terminator, and the last line needs no terminator.
+pub struct Lines<R> {
+    reader: std::io::BufReader<R>,
+    buffer: Vec<u8>,
+    done: bool,
+}
+
+impl<R: Read> Lines<R> {
+    /// Wrap a decoded byte stream in line iteration.
+    fn over(source: R) -> Self {
+        Self {
+            reader: std::io::BufReader::with_capacity(TRANSFER_CHUNK, source),
+            buffer: Vec::new(),
+            done: false,
+        }
+    }
+}
+
+impl<R: Read> Iterator for Lines<R> {
+    type Item = Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use std::io::BufRead;
+
+        if self.done {
+            return None;
+        }
+        self.buffer.clear();
+        match self.reader.read_until(b'\n', &mut self.buffer) {
+            Ok(0) => {
+                self.done = true;
+                None
+            }
+            Ok(_) => {
+                if self.buffer.last() == Some(&b'\n') {
+                    self.buffer.pop();
+                    if self.buffer.last() == Some(&b'\r') {
+                        self.buffer.pop();
+                    }
+                }
+                match std::str::from_utf8(&self.buffer) {
+                    Ok(line) => Some(Ok(line.to_owned())),
+                    Err(error) => {
+                        self.done = true;
+                        Some(Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            error,
+                        ))))
+                    }
+                }
+            }
+            Err(error) => {
+                self.done = true;
+                Some(Err(Error::Io(error)))
+            }
+        }
+    }
+}
+
+/// A streaming reader that owns its handle, for lines that outlive a borrow.
+pub struct IntoReader<H: IOBase> {
+    source: H,
+    offset: u64,
+}
+
+impl<H: IOBase> Read for IntoReader<H> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self
+            .source
+            .pread(self.offset, buffer)
+            .map_err(std::io::Error::other)?;
+        self.offset += read as u64;
+        Ok(read)
+    }
+}
+
+/// Peel `encodings` off a raw byte stream, outermost coding first.
+///
+/// The list is the order the codings were applied, so decoding walks it
+/// backwards; every layer is a streaming decoder, so nothing is buffered
+/// whole. This is what makes [`IOBase::read_lines`] cost one buffer over a
+/// compressed resource instead of the decompressed size.
+fn decoded_stream<'source>(
+    raw: impl Read + Send + 'source,
+    encodings: &[MimeType],
+) -> Box<dyn Read + Send + 'source> {
+    let mut stream: Box<dyn Read + Send + 'source> = Box::new(raw);
+    for coding in encodings.iter().rev() {
+        stream = Codec::from_mime_type(coding).reader_send(stream);
+    }
+    stream
 }
 
 /// A streaming writer over an [`IOBase`], advancing its own offset.

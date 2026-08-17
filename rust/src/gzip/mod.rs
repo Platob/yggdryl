@@ -48,6 +48,13 @@ pub fn reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source> 
     Box::new(GzDecoder::new(source))
 }
 
+/// [`reader`], with the `Send` the decoder already has made visible.
+pub(crate) fn reader_send<'source, R: Read + Send + 'source>(
+    source: R,
+) -> Box<dyn Read + Send + 'source> {
+    Box::new(GzDecoder::new(source))
+}
+
 /// Wrap a writer so written bytes are gzip-encoded at the default level.
 pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target> {
     writer_with_level(target, Level::DEFAULT)

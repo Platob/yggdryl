@@ -83,8 +83,22 @@ pub fn reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source> 
     Box::new(ZlibDecoder::new(source))
 }
 
+/// [`reader`], with the `Send` the decoder already has made visible.
+pub(crate) fn reader_send<'source, R: Read + Send + 'source>(
+    source: R,
+) -> Box<dyn Read + Send + 'source> {
+    Box::new(ZlibDecoder::new(source))
+}
+
 /// Wrap a reader so it yields raw-DEFLATE-decoded bytes.
 pub fn raw_reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source> {
+    Box::new(DeflateDecoder::new(source))
+}
+
+/// [`raw_reader`], with the `Send` the decoder already has made visible.
+pub(crate) fn raw_reader_send<'source, R: Read + Send + 'source>(
+    source: R,
+) -> Box<dyn Read + Send + 'source> {
     Box::new(DeflateDecoder::new(source))
 }
 

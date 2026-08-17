@@ -47,6 +47,16 @@ pub fn reader<'source, R: Read + 'source>(source: R) -> Box<dyn Read + 'source> 
     }
 }
 
+/// [`reader`], with the `Send` the decoder already has made visible.
+pub(crate) fn reader_send<'source, R: Read + Send + 'source>(
+    source: R,
+) -> Box<dyn Read + Send + 'source> {
+    match zstd::stream::read::Decoder::new(source) {
+        Ok(decoder) => Box::new(decoder),
+        Err(error) => Box::new(FailingRead(Some(error))),
+    }
+}
+
 /// Wrap a writer so written bytes are Zstandard-encoded at the default level.
 pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target> {
     writer_with_level(target, Level::DEFAULT)

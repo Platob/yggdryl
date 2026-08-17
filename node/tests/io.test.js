@@ -240,3 +240,21 @@ test('childrenWhere selects the parts to rewrite', (t) => {
   assert.throws(() => handle.childrenWhere([['year']]), TypeError)
   assert.throws(() => handle.childrenWhere({ year: 2024 }), TypeError)
 })
+
+test('readLines streams decoded lines off a handle', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-lines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const plain = path.join(root, 'rows.jsonl')
+  fs.writeFileSync(plain, '{"id":1}\n{"id":2}\r\n{"id":3}')
+  assert.deepEqual([...new IOBase(plain).readLines()], ['{"id":1}', '{"id":2}', '{"id":3}'])
+
+  // A gzip-named resource decodes as a stream; the lines read the same.
+  const zlib = require('node:zlib')
+  const coded = path.join(root, 'words.txt.gz')
+  fs.writeFileSync(coded, zlib.gzipSync('alpha\nbeta\n'))
+  assert.deepEqual([...new IOBase(coded).readLines()], ['alpha', 'beta'])
+
+  // Absence is emptiness, exactly as reading zero bytes is.
+  assert.deepEqual([...new IOBase(path.join(root, 'missing.txt')).readLines()], [])
+})

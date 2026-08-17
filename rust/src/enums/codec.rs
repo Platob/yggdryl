@@ -230,6 +230,21 @@ impl Codec {
         }
     }
 
+    /// [`Self::reader`], with the `Send` every decoder already has made
+    /// visible in the type, so a decoded stream can cross a thread boundary.
+    pub(crate) fn reader_send<'source, R: Read + Send + 'source>(
+        self,
+        source: R,
+    ) -> Box<dyn Read + Send + 'source> {
+        match self {
+            Self::Identity => Box::new(source),
+            Self::Gzip => gzip::reader_send(source),
+            Self::Zlib => zlib::reader_send(source),
+            Self::Deflate => zlib::raw_reader_send(source),
+            Self::Zstd => zstd::reader_send(source),
+        }
+    }
+
     /// Wrap a writer so written bytes are encoded at the default level.
     ///
     /// The returned writer must be finished with [`Encoder::finish`]; dropping

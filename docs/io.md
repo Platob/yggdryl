@@ -313,6 +313,71 @@ assert_eq!(text, "AAPL,1\n");
 unaffected. `compress_into` and `decompress_into` move bytes between two handles through a coding in
 the same chunked way.
 
+## Lines
+
+`read_lines` iterates a resource's decoded text lines with one line in memory at a time. Bytes
+stream through a fixed-size buffer, and any content codings the resource's name declares are peeled
+as *streaming* decoders - a `trades.jsonl.gz` reads line by line without ever holding the
+decompressed value, which is what makes a scan over a compressed log cost a buffer instead of the
+log. A line is what `\n` ends, a trailing `\r` belongs to the terminator, the last line needs no
+terminator, and a resource that does not exist yields no lines, exactly as it reads zero bytes.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::Url;
+
+    # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut handle = Buffer::new()
+        .with_media_type(Url::from_str("file:///trades.jsonl.gz")?.media_type());
+    handle.write_all_bytes(&yggdryl::gzip::dump(b"{\"id\":1}\n{\"id\":2}\n")?)?;
+
+    let lines: Vec<String> = handle.read_lines()?.collect::<yggdryl::Result<_>>()?;
+    assert_eq!(lines, ["{\"id\":1}", "{\"id\":2}"]);
+    # Ok(())
+    # }
+    ```
+
+=== "Python"
+
+    ```python
+    import gzip
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    target = pathlib.Path(tempfile.mkdtemp()) / "trades.jsonl.gz"
+    target.write_bytes(gzip.compress(b'{"id":1}\n{"id":2}\n'))
+
+    assert list(IOBase(target).read_lines()) == ['{"id":1}', '{"id":2}']
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const zlib = require('node:zlib')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const target = path.join(root, 'trades.jsonl.gz')
+    fs.writeFileSync(target, zlib.gzipSync('{"id":1}\n{"id":2}\n'))
+
+    assert.deepEqual([...new IOBase(target).readLines()], ['{"id":1}', '{"id":2}'])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+The core also has `into_read_lines`, which consumes the handle so the iterator owns it - the shape
+the bindings use, and the one a Rust caller needs when the lines outlive the scope that built the
+handle. Stacked codings peel outermost first, so a `.jsonl.gz.zst` reads exactly as its name says it
+was written.
+
 ## What the bytes are
 
 === "Rust"

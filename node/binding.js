@@ -1834,6 +1834,24 @@ for (const name of [
 ]) {
   delete binding[name]
 }
+// A line iterator is a JS iterable and iterator at once: `next()` is native,
+// the protocol wrappers live here, so `for...of handle.readLines()` works and
+// so does spreading. The native `next` returns null at the end; the protocol
+// spells that as done.
+if (binding.LineIterator) {
+  const nativeNext = binding.LineIterator.prototype.next
+  binding.LineIterator.prototype.next = function next() {
+    const line = nativeNext.call(this)
+    return line === null ? { value: undefined, done: true } : { value: line, done: false }
+  }
+  Object.defineProperty(binding.LineIterator.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function lines() {
+      return this
+    },
+  })
+}
+
 binding.codec = codec
 binding.fields = fields
 binding.iceberg = iceberg

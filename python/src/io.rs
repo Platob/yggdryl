@@ -430,6 +430,21 @@ impl PyIOBase {
             .map_err(value_error)
     }
 
+    /// Iterate the resource's decoded text lines, one line at a time.
+    ///
+    /// Any content codings the resource's name declares - `trades.jsonl.gz`,
+    /// `log.txt.zst` - are decoded as streams, so a compressed resource is
+    /// read without ever holding its decompressed value. Lines are what
+    /// `\n` ends, a trailing `\r` belongs to the terminator, and the last
+    /// line needs no terminator, exactly as `str.splitlines` treats them.
+    fn read_lines(&self) -> PyResult<PyLineIterator> {
+        let handle = self.rebuilt()?;
+        let lines = handle.inner.into_read_lines().map_err(value_error)?;
+        Ok(PyLineIterator {
+            inner: std::sync::Mutex::new(lines),
+        })
+    }
+
     /// Read the canonical non-null struct root `Field` of this resource.
     #[pyo3(signature = (*, options = None))]
     fn read_arrow_field(&self, options: Option<&Bound<'_, PyAny>>) -> PyResult<PyField> {
@@ -736,5 +751,39 @@ impl PyIOBaseIterator {
 
     fn __length_hint__(&self) -> usize {
         self.entries.len()
+    }
+}
+
+/// Iterator over a resource's decoded text lines, one line at a time.
+///
+/// Built by [`PyIOBase::read_lines`]. The handle is rebuilt from its location
+/// and owned by the iterator, so the lines outlive the handle that made them;
+/// bytes stream through a fixed buffer and any content codings decode as
+/// streams, so a compressed resource costs one buffer, not its decoded size.
+#[pyclass(name = "LineIterator", module = "yggdryl._native")]
+pub(crate) struct PyLineIterator {
+    inner: std::sync::Mutex<yggdryl::io::Lines<Box<dyn std::io::Read + Send + 'static>>>,
+}
+
+#[pymethods]
+impl PyLineIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        // The read and the decode run without the GIL, so another thread can
+        // work while a line is fetched.
+        let next = py.detach(|| {
+            self.inner
+                .lock()
+                .map_err(|_| value_error("line iterator poisoned by an earlier panic"))
+                .map(|mut lines| lines.next())
+        })?;
+        match next {
+            None => Ok(None),
+            Some(Ok(line)) => Ok(Some(line)),
+            Some(Err(error)) => Err(value_error(error)),
+        }
     }
 }

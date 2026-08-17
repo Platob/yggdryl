@@ -641,3 +641,92 @@ mod records {
         }
     }
 }
+
+mod read_lines {
+    //! Lines stream off any handle, decoded, one line in memory at a time.
+
+    use super::*;
+
+    /// A buffer whose media type carries the codings its name declares.
+    fn named(name: &str, bytes: &[u8]) -> Buffer {
+        let mut handle = Buffer::new().with_media_type(
+            Url::from_str(&format!("file:///{name}"))
+                .unwrap()
+                .media_type(),
+        );
+        handle.write_all_bytes(bytes).unwrap();
+        handle
+    }
+
+    fn collect(handle: &Buffer) -> Vec<String> {
+        handle
+            .read_lines()
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn plain_lines_split_on_newline_and_keep_the_unterminated_tail() {
+        let handle = named("trades.jsonl", b"{\"id\":1}\n{\"id\":2}\r\n{\"id\":3}");
+        assert_eq!(collect(&handle), ["{\"id\":1}", "{\"id\":2}", "{\"id\":3}"]);
+    }
+
+    #[test]
+    fn an_absent_resource_yields_no_lines_and_an_empty_line_is_a_line() {
+        assert_eq!(collect(&named("void.txt", b"")).len(), 0);
+        // A terminator with nothing before it is an empty line, not nothing.
+        assert_eq!(collect(&named("gap.txt", b"a\n\nb\n")), ["a", "", "b"]);
+    }
+
+    #[test]
+    fn a_gzip_named_resource_streams_its_decoded_lines() {
+        let encoded = crate::gzip::dump(b"alpha\nbeta\ngamma\n").unwrap();
+        let handle = named("words.txt.gz", &encoded);
+        assert_eq!(collect(&handle), ["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn stacked_codings_peel_outermost_first() {
+        // Applied gzip-then-zstd, exactly what the name spells.
+        let once = crate::gzip::dump(b"first\nsecond\n").unwrap();
+        let twice = crate::zstd::dump(&once).unwrap();
+        let handle = named("stack.txt.gz.zst", &twice);
+        assert_eq!(collect(&handle), ["first", "second"]);
+    }
+
+    #[test]
+    fn a_coded_wrapper_streams_without_materializing_and_agrees_with_the_default() {
+        let encoded = crate::gzip::dump(b"one\ntwo\n").unwrap();
+        let mut inner = Buffer::new();
+        inner.write_all_bytes(&encoded).unwrap();
+        let coded = crate::io::Coded::new(inner, Codec::Gzip);
+        let lines: Vec<String> = coded
+            .read_lines()
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(lines, ["one", "two"]);
+    }
+
+    #[test]
+    fn the_owned_variant_outlives_the_scope_that_built_the_handle() {
+        let lines = {
+            let handle = named("scoped.txt", b"kept\nalive\n");
+            handle.into_read_lines().unwrap()
+        };
+        assert_eq!(
+            lines.collect::<crate::Result<Vec<_>>>().unwrap(),
+            ["kept", "alive"]
+        );
+    }
+
+    #[test]
+    fn invalid_utf8_ends_the_iteration_with_an_error() {
+        let handle = named("bad.txt", b"fine\n\xFF\xFE\n");
+        let mut lines = handle.read_lines().unwrap();
+        assert_eq!(lines.next().unwrap().unwrap(), "fine");
+        assert!(lines.next().unwrap().is_err());
+        assert!(lines.next().is_none(), "an error ends the iteration");
+    }
+}

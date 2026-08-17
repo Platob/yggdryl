@@ -142,6 +142,29 @@ fn decoded_media_type(media_type: &MediaType, codec: Codec) -> MediaType {
 }
 
 impl<H: IOBase> IOBase for Coded<H> {
+    /// Lines stream off the *encoded* handle rather than the materialized
+    /// value: the coding is peeled as a streaming decoder, then whatever
+    /// codings the decoded media type still carries, so a compressed resource
+    /// pays one buffer instead of its decompressed size. A pending write has
+    /// the decoded value in memory already, so it takes the default path.
+    fn read_lines(&self) -> Result<super::Lines<Box<dyn std::io::Read + '_>>>
+    where
+        Self: Sized,
+    {
+        if self.dirty {
+            let mut stream: Box<dyn std::io::Read + '_> = Box::new(self.reader_at(0));
+            for coding in self.media_type().encodings().iter().rev() {
+                stream = crate::Codec::from_mime_type(coding).reader(stream);
+            }
+            return Ok(super::Lines::over(stream));
+        }
+        let mut stream: Box<dyn std::io::Read + '_> = self.codec.reader(self.handle.reader_at(0));
+        for coding in self.media_type().encodings().iter().rev() {
+            stream = crate::Codec::from_mime_type(coding).reader(stream);
+        }
+        Ok(super::Lines::over(stream))
+    }
+
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let plain = self.peek()?;
         let Ok(offset) = usize::try_from(offset) else {
