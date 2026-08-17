@@ -498,11 +498,14 @@ impl ArrayCastPlan {
                     reason: "a wrapper/layout change around Struct values is not supported because positional Arrow casting would bypass case-insensitive name reconciliation".to_owned(),
                 });
             }
-            _ if can_cast_types(source_type, expected)
-                && generic_kernel_materialization_is_bounded(source_type, data_type)? =>
-            {
-                ArrayCastKind::Kernel
-            }
+            // Anything Arrow's own kernel can cast, it casts - including the
+            // wrapper and layout changes around non-Struct values: a list to
+            // a view list, a fixed-size list to a variable one, a dictionary
+            // encoded or decoded, a run-end array expanded. The Struct guard
+            // above already refused the shapes where positional casting would
+            // bypass name reconciliation, and the reservation walks nested
+            // layouts, so the kernel's materialization stays budgeted.
+            _ if can_cast_types(source_type, expected) => ArrayCastKind::Kernel,
             _ if may_be_fully_hidden => ArrayCastKind::DeferredUnsupported {
                 reason: format!(
                     "Arrow cannot cast source datatype {source_type:?} to target datatype {expected:?}"
@@ -1733,25 +1736,6 @@ fn is_reconcilable_nested(data_type: &DataType) -> bool {
             | DataType::RunEndEncoded(_)
     )
 }
-
-fn generic_kernel_materialization_is_bounded(
-    source_type: &ArrowDataType,
-    target_type: &DataType,
-) -> Result<bool> {
-    let source_type = DataType::from_arrow(source_type)?;
-    if !is_reconcilable_nested(&source_type) && !is_reconcilable_nested(target_type) {
-        return Ok(true);
-    }
-    // String kernels expose Arrow's own ArrayFormatter, which provides an
-    // exact allocation-free byte-counting prepass even for nested wrappers.
-    // Other generic wrapper changes do not expose a shape plan; matched
-    // List/Map/Dictionary/Union/REE layouts recurse through dedicated plans.
-    Ok(matches!(
-        target_type,
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
-    ))
-}
-
 fn is_logically_null(array: &dyn Array, index: usize) -> bool {
     array
         .logical_nulls()
