@@ -119,29 +119,28 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
-  - Core:
-      - Schema:
-          - enums: core/enums.md
-          - datatype: core/datatype.md
-          - field: core/field.md
-          - arrow: core/arrow.md
-      - Storage:
-          - io: core/io.md
-          - generic: core/generic.md
-          - local: core/local.md
-          - gzip: core/gzip.md
-          - zlib: core/zlib.md
-          - zstd: core/zstd.md
-      - Records:
-          - ipc: core/ipc.md
-          - parquet: core/parquet.md
-          - iceberg: core/iceberg.md
-      - Values:
-          - uri: core/uri.md
-          - text: core/text.md
-          - json: core/json.md
-          - yaml: core/yaml.md
-          - toml: core/toml.md
+  - Schema:
+      - enums: enums.md
+      - datatype: datatype.md
+      - field: field.md
+      - arrow: arrow.md
+  - Storage:
+      - io: io.md
+      - generic: generic.md
+      - local: local.md
+      - gzip: gzip.md
+      - zlib: zlib.md
+      - zstd: zstd.md
+  - Records:
+      - ipc: ipc.md
+      - parquet: parquet.md
+      - iceberg: iceberg.md
+  - Values:
+      - uri: uri.md
+      - text: text.md
+      - json: json.md
+      - yaml: yaml.md
+      - toml: toml.md
   - Extensions:
       - Python: extensions/python.md
       - JavaScript: extensions/javascript.md

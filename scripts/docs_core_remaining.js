@@ -174,7 +174,7 @@ const core = await parallel(
 
 ${CONTRACT}
 
-You own EXACTLY ONE file, which does not exist yet: ${REPO}/docs/core/${page.module}.md.
+You own EXACTLY ONE file, which does not exist yet: ${REPO}/docs/${page.module}.md.
 It documents the Rust module \`yggdryl::${page.module}\` (source: rust/src/${page.module}).
 
 Title: "${page.title}"
@@ -186,7 +186,7 @@ Read first: ${REPO}/.api-inventory.txt (the yggdryl::${page.module} sections)${p
 Then read: ${page.read}.
 What the page must cover: ${page.cover}
 
-Other core pages you may link to (all will exist, relative from docs/core/): ${CORE_LINKS}.
+Other core pages you may link to (all will exist, relative from docs/): ${CORE_LINKS}.
 You may also link to ../index.md, ../getting-started.md, ../architecture.md,
 ../extensions/python.md, ../extensions/javascript.md.
 
@@ -257,10 +257,10 @@ const REVIEW_SCHEMA = {
 }
 
 const REVIEW_GROUPS = [
-  { name: 'schema', pages: ['docs/core/enums.md', 'docs/core/datatype.md', 'docs/core/field.md', 'docs/core/arrow.md'] },
-  { name: 'storage', pages: ['docs/core/io.md', 'docs/core/generic.md', 'docs/core/local.md', 'docs/core/gzip.md', 'docs/core/zlib.md', 'docs/core/zstd.md'] },
-  { name: 'records', pages: ['docs/core/ipc.md', 'docs/core/parquet.md', 'docs/core/iceberg.md'] },
-  { name: 'values', pages: ['docs/core/uri.md', 'docs/core/text.md', 'docs/core/json.md', 'docs/core/yaml.md', 'docs/core/toml.md'] },
+  { name: 'schema', pages: ['docs/enums.md', 'docs/datatype.md', 'docs/field.md', 'docs/arrow.md'] },
+  { name: 'storage', pages: ['docs/io.md', 'docs/generic.md', 'docs/local.md', 'docs/gzip.md', 'docs/zlib.md', 'docs/zstd.md'] },
+  { name: 'records', pages: ['docs/ipc.md', 'docs/parquet.md', 'docs/iceberg.md'] },
+  { name: 'values', pages: ['docs/uri.md', 'docs/text.md', 'docs/json.md', 'docs/yaml.md', 'docs/toml.md'] },
   { name: 'guides', pages: ['docs/index.md', 'docs/getting-started.md', 'docs/architecture.md', 'docs/extensions/python.md', 'docs/extensions/javascript.md', 'docs/testing.md', 'docs/benchmarks.md', 'docs/contributing.md'] },
 ]
 

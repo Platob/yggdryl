@@ -291,7 +291,7 @@ layer compiling annotations into native values.
   page adds/renames update the nav and links in the same change.
 - Example-first: smallest runnable example, then only what it cannot show.
   Several focused examples over one oversized one.
-- **One page per core module folder**: `docs/core/<module>.md` documents
+- **One page per core module folder**: `docs/<module>.md` documents
   `yggdryl::<module>` and nothing else (`enums`, `datatype`, `field`,
   `arrow`, `io`, `generic`, `local`, `gzip`, `zlib`, `zstd`, `ipc`,
   `parquet`, `iceberg`, `uri`, `text`, `json`, `yaml`, `toml`).

@@ -146,15 +146,15 @@ Metadata belongs to the field, and it behaves like the mapping type of each lang
 
 | Concern | Page |
 | --- | --- |
-| Logical types, parsing, Arrow projection | [datatype](core/datatype.md) |
-| Names, nullability, metadata, validation, casting | [field](core/field.md) |
-| Arrow scalars, schema projection, batch readers | [arrow](core/arrow.md) |
-| Reading and writing bytes anywhere | [io](core/io.md) |
-| Local files and directories | [local](core/local.md) |
-| gzip, zlib, zstd | [gzip](core/gzip.md), [zlib](core/zlib.md), [zstd](core/zstd.md) |
-| Batches on disk | [ipc](core/ipc.md), [parquet](core/parquet.md), [iceberg](core/iceberg.md) |
-| Naming a resource | [uri](core/uri.md) |
-| Values and text formats | [text](core/text.md), [json](core/json.md), [yaml](core/yaml.md), [toml](core/toml.md) |
+| Logical types, parsing, Arrow projection | [datatype](datatype.md) |
+| Names, nullability, metadata, validation, casting | [field](field.md) |
+| Arrow scalars, schema projection, batch readers | [arrow](arrow.md) |
+| Reading and writing bytes anywhere | [io](io.md) |
+| Local files and directories | [local](local.md) |
+| gzip, zlib, zstd | [gzip](gzip.md), [zlib](zlib.md), [zstd](zstd.md) |
+| Batches on disk | [ipc](ipc.md), [parquet](parquet.md), [iceberg](iceberg.md) |
+| Naming a resource | [uri](uri.md) |
+| Values and text formats | [text](text.md), [json](json.md), [yaml](yaml.md), [toml](toml.md) |
 | Language boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Repository checks

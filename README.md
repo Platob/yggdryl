@@ -25,13 +25,13 @@ module, so the site tree and the source tree are the same tree:
 
 | Area | Pages |
 | --- | --- |
-| Schema | [enums](docs/core/enums.md), [datatype](docs/core/datatype.md), [field](docs/core/field.md), [arrow](docs/core/arrow.md) |
-| Storage | [io](docs/core/io.md), [generic](docs/core/generic.md), [local](docs/core/local.md) |
-| Content codings | [gzip](docs/core/gzip.md), [zlib](docs/core/zlib.md), [zstd](docs/core/zstd.md) |
-| Record encodings | [ipc](docs/core/ipc.md), [parquet](docs/core/parquet.md) |
-| Table format | [iceberg](docs/core/iceberg.md) |
-| Identifiers | [uri](docs/core/uri.md) |
-| Structured text | [text](docs/core/text.md), [json](docs/core/json.md), [yaml](docs/core/yaml.md), [toml](docs/core/toml.md) |
+| Schema | [enums](docs/enums.md), [datatype](docs/datatype.md), [field](docs/field.md), [arrow](docs/arrow.md) |
+| Storage | [io](docs/io.md), [generic](docs/generic.md), [local](docs/local.md) |
+| Content codings | [gzip](docs/gzip.md), [zlib](docs/zlib.md), [zstd](docs/zstd.md) |
+| Record encodings | [ipc](docs/ipc.md), [parquet](docs/parquet.md) |
+| Table format | [iceberg](docs/iceberg.md) |
+| Identifiers | [uri](docs/uri.md) |
+| Structured text | [text](docs/text.md), [json](docs/json.md), [yaml](docs/yaml.md), [toml](docs/toml.md) |
 | Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
@@ -191,8 +191,8 @@ temporals, non-finite floats, and arbitrary mapping keys across JSON, TOML, and
 YAML.
 Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
 explicit byte, depth, node, and document limits. See the
-[shared text](docs/core/text.md), [JSON](docs/core/json.md),
-[TOML](docs/core/toml.md), and [YAML](docs/core/yaml.md) guides.
+[shared text](docs/text.md), [JSON](docs/json.md),
+[TOML](docs/toml.md), and [YAML](docs/yaml.md) guides.
 
 ## Native value behavior
 

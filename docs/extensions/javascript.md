@@ -36,17 +36,17 @@ declarations are checked against the tests that use them.
 
 | Name | Documented in |
 | --- | --- |
-| `DataType` | [datatype](../core/datatype.md) |
-| `Field`, `fields` | [field](../core/field.md) |
-| `Uri`, `Url`, `Urn` | [uri](../core/uri.md) |
-| `IOBase` | [io](../core/io.md) |
-| `BatchReader`, `RecordOptions` | [io](../core/io.md), [ipc](../core/ipc.md), [parquet](../core/parquet.md) |
-| `iceberg` | [iceberg](../core/iceberg.md) |
-| `MimeType`, `MediaType`, `Timezone` | [enums](../core/enums.md) |
-| `codec`, `json`, `toml`, `yaml`, `Value` | [text](../core/text.md) and the format pages |
+| `DataType` | [datatype](../datatype.md) |
+| `Field`, `fields` | [field](../field.md) |
+| `Uri`, `Url`, `Urn` | [uri](../uri.md) |
+| `IOBase` | [io](../io.md) |
+| `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
+| `iceberg` | [iceberg](../iceberg.md) |
+| `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
+| `codec`, `json`, `toml`, `yaml`, `Value` | [text](../text.md) and the format pages |
 
 The compression codings are Rust-only today; a handle applies the one its name declares without
-being told, so [gzip](../core/gzip.md), [zlib](../core/zlib.md), and [zstd](../core/zstd.md) are
+being told, so [gzip](../gzip.md), [zlib](../zlib.md), and [zstd](../zstd.md) are
 reachable through `IOBase` even though their modules are not.
 
 ## Inference at the boundary
@@ -304,7 +304,7 @@ native default planner; the JavaScript layer caches identity but never decides w
 ## Records cross as one batch per stream
 
 `BatchReader` is the one record shape: a read returns one and a write consumes one, exactly as
-[`IOBase`](../core/io.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
+[`IOBase`](../io.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
 another reader, an Apache Arrow JS `Table` or `RecordBatch`, an array of batches, or Arrow IPC bytes -
 and iterating one yields Arrow JS record batches.
 
@@ -521,7 +521,7 @@ assert.deepEqual(
 fs.rmSync(warehouse, { recursive: true, force: true })
 ```
 
-The walk is the same in every language: the [iceberg](../core/iceberg.md) page shows each of these
+The walk is the same in every language: the [iceberg](../iceberg.md) page shows each of these
 steps beside its Rust and Python form.
 
 ## Errors

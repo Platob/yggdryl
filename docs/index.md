@@ -63,23 +63,23 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
 
 ## What is here
 
-**A schema is a field.** [`DataType`](core/datatype.md) is the logical type tree and
-[`Field`](core/field.md) adds a name, nullability, and metadata. A non-null struct field describes
-rows, so there is no second schema type to keep in sync, and [casting](core/field.md) reconciles
+**A schema is a field.** [`DataType`](datatype.md) is the logical type tree and
+[`Field`](field.md) adds a name, nullability, and metadata. A non-null struct field describes
+rows, so there is no second schema type to keep in sync, and [casting](field.md) reconciles
 incoming Arrow data to it.
 
-**Storage is one trait.** [`IOBase`](core/io.md) addresses bytes positionally and lazily: building
+**Storage is one trait.** [`IOBase`](io.md) addresses bytes positionally and lazily: building
 a handle touches nothing, reading something absent yields nothing, writing creates. An in-memory
-buffer, a [local file or directory](core/local.md), and a
-[compressed view](core/gzip.md) of either are all the same trait, and
-[one enum](core/generic.md) names every implementation.
+buffer, a [local file or directory](local.md), and a
+[compressed view](gzip.md) of either are all the same trait, and
+[one enum](generic.md) names every implementation.
 
 **Records ride on storage.** Any handle reads and writes Arrow batches, choosing
-[Arrow IPC](core/ipc.md) or [Parquet](core/parquet.md) from its own media type, and
-[Iceberg](core/iceberg.md) reads its schemas as ordinary fields.
+[Arrow IPC](ipc.md) or [Parquet](parquet.md) from its own media type, and
+[Iceberg](iceberg.md) reads its schemas as ordinary fields.
 
-**Values are one tree.** [JSON](core/json.md), [YAML](core/yaml.md), and [TOML](core/toml.md) share
-the [structured value](core/text.md), and [URIs](core/uri.md) name where any of it lives.
+**Values are one tree.** [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md) share
+the [structured value](text.md), and [URIs](uri.md) name where any of it lives.
 
 ## Install
 

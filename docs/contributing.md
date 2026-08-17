@@ -34,18 +34,18 @@ Start with the repository-wide `AGENTS.md`, which is the normative version of ev
 ## Where things go
 
 ```text
-rust/src/enums/      shared vocabulary     -> rust/tests/enums.rs       -> docs/core/enums.md
-rust/src/datatype/   logical types         -> rust/tests/datatype/      -> docs/core/datatype.md
-rust/src/field/      schema and casting    -> rust/tests/field/         -> docs/core/field.md
-rust/src/arrow/      scalars, projection   -> rust/tests/*.rs           -> docs/core/arrow.md
-rust/src/io/         IOBase, Buffer, roles -> rust/src/io/tests.rs      -> docs/core/io.md
-rust/src/generic/    enums and Value       -> rust/src/generic/**       -> docs/core/generic.md
-rust/src/local/      Path, Folder, File    -> rust/src/local/tests.rs   -> docs/core/local.md
-rust/src/gzip|zlib|zstd/ content codings   -> beside each module        -> docs/core/<name>.md
-rust/src/ipc|parquet|iceberg/ encodings    -> beside each module        -> docs/core/<name>.md
-rust/src/uri.rs      identifiers           -> rust/tests/uri.rs         -> docs/core/uri.md
-rust/src/text/       Value and text codecs -> rust/tests/text/          -> docs/core/text.md
-rust/src/json|yaml|toml/ formats           -> rust/tests/<format>.rs    -> docs/core/<format>.md
+rust/src/enums/      shared vocabulary     -> rust/tests/enums.rs       -> docs/enums.md
+rust/src/datatype/   logical types         -> rust/tests/datatype/      -> docs/datatype.md
+rust/src/field/      schema and casting    -> rust/tests/field/         -> docs/field.md
+rust/src/arrow/      scalars, projection   -> rust/tests/*.rs           -> docs/arrow.md
+rust/src/io/         IOBase, Buffer, roles -> rust/src/io/tests.rs      -> docs/io.md
+rust/src/generic/    enums and Value       -> rust/src/generic/**       -> docs/generic.md
+rust/src/local/      Path, Folder, File    -> rust/src/local/tests.rs   -> docs/local.md
+rust/src/gzip|zlib|zstd/ content codings   -> beside each module        -> docs/<name>.md
+rust/src/ipc|parquet|iceberg/ encodings    -> beside each module        -> docs/<name>.md
+rust/src/uri.rs      identifiers           -> rust/tests/uri.rs         -> docs/uri.md
+rust/src/text/       Value and text codecs -> rust/tests/text/          -> docs/text.md
+rust/src/json|yaml|toml/ formats           -> rust/tests/<format>.rs    -> docs/<format>.md
 
 python/src/*.rs      PyO3 views of core values
 python/yggdryl/      Python-only facades: json/toml/yaml I/O and records
@@ -63,7 +63,7 @@ runnable example lives in the documentation where all three languages appear sid
 moves down to the one they share rather than being copied.
 
 **A trait says what; an enum says which.** Adding a backend or an encoding means implementing the
-trait and adding the variant to the [generic enum](core/generic.md), never adding a parallel
+trait and adding the variant to the [generic enum](generic.md), never adding a parallel
 dispatch.
 
 **Errors state expected, got, and where.** `expected int64, got utf8` with a path or byte offset. A
@@ -74,7 +74,7 @@ handle that double-compresses is worse than an error. Test the refusal.
 
 **Laziness is a contract.** Constructing a handle touches nothing; reading something absent yields
 nothing; writing creates. New backends inherit this by implementing the
-[role traits](core/local.md).
+[role traits](local.md).
 
 ## Documentation is part of the change
 

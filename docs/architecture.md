@@ -34,7 +34,7 @@ Five decisions shape this codebase; everything else follows from them.
 
 ## A schema is a field
 
-There is no record type and no schema type. A [field](core/field.md) whose datatype is a non-null
+There is no record type and no schema type. A [field](field.md) whose datatype is a non-null
 `Struct` describes rows, and everything that would take a schema takes that field.
 
 A schema therefore cannot disagree with the field it came from, because it *is* that field.
@@ -43,7 +43,7 @@ encoding, cast target, and Iceberg table reads the same value.
 
 ## Storage is one trait
 
-[`IOBase`](core/io.md) is positional rather than cursor-based: `pread` and `pwrite` take an explicit
+[`IOBase`](io.md) is positional rather than cursor-based: `pread` and `pwrite` take an explicit
 offset, so a footer-first container reads its index without seeking a shared cursor and two readers
 share one handle without coordinating.
 
@@ -55,25 +55,25 @@ described, passed around, and inspected before anything is there.
 
 Every storage backend has the same three roles, and the role traits pre-implement what follows from
 each: a folder holds no bytes and refuses byte writes, a leaf contains nothing and lists nothing,
-and a [generic location](core/local.md) answers by looking. `local` is the reference
+and a [generic location](local.md) answers by looking. `local` is the reference
 implementation; a remote store is a sibling module supplying the same three roles.
 
 ## One enum per contract
 
-A trait says what an implementation must do; the enums in [`generic`](core/generic.md) say which
+A trait says what an implementation must do; the enums in [`generic`](generic.md) say which
 implementations exist. `Holder` names every `IOBase`, `Media` every record encoding, `Codec` every
 content coding, `RecordOptions` every encoding's settings. Holding one means holding "some handle"
 as a concrete value, which is what lets a listing or a binding pass an implementation around without
 knowing which one it is.
 
-`generic` also owns [`Value`](core/text.md), the one native value the whole project speaks: every
+`generic` also owns [`Value`](text.md), the one native value the whole project speaks: every
 codec parses into it, every field validates it, and every binding converts its own objects to it.
 
 ## Arrow speaks batches; codecs speak values
 
-Two currencies, deliberately separate. [Arrow](core/arrow.md) carries columnar batches, and reading
-[IPC](core/ipc.md) or [Parquet](core/parquet.md) returns a reader that streams them rather than
-collecting. `Value` is what [JSON](core/json.md), [YAML](core/yaml.md), and [TOML](core/toml.md)
+Two currencies, deliberately separate. [Arrow](arrow.md) carries columnar batches, and reading
+[IPC](ipc.md) or [Parquet](parquet.md) returns a reader that streams them rather than
+collecting. `Value` is what [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md)
 read and write.
 
 There is no row-to-Arrow conversion layer between them: converting a batch to values is a caller's
@@ -89,17 +89,17 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 
 | Module | Owns |
 | --- | --- |
-| `enums` | [Shared vocabulary](core/enums.md): datatype ids and kinds, MIME and media types, schemes, codecs, I/O kinds |
-| `datatype` | [The logical type tree](core/datatype.md) |
-| `field` | [Names, nullability, metadata, protocol views, partition marks, validation, casting](core/field.md) |
-| `arrow` | [Scalars, schema projection, batch readers](core/arrow.md) |
-| `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](core/io.md) |
-| `generic` | [`Holder`, `Media`, `Codec`, `RecordOptions`, `Value`, `TypedValue`](core/generic.md) |
-| `local` | [`Path`, `Folder`, `File`](core/local.md) |
-| `gzip`, `zlib`, `zstd` | [Content codings and transparent handles](core/gzip.md) |
-| `ipc`, `parquet`, `iceberg` | [Batches and tables on disk](core/ipc.md) |
-| `uri` | [URI, URL, URN, and std path interop](core/uri.md) |
-| `text`, `json`, `yaml`, `toml` | [The shared value tree](core/text.md) and its codecs |
+| `enums` | [Shared vocabulary](enums.md): datatype ids and kinds, MIME and media types, schemes, codecs, I/O kinds |
+| `datatype` | [The logical type tree](datatype.md) |
+| `field` | [Names, nullability, metadata, protocol views, partition marks, validation, casting](field.md) |
+| `arrow` | [Scalars, schema projection, batch readers](arrow.md) |
+| `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](io.md) |
+| `generic` | [`Holder`, `Media`, `Codec`, `RecordOptions`, `Value`, `TypedValue`](generic.md) |
+| `local` | [`Path`, `Folder`, `File`](local.md) |
+| `gzip`, `zlib`, `zstd` | [Content codings and transparent handles](gzip.md) |
+| `ipc`, `parquet`, `iceberg` | [Batches and tables on disk](ipc.md) |
+| `uri` | [URI, URL, URN, and std path interop](uri.md) |
+| `text`, `json`, `yaml`, `toml` | [The shared value tree](text.md) and its codecs |
 
 ## Feature boundaries
 
