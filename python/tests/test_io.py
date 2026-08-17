@@ -252,3 +252,20 @@ class TestReadLines:
         target.write_bytes(b"kept\nalive\n")
         lines = IOBase(target).read_lines()
         assert list(lines) == ["kept", "alive"]
+
+    def test_a_pattern_groups_lines_into_log_entries(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        target = tmp_path / "app.log"
+        target.write_text(
+            "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
+            "  at frame one\n"
+            "2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
+        )
+        entries = list(
+            IOBase(target).read_lines(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+        )
+        assert entries == [
+            "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one",
+            "2024-02-01 10:00:01.000_000 [ii] [beta] fine",
+        ]

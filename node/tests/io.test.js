@@ -258,3 +258,19 @@ test('readLines streams decoded lines off a handle', (t) => {
   // Absence is emptiness, exactly as reading zero bytes is.
   assert.deepEqual([...new IOBase(path.join(root, 'missing.txt')).readLines()], [])
 })
+
+test('readLines with a pattern groups log entries', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-loglines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'app.log')
+  fs.writeFileSync(
+    target,
+    '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n' +
+      '2024-02-01 10:00:01.000_000 [ii] [beta] fine\n',
+  )
+  const entries = [...new IOBase(target).readLines('^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}')]
+  assert.deepEqual(entries, [
+    '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one',
+    '2024-02-01 10:00:01.000_000 [ii] [beta] fine',
+  ])
+})

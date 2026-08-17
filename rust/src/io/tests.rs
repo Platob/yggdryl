@@ -730,3 +730,59 @@ mod read_lines {
         assert!(lines.next().is_none(), "an error ends the iteration");
     }
 }
+
+mod read_lines_matching {
+    //! A pattern groups lines into the records it opens.
+
+    use super::*;
+
+    const LOG: &[u8] = b"preamble carried from rotation\n2024-02-01 10:00:00.000_000 [ee] [alpha] first entry\n    at frame one\n    at frame two\n2024-02-01 10:00:01.000_000 [ww] [beta] second entry\n2024-02-01 10:00:02.000_000 [ii] [gamma] third\ntrailing continuation\n";
+
+    const PATTERN: &str = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}";
+
+    fn handle() -> Buffer {
+        let mut handle =
+            Buffer::new().with_media_type(Url::from_str("file:///app.log").unwrap().media_type());
+        handle.write_all_bytes(LOG).unwrap();
+        handle
+    }
+
+    #[test]
+    fn a_timestamp_pattern_yields_whole_entries() {
+        let records: Vec<String> = handle()
+            .read_lines_matching(PATTERN)
+            .unwrap()
+            .collect::<crate::Result<_>>()
+            .unwrap();
+        assert_eq!(records.len(), 4);
+        assert_eq!(records[0], "preamble carried from rotation");
+        assert_eq!(
+            records[1],
+            "2024-02-01 10:00:00.000_000 [ee] [alpha] first entry\n    at frame one\n    at frame two"
+        );
+        assert_eq!(
+            records[3],
+            "2024-02-01 10:00:02.000_000 [ii] [gamma] third\ntrailing continuation"
+        );
+    }
+
+    #[test]
+    fn the_owned_variant_and_a_coded_handle_agree() {
+        let encoded = crate::gzip::dump(LOG).unwrap();
+        let mut coded = Buffer::new()
+            .with_media_type(Url::from_str("file:///app.log.gz").unwrap().media_type());
+        coded.write_all_bytes(&encoded).unwrap();
+        let records: Vec<String> = coded
+            .into_read_lines_matching(PATTERN)
+            .unwrap()
+            .collect::<crate::Result<_>>()
+            .unwrap();
+        assert_eq!(records.len(), 4);
+        assert!(records[1].contains("at frame two"));
+    }
+
+    #[test]
+    fn an_invalid_pattern_is_an_error_up_front() {
+        assert!(handle().read_lines_matching("([").is_err());
+    }
+}

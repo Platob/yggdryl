@@ -720,6 +720,59 @@ pub trait IOBase: Send {
         Ok(Lines::over(stream))
     }
 
+    /// Group the decoded lines into records opened by a pattern match.
+    ///
+    /// A record starts at a line `pattern` matches and carries every
+    /// following line until the next match, which is how a log whose entries
+    /// open with a timestamp reads whole: an entry, its stack trace, and its
+    /// wrapped lines arrive as one string. Lines before the first match form
+    /// the first record. The stream costs what [`Self::read_lines`] costs -
+    /// one record in memory at a time, codings peeled as streams.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the pattern does not parse; each yielded item
+    /// carries the read or decode failure of its lines.
+    fn read_lines_matching(&self, pattern: &str) -> Result<LineRecords<Box<dyn Read + '_>>>
+    where
+        Self: Sized,
+    {
+        let pattern = regex_lite::Regex::new(pattern).map_err(|error| Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$"),
+            reason: smol_str::format_smolstr!("expected a valid line pattern: {error}"),
+        })?;
+        Ok(LineRecords {
+            lines: self.read_lines()?,
+            pattern,
+            pending: None,
+            done: false,
+        })
+    }
+
+    /// [`Self::read_lines_matching`], consuming the handle so the records own it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the pattern does not parse.
+    fn into_read_lines_matching(
+        self,
+        pattern: &str,
+    ) -> Result<LineRecords<Box<dyn Read + Send + 'static>>>
+    where
+        Self: Sized + 'static,
+    {
+        let pattern = regex_lite::Regex::new(pattern).map_err(|error| Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$"),
+            reason: smol_str::format_smolstr!("expected a valid line pattern: {error}"),
+        })?;
+        Ok(LineRecords {
+            lines: self.into_read_lines()?,
+            pattern,
+            pending: None,
+            done: false,
+        })
+    }
+
     /// [`Self::read_lines`], consuming the handle so the lines own it.
     ///
     /// This is the shape a caller needs when the iterator must outlive the
@@ -1269,6 +1322,61 @@ impl<R: Read> Iterator for Lines<R> {
             Err(error) => {
                 self.done = true;
                 Some(Err(Error::Io(error)))
+            }
+        }
+    }
+}
+
+/// An iterator over multi-line records, split where a pattern matches.
+///
+/// Built by [`IOBase::read_lines_matching`]. A record starts at a line the
+/// pattern matches and carries every following line until the next match -
+/// the shape of a log whose entries open with a timestamp and continue with
+/// stack traces and wrapped output. Lines before the first match form the
+/// first record rather than being dropped, because a rotated file often opens
+/// mid-entry and the bytes are still the caller's data.
+pub struct LineRecords<R> {
+    lines: Lines<R>,
+    pattern: regex_lite::Regex,
+    pending: Option<String>,
+    done: bool,
+}
+
+impl<R: Read> Iterator for LineRecords<R> {
+    type Item = Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        loop {
+            match self.lines.next() {
+                Some(Ok(line)) => {
+                    if self.pattern.is_match(&line) {
+                        // A match opens the next record; whatever accumulated
+                        // is the finished one.
+                        let finished = self.pending.replace(line);
+                        if let Some(record) = finished {
+                            return Some(Ok(record));
+                        }
+                    } else {
+                        match &mut self.pending {
+                            Some(pending) => {
+                                pending.push('\n');
+                                pending.push_str(&line);
+                            }
+                            None => self.pending = Some(line),
+                        }
+                    }
+                }
+                Some(Err(error)) => {
+                    self.done = true;
+                    return Some(Err(error));
+                }
+                None => {
+                    self.done = true;
+                    return self.pending.take().map(Ok);
+                }
             }
         }
     }

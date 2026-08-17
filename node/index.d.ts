@@ -594,6 +594,20 @@ export declare class IOBase {
   /** Copy every byte here into `target`, returning the count. */
   copyInto(target: IOBase): number
   /**
+   * Iterate the resource's decoded text lines, one line at a time.
+   *
+   * Any content codings the resource's name declares - `trades.jsonl.gz`,
+   * `log.txt.zst` - decode as streams, so a compressed resource is read
+   * without ever holding its decompressed value. A line is what `
+  ` ends,
+   * a trailing `\r` belongs to the terminator, and the last line needs no
+   * terminator. The returned iterator owns a rebuilt handle, so it stays
+   * valid however long the caller keeps it.
+   * With `pattern`, lines group into records: one starts at a matching
+   * line and carries every following line until the next match.
+   */
+  readLines(pattern?: string | undefined | null): JsLineIterator
+  /**
    * Return the record settings this handle's media type names.
    *
    * The encoding is never guessed: it is whatever the handle already says it
@@ -635,6 +649,22 @@ export declare class IOBase {
   toString(): string
 }
 export type JsIOBase = IOBase
+
+/**
+ * Iterator over a resource's decoded text lines, one line at a time.
+ *
+ * Built by [`JsIOBase::read_lines`]. The handle is rebuilt from its location
+ * and owned here, bytes stream through a fixed buffer, and any content
+ * codings the name declares decode as streams, so a compressed resource is
+ * read without ever holding its decompressed value. `next()` is the native
+ * half of the iteration protocol; the loader wraps it so `for...of` yields
+ * strings.
+ */
+export declare class LineIterator {
+  /** The next line, or `null` when the resource is exhausted. */
+  next(): string | null
+}
+export type JsLineIterator = LineIterator
 
 /** A base MIME type plus ordered transparent encodings. */
 export declare class MediaType {
@@ -905,6 +935,10 @@ export declare class RecordOptions {
   get mergeByNames(): Array<string>
   /** Set the column names a write matches rows on. */
   set mergeByNames(mergeByNames: Array<string>)
+  /** The column names a read or write is narrowed to; empty selects all. */
+  get selectByNames(): Array<string>
+  /** Set the column names a read or write is narrowed to. */
+  set selectByNames(selectByNames: Array<string>)
   /**
    * The page compression applied inside a Parquet file, if this is one.
    *
@@ -939,6 +973,8 @@ export declare class RecordOptions {
   withLevel(level: number): RecordOptions
   /** Return these options with a match key for a write. */
   withMergeByNames(mergeByNames: Array<string>): RecordOptions
+  /** Return these options narrowed to the named columns, on reads and writes. */
+  withSelectByNames(selectByNames: Array<string>): RecordOptions
   /**
    * Return the encoding these options describe, so they print as what they
    * encode rather than as an opaque object.
@@ -983,13 +1019,20 @@ export declare class Table {
    * Create a table, writing its first metadata document.
    *
    * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the column
-   * names to partition on, and defaults to unpartitioned. The schema must
-   * carry field identifiers, which `assignFieldIds` supplies.
+   * names to partition on, and defaults to unpartitioned. Unnumbered schema
+   * columns are numbered automatically, so a plain schema works as it is; a
+   * schema that already carries field identifiers keeps every one of them.
    */
   static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
   /** Open the table a container handle addresses. */
   static open(root: LocationInput): Table
-  /** Open the table if it exists, creating it otherwise. */
+  /**
+   * Open the table if it exists, creating it otherwise.
+   *
+   * Like [`create`](Self::create), unnumbered schema columns are numbered
+   * automatically; an existing table is opened as it is and `schema`
+   * describes only the table this call would create.
+   */
   static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
   /** The folder the table lives in. */
   get root(): JsIOBase

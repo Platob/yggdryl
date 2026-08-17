@@ -405,11 +405,21 @@ impl JsIOBase {
     /// a trailing `\r` belongs to the terminator, and the last line needs no
     /// terminator. The returned iterator owns a rebuilt handle, so it stays
     /// valid however long the caller keeps it.
+    /// With `pattern`, lines group into records: one starts at a matching
+    /// line and carries every following line until the next match.
     #[napi]
-    pub fn read_lines(&self) -> Result<JsLineIterator> {
+    pub fn read_lines(&self, pattern: Option<String>) -> Result<JsLineIterator> {
         let handle = self.rebuilt()?;
-        let lines = handle.inner.into_read_lines().map_err(napi_error)?;
-        Ok(JsLineIterator { inner: lines })
+        let inner: Box<dyn Iterator<Item = yggdryl::Result<String>> + Send> = match pattern {
+            Some(pattern) => Box::new(
+                handle
+                    .inner
+                    .into_read_lines_matching(&pattern)
+                    .map_err(napi_error)?,
+            ),
+            None => Box::new(handle.inner.into_read_lines().map_err(napi_error)?),
+        };
+        Ok(JsLineIterator { inner })
     }
 
     /// Return the record settings this handle's media type names.
@@ -522,7 +532,7 @@ impl JsIOBase {
 /// strings.
 #[napi(js_name = "LineIterator")]
 pub struct JsLineIterator {
-    inner: yggdryl::io::Lines<Box<dyn std::io::Read + Send + 'static>>,
+    inner: Box<dyn Iterator<Item = yggdryl::Result<String>> + Send>,
 }
 
 #[napi]

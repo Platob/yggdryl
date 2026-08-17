@@ -41,16 +41,19 @@ arrow-schema.workspace = true
 arrow-select = { workspace = true, optional = true }
 base64 = "0.22"
 bytes = { version = "1", optional = true }
-flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+# zlib-rs is the fastest pure-Rust DEFLATE; still no C toolchain needed.
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 half.workspace = true
 memmap2 = "0.9"
+# The light engine: line-anchoring patterns need no unicode tables.
+regex-lite = "0.1"
 serde = { version = "1.0", features = ["derive", "rc"] }
 saphyr-parser = "=0.0.11"
 parquet = { version = "59.2.0", default-features = false, features = [
     "arrow",
     "base64",
     "brotli",
-    "flate2-rust_backend",
+    "flate2-zlib-rs",
     "lz4",
     "snap",
     "zstd",

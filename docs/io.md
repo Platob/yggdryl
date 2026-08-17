@@ -373,6 +373,78 @@ terminator, and a resource that does not exist yields no lines, exactly as it re
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
+With a pattern, lines group into the records the pattern opens: one record starts at a matching
+line and carries every following line until the next match - the shape of a log whose entries open
+with a timestamp and continue with stack traces. Lines before the first match form the first
+record rather than being dropped.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::Url;
+
+    # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut handle = Buffer::new()
+        .with_media_type(Url::from_str("file:///app.log")?.media_type());
+    handle.write_all_bytes(
+        b"2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n2024-02-01 10:00:01.000_000 [ii] [beta] fine\n",
+    )?;
+
+    let entries: Vec<String> = handle
+        .read_lines_matching(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")?
+        .collect::<yggdryl::Result<_>>()?;
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0], "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one");
+    # Ok(())
+    # }
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
+    target.write_text(
+        "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
+        "  at frame one\n"
+        "2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
+    )
+
+    entries = list(IOBase(target).read_lines(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"))
+    assert len(entries) == 2
+    assert entries[0] == "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const target = path.join(root, 'app.log')
+    fs.writeFileSync(
+      target,
+      '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n' +
+        '  at frame one\n' +
+        '2024-02-01 10:00:01.000_000 [ii] [beta] fine\n',
+    )
+
+    const entries = [...new IOBase(target).readLines('^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}')]
+    assert.equal(entries.length, 2)
+    assert.equal(entries[0], '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
 The core also has `into_read_lines`, which consumes the handle so the iterator owns it - the shape
 the bindings use, and the one a Rust caller needs when the lines outlive the scope that built the
 handle. Stacked codings peel outermost first, so a `.jsonl.gz.zst` reads exactly as its name says it

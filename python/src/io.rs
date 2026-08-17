@@ -437,11 +437,23 @@ impl PyIOBase {
     /// read without ever holding its decompressed value. Lines are what
     /// `\n` ends, a trailing `\r` belongs to the terminator, and the last
     /// line needs no terminator, exactly as `str.splitlines` treats them.
-    fn read_lines(&self) -> PyResult<PyLineIterator> {
+    /// With `pattern`, lines group into records: one starts at a matching
+    /// line and carries every following line until the next match, the shape
+    /// of a log whose entries open with a timestamp.
+    #[pyo3(signature = (pattern = None))]
+    fn read_lines(&self, pattern: Option<&str>) -> PyResult<PyLineIterator> {
         let handle = self.rebuilt()?;
-        let lines = handle.inner.into_read_lines().map_err(value_error)?;
+        let inner: Box<dyn Iterator<Item = yggdryl::Result<String>> + Send> = match pattern {
+            Some(pattern) => Box::new(
+                handle
+                    .inner
+                    .into_read_lines_matching(pattern)
+                    .map_err(value_error)?,
+            ),
+            None => Box::new(handle.inner.into_read_lines().map_err(value_error)?),
+        };
         Ok(PyLineIterator {
-            inner: std::sync::Mutex::new(lines),
+            inner: std::sync::Mutex::new(inner),
         })
     }
 
@@ -762,7 +774,7 @@ impl PyIOBaseIterator {
 /// streams, so a compressed resource costs one buffer, not its decoded size.
 #[pyclass(name = "LineIterator", module = "yggdryl._native")]
 pub(crate) struct PyLineIterator {
-    inner: std::sync::Mutex<yggdryl::io::Lines<Box<dyn std::io::Read + Send + 'static>>>,
+    inner: std::sync::Mutex<Box<dyn Iterator<Item = yggdryl::Result<String>> + Send>>,
 }
 
 #[pymethods]
