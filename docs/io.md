@@ -592,10 +592,34 @@ it per call. Opening an already-open handle is a no-op, and opening a resource t
 succeeds without creating it - creation still waits for the first write. `close` flushes and releases
 what `open` cached; the handle remains usable afterwards.
 
+The cache is strictly opt-in, and that is the whole contract: **open caches, closed fetches**. A
+closed handle re-derives its metadata on every ask, so a resource that changes underneath it is seen
+immediately; an open one holds what `open` cached until `close`, which is what makes many small
+operations against one resource cheap. Nothing fills the cache as a side effect of an ordinary read,
+because a cache nobody asked for is how a handle serves a stale answer.
+
 What is cached depends on the implementation. `Buffer` has nothing to cache, so the trait defaults
 apply and `is_open` stays `false`. `local::File` caches the descriptor and the memory mapping.
-`Coded` caches the decoded value. These are the operations a scoped context binds to, which is why the
-bindings can map `__enter__`/`using` onto them directly.
+`Coded` caches the decoded value. The media wrappers cache exactly the metadata their format keeps
+re-reading: `Ipc` the stream's schema, `Parquet` the footer - so a schema probe, a statistics read,
+and a batch read inside one scope pay for the footer once. These are the operations a scoped context
+binds to, which is why the bindings can map `__enter__`/`using` onto them directly.
+
+```python
+from yggdryl import IOBase
+
+# Metadata-heavy work belongs inside the scope: the schema probe, the
+# per-batch reads, and the size checks all reuse what `open` cached, and
+# `close` releases it at a known point.
+with IOBase("lake/trades.parquet") as handle:
+    field = handle.read_arrow_field()
+    for batch in handle.read_arrow_batch_reader():
+        process(batch, field)
+
+# Outside a scope the same calls still work - each one just fetches fresh,
+# which is exactly right for a resource another writer may be changing.
+latest = IOBase("lake/trades.parquet").read_arrow_field()
+```
 
 ## Buffer
 

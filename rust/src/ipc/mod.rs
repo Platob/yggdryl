@@ -304,24 +304,25 @@ impl<H: IOBase> Ipc<H> {
         self.handle
     }
 
-    /// Return the stream's canonical schema, caching it.
+    /// Return the stream's canonical schema.
     ///
-    /// A declared schema is returned as-is; otherwise the stream is read once
-    /// and the result retained until the next write or [`IOBase::close`].
+    /// A declared schema is returned as-is. An open stream answers from the
+    /// cache [`IOBase::open`] filled; a closed one reads the stream fresh
+    /// every time, because a cache nobody asked for is how a handle serves a
+    /// stale schema after the resource changes underneath it. The scoped pair
+    /// is how a caller opts into retention.
     ///
     /// # Errors
     ///
     /// Returns a read, decoding, or schema failure.
-    pub fn schema(&mut self) -> Result<Field> {
+    pub fn schema(&self) -> Result<Field> {
         if let Some(schema) = self.options.schema() {
             return Ok(schema.clone());
         }
         if let Some(cached) = &self.cached_schema {
             return Ok(cached.clone());
         }
-        let schema = read_field(&self.handle, &self.options)?;
-        self.cached_schema = Some(schema.clone());
-        Ok(schema)
+        read_field(&self.handle, &self.options)
     }
 
     /// Read the stream, keeping only the columns `field` names.

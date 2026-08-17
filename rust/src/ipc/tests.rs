@@ -40,7 +40,12 @@ fn reader() -> crate::arrow::BatchReader {
 
 /// A reader that declares the schema and yields nothing.
 fn empty_reader() -> crate::arrow::BatchReader {
-    crate::arrow::batch_reader(crate::arrow::schema_from_field(&schema()).unwrap(), [])
+    empty_reader_for(&schema())
+}
+
+/// A reader that declares `field` and yields nothing.
+fn empty_reader_for(field: &Field) -> crate::arrow::BatchReader {
+    crate::arrow::batch_reader(crate::arrow::schema_from_field(field).unwrap(), [])
 }
 
 /// A handle whose media type comes from a name, so codings are declared.
@@ -97,7 +102,7 @@ fn an_omitted_schema_is_inferred_from_the_stream() {
     writer.write_batch_reader(reader()).unwrap();
 
     // A reader with no declared schema recovers it from the bytes.
-    let mut reader = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
+    let reader = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
     assert_eq!(reader.schema().unwrap(), schema());
     assert_eq!(reader.read_batch_reader(None).unwrap().count(), 1);
 }
@@ -119,6 +124,43 @@ fn open_caches_the_schema_and_close_releases_it() {
     assert!(!reader.is_open());
     // Still usable after closing; it simply re-derives.
     assert_eq!(reader.schema().unwrap(), schema());
+}
+
+#[test]
+fn a_closed_stream_fetches_fresh_and_an_open_one_holds_what_it_cached() {
+    let renamed = DataType::from_fields([DataType::Int64.required_field("code")])
+        .unwrap()
+        .required_field("row");
+    let mut first = Ipc::new(handle("first.arrows")).with_schema(schema());
+    first.write_batch_reader(reader()).unwrap();
+    let mut second = Ipc::new(handle("second.arrows")).with_schema(renamed.clone());
+    second
+        .write_batch_reader(empty_reader_for(&renamed))
+        .unwrap();
+
+    // A closed stream reads its schema fresh every time, so a change made
+    // underneath the wrapper - here, swapping the bytes directly - is seen
+    // immediately. A cache nobody opened would have answered stale.
+    let mut probe = Ipc::new(Buffer::from_bytes(first.handle().as_slice().to_vec()));
+    assert_eq!(probe.schema().unwrap(), schema());
+    assert!(!probe.is_open());
+    probe
+        .handle_mut()
+        .write_all_bytes(second.handle().as_slice())
+        .unwrap();
+    assert_eq!(probe.schema().unwrap(), renamed);
+
+    // Opening is the opt-in to retention: the cache answers until close,
+    // even after the bytes change underneath again.
+    probe.open().unwrap();
+    assert_eq!(probe.schema().unwrap(), renamed);
+    probe
+        .handle_mut()
+        .write_all_bytes(first.handle().as_slice())
+        .unwrap();
+    assert_eq!(probe.schema().unwrap(), renamed);
+    probe.close().unwrap();
+    assert_eq!(probe.schema().unwrap(), schema());
 }
 
 #[test]
