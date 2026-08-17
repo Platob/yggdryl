@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { DataType, Field, IOBase, Value, fields, iceberg } = require('..')
+const { DataType, Field, IOBase, Value, fields, iceberg } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-iceberg-'))

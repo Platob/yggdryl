@@ -1,7 +1,7 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
-const { DataType, Field, MediaType, MimeType, fields } = require('..')
+const { DataType, Field, MediaType, MimeType, fields } = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '100000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {

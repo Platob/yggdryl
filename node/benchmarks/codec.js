@@ -5,7 +5,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { performance } = require('node:perf_hooks')
 const { Readable, Writable } = require('node:stream')
-const { Value, codec, json, toml, yaml } = require('..')
+const { Value, codec, json, toml, yaml } = require('yggdryl')
 
 const value = {
   trades: Array.from({ length: 1_000 }, (_, index) => ({

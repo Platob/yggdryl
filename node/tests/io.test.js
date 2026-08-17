@@ -6,7 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { IOBase, Url } = require('..')
+const { IOBase, Url } = require('yggdryl')
 
 // A small Hive-partitioned lake with one private staging area, so listing,
 // globbing, and partition selection all have something real to answer about.

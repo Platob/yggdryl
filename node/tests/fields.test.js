@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const binding = require('..')
+const binding = require('yggdryl')
 const { DataType, Field, fields } = binding
 
 test('internal typed-factory bridges stay outside the public package surface', () => {

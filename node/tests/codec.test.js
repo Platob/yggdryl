@@ -47,7 +47,7 @@ const {
   codec,
   json,
   yaml,
-} = require('..')
+} = require('yggdryl')
 
 test('JSON and YAML lower extended JavaScript values to natural shapes', () => {
   const value = {
@@ -393,7 +393,7 @@ test('cross-realm slot-based built-ins fail instead of losing their contents', (
 })
 
 test('reserved transport keys and non-string map keys do not collide', () => {
-  const publicBinding = require('..')
+  const publicBinding = require('yggdryl')
   const nativeHelpers = [
     'codecLoadsInferredNative',
     'jsonDumpPathNative',

@@ -6,7 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { MediaType, MimeType, Uri, Url, Urn } = require('..')
+const { MediaType, MimeType, Uri, Url, Urn } = require('yggdryl')
 
 test('URI values expose canonical components and path collections', () => {
   const uri = Uri.fromString(

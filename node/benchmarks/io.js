@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const { performance } = require('node:perf_hooks')
 const path = require('node:path')
-const { IOBase, Timezone, Url } = require('..')
+const { IOBase, Timezone, Url } = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '20000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {

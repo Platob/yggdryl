@@ -5,7 +5,7 @@ const os = require('node:os')
 const { performance } = require('node:perf_hooks')
 const path = require('node:path')
 const arrow = require('apache-arrow')
-const { BatchReader, Field, IOBase, MimeType, fields, iceberg } = require('..')
+const { BatchReader, Field, IOBase, MimeType, fields, iceberg } = require('yggdryl')
 
 // A record crossing is far more work than a schema lookup, so this target
 // counts in thousands rather than tens of thousands by default.

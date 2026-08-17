@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { DataType } = require('..')
+const { DataType } = require('yggdryl')
 
 test('datatype values infer inputs and round-trip canonical strings', () => {
   const type = new DataType('varchar')

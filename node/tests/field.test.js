@@ -11,7 +11,7 @@ const {
   ProtocolMetadata,
   Uri,
   Url,
-} = require('..')
+} = require('yggdryl')
 
 test('field values infer native datatypes and round-trip canonically', () => {
   const type = new DataType('varchar')

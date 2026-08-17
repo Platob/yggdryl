@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { MediaType, MimeType } = require('..')
+const { MediaType, MimeType } = require('yggdryl')
 
 const knownMimeTypes = Object.freeze({
   OCTET_STREAM: 'application/octet-stream',

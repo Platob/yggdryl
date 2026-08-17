@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Field, IOBase, MimeType, RecordOptions, fields } = require('..')
+const { BatchReader, Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-records-'))

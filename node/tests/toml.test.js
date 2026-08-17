@@ -9,7 +9,7 @@ const { ReadableStream, WritableStream } = require('node:stream/web')
 const test = require('node:test')
 const { pathToFileURL } = require('node:url')
 
-const { DataType, Value, codec, toml } = require('..')
+const { DataType, Value, codec, toml } = require('yggdryl')
 
 // A Map whose keys are not text has no plain TOML spelling, so each layer
 // expands into a wrapper table, its envelope body, the entry array, and one

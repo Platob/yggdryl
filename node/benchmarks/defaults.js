@@ -1,7 +1,7 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
-const { fields } = require('..')
+const { fields } = require('yggdryl')
 
 const iterations = Number.parseInt(
   process.env.YGGDRYL_BENCH_ITERATIONS ?? '100000',

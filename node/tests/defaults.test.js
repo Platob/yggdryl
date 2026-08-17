@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process')
 const { join } = require('node:path')
 const test = require('node:test')
 
-const { DataType, Field, fields } = require('..')
+const { DataType, Field, fields } = require('yggdryl')
 
 // Keyed by DataTypeId: the parameter-free identity of one datatype variant.
 function datatypeFixtures() {

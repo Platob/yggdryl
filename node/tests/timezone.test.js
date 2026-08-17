@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { Timezone } = require('..')
+const { Timezone } = require('yggdryl')
 
 // Epoch seconds for a UTC civil moment, which is what every offset call takes.
 function utc(year, month, day, hour = 0) {
