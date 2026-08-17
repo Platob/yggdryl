@@ -362,6 +362,52 @@ YAML, `!yggdryl/bytes` and its siblings still select the kind they name, and eve
 as the annotation YAML defines it to be. Nothing on the write path emits a tag in any format, so no
 round trip through this crate produces one.
 
+## A typed row is a record
+
+`Value::Record` pairs a struct datatype with one value per field, in the order the type declares
+them - the schema half a mapping does not carry. Every text format spells a record as the mapping
+of its field names to its values, because that is what a record *is* in a format with no schema of
+its own; the datatype is what that spelling drops, and reading the document back yields the mapping.
+
+The `arrow` feature adds the two bridges that make this the serialization path for columnar data:
+`arrow::batch_to_value` reads a record batch as a sequence of records, and `arrow::array_to_value`
+reads one array as the sequence its rows spell. The result is an ordinary `Value`, so `json`,
+`yaml`, and `toml` serialize Arrow data through the same entry points they serialize everything
+else.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use yggdryl::{arrow, DataType, Value};
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let schema = DataType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::Utf8.nullable_field("venue"),
+])?;
+let batch = RecordBatch::try_new(
+    schema.clone().required_field("row").to_arrow_schema()?,
+    vec![
+        Arc::new(Int64Array::from(vec![1_i64, 2])),
+        Arc::new(StringArray::from(vec![Some("XNAS"), None])),
+    ],
+)?;
+
+// A batch is a sequence of records; a record serializes as its named mapping.
+let rows = arrow::batch_to_value(&batch)?;
+let json = String::from_utf8(yggdryl::json::to_vec(&rows)?)?;
+assert_eq!(json, "[{\"id\":1,\"venue\":\"XNAS\"},{\"id\":2,\"venue\":null}]");
+
+// One record built by hand carries its type and infers it back.
+let record = Value::record(schema.clone(), [Value::I64(7), Value::Null])?;
+assert_eq!(record.data_type()?, schema);
+assert!(yggdryl::yaml::to_vec(&record).is_ok());
+assert!(yggdryl::toml::to_vec(&record).is_ok());
+# Ok(())
+# }
+```
+
 ## One value against one datatype
 
 !!! note "Rust only"

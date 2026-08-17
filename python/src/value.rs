@@ -62,6 +62,9 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Value> {
 /// equality.
 pub(crate) fn as_py(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
     match value {
+        // A record crosses as the dict its field names spell, exactly as the
+        // text formats spell it.
+        Value::Record(..) => as_py(py, &value.record_to_mapping()),
         Value::Null => Ok(py.None()),
         Value::Bool(value) => Ok(value.into_pyobject(py)?.to_owned().into_any().unbind()),
         Value::I64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),

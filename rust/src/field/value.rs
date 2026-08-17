@@ -433,6 +433,9 @@ fn duplicate_mapping_key_index(entries: &[(Value, Value)]) -> Option<usize> {
                 .any(|(key, _)| key == &entries[*index].0)
         });
     }
+    // `Value`'s hash reads canonical content only, never the
+    // interior-mutable caches a datatype holds, so the key is stable.
+    #[allow(clippy::mutable_key_type)]
     let mut seen = HashSet::with_capacity(entries.len());
     entries
         .iter()

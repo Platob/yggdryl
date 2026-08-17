@@ -17,6 +17,11 @@ impl Serialize for JsonRef<'_> {
         S: Serializer,
     {
         match self.0 {
+            // A record is its named mapping on any schemaless wire.
+            Value::Record(..) => {
+                let lowered = self.0.record_to_mapping();
+                JsonRef(&lowered).serialize(serializer)
+            }
             Value::Null => serializer.serialize_none(),
             Value::Bool(value) => serializer.serialize_bool(*value),
             Value::I64(value) => serializer.serialize_i64(*value),

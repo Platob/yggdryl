@@ -458,6 +458,10 @@ const fn days_from_civil(date: toml::value::Date) -> i64 {
 }
 
 pub(super) fn write_document<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+    // A record at the root is the plain table its field names spell.
+    if let Value::Record(..) = value {
+        return write_document(writer, &value.record_to_mapping());
+    }
     if let Value::Mapping(entries) = value {
         if is_plain_mapping(entries) {
             for (key, value) in entries.iter() {
@@ -492,6 +496,8 @@ fn is_enveloped(value: &Value) -> bool {
         | Value::String(_)
         | Value::Sequence(_) => false,
         Value::Mapping(entries) => !is_plain_mapping(entries),
+        // A record lowers to a string-keyed mapping, which is a plain table.
+        Value::Record(..) => false,
         Value::Date(_) | Value::Time(..) | Value::Timestamp(..) => native_datetime(value).is_none(),
         Value::Null
         | Value::U64(_)
@@ -558,6 +564,14 @@ fn check_value_depth(value: &Value, parent_depth: usize, maximum: usize) -> Resu
             let depth = parent_depth.saturating_add(1);
             observe_depth(depth, maximum)?;
             for (_, value) in entries.iter() {
+                check_value_depth(value, depth, maximum)?;
+            }
+        }
+        // A record costs exactly what its plain-table spelling costs.
+        Value::Record(_, values) => {
+            let depth = parent_depth.saturating_add(1);
+            observe_depth(depth, maximum)?;
+            for value in values.iter() {
                 check_value_depth(value, depth, maximum)?;
             }
         }
@@ -635,6 +649,8 @@ fn write_root_envelope<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
 
 fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
     match value {
+        // A record writes as the plain table its field names spell.
+        Value::Record(..) => write_value(writer, &value.record_to_mapping())?,
         Value::Bool(value) => writer.write_all(if *value { b"true" } else { b"false" })?,
         Value::I64(value) => write!(writer, "{value}")?,
         Value::Float(value) => write_float(writer, value.as_f64())?,
@@ -694,6 +710,8 @@ fn write_wrapped_envelope<W: Write>(writer: &mut W, value: &Value) -> Result<()>
 
 fn write_envelope_body<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
     match value {
+        // A record is never enveloped; its mapping spelling answers anyway.
+        Value::Record(..) => write_envelope_body(writer, &value.record_to_mapping())?,
         Value::Null => writer.write_all(b"{ version = 1, type = \"null\" }")?,
         Value::Bytes(value) => {
             writer.write_all(b"{ version = 1, type = \"bytes\", value = ")?;

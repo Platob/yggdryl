@@ -98,6 +98,8 @@ impl Value {
                 resolution(*unit, "duration")?;
                 Ok(DataType::Duration(*unit))
             }
+            // A record carries its type; inference is what it already knows.
+            Self::Record(data_type, _) => Ok((**data_type).clone()),
             Self::Sequence(values) => {
                 let (data_type, nullable) = agreed(values.iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", data_type, nullable)))

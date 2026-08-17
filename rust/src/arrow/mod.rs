@@ -10,7 +10,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::{DataType, Field, Value};
-use arrow_array::{Array, ArrayRef, Scalar, StructArray};
+use arrow_array::{Array, ArrayRef, RecordBatch, Scalar, StructArray};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod value;
@@ -751,6 +751,61 @@ impl StructScalar {
 /// # Errors
 ///
 /// Returns an error when the Arrow fields cannot form a non-null Struct root.
+/// Read one Arrow array as a sequence of values, typed by `field`.
+///
+/// Every row becomes the [`Value`] its datatype spells - a null slot is
+/// [`Value::Null`] - so the result serializes through any text format exactly
+/// as the rest of the value model does.
+///
+/// # Errors
+///
+/// Returns an error when the array does not hold the field's datatype or a
+/// value cannot be represented.
+pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value> {
+    let mut rows = Vec::with_capacity(array.len());
+    for index in 0..array.len() {
+        rows.push(super::arrow::value::value_from_array(
+            field.data_type(),
+            array,
+            index,
+        )?);
+    }
+    Ok(Value::from_sequence(rows))
+}
+
+/// Read one record batch as a sequence of typed records.
+///
+/// Each row becomes a [`Value::Record`] holding the batch's struct datatype
+/// and one value per column, in column order, so `json`, `yaml`, and `toml`
+/// serialize a batch through their ordinary entry points: a record spells as
+/// the mapping of its field names to its values.
+///
+/// # Errors
+///
+/// Returns an error when the batch's schema does not project to a record root
+/// or a value cannot be represented.
+pub fn batch_to_value(batch: &RecordBatch) -> Result<Value> {
+    let root = record_schema_from_arrow("row", batch.schema().as_ref())?;
+    let data_type = root.data_type().clone();
+    let fields: Vec<Field> = data_type
+        .as_fields()
+        .ok_or_else(|| Error::IncompatibleSchema("a batch projects to a struct root".to_owned()))?
+        .to_vec();
+    let mut rows = Vec::with_capacity(batch.num_rows());
+    for index in 0..batch.num_rows() {
+        let mut values = Vec::with_capacity(batch.num_columns());
+        for (column, field) in batch.columns().iter().zip(fields.iter()) {
+            values.push(super::arrow::value::value_from_array(
+                field.data_type(),
+                column.as_ref(),
+                index,
+            )?);
+        }
+        rows.push(Value::record(data_type.clone(), values)?);
+    }
+    Ok(Value::from_sequence(rows))
+}
+
 pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field> {
     let fields = schema
         .fields()

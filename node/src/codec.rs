@@ -1297,6 +1297,8 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         )));
     }
     match value {
+        // A record crosses as the plain object its field names spell.
+        Value::Record(..) => value_to_transport(&value.record_to_mapping(), depth, max_depth),
         Value::Null => Ok(JsonValue::Null),
         Value::Bool(value) => Ok(JsonValue::Bool(*value)),
         Value::I64(value) => integer_transport(i128::from(*value)),

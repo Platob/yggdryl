@@ -38,9 +38,9 @@ use std::sync::{Arc, OnceLock};
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result, TimeUnit, Timezone};
+use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
 use super::decimal;
 use super::temporal::temporal_key;
@@ -194,8 +194,7 @@ impl<'de> Deserialize<'de> for Float {
 }
 
 /// A shared, deterministic structured-data value spanning JSON and YAML.
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[derive(Clone, Debug)]
 pub enum Value {
     /// The null value.
     Null,
@@ -236,6 +235,101 @@ pub enum Value {
     Sequence(Arc<[Value]>),
     /// An insertion-ordered mapping with arbitrary unique keys.
     Mapping(Arc<[(Value, Value)]>),
+    /// A typed row: a struct datatype and one value per field, in field order.
+    ///
+    /// The datatype is the schema half a [`Self::Mapping`] does not carry: the
+    /// field names, their declared types, and their order. The values sit in
+    /// exactly that order, so the pair round-trips a row without consulting
+    /// anything outside itself. Text formats spell a record as the mapping of
+    /// its field names to its values, which is what a record *is* in a format
+    /// that has no schema of its own.
+    Record(Arc<DataType>, Arc<[Value]>),
+}
+
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        /// Two payload halves spelled as the array a tuple variant carries.
+        struct Pair<'a, A: Serialize, B: Serialize>(&'a A, &'a B);
+        impl<A: Serialize, B: Serialize> Serialize for Pair<'_, A, B> {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S,
+            ) -> std::result::Result<S::Ok, S::Error> {
+                use serde::ser::SerializeTuple;
+                let mut tuple = serializer.serialize_tuple(2)?;
+                tuple.serialize_element(self.0)?;
+                tuple.serialize_element(self.1)?;
+                tuple.end()
+            }
+        }
+
+        /// Three payload halves spelled as the array a tuple variant carries.
+        struct Triple<'a, A: Serialize, B: Serialize, C: Serialize>(&'a A, &'a B, &'a C);
+        impl<A: Serialize, B: Serialize, C: Serialize> Serialize for Triple<'_, A, B, C> {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S,
+            ) -> std::result::Result<S::Ok, S::Error> {
+                use serde::ser::SerializeTuple;
+                let mut tuple = serializer.serialize_tuple(3)?;
+                tuple.serialize_element(self.0)?;
+                tuple.serialize_element(self.1)?;
+                tuple.serialize_element(self.2)?;
+                tuple.end()
+            }
+        }
+
+        // The layout is the adjacently tagged {"type", "value"} document the
+        // derive produced before `Record` arrived - a unit variant carries the
+        // tag alone - and `Record` spells its datatype as the canonical
+        // string, so the wire never needs a serde implementation on the type
+        // tree itself.
+        fn tagged<S: serde::Serializer, T: Serialize>(
+            serializer: S,
+            tag: &'static str,
+            value: &T,
+        ) -> std::result::Result<S::Ok, S::Error> {
+            let mut document = serializer.serialize_struct("Value", 2)?;
+            document.serialize_field("type", tag)?;
+            document.serialize_field("value", value)?;
+            document.end()
+        }
+
+        match self {
+            Self::Null => {
+                let mut document = serializer.serialize_struct("Value", 1)?;
+                document.serialize_field("type", "null")?;
+                document.end()
+            }
+            Self::Bool(value) => tagged(serializer, "bool", value),
+            Self::I64(value) => tagged(serializer, "i64", value),
+            Self::U64(value) => tagged(serializer, "u64", value),
+            Self::I128(value) => tagged(serializer, "i128", value),
+            Self::U128(value) => tagged(serializer, "u128", value),
+            Self::Float(value) => tagged(serializer, "float", value),
+            Self::Decimal(unscaled, scale) => tagged(serializer, "decimal", &Pair(unscaled, scale)),
+            Self::String(value) => tagged(serializer, "string", value),
+            Self::Bytes(value) => tagged(serializer, "bytes", value),
+            Self::Date(days) => tagged(serializer, "date", days),
+            Self::Time(count, unit) => tagged(serializer, "time", &Pair(count, unit)),
+            Self::Timestamp(count, unit, zone) => {
+                tagged(serializer, "timestamp", &Triple(count, unit, zone))
+            }
+            Self::Duration(count, unit) => tagged(serializer, "duration", &Pair(count, unit)),
+            Self::Sequence(values) => tagged(serializer, "sequence", &values.as_ref()),
+            Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_ref()),
+            Self::Record(data_type, values) => tagged(
+                serializer,
+                "record",
+                &Pair(&data_type.to_string(), &values.as_ref()),
+            ),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for Value {
@@ -265,6 +359,7 @@ impl<'de> Deserialize<'de> for Value {
             Duration(i64, TimeUnit),
             Sequence(Vec<Value>),
             Mapping(Vec<(Value, Value)>),
+            Record(SmolStr, Vec<Value>),
         }
 
         match StructuralValue::deserialize(deserializer)? {
@@ -285,6 +380,10 @@ impl<'de> Deserialize<'de> for Value {
             StructuralValue::Sequence(values) => Ok(Self::from_sequence(values)),
             StructuralValue::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
+            }
+            StructuralValue::Record(data_type, values) => {
+                let data_type = DataType::from_str(&data_type).map_err(D::Error::custom)?;
+                Self::record(data_type, values).map_err(D::Error::custom)
             }
         }
     }
@@ -357,6 +456,15 @@ impl Ord for Value {
             ),
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
+            Self::Record(data_type, values) => same_kind!(
+                Self::Record(other_type, other_values) =>
+                    // The canonical spelling is the type's total order, and
+                    // values only break the tie between equal types.
+                    data_type
+                        .to_string()
+                        .cmp(&other_type.to_string())
+                        .then_with(|| values.cmp(other_values))
+            ),
         }
     }
 }
@@ -390,6 +498,10 @@ impl Hash for Value {
             }
             Self::Sequence(value) => value.hash(state),
             Self::Mapping(value) => value.hash(state),
+            Self::Record(data_type, values) => {
+                data_type.to_string().hash(state);
+                values.hash(state);
+            }
         }
     }
 }
@@ -446,6 +558,7 @@ const fn value_rank(value: &Value) -> u8 {
         Value::Duration(..) => 10,
         Value::Sequence(_) => 11,
         Value::Mapping(_) => 12,
+        Value::Record(..) => 13,
     }
 }
 
@@ -473,6 +586,7 @@ impl Value {
             Self::Duration(..) => "duration",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
+            Self::Record(..) => "record",
         }
     }
 
@@ -496,6 +610,9 @@ impl Value {
                 }
             }
         } else {
+            // `Value`'s hash reads canonical content only, never the
+            // interior-mutable caches a datatype holds, so the key is stable.
+            #[allow(clippy::mutable_key_type)]
             let mut seen = HashSet::with_capacity(entries.len());
             for (index, (key, _)) in entries.iter().enumerate() {
                 if !seen.insert(key) {
@@ -510,6 +627,67 @@ impl Value {
             )));
         }
         Ok(Self::Mapping(entries.into()))
+    }
+
+    /// Build a typed row from a struct datatype and one value per field.
+    ///
+    /// The values arrive in the order the datatype declares its fields, which
+    /// is the only order a record has.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype declares no fields to type the
+    /// values with, or when the counts disagree.
+    pub fn record(data_type: DataType, values: impl IntoIterator<Item = Self>) -> Result<Self> {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let fields = data_type.field_len();
+        if data_type.as_fields().is_none() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!(
+                    "expected a struct datatype to type a record, got {data_type}"
+                ),
+            });
+        }
+        if fields != values.len() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!(
+                    "expected {fields} record values to match the datatype's fields, got {}",
+                    values.len()
+                ),
+            });
+        }
+        Ok(Self::Record(Arc::new(data_type), values.into()))
+    }
+
+    /// Return the datatype and values when this is a record.
+    pub fn as_record(&self) -> Option<(&DataType, &[Self])> {
+        match self {
+            Self::Record(data_type, values) => Some((data_type, values)),
+            _ => None,
+        }
+    }
+
+    /// Spell a record as the mapping of its field names to its values.
+    ///
+    /// This is what every text format emits for a record, because a record in
+    /// a schemaless format *is* the named mapping; the datatype is what the
+    /// mapping spelling drops. Any other value returns as it stands.
+    #[must_use]
+    pub fn record_to_mapping(&self) -> Self {
+        let Self::Record(data_type, values) = self else {
+            return self.clone();
+        };
+        let Some(fields) = data_type.as_fields() else {
+            return Self::from_sequence(values.iter().cloned());
+        };
+        let entries: Vec<(Self, Self)> = fields
+            .iter()
+            .zip(values.iter())
+            .map(|(field, value)| (Self::String(SmolStr::new(field.name())), value.clone()))
+            .collect();
+        Self::Mapping(entries.into())
     }
 
     /// Return a boolean when this is a boolean.

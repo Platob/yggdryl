@@ -352,7 +352,7 @@ pub(crate) fn check_encode_depth(value: &Value, format: &'static str) -> Result<
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Value::Sequence(values) => {
+            Value::Sequence(values) | Value::Record(_, values) => {
                 for value in values.iter() {
                     visit(value, child_depth, maximum, format)?;
                 }

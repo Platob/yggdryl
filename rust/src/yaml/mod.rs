@@ -241,6 +241,8 @@ fn write_node<W: Write>(
     // after a key the collection starts on the next line.
     let skip_first_indent = position == Position::AfterDash;
     match value {
+        // A record is its named-mapping spelling, block or inline alike.
+        Value::Record(..) => write_node(writer, &value.record_to_mapping(), indent, position),
         Value::Sequence(values) if !values.is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
@@ -351,6 +353,8 @@ fn write_indent<W: Write>(writer: &mut W, indent: usize) -> Result<()> {
 /// Write one value as a single token, for scalars and the lossless envelopes.
 fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
     match value {
+        // A record inlines as the mapping its field names spell.
+        Value::Record(..) => write_inline_recursive(writer, &value.record_to_mapping())?,
         Value::Null => writer.write_all(b"null")?,
         Value::Bool(true) => writer.write_all(b"true")?,
         Value::Bool(false) => writer.write_all(b"false")?,
