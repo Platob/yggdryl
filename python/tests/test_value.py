@@ -142,6 +142,15 @@ def test_a_coarser_unit_is_restated_rather_than_refused() -> None:
     }
 
 
+def test_none_crosses_everywhere_a_value_goes() -> None:
+    # Null is a value, not a trap: alone, inside a sequence, as a mapping
+    # value, and even as a mapping key, it crosses and comes back as None.
+    assert crosses(None) is None
+    assert crosses([None, 1]) == [None, 1]
+    assert crosses({"gap": None}) == {"gap": None}
+    assert json.loads(json.dumps({None: 1})) == {None: 1}
+
+
 def test_a_mapping_used_as_a_key_crosses_as_the_tuple_of_its_entries() -> None:
     # JSON and YAML have no unhashable keys, so the hashable spelling is what a
     # key becomes. The record layer reads that shape back as a mapping.

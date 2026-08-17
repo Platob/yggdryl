@@ -76,6 +76,90 @@ fn every_kind_has_its_own_place_in_the_total_ordering() {
 }
 
 #[test]
+fn null_answers_absence_everywhere_a_value_is_read() {
+    // Null is a value, not a trap: every accessor answers None, every
+    // container helper answers emptiness, and only the documented panicking
+    // Index operators are allowed to insist.
+    let null = Value::Null;
+    assert!(null.is_null());
+    assert!(null.as_bool().is_none());
+    assert!(null.as_i64().is_none());
+    assert!(null.as_u64().is_none());
+    assert!(null.as_i128().is_none());
+    assert!(null.as_u128().is_none());
+    assert!(null.as_f32().is_none());
+    assert!(null.as_f64().is_none());
+    assert!(null.as_str().is_none());
+    assert!(null.as_bytes().is_none());
+    assert!(null.as_date().is_none());
+    assert!(null.as_time().is_none());
+    assert!(null.as_timestamp().is_none());
+    assert!(null.as_timestamp_in().is_none());
+    assert!(null.as_datetime().is_none());
+    assert!(null.as_duration().is_none());
+    assert!(null.as_decimal().is_none());
+    assert!(null.as_sequence().is_none());
+    assert!(null.as_mapping().is_none());
+    assert!(null.as_record().is_none());
+    assert!(!null.is_integer() && !null.is_number() && !null.is_temporal());
+
+    assert_eq!(null.len(), 0);
+    assert!(null.get(0).is_none());
+    assert!(null.get_key_str("k").is_none());
+    assert!(null.path("a.0.b").is_none());
+    assert_eq!(null.iter().count(), 0);
+    assert_eq!(null.entries().count(), 0);
+    assert!(null.keys().is_empty());
+    assert!(!null.contains_key("k"));
+    assert_eq!(null.record_to_mapping(), Value::Null);
+
+    // Rebuilding something that is not a mapping is an error, not a panic.
+    assert!(null.with_key("k", Value::from(1_i64)).is_err());
+    assert!(null.without_key("k").is_err());
+
+    // A null inside a container reads back as the absence it is.
+    let row = Value::from_mapping([(Value::from("gap"), Value::Null)]).unwrap();
+    assert!(row.get_key_str("gap").is_some_and(Value::is_null));
+    let fallback = Value::from(7_i64);
+    assert_eq!(row.get_or("gap", &fallback), &fallback);
+}
+
+#[test]
+fn every_accessor_tolerates_every_kind() {
+    // No accessor is allowed to panic on a kind it does not read - the wrong
+    // kind is None, never an abort. Exercising the full matrix is what keeps
+    // a new variant from shipping an accessor that insists.
+    for value in one_of_every_kind().into_iter().chain([Value::Null]) {
+        let _ = value.as_bool();
+        let _ = value.as_i64();
+        let _ = value.as_u64();
+        let _ = value.as_i128();
+        let _ = value.as_u128();
+        let _ = value.as_f32();
+        let _ = value.as_f64();
+        let _ = value.as_str();
+        let _ = value.as_bytes();
+        let _ = value.as_date();
+        let _ = value.as_time();
+        let _ = value.as_timestamp();
+        let _ = value.as_datetime();
+        let _ = value.as_duration();
+        let _ = value.as_decimal();
+        let _ = value.as_sequence();
+        let _ = value.as_mapping();
+        let _ = value.as_record();
+        let _ = value.len();
+        let _ = value.get(0);
+        let _ = value.get_key_str("k");
+        let _ = value.path("a.b");
+        let _ = value.iter().count();
+        let _ = value.record_to_mapping();
+        let _ = value.kind();
+        let _ = value.data_type();
+    }
+}
+
+#[test]
 fn integer_widths_have_native_numeric_equality() {
     assert_eq!(Value::I64(1), Value::U64(1));
     assert_eq!(Value::I128(1), Value::U128(1));

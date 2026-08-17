@@ -221,6 +221,18 @@ test('a Date is the JavaScript spelling of a naive millisecond timestamp', () =>
   )
 })
 
+test('null crosses everywhere a value goes', () => {
+  // Null is a value, not a trap: alone, inside arrays, as an object value,
+  // and through both codecs, it stays null - and undefined lowers to it.
+  assert.equal(Value.fromJs(null).kind, 'null')
+  assert.equal(Value.fromJs(null).asJs(), null)
+  assert.deepEqual(json.loads(json.dumps({ gap: null, list: [null, 1] })), {
+    gap: null,
+    list: [null, 1],
+  })
+  assert.deepEqual(yaml.loads(yaml.dumps([null])), [null])
+})
+
 test('fromJs and asJs are the conversion every codec entry point crosses', () => {
   // The pivot answers what a JavaScript value becomes, losses included.
   assert.equal(Value.fromJs(new Set([1, 2])).kind, 'sequence')
