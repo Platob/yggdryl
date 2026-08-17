@@ -115,7 +115,7 @@ KERNELS = {
             installed beside the notebook:
 
             ```console
-            npm install @yggdryl/node
+            npm install yggdryl
             ```
             """
         ),

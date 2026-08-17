@@ -85,7 +85,7 @@ Read and write Apache Parquet files, and their footer statistics, over any handl
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const table = new arrow.Table({
       id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()),
@@ -238,7 +238,7 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, IOBase, fields } = require('@yggdryl/node')
+    const { Field, IOBase, fields } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.parquet'))
@@ -391,7 +391,7 @@ types, so a caller wanting a different shape casts afterwards.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.parquet'))
@@ -549,7 +549,7 @@ from the footer when no schema was declared.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const ids = Array.from({ length: 4_000 }, (_, index) => BigInt(index))
@@ -641,7 +641,7 @@ recorded in the file's own metadata, so a reader recovers it from the footer and
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
 
@@ -748,7 +748,7 @@ handle untouched.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     // Arrow JS carries the identifiers the same way Arrow does anywhere else:
     // as field metadata under the exact `PARQUET:field_id` key.
@@ -1008,7 +1008,7 @@ without a format argument.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
 

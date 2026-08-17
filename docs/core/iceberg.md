@@ -5,7 +5,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
 !!! note "All three"
     Python has the table - create, open, scan, append, overwrite, evolve, and
     the metadata a commit produced - as `yggdryl.iceberg`, and JavaScript has
-    the same surface as the `iceberg` namespace of `@yggdryl/node`. The
+    the same surface as the `iceberg` namespace of `yggdryl`. The
     standalone document readers and writers stay in Rust, and each section below
     says so.
 
@@ -109,7 +109,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     // Iceberg resolves a column by identifier, so a schema is numbered first.
     const schema = iceberg.assignFieldIds(
@@ -264,7 +264,7 @@ a consumer that only needs schemas never compiles it.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64')], { nullable: false }),
@@ -504,7 +504,7 @@ must yield no rows rather than fail.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
@@ -714,7 +714,7 @@ value:
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
@@ -832,7 +832,7 @@ value:
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
@@ -1050,7 +1050,7 @@ Reading one is an ordinary scan with the snapshot named:
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64')], { nullable: false }),
@@ -1200,7 +1200,7 @@ drains a scan drains them.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, fields, iceberg } = require('@yggdryl/node')
+    const { BatchReader, Field, IOBase, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
@@ -1412,7 +1412,7 @@ reached through [`IOBase`](io.md) and nothing else.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const warehouse = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
     const catalog = new iceberg.Catalog(warehouse)
@@ -1555,7 +1555,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, iceberg } = require('@yggdryl/node')
+    const { Field, iceberg } = require('yggdryl')
 
     const warehouse = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
     const catalog = new iceberg.Catalog(warehouse)
@@ -2106,7 +2106,7 @@ commit writes is ever mutated in place.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const schema = iceberg.assignFieldIds(
       fields.struct('row', [Field.from('id: int64')], { nullable: false }),
@@ -2200,7 +2200,7 @@ by id survives a rename, and a new column can never reuse a retired id.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const leg = fields.struct('leg', [Field.from('price: decimal(18, 4)')])
     const plain = fields.struct('row', [Field.from('id: int64'), leg], { nullable: false })
@@ -2264,7 +2264,7 @@ Writing a schema whose columns were never numbered fails, and says so:
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     const unnumbered = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
@@ -2381,7 +2381,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { Field, fields, iceberg } = require('@yggdryl/node')
+    const { Field, fields, iceberg } = require('yggdryl')
 
     // Legal promotions pass; anything else is refused naming both sides.
     iceberg.canPromote('int32', 'int64')
@@ -2490,7 +2490,7 @@ grows, so a reader of an old file can never mistake a retired column for a new o
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { iceberg, json } = require('@yggdryl/node')
+    const { iceberg, json } = require('yggdryl')
 
     const document = json.loads(
       Buffer.from(`{"type":"struct","schema-id":0,"fields":[

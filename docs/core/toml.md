@@ -35,7 +35,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { toml } = require('@yggdryl/node')
+    const { toml } = require('yggdryl')
 
     const source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
     const value = toml.loads(source)
@@ -101,7 +101,7 @@ descriptor, stream, or URL.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { toml } = require('@yggdryl/node')
+    const { toml } = require('yggdryl')
 
     const value = { zeta: 1, beta: 2, alpha: { deep: 3 } }
 
@@ -207,7 +207,7 @@ document's order.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, toml } = require('@yggdryl/node')
+    const { Value, toml } = require('yggdryl')
 
     const value = toml.loads(
       'text = "café"\n' +
@@ -311,7 +311,7 @@ literal outside that range is an error rather than a silent float. A TOML float 
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { toml } = require('@yggdryl/node')
+    const { toml } = require('yggdryl')
 
     const value = {
       missing: null,
@@ -433,7 +433,7 @@ keeps its scale rather than its class name. See [python](../extensions/python.md
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, toml } = require('@yggdryl/node')
+    const { Value, toml } = require('yggdryl')
 
     const value = toml.loads(
       'offset = 1979-05-27T07:32:00Z\n' +
@@ -529,7 +529,7 @@ rounded into one.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { toml } = require('@yggdryl/node')
+    const { toml } = require('yggdryl')
 
     // The root is a table, so an empty or comment-only document is an empty table.
     assert.deepEqual(toml.loads('# nothing to see\n'), {})
@@ -634,7 +634,7 @@ rather than emitting something no TOML parser would read back.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { toml } = require('@yggdryl/node')
+    const { toml } = require('yggdryl')
 
     assert.throws(() => toml.loads('ok = 0\nnested = { a = 1, a = 2 }\n'), /duplicate/i)
     assert.throws(() => toml.loads('big = 9223372036854775808'), /toml/i)

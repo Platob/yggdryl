@@ -76,7 +76,7 @@
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const table = new arrow.Table({
       id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
@@ -196,7 +196,7 @@ There is no row-level read or write. A batch is the unit at every level of this 
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { BatchReader, IOBase, MimeType } = require('@yggdryl/node')
+    const { BatchReader, IOBase, MimeType } = require('yggdryl')
 
     const batches = [0, 2, 4].map(
       (start) =>
@@ -298,7 +298,7 @@ lazily is never materialized.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { BatchReader, IOBase, MimeType } = require('@yggdryl/node')
+    const { BatchReader, IOBase, MimeType } = require('yggdryl')
 
     const handle = IOBase.fromBytes()
     handle.mediaType = MimeType.ARROW_STREAM
@@ -401,7 +401,7 @@ lazily is never materialized.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { Field, IOBase, MimeType, fields } = require('@yggdryl/node')
+    const { Field, IOBase, MimeType, fields } = require('yggdryl')
 
     const handle = IOBase.fromBytes()
     handle.mediaType = MimeType.ARROW_STREAM
@@ -549,7 +549,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { IOBase, MimeType } = require('@yggdryl/node')
+    const { IOBase, MimeType } = require('yggdryl')
 
     const handle = IOBase.fromBytes()
     handle.mediaType = MimeType.ARROW_STREAM
@@ -648,7 +648,7 @@ cannot recover.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const written = []
@@ -741,7 +741,7 @@ handle declared. It does nothing when the handle declares none.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.arrows.gz'))
@@ -819,7 +819,7 @@ handle declared. It does nothing when the handle declares none.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, RecordOptions, fields } = require('@yggdryl/node')
+    const { Field, RecordOptions, fields } = require('yggdryl')
 
     const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
 
@@ -971,7 +971,7 @@ decoding the stream. That is the cost `open` moves to a known point.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
 
@@ -1033,7 +1033,7 @@ Anything that is not a stream fails on the spot rather than being guessed at.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase, MimeType } = require('@yggdryl/node')
+    const { IOBase, MimeType } = require('yggdryl')
 
     const handle = IOBase.fromBytes(Buffer.from('definitely not an Arrow IPC stream'))
     handle.mediaType = MimeType.ARROW_STREAM

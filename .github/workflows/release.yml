@@ -22,7 +22,7 @@ name: Release
 #   - PyPI: trusted publishing (OIDC) for this repository and workflow,
 #     bound to the `pypi` environment - no stored secret, and the binding
 #     names the repository, so a migrated repository must be re-registered.
-#   - npm: the `NPM_TOKEN` secret, an automation token for `@yggdryl/node`.
+#   - npm: the `NPM_TOKEN` secret, an automation token for `yggdryl`.
 
 on:
   push:
@@ -370,7 +370,7 @@ jobs:
           if-no-files-found: error
 
   publish-npm:
-    name: npm (@yggdryl/node)
+    name: npm (yggdryl)
     needs: [preflight, node]
     if: needs.preflight.outputs.publish == 'true'
     runs-on: ubuntu-latest
@@ -402,8 +402,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version="${{ needs.preflight.outputs.version }}"
-          if npm view "@yggdryl/node@$version" version >/dev/null 2>&1; then
-            echo "npm already has @yggdryl/node $version; skipping"
+          if npm view "yggdryl@$version" version >/dev/null 2>&1; then
+            echo "npm already has yggdryl $version; skipping"
           else
             npm publish --access public
           fi

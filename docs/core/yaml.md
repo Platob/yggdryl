@@ -45,7 +45,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { yaml } = require('@yggdryl/node')
+    const { yaml } = require('yggdryl')
 
     const value = yaml.loads('symbol: AAPL\nquantity: 2\n')
     assert.deepEqual(value, { symbol: 'AAPL', quantity: 2 })
@@ -104,7 +104,7 @@ text, so what you hold is what goes on the wire; decoding returns native objects
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { yaml } = require('@yggdryl/node')
+    const { yaml } = require('yggdryl')
 
     const documents = yaml.loadsAll('id: 1\n---\nid: 2\n---\nnull\n')
     assert.deepEqual(documents, [{ id: 1 }, { id: 2 }, null])
@@ -166,7 +166,7 @@ These calls hold every document at once. The reader below holds one.
     ```javascript
     const assert = require('node:assert/strict')
     const { Readable } = require('node:stream')
-    const { yaml } = require('@yggdryl/node')
+    const { yaml } = require('yggdryl')
 
     async function main() {
       const source = Readable.from([
@@ -235,7 +235,7 @@ limit raises them: `MAX_FLOW_DEPTH` (255) for `[` and `{` flow nesting, and `MAX
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { yaml } = require('@yggdryl/node')
+    const { yaml } = require('yggdryl')
 
     const encoded = yaml.dumps({ payload: Buffer.from([0, 255]) })
     assert.ok(!encoded.toString().includes('!yggdryl'))
@@ -300,7 +300,7 @@ comes from the reader itself, so a spelling it reads as a number is quoted, `.in
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { yaml } = require('@yggdryl/node')
+    const { yaml } = require('yggdryl')
 
     // A machine tag on input is semantic.
     assert.deepEqual(yaml.loads('!yggdryl/bytes AP8=\n'), Buffer.from([0, 255]))
@@ -356,7 +356,7 @@ No decoded document names a class in any runtime. A caller that wants one names 
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { yaml } = require('@yggdryl/node')
+    const { yaml } = require('yggdryl')
 
     const collision = { $yggdryl: 'bytes', value: 'AP8=' }
 

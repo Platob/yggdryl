@@ -39,7 +39,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Field } = require('@yggdryl/node')
+    const { DataType, Field } = require('yggdryl')
 
     const field = new Field('price', 'decimal(18, 6)', false)
 
@@ -110,7 +110,7 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Field, fields } = require('@yggdryl/node')
+    const { DataType, Field, fields } = require('yggdryl')
 
     const schema = new Field(
       'trade',
@@ -188,7 +188,7 @@ or name, `in`, and iteration in Python; `length`, `at`, `getByName`, and `keys` 
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field } = require('@yggdryl/node')
+    const { Field } = require('yggdryl')
 
     const field = new Field('price', 'float64', false, { venue: 'XPAR' })
     field.set('currency', 'EUR')
@@ -275,7 +275,7 @@ field stays findable in a `dict` across metadata edits.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, MimeType } = require('@yggdryl/node')
+    const { Field, MimeType } = require('yggdryl')
 
     const field = new Field('payload', 'binary', false)
 
@@ -375,7 +375,7 @@ protocol view remembers the protocol instead, so the caller writes the bare name
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field } = require('@yggdryl/node')
+    const { Field } = require('yggdryl')
 
     const field = new Field('price', 'int64', false)
 
@@ -473,7 +473,7 @@ stored partitioned says so on the columns themselves:
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Field } = require('@yggdryl/node')
+    const { DataType, Field } = require('yggdryl')
 
     const schema = new Field(
       'row',
@@ -546,7 +546,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, fields } = require('@yggdryl/node')
+    const { Field, fields } = require('yggdryl')
 
     const id = fields.int64('id')
     const symbol = fields.utf8('symbol', { nullable: true, metadata: { source: 'feed' } })
@@ -655,7 +655,7 @@ dot/bracket path of the first thing that does not fit.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field } = require('@yggdryl/node')
+    const { Field } = require('yggdryl')
 
     const left = new Field('price', 'float64', false, { venue: 'XPAR' })
     const right = new Field('price', 'float64', true, { venue: 'XNAS' })

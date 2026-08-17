@@ -36,7 +36,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field } = require('@yggdryl/node')
+    const { Field } = require('yggdryl')
 
     const field = new Field('symbol', 'utf8', false)
     assert.equal(field.defaultArrowScalar(), '')
@@ -103,7 +103,7 @@ value itself, which is why an `int64` arrives as a `BigInt`.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Field } = require('@yggdryl/node')
+    const { DataType, Field } = require('yggdryl')
 
     assert.equal(new DataType('int64').defaultArrowScalar(), 0n)
 
@@ -167,7 +167,7 @@ implementation is the one that can return a logical null.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Field } = require('@yggdryl/node')
+    const { DataType, Field } = require('yggdryl')
 
     const schema = new Field(
       'row',

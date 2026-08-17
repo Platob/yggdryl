@@ -34,7 +34,7 @@ type, with Arrow itself kept out of the value model.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType } = require('@yggdryl/node')
+    const { DataType } = require('yggdryl')
 
     const value = DataType.from('decimal(18, 4)')
     assert.equal(value.id, 'decimal128')
@@ -103,7 +103,7 @@ Scalar variants are inline and nested children sit behind shared allocations, so
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('@yggdryl/node')
+    const { DataType, fields } = require('yggdryl')
 
     const quote = DataType.fromFields([
       fields.utf8('symbol'),
@@ -173,7 +173,7 @@ nesting actually needs - a child is a name, a type, and a nullability flag.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('@yggdryl/node')
+    const { DataType, fields } = require('yggdryl')
 
     assert.equal(fields.decimal('amount', 38, 4).dataType.toString(), 'decimal128(38,4)')
     assert.equal(fields.decimal('wide', 39, 4).dataType.toString(), 'decimal256(39,4)')
@@ -256,7 +256,7 @@ resolutions - are rejected here rather than silently accepted. JavaScript has no
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { fields } = require('@yggdryl/node')
+    const { fields } = require('yggdryl')
 
     const codes = fields.dictionary('codes', 'int16', 'utf8').dataType
     const runs = fields
@@ -347,7 +347,7 @@ three signed widths, while `values` carries the actual type and its own nullabil
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('@yggdryl/node')
+    const { DataType, fields } = require('yggdryl')
 
     const variant = DataType.variant([
       fields.int64('number'),
@@ -417,7 +417,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('@yggdryl/node')
+    const { DataType, fields } = require('yggdryl')
 
     const stamp = DataType.from('timestamp(ns, Europe/Paris)')
     assert.equal(stamp.id, 'timestamp')
@@ -478,7 +478,7 @@ separate class for either: both arrive as the canonical lowercase strings.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType } = require('@yggdryl/node')
+    const { DataType } = require('yggdryl')
 
     // Any Apache Arrow JS type is read through its own textual form.
     const arrowLike = { toString: () => 'map<string,array<decimal(38,18)>>' }
@@ -548,7 +548,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('@yggdryl/node')
+    const { DataType, fields } = require('yggdryl')
 
     const value = DataType.fromFields([
       fields.int32('id', { nullable: false }),
@@ -648,7 +648,7 @@ A bare `DataType` has no nullability, so its default is the non-null one. Ask a
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('@yggdryl/node')
+    const { DataType, fields } = require('yggdryl')
 
     const source = DataType.fromFields([
       fields.uint8('small'),

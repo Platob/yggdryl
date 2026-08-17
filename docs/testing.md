@@ -39,7 +39,7 @@ python -m mkdocs build --strict
 ```
 
 The first command compiles every fenced `rust` block under `docs/` as a test, runs every `python`
-block under `python/.venv`, and runs every `javascript` block under node with `@yggdryl/node`
+block under `python/.venv`, and runs every `javascript` block under node with `yggdryl`
 rewired to this repository. The second builds the site strictly, which validates every link.
 
 An example that cannot stand alone is tagged `rust,ignore`, `python,ignore`, or

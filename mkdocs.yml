@@ -74,7 +74,7 @@ extra:
       link: https://pypi.org/project/yggdryl/
       name: The Python package
     - icon: fontawesome/brands/npm
-      link: https://www.npmjs.com/package/@yggdryl/node
+      link: https://www.npmjs.com/package/yggdryl
       name: The Node package
 
 plugins:

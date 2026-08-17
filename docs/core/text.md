@@ -31,7 +31,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const quote = json.loads('{"symbol":"AAPL","price":12.5}')
 
@@ -99,7 +99,7 @@ timestamp a `Date` cannot hold - and that class is also its `fromJs`/`asJs` pivo
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     assert.equal(json.loads('null'), null)
 
@@ -179,7 +179,7 @@ languages.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const order = json.loads('{"symbol":"AAPL","legs":[{"price":12},{"price":13}],"venue":null}')
 
@@ -260,7 +260,7 @@ Python.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const order = json.loads('{"symbol":"AAPL","venue":null}')
 
@@ -333,7 +333,7 @@ non-mapping and name the kind they found, rather than returning the value unchan
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json, yaml } = require('@yggdryl/node')
+    const { json, yaml } = require('yggdryl')
 
     const tagged =
       '{"$yggdryl":{"version":1,"type":"tag","tag":"app:Trade","value":{"symbol":"AAPL"}}}'
@@ -489,7 +489,7 @@ stay the dynamic spellings and the narrowed ones are `try_from_parts` and `try_f
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json, toml, yaml } = require('@yggdryl/node')
+    const { json, toml, yaml } = require('yggdryl')
 
     const quote = { symbol: 'AAPL' }
 
@@ -560,7 +560,7 @@ bindings enforce it by simply not exposing an `_all` form on `toml`.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { codec } = require('@yggdryl/node')
+    const { codec } = require('yggdryl')
 
     // codec.from infers the grammar from the content itself.
     assert.deepEqual(codec.from('{"symbol":"AAPL"}'), { symbol: 'AAPL' })
@@ -631,7 +631,7 @@ entry point at all - the module you import is the format.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     // maxDepth tightens the same bound the core applies.
     assert.deepEqual(json.loads('{"a":[1]}', { maxDepth: 2 }), { a: [1] })
@@ -686,7 +686,7 @@ at 48; Python applies the defaults.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json, toml } = require('@yggdryl/node')
+    const { json, toml } = require('yggdryl')
 
     assert.throws(() => json.loads('{"symbol": '), /invalid json data at byte 11/)
     assert.throws(() => toml.loads('symbol = '), /invalid toml data at byte 9/)
@@ -755,7 +755,7 @@ position to the offset in the whole stream and keeps the per-document one alongs
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { codec, json } = require('@yggdryl/node')
+    const { codec, json } = require('yggdryl')
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-'))
     const quote = path.join(directory, 'quote.json')

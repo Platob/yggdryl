@@ -1,7 +1,7 @@
 # Yggdryl for JavaScript
 
 ```javascript
-const { json, toml, yaml } = require('@yggdryl/node')
+const { json, toml, yaml } = require('yggdryl')
 
 const bytes = json.dumps({ symbol: 'AAPL', price: 224.62 })
 const trade = json.loads(bytes)
@@ -24,7 +24,7 @@ apply writable backpressure without closing caller-owned I/O.
 
 ```javascript
 const { Readable, Writable } = require('node:stream')
-const { json } = require('@yggdryl/node')
+const { json } = require('yggdryl')
 
 async function main() {
   const value = await json.load(Readable.from(['{"id":', '42}']))
@@ -50,7 +50,7 @@ TOML is deliberately single-document and exposes only `loads`, `load`,
 infer `.toml` paths in Rust or accept explicit `format: 'toml'` for content.
 
 ```javascript
-const { DataType, Field, MediaType, MimeType, Uri } = require('@yggdryl/node')
+const { DataType, Field, MediaType, MimeType, Uri } = require('yggdryl')
 
 const type = DataType.fromString('struct<symbol:string,price:decimal(18,4)>')
 const coarseClock = DataType.time('milliseconds')
@@ -89,7 +89,7 @@ They accept the same native unit aliases as datatype parsing and reject
 interval layouts.
 
 ```javascript
-const { Record, fields } = require('@yggdryl/node')
+const { Record, fields } = require('yggdryl')
 
 const Trade = Record.define('Trade', [
   fields.int64('id'),
@@ -140,7 +140,7 @@ table, and dataset paths separately. Set `YGGDRYL_BENCH_ITERATIONS` to change th
 default sample count.
 
 ```javascript
-const { Record, fields } = require('@yggdryl/node')
+const { Record, fields } = require('yggdryl')
 
 const payload = fields.struct('payload', [
   fields.int64('count'),
@@ -172,7 +172,7 @@ Run `npm run bench:defaults` for JavaScript defaults, cached hints,
 compatibility normalization, and Arrow-scalar IPC materialization.
 
 ```javascript
-const { Field, MediaType, MimeType } = require('@yggdryl/node')
+const { Field, MediaType, MimeType } = require('yggdryl')
 
 const media = MediaType.fromParts(
   MimeType.CSV,
@@ -197,7 +197,7 @@ content length (`bigint`), and absolute HTTP Location accessors remain native.
 Media pair updates are atomic and cache-aware.
 
 ```javascript
-const { DataType, Field, fields } = require('@yggdryl/node')
+const { DataType, Field, fields } = require('yggdryl')
 
 const id = fields.int32('id', { nullable: false })
 const tags = fields.list('tags', fields.utf8('item'))
@@ -227,7 +227,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const arrow = require('apache-arrow')
-const { BatchReader, Field, IOBase, fields, iceberg } = require('@yggdryl/node')
+const { BatchReader, Field, IOBase, fields, iceberg } = require('yggdryl')
 
 // A location is absolute: a handle is a URL, and a relative name names no root.
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-'))

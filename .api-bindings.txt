@@ -24,7 +24,7 @@
   to_dict: (module or value)
   toml: Any, Buffer, Callable, Destination, Literal, Mapping, Readable, Source, TypeVar, Writable, annotations, dump, dumps, load, loads
   yaml: Any, Buffer, Callable, Destination, Iterable, Iterator, Literal, Mapping, Readable, Source, TypeVar, Writable, annotations, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
-### javascript: @yggdryl/node
+### javascript: yggdryl
   Uri
     statics: from, fromPath, fromString, fromJSON
     instance: at, authority, clearExtensions, clone, compare, equals, extension, extensions, fileName, fragment, length, mediaType, mimeType, path, pathSegments, query, removeExtension, scheme, setExtension, setExtensions, setFileName, setMediaType, setMimeType, setStem, stableHash, stem, toJSON, toPath, toString, toUrl, toUrn

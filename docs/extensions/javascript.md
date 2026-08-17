@@ -3,7 +3,7 @@
 A Node-API view of the same values the Rust core holds, with conventional JavaScript casing and protocols.
 
 ```javascript
-const { DataType, Field, Url } = require('@yggdryl/node')
+const { DataType, Field, Url } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const schema = new Field(
@@ -55,7 +55,7 @@ Every constructor accepts the obvious JavaScript spelling of its argument and co
 Rust. Prefer the generic `from` entry points: they dispatch on what they were handed.
 
 ```javascript
-const { DataType, Field, MediaType, MimeType, Url } = require('@yggdryl/node')
+const { DataType, Field, MediaType, MimeType, Url } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 // A datatype expression is a datatype.
@@ -80,7 +80,7 @@ to that. No class name travels beside the data, so a shape the core does not hav
 shape it was lowered to.
 
 ```javascript
-const { json } = require('@yggdryl/node')
+const { json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const decoded = json.loads(json.dumps({
@@ -123,7 +123,7 @@ plain object, and `undefined` comes back `null`. Reconstructing any of them take
 own code and needs no cooperation from the codec:
 
 ```javascript
-const { json } = require('@yggdryl/node')
+const { json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 class Order {
@@ -154,7 +154,7 @@ time of day, a duration, and a timestamp at a resolution or in a zone a `Date` c
 in both directions.
 
 ```javascript
-const { Value, json } = require('@yggdryl/node')
+const { Value, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const at = new Date('2026-08-15T12:30:00.000Z')
@@ -178,7 +178,7 @@ no unit; a decimal is `unscaled` times ten to the minus `scale`, which is the on
 that round-trips, because `0.1` has no finite binary expansion.
 
 ```javascript
-const { Value } = require('@yggdryl/node')
+const { Value } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const price = Value.decimal(-1050n, 2) // -10.50
@@ -198,7 +198,7 @@ them - `dumps` is `fromJs` with bytes on the far side, `loads` is `asJs` - so ca
 is how you see what a value becomes before any format is involved.
 
 ```javascript
-const { Value, json } = require('@yggdryl/node')
+const { Value, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 assert.equal(Value.fromJs(new Set([1, 2])).kind, 'sequence')
@@ -217,7 +217,7 @@ Both accept the same `{ maxDepth }` the codec functions do, in the inclusive ran
 the native one.
 
 ```javascript
-const { Field } = require('@yggdryl/node')
+const { Field } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const field = new Field('trade', 'int64', false, { source: 'book' })
@@ -239,7 +239,7 @@ One protocol's properties are a `Map` of their own, and it is a live view of the
 than a copy of part of it.
 
 ```javascript
-const { Field } = require('@yggdryl/node')
+const { Field } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const field = new Field('price', 'int64', false)
@@ -268,7 +268,7 @@ A schema also says which of its columns a path spells out, which is what a parti
 Iceberg spec both read.
 
 ```javascript
-const { DataType, Field } = require('@yggdryl/node')
+const { DataType, Field } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const schema = new Field(
@@ -291,7 +291,7 @@ Apache Arrow JS values cross the boundary as copied IPC. The package is explicit
 not a zero-copy bridge.
 
 ```javascript
-const { DataType } = require('@yggdryl/node')
+const { DataType } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const scalar = DataType.from('int64').defaultArrowScalar()
@@ -311,7 +311,7 @@ and iterating one yields Arrow JS record batches.
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { BatchReader, IOBase, MimeType } = require('@yggdryl/node')
+const { BatchReader, IOBase, MimeType } = require('yggdryl')
 
 const table = new arrow.Table({
   id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
@@ -341,7 +341,7 @@ encoding that has none.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { RecordOptions } = require('@yggdryl/node')
+const { RecordOptions } = require('yggdryl')
 
 const parquet = RecordOptions.from('trades.parquet')
 assert.equal(String(parquet.mimeType), 'application/vnd.apache.parquet')
@@ -363,7 +363,7 @@ same native method, so widening the argument never adds a second way to write.
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { IOBase, MimeType } = require('@yggdryl/node')
+const { IOBase, MimeType } = require('yggdryl')
 
 const table = new arrow.Table({
   id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
@@ -409,7 +409,7 @@ Arrow JS reader implements both iteration protocols and is treated as the synchr
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { IOBase, MimeType } = require('@yggdryl/node')
+const { IOBase, MimeType } = require('yggdryl')
 
 async function main() {
   const table = new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) })
@@ -442,7 +442,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const arrow = require('apache-arrow')
-const { Field, fields, iceberg } = require('@yggdryl/node')
+const { Field, fields, iceberg } = require('yggdryl')
 
 const schema = iceberg.assignFieldIds(
   fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
@@ -487,7 +487,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const arrow = require('apache-arrow')
-const { iceberg } = require('@yggdryl/node')
+const { iceberg } = require('yggdryl')
 
 const warehouse = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
 const catalog = new iceberg.Catalog(warehouse)
@@ -532,7 +532,7 @@ A native error crosses unchanged and arrives as a `TypeError` or `RangeError` ca
 the Rust error produced, including its path or byte offset.
 
 ```javascript
-const { DataType } = require('@yggdryl/node')
+const { DataType } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 assert.throws(() => DataType.from('decimal(0,0)'), /precision/)

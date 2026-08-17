@@ -15,7 +15,7 @@ const REPO = (typeof args === 'string' ? args : args?.repo) || '.'
 
 const ARCHITECTURE = `
 PROJECT yggdryl. Rust core at ${REPO}/rust (crate "yggdryl"), Python package at ${REPO}/python
-(package "yggdryl"), Node package at ${REPO}/node ("@yggdryl/node"). The workspace manifest is at the
+(package "yggdryl"), Node package at ${REPO}/node ("yggdryl"). The workspace manifest is at the
 repository root; each member uses src/ tests/ benchmarks/ and there are NO examples/ directories -
 runnable examples live only in the documentation.
 
@@ -100,7 +100,7 @@ DOCUMENTATION CONTRACT - follow every rule.
      statements using \`?\` (it is wrapped in a function returning Result) or declare its own
      \`fn main() -> Result<(), Box<dyn std::error::Error>>\`.
    * Python blocks run under ${REPO}/python/.venv. Import from \`yggdryl\`.
-   * JavaScript blocks run under node; \`require('@yggdryl/node')\` is rewired to this repository.
+   * JavaScript blocks run under node; \`require('yggdryl')\` is rewired to this repository.
    * Every block must be SELF-CONTAINED: its own imports, no variable carried over from a previous
      block, and at least one assertion that proves what the prose claims.
    * A block that truly cannot stand alone is tagged \`rust,ignore\` / \`python,ignore\` /

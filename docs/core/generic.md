@@ -253,7 +253,7 @@ Reading rows out of an Arrow IPC stream and out of a Parquet file need the same 
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, RecordOptions, fields } = require('@yggdryl/node')
+    const { Field, RecordOptions, fields } = require('yggdryl')
 
     const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
 

@@ -6,7 +6,7 @@ it is shown in. This extracts each fenced block under ``docs/`` and executes it:
 * ``rust`` blocks become tests in one generated integration target and are
   compiled and run by cargo;
 * ``python`` blocks run under the extension's virtual environment;
-* ``javascript`` blocks run under node, with ``@yggdryl/node`` resolved to the
+* ``javascript`` blocks run under node, with ``yggdryl`` resolved to the
   package in this repository.
 
 A block that genuinely cannot stand alone is tagged ``ignore`` (for example
@@ -41,7 +41,7 @@ if not PYTHON.exists():
     PYTHON = ROOT / "python" / ".venv" / "bin" / "python"
 NODE_BINDING = (ROOT / "node" / "binding.js").as_posix()
 # Apache Arrow JS is a dependency of the package, so a reader who installed
-# ``@yggdryl/node`` can require it; a generated script in a temporary directory
+# ``yggdryl`` can require it; a generated script in a temporary directory
 # cannot, because Node resolves from the script's own folder.
 NODE_ARROW = (ROOT / "node" / "node_modules" / "apache-arrow").as_posix()
 
@@ -196,7 +196,7 @@ def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
                     script = workspace / f"{label}.js"
                     rewired = block.code
                     for name, target in (
-                        ("@yggdryl/node", NODE_BINDING),
+                        ("yggdryl", NODE_BINDING),
                         ("apache-arrow", NODE_ARROW),
                     ):
                         rewired = rewired.replace(f"'{name}'", f"'{target}'").replace(

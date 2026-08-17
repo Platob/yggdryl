@@ -79,7 +79,7 @@ A non-null struct field is the schema, and its children are the columns.
 === "JavaScript"
 
     ```javascript
-    const { DataType, Field } = require('@yggdryl/node')
+    const { DataType, Field } = require('yggdryl')
     const assert = require('node:assert/strict')
 
     const schema = new Field(
@@ -131,7 +131,7 @@ Metadata belongs to the field, and it behaves like the mapping type of each lang
 === "JavaScript"
 
     ```javascript
-    const { Field } = require('@yggdryl/node')
+    const { Field } = require('yggdryl')
     const assert = require('node:assert/strict')
 
     const field = new Field('symbol', 'utf8', true, { source: 'book' })

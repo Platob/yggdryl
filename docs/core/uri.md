@@ -38,7 +38,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Uri } = require('@yggdryl/node')
+    const { Uri } = require('yggdryl')
 
     const uri = Uri.from('HTTPS://example.test/archive/report.tar.gz?q=1#summary')
 
@@ -114,7 +114,7 @@ on construction, so an ill-formed component cannot reach a `Uri` at all.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Uri } = require('@yggdryl/node')
+    const { Uri } = require('yggdryl')
 
     const uri = Uri.from('HTTPS://example.test/caf%c3%a9.csv')
     assert.equal(uri.toString(), 'https://example.test/caf%C3%A9.csv')
@@ -179,7 +179,7 @@ The `file:` fallback applies only when there is no scheme token at all.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Uri } = require('@yggdryl/node')
+    const { Uri } = require('yggdryl')
 
     const uri = Uri.from('https://example.test/archive/2026/report.tar.gz')
 
@@ -258,7 +258,7 @@ iteration in Python, and `length`, `at`, and the spread form in JavaScript.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Uri } = require('@yggdryl/node')
+    const { Uri } = require('yggdryl')
 
     const uri = Uri.from('https://example.test/archive/report.tar.gz?q=1#part')
 
@@ -359,7 +359,7 @@ refused: encoding is the caller's decision, and the setters will not silently ma
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MediaType, MimeType, Uri } = require('@yggdryl/node')
+    const { MediaType, MimeType, Uri } = require('yggdryl')
 
     const uri = Uri.from('https://example.test/report.csv.gz.zst?q=1#part')
 
@@ -449,7 +449,7 @@ concrete syntax.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Uri, Url, Urn } = require('@yggdryl/node')
+    const { Uri, Url, Urn } = require('yggdryl')
 
     const uri = Uri.from('https://example.test/a/data.json?raw=true')
     const url = Url.from(uri)
@@ -541,7 +541,7 @@ alone.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Uri, Url } = require('@yggdryl/node')
+    const { Uri, Url } = require('yggdryl')
 
     const uri = Uri.fromPath('C:\\Users\\Ada Lovelace\\report.parquet')
     assert.equal(uri.toString(), 'file:///C:/Users/Ada%20Lovelace/report.parquet')
@@ -625,7 +625,7 @@ canonical `file:` URL is also what [`local`](local.md) stores as the entire stat
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Url } = require('@yggdryl/node')
+    const { Url } = require('yggdryl')
 
     const url = Url.from('https://example.test/a/b/c?q=1#frag')
 
@@ -764,7 +764,7 @@ locations a caller means, and a Hive partition says *what a location holds*.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Url } = require('@yggdryl/node')
+    const { Url } = require('yggdryl')
 
     const pattern = Url.from('file:///lake/trades/year=2024/**/*.parquet')
     assert.ok(pattern.isGlob())

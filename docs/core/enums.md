@@ -27,7 +27,7 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType } = require('@yggdryl/node')
+    const { DataType } = require('yggdryl')
 
     const value = new DataType('int64')
     assert.equal(value.id, 'int64')
@@ -68,7 +68,7 @@ strings `DataType.id` and `DataType.kind` return.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType } = require('@yggdryl/node')
+    const { DataType } = require('yggdryl')
 
     const stamp = new DataType('timestamp(us, UTC)')
     assert.equal(stamp.id, 'timestamp')
@@ -140,7 +140,7 @@ assert!(DataTypeKind::Struct.is_nested());
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MimeType } = require('@yggdryl/node')
+    const { MimeType } = require('yggdryl')
 
     const parquet = MimeType.fromExtension('parquet')
     assert.ok(parquet.equals(MimeType.PARQUET))
@@ -201,7 +201,7 @@ validates the parameters - quoting, duplicates - and then discards them.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MimeType } = require('@yggdryl/node')
+    const { MimeType } = require('yggdryl')
 
     assert.ok(
       MimeType.fromContentType('Application/JSON; charset="utf-8"').equals(MimeType.JSON),
@@ -247,7 +247,7 @@ validates the parameters - quoting, duplicates - and then discards them.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MediaType, MimeType } = require('@yggdryl/node')
+    const { MediaType, MimeType } = require('yggdryl')
 
     const media = MediaType.fromFileName('trades.json.gz')
     assert.ok(media.base.equals(MimeType.JSON))
@@ -312,7 +312,7 @@ the outermost and the first that a reader must remove.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MediaType, MimeType } = require('@yggdryl/node')
+    const { MediaType, MimeType } = require('yggdryl')
 
     const media = MediaType.fromContentHeaders('text/csv; charset=utf-8', 'gzip')
     assert.ok(media.base.equals(MimeType.CSV))
@@ -515,7 +515,7 @@ inventing new vocabulary.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType } = require('@yggdryl/node')
+    const { DataType } = require('yggdryl')
 
     assert.equal(DataType.time('microseconds').toString(), 'time64(us)')
     assert.equal(DataType.time('MICRO SECONDS').toString(), 'time64(us)')
@@ -612,7 +612,7 @@ instant.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Timezone } = require('@yggdryl/node')
+    const { Timezone } = require('yggdryl')
 
     // A name, an alias, and a zone read out of Intl all arrive at one value.
     assert.ok(Timezone.from('Asia/Calcutta').equals(Timezone.from('Asia/Kolkata')))

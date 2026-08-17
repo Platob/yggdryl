@@ -37,7 +37,7 @@ Read and write JSON as the shared [`Value`](generic.md) - whole, streamed, or on
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const value = { symbol: 'AAPL', quantity: 100 }
 
@@ -114,7 +114,7 @@ Mapping order is insertion order and survives the round trip.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const value = { payload: Buffer.from([0, 1, 255]), big: 2n ** 127n, ratio: NaN }
 
@@ -190,7 +190,7 @@ class names it in the call - `cls=` in Python - see [Python](../extensions/pytho
     ```javascript
     const assert = require('node:assert/strict')
     const { Readable, Writable } = require('node:stream')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const value = { symbol: 'AAPL' }
 
@@ -283,7 +283,7 @@ values separated by any whitespace.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const rows = [{ id: 1 }, { id: 2 }]
 
@@ -352,7 +352,7 @@ Rows arrive one at a time when the source is a stream:
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     let pulls = 0
     async function* chunks() {
@@ -451,7 +451,7 @@ ends it.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     let deep = 0
     for (let index = 0; index < 60; index += 1) deep = [deep]
@@ -537,7 +537,7 @@ codec sees it.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     assert.throws(
       () => json.loads('{"symbol":"AAPL","symbol":"MSFT"}'),
@@ -605,7 +605,7 @@ after their escapes are decoded, so `"a"` and `"\u0061"` name the same key.
     const os = require('node:os')
     const path = require('node:path')
     const { pathToFileURL } = require('node:url')
-    const { json } = require('@yggdryl/node')
+    const { json } = require('yggdryl')
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-json-'))
     try {

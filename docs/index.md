@@ -44,7 +44,7 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
 === "JavaScript"
 
     ```javascript
-    const { DataType, Field } = require('@yggdryl/node')
+    const { DataType, Field } = require('yggdryl')
     const assert = require('node:assert/strict')
 
     const schema = new Field(
@@ -102,7 +102,7 @@ the [structured value](core/text.md), and [URIs](core/uri.md) name where any of 
 === "JavaScript"
 
     ```console
-    npm install @yggdryl/node
+    npm install yggdryl
     ```
 
 Start with [Getting started](getting-started.md), or read the [architecture](architecture.md) for

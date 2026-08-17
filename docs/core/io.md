@@ -45,7 +45,7 @@ three languages reach it.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const handle = IOBase.fromBytes()
     handle.pwrite(0, Buffer.from('symbol,price\n'))
@@ -130,7 +130,7 @@ Three invariants hold for every implementation:
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
 
@@ -207,7 +207,7 @@ bytes change.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const folder = new IOBase(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')))
     assert.ok(folder.isDir())
@@ -267,7 +267,7 @@ bindings expose the questions rather than the enum, as `exists`, `is_dir`, and `
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const handle = IOBase.fromBytes()
     handle.writeBytes(Buffer.from('symbol,price\n'))
@@ -348,7 +348,7 @@ the same chunked way.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase, MimeType } = require('@yggdryl/node')
+    const { IOBase, MimeType } = require('yggdryl')
 
     // Nothing names an in-memory buffer, so its type comes from its bytes.
     const handle = IOBase.fromBytes(Buffer.from('{"symbol":"AAPL"}'))
@@ -700,7 +700,7 @@ built this way.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, fields } = require('@yggdryl/node')
+    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
 
     // A non-null struct Field is the schema.
     const schema = fields.struct(
@@ -793,7 +793,7 @@ argument.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase, MimeType } = require('@yggdryl/node')
+    const { IOBase, MimeType } = require('yggdryl')
 
     // An absent resource holds no batches rather than failing to parse.
     const empty = IOBase.fromBytes()
@@ -917,7 +917,7 @@ compression level, match key - are shared across encodings through `IORecordOpti
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, fields } = require('@yggdryl/node')
+    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
 
     const table = new arrow.Table({
       id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
@@ -1068,7 +1068,7 @@ match key turns the same call into a merge, and appending is the third method.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, fields } = require('@yggdryl/node')
+    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
 
     const schema = fields.struct(
       'row',
@@ -1192,7 +1192,7 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase } = require('@yggdryl/node')
+    const { IOBase } = require('yggdryl')
 
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'lake')
     for (const year of ['2024', '2025']) {
@@ -1336,7 +1336,7 @@ each row of a write to the leaf its values name.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, RecordOptions, fields } = require('@yggdryl/node')
+    const { BatchReader, Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     fs.mkdirSync(path.join(root, 'year=2024', 'month=01'), { recursive: true })
