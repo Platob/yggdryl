@@ -302,6 +302,49 @@ mod lake {
     }
 
     #[test]
+    fn a_partition_filter_prunes_leaves_and_filters_rows() {
+        use crate::generic::IORecordOptions;
+
+        let (root, handle) = lake("filtered");
+        seed(&root, "year=2024/month=01", &prices());
+        seed(&root, "year=2024/month=02", &prices());
+        seed(&root, "year=2025/month=01", &prices());
+
+        let field = schema();
+        // A path filter prunes: only the leaves whose directories name the
+        // value are read at all, and the restored column carries it.
+        let filtered = options(Some(field.clone()))
+            .with_filter_partitions([("month", "01"), ("year", "2024")]);
+        let mut found = Vec::new();
+        for batch in handle.read_arrow_batch_reader(&filtered).unwrap() {
+            let batch = batch.unwrap();
+            found.push(batch.num_rows());
+            let month = batch
+                .column_by_name("month")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .clone();
+            for row in 0..batch.num_rows() {
+                assert_eq!(month.value(row), "01");
+            }
+        }
+        assert_eq!(found.iter().sum::<usize>(), 3);
+
+        // A data-carried column filters row by row through the same option:
+        // the same lake, filtered on a column the paths do not spell.
+        let by_price = options(Some(field.clone())).with_filter_partitions([("price", "20")]);
+        let mut matched = 0;
+        for batch in handle.read_arrow_batch_reader(&by_price).unwrap() {
+            matched += batch.unwrap().num_rows();
+        }
+        assert_eq!(matched, 3);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn an_overwrite_empties_a_partition_the_incoming_rows_no_longer_name() {
         let (root, mut handle) = lake("empty-partition");
         seed(&root, "year=2024/month=01", &prices());

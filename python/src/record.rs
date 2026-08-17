@@ -1036,6 +1036,18 @@ impl PyRecordOptions {
         self.inner.set_select_by_names(select_by_names);
     }
 
+    /// The partition equalities a read is pruned and filtered by; empty
+    /// keeps every row. Values are spelled as partition paths spell them.
+    #[getter]
+    fn filter_partitions(&self) -> Vec<(String, String)> {
+        self.inner.filter_partitions().to_vec()
+    }
+
+    #[setter]
+    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
+        self.inner.set_filter_partitions(filter_partitions);
+    }
+
     /// The page compression applied inside a Parquet file, if this is one.
     ///
     /// A setting one encoding has is absent on the others rather than invented,

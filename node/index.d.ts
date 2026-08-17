@@ -940,6 +940,13 @@ export declare class RecordOptions {
   /** Set the column names a read or write is narrowed to. */
   set selectByNames(selectByNames: Array<string>)
   /**
+   * The partition equalities a read is pruned and filtered by; empty
+   * keeps every row. Values are spelled as partition paths spell them.
+   */
+  get filterPartitions(): Array<[string, string]>
+  /** Set the partition equalities a read is pruned and filtered by. */
+  set filterPartitions(filterPartitions: Array<[string, string]>)
+  /**
    * The page compression applied inside a Parquet file, if this is one.
    *
    * A setting one encoding has is absent on the others rather than invented,
@@ -975,6 +982,8 @@ export declare class RecordOptions {
   withMergeByNames(mergeByNames: Array<string>): RecordOptions
   /** Return these options narrowed to the named columns, on reads and writes. */
   withSelectByNames(selectByNames: Array<string>): RecordOptions
+  /** Return these options pruned and filtered to the named partitions. */
+  withFilterPartitions(filterPartitions: Array<[string, string]>): RecordOptions
   /**
    * Return the encoding these options describe, so they print as what they
    * encode rather than as an opaque object.

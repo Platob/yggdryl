@@ -87,6 +87,8 @@ pub struct IpcOptions {
     pub merge_by_names: Vec<String>,
     /// Column names a read or write is narrowed to; empty selects everything.
     pub select_by_names: Vec<String>,
+    /// Partition equalities a read is pruned and filtered by; empty keeps all.
+    pub filter_partitions: Vec<(String, String)>,
 }
 
 impl IpcOptions {
@@ -100,6 +102,7 @@ impl IpcOptions {
             level: Level::DEFAULT,
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
+            filter_partitions: Vec::new(),
         }
     }
 }

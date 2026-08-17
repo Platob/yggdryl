@@ -98,6 +98,20 @@ pub trait IORecordOptions: Sized {
     /// Set the column names a read or write is narrowed to.
     fn set_select_by_names(&mut self, select_by_names: Vec<String>);
 
+    /// Borrow the partition equalities a read is pruned and filtered by.
+    ///
+    /// An empty list keeps every row. A non-empty one names
+    /// `(column, value)` pairs, values spelled as
+    /// [`partition_text`](crate::io::partition::partition_text) spells them:
+    /// a folder read skips every leaf whose path names a different value -
+    /// nothing under it is listed or decoded - and rows whose data carries
+    /// the column are filtered to the named values, so path-partitioned and
+    /// data-partitioned layouts answer the same question the same way.
+    fn filter_partitions(&self) -> &[(String, String)];
+
+    /// Set the partition equalities a read is pruned and filtered by.
+    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>);
+
     /// Borrow the declared schema, or say that one is required.
     ///
     /// # Errors
@@ -166,6 +180,23 @@ pub trait IORecordOptions: Sized {
         S: Into<String>,
     {
         self.set_select_by_names(select_by_names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Return these options pruned and filtered to the named partitions.
+    #[must_use]
+    fn with_filter_partitions<I, C, V>(mut self, filter_partitions: I) -> Self
+    where
+        I: IntoIterator<Item = (C, V)>,
+        C: Into<String>,
+        V: Into<String>,
+    {
+        self.set_filter_partitions(
+            filter_partitions
+                .into_iter()
+                .map(|(column, value)| (column.into(), value.into()))
+                .collect(),
+        );
         self
     }
 
@@ -301,6 +332,14 @@ macro_rules! record_options_fields {
 
         fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
             self.select_by_names = select_by_names;
+        }
+
+        fn filter_partitions(&self) -> &[(String, String)] {
+            &self.filter_partitions
+        }
+
+        fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
+            self.filter_partitions = filter_partitions;
         }
     };
 }
@@ -478,6 +517,22 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_select_by_names(select_by_names),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_select_by_names(select_by_names),
+        }
+    }
+
+    fn filter_partitions(&self) -> &[(String, String)] {
+        match self {
+            Self::Ipc(options) => options.filter_partitions(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.filter_partitions(),
+        }
+    }
+
+    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
+        match self {
+            Self::Ipc(options) => options.set_filter_partitions(filter_partitions),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_filter_partitions(filter_partitions),
         }
     }
 }

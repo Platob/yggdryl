@@ -205,6 +205,19 @@ impl JsRecordOptions {
         self.inner.set_select_by_names(select_by_names);
     }
 
+    /// The partition equalities a read is pruned and filtered by; empty
+    /// keeps every row. Values are spelled as partition paths spell them.
+    #[napi(getter)]
+    pub fn filter_partitions(&self) -> Vec<(String, String)> {
+        self.inner.filter_partitions().to_vec()
+    }
+
+    /// Set the partition equalities a read is pruned and filtered by.
+    #[napi(setter)]
+    pub fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
+        self.inner.set_filter_partitions(filter_partitions);
+    }
+
     /// The page compression applied inside a Parquet file, if this is one.
     ///
     /// A setting one encoding has is absent on the others rather than invented,
@@ -340,6 +353,14 @@ impl JsRecordOptions {
     pub fn with_select_by_names(&self, select_by_names: Vec<String>) -> Self {
         let mut options = self.clone();
         options.set_select_by_names(select_by_names);
+        options
+    }
+
+    /// Return these options pruned and filtered to the named partitions.
+    #[napi]
+    pub fn with_filter_partitions(&self, filter_partitions: Vec<(String, String)>) -> Self {
+        let mut options = self.clone();
+        options.set_filter_partitions(filter_partitions);
         options
     }
 

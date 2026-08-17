@@ -338,6 +338,89 @@ pub fn narrowed_reader(
     })
 }
 
+/// Wrap a reader so only rows matching the options' partition filters flow.
+///
+/// A column a batch does not carry is ignored - the leaf's path already
+/// answered for it, or the layout never had it - so path-partitioned and
+/// data-partitioned lakes answer the same equality the same way. Values
+/// compare as [`partition_text`] spells them, one boolean mask per batch,
+/// and nothing is collected.
+pub(crate) fn filtered_reader(inner: BatchReader, options: &RecordOptions) -> Result<BatchReader> {
+    let filters = options.filter_partitions();
+    if filters.is_empty() {
+        return Ok(inner);
+    }
+    let schema = inner.schema();
+    Ok(Box::new(Filtered {
+        inner,
+        filters: filters.to_vec(),
+        schema,
+    }))
+}
+
+struct Filtered {
+    inner: BatchReader,
+    filters: Vec<(String, String)>,
+    schema: SchemaRef,
+}
+
+impl Iterator for Filtered {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let batch = match self.inner.next()? {
+            Ok(batch) => batch,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(filter_rows(&batch, &self.filters))
+    }
+}
+
+impl arrow_array::RecordBatchReader for Filtered {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
+}
+
+/// Keep the rows of one batch whose named columns spell the named values.
+fn filter_rows(
+    batch: &RecordBatch,
+    filters: &[(String, String)],
+) -> std::result::Result<RecordBatch, ArrowError> {
+    let mut mask: Option<Vec<bool>> = None;
+    for (column, value) in filters {
+        let Some(index) = batch
+            .schema()
+            .fields()
+            .iter()
+            .position(|field| field.name().eq_ignore_ascii_case(column))
+        else {
+            continue;
+        };
+        let array = batch.column(index);
+        let formatter = ArrayFormatter::try_new(array.as_ref(), &partition_format())?;
+        let rows = mask.get_or_insert_with(|| vec![true; batch.num_rows()]);
+        for (row, keep) in rows.iter_mut().enumerate() {
+            if !*keep {
+                continue;
+            }
+            // Absence spells `null`, exactly as the path renderer spells it,
+            // so a filter on "null" selects the rows with no value.
+            let spelled = if array.is_null(row) {
+                "null".to_owned()
+            } else {
+                formatter.value(row).to_string()
+            };
+            *keep = spelled == *value;
+        }
+    }
+    let Some(mask) = mask else {
+        return Ok(batch.clone());
+    };
+    let mask = arrow_array::BooleanArray::from(mask);
+    arrow_select::filter::filter_record_batch(batch, &mask)
+}
+
 /// Return the Hive pairs `part` spells out below `root`.
 ///
 /// Only what is below the addressed folder counts: a lake reached at
@@ -572,8 +655,23 @@ pub(crate) fn folder_reader(
     folder: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<BatchReader> {
-    let parts = record_parts(folder, options)?;
+    let mut parts = record_parts(folder, options)?;
     let root = folder.url().cloned();
+    // A leaf whose path names a different value for a filtered column cannot
+    // hold a matching row, so it is skipped before anything is decoded; a
+    // leaf that does not name the column stays, and the row filter answers.
+    let filters = options.filter_partitions();
+    if !filters.is_empty() {
+        parts.retain(|part| {
+            let pairs = pairs_under(part, root.as_ref());
+            filters.iter().all(|(column, value)| {
+                pairs
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(column))
+                    .is_none_or(|(_, held)| held == value)
+            })
+        });
+    }
     let field = match options.schema() {
         Some(schema) => Some(schema.clone()),
         None => derived_field(&parts, root.as_ref(), options)?,
@@ -696,7 +794,7 @@ pub(crate) fn write_folder(
 ) -> Result<()> {
     // One walk answers both questions: which directories name partition
     // columns, and which leaves already hold rows.
-    let entries = folder.ls(true, false)?;
+    let entries = retried(|| folder.ls(true, false))?;
     let root = folder.url().cloned();
     let columns = write_partition_columns(&entries, root.as_ref(), options)?;
     let encoding = options.mime_type();
@@ -737,17 +835,52 @@ pub(crate) fn write_folder(
             let relative = leaf_name(&existing, &pairs, options);
             let leaf = leaf_options(options, &pairs)?;
             let mut handle = folder.child_by(&relative)?;
-            let reader = crate::arrow::batch_reader(part.schema(), [part]);
             let first = written.insert(relative);
-            if !leaf.merge_by_names().is_empty() || (!append && first) {
-                handle.write_arrow_batch_reader(reader, &leaf)?;
+            let replacing = !leaf.merge_by_names().is_empty() || (!append && first);
+            if replacing {
+                // A replace and a merge rewrite the whole leaf, so a retry
+                // replays the same outcome; the batch is rebuilt into a
+                // fresh reader per attempt rather than an exhausted stream.
+                retried(|| {
+                    let reader = crate::arrow::batch_reader(part.schema(), [part.clone()]);
+                    handle.write_arrow_batch_reader(reader, &leaf)?;
+                    handle.flush()
+                })?;
             } else {
+                // An append is not idempotent - a retry after a torn write
+                // would duplicate rows - so it runs exactly once.
+                let reader = crate::arrow::batch_reader(part.schema(), [part]);
                 handle.append_arrow_batch_reader(reader, &leaf)?;
+                handle.flush()?;
             }
-            handle.flush()?;
         }
     }
     Ok(())
+}
+
+/// Retry a folder step that can lose a race with a concurrent writer.
+///
+/// A shared folder has no commit protocol: a listing can catch a leaf
+/// half-published, and a leaf write can collide with another writer growing
+/// the same file. Three bounded attempts with a short growing pause smooth
+/// exactly those races; a genuine failure still surfaces as itself on the
+/// last attempt.
+fn retried<T>(mut step: impl FnMut() -> Result<T>) -> Result<T> {
+    let mut delay = std::time::Duration::from_millis(20);
+    let mut last = None;
+    for attempt in 0..3 {
+        match step() {
+            Ok(value) => return Ok(value),
+            Err(error) => {
+                last = Some(error);
+                if attempt < 2 {
+                    std::thread::sleep(delay);
+                    delay *= 4;
+                }
+            }
+        }
+    }
+    Err(last.expect("three attempts ran"))
 }
 
 #[cfg(test)]

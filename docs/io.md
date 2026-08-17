@@ -1602,6 +1602,57 @@ looking for a directory literally named `**`.
 the three record methods use when a handle addresses a folder, and it is there for a caller who wants
 to reach one partition directly instead.
 
+## Partition pruning and filtering
+
+One option answers the same equality wherever the value lives.
+`filter_partitions` names `(column, value)` pairs, spelled the way partition
+paths spell them: a folder read *prunes* - a leaf whose directory names a
+different value is never listed or decoded - and a column the data carries is
+*filtered* row by row, so a path-partitioned lake and a data-partitioned one
+answer identically.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::{IORecordOptions, RecordOptions};
+    use yggdryl::MimeType;
+
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
+        .with_filter_partitions([("year", "2024"), ("month", "01")]);
+    // handle.read_arrow_batch_reader(&options)? now reads only the January
+    // 2024 leaves, and only their matching rows.
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    lake = IOBase("lake")
+    options = lake.record_options()
+    options.filter_partitions = [("year", "2024"), ("month", "01")]
+    reader = lake.read_arrow_batch_reader(options=options)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const { IOBase } = require('yggdryl')
+
+    const lake = new IOBase('lake')
+    const options = lake.recordOptions().withFilterPartitions([
+      ['year', '2024'],
+      ['month', '01'],
+    ])
+    const reader = lake.readArrowBatchReader(options)
+    ```
+
+Writes into a shared folder also smooth concurrent writers: the listing and
+every whole-leaf rewrite retry a bounded number of times with a short growing
+pause, so a reader that catches a leaf half-published or two writers racing a
+replace settle without surfacing a transient error. An append never retries -
+replaying a torn append would duplicate rows - so it fails honestly instead.
+
 ## Partition columns in the data
 
 A Hive layout stores a column in the path, so the file under `year=2024/month=01` leaves those values

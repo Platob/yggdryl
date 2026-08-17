@@ -896,12 +896,14 @@ pub trait IOBase: Send {
         let reader = if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(self)? {
-                return select_reader(table.read(options)?, options);
+                let filtered = partition::filtered_reader(table.read(options)?, options)?;
+                return select_reader(filtered, options);
             }
             partition::folder_reader(self, options)?
         } else {
             leaf_reader(self, options)?
         };
+        let reader = partition::filtered_reader(reader, options)?;
         select_reader(reader, options)
     }
 

@@ -97,6 +97,8 @@ pub struct ParquetOptions {
     pub merge_by_names: Vec<String>,
     /// Column names a read or write is narrowed to; empty selects everything.
     pub select_by_names: Vec<String>,
+    /// Partition equalities a read is pruned and filtered by; empty keeps all.
+    pub filter_partitions: Vec<(String, String)>,
 }
 
 impl ParquetOptions {
@@ -113,6 +115,7 @@ impl ParquetOptions {
             level: crate::Level::DEFAULT,
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
+            filter_partitions: Vec::new(),
         }
     }
 
