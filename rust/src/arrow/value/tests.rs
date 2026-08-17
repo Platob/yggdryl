@@ -33,9 +33,11 @@ mod widths {
         // that holds one, and every digit has to come back.
         let column = DataType::decimal(38, 0).unwrap();
         for value in [1_i128, -1, i64::MAX as i128 + 1, 10_i128.pow(37)] {
+            // The column is a decimal, so the value reads back as one - at
+            // scale zero, carrying every digit.
             assert_eq!(
-                round_trip(column.clone(), Value::from(value)).as_i128(),
-                Some(value),
+                round_trip(column.clone(), Value::from(value)),
+                Value::Decimal(value, 0),
                 "i128 {value}"
             );
         }
@@ -85,14 +87,15 @@ mod restating {
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
         let column = DataType::decimal(9, 2).unwrap();
 
-        // 10.50 at scale 2 is the coefficient 1050, whichever way it is spelled.
+        // 10.50 at scale 2 is the coefficient 1050, whichever way it is spelled,
+        // and it reads back as the decimal it is.
         assert_eq!(
-            round_trip(column.clone(), Value::decimal(1_050, 2)).as_i128(),
-            Some(1_050)
+            round_trip(column.clone(), Value::decimal(1_050, 2)),
+            Value::Decimal(1_050, 2)
         );
         assert_eq!(
-            round_trip(column.clone(), Value::decimal(105, 1)).as_i128(),
-            Some(1_050)
+            round_trip(column.clone(), Value::decimal(105, 1)),
+            Value::Decimal(1_050, 2)
         );
 
         // A coefficient that cannot be restated without losing a digit is
@@ -107,32 +110,28 @@ mod restating {
         let at = Value::timestamp(1_700_000_000, TimeUnit::Second, None).unwrap();
 
         assert_eq!(
-            round_trip(micros.clone(), at).as_i64(),
-            Some(1_700_000_000_000_000)
+            round_trip(micros.clone(), at),
+            Value::Timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, None)
         );
         assert_eq!(
-            round_trip(DataType::Date32, Value::date(19_723)).as_i64(),
-            Some(19_723)
+            round_trip(DataType::Date32, Value::date(19_723)),
+            Value::Date(19_723)
         );
-        assert_eq!(
-            round_trip(DataType::Date64, Value::date(2)).as_i64(),
-            Some(2 * 86_400_000)
-        );
+        // A Date64 spells its day in milliseconds; the day is what reads back.
+        assert_eq!(round_trip(DataType::Date64, Value::date(2)), Value::Date(2));
         assert_eq!(
             round_trip(
                 DataType::Duration(TimeUnit::Millisecond),
                 Value::duration(90, TimeUnit::Second)
-            )
-            .as_i64(),
-            Some(90_000)
+            ),
+            Value::Duration(90_000, TimeUnit::Millisecond)
         );
         assert_eq!(
             round_trip(
                 DataType::time(TimeUnit::Microsecond).unwrap(),
                 Value::time(45_296, TimeUnit::Second)
-            )
-            .as_i64(),
-            Some(45_296_000_000)
+            ),
+            Value::Time(45_296_000_000, TimeUnit::Microsecond)
         );
 
         // Coarsening that would drop a digit is refused, naming the kind.

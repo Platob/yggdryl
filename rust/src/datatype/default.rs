@@ -597,25 +597,41 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
     match plan {
         DefaultPlan::Null => matches!(value, Value::Null),
         DefaultPlan::Bool => matches!(value, Value::Bool(false)),
-        DefaultPlan::Signed => matches!(value, Value::I64(0)),
+        // A temporal zero read back off an Arrow column carries its unit and
+        // zone; it is the same datum the plan's bare zero spells, so both
+        // spellings are the default.
+        DefaultPlan::Signed => matches!(
+            value,
+            Value::I64(0)
+                | Value::Date(0)
+                | Value::Time(0, _)
+                | Value::Timestamp(0, _, _)
+                | Value::Duration(0, _)
+        ),
         DefaultPlan::Unsigned => matches!(value, Value::U64(0)),
         DefaultPlan::Float => value
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
-        DefaultPlan::Decimal => matches!(value, Value::I128(0)),
+        // A zero coefficient is zero at every scale.
+        DefaultPlan::Decimal => matches!(value, Value::I128(0) | Value::Decimal(0, _)),
         DefaultPlan::Decimal256 => value.as_str() == Some("0"),
         DefaultPlan::String => value.as_str() == Some(""),
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),
         DefaultPlan::EmptySequence => value.as_sequence().is_some_and(<[Value]>::is_empty),
-        DefaultPlan::Sequence(plans) => value.as_sequence().is_some_and(|values| {
-            values.len() == plans.len()
-                && plans
-                    .iter()
-                    .zip(values)
-                    .all(|(plan, value)| plan_matches_value(plan, value))
-        }),
+        // A struct row reads back as a typed record; its values are the same
+        // halves the sequence spelling carries.
+        DefaultPlan::Sequence(plans) => value
+            .as_sequence()
+            .or_else(|| value.as_record().map(|(_, values)| values))
+            .is_some_and(|values| {
+                values.len() == plans.len()
+                    && plans
+                        .iter()
+                        .zip(values)
+                        .all(|(plan, value)| plan_matches_value(plan, value))
+            }),
         DefaultPlan::Repeated(plan, length) => value.as_sequence().is_some_and(|values| {
             values.len() == *length && values.iter().all(|value| plan_matches_value(plan, value))
         }),

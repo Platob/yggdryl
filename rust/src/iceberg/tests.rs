@@ -2783,3 +2783,382 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
 
     let _ = std::fs::remove_dir_all(&path);
 }
+
+mod datatype_coverage {
+    //! Every mapped Iceberg type round-trips through append, scan, and merge.
+
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::arrow::value::array_from_values;
+    use crate::{TimeUnit, Value};
+
+    /// Append `rows` under `children`, scan them back, and return the records.
+    fn round_trip(label: &str, children: Vec<Field>, rows: &[Vec<Value>]) -> Vec<Value> {
+        let path = root(label);
+        let schema = DataType::from_fields(children.clone())
+            .unwrap()
+            .required_field("row");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        let columns: Vec<_> = children
+            .iter()
+            .enumerate()
+            .map(|(index, child)| {
+                let column: Vec<&Value> = rows.iter().map(|row| &row[index]).collect();
+                array_from_values(child, &column).unwrap()
+            })
+            .collect();
+        let batch =
+            arrow_array::RecordBatch::try_new(schema.to_arrow_schema().unwrap(), columns).unwrap();
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let mut records = Vec::new();
+        for batch in reopened.scan(None).unwrap() {
+            let value = crate::arrow::batch_to_value(&batch.unwrap()).unwrap();
+            records.extend(value.as_sequence().unwrap().iter().cloned());
+        }
+        records
+    }
+
+    #[test]
+    fn every_v2_primitive_round_trips_through_a_data_file() {
+        let children = vec![
+            DataType::Boolean.nullable_field("flag"),
+            DataType::Int32.nullable_field("small"),
+            DataType::Int64.required_field("id"),
+            DataType::Float32.nullable_field("ratio"),
+            DataType::Float64.nullable_field("value"),
+            DataType::Decimal128 {
+                precision: 18,
+                scale: 4,
+            }
+            .nullable_field("price"),
+            DataType::Date32.nullable_field("day"),
+            DataType::Time64(TimeUnit::Microsecond).nullable_field("tod"),
+            DataType::Timestamp(TimeUnit::Microsecond, None).nullable_field("at"),
+            DataType::Utf8.nullable_field("name"),
+            DataType::Binary.nullable_field("raw"),
+            DataType::FixedSizeBinary(4).nullable_field("tag"),
+        ];
+        let rows = vec![
+            vec![
+                Value::Bool(true),
+                Value::I64(41),
+                Value::I64(1),
+                Value::Float(crate::generic::Float::from_f64(0.5)),
+                Value::Float(crate::generic::Float::from_f64(2.25)),
+                Value::Decimal(1_500_000, 4),
+                Value::Date(20_000),
+                Value::Time(43_200_000_000, TimeUnit::Microsecond),
+                Value::Timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, None),
+                Value::String("alpha".into()),
+                Value::from(vec![1_u8, 2]),
+                Value::from(vec![9_u8, 9, 9, 9]),
+            ],
+            // A row of nulls proves every column's null path through Parquet.
+            vec![
+                Value::Null,
+                Value::Null,
+                Value::I64(2),
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+            ],
+        ];
+
+        let records = round_trip("types-primitive", children, &rows);
+        assert_eq!(records.len(), 2);
+        let (_, first) = records[0].as_record().unwrap();
+        assert_eq!(first[0], Value::Bool(true));
+        assert_eq!(first[2], Value::I64(1));
+        assert_eq!(first[5], Value::Decimal(1_500_000, 4));
+        assert_eq!(
+            first[8],
+            Value::Timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, None)
+        );
+        assert_eq!(first[11], Value::from(vec![9_u8, 9, 9, 9]));
+        let (_, second) = records[1].as_record().unwrap();
+        assert_eq!(second[0], Value::Null);
+        assert_eq!(second[5], Value::Null);
+    }
+
+    #[test]
+    fn nested_and_deeply_nested_shapes_round_trip_through_data_files() {
+        let point = DataType::from_fields([
+            DataType::Int64.required_field("x"),
+            DataType::Utf8.nullable_field("label"),
+        ])
+        .unwrap();
+        let deep = DataType::from_fields([
+            DataType::List(Arc::new(DataType::Int64.nullable_field("item"))).nullable_field("xs"),
+            DataType::map_of(DataType::Utf8, point.clone(), false)
+                .unwrap()
+                .nullable_field("m"),
+        ])
+        .unwrap();
+        let children = vec![
+            DataType::Int64.required_field("id"),
+            point.clone().nullable_field("p"),
+            DataType::List(Arc::new(deep.clone().nullable_field("item"))).nullable_field("rows"),
+        ];
+
+        let point_value = |x: i64, label: &str| {
+            Value::record(point.clone(), [Value::I64(x), Value::String(label.into())]).unwrap()
+        };
+        let deep_value = Value::record(
+            deep.clone(),
+            [
+                Value::from_sequence([Value::I64(1), Value::Null, Value::I64(3)]),
+                Value::from_mapping([(Value::from("origin"), point_value(0, "o"))]).unwrap(),
+            ],
+        )
+        .unwrap();
+        let rows = vec![vec![
+            Value::I64(1),
+            point_value(7, "seven"),
+            Value::from_sequence([deep_value]),
+        ]];
+
+        let records = round_trip("types-nested", children, &rows);
+        assert_eq!(records.len(), 1);
+        let (_, values) = records[0].as_record().unwrap();
+        // The struct survives with both children.
+        match &values[1] {
+            Value::Record(_, fields) => {
+                assert_eq!(fields[0], Value::I64(7));
+                assert_eq!(fields[1], Value::String("seven".into()));
+            }
+            Value::Mapping(entries) => {
+                assert_eq!(entries.len(), 2);
+            }
+            other => panic!("expected a struct row back, got {}", other.kind()),
+        }
+        // The deep list<struct<list, map<utf8, struct>>> survives one level in.
+        let outer = values[2].as_sequence().expect("a list of deep rows");
+        assert_eq!(outer.len(), 1);
+    }
+
+    #[test]
+    fn a_merge_updates_on_a_composite_key_of_mixed_types() {
+        let path = root("types-merge");
+        let children = vec![
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.required_field("venue"),
+            DataType::Decimal128 {
+                precision: 18,
+                scale: 4,
+            }
+            .nullable_field("price"),
+        ];
+        let schema = DataType::from_fields(children.clone())
+            .unwrap()
+            .required_field("row");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        let batch_of = |rows: &[(i64, &str, i128)]| {
+            let columns: Vec<Vec<Value>> = (0..3)
+                .map(|index| {
+                    rows.iter()
+                        .map(|(id, venue, price)| match index {
+                            0 => Value::I64(*id),
+                            1 => Value::String((*venue).into()),
+                            _ => Value::Decimal(*price, 4),
+                        })
+                        .collect()
+                })
+                .collect();
+            let arrays: Vec<_> = children
+                .iter()
+                .zip(columns.iter())
+                .map(|(child, column): (&Field, &Vec<Value>)| {
+                    let refs: Vec<&Value> = column.iter().collect();
+                    array_from_values(child, &refs).unwrap()
+                })
+                .collect();
+            arrow_array::RecordBatch::try_new(schema.to_arrow_schema().unwrap(), arrays).unwrap()
+        };
+
+        let first = batch_of(&[(1, "XNAS", 10_000), (2, "XNYS", 20_000)]);
+        table
+            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .unwrap();
+        // The same (id, venue) updates; a new pair appends.
+        let second = batch_of(&[(1, "XNAS", 99_000), (3, "XPAR", 30_000)]);
+        table
+            .merge(
+                crate::arrow::batch_reader(second.schema(), [second]),
+                &["id".to_owned(), "venue".to_owned()],
+                false,
+            )
+            .unwrap();
+
+        let mut prices = std::collections::BTreeMap::new();
+        for batch in table.scan(None).unwrap() {
+            let value = crate::arrow::batch_to_value(&batch.unwrap()).unwrap();
+            for row in value.as_sequence().unwrap() {
+                let (_, fields) = row.as_record().unwrap();
+                let Value::I64(id) = fields[0] else { panic!() };
+                prices.insert(id, fields[2].clone());
+            }
+        }
+        assert_eq!(prices.len(), 3);
+        assert_eq!(prices[&1], Value::Decimal(99_000, 4));
+        assert_eq!(prices[&3], Value::Decimal(30_000, 4));
+    }
+}
+
+mod concurrency_and_compaction {
+    //! Real racing writers, a beaten merge, and the compaction cadence.
+
+    use super::*;
+
+    #[test]
+    fn stale_threads_rebase_and_every_writer_lands() {
+        let path = root("threads");
+        let schema = trade_schema();
+        Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        // Every thread opens its handle at version 1, so every commit after
+        // the first is beaten and must rebase. The lock serializes only the
+        // publish - plain storage has no compare-and-swap, so unserialized
+        // metadata writes can tear, exactly as the commit documentation says -
+        // which leaves the part under test deterministic: stale handles,
+        // real threads, and the rebase that reconciles them.
+        let gate = std::sync::Arc::new(std::sync::Mutex::new(()));
+        let handles: Vec<_> = (0..4)
+            .map(|writer: i64| {
+                let path = path.clone();
+                let gate = std::sync::Arc::clone(&gate);
+                std::thread::spawn(move || {
+                    let mut table = Table::open(Folder::new(&path).unwrap()).unwrap();
+                    let batch = trades(
+                        &[writer * 10, writer * 10 + 1],
+                        &[Some("S"), Some("S")],
+                        &[Some("V"), Some("V")],
+                    );
+                    let _held = gate.lock().unwrap();
+                    table
+                        .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                        .unwrap();
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let mut ids: Vec<i64> = collect(reopened.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [0, 1, 10, 11, 20, 21, 30, 31]);
+        // Four commits landed on top of the created table.
+        assert_eq!(reopened.version(), 5);
+    }
+
+    #[test]
+    fn a_beaten_merge_reports_the_conflict_rather_than_rebasing() {
+        let path = root("beaten-merge");
+        let schema = trade_schema();
+        let mut writer = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let seed = trades(&[1, 2], &[Some("A"), Some("B")], &[Some("V"), Some("V")]);
+        writer
+            .append(crate::arrow::batch_reader(seed.schema(), [seed]))
+            .unwrap();
+
+        // A second handle grows stale the moment the first commits again.
+        let mut stale = Table::open(Folder::new(&path).unwrap()).unwrap();
+        stale.set_options(crate::iceberg::IcebergOptions::default().with_commit_retries(1));
+        let win = trades(&[3], &[Some("C")], &[Some("V")]);
+        writer
+            .append(crate::arrow::batch_reader(win.schema(), [win]))
+            .unwrap();
+
+        let incoming = trades(&[2], &[Some("B2")], &[Some("V")]);
+        let error = stale
+            .merge(
+                crate::arrow::batch_reader(incoming.schema(), [incoming]),
+                &["id".to_owned()],
+                false,
+            )
+            .expect_err("a beaten merge cannot rebase");
+        assert!(
+            error.to_string().contains("got beaten"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn the_cadence_compacts_after_every_n_data_commits_by_itself() {
+        let path = root("auto-compact");
+        let schema = trade_schema();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.set_options(crate::iceberg::IcebergOptions::default().with_compact_after_commits(2));
+
+        for id in 0..4_i64 {
+            let batch = trades(&[id], &[Some("S")], &[Some("V")]);
+            table
+                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+
+        // Two cadence points passed, so replace snapshots appear on their own
+        // and the live file count shrank below one-per-append.
+        let operations: Vec<String> = table
+            .metadata()
+            .snapshots
+            .iter()
+            .map(|snapshot| snapshot.operation().to_owned())
+            .collect();
+        let replaces = operations.iter().filter(|op| *op == "replace").count();
+        assert!(
+            replaces >= 1,
+            "no automatic compaction ran; operations: {operations:?}"
+        );
+        assert!(table.data_files().unwrap().len() < 4);
+        // And nothing was lost along the way.
+        assert_eq!(collect(table.scan(None).unwrap()).len(), 4);
+    }
+}

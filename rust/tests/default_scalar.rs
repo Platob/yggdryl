@@ -74,11 +74,23 @@ fn datatype_defaults_round_trip_through_the_public_parts_constructor() {
         assert!(!scalar.field().is_nullable());
         assert_eq!(scalar.data_type(), &data_type);
         assert_eq!(scalar.array().len(), 1);
-        assert_eq!(scalar.to_value().unwrap(), expected);
+        // The Arrow reading spells temporals and decimals with their unit,
+        // zone, or scale; the canonical default recognizes both spellings.
+        let read = scalar.to_value().unwrap();
+        assert!(
+            data_type.is_default_value(&read).unwrap(),
+            "{} read {read:?} is not the default {expected:?}",
+            data_type.kind()
+        );
 
         let (field, array) = scalar.into_parts();
         let rebuilt = ArrowScalar::from_parts(field, array).unwrap();
-        assert_eq!(rebuilt.into_value().unwrap(), expected);
+        let read = rebuilt.into_value().unwrap();
+        assert!(
+            data_type.is_default_value(&read).unwrap(),
+            "{} rebuilt {read:?} is not the default {expected:?}",
+            data_type.kind()
+        );
     }
 }
 

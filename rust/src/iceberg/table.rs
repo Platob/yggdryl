@@ -1264,6 +1264,7 @@ impl<H: IOBase> Table<H> {
         };
 
         let operation = SmolStr::new(operation);
+        let compacting = operation == "replace";
         self.commit_document(on_conflict, move |table| {
             let sequence_number = table.metadata.last_sequence_number + 1;
             let mut manifests = match &kept {
@@ -1347,7 +1348,47 @@ impl<H: IOBase> Table<H> {
             updated.set_current_snapshot(snapshot);
             Ok(updated)
         })?;
+        self.maybe_auto_compact(compacting)?;
         Ok(files_written)
+    }
+
+    /// Run the configured compaction cadence after a data commit.
+    ///
+    /// [`IcebergOptions::compact_after_commits`] paces this: after every `n`
+    /// data commits the undersized files fold together, so no single commit
+    /// pays for a full rewrite and no scan pays for hundreds of small files.
+    /// A compaction itself commits `replace`, which is what the count runs
+    /// from, so the cadence cannot recurse. A beaten compaction is ignored -
+    /// a concurrent writer's success is not this commit's failure, and the
+    /// next cadence point retries what this one left - while any other
+    /// failure surfaces, because the data commit already stands either way.
+    fn maybe_auto_compact(&mut self, compacting: bool) -> Result<()> {
+        if compacting {
+            return Ok(());
+        }
+        let Some(cadence) = IcebergOptions::resolved(self.options.as_ref(), &self.metadata)?
+            .compact_after_commits()
+        else {
+            return Ok(());
+        };
+        let mut since_replace: u32 = 0;
+        for snapshot in self.metadata.snapshots.iter().rev() {
+            if snapshot.operation() == "replace" {
+                break;
+            }
+            since_replace = since_replace.saturating_add(1);
+        }
+        if since_replace < cadence {
+            return Ok(());
+        }
+        match self.compact() {
+            Ok(_) => Ok(()),
+            // A CommitConflict reaches `Error` through exactly one From impl,
+            // so its display is the marker; a beaten compaction retries at
+            // the next cadence point rather than failing the data commit.
+            Err(error) if error.to_string().contains("got beaten") => Ok(()),
+            Err(error) => Err(error),
+        }
     }
 
     /// Write one partition's rows as a Parquet data file and describe it.

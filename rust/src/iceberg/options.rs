@@ -58,6 +58,8 @@ pub struct IcebergOptions {
     read_parallel_min_files: Option<usize>,
     /// The recorded size below which a file does not justify one, when set.
     read_parallel_min_file_size_bytes: Option<u64>,
+    /// After how many data commits an automatic compaction runs, when set.
+    compact_after_commits: Option<u32>,
 }
 
 impl IcebergOptions {
@@ -67,6 +69,9 @@ impl IcebergOptions {
     pub const COMMIT_MIN_BACKOFF_MS_KEY: &'static str = "commit.retry.min-wait-ms";
     /// The property naming the largest retry wait, in milliseconds.
     pub const COMMIT_MAX_BACKOFF_MS_KEY: &'static str = "commit.retry.max-wait-ms";
+
+    /// The table property naming the automatic compaction cadence.
+    pub const COMPACT_AFTER_COMMITS_KEY: &'static str = "write.auto-compact.commit-interval";
     /// The property naming the size a data file aims for, in bytes.
     pub const TARGET_FILE_SIZE_KEY: &'static str = "write.target-file-size-bytes";
     /// The property naming how many data files a scan decodes at once.
@@ -125,6 +130,18 @@ impl IcebergOptions {
             .unwrap_or(Self::DEFAULT_COMMIT_MAX_BACKOFF_MS)
     }
 
+    /// Return the automatic compaction cadence, when one is set.
+    ///
+    /// `Some(n)` compacts after every `n` data commits, so small appends fold
+    /// into files near the target size without any commit paying for a full
+    /// rewrite: a well-paced cadence keeps commits neither so frequent that
+    /// every write rewrites files nor so rare that a scan reads hundreds of
+    /// undersized ones. `None` - the default - never compacts on its own, and
+    /// `Some(0)` reads as off rather than as after-every-commit.
+    pub fn compact_after_commits(&self) -> Option<u32> {
+        self.compact_after_commits.filter(|cadence| *cadence > 0)
+    }
+
     /// Return the size a data file aims for, in bytes. Default: 512 MiB.
     pub fn target_file_size_bytes(&self) -> u64 {
         self.target_file_size_bytes
@@ -180,6 +197,18 @@ impl IcebergOptions {
     /// Set the largest retry wait in milliseconds.
     pub fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) {
         self.commit_max_backoff_ms = Some(wait_ms);
+    }
+
+    /// Set the automatic compaction cadence; zero turns it off.
+    pub fn set_compact_after_commits(&mut self, commits: u32) {
+        self.compact_after_commits = Some(commits);
+    }
+
+    /// Return these options compacting after every `commits` data commits.
+    #[must_use]
+    pub fn with_compact_after_commits(mut self, commits: u32) -> Self {
+        self.set_compact_after_commits(commits);
+        self
     }
 
     /// Set the largest retry wait in milliseconds, persistently.
@@ -323,6 +352,7 @@ impl IcebergOptions {
             read_parallel_min_file_size_bytes: read_parallel_min_file_size_layer(
                 explicit, metadata,
             )?,
+            compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
         })
     }
 
@@ -384,6 +414,20 @@ pub(super) struct ReadSettings {
     pub(super) min_files: usize,
     /// The recorded size below which a file does not count, in bytes.
     pub(super) min_file_size_bytes: u64,
+}
+
+/// The one resolver for [`IcebergOptions::COMPACT_AFTER_COMMITS_KEY`].
+fn compact_after_commits_layer(
+    explicit: Option<&IcebergOptions>,
+    metadata: &TableMetadata,
+) -> Result<Option<u32>> {
+    layered(
+        explicit.and_then(|options| options.compact_after_commits),
+        metadata,
+        IcebergOptions::COMPACT_AFTER_COMMITS_KEY,
+        "a whole number of commits",
+        |_| true,
+    )
 }
 
 /// The one resolver for [`IcebergOptions::COMMIT_RETRIES_KEY`].
