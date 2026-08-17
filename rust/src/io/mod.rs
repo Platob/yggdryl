@@ -787,21 +787,23 @@ pub trait IOBase: Send {
         &self,
         options: &RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        if self.is_container() {
+        let reader = if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(self)? {
-                return table.read(options);
+                return select_reader(table.read(options)?, options);
             }
-            return partition::folder_reader(self, options);
-        }
-        leaf_reader(self, options)
+            partition::folder_reader(self, options)?
+        } else {
+            leaf_reader(self, options)?
+        };
+        select_reader(reader, options)
     }
 
     /// Replace or merge this resource's rows with every batch `batches` yields.
     ///
     /// This is the one write path, so an encoding is encoded in exactly one
     /// place. Which of the two it is comes from
-    /// [`IORecordOptions::merge_by`](crate::generic::IORecordOptions::merge_by):
+    /// [`IORecordOptions::merge_by_names`](crate::generic::IORecordOptions::merge_by_names):
     ///
     /// - **An empty match key overwrites.** A declared schema is applied to the
     ///   incoming rows first; the result is then cast to the schema the resource
@@ -836,6 +838,9 @@ pub trait IOBase: Send {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
+        // The selection narrows what a write is about before any encoding or
+        // matching sees the rows, so the columns it drops can never land.
+        let batches = select_reader(batches, options)?;
         if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(mut table) = crate::iceberg::located(self)? {
@@ -843,7 +848,7 @@ pub trait IOBase: Send {
             }
             return partition::write_folder(self, batches, options, false);
         }
-        if options.merge_by().is_empty() {
+        if options.merge_by_names().is_empty() {
             return overwrite_leaf(self, batches, options);
         }
         merge_leaf(self, batches, options)
@@ -878,6 +883,8 @@ pub trait IOBase: Send {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
+        // The same narrowing a write applies: an append is a write that keeps.
+        let batches = select_reader(batches, options)?;
         if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(mut table) = crate::iceberg::located(self)? {
@@ -893,6 +900,50 @@ pub trait IOBase: Send {
 ///
 /// This is the only place a record read reaches an encoding.
 #[cfg(feature = "arrow")]
+/// Narrow a reader to the columns the options select, in the order they name.
+///
+/// An empty selection is the reader as it stands - the common case pays one
+/// slice borrow and nothing else. A non-empty one builds a target root holding
+/// exactly the named columns of the reader's own schema, resolved ASCII
+/// case-insensitively the way every cast matches names, and casts each batch
+/// onto it - which is a projection, because the columns keep their datatypes.
+/// A name the schema does not have is an error listing what is there, because
+/// a selection is a claim about the rows rather than a wish.
+#[cfg(feature = "arrow")]
+pub(crate) fn select_reader(
+    reader: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<crate::arrow::BatchReader> {
+    use crate::generic::IORecordOptions;
+
+    let names = options.select_by_names();
+    if names.is_empty() {
+        return Ok(reader);
+    }
+    let root =
+        crate::arrow::record_schema_from_arrow(options.root_name(), reader.schema().as_ref())?;
+    let mut selected = Vec::with_capacity(names.len());
+    for name in names {
+        let child = root
+            .fields()
+            .iter()
+            .find(|child| child.name().eq_ignore_ascii_case(name))
+            .ok_or_else(|| Error::InvalidRecord {
+                path: smol_str::format_smolstr!("$.{name}"),
+                reason: smol_str::format_smolstr!(
+                    "expected a column named {name:?} to select, got columns {:?}",
+                    root.fields()
+                        .iter()
+                        .map(crate::Field::name)
+                        .collect::<Vec<_>>()
+                ),
+            })?;
+        selected.push(child.clone());
+    }
+    let target = crate::DataType::from_fields(selected)?.required_field(options.root_name());
+    Ok(crate::arrow::cast_reader(reader, &target, options.safe())?)
+}
+
 pub(crate) fn leaf_reader(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
@@ -1002,12 +1053,12 @@ fn merge_leaf(
         stored,
         incoming,
         &target,
-        options.merge_by(),
+        options.merge_by_names(),
         options.safe(),
     )?;
     // The merged contents are the whole new value, so what publishes them is a
     // plain write: merging again would match the result against itself.
-    rewrite.set_merge_by(Vec::new());
+    rewrite.set_merge_by_names(Vec::new());
     leaf_writer(handle, merged, &rewrite)
 }
 
@@ -1031,7 +1082,7 @@ fn append_leaf(
         leaf_reader(handle, &rewrite)?
     };
     let appended = crate::arrow::appended(current, incoming, &target, options.safe())?;
-    rewrite.set_merge_by(Vec::new());
+    rewrite.set_merge_by_names(Vec::new());
     leaf_writer(handle, appended, &rewrite)
 }
 

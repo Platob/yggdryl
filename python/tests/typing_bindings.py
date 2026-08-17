@@ -283,8 +283,8 @@ record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
 declared_schema: Field | None = record_options.schema
 record_options.schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-record_options.merge_by = ["id"]
-record_match_key: list[str] = record_options.merge_by
+record_options.merge_by_names = ["id"]
+record_match_key: list[str] = record_options.merge_by_names
 record_batches: pa.RecordBatchReader = record_handle.read_arrow_batch_reader(
     options=record_options,
 )

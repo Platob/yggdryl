@@ -8,7 +8,7 @@
   ProtocolMetadata: __bool__, __contains__, __delitem__, __eq__, __getitem__, __iter__, __len__, __repr__, __setitem__, __str__, clear, get, items, key, keys, prefix, scheme, update, values
   MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, CSS, CSV, DOC, DOCX, FLAC, GIF, GZIP, HTML, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, SVG, TAR, TOML, TSV, TTF, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD, content_coding, extension, format, from_content_coding, from_content_type, from_extension, from_json, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_encoding, is_font, is_haptics, is_image, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, stable_hash, structured_suffix, subtype, to_json, top_level
   Record: from_, from_arrow, from_arrow_field, from_arrow_record_batch, from_arrow_record_batch_reader, from_arrow_schema, from_arrow_table, from_dict, from_dicts, from_json, from_toml, from_yaml, into_, into_arrow_field, into_arrow_record_batch, into_arrow_record_batch_reader, into_arrow_record_batches, into_arrow_schema, into_arrow_table, into_json, into_toml, into_yaml, schema_field, schema_fields, to_dict
-  RecordOptions: batch_size, compression, for_media_type, key_value_metadata, level, max_row_group_size, merge_by, mime_type, root_name, safe, schema
+  RecordOptions: batch_size, compression, for_media_type, key_value_metadata, level, max_row_group_size, merge_by_names, mime_type, root_name, safe, schema
   Timezone: UTC, abbreviation_at, aliases, from_offset, from_value, is_fixed, is_known, is_saving_at, is_utc, key, observes_saving, offset_at, registered, stable_hash, standard_offset, to_local, to_utc, utcoffset
   Uri: authority, clear_extensions, extension, extensions, file_name, fragment, from_json, from_path, from_str, from_value, into_json, into_path, into_url, into_urn, media_type, mime_type, path, path_segments, query, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stem, to_json, to_path, to_url, to_urn
   Url: authority, clear_extensions, extension, extensions, file_name, fragment, from_json, from_path, from_str, from_uri, from_value, into_json, into_path, into_uri, media_type, mime_type, path, path_segments, query, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stem, to_json, to_path, to_uri
@@ -56,7 +56,7 @@
     instance: consumed, field, toIpc, toTable
   RecordOptions
     statics: forMediaType, forMimeType, from
-    instance: batchSize, compression, keyValueMetadata, level, maxRowGroupSize, mergeBy, mimeType, rootName, safe, schema, toString, withBatchSize, withCompression, withKeyValue, withLevel, withMaxRowGroupSize, withMergeBy, withRootName, withSafe, withSchema
+    instance: batchSize, compression, keyValueMetadata, level, maxRowGroupSize, mergeByNames, mimeType, rootName, safe, schema, toString, withBatchSize, withCompression, withKeyValue, withLevel, withMaxRowGroupSize, withMergeByNames, withRootName, withSafe, withSchema
   iceberg
     statics: Table, Catalog, PartitionSpec, DataFile, assignFieldIds, canPromote, schemaFromJson, schemaToJson
   iceberg.Catalog

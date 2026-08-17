@@ -219,7 +219,7 @@ class TestWritesAndMerges:
             ]
         )
         options = file.record_options()
-        options.merge_by = ["id"]
+        options.merge_by_names = ["id"]
 
         file.write_arrow_batch_reader(
             [

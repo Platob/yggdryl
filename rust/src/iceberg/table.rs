@@ -818,16 +818,21 @@ impl<H: IOBase> Table<H> {
         Ok(())
     }
 
-    /// Merge `batches` into the stored rows, matching on the `merge_by` columns.
+    /// Merge `batches` into the stored rows, matching on the `merge_by_names` columns.
     ///
     /// # Errors
     ///
     /// Returns the failure of the read, the join, or the commit.
-    pub fn merge(&mut self, batches: BatchReader, merge_by: &[String], safe: bool) -> Result<()> {
-        self.merge_where(&[], batches, merge_by, safe)
+    pub fn merge(
+        &mut self,
+        batches: BatchReader,
+        merge_by_names: &[String],
+        safe: bool,
+    ) -> Result<()> {
+        self.merge_where(&[], batches, merge_by_names, safe)
     }
 
-    /// Merge `batches` into the rows `filters` selects, on the `merge_by` columns.
+    /// Merge `batches` into the rows `filters` selects, on the `merge_by_names` columns.
     ///
     /// This is the one place the *column statistics* decide what is read. A row
     /// can only update a file whose recorded bounds for every match-key column
@@ -843,17 +848,17 @@ impl<H: IOBase> Table<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error when `merge_by` names a column the schema does not
+    /// Returns an error when `merge_by_names` names a column the schema does not
     /// declare, and the failure of any read, join, or write otherwise,
     /// including a [`CommitConflict`] when a concurrent commit won.
     pub fn merge_where(
         &mut self,
         filters: &[(&str, &str)],
         batches: BatchReader,
-        merge_by: &[String],
+        merge_by_names: &[String],
         safe: bool,
     ) -> Result<()> {
-        if merge_by.is_empty() {
+        if merge_by_names.is_empty() {
             return self.overwrite_where(filters, batches);
         }
         let schema = self.schema()?.clone();
@@ -871,7 +876,7 @@ impl<H: IOBase> Table<H> {
                 incoming.push(batch);
             }
         }
-        let bounds = KeyBounds::of(&incoming, &schema, merge_by)?;
+        let bounds = KeyBounds::of(&incoming, &schema, merge_by_names)?;
 
         let plan = self.plan(filters)?;
         let mut selected = Vec::new();
@@ -890,7 +895,7 @@ impl<H: IOBase> Table<H> {
             stored,
             crate::arrow::batch_reader(arrow_schema, incoming),
             &schema,
-            merge_by,
+            merge_by_names,
             safe,
         )?;
         self.commit(
@@ -1690,9 +1695,9 @@ struct KeyBound {
 
 impl KeyBounds {
     /// Measure the incoming rows' range for every match-key column.
-    fn of(batches: &[RecordBatch], schema: &Field, merge_by: &[String]) -> Result<Self> {
-        let mut columns = Vec::with_capacity(merge_by.len());
-        for name in merge_by {
+    fn of(batches: &[RecordBatch], schema: &Field, merge_by_names: &[String]) -> Result<Self> {
+        let mut columns = Vec::with_capacity(merge_by_names.len());
+        for name in merge_by_names {
             let field = schema.get_field_by_name(name).ok_or_else(|| {
                 let stored = schema
                     .fields()
@@ -1702,7 +1707,7 @@ impl KeyBounds {
                     .join(", ");
                 invalid(crate::text::expected_got(
                     format_args!(
-                        "a merge_by column the table schema declares, got {name:?}; it has"
+                        "a merge_by_names column the table schema declares, got {name:?}; it has"
                     ),
                     crate::text::elide_display(&stored),
                 ))

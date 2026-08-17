@@ -222,7 +222,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .merge_where(&pairs, batches, options.merge_by(), options.safe())
+            .merge_where(&pairs, batches, options.merge_by_names(), options.safe())
     }
 
     /// Add the rows as a new snapshot, keeping every stored file.

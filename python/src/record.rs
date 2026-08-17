@@ -995,13 +995,24 @@ impl PyRecordOptions {
 
     /// The column names a write matches rows on; empty means overwrite.
     #[getter]
-    fn merge_by(&self) -> Vec<String> {
-        self.inner.merge_by().to_vec()
+    fn merge_by_names(&self) -> Vec<String> {
+        self.inner.merge_by_names().to_vec()
     }
 
     #[setter]
-    fn set_merge_by(&mut self, merge_by: Vec<String>) {
-        self.inner.set_merge_by(merge_by);
+    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
+        self.inner.set_merge_by_names(merge_by_names);
+    }
+
+    /// The column names a read or write is narrowed to; empty selects all.
+    #[getter]
+    fn select_by_names(&self) -> Vec<String> {
+        self.inner.select_by_names().to_vec()
+    }
+
+    #[setter]
+    fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
+        self.inner.set_select_by_names(select_by_names);
     }
 
     /// The page compression applied inside a Parquet file, if this is one.

@@ -64,7 +64,7 @@ const projected: BatchReader = handle.readArrowBatchReader(options)
 const byMediaType: BatchReader = handle.readArrowBatchReader(named)
 
 const merging: RecordOptions = options.withMergeBy(['id'])
-const matchKey: string[] = merging.mergeBy
+const matchKey: string[] = merging.mergeByNames
 handle.writeArrowBatchReader(source)
 handle.writeArrowBatchReader(arrowTable, options)
 handle.writeArrowBatchReader(arrowBatch, merging)

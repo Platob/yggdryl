@@ -465,7 +465,7 @@ impl PyIOBase {
     ///
     /// `batches` is anything `PyArrow` exports an Arrow C stream from - a
     /// `RecordBatchReader`, a `Table`, a `RecordBatch` - so nothing is copied
-    /// on the way in. An empty `merge_by` overwrites; a non-empty one names the
+    /// on the way in. An empty `merge_by_names` overwrites; a non-empty one names the
     /// columns a row is matched on, so a matching row is updated and a
     /// non-matching one appended.
     #[pyo3(signature = (batches, *, options = None))]

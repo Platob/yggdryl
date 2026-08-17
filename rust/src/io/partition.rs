@@ -547,9 +547,9 @@ fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<R
     if let Some(schema) = options.schema() {
         leaf.set_schema(schema.without_fields(&columns)?);
     }
-    leaf.set_merge_by(
+    leaf.set_merge_by_names(
         options
-            .merge_by()
+            .merge_by_names()
             .iter()
             .filter(|name| !columns.contains(&name.as_str()))
             .cloned()
@@ -717,7 +717,7 @@ pub(crate) fn write_folder(
             .or_insert_with(|| relative.join("/"));
     }
 
-    let merging = !options.merge_by().is_empty();
+    let merging = !options.merge_by_names().is_empty();
     if !append && !merging {
         // An overwrite replaces the tree, so a partition the incoming rows
         // never mention has to end up empty rather than keeping stale rows. A
@@ -739,7 +739,7 @@ pub(crate) fn write_folder(
             let mut handle = folder.child_by(&relative)?;
             let reader = crate::arrow::batch_reader(part.schema(), [part]);
             let first = written.insert(relative);
-            if !leaf.merge_by().is_empty() || (!append && first) {
+            if !leaf.merge_by_names().is_empty() || (!append && first) {
                 handle.write_arrow_batch_reader(reader, &leaf)?;
             } else {
                 handle.append_arrow_batch_reader(reader, &leaf)?;

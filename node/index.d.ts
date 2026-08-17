@@ -616,7 +616,7 @@ export declare class IOBase {
   /**
    * Replace or merge this resource's rows with every batch `batches` yields.
    *
-   * An empty `mergeBy` overwrites. A non-empty one names the columns a row is
+   * An empty `mergeByNames` overwrites. A non-empty one names the columns a row is
    * matched on, so a row whose key is already stored updates it and a row
    * whose key is not appends. Nothing reaches the handle until the last batch
    * is encoded, so a failure leaves the resource exactly as it was.
@@ -902,9 +902,9 @@ export declare class RecordOptions {
   /** Set the compression level on the shared 0-to-9 scale. */
   set level(level: number)
   /** The column names a write matches rows on; empty means overwrite. */
-  get mergeBy(): Array<string>
+  get mergeByNames(): Array<string>
   /** Set the column names a write matches rows on. */
-  set mergeBy(mergeBy: Array<string>)
+  set mergeByNames(mergeByNames: Array<string>)
   /**
    * The page compression applied inside a Parquet file, if this is one.
    *
@@ -938,7 +938,7 @@ export declare class RecordOptions {
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with a match key for a write. */
-  withMergeBy(mergeBy: Array<string>): RecordOptions
+  withMergeByNames(mergeByNames: Array<string>): RecordOptions
   /**
    * Return the encoding these options describe, so they print as what they
    * encode rather than as an opaque object.

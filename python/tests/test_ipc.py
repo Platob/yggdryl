@@ -190,8 +190,8 @@ class TestWritesAndMerges:
     ) -> None:
         stream.write_arrow_batch_reader([_batch()])
         options = stream.record_options()
-        options.merge_by = ["id"]
-        assert options.merge_by == ["id"]
+        options.merge_by_names = ["id"]
+        assert options.merge_by_names == ["id"]
 
         updated = pa.record_batch(
             {"id": [1, 7], "symbol": ["MSFT", "NVDA"], "venue": ["XNAS", "XNAS"]},
@@ -273,14 +273,14 @@ class TestOptions:
         options.safe = True
         options.batch_size = 1
         options.level = 9
-        options.merge_by = ["id"]
+        options.merge_by_names = ["id"]
 
         assert (
             options.root_name,
             options.safe,
             options.batch_size,
             options.level,
-            options.merge_by,
+            options.merge_by_names,
         ) == ("trade", True, 1, 9, ["id"])
         # A stream carries no schema until one is declared or read.
         assert options.schema is None

@@ -1017,7 +1017,7 @@ match key turns the same call into a merge, and appending is the third method.
     assert_eq!(total, 3);
 
     // A match key merges: `2` is already stored and updates, `9` is new and appends.
-    let merging = options.clone().with_merge_by(["id"]);
+    let merging = options.clone().with_merge_by_names(["id"]);
     handle.write_arrow_batch_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &merging)?;
     let total: usize = handle
         .read_arrow_batch_reader(&options)?
@@ -1058,7 +1058,7 @@ match key turns the same call into a merge, and appending is the third method.
     # A match key merges: `2` is already stored and updates, `9` is new and appends.
     merging = handle.record_options()
     merging.schema = schema
-    merging.merge_by = ["id"]
+    merging.merge_by_names = ["id"]
     handle.write_arrow_batch_reader(rows([2, 9], ["MSFT.O", "AMD"]), options=merging)
     assert handle.read_arrow_batch_reader(options=options).read_all().num_rows == 4
     ```
@@ -1095,12 +1095,12 @@ match key turns the same call into a merge, and appending is the third method.
     assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 3)
 
     // A match key merges: `2` is already stored and updates, `9` is new and appends.
-    const merging = options.withMergeBy(['id'])
+    const merging = options.withMergeByNames(['id'])
     handle.writeArrowBatchReader(rows([2n, 9n], ['MSFT.O', 'AMD']), merging)
     assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 4)
     ```
 
-`merge_by` is a shared record setting, so it means the same thing on every
+`merge_by_names` is a shared record setting, so it means the same thing on every
 encoding. Empty is an overwrite: a declared schema is applied to the incoming
 rows, and the result is then cast to the schema the resource already stores when
 it stores one - an overwrite replaces rows, not columns, so a caller who really
@@ -1124,6 +1124,97 @@ target shape first, so data whose schema merely *fits* is accepted.
 
 All three are transactional in the sense that matters: nothing is written until
 the new contents are complete, so a failure leaves the resource as it was.
+
+`select_by_names` is the companion narrowing setting, and it works on both
+directions. On a read it yields exactly the named columns of the stored rows,
+in the order the names are given; on a write - overwrite, merge, or append - it
+keeps exactly the named columns of the incoming rows, so what it drops can
+never land. Names match ASCII case-insensitively, the way every cast selects,
+and a name the rows do not have is an error listing what is there, because a
+selection is a claim about the rows rather than a wish. An empty list, the
+default, selects everything.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{arrow, DataType, MimeType};
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use std::sync::Arc;
+
+    # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("symbol"),
+    ])?
+    .required_field("row");
+    let batch = RecordBatch::try_new(
+        arrow::schema_from_field(&schema)?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2])),
+            Arc::new(StringArray::from(vec![Some("AAPL"), Some("MSFT")])),
+        ],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let options = handle.record_options()?;
+    handle.write_arrow_batch_reader(arrow::batch_reader(batch.schema(), [batch]), &options)?;
+
+    // A read narrowed to one column yields one column.
+    let selecting = options.with_select_by_names(["symbol"]);
+    let first = handle.read_arrow_batch_reader(&selecting)?.next().unwrap()?;
+    assert_eq!(first.num_columns(), 1);
+    assert_eq!(first.schema().field(0).name(), "symbol");
+    # Ok(())
+    # }
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "orders.arrows")
+    handle.write_arrow(pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}))
+
+    options = handle.record_options()
+    options.select_by_names = ["symbol"]
+    narrowed = handle.read_arrow(options).read_all()
+    assert narrowed.column_names == ["symbol"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'orders.arrows'))
+    handle.writeArrowBatchReader(
+      new arrow.Table({
+        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+        symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+      }),
+    )
+
+    const narrowed = handle.recordOptions().withSelectByNames(['symbol'])
+    const table = handle.readArrowBatchReader(narrowed).toTable()
+    assert.deepEqual(table.schema.fields.map((field) => field.name), ['symbol'])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 ## Globbing and Hive partitions
 

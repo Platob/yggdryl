@@ -179,7 +179,7 @@ fn a_table_written_here_is_left_for_an_external_reader() {
     let options = folder
         .record_options()
         .expect("the table's own encoding")
-        .with_merge_by(["id"]);
+        .with_merge_by_names(["id"]);
     let batch = upserted();
     folder
         .write_arrow_batch_reader(

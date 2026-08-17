@@ -59,7 +59,7 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
                 .record_options()
                 .expect("an implemented encoding")
                 .with_schema(field.clone())
-                .with_merge_by(["id"]);
+                .with_merge_by_names(["id"]);
             target
                 .write_arrow_batch_reader(
                     yggdryl::arrow::batch_reader(source.schema(), [black_box(source.clone())]),

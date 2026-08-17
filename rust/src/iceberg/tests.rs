@@ -1558,7 +1558,7 @@ mod handles {
             )
             .unwrap();
 
-        let merge = options.clone().with_merge_by(["id"]);
+        let merge = options.clone().with_merge_by_names(["id"]);
         let batch = trades(
             &[2, 4],
             &[Some("MSFT.L"), Some("BP")],

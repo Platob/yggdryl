@@ -48,13 +48,13 @@ fn merging(handle: &Buffer) -> RecordOptions {
         .record_options()
         .unwrap()
         .with_schema(schema())
-        .with_merge_by(["id"])
+        .with_merge_by_names(["id"])
 }
 
 /// Every `(id, symbol)` pair a handle holds, in stored order.
 fn stored(handle: &impl IOBase, options: &RecordOptions) -> Vec<(i64, Option<String>)> {
     let mut plain = options.clone();
-    plain.set_merge_by(Vec::new());
+    plain.set_merge_by_names(Vec::new());
     let mut found = Vec::new();
     for batch in handle.read_arrow_batch_reader(&plain).unwrap() {
         let batch = batch.unwrap();
@@ -133,7 +133,7 @@ fn a_key_stored_twice_has_every_occurrence_updated() {
                 rows(vec![1], vec![Some("AAPL")]),
                 rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")]),
             ]),
-            &options.clone().with_merge_by(Vec::<String>::new()),
+            &options.clone().with_merge_by_names(Vec::<String>::new()),
         )
         .unwrap();
 
@@ -222,7 +222,7 @@ fn a_null_key_matches_another_null_key() {
         .record_options()
         .unwrap()
         .with_schema(field)
-        .with_merge_by(["id"]);
+        .with_merge_by_names(["id"]);
     handle
         .write_arrow_batch_reader(
             crate::arrow::batch_reader(Arc::clone(&arrow), [batch(vec![None], vec![Some("AAPL")])]),
@@ -239,7 +239,7 @@ fn a_null_key_matches_another_null_key() {
     // Arrow's row encoding gives absence one exact spelling, so two null keys
     // are the same key rather than two rows that merely both lack a value.
     let total: usize = handle
-        .read_arrow_batch_reader(&options.with_merge_by(Vec::<String>::new()))
+        .read_arrow_batch_reader(&options.with_merge_by_names(Vec::<String>::new()))
         .unwrap()
         .map(|batch| batch.unwrap().num_rows())
         .sum();
@@ -273,7 +273,7 @@ fn a_composite_key_matches_on_every_column() {
         .record_options()
         .unwrap()
         .with_schema(field)
-        .with_merge_by(["venue", "id"]);
+        .with_merge_by_names(["venue", "id"]);
     handle
         .write_arrow_batch_reader(
             crate::arrow::batch_reader(
@@ -295,7 +295,7 @@ fn a_composite_key_matches_on_every_column() {
         .unwrap();
 
     let read: Vec<RecordBatch> = handle
-        .read_arrow_batch_reader(&options.clone().with_merge_by(Vec::<String>::new()))
+        .read_arrow_batch_reader(&options.clone().with_merge_by_names(Vec::<String>::new()))
         .unwrap()
         .map(std::result::Result::unwrap)
         .collect();
@@ -361,7 +361,7 @@ fn a_match_key_naming_an_unknown_column_is_refused_by_name() {
         .record_options()
         .unwrap()
         .with_schema(schema())
-        .with_merge_by(["nowhere"]);
+        .with_merge_by_names(["nowhere"]);
 
     let message = handle
         .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
@@ -397,4 +397,88 @@ fn merging_works_the_same_way_on_parquet() {
             (3, Some("NVDA".to_owned())),
         ]
     );
+}
+
+#[test]
+fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
+    let mut handle = handle("orders.arrows");
+    let options = handle.record_options().unwrap().with_schema(schema());
+    handle
+        .write_arrow_batch_reader(
+            reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
+            &options,
+        )
+        .unwrap();
+
+    // Selecting one column yields exactly that column; the name matches the
+    // way every cast matches, ASCII case-insensitively.
+    let selecting = options.clone().with_select_by_names(["SYMBOL"]);
+    let mut symbols = Vec::new();
+    for batch in handle.read_arrow_batch_reader(&selecting).unwrap() {
+        let batch = batch.unwrap();
+        assert_eq!(batch.num_columns(), 1);
+        let column = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        for index in 0..column.len() {
+            symbols.push(column.value(index).to_owned());
+        }
+    }
+    assert_eq!(symbols, ["AAPL", "MSFT"]);
+
+    // The selection also orders: naming both columns reversed yields them
+    // reversed, which a plain read never does.
+    let reversed = options.with_select_by_names(["symbol", "id"]);
+    let first = handle
+        .read_arrow_batch_reader(&reversed)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let names: Vec<String> = first
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect();
+    assert_eq!(names, ["symbol", "id"]);
+}
+
+#[test]
+fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
+    let mut handle = handle("orders.arrows");
+    // Writing with a selection keeps only the named columns of the incoming
+    // rows: the payload column never lands, so it reads back absent.
+    let narrowing = handle
+        .record_options()
+        .unwrap()
+        .with_select_by_names(["id"]);
+    handle
+        .write_arrow_batch_reader(
+            reader(vec![rows(vec![7, 8], vec![Some("AAPL"), Some("MSFT")])]),
+            &narrowing,
+        )
+        .unwrap();
+
+    let plain = handle.record_options().unwrap();
+    let batch = handle
+        .read_arrow_batch_reader(&plain)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.num_columns(), 1);
+    assert_eq!(batch.schema().field(0).name(), "id");
+
+    // A name the rows do not have is an error naming what is there.
+    let missing = plain.with_select_by_names(["absent"]);
+    let error = handle
+        .read_arrow_batch_reader(&missing)
+        .err()
+        .expect("a missing selected column is an error")
+        .to_string();
+    assert!(error.contains("absent"), "unexpected error: {error}");
+    assert!(error.contains("id"), "unexpected error: {error}");
 }

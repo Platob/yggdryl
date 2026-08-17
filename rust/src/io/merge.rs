@@ -24,7 +24,7 @@ use crate::{Error, Field, Result};
 /// One key's positions in the held result, as `(batch, row)` pairs.
 type Positions = Vec<(usize, usize)>;
 
-/// Merge `incoming` into `stored`, matching rows on the `merge_by` columns.
+/// Merge `incoming` into `stored`, matching rows on the `merge_by_names` columns.
 ///
 /// Both sides are read as `field`: `stored` is expected to already be that
 /// shape and every incoming batch is cast to it, so the two agree column for
@@ -39,18 +39,18 @@ type Positions = Vec<(usize, usize)>;
 ///
 /// # Errors
 ///
-/// Returns an error when `merge_by` names a column `field` does not declare,
+/// Returns an error when `merge_by_names` names a column `field` does not declare,
 /// when a key column's datatype has no row encoding, or on the first read or
 /// cast failure from either side.
 pub(crate) fn merged(
     stored: BatchReader,
     incoming: BatchReader,
     field: &Field,
-    merge_by: &[String],
+    merge_by_names: &[String],
     safe: bool,
 ) -> Result<BatchReader> {
     let schema = schema_from_field(field)?;
-    let keys = key_indices(&schema, merge_by)?;
+    let keys = key_indices(&schema, merge_by_names)?;
     let converter = RowConverter::new(
         keys.iter()
             .map(|index| SortField::new(schema.field(*index).data_type().clone()))
@@ -88,8 +88,8 @@ pub(crate) fn merged(
 }
 
 /// Resolve the stored positions of the match-key columns.
-fn key_indices(schema: &arrow_schema::Schema, merge_by: &[String]) -> Result<Vec<usize>> {
-    if merge_by.is_empty() {
+fn key_indices(schema: &arrow_schema::Schema, merge_by_names: &[String]) -> Result<Vec<usize>> {
+    if merge_by_names.is_empty() {
         return Err(Error::InvalidRecord {
             path: smol_str::SmolStr::new_static("$"),
             reason: smol_str::SmolStr::new_static(
@@ -97,7 +97,7 @@ fn key_indices(schema: &arrow_schema::Schema, merge_by: &[String]) -> Result<Vec
             ),
         });
     }
-    merge_by
+    merge_by_names
         .iter()
         .map(|name| {
             schema.index_of(name).map_err(|_| {
@@ -110,7 +110,7 @@ fn key_indices(schema: &arrow_schema::Schema, merge_by: &[String]) -> Result<Vec
                 Error::InvalidRecord {
                     path: smol_str::format_smolstr!("$.{name}"),
                     reason: crate::text::expected_got(
-                        format_args!("merge_by column {name:?} among the stored columns"),
+                        format_args!("merge_by_names column {name:?} among the stored columns"),
                         crate::text::elide_display(&stored),
                     ),
                 }

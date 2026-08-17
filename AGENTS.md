@@ -137,7 +137,7 @@ layer compiling annotations into native values.
   columns are the cast's business. Parquet's projection skips locating and
   decoding chunks; IPC's saves decode and allocation, not bytes - say so.
 - **A write is a replacement or a key-matched merge, nothing else.**
-  `merge_by` empty = overwrite (declared schema applied to incoming, then
+  `merge_by_names` empty = overwrite (declared schema applied to incoming, then
   safe-cast to the stored schema so rows are replaced, not columns
   redefined). Non-empty = merge: stored rows read, incoming joined one batch
   at a time, matched keys update, unmatched append, result rewritten. The
@@ -189,7 +189,7 @@ layer compiling annotations into native values.
   partition columns and as the cast value elsewhere; statistics bound files,
   rows are filtered afterwards. Never scan by walking `data/`.
 - **A table answers the same three record methods as a folder**: read through
-  the snapshot, write/append as one commit each; `merge_by` upserts a table
+  the snapshot, write/append as one commit each; `merge_by_names` upserts a table
   exactly as a leaf; a handle on a `column=value` directory addresses that
   partition. Merge reads only files whose key-column bounds overlap incoming
   keys; every other file is carried as an `existing` entry (same location,

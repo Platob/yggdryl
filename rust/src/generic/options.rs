@@ -80,10 +80,23 @@ pub trait IORecordOptions: Sized {
     /// [`write`](crate::io::IOBase::write_arrow_batch_reader) matches incoming
     /// rows against: a row whose key is already stored updates it, and a row
     /// whose key is not appends.
-    fn merge_by(&self) -> &[String];
+    fn merge_by_names(&self) -> &[String];
 
     /// Set the column names whose values form a write's match key.
-    fn set_merge_by(&mut self, merge_by: Vec<String>);
+    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>);
+
+    /// Borrow the column names a read or write is narrowed to.
+    ///
+    /// An empty list selects everything. A non-empty one names the columns, in
+    /// the order they are wanted: a read yields exactly those columns of the
+    /// stored rows, and a write keeps exactly those columns of the incoming
+    /// rows. Names match ASCII case-insensitively, the way every cast selects,
+    /// and a name the rows do not have is an error rather than a null column,
+    /// because a selection is a claim about what is there.
+    fn select_by_names(&self) -> &[String];
+
+    /// Set the column names a read or write is narrowed to.
+    fn set_select_by_names(&mut self, select_by_names: Vec<String>);
 
     /// Borrow the declared schema, or say that one is required.
     ///
@@ -136,12 +149,23 @@ pub trait IORecordOptions: Sized {
 
     /// Return these options with a match key for a write.
     #[must_use]
-    fn with_merge_by<I, S>(mut self, merge_by: I) -> Self
+    fn with_merge_by_names<I, S>(mut self, merge_by_names: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.set_merge_by(merge_by.into_iter().map(Into::into).collect());
+        self.set_merge_by_names(merge_by_names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Return these options narrowed to the named columns, for reads and writes.
+    #[must_use]
+    fn with_select_by_names<I, S>(mut self, select_by_names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.set_select_by_names(select_by_names.into_iter().map(Into::into).collect());
         self
     }
 }
@@ -193,12 +217,20 @@ macro_rules! record_options_fields {
             self.level = level;
         }
 
-        fn merge_by(&self) -> &[String] {
-            &self.merge_by
+        fn merge_by_names(&self) -> &[String] {
+            &self.merge_by_names
         }
 
-        fn set_merge_by(&mut self, merge_by: Vec<String>) {
-            self.merge_by = merge_by;
+        fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
+            self.merge_by_names = merge_by_names;
+        }
+
+        fn select_by_names(&self) -> &[String] {
+            &self.select_by_names
+        }
+
+        fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
+            self.select_by_names = select_by_names;
         }
     };
 }
@@ -347,19 +379,35 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
-    fn merge_by(&self) -> &[String] {
+    fn merge_by_names(&self) -> &[String] {
         match self {
-            Self::Ipc(options) => options.merge_by(),
+            Self::Ipc(options) => options.merge_by_names(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.merge_by(),
+            Self::Parquet(options) => options.merge_by_names(),
         }
     }
 
-    fn set_merge_by(&mut self, merge_by: Vec<String>) {
+    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
         match self {
-            Self::Ipc(options) => options.set_merge_by(merge_by),
+            Self::Ipc(options) => options.set_merge_by_names(merge_by_names),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_merge_by(merge_by),
+            Self::Parquet(options) => options.set_merge_by_names(merge_by_names),
+        }
+    }
+
+    fn select_by_names(&self) -> &[String] {
+        match self {
+            Self::Ipc(options) => options.select_by_names(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.select_by_names(),
+        }
+    }
+
+    fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
+        match self {
+            Self::Ipc(options) => options.set_select_by_names(select_by_names),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_select_by_names(select_by_names),
         }
     }
 }

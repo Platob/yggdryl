@@ -156,8 +156,8 @@ test('a match key updates a stored row and appends a new one', () => {
   handle.mediaType = MimeType.ARROW_STREAM
   handle.writeArrowBatchReader(trades())
 
-  const merging = handle.recordOptions().withMergeBy(['id'])
-  assert.deepEqual(merging.mergeBy, ['id'])
+  const merging = handle.recordOptions().withMergeByNames(['id'])
+  assert.deepEqual(merging.mergeByNames, ['id'])
   handle.writeArrowBatchReader(rows([2n, 9n], ['MSFT.O', 'NVDA'], ['XNYS', 'XNYS']), merging)
 
   const table = handle.readArrowBatchReader().toTable()

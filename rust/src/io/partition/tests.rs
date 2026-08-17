@@ -382,7 +382,7 @@ mod lake {
         handle
             .write_arrow_batch_reader(
                 crate::arrow::batch_reader(updates.schema(), [updates]),
-                &options(Some(field.clone())).with_merge_by(["price"]),
+                &options(Some(field.clone())).with_merge_by_names(["price"]),
             )
             .unwrap();
 

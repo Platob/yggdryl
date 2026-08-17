@@ -183,14 +183,26 @@ impl JsRecordOptions {
 
     /// The column names a write matches rows on; empty means overwrite.
     #[napi(getter)]
-    pub fn merge_by(&self) -> Vec<String> {
-        self.inner.merge_by().to_vec()
+    pub fn merge_by_names(&self) -> Vec<String> {
+        self.inner.merge_by_names().to_vec()
     }
 
     /// Set the column names a write matches rows on.
     #[napi(setter)]
-    pub fn set_merge_by(&mut self, merge_by: Vec<String>) {
-        self.inner.set_merge_by(merge_by);
+    pub fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
+        self.inner.set_merge_by_names(merge_by_names);
+    }
+
+    /// The column names a read or write is narrowed to; empty selects all.
+    #[napi(getter)]
+    pub fn select_by_names(&self) -> Vec<String> {
+        self.inner.select_by_names().to_vec()
+    }
+
+    /// Set the column names a read or write is narrowed to.
+    #[napi(setter)]
+    pub fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
+        self.inner.set_select_by_names(select_by_names);
     }
 
     /// The page compression applied inside a Parquet file, if this is one.
@@ -317,9 +329,17 @@ impl JsRecordOptions {
 
     /// Return these options with a match key for a write.
     #[napi]
-    pub fn with_merge_by(&self, merge_by: Vec<String>) -> Self {
+    pub fn with_merge_by_names(&self, merge_by_names: Vec<String>) -> Self {
         let mut options = self.clone();
-        options.set_merge_by(merge_by);
+        options.set_merge_by_names(merge_by_names);
+        options
+    }
+
+    /// Return these options narrowed to the named columns, on reads and writes.
+    #[napi]
+    pub fn with_select_by_names(&self, select_by_names: Vec<String>) -> Self {
+        let mut options = self.clone();
+        options.set_select_by_names(select_by_names);
         options
     }
 

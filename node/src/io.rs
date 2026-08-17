@@ -442,7 +442,7 @@ impl JsIOBase {
 
     /// Replace or merge this resource's rows with every batch `batches` yields.
     ///
-    /// An empty `mergeBy` overwrites. A non-empty one names the columns a row is
+    /// An empty `mergeByNames` overwrites. A non-empty one names the columns a row is
     /// matched on, so a row whose key is already stored updates it and a row
     /// whose key is not appends. Nothing reaches the handle until the last batch
     /// is encoded, so a failure leaves the resource exactly as it was.

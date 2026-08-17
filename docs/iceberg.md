@@ -1118,7 +1118,7 @@ drains a scan drains them.
     folder.append_arrow_batch_reader(rows(vec![3], vec!["XLON"]), &options)?;
 
     // A match key upserts: `2` is stored and updates, `9` is new and appends.
-    let merging = options.clone().with_merge_by(["id"]);
+    let merging = options.clone().with_merge_by_names(["id"]);
     folder.write_arrow_batch_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
 
     let total: usize = folder
@@ -1164,7 +1164,7 @@ drains a scan drains them.
 
     # A match key upserts: `2` is stored and updates, `9` is new and appends.
     merging = folder.record_options()
-    merging.merge_by = ["id"]
+    merging.merge_by_names = ["id"]
     folder.write_arrow_batch_reader(rows([2, 9], ["XNYS", "XLON"]), options=merging)
 
     assert folder.read_arrow_batch_reader(options=options).read_all().num_rows == 4
@@ -1207,7 +1207,7 @@ drains a scan drains them.
     // A match key upserts: `2` is stored and updates, `9` is new and appends.
     folder.writeArrowBatchReader(
       rows([2n, 9n], ['XNYS', 'XLON']),
-      options.withMergeBy(['id']),
+      options.withMergeByNames(['id']),
     )
 
     assert.equal(folder.readArrowBatchReader(options).toTable().numRows, 4)

@@ -94,7 +94,9 @@ pub struct ParquetOptions {
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// Column names forming a write's match key; empty means overwrite.
-    pub merge_by: Vec<String>,
+    pub merge_by_names: Vec<String>,
+    /// Column names a read or write is narrowed to; empty selects everything.
+    pub select_by_names: Vec<String>,
 }
 
 impl ParquetOptions {
@@ -109,7 +111,8 @@ impl ParquetOptions {
             safe: false,
             batch_size: None,
             level: crate::Level::DEFAULT,
-            merge_by: Vec::new(),
+            merge_by_names: Vec::new(),
+            select_by_names: Vec::new(),
         }
     }
 
