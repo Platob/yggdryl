@@ -64,7 +64,7 @@ def test_nested_record_yaml_is_ordinary_yaml_with_no_class_name() -> None:
     assert yaml.loads(encoded) == {
         "trade_id": 42,
         "leg": {"symbol": "ABC", "price": Decimal("12.50")},
-        "executed_at": dt.datetime(2026, 8, 15, 10, 30),
+        "executed_at": "2026-08-15T10:30:00.000000",
     }
 
 

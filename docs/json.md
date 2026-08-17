@@ -128,10 +128,15 @@ Mapping order is insertion order and survives the round trip.
     ```
 
 JSON spells objects, arrays, strings, doubles, booleans, and null. [`Value`](generic.md)
-also carries bytes, 128-bit integers, exact decimals, the four temporals, non-finite
-floats, and mappings whose keys are not strings. Each of those becomes a one-key object
-under `$yggdryl` holding `version`, `type`, and the encoded `value`, so the document stays
-ordinary JSON that any other reader can still parse.
+also carries bytes, 128-bit integers, exact decimals, the temporals, non-finite floats,
+and mappings whose keys are not strings. A temporal writes as its classic ISO string -
+`2026-08-15`, `10:00:00.123`, `2026-08-15T12:30:00+02:00[Europe/Paris]`, `PT90S` - the
+spelling every other JSON reader already reads, with the fraction printed at the unit's
+full width so the digits *are* the unit. Read back without a schema it is that string;
+a [`Field`](field.md) or a record class is what recovers the typed reading. Every other
+kind above becomes a one-key object under `$yggdryl` holding `version`, `type`, and the
+encoded `value`, so the document stays ordinary JSON that any other reader can still
+parse.
 
 The envelope is matched exactly on the way back. A different `version`, an unrecognized
 `type`, a missing field, or one extra field leaves the object a plain mapping, so

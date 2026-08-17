@@ -67,17 +67,24 @@ pub(crate) fn as_py(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
         Value::Record(..) => as_py(py, &value.record_to_mapping()),
         Value::Null => Ok(py.None()),
         Value::Bool(value) => Ok(value.into_pyobject(py)?.to_owned().into_any().unbind()),
+        Value::I8(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Value::I16(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Value::I32(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
         Value::I64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Value::U8(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Value::U16(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Value::U32(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
         Value::U64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
         Value::I128(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
         Value::U128(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::Float(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Value::F32(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Value::F64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
         Value::Decimal(unscaled, scale) => decimal_to_python(py, *unscaled, *scale),
         Value::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Value::Bytes(value) => Ok(PyBytes::new(py, value).into_any().unbind()),
         Value::Date(days) => date_to_python(py, *days),
         Value::Time(..) => time_to_python(py, value),
-        Value::Timestamp(..) => timestamp_to_python(py, value),
+        Value::Timestamp(..) | Value::DateTime(..) => timestamp_to_python(py, value),
         Value::Duration(..) => duration_to_python(py, value),
         Value::Sequence(items) => {
             let items = items
@@ -198,7 +205,7 @@ impl Encoder {
             return value
                 .extract::<f64>()
                 .map(Float::from_f64)
-                .map(Value::Float)
+                .map(Value::F64)
                 .map(Some);
         }
         if is_exact_type::<PyString>(value) {
@@ -320,7 +327,7 @@ impl Encoder {
             return integer_to_value(value).map(Some);
         }
         if value.is_instance_of::<PyFloat>() {
-            return Ok(Some(Value::Float(Float::from_f64(value.extract()?))));
+            return Ok(Some(Value::F64(Float::from_f64(value.extract()?))));
         }
         if let Ok(text) = value.cast::<PyString>() {
             return Ok(Some(Value::String(text.to_str()?.into())));
@@ -598,8 +605,8 @@ fn integer_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
 fn complex_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
     let complex = value.cast::<PyComplex>()?;
     Ok(Value::from_sequence([
-        Value::Float(Float::from_f64(complex.real())),
-        Value::Float(Float::from_f64(complex.imag())),
+        Value::F64(Float::from_f64(complex.real())),
+        Value::F64(Float::from_f64(complex.imag())),
     ]))
 }
 
@@ -610,7 +617,7 @@ fn decimal_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
         // A non-finite decimal spells its exponent `n`, `N`, or `F`. No exact
         // decimal names an infinity or a NaN, so the float that does is the
         // honest shape and the document says so.
-        return Ok(Value::Float(Float::from_f64(value.extract::<f64>()?)));
+        return Ok(Value::F64(Float::from_f64(value.extract::<f64>()?)));
     };
     let scale = exponent
         .checked_neg()

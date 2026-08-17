@@ -602,13 +602,22 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
         // spellings are the default.
         DefaultPlan::Signed => matches!(
             value,
-            Value::I64(0)
+            Value::I8(0)
+                | Value::I16(0)
+                | Value::I32(0)
+                | Value::I64(0)
                 | Value::Date(0)
                 | Value::Time(0, _)
                 | Value::Timestamp(0, _, _)
+                | Value::DateTime(0, _)
                 | Value::Duration(0, _)
         ),
-        DefaultPlan::Unsigned => matches!(value, Value::U64(0)),
+        DefaultPlan::Unsigned => {
+            matches!(
+                value,
+                Value::U8(0) | Value::U16(0) | Value::U32(0) | Value::U64(0)
+            )
+        }
         DefaultPlan::Float => value
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
@@ -639,7 +648,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
             let [actual_type_id, actual_payload] = values else {
                 return false;
             };
-            matches!(actual_type_id, Value::I64(actual) if *actual == i64::from(*type_id))
+            actual_type_id.as_i128() == Some(i128::from(*type_id))
                 && plan_matches_value(payload, actual_payload)
         }),
         DefaultPlan::EmptyMapping => value.as_mapping().is_some_and(<[(Value, Value)]>::is_empty),

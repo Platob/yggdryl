@@ -9,7 +9,7 @@ mod media_type;
 mod mime_type;
 mod scheme;
 mod time_unit;
-mod timezone;
+pub(crate) mod timezone;
 mod union_mode;
 
 pub use codec::{Codec, Encoder, Level};

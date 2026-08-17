@@ -65,16 +65,22 @@ def test_exact_scalars_round_trip_through_toml_syntax_or_an_envelope() -> None:
     }
 
     encoded = toml.dumps(value)
+    restored = toml.loads(encoded)
 
     assert isinstance(encoded, bytes)
-    assert toml.loads(encoded) == value
-    # A date, a time, and a datetime have TOML syntax of their own and use it.
+    # A date, a time, and a datetime have TOML syntax of their own and use it,
+    # so they come back typed.
+    assert {name: restored[name] for name in value if name != "delta"} == {
+        name: item for name, item in value.items() if name != "delta"
+    }
     assert b'"date" = 2026-08-15\n' in encoded
     assert b'"datetime" = 2026-08-15T12:03:04.000005\n' in encoded
     assert b'"zoned" = 2026-08-15T12:00:00Z\n' in encoded
-    # A decimal and an elapsed duration have none, so they take the envelope.
+    # A decimal has no TOML syntax and takes the envelope; a duration spells
+    # its classic ISO string and comes back as that string.
     assert b'type = "decimal"' in encoded
-    assert b'type = "duration"' in encoded
+    assert b'"delta" = "-PT172796.999996S"\n' in encoded
+    assert restored["delta"] == "-PT172796.999996S"
 
 
 def test_values_without_a_native_shape_lower_and_lose_their_class() -> None:

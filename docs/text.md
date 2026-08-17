@@ -48,9 +48,12 @@ above it: one dispatch over the four grammars, and one way to move a value throu
 [`IOBase`](io.md) handle.
 
 Python decodes to `dict`, `list`, `str`, `int`, `float`, `bytes`, and `None`; JavaScript decodes to
-plain objects, arrays, `Map`, `Buffer`, and `Date`. JavaScript keeps one wrapper, `Value`, for the
-values it has no type for at all - an exact decimal, a date, a time of day, a duration, and a
-timestamp a `Date` cannot hold - and that class is also its `fromJs`/`asJs` pivot.
+plain objects, arrays, `Map`, `Buffer`, and `Date`. On the schemaless wires a temporal travels as
+its classic ISO string - `2026-08-15`, `10:00:00.123`, `2026-08-15T12:30:00Z`, `PT90S` - so that is
+what a bare `loads` hands back; a schema, a record class, or TOML's own date-time syntax is what
+hands back the typed reading. JavaScript keeps one wrapper, `Value`, for the values it has no type
+for at all - an exact decimal, or a TOML temporal a `Date` cannot hold - and that class is also its
+`fromJs`/`asJs` pivot.
 
 ## What a value can be
 
@@ -114,19 +117,28 @@ timestamp a `Date` cannot hold - and that class is also its `fromJs`/`asJs` pivo
     assert.deepEqual(json.loads(json.dumps(Buffer.from([0, 1]))), Buffer.from([0, 1]))
     ```
 
-Sixteen variants: `Null`, `Bool`, `I64`, `U64`, `I128`, `U128`, `Float`, `Decimal`, `String`,
-`Bytes`, `Date`, `Time`, `Timestamp`, `Duration`, `Sequence`, and `Mapping`. Every one of them
-carries its own parts, so nothing in the tree is a name over an untyped payload: a timestamp holds
-its unit and its zone, a decimal holds its coefficient and its scale. Four of them are integers because a wire representation is
-worth keeping, but they are one number as far as equality, ordering, and hashing are concerned -
-`I64(1)` and `U64(1)` are the same key in a mapping. `as_i64` and `as_u64` narrow only when the
-magnitude fits and return `None` otherwise, so nothing wraps silently.
+A variant for every datatype: `Null`, `Bool`, the integers at every width from `I8` to `U128`,
+`F32` and `F64`, `Decimal`, `String`, `Bytes`, `Date`, `Time`, `Timestamp`, `DateTime`,
+`Duration`, `Record`, `Sequence`, and `Mapping`. Every one of them carries its own parts, so
+nothing in the tree is a name over an untyped payload: a timestamp holds its unit and its zone, a
+decimal holds its coefficient and its scale. The integer widths exist because a column declaration
+is worth keeping - an `Int8` column reads back as `I8`, not as an `I64` that happens to fit - but
+they are one number as far as equality, ordering, and hashing are concerned: `I64(1)` and `U64(1)`
+are the same key in a mapping, and so are `F32(1.5)` and `F64(1.5)`, because an `f32` widens
+exactly. `as_i64` and `as_u64` narrow only when the magnitude fits and return `None` otherwise, so
+nothing wraps silently.
 
-`Float` wraps the bits rather than the `f64`. NaN payloads are normalized at construction, which
-makes NaN equal to itself and orders every float totally; positive and negative zero stay distinct
-so a codec can write back exactly what it read. `kind` gives one lowercase word per variant -
-`null`, `boolean`, `i64`, `float`, `string`, `mapping`, and so on - and it is the spelling error
-messages use for an observed value, so `expected string, got mapping` reads the same everywhere.
+A `Timestamp` always has its zone, because "no zone" is not a display detail of an instant - it is
+a different kind of reading, the naive wall clock, and that kind is `DateTime`. Building a
+timestamp with no zone (`Value::timestamp(count, unit, None)`) builds the `DateTime`, which is
+what a `Timestamp(unit, None)` column stores.
+
+`Float` wraps the bits rather than the `f64`, and `Float32` does the same at 32 bits. NaN payloads
+are normalized at construction, which makes NaN equal to itself and orders every float totally;
+positive and negative zero stay distinct so a codec can write back exactly what it read. `kind`
+gives one lowercase word per variant - `null`, `boolean`, `i8` through `u128`, `f32`, `f64`,
+`datetime`, `string`, `mapping`, and so on - and it is the spelling error messages use for an
+observed value, so `expected string, got mapping` reads the same everywhere.
 
 `Bytes` and the wide integers have no JSON, TOML, or YAML spelling. They are written into an
 envelope the decoder reads back as itself, which is why the round trips above hold in all three

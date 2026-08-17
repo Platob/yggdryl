@@ -395,15 +395,15 @@ keeps its scale rather than its class name. See [python](extensions/python.md) a
     assert!(encoded.contains("\"offset\" = 1979-05-27T07:32:00Z\n"));
     assert!(encoded.contains("\"day\" = 1979-05-27\n"));
 
-    // A zone that names a place is not an offset, so it takes the envelope
-    // instead of being rewritten as the offset that place happens to be at.
+    // A zone that names a place is not an offset, so it spells the classic
+    // string - offset and bracketed name - instead of being rewritten as the
+    // offset that place happens to be at.
     let paris = Value::from_mapping([(
         Value::from("at"),
         Value::timestamp(296_638_320, TimeUnit::Second, Some("Europe/Paris"))?,
     )])?;
-    let encoded = toml::to_vec(&paris)?;
-    assert!(String::from_utf8(encoded.clone())?.contains("type = \"timestamp\""));
-    assert_eq!(toml::from_slice(&encoded)?, paris);
+    let encoded = String::from_utf8(toml::to_vec(&paris)?)?;
+    assert!(encoded.contains(r#""at" = "1979-05-27T09:32:00+02:00[Europe/Paris]""#));
     ```
 
 === "Python"
@@ -458,11 +458,11 @@ keeps its scale rather than its class name. See [python](extensions/python.md) a
     ```
 
 TOML's four temporal forms decode to the temporal values themselves. An offset date-time
-and a local date-time are both a `Timestamp`: the first carries the offset as its zone,
-the second carries no zone at all, which is how a naive reading is spelled everywhere in
-the project. A local date is a `Date` and a local time is a `Time`. The count is exact,
-and its unit is the coarsest one that keeps every digit the spelling carries, so
-`07:32:00` is seconds and `07:32:00.123456789` is nanoseconds.
+is a `Timestamp` carrying the offset as its zone; a local date-time is the naive reading,
+a `DateTime`, which is how "no zone at all" is spelled everywhere in the project. A local
+date is a `Date` and a local time is a `Time`. The count is exact, and its unit is the
+coarsest one that keeps every digit the spelling carries, so `07:32:00` is seconds and
+`07:32:00.123456789` is nanoseconds.
 
 Encoding spells the reading again from those parts, so a document written in TOML's
 canonical form leaves as the same bytes. What does not survive is a spelling TOML has more
@@ -470,12 +470,15 @@ than one of: `1979-05-27 07:32:00.123000000` and `1979-05-27T07:32:00.123` are o
 instant and both leave as the second, `+00:00` leaves as `Z`, and a leap second reads as
 the second that follows it, because a count from the epoch has no room for one.
 
-A temporal TOML has no syntax for takes the `$yggdryl` envelope rather than being
-reinterpreted to fit: a timestamp whose zone names a place rather than an offset, a year
-outside TOML's four digits, a clock reading outside one day, and a duration, which TOML
-cannot spell at all. A reading TOML spells but the value cannot hold - year 9999 to
-nanosecond precision is wider than an `i64` count of nanoseconds - is a decode error
-rather than a quietly truncated fraction.
+A temporal TOML has no syntax for is never reinterpreted to fit. A timestamp whose zone
+names a place rather than an offset spells the classic string with the bracketed name -
+`"1979-05-27T09:32:00+02:00[Europe/Paris]"` - and a duration, which TOML cannot spell at
+all, spells `"PT90S"`; both come back as the strings they are, and a schema is what
+recovers the typed reading. A year outside TOML's four digits or a clock reading outside
+one day has no classic spelling either, so it takes the `$yggdryl` envelope and comes
+back typed. A reading TOML spells but the value cannot hold - year 9999 to nanosecond
+precision is wider than an `i64` count of nanoseconds - is a decode error rather than a
+quietly truncated fraction.
 
 Each binding then materializes what its own language actually has. Python has a type for
 all four forms. JavaScript has only `Date`, which is a naive count of whole milliseconds

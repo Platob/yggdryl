@@ -24,26 +24,59 @@ impl Serialize for JsonRef<'_> {
             }
             Value::Null => serializer.serialize_none(),
             Value::Bool(value) => serializer.serialize_bool(*value),
+            Value::I8(value) => serializer.serialize_i8(*value),
+            Value::I16(value) => serializer.serialize_i16(*value),
+            Value::I32(value) => serializer.serialize_i32(*value),
             Value::I64(value) => serializer.serialize_i64(*value),
+            Value::U8(value) => serializer.serialize_u8(*value),
+            Value::U16(value) => serializer.serialize_u16(*value),
+            Value::U32(value) => serializer.serialize_u32(*value),
             Value::U64(value) => serializer.serialize_u64(*value),
             Value::I128(value) => JsonEnvelopeRef::I128(*value).serialize(serializer),
             Value::U128(value) => JsonEnvelopeRef::U128(*value).serialize(serializer),
-            Value::Float(value) if value.as_f64().is_finite() => {
+            Value::F32(value) if value.as_f32().is_finite() => {
+                serializer.serialize_f32(value.as_f32())
+            }
+            Value::F32(value) => JsonEnvelopeRef::Float(value.as_f64()).serialize(serializer),
+            Value::F64(value) if value.as_f64().is_finite() => {
                 serializer.serialize_f64(value.as_f64())
             }
-            Value::Float(value) => JsonEnvelopeRef::Float(value.as_f64()).serialize(serializer),
+            Value::F64(value) => JsonEnvelopeRef::Float(value.as_f64()).serialize(serializer),
             Value::Decimal(unscaled, scale) => {
                 JsonEnvelopeRef::Decimal(*unscaled, *scale).serialize(serializer)
             }
             Value::String(value) => serializer.serialize_str(value),
             Value::Bytes(value) => JsonEnvelopeRef::Bytes(value).serialize(serializer),
-            Value::Date(days) => JsonEnvelopeRef::Date(*days).serialize(serializer),
-            Value::Time(count, unit) => JsonEnvelopeRef::Time(*count, *unit).serialize(serializer),
+            // A temporal is its classic ISO string, the spelling every other
+            // JSON reader already reads; a reading with no classic spelling
+            // keeps the enveloped structural one.
+            Value::Date(days) => match crate::generic::iso::format_date(*days) {
+                Some(spelled) => serializer.serialize_str(&spelled),
+                None => JsonEnvelopeRef::Date(*days).serialize(serializer),
+            },
+            Value::Time(count, unit) => match crate::generic::iso::format_time(*count, *unit) {
+                Some(spelled) => serializer.serialize_str(&spelled),
+                None => JsonEnvelopeRef::Time(*count, *unit).serialize(serializer),
+            },
             Value::Timestamp(count, unit, zone) => {
-                JsonEnvelopeRef::Timestamp(*count, *unit, zone.as_ref()).serialize(serializer)
+                match crate::generic::iso::format_timestamp(*count, *unit, zone) {
+                    Some(spelled) => serializer.serialize_str(&spelled),
+                    None => {
+                        JsonEnvelopeRef::Timestamp(*count, *unit, Some(zone)).serialize(serializer)
+                    }
+                }
+            }
+            Value::DateTime(count, unit) => {
+                match crate::generic::iso::format_datetime(*count, *unit) {
+                    Some(spelled) => serializer.serialize_str(&spelled),
+                    None => JsonEnvelopeRef::Timestamp(*count, *unit, None).serialize(serializer),
+                }
             }
             Value::Duration(count, unit) => {
-                JsonEnvelopeRef::Duration(*count, *unit).serialize(serializer)
+                match crate::generic::iso::format_duration(*count, *unit) {
+                    Some(spelled) => serializer.serialize_str(&spelled),
+                    None => JsonEnvelopeRef::Duration(*count, *unit).serialize(serializer),
+                }
             }
             Value::Sequence(values) => {
                 let mut sequence = serializer.serialize_seq(Some(values.len()))?;

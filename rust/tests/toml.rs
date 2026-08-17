@@ -97,7 +97,13 @@ fn every_shared_value_variant_round_trips_through_typed_envelopes() {
         ),
         (
             Value::from("timestamp"),
-            Value::timestamp(i64::MIN, TimeUnit::Nanosecond, Some("Asia/Kolkata")).unwrap(),
+            // An interval-layout unit has no classic ISO spelling, so this is
+            // the timestamp that still rides the typed envelope.
+            Value::Timestamp(
+                7,
+                TimeUnit::YearMonth,
+                yggdryl::Timezone::from_str("Asia/Kolkata").unwrap(),
+            ),
         ),
         (
             Value::from("duration"),
@@ -138,7 +144,7 @@ fn every_shared_value_variant_round_trips_through_typed_envelopes() {
         decoded
             .get_key_str("timestamp")
             .and_then(Value::as_timestamp),
-        Some((i64::MIN, TimeUnit::Nanosecond, Some("Asia/Kolkata")))
+        Some((7, TimeUnit::YearMonth, Some("Asia/Kolkata")))
     );
 }
 
@@ -161,8 +167,7 @@ fn every_root_value_shape_round_trips() {
         Value::date(3_433),
         Value::time(27_120, TimeUnit::Second),
         Value::timestamp_in(296_638_320, TimeUnit::Second, Some(Timezone::UTC)),
-        Value::timestamp(296_638_320, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
-        Value::duration(90, TimeUnit::Second),
+        Value::datetime(296_638_320, TimeUnit::Second),
     ];
     for value in values {
         let decoded = toml::from_slice(&toml::to_vec(&value).unwrap()).unwrap();
@@ -172,6 +177,20 @@ fn every_root_value_shape_round_trips() {
             std::mem::discriminant(&value)
         );
     }
+
+    // A named zone has no native TOML offset and a duration has no TOML
+    // syntax; both go out as their classic ISO strings and come back as
+    // strings - the schema layer is what recovers the typed reading.
+    let paris = Value::timestamp(296_638_320, TimeUnit::Second, Some("Europe/Paris")).unwrap();
+    assert_eq!(
+        toml::from_slice(&toml::to_vec(&paris).unwrap()).unwrap(),
+        Value::from("1979-05-27T09:32:00+02:00[Europe/Paris]")
+    );
+    let took = Value::duration(90, TimeUnit::Second);
+    assert_eq!(
+        toml::from_slice(&toml::to_vec(&took).unwrap()).unwrap(),
+        Value::from("PT90S")
+    );
 }
 
 #[test]
@@ -416,22 +435,24 @@ name = "nail"
 }
 
 #[test]
-fn a_temporal_or_decimal_toml_cannot_spell_takes_the_typed_envelope_unchanged() {
+fn a_temporal_or_decimal_toml_cannot_spell_takes_its_classic_string_or_envelope() {
     let value = Value::from_mapping([
         // A zone that names a place is not an offset, and writing the offset
-        // that place happens to be at would throw the name away.
+        // that place happens to be at would throw the name away - so the
+        // classic string carries both, offset and bracketed name.
         (
             Value::from("zoned"),
             Value::timestamp(296_638_320, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
         ),
-        // Elapsed time and an exact decimal have no TOML syntax at all.
+        // Elapsed time has no TOML syntax, but it has a classic ISO spelling.
         (
             Value::from("elapsed"),
             Value::duration(90, TimeUnit::Second),
         ),
+        // An exact decimal has neither, so it keeps the typed envelope.
         (Value::from("price"), Value::decimal(-1_050, 2)),
         // A year outside four digits, and a clock reading outside one day,
-        // are outside the syntax rather than outside the value.
+        // are outside both syntaxes rather than outside the value.
         (Value::from("far"), Value::date(2_932_897)),
         (
             Value::from("overflowing"),
@@ -443,8 +464,8 @@ fn a_temporal_or_decimal_toml_cannot_spell_takes_the_typed_envelope_unchanged() 
     let encoded = toml::to_vec(&value).unwrap();
     let source = String::from_utf8(encoded.clone()).unwrap();
     for expected in [
-        r#""zoned" = { "$yggdryl" = { version = 1, type = "timestamp", value = ["s", 296638320, "Europe/Paris"] } }"#,
-        r#""elapsed" = { "$yggdryl" = { version = 1, type = "duration", value = ["s", 90] } }"#,
+        r#""zoned" = "1979-05-27T09:32:00+02:00[Europe/Paris]""#,
+        r#""elapsed" = "PT90S""#,
         r#""price" = { "$yggdryl" = { version = 1, type = "decimal", value = ["-1050", 2] } }"#,
         r#""far" = { "$yggdryl" = { version = 1, type = "date", value = 2932897 } }"#,
         r#""overflowing" = { "$yggdryl" = { version = 1, type = "time", value = ["s", 86400] } }"#,
@@ -453,7 +474,13 @@ fn a_temporal_or_decimal_toml_cannot_spell_takes_the_typed_envelope_unchanged() 
     }
 
     let decoded = toml::from_slice(&encoded).unwrap();
-    assert_eq!(decoded, value);
+    // The classic strings come back as strings - loose typing is the deal -
+    // and the enveloped readings come back typed.
+    assert_eq!(
+        decoded.get_key_str("zoned"),
+        Some(&Value::from("1979-05-27T09:32:00+02:00[Europe/Paris]"))
+    );
+    assert_eq!(decoded.get_key_str("elapsed"), Some(&Value::from("PT90S")));
     // Equality alone would accept a rescaled decimal, so pin the scale too:
     // it is data, not a spelling.
     assert_eq!(
@@ -461,8 +488,8 @@ fn a_temporal_or_decimal_toml_cannot_spell_takes_the_typed_envelope_unchanged() 
         Some((-1_050, 2))
     );
     assert_eq!(
-        decoded.get_key_str("elapsed").and_then(Value::as_duration),
-        Some((90, TimeUnit::Second))
+        decoded.get_key_str("far").and_then(Value::as_date),
+        Some(2_932_897)
     );
 }
 
@@ -773,12 +800,15 @@ fn the_depth_a_value_costs_on_the_way_out_is_the_depth_it_costs_on_the_way_back(
         (written == read).then_some(written)
     }
 
-    // A value TOML spells itself is a leaf, whichever kind it is.
+    // A value TOML spells itself is a leaf, whichever kind it is - and so is
+    // a temporal that goes out as its classic ISO string.
     for value in [
         Value::from("text"),
         Value::date(3_433),
         Value::time(27_120, TimeUnit::Second),
         Value::timestamp_in(296_638_320, TimeUnit::Second, Some(Timezone::UTC)),
+        Value::timestamp(0, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
+        Value::duration(90, TimeUnit::Second),
     ] {
         assert_eq!(budget(value.clone()), Some(1), "{value:?}");
     }
@@ -797,9 +827,8 @@ fn the_depth_a_value_costs_on_the_way_out_is_the_depth_it_costs_on_the_way_back(
     // scalar, which is what a unit, a count, and a scale travel in.
     for value in [
         Value::decimal(1_050, 2),
-        Value::duration(90, TimeUnit::Second),
+        Value::duration(1, TimeUnit::YearMonth),
         Value::time(86_400, TimeUnit::Second),
-        Value::timestamp(0, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
     ] {
         assert_eq!(budget(value.clone()), Some(4), "{value:?}");
     }

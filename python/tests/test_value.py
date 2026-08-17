@@ -52,56 +52,60 @@ def test_a_decimal_wider_than_the_native_one_is_refused_not_rounded() -> None:
         json.dumps(Decimal("1E+200"))
 
 
-def test_temporals_cross_as_themselves() -> None:
-    values = [
-        dt.date(2026, 8, 15),
-        dt.time(23, 59, 59, 999_999),
-        dt.datetime(2026, 8, 15, 12, 3, 4, 5),
-        dt.timedelta(days=-2, seconds=3, microseconds=4),
-    ]
+def test_temporals_cross_as_their_classic_iso_strings() -> None:
+    # A schemaless wire spells a temporal the way every other tool does, so
+    # what comes back is the string - loosely typed on purpose. The typed
+    # reading comes back wherever a schema names the column's datatype.
+    spelled = {
+        dt.date(2026, 8, 15): "2026-08-15",
+        dt.time(23, 59, 59, 999_999): "23:59:59.999999",
+        dt.datetime(2026, 8, 15, 12, 3, 4, 5): "2026-08-15T12:03:04.000005",
+        dt.timedelta(days=-2, seconds=3, microseconds=4): "-PT172796.999996S",
+    }
 
-    assert [crosses(value) for value in values] == values
-    assert [type(crosses(value)) for value in values] == [type(v) for v in values]
+    for value, expected in spelled.items():
+        assert crosses(value) == expected
+        # The string parses back to the same reading with the standard tools.
+        if isinstance(value, dt.date) and not isinstance(value, dt.datetime):
+            assert dt.date.fromisoformat(expected) == value
 
 
-def test_an_aware_datetime_keeps_its_zone_and_its_instant() -> None:
+def test_an_aware_datetime_spells_its_offset_and_its_zone() -> None:
     paris = zoneinfo.ZoneInfo("Europe/Paris")
     value = dt.datetime(2026, 8, 15, 12, 3, 4, 5, tzinfo=paris)
 
-    restored = crosses(value)
-
-    assert restored == value
-    assert restored.tzinfo == paris
-    assert restored.utcoffset() == value.utcoffset()
+    # The local reading, the offset that recovers the instant, and the zone
+    # name in brackets, because the offset alone cannot say Europe/Paris.
+    assert crosses(value) == "2026-08-15T12:03:04.000005+02:00[Europe/Paris]"
     # A fixed offset comes back as a fixed offset, not as a place.
     offset = dt.timezone(dt.timedelta(hours=-3, minutes=-30))
-    assert crosses(dt.datetime(2026, 1, 1, tzinfo=offset)).utcoffset() == dt.timedelta(
-        hours=-3, minutes=-30
+    assert crosses(dt.datetime(2026, 1, 1, tzinfo=offset)) == (
+        "2026-01-01T00:00:00.000000-03:30"
     )
 
 
-def test_an_ambiguous_zoned_reading_keeps_the_fold_that_disambiguates_it() -> None:
+def test_an_ambiguous_zoned_reading_spells_the_offset_that_disambiguates_it() -> None:
     paris = zoneinfo.ZoneInfo("Europe/Paris")
     repeated = [
         dt.datetime(2026, 10, 25, 2, 30, fold=fold, tzinfo=paris) for fold in (0, 1)
     ]
 
     # The count is UTC, so the offset in force is what carries the answer; the
-    # two readings of the repeated hour stay two instants. Python compares two
-    # aware values in one zone by their wall clock, so the offset is what has
-    # to be looked at.
+    # two readings of the repeated hour stay two distinct spellings.
     restored = [crosses(value) for value in repeated]
-    assert [value.fold for value in restored] == [0, 1]
-    assert restored[0].utcoffset() == dt.timedelta(hours=2)
-    assert restored[1].utcoffset() == dt.timedelta(hours=1)
-    assert restored[0].timestamp() != restored[1].timestamp()
+    assert restored == [
+        "2026-10-25T02:30:00.000000+02:00[Europe/Paris]",
+        "2026-10-25T02:30:00.000000+01:00[Europe/Paris]",
+    ]
 
 
 def test_a_naive_fold_and_a_time_of_day_zone_are_dropped() -> None:
     # Neither has anywhere to live: a naive timestamp has no offset to move by,
     # and a time of day has no zone field at all.
-    assert crosses(dt.datetime(2026, 10, 25, 2, 30, fold=1)).fold == 0
-    assert crosses(dt.time(1, 2, tzinfo=dt.timezone.utc)).tzinfo is None
+    assert crosses(dt.datetime(2026, 10, 25, 2, 30, fold=1)) == (
+        "2026-10-25T02:30:00.000000"
+    )
+    assert crosses(dt.time(1, 2, tzinfo=dt.timezone.utc)) == "01:02:00.000000"
 
 
 def test_a_temporal_python_cannot_hold_is_refused_not_truncated() -> None:

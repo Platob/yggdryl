@@ -1,9 +1,9 @@
 //! The one value every part of the project speaks.
 //!
 //! A [`Value`] is any native value: null, a boolean, a signed or unsigned
-//! integer up to 128 bits, a float, an exact decimal, a string, bytes, one of
-//! the four temporals, an ordered sequence, or an insertion-ordered mapping
-//! with arbitrary keys. It is what [`crate::json`], [`crate::yaml`], and
+//! integer at every width from 8 to 128 bits, a float at 32 or 64 bits, an
+//! exact decimal, a string, bytes, one of the five temporals, an ordered
+//! sequence, or an insertion-ordered mapping with arbitrary keys. It is what [`crate::json`], [`crate::yaml`], and
 //! [`crate::toml`] parse into and write from, what a [`crate::Field`] validates
 //! and canonicalizes, and what the language bindings convert their own objects
 //! into - so a value crosses every boundary in the project without being
@@ -193,6 +193,156 @@ impl<'de> Deserialize<'de> for Float {
     }
 }
 
+/// A bit-preserving, totally ordered 32-bit floating-point value.
+///
+/// The narrow sibling of [`Float`], for a value that arrived through a
+/// `Float32` column and must leave through one: widening it to 64 bits would
+/// erase which width the column declared. All NaN payloads are normalized at
+/// construction; the two zeros remain distinct.
+#[derive(Clone, Copy, Default)]
+pub struct Float32(u32);
+
+impl Float32 {
+    /// Construct from a native `f32`.
+    pub fn from_f32(value: f32) -> Self {
+        if value.is_nan() {
+            Self(f32::NAN.to_bits())
+        } else {
+            Self(value.to_bits())
+        }
+    }
+
+    /// Return the native `f32` value.
+    pub const fn as_f32(self) -> f32 {
+        f32::from_bits(self.0)
+    }
+
+    /// Return the value widened to `f64`, which is exact for every `f32`.
+    pub const fn as_f64(self) -> f64 {
+        self.as_f32() as f64
+    }
+}
+
+impl fmt::Debug for Float32 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_f32().fmt(formatter)
+    }
+}
+
+impl fmt::Display for Float32 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_f32().fmt(formatter)
+    }
+}
+
+impl PartialEq for Float32 {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Float32 {}
+
+impl PartialOrd for Float32 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Float32 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_f32().total_cmp(&other.as_f32())
+    }
+}
+
+impl Hash for Float32 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl From<f32> for Float32 {
+    fn from(value: f32) -> Self {
+        Self::from_f32(value)
+    }
+}
+
+impl From<Float32> for f32 {
+    fn from(value: Float32) -> Self {
+        value.as_f32()
+    }
+}
+
+impl Serialize for Float32 {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        struct Bits(u32);
+
+        impl fmt::Display for Bits {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "0x{:08x}", self.0)
+            }
+        }
+
+        serializer.collect_str(&Bits(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Float32 {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Float32Visitor;
+
+        impl serde::de::Visitor<'_> for Float32Visitor {
+            type Value = Float32;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an exact 0x-prefixed f32 bit string or floating number")
+            }
+
+            fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E> {
+                Ok(Float32::from_f32(value as f32))
+            }
+
+            fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E> {
+                Ok(Float32::from_f32(value as f32))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> {
+                Ok(Float32::from_f32(value as f32))
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let digits = value
+                    .strip_prefix("0x")
+                    .ok_or_else(|| E::custom("float bits must start with 0x"))?;
+                if digits.len() != 8 {
+                    return Err(E::custom("f32 bits must contain exactly 8 hex digits"));
+                }
+                let bits = u32::from_str_radix(digits, 16)
+                    .map_err(|_| E::custom("float bits contain invalid hex"))?;
+                Ok(Float32::from_f32(f32::from_bits(bits)))
+            }
+
+            fn visit_string<E>(self, value: String) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&value)
+            }
+        }
+
+        deserializer.deserialize_any(Float32Visitor)
+    }
+}
+
 /// A shared, deterministic structured-data value spanning JSON and YAML.
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -200,16 +350,30 @@ pub enum Value {
     Null,
     /// A boolean.
     Bool(bool),
+    /// A signed 8-bit integer.
+    I8(i8),
+    /// A signed 16-bit integer.
+    I16(i16),
+    /// A signed 32-bit integer.
+    I32(i32),
     /// A signed 64-bit integer.
     I64(i64),
+    /// An unsigned 8-bit integer.
+    U8(u8),
+    /// An unsigned 16-bit integer.
+    U16(u16),
+    /// An unsigned 32-bit integer.
+    U32(u32),
     /// An unsigned 64-bit integer.
     U64(u64),
     /// A signed 128-bit integer.
     I128(i128),
     /// An unsigned 128-bit integer.
     U128(u128),
+    /// A 32-bit floating-point value.
+    F32(Float32),
     /// A 64-bit floating-point value.
-    Float(Float),
+    F64(Float),
     /// An exact decimal: an unscaled integer and the power of ten it divides by.
     ///
     /// A decimal is stored the way Arrow stores one - the coefficient and the
@@ -227,8 +391,16 @@ pub enum Value {
     Date(i32),
     /// A count of `TimeUnit` since midnight.
     Time(i64, TimeUnit),
-    /// A count of `TimeUnit` since the Unix epoch, in an optional zone.
-    Timestamp(i64, TimeUnit, Option<Timezone>),
+    /// A count of `TimeUnit` since the Unix epoch, in a required zone.
+    ///
+    /// The zone is required because "no zone" is not a display detail of an
+    /// instant - it is a different kind of reading, the naive wall clock, and
+    /// that kind is [`Self::DateTime`]. Splitting them keeps every timestamp
+    /// an instant someone can convert, and every naive reading honestly naive.
+    Timestamp(i64, TimeUnit, Timezone),
+    /// A naive wall-clock reading: a count of `TimeUnit` since the epoch, in
+    /// no zone at all - what `DataType::Timestamp(unit, None)` stores.
+    DateTime(i64, TimeUnit),
     /// An elapsed count of `TimeUnit`.
     Duration(i64, TimeUnit),
     /// An ordered sequence.
@@ -307,20 +479,45 @@ impl Serialize for Value {
                 document.end()
             }
             Self::Bool(value) => tagged(serializer, "bool", value),
+            Self::I8(value) => tagged(serializer, "i8", value),
+            Self::I16(value) => tagged(serializer, "i16", value),
+            Self::I32(value) => tagged(serializer, "i32", value),
             Self::I64(value) => tagged(serializer, "i64", value),
+            Self::U8(value) => tagged(serializer, "u8", value),
+            Self::U16(value) => tagged(serializer, "u16", value),
+            Self::U32(value) => tagged(serializer, "u32", value),
             Self::U64(value) => tagged(serializer, "u64", value),
             Self::I128(value) => tagged(serializer, "i128", value),
             Self::U128(value) => tagged(serializer, "u128", value),
-            Self::Float(value) => tagged(serializer, "float", value),
+            Self::F32(value) => tagged(serializer, "f32", value),
+            Self::F64(value) => tagged(serializer, "f64", value),
             Self::Decimal(unscaled, scale) => tagged(serializer, "decimal", &Pair(unscaled, scale)),
             Self::String(value) => tagged(serializer, "string", value),
             Self::Bytes(value) => tagged(serializer, "bytes", value),
-            Self::Date(days) => tagged(serializer, "date", days),
-            Self::Time(count, unit) => tagged(serializer, "time", &Pair(count, unit)),
+            // A temporal is its classic ISO spelling wherever it has one; a
+            // reading with no classic spelling keeps its structural parts.
+            Self::Date(days) => match super::iso::format_date(*days) {
+                Some(spelled) => tagged(serializer, "date", &spelled),
+                None => tagged(serializer, "date", days),
+            },
+            Self::Time(count, unit) => match super::iso::format_time(*count, *unit) {
+                Some(spelled) => tagged(serializer, "time", &spelled),
+                None => tagged(serializer, "time", &Pair(count, unit)),
+            },
             Self::Timestamp(count, unit, zone) => {
-                tagged(serializer, "timestamp", &Triple(count, unit, zone))
+                match super::iso::format_timestamp(*count, *unit, zone) {
+                    Some(spelled) => tagged(serializer, "timestamp", &spelled),
+                    None => tagged(serializer, "timestamp", &Triple(count, unit, zone)),
+                }
             }
-            Self::Duration(count, unit) => tagged(serializer, "duration", &Pair(count, unit)),
+            Self::DateTime(count, unit) => match super::iso::format_datetime(*count, *unit) {
+                Some(spelled) => tagged(serializer, "datetime", &spelled),
+                None => tagged(serializer, "datetime", &Pair(count, unit)),
+            },
+            Self::Duration(count, unit) => match super::iso::format_duration(*count, *unit) {
+                Some(spelled) => tagged(serializer, "duration", &spelled),
+                None => tagged(serializer, "duration", &Pair(count, unit)),
+            },
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_ref()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_ref()),
             Self::Record(data_type, values) => tagged(
@@ -337,6 +534,33 @@ impl<'de> Deserialize<'de> for Value {
     where
         D: Deserializer<'de>,
     {
+        /// A temporal payload: the classic ISO string, or the structural pair
+        /// a reading with no classic spelling keeps.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum CountPayload {
+            Iso(SmolStr),
+            Pair(i64, TimeUnit),
+        }
+
+        /// A date payload: the ISO string, or the raw day count.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum DatePayload {
+            Iso(SmolStr),
+            Days(i32),
+        }
+
+        /// A timestamp payload: the ISO string, or the structural triple. A
+        /// triple whose zone is null is the naive reading older documents
+        /// wrote, and reads back as the datetime it always was.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StampPayload {
+            Iso(SmolStr),
+            Triple(i64, TimeUnit, Option<Timezone>),
+        }
+
         // This mirror must stay variant-for-variant identical to `Value`: a
         // variant missing here is not a compile error, it is a variant serde
         // silently refuses to read back.
@@ -345,18 +569,28 @@ impl<'de> Deserialize<'de> for Value {
         enum StructuralValue {
             Null,
             Bool(bool),
+            I8(i8),
+            I16(i16),
+            I32(i32),
             I64(i64),
+            U8(u8),
+            U16(u16),
+            U32(u32),
             U64(u64),
             I128(i128),
             U128(u128),
-            Float(Float),
+            F32(Float32),
+            #[serde(alias = "float")]
+            F64(Float),
             Decimal(i128, i8),
             String(SmolStr),
             Bytes(Arc<[u8]>),
-            Date(i32),
-            Time(i64, TimeUnit),
-            Timestamp(i64, TimeUnit, Option<Timezone>),
-            Duration(i64, TimeUnit),
+            Date(DatePayload),
+            Time(CountPayload),
+            Timestamp(StampPayload),
+            #[serde(rename = "datetime")]
+            DateTime(CountPayload),
+            Duration(CountPayload),
             Sequence(Vec<Value>),
             Mapping(Vec<(Value, Value)>),
             Record(SmolStr, Vec<Value>),
@@ -365,18 +599,56 @@ impl<'de> Deserialize<'de> for Value {
         match StructuralValue::deserialize(deserializer)? {
             StructuralValue::Null => Ok(Self::Null),
             StructuralValue::Bool(value) => Ok(Self::Bool(value)),
+            StructuralValue::I8(value) => Ok(Self::I8(value)),
+            StructuralValue::I16(value) => Ok(Self::I16(value)),
+            StructuralValue::I32(value) => Ok(Self::I32(value)),
             StructuralValue::I64(value) => Ok(Self::I64(value)),
+            StructuralValue::U8(value) => Ok(Self::U8(value)),
+            StructuralValue::U16(value) => Ok(Self::U16(value)),
+            StructuralValue::U32(value) => Ok(Self::U32(value)),
             StructuralValue::U64(value) => Ok(Self::U64(value)),
             StructuralValue::I128(value) => Ok(Self::I128(value)),
             StructuralValue::U128(value) => Ok(Self::U128(value)),
-            StructuralValue::Float(value) => Ok(Self::Float(value)),
+            StructuralValue::F32(value) => Ok(Self::F32(value)),
+            StructuralValue::F64(value) => Ok(Self::F64(value)),
             StructuralValue::Decimal(unscaled, scale) => Ok(Self::Decimal(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::String(value)),
             StructuralValue::Bytes(value) => Ok(Self::from(value)),
-            StructuralValue::Date(days) => Ok(Self::Date(days)),
-            StructuralValue::Time(count, unit) => Ok(Self::Time(count, unit)),
-            StructuralValue::Timestamp(count, unit, zone) => Ok(Self::Timestamp(count, unit, zone)),
-            StructuralValue::Duration(count, unit) => Ok(Self::Duration(count, unit)),
+            StructuralValue::Date(DatePayload::Days(days)) => Ok(Self::Date(days)),
+            StructuralValue::Date(DatePayload::Iso(spelled)) => super::iso::parse_date(&spelled)
+                .map(Self::Date)
+                .map_err(D::Error::custom),
+            StructuralValue::Time(CountPayload::Pair(count, unit)) => Ok(Self::Time(count, unit)),
+            StructuralValue::Time(CountPayload::Iso(spelled)) => super::iso::parse_time(&spelled)
+                .map(|(count, unit)| Self::Time(count, unit))
+                .map_err(D::Error::custom),
+            StructuralValue::Timestamp(StampPayload::Triple(count, unit, Some(zone))) => {
+                Ok(Self::Timestamp(count, unit, zone))
+            }
+            StructuralValue::Timestamp(StampPayload::Triple(count, unit, None)) => {
+                Ok(Self::DateTime(count, unit))
+            }
+            StructuralValue::Timestamp(StampPayload::Iso(spelled)) => {
+                super::iso::parse_timestamp(&spelled)
+                    .map(|(count, unit, zone)| Self::Timestamp(count, unit, zone))
+                    .map_err(D::Error::custom)
+            }
+            StructuralValue::DateTime(CountPayload::Pair(count, unit)) => {
+                Ok(Self::DateTime(count, unit))
+            }
+            StructuralValue::DateTime(CountPayload::Iso(spelled)) => {
+                super::iso::parse_datetime(&spelled)
+                    .map(|(count, unit)| Self::DateTime(count, unit))
+                    .map_err(D::Error::custom)
+            }
+            StructuralValue::Duration(CountPayload::Pair(count, unit)) => {
+                Ok(Self::Duration(count, unit))
+            }
+            StructuralValue::Duration(CountPayload::Iso(spelled)) => {
+                super::iso::parse_duration(&spelled)
+                    .map(|(count, unit)| Self::Duration(count, unit))
+                    .map_err(D::Error::custom)
+            }
             StructuralValue::Sequence(values) => Ok(Self::from_sequence(values)),
             StructuralValue::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
@@ -411,6 +683,12 @@ impl Ord for Value {
             (None, Some(_)) => return value_rank(self).cmp(&value_rank(other)),
             (None, None) => {}
         }
+        // Floats are one family across widths, exactly as the integers are:
+        // an `f32` widens to `f64` without loss, so `F32(1.5)` and `F64(1.5)`
+        // are one value, not two kinds that happen to print alike.
+        if let (Some(left), Some(right)) = (float(self), float(other)) {
+            return left.cmp(&right);
+        }
         let rank = value_rank(self).cmp(&value_rank(other));
         if rank != Ordering::Equal {
             return rank;
@@ -429,10 +707,19 @@ impl Ord for Value {
         match self {
             Self::Null => Ordering::Equal,
             Self::Bool(left) => same_kind!(Self::Bool(right) => left.cmp(right)),
-            Self::I64(_) | Self::U64(_) | Self::I128(_) | Self::U128(_) => {
+            Self::I8(_)
+            | Self::I16(_)
+            | Self::I32(_)
+            | Self::I64(_)
+            | Self::U8(_)
+            | Self::U16(_)
+            | Self::U32(_)
+            | Self::U64(_)
+            | Self::I128(_)
+            | Self::U128(_) => {
                 unreachable!("every integer width returned above")
             }
-            Self::Float(left) => same_kind!(Self::Float(right) => left.cmp(right)),
+            Self::F32(_) | Self::F64(_) => unreachable!("both float widths returned above"),
             Self::Decimal(unscaled, scale) => same_kind!(
                 Self::Decimal(other_unscaled, other_scale) =>
                     decimal::compare(*unscaled, *scale, *other_unscaled, *other_scale)
@@ -449,6 +736,10 @@ impl Ord for Value {
                     temporal_key(*count, *unit)
                         .cmp(&temporal_key(*other_count, *other_unit))
                         .then_with(|| zone.cmp(other_zone))
+            ),
+            Self::DateTime(count, unit) => same_kind!(
+                Self::DateTime(other_count, other_unit) =>
+                    temporal_key(*count, *unit).cmp(&temporal_key(*other_count, *other_unit))
             ),
             Self::Duration(count, unit) => same_kind!(
                 Self::Duration(other_count, other_unit) =>
@@ -476,20 +767,33 @@ impl Hash for Value {
             integer.hash(state);
             return;
         }
+        // Both float widths hash their common 64-bit reading, which is what
+        // keeps `Hash` agreeing with `Ord` across the family.
+        if let Some(float) = float(self) {
+            float.hash(state);
+            return;
+        }
         match self {
             Self::Null => {}
             Self::Bool(value) => value.hash(state),
-            Self::I64(_) | Self::U64(_) | Self::I128(_) | Self::U128(_) => {
-                unreachable!("integer values returned above")
-            }
-            Self::Float(value) => value.hash(state),
+            Self::I8(_)
+            | Self::I16(_)
+            | Self::I32(_)
+            | Self::I64(_)
+            | Self::U8(_)
+            | Self::U16(_)
+            | Self::U32(_)
+            | Self::U64(_)
+            | Self::I128(_)
+            | Self::U128(_) => unreachable!("integer values returned above"),
+            Self::F32(_) | Self::F64(_) => unreachable!("float values returned above"),
             // Hashing the normalized pair is what keeps `Hash` agreeing with
             // `Ord`, which treats `1.50` and `1.5` as one number.
             Self::Decimal(unscaled, scale) => decimal::normalize(*unscaled, *scale).hash(state),
             Self::String(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
             Self::Date(value) => value.hash(state),
-            Self::Time(count, unit) | Self::Duration(count, unit) => {
+            Self::Time(count, unit) | Self::DateTime(count, unit) | Self::Duration(count, unit) => {
                 temporal_key(*count, *unit).hash(state);
             }
             Self::Timestamp(count, unit, zone) => {
@@ -513,15 +817,36 @@ enum Integer {
 }
 
 fn integer(value: &Value) -> Option<Integer> {
-    match value {
-        Value::I64(value) if *value < 0 => {
-            Some(Integer::Negative(i128::from(*value).unsigned_abs()))
+    fn signed(value: i128) -> Integer {
+        if value < 0 {
+            Integer::Negative(value.unsigned_abs())
+        } else {
+            Integer::NonNegative(value as u128)
         }
-        Value::I64(value) => Some(Integer::NonNegative(*value as u128)),
+    }
+    match value {
+        Value::I8(value) => Some(signed(i128::from(*value))),
+        Value::I16(value) => Some(signed(i128::from(*value))),
+        Value::I32(value) => Some(signed(i128::from(*value))),
+        Value::I64(value) => Some(signed(i128::from(*value))),
+        Value::I128(value) => Some(signed(*value)),
+        Value::U8(value) => Some(Integer::NonNegative(u128::from(*value))),
+        Value::U16(value) => Some(Integer::NonNegative(u128::from(*value))),
+        Value::U32(value) => Some(Integer::NonNegative(u128::from(*value))),
         Value::U64(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Value::I128(value) if *value < 0 => Some(Integer::Negative(value.unsigned_abs())),
-        Value::I128(value) => Some(Integer::NonNegative(*value as u128)),
         Value::U128(value) => Some(Integer::NonNegative(*value)),
+        _ => None,
+    }
+}
+
+/// The common 64-bit reading either float width reduces to for ordering.
+///
+/// Widening an `f32` to `f64` is exact, so one total order covers the family;
+/// the width stays on the value itself and on the wire.
+fn float(value: &Value) -> Option<Float> {
+    match value {
+        Value::F32(value) => Some(Float::from_f64(value.as_f64())),
+        Value::F64(value) => Some(*value),
         _ => None,
     }
 }
@@ -547,8 +872,17 @@ const fn value_rank(value: &Value) -> u8 {
     match value {
         Value::Null => 0,
         Value::Bool(_) => 1,
-        Value::I64(_) | Value::U64(_) | Value::I128(_) | Value::U128(_) => 2,
-        Value::Float(_) => 3,
+        Value::I8(_)
+        | Value::I16(_)
+        | Value::I32(_)
+        | Value::I64(_)
+        | Value::U8(_)
+        | Value::U16(_)
+        | Value::U32(_)
+        | Value::U64(_)
+        | Value::I128(_)
+        | Value::U128(_) => 2,
+        Value::F32(_) | Value::F64(_) => 3,
         Value::Decimal(..) => 4,
         Value::String(_) => 5,
         Value::Bytes(_) => 6,
@@ -559,6 +893,10 @@ const fn value_rank(value: &Value) -> u8 {
         Value::Sequence(_) => 11,
         Value::Mapping(_) => 12,
         Value::Record(..) => 13,
+        // The naive reading arrived after the containers, and the numbering
+        // is kept, so it takes the next free number rather than the slot
+        // beside its zoned sibling.
+        Value::DateTime(..) => 14,
     }
 }
 
@@ -572,17 +910,25 @@ impl Value {
         match self {
             Self::Null => "null",
             Self::Bool(_) => "boolean",
+            Self::I8(_) => "i8",
+            Self::I16(_) => "i16",
+            Self::I32(_) => "i32",
             Self::I64(_) => "i64",
+            Self::U8(_) => "u8",
+            Self::U16(_) => "u16",
+            Self::U32(_) => "u32",
             Self::U64(_) => "u64",
             Self::I128(_) => "i128",
             Self::U128(_) => "u128",
-            Self::Float(_) => "float",
+            Self::F32(_) => "f32",
+            Self::F64(_) => "f64",
             Self::Decimal(..) => "decimal",
             Self::String(_) => "string",
             Self::Bytes(_) => "bytes",
             Self::Date(_) => "date",
             Self::Time(..) => "time",
             Self::Timestamp(..) => "timestamp",
+            Self::DateTime(..) => "datetime",
             Self::Duration(..) => "duration",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
@@ -701,8 +1047,14 @@ impl Value {
     /// Return a signed integer when it fits `i128`.
     pub const fn as_i128(&self) -> Option<i128> {
         match self {
+            Self::I8(value) => Some(*value as i128),
+            Self::I16(value) => Some(*value as i128),
+            Self::I32(value) => Some(*value as i128),
             Self::I64(value) => Some(*value as i128),
             Self::I128(value) => Some(*value),
+            Self::U8(value) => Some(*value as i128),
+            Self::U16(value) => Some(*value as i128),
+            Self::U32(value) => Some(*value as i128),
             Self::U64(value) => Some(*value as i128),
             Self::U128(value) if *value <= i128::MAX as u128 => Some(*value as i128),
             _ => None,
@@ -712,18 +1064,40 @@ impl Value {
     /// Return an unsigned integer when it fits `u128`.
     pub const fn as_u128(&self) -> Option<u128> {
         match self {
+            Self::I8(value) if *value >= 0 => Some(*value as u128),
+            Self::I16(value) if *value >= 0 => Some(*value as u128),
+            Self::I32(value) if *value >= 0 => Some(*value as u128),
             Self::I64(value) if *value >= 0 => Some(*value as u128),
-            Self::U64(value) => Some(*value as u128),
             Self::I128(value) if *value >= 0 => Some(*value as u128),
+            Self::U8(value) => Some(*value as u128),
+            Self::U16(value) => Some(*value as u128),
+            Self::U32(value) => Some(*value as u128),
+            Self::U64(value) => Some(*value as u128),
             Self::U128(value) => Some(*value),
             _ => None,
         }
     }
 
-    /// Return a floating-point value when this is a float.
+    /// Return a floating-point value when this is a float of either width.
+    ///
+    /// The 32-bit width widens exactly, so no float answers differently here
+    /// than it would at its own width.
     pub const fn as_f64(&self) -> Option<f64> {
         match self {
-            Self::Float(value) => Some(value.as_f64()),
+            Self::F32(value) => Some(value.as_f64()),
+            Self::F64(value) => Some(value.as_f64()),
+            _ => None,
+        }
+    }
+
+    /// Return the 32-bit float when this is one.
+    ///
+    /// The wide float does not narrow here, because `as_f64` widening is
+    /// exact and narrowing is not; a caller who wants the rounding asks for
+    /// it with `as f32` where the loss is visible.
+    pub const fn as_f32(&self) -> Option<f32> {
+        match self {
+            Self::F32(value) => Some(value.as_f32()),
             _ => None,
         }
     }
@@ -823,17 +1197,26 @@ impl Value {
         matches!(self, Self::Sequence(_) | Self::Mapping(_))
     }
 
-    /// Return whether this is any integer, signed or unsigned.
+    /// Return whether this is any integer, signed or unsigned, at any width.
     pub const fn is_integer(&self) -> bool {
         matches!(
             self,
-            Self::I64(_) | Self::U64(_) | Self::I128(_) | Self::U128(_)
+            Self::I8(_)
+                | Self::I16(_)
+                | Self::I32(_)
+                | Self::I64(_)
+                | Self::U8(_)
+                | Self::U16(_)
+                | Self::U32(_)
+                | Self::U64(_)
+                | Self::I128(_)
+                | Self::U128(_)
         )
     }
 
     /// Return whether this is a number of any width.
     pub const fn is_number(&self) -> bool {
-        self.is_integer() || matches!(self, Self::Float(_))
+        self.is_integer() || matches!(self, Self::F32(_) | Self::F64(_))
     }
 
     /// Read this value as an `i64`, when it fits.
@@ -1055,29 +1438,22 @@ impl From<bool> for Value {
     }
 }
 
-macro_rules! signed_value_from {
-    ($($type:ty),+ $(,)?) => {$(
+// A native integer keeps its width: an `i32` is an `I32`, not an `I64` that
+// happens to fit, because the width is what a column declaration reads back.
+macro_rules! width_value_from {
+    ($($type:ty => $variant:ident),+ $(,)?) => {$(
         impl From<$type> for Value {
             fn from(value: $type) -> Self {
-                Self::I64(i64::from(value))
+                Self::$variant(value)
             }
         }
     )+};
 }
 
-signed_value_from!(i8, i16, i32, i64);
-
-macro_rules! unsigned_value_from {
-    ($($type:ty),+ $(,)?) => {$(
-        impl From<$type> for Value {
-            fn from(value: $type) -> Self {
-                Self::U64(u64::from(value))
-            }
-        }
-    )+};
-}
-
-unsigned_value_from!(u8, u16, u32, u64);
+width_value_from!(
+    i8 => I8, i16 => I16, i32 => I32, i64 => I64,
+    u8 => U8, u16 => U16, u32 => U32, u64 => U64,
+);
 
 impl From<i128> for Value {
     fn from(value: i128) -> Self {
@@ -1093,13 +1469,13 @@ impl From<u128> for Value {
 
 impl From<f32> for Value {
     fn from(value: f32) -> Self {
-        Self::Float(Float::from_f64(f64::from(value)))
+        Self::F32(Float32::from_f32(value))
     }
 }
 
 impl From<f64> for Value {
     fn from(value: f64) -> Self {
-        Self::Float(Float::from_f64(value))
+        Self::F64(Float::from_f64(value))
     }
 }
 

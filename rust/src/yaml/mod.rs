@@ -338,7 +338,7 @@ fn is_plain_key(key: &Value) -> bool {
             | Value::Bool(_)
             | Value::I64(_)
             | Value::U64(_)
-            | Value::Float(_)
+            | Value::F64(_)
             | Value::String(_)
     )
 }
@@ -358,7 +358,13 @@ fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
         Value::Null => writer.write_all(b"null")?,
         Value::Bool(true) => writer.write_all(b"true")?,
         Value::Bool(false) => writer.write_all(b"false")?,
+        Value::I8(value) => write!(writer, "{value}")?,
+        Value::I16(value) => write!(writer, "{value}")?,
+        Value::I32(value) => write!(writer, "{value}")?,
         Value::I64(value) => write!(writer, "{value}")?,
+        Value::U8(value) => write!(writer, "{value}")?,
+        Value::U16(value) => write!(writer, "{value}")?,
+        Value::U32(value) => write!(writer, "{value}")?,
         Value::U64(value) => write!(writer, "{value}")?,
         Value::I128(value) => {
             writer.write_all(b"{\"$yggdryl\": \"i128\", \"value\": ")?;
@@ -370,25 +376,8 @@ fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
             write!(writer, "\"{value}\"")?;
             writer.write_all(b"}")?;
         }
-        Value::Float(value) => {
-            let value = value.as_f64();
-            // YAML's core schema spells the non-finite floats itself and the
-            // scanner reads those spellings back, so an envelope would only
-            // cost every other implementation the value it can already read.
-            if value.is_finite() {
-                serde_json::to_writer(&mut *writer, &value).map_err(|error| Error::Codec {
-                    format: "yaml",
-                    position: 0,
-                    reason: error.to_string().into(),
-                })?;
-            } else if value.is_nan() {
-                writer.write_all(b".nan")?;
-            } else if value.is_sign_positive() {
-                writer.write_all(b".inf")?;
-            } else {
-                writer.write_all(b"-.inf")?;
-            }
-        }
+        Value::F32(value) => write_float(writer, value.as_f64())?,
+        Value::F64(value) => write_float(writer, value.as_f64())?,
         Value::Decimal(unscaled, scale) => {
             // The coefficient is quoted for the same reason `i128` is: it is
             // wider than the integer every YAML reader agrees on.
@@ -405,16 +394,32 @@ fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
             )?;
             writer.write_all(b"}")?;
         }
-        Value::Date(days) => {
-            writer.write_all(b"{\"$yggdryl\": \"date\", \"value\": ")?;
-            write!(writer, "{days}")?;
-            writer.write_all(b"}")?;
-        }
-        Value::Time(count, unit) => write_temporal(writer, "time", *count, *unit, None)?,
-        Value::Duration(count, unit) => write_temporal(writer, "duration", *count, *unit, None)?,
+        Value::Date(days) => match crate::generic::iso::format_date(*days) {
+            Some(spelled) => write_scalar_string(writer, &spelled)?,
+            None => {
+                writer.write_all(b"{\"$yggdryl\": \"date\", \"value\": ")?;
+                write!(writer, "{days}")?;
+                writer.write_all(b"}")?;
+            }
+        },
+        Value::Time(count, unit) => match crate::generic::iso::format_time(*count, *unit) {
+            Some(spelled) => write_scalar_string(writer, &spelled)?,
+            None => write_temporal(writer, "time", *count, *unit, None)?,
+        },
+        Value::Duration(count, unit) => match crate::generic::iso::format_duration(*count, *unit) {
+            Some(spelled) => write_scalar_string(writer, &spelled)?,
+            None => write_temporal(writer, "duration", *count, *unit, None)?,
+        },
         Value::Timestamp(count, unit, zone) => {
-            write_temporal(writer, "timestamp", *count, *unit, zone.as_ref())?;
+            match crate::generic::iso::format_timestamp(*count, *unit, zone) {
+                Some(spelled) => write_scalar_string(writer, &spelled)?,
+                None => write_temporal(writer, "timestamp", *count, *unit, Some(zone))?,
+            }
         }
+        Value::DateTime(count, unit) => match crate::generic::iso::format_datetime(*count, *unit) {
+            Some(spelled) => write_scalar_string(writer, &spelled)?,
+            None => write_temporal(writer, "timestamp", *count, *unit, None)?,
+        },
         Value::Sequence(values) => {
             // Only an empty sequence reaches here.
             debug_assert!(values.is_empty());
@@ -439,6 +444,28 @@ fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
                 writer.write_all(b"{}")?;
             }
         }
+    }
+    Ok(())
+}
+
+/// Write one float in YAML's core schema, non-finite spellings included.
+///
+/// YAML spells the non-finite floats itself and the scanner reads those
+/// spellings back, so an envelope would only cost every other implementation
+/// the value it can already read.
+fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
+    if value.is_finite() {
+        serde_json::to_writer(&mut *writer, &value).map_err(|error| Error::Codec {
+            format: "yaml",
+            position: 0,
+            reason: error.to_string().into(),
+        })?;
+    } else if value.is_nan() {
+        writer.write_all(b".nan")?;
+    } else if value.is_sign_positive() {
+        writer.write_all(b".inf")?;
+    } else {
+        writer.write_all(b"-.inf")?;
     }
     Ok(())
 }

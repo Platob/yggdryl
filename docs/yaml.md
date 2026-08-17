@@ -250,7 +250,10 @@ the envelope is plain YAML any parser loads, under the same `$yggdryl` marker [J
 
 The same envelope carries what YAML's core schema has no spelling for: bytes as base64 and 128-bit
 integers as decimal strings. A non-finite float needs no envelope, because the core schema spells
-it natively as `.inf`, `-.inf`, and `.nan`, and reading resolves those spellings back.
+it natively as `.inf`, `-.inf`, and `.nan`, and reading resolves those spellings back. A temporal
+needs none either: it writes as its classic ISO string - `2026-08-15`, `2026-08-15T12:30:00Z`,
+`PT90S` - which reads back as the string it is, and a [`Field`](field.md) or a record class is
+what recovers the typed reading.
 
 A string is written plain only when the reader resolves that text to the same string. The decision
 comes from the reader itself, so a spelling it reads as a number is quoted, `.inf`, `1_000.5`, and

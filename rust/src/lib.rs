@@ -52,7 +52,7 @@ pub use metadata::{
     Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata, ProtocolMetadataMut,
 };
 pub(crate) use text::stable_hash_display;
-pub use text::{Children, Float, Format, Limits, TypedValue, Value, ValueIter};
+pub use text::{Children, Float, Float32, Format, Limits, TypedValue, Value, ValueIter};
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
 };

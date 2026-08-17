@@ -385,7 +385,7 @@ fn parse_offset(value: &str) -> Result<Option<i32>> {
 ///
 /// This is Howard Hinnant's `days_from_civil`, which is exact for every year
 /// in range and needs no table.
-const fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+pub(crate) const fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     let year = if month <= 2 { year - 1 } else { year } as i64;
     let era = if year >= 0 { year } else { year - 399 } / 400;
     let year_of_era = year - era * 400;
@@ -394,6 +394,31 @@ const fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
         (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day as i64 - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     era * 146_097 + day_of_era - 719_468
+}
+
+/// Return the civil date a day number falls on, as `(year, month, day)`.
+///
+/// The exact inverse of [`days_from_civil`], from the same paper.
+pub(crate) const fn civil_from_days(days: i64) -> (i32, u32, u32) {
+    let days = days + 719_468;
+    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    (
+        (if month <= 2 { year + 1 } else { year }) as i32,
+        month as u32,
+        day as u32,
+    )
 }
 
 /// Return the civil year a day number falls in.

@@ -195,10 +195,7 @@ fn plain_json_number_overflow_and_float_semantics_are_deterministic() {
     }
 
     for encoded in [b"1.25".as_slice(), b"1e3", b"18446744073709551617.0"] {
-        assert!(matches!(
-            json::from_slice(encoded).unwrap(),
-            Value::Float(_)
-        ));
+        assert!(matches!(json::from_slice(encoded).unwrap(), Value::F64(_)));
     }
     for encoded in [b"-0".as_slice(), b"-0.0", b"-0e3"] {
         let value = json::from_slice(encoded).unwrap();

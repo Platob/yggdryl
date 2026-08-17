@@ -150,8 +150,10 @@ prototypes.
 
 `Value` is the JavaScript spelling of what JavaScript has no type for: an exact decimal, a date, a
 time of day, a duration, and a timestamp at a resolution or in a zone a `Date` cannot hold. A
-`Date` is exactly a naive count of whole milliseconds, so anything that is one crosses as a `Date`
-in both directions.
+`Date` is exactly a naive count of whole milliseconds, so `fromJs` reads one as that reading and
+`asJs` hands one back. On the schemaless wires a temporal travels as its classic ISO string - the
+fraction printed at the unit's full width, so the digits *are* the unit - and `loads` hands back
+that string; a record class or a schema is what recovers the typed reading.
 
 ```javascript
 const { Value, json } = require('yggdryl')
@@ -159,16 +161,14 @@ const assert = require('node:assert/strict')
 
 const at = new Date('2026-08-15T12:30:00.000Z')
 assert.ok(Value.fromJs(at).equals(Value.timestamp(1786797000000n, 'ms')))
-assert.ok(json.loads(json.dumps(at)) instanceof Date)
+assert.ok(Value.fromJs(at).asJs() instanceof Date)
 
-// A microsecond instant in a named zone is not a Date, so it stays exact.
+// The wire spells the instant classically; the zone name rides in brackets.
 const micros = Value.timestamp(1700000000123456n, 'us', 'UTC')
-const decoded = json.loads(json.dumps({ at: micros })).at
-assert.equal(decoded.kind, 'timestamp')
-assert.equal(decoded.count, 1700000000123456n)
-assert.equal(decoded.unit, 'us')
-assert.equal(decoded.zone, 'UTC')
-assert.ok(decoded.equals(micros))
+assert.equal(
+  json.loads(json.dumps({ at: micros })).at,
+  '2023-11-14T22:13:20.123456Z',
+)
 ```
 
 `Value.timestamp(count, unit, zone?)`, `Value.date(days)`, `Value.time(count, unit)`,
@@ -205,7 +205,7 @@ assert.equal(Value.fromJs(new Set([1, 2])).kind, 'sequence')
 assert.deepEqual(Value.fromJs(new Set([1, 2])).asJs(), [1, 2])
 assert.equal(Value.fromJs(new Map([['id', 1]])).kind, 'mapping')
 
-const value = { id: 1, at: new Date(0), tags: new Set(['a']) }
+const value = { id: 1, tags: new Set(['a']) }
 assert.deepEqual(json.loads(json.dumps(value)), Value.fromJs(value).asJs())
 ```
 

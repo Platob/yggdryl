@@ -27,6 +27,7 @@ mod codec;
 mod decimal;
 mod holder;
 mod inference;
+pub(crate) mod iso;
 #[cfg(feature = "arrow")]
 mod media;
 #[cfg(feature = "arrow")]
@@ -52,4 +53,4 @@ pub use typed::{
     RunEndEncodedValue, StructValue, Time32Value, Time64Value, TimestampValue, TypedValue,
     UInt8Value, UInt16Value, UInt32Value, UInt64Value, UnionValue, Utf8Value, Utf8ViewValue,
 };
-pub use value::{Children, Float, Value};
+pub use value::{Children, Float, Float32, Value};

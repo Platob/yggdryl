@@ -336,16 +336,22 @@ fn native_datetime(value: &Value) -> Option<toml::value::Datetime> {
                 })
         }
         Value::Timestamp(count, unit, zone) => {
-            let offset = match zone {
-                Some(zone) => Some(fixed_offset(zone)?),
-                None => None,
-            };
+            let offset = fixed_offset(zone)?;
             let (seconds, nanosecond) = split_count(*count, *unit)?;
-            let local = seconds.checked_add(i64::from(offset.unwrap_or(0)))?;
+            let local = seconds.checked_add(i64::from(offset))?;
             Some(toml::value::Datetime {
                 date: Some(civil_from_days(local.div_euclid(SECONDS_PER_DAY))?),
                 time: Some(time_of_day(local.rem_euclid(SECONDS_PER_DAY), nanosecond)),
-                offset: offset.map(toml_offset),
+                offset: Some(toml_offset(offset)),
+            })
+        }
+        // The naive reading is TOML's local date-time, offset and all absent.
+        Value::DateTime(count, unit) => {
+            let (seconds, nanosecond) = split_count(*count, *unit)?;
+            Some(toml::value::Datetime {
+                date: Some(civil_from_days(seconds.div_euclid(SECONDS_PER_DAY))?),
+                time: Some(time_of_day(seconds.rem_euclid(SECONDS_PER_DAY), nanosecond)),
+                offset: None,
             })
         }
         // A duration is elapsed time rather than a reading on a calendar, and no
@@ -491,21 +497,36 @@ pub(super) fn write_document<W: Write>(writer: &mut W, value: &Value) -> Result<
 fn is_enveloped(value: &Value) -> bool {
     match value {
         Value::Bool(_)
+        | Value::I8(_)
+        | Value::I16(_)
+        | Value::I32(_)
         | Value::I64(_)
-        | Value::Float(_)
+        | Value::U8(_)
+        | Value::U16(_)
+        | Value::U32(_)
+        | Value::F32(_)
+        | Value::F64(_)
         | Value::String(_)
         | Value::Sequence(_) => false,
         Value::Mapping(entries) => !is_plain_mapping(entries),
         // A record lowers to a string-keyed mapping, which is a plain table.
         Value::Record(..) => false,
-        Value::Date(_) | Value::Time(..) | Value::Timestamp(..) => native_datetime(value).is_none(),
+        Value::Date(_) | Value::Time(..) | Value::DateTime(..) => native_datetime(value).is_none(),
+        // A zoned instant TOML cannot spell natively still has its classic
+        // string; only a reading with neither takes the envelope.
+        Value::Timestamp(count, unit, zone) => {
+            native_datetime(value).is_none()
+                && crate::generic::iso::format_timestamp(*count, *unit, zone).is_none()
+        }
+        Value::Duration(count, unit) => {
+            crate::generic::iso::format_duration(*count, *unit).is_none()
+        }
         Value::Null
         | Value::U64(_)
         | Value::I128(_)
         | Value::U128(_)
         | Value::Bytes(_)
-        | Value::Decimal(..)
-        | Value::Duration(..) => true,
+        | Value::Decimal(..) => true,
     }
 }
 
@@ -575,9 +596,14 @@ fn check_value_depth(value: &Value, parent_depth: usize, maximum: usize) -> Resu
                 check_value_depth(value, depth, maximum)?;
             }
         }
-        // A temporal TOML spells natively goes out in that syntax, so it costs
-        // no more than the string beside it.
-        Value::Date(_) | Value::Time(..) | Value::Timestamp(..) if !is_enveloped(value) => {}
+        // A temporal TOML spells natively - or as its classic ISO string -
+        // goes out as one token, so it costs no more than the string beside it.
+        Value::Date(_)
+        | Value::Time(..)
+        | Value::Timestamp(..)
+        | Value::DateTime(..)
+        | Value::Duration(..)
+            if !is_enveloped(value) => {}
         Value::Mapping(entries) => {
             let wrapper_depth = parent_depth.saturating_add(1);
             let body_depth = wrapper_depth.saturating_add(1);
@@ -594,6 +620,7 @@ fn check_value_depth(value: &Value, parent_depth: usize, maximum: usize) -> Resu
         | Value::Date(_)
         | Value::Time(..)
         | Value::Timestamp(..)
+        | Value::DateTime(..)
         | Value::Duration(..) => {
             let wrapper_depth = parent_depth.saturating_add(1);
             let body_depth = wrapper_depth.saturating_add(1);
@@ -604,7 +631,17 @@ fn check_value_depth(value: &Value, parent_depth: usize, maximum: usize) -> Resu
                 maximum,
             )?;
         }
-        Value::Bool(_) | Value::I64(_) | Value::Float(_) | Value::String(_) => {}
+        Value::Bool(_)
+        | Value::I8(_)
+        | Value::I16(_)
+        | Value::I32(_)
+        | Value::I64(_)
+        | Value::U8(_)
+        | Value::U16(_)
+        | Value::U32(_)
+        | Value::F32(_)
+        | Value::F64(_)
+        | Value::String(_) => {}
     }
     Ok(())
 }
@@ -652,8 +689,15 @@ fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
         // A record writes as the plain table its field names spell.
         Value::Record(..) => write_value(writer, &value.record_to_mapping())?,
         Value::Bool(value) => writer.write_all(if *value { b"true" } else { b"false" })?,
+        Value::I8(value) => write!(writer, "{value}")?,
+        Value::I16(value) => write!(writer, "{value}")?,
+        Value::I32(value) => write!(writer, "{value}")?,
         Value::I64(value) => write!(writer, "{value}")?,
-        Value::Float(value) => write_float(writer, value.as_f64())?,
+        Value::U8(value) => write!(writer, "{value}")?,
+        Value::U16(value) => write!(writer, "{value}")?,
+        Value::U32(value) => write!(writer, "{value}")?,
+        Value::F32(value) => write_float(writer, value.as_f64())?,
+        Value::F64(value) => write_float(writer, value.as_f64())?,
         Value::String(value) => write_quoted(writer, value)?,
         Value::Sequence(values) => {
             writer.write_all(b"[")?;
@@ -682,8 +726,22 @@ fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
         }
         // TOML spells a date, a time, and a date-time itself, so a temporal it
         // can hold goes out in that syntax rather than in an envelope.
-        Value::Date(_) | Value::Time(..) | Value::Timestamp(..) => match native_datetime(value) {
+        Value::Date(_) | Value::Time(..) | Value::DateTime(..) => match native_datetime(value) {
             Some(datetime) => write!(writer, "{datetime}")?,
+            None => write_wrapped_envelope(writer, value)?,
+        },
+        // A zoned instant whose zone is a place has no native TOML offset, but
+        // it still has its classic string, brackets and all.
+        Value::Timestamp(count, unit, zone) => match native_datetime(value) {
+            Some(datetime) => write!(writer, "{datetime}")?,
+            None => match crate::generic::iso::format_timestamp(*count, *unit, zone) {
+                Some(spelled) => write_quoted(writer, &spelled)?,
+                None => write_wrapped_envelope(writer, value)?,
+            },
+        },
+        // TOML has no duration syntax, so a duration is its classic string.
+        Value::Duration(count, unit) => match crate::generic::iso::format_duration(*count, *unit) {
+            Some(spelled) => write_quoted(writer, &spelled)?,
             None => write_wrapped_envelope(writer, value)?,
         },
         Value::Null
@@ -692,7 +750,6 @@ fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
         | Value::U128(_)
         | Value::Bytes(_)
         | Value::Decimal(..)
-        | Value::Duration(..)
         | Value::Mapping(_) => write_wrapped_envelope(writer, value)?,
     }
     Ok(())
@@ -751,7 +808,10 @@ fn write_envelope_body<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
             write_temporal_body(writer, "duration", *count, *unit, None)?;
         }
         Value::Timestamp(count, unit, zone) => {
-            write_temporal_body(writer, "timestamp", *count, *unit, zone.as_ref())?;
+            write_temporal_body(writer, "timestamp", *count, *unit, Some(zone))?;
+        }
+        Value::DateTime(count, unit) => {
+            write_temporal_body(writer, "timestamp", *count, *unit, None)?;
         }
         Value::Mapping(entries) => {
             writer.write_all(b"{ version = 1, type = \"mapping\", value = [")?;
@@ -768,8 +828,15 @@ fn write_envelope_body<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
             writer.write_all(b"] }")?;
         }
         Value::Bool(_)
+        | Value::I8(_)
+        | Value::I16(_)
+        | Value::I32(_)
         | Value::I64(_)
-        | Value::Float(_)
+        | Value::U8(_)
+        | Value::U16(_)
+        | Value::U32(_)
+        | Value::F32(_)
+        | Value::F64(_)
         | Value::String(_)
         | Value::Sequence(_) => {
             return Err(codec_error(

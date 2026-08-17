@@ -72,7 +72,7 @@ fn a_nested_value_is_validated_against_the_datatype_it_claims() {
 fn a_value_can_name_its_own_datatype() {
     let typed = TypedValue::from_value(Value::from(1.5_f64)).unwrap();
     assert_eq!(typed.data_type(), &DataType::Float64);
-    assert_eq!(typed.value(), &Value::Float(1.5.into()));
+    assert_eq!(typed.value(), &Value::F64(1.5.into()));
 
     let column = TypedValue::from_value(Value::from_sequence([Value::from(1_i64)])).unwrap();
     assert_eq!(

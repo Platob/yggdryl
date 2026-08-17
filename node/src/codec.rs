@@ -839,7 +839,7 @@ impl<'env> JsEncoder<'env> {
     fn encode_number(value: Unknown<'env>) -> Result<Value> {
         let value = value.coerce_to_number()?.get_double()?;
         if value == 0.0 && value.is_sign_negative() {
-            return Ok(Value::Float(Float::from_f64(value)));
+            return Ok(Value::F64(Float::from_f64(value)));
         }
         if value.is_finite()
             && value.fract() == 0.0
@@ -847,7 +847,7 @@ impl<'env> JsEncoder<'env> {
         {
             return Ok(Value::I64(value as i64));
         }
-        Ok(Value::Float(Float::from_f64(value)))
+        Ok(Value::F64(Float::from_f64(value)))
     }
 
     /// Encode a `bigint` as the narrowest native integer that holds it exactly.
@@ -1301,11 +1301,18 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         Value::Record(..) => value_to_transport(&value.record_to_mapping(), depth, max_depth),
         Value::Null => Ok(JsonValue::Null),
         Value::Bool(value) => Ok(JsonValue::Bool(*value)),
+        Value::I8(value) => integer_transport(i128::from(*value)),
+        Value::I16(value) => integer_transport(i128::from(*value)),
+        Value::I32(value) => integer_transport(i128::from(*value)),
         Value::I64(value) => integer_transport(i128::from(*value)),
+        Value::U8(value) => unsigned_transport(u128::from(*value)),
+        Value::U16(value) => unsigned_transport(u128::from(*value)),
+        Value::U32(value) => unsigned_transport(u128::from(*value)),
         Value::U64(value) => unsigned_transport(u128::from(*value)),
         Value::I128(value) => integer_transport(*value),
         Value::U128(value) => unsigned_transport(*value),
-        Value::Float(value) => float_transport(value.as_f64()),
+        Value::F32(value) => float_transport(value.as_f64()),
+        Value::F64(value) => float_transport(value.as_f64()),
         Value::String(value) => Ok(JsonValue::String(value.to_string())),
         Value::Bytes(value) => Ok(marker(
             "bytes",
@@ -1337,27 +1344,29 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
                 ("unit", JsonValue::String(unit.as_str().to_owned())),
             ],
         )),
-        Value::Timestamp(count, unit, zone) => {
+        Value::Timestamp(count, unit, zone) => Ok(marker(
+            "timestamp",
+            [
+                ("value", JsonValue::String(count.to_string())),
+                ("unit", JsonValue::String(unit.as_str().to_owned())),
+                ("zone", JsonValue::String(zone.as_str().to_owned())),
+                ("date", JsonValue::Null),
+            ],
+        )),
+        Value::DateTime(count, unit) => {
             // A Date is a naive instant counted in whole milliseconds and no
-            // wider than this range. A timestamp that is exactly one crosses as
-            // a Date; every other resolution or zone crosses as itself, because
-            // rounding an instant to fit would change it.
-            let date = zone
-                .is_none()
-                .then(|| value.temporal_count_at(TimeUnit::Millisecond))
-                .flatten()
+            // wider than this range. A naive reading that is exactly one
+            // crosses as a Date; every other resolution crosses as itself,
+            // because rounding an instant to fit would change it.
+            let date = value
+                .temporal_count_at(TimeUnit::Millisecond)
                 .filter(|millis| millis.unsigned_abs() <= MAX_DATE_MILLISECONDS);
             Ok(marker(
                 "timestamp",
                 [
                     ("value", JsonValue::String(count.to_string())),
                     ("unit", JsonValue::String(unit.as_str().to_owned())),
-                    (
-                        "zone",
-                        zone.as_ref().map_or(JsonValue::Null, |zone| {
-                            JsonValue::String(zone.as_str().to_owned())
-                        }),
-                    ),
+                    ("zone", JsonValue::Null),
                     (
                         "date",
                         date.map_or(JsonValue::Null, |millis| {

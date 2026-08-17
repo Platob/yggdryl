@@ -175,13 +175,21 @@ mod envelopes {
         for value in [
             Value::Bool(true),
             Value::I64(1),
+            Value::from(7_i8),
+            Value::from(7_u32),
             Value::from(1.5),
+            Value::from(1.5_f32),
             Value::from("text"),
             Value::from_sequence([Value::I64(1)]),
             Value::from_mapping([(Value::from("key"), Value::I64(1))]).unwrap(),
             Value::date(3_433),
             Value::time(27_120, TimeUnit::Second),
             Value::timestamp_in(0, TimeUnit::Second, Some(Timezone::UTC)),
+            Value::datetime(0, TimeUnit::Second),
+            // A named zone has no native TOML offset, and a duration has no
+            // TOML syntax at all, but both have their classic ISO strings.
+            Value::timestamp(0, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
+            Value::duration(90, TimeUnit::Second),
         ] {
             assert!(!is_enveloped(&value), "{value:?}");
         }
@@ -196,9 +204,9 @@ mod envelopes {
             Value::U128(1),
             Value::from(vec![0_u8]),
             Value::decimal(1_050, 2),
-            Value::duration(90, TimeUnit::Second),
+            // An interval-layout duration has no classic ISO spelling either.
+            Value::duration(1, TimeUnit::YearMonth),
             Value::from_mapping([(Value::I64(1), Value::I64(2))]).unwrap(),
-            Value::timestamp(0, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
             Value::date(2_932_897),
         ] {
             assert!(is_enveloped(&value), "{value:?}");
@@ -209,9 +217,10 @@ mod envelopes {
     fn only_an_array_payload_costs_a_container_of_its_own() {
         for value in [
             Value::decimal(1_050, 2),
-            Value::time(1, TimeUnit::Second),
-            Value::timestamp_in(1, TimeUnit::Second, None),
-            Value::duration(1, TimeUnit::Second),
+            // A time past its day and an interval-layout duration are the
+            // readings that still envelope, and their payloads are arrays.
+            Value::time(90_000, TimeUnit::Second),
+            Value::duration(1, TimeUnit::YearMonth),
         ] {
             assert_eq!(envelope_payload_depth(&value), 1, "{value:?}");
         }

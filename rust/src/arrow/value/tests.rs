@@ -111,7 +111,7 @@ mod restating {
 
         assert_eq!(
             round_trip(micros.clone(), at),
-            Value::Timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, None)
+            Value::DateTime(1_700_000_000_000_000, TimeUnit::Microsecond)
         );
         assert_eq!(
             round_trip(DataType::Date32, Value::date(19_723)),
@@ -142,6 +142,6 @@ mod restating {
         )
         .unwrap_err()
         .to_string();
-        assert!(error.contains("timestamp"), "{error}");
+        assert!(error.contains("datetime"), "{error}");
     }
 }

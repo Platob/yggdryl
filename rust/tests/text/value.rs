@@ -11,20 +11,30 @@ fn one_of_every_kind() -> Vec<Value> {
         Value::Null,
         Value::from(true),
         Value::I128(i128::MIN),
+        Value::from(-8_i8),
+        Value::from(-4_i16),
+        Value::from(-2_i32),
         Value::I64(-1),
+        Value::from(1_u8),
+        Value::from(2_u16),
+        Value::from(3_u32),
         Value::U64(u64::MAX),
         Value::U128(u128::MAX),
+        Value::from(1.25_f32),
         Value::from(1.5),
         Value::decimal(-1_050, 2),
         Value::from("AAPL"),
         Value::from(b"\x00\xff".as_slice()),
         Value::date(19_723),
         Value::time(45_296_000_000, TimeUnit::Microsecond),
-        Value::timestamp(1_700_000_000, TimeUnit::Second, None).unwrap(),
         Value::timestamp(1_700_000_000, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
         Value::duration(90, TimeUnit::Second),
         Value::from_sequence([Value::Null]),
         Value::from_mapping([(Value::from("k"), Value::Null)]).unwrap(),
+        // The naive reading arrived after the containers, and the ordering
+        // numbering is kept, so its place is at the end rather than beside
+        // its zoned sibling.
+        Value::timestamp(1_700_000_000, TimeUnit::Second, None).unwrap(),
     ]
 }
 
@@ -53,14 +63,15 @@ fn every_kind_has_its_own_place_in_the_total_ordering() {
     }
 
     // Kinds arrive in runs rather than interleaved, so a value of one kind
-    // never sorts between two of another. The four integer widths are the
-    // deliberate exception: they are one number line spelled four ways.
+    // never sorts between two of another. The integer widths are the
+    // deliberate exception: they are one number line spelled ten ways, and
+    // the two float widths are another, spelled two ways.
     let mut kinds = values.iter().map(Value::kind).collect::<Vec<_>>();
     kinds.dedup();
     assert_eq!(
         kinds.len(),
-        values.len() - 1,
-        "only the zoned and naive timestamps share a kind: {kinds:?}"
+        values.len(),
+        "every kind spells its own name: {kinds:?}"
     );
 }
 
@@ -68,7 +79,18 @@ fn every_kind_has_its_own_place_in_the_total_ordering() {
 fn integer_widths_have_native_numeric_equality() {
     assert_eq!(Value::I64(1), Value::U64(1));
     assert_eq!(Value::I128(1), Value::U128(1));
+    assert_eq!(Value::from(1_i8), Value::from(1_u32));
     assert_ne!(Value::I64(-1), Value::U64(1));
+}
+
+#[test]
+fn float_widths_are_one_number_line() {
+    // An `f32` widens to `f64` exactly, so the same reading at either width
+    // is one value - as the integers are one number line across widths.
+    assert_eq!(Value::from(1.5_f32), Value::from(1.5_f64));
+    assert!(Value::from(1.25_f32) < Value::from(1.5_f64));
+    assert!(Value::from(2.0_f64) < Value::from(2.5_f32));
+    assert_ne!(Value::from(0.1_f32), Value::from(0.1_f64));
 }
 
 #[test]

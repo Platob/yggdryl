@@ -12,7 +12,7 @@ pub(crate) mod position;
 pub(crate) mod wire;
 
 pub use crate::generic::TypedValue;
-pub use crate::generic::value::{Children, Float, Value};
+pub use crate::generic::value::{Children, Float, Float32, Value};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 pub(crate) use display::{elide_display, elide_to, expected_got, stable_hash_display};
 pub use format::Format;
@@ -368,17 +368,25 @@ pub(crate) fn check_encode_depth(value: &Value, format: &'static str) -> Result<
             // silently, so a new variant has to be classified to compile.
             Value::Null
             | Value::Bool(_)
+            | Value::I8(_)
+            | Value::I16(_)
+            | Value::I32(_)
             | Value::I64(_)
+            | Value::U8(_)
+            | Value::U16(_)
+            | Value::U32(_)
             | Value::U64(_)
             | Value::I128(_)
             | Value::U128(_)
-            | Value::Float(_)
+            | Value::F32(_)
+            | Value::F64(_)
             | Value::Decimal(..)
             | Value::String(_)
             | Value::Bytes(_)
             | Value::Date(_)
             | Value::Time(..)
             | Value::Timestamp(..)
+            | Value::DateTime(..)
             | Value::Duration(..) => {}
         }
         Ok(())

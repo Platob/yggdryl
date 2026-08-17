@@ -94,11 +94,16 @@ value = {
 
 restored = json.loads(json.dumps(value))
 
-assert restored == value
 # The scale is data, so a price written to two places comes back to two.
 assert str(restored["price"]) == "10.50"
-# A zone survives as the zone, not as the offset it happened to be at.
-assert restored["at"].tzinfo == zoneinfo.ZoneInfo("Europe/Paris")
+assert restored["payload"] == value["payload"]
+# A temporal travels as its classic ISO string, the loosely typed deal a
+# schemaless wire makes; a record class or a schema recovers the typed
+# reading. The zone survives as the zone name, not as the offset it
+# happened to be at.
+assert restored["on"] == "2026-08-15"
+assert restored["took"] == "PT90.000000S"
+assert restored["at"] == "2026-08-15T12:30:00.000000+02:00[Europe/Paris]"
 ```
 
 | Python | Native value | Notes |
@@ -112,8 +117,9 @@ assert restored["at"].tzinfo == zoneinfo.ZoneInfo("Europe/Paris")
 | `list`, `tuple` | `Sequence` | |
 | `dict` | `Mapping` | keys are values too, not only strings |
 
-The four temporal names and `decimal` are the shared cross-language vocabulary, so a document written
-here reads back as a native temporal in Rust and JavaScript rather than as a Python-shaped string.
+The temporal spellings and the `decimal` envelope are the shared cross-language vocabulary, so a
+document written here reads back the same way in Rust and JavaScript - never as a Python-shaped
+wrapper.
 
 ## What a Python value loses
 

@@ -78,13 +78,20 @@ impl Value {
         match self {
             Self::Null => Ok(DataType::Null),
             Self::Bool(_) => Ok(DataType::Boolean),
+            Self::I8(_) => Ok(DataType::Int8),
+            Self::I16(_) => Ok(DataType::Int16),
+            Self::I32(_) => Ok(DataType::Int32),
             Self::I64(_) => Ok(DataType::Int64),
+            Self::U8(_) => Ok(DataType::UInt8),
+            Self::U16(_) => Ok(DataType::UInt16),
+            Self::U32(_) => Ok(DataType::UInt32),
             Self::U64(_) => Ok(DataType::UInt64),
             // Arrow has no 128-bit integer, and an exact decimal with scale
             // zero is an integer, so that is what a wide integer becomes.
             Self::I128(value) => integer_decimal(digits(value.unsigned_abs())),
             Self::U128(value) => integer_decimal(digits(*value)),
-            Self::Float(_) => Ok(DataType::Float64),
+            Self::F32(_) => Ok(DataType::Float32),
+            Self::F64(_) => Ok(DataType::Float64),
             Self::Decimal(unscaled, scale) => decimal_data_type(*unscaled, *scale),
             Self::String(_) => Ok(DataType::Utf8),
             Self::Bytes(_) => Ok(DataType::Binary),
@@ -92,7 +99,11 @@ impl Value {
             Self::Time(_, unit) => DataType::time(*unit),
             Self::Timestamp(_, unit, zone) => {
                 resolution(*unit, "timestamp")?;
-                Ok(DataType::Timestamp(*unit, zone.clone()))
+                Ok(DataType::Timestamp(*unit, Some(zone.clone())))
+            }
+            Self::DateTime(_, unit) => {
+                resolution(*unit, "timestamp")?;
+                Ok(DataType::Timestamp(*unit, None))
             }
             Self::Duration(_, unit) => {
                 resolution(*unit, "duration")?;

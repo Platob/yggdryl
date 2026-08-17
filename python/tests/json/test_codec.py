@@ -53,16 +53,19 @@ def test_first_class_scalars_round_trip_exactly() -> None:
     restored = json.loads(encoded)
 
     assert isinstance(encoded, bytes)
-    assert restored == value
-    assert [type(item) for item in restored.values()] == [
-        type(item) for item in value.values()
-    ]
-    # The scale is data, so a price written to four places comes back to four.
+    # Bytes and the decimal stay themselves; every temporal is spelled as its
+    # classic ISO string - the loosely typed deal a schemaless wire makes.
+    assert restored["bytes"] == value["bytes"]
     assert str(restored["decimal"]) == "123.4500"
-    # A zone survives as the zone, not as the offset it happened to be at.
-    assert restored["zoned"].tzinfo == zoneinfo.ZoneInfo("Europe/Paris")
-    assert restored["utc"].tzinfo is dt.timezone.utc
-    assert restored["offset"].utcoffset() == dt.timedelta(hours=5, minutes=30)
+    assert restored["date"] == "2026-08-15"
+    assert restored["time"] == "12:03:04.000005"
+    assert restored["naive"] == "2026-08-15T12:03:04.000005"
+    # A zone survives as the zone name, not as the offset it happened to be
+    # at, because the offset alone cannot say Europe/Paris.
+    assert restored["zoned"] == "2026-08-15T12:03:04.000005+02:00[Europe/Paris]"
+    assert restored["utc"] == "2026-08-15T00:00:00.000000Z"
+    assert restored["offset"] == "2026-08-15T00:00:00.000000+05:30"
+    assert restored["delta"] == "-PT172796.999996S"
 
 
 def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
@@ -74,10 +77,11 @@ def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
 
     encoded = json.dumps(value).decode()
 
-    # These envelope names are the shared vocabulary, not a Python spelling, so
-    # a document written here reads as a native temporal in the other runtimes.
-    assert '"type":"timestamp"' in encoded
-    assert '"type":"date"' in encoded
+    # A temporal is the classic ISO string every runtime and every other tool
+    # reads; the decimal keeps the shared envelope vocabulary, so a document
+    # written here reads back the same way in the other runtimes.
+    assert '"at":"2026-08-15T00:00:00.000000Z"' in encoded
+    assert '"on":"2026-08-15"' in encoded
     assert '"type":"decimal","value":["-1050",2]' in encoded
     assert "python:" not in encoded
 
@@ -262,10 +266,12 @@ def test_nested_record_round_trips_as_plain_nested_mappings() -> None:
 
     assert restored == value
     # The document is the data and nothing else; the target supplies the type.
+    # Read without a target, the instant is the classic string it was written
+    # as - the dataclass above is what turned it back into a datetime.
     assert b"python:" not in encoded
     assert json.loads(encoded) == {
         "order_id": 7,
-        "fill": {"price": Decimal("12.5"), "when": dt.datetime(2026, 8, 15, 8)},
+        "fill": {"price": Decimal("12.5"), "when": "2026-08-15T08:00:00.000000"},
     }
 
 

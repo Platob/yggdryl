@@ -274,7 +274,7 @@ fn canonical_float(value: &Value, width: FloatWidth) -> Result<(Value, bool)> {
     let canonical = Value::from(narrowed);
     let changed = !matches!(
         (value, &canonical),
-        (Value::Float(current), Value::Float(canonical)) if current == canonical
+        (Value::F64(current), Value::F64(canonical)) if current == canonical
     );
     Ok((canonical, changed))
 }
@@ -572,7 +572,7 @@ fn validate_data_type_value(
         D::UInt32 => validate_unsigned(value, u128::from(u32::MAX), "uint32"),
         D::UInt64 => validate_unsigned(value, u128::from(u64::MAX), "uint64"),
         D::Float16 | D::Float32 | D::Float64 => {
-            require(matches!(value, Value::Float(_)), data_type.name(), value)
+            require(matches!(value, Value::F64(_)), data_type.name(), value)
         }
         D::Timestamp(..) | D::Duration(_) => validate_signed(
             value,

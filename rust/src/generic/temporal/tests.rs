@@ -130,10 +130,14 @@ mod comparison {
             Value::from(b"a".as_slice()),
             Value::date(0),
             Value::time(0, TimeUnit::Second),
-            Value::timestamp(0, TimeUnit::Second, None).unwrap(),
+            Value::timestamp(0, TimeUnit::Second, Some("UTC")).unwrap(),
             Value::duration(0, TimeUnit::Second),
             Value::from_sequence([]),
             Value::from_mapping([]).unwrap(),
+            // The naive reading arrived after the containers, and the
+            // numbering is kept, so it sorts after them rather than beside
+            // its zoned sibling.
+            Value::datetime(0, TimeUnit::Second),
         ];
         for window in ordered.windows(2) {
             assert!(window[0] < window[1], "{:?} < {:?}", window[0], window[1]);
@@ -204,9 +208,11 @@ mod codecs {
     use crate::text::{Json, TextCodec, Yaml};
 
     #[test]
-    fn a_temporal_survives_json_and_yaml() {
-        // TOML spells a date-time natively rather than through an envelope, so
-        // its projection of these variants lands with the TOML change itself.
+    fn a_temporal_writes_its_classic_iso_string() {
+        // A schemaless wire spells a temporal the way every other tool does,
+        // so what comes back is the string - loosely typed on purpose. A
+        // schema is what recovers the typed reading, and the field layer does
+        // exactly that when a column declares a temporal datatype.
         let row = Value::from_mapping([
             (
                 Value::from("at"),
@@ -227,21 +233,42 @@ mod codecs {
         ])
         .unwrap();
 
-        assert_eq!(Json.loads(&Json.dumps(&row).unwrap()).unwrap(), row);
-        assert_eq!(Yaml.loads(&Yaml.dumps(&row).unwrap()).unwrap(), row);
+        let spelled = Value::from_mapping([
+            (
+                Value::from("at"),
+                Value::from("2023-11-14T22:13:20.000000Z"),
+            ),
+            (Value::from("naive"), Value::from("2023-11-14T22:13:20")),
+            (Value::from("on"), Value::from("2024-01-01")),
+            (
+                Value::from("since_midnight"),
+                Value::from("12:34:56.000000"),
+            ),
+            (Value::from("took"), Value::from("PT90S")),
+            (Value::from("price"), Value::decimal(-1_050, 2)),
+        ])
+        .unwrap();
+
+        assert_eq!(Json.loads(&Json.dumps(&row).unwrap()).unwrap(), spelled);
+        assert_eq!(Yaml.loads(&Yaml.dumps(&row).unwrap()).unwrap(), spelled);
     }
 
     #[test]
-    fn a_temporal_survives_as_a_mapping_key_too() {
-        // A key is a value here, so the envelope has to survive the explicit
-        // key form both codecs fall back to for a non-plain key.
+    fn a_temporal_spells_itself_as_a_mapping_key_too() {
+        // A key is a value here, so the ISO spelling has to survive the
+        // explicit key form both codecs fall back to for a non-plain key.
         let by_day = Value::from_mapping([
             (Value::date(19_723), Value::from(1_i64)),
             (Value::decimal(1_050, 2), Value::from(2_i64)),
         ])
         .unwrap();
+        let spelled = Value::from_mapping([
+            (Value::from("2024-01-01"), Value::from(1_i64)),
+            (Value::decimal(1_050, 2), Value::from(2_i64)),
+        ])
+        .unwrap();
 
-        assert_eq!(Json.loads(&Json.dumps(&by_day).unwrap()).unwrap(), by_day);
-        assert_eq!(Yaml.loads(&Yaml.dumps(&by_day).unwrap()).unwrap(), by_day);
+        assert_eq!(Json.loads(&Json.dumps(&by_day).unwrap()).unwrap(), spelled);
+        assert_eq!(Yaml.loads(&Yaml.dumps(&by_day).unwrap()).unwrap(), spelled);
     }
 }

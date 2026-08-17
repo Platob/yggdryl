@@ -252,26 +252,24 @@ pub(crate) fn value_from_array(
         DataType::UInt16 => primitive!(UInt16Array, Value::from),
         DataType::UInt32 => primitive!(UInt32Array, Value::from),
         DataType::UInt64 => primitive!(UInt64Array, Value::from),
-        DataType::Float16 => primitive!(Float16Array, |value: f16| Value::from(value.to_f64())),
+        DataType::Float16 => primitive!(Float16Array, |value: f16| Value::from(value.to_f32())),
         DataType::Float32 => primitive!(Float32Array, Value::from),
         DataType::Float64 => primitive!(Float64Array, Value::from),
         // Every temporal reads as its typed value: the count alone is not
         // the datum, the unit and zone are, and the typed spelling is what
         // serializes losslessly and compares across resolutions.
         DataType::Timestamp(unit, zone) => match unit {
-            TimeUnit::Second => primitive!(TimestampSecondArray, |value| Value::Timestamp(
-                value,
-                *unit,
-                zone.clone()
-            )),
+            TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
+                Value::timestamp_in(value, *unit, zone.clone())
+            }),
             TimeUnit::Millisecond => primitive!(TimestampMillisecondArray, |value| {
-                Value::Timestamp(value, *unit, zone.clone())
+                Value::timestamp_in(value, *unit, zone.clone())
             }),
             TimeUnit::Microsecond => primitive!(TimestampMicrosecondArray, |value| {
-                Value::Timestamp(value, *unit, zone.clone())
+                Value::timestamp_in(value, *unit, zone.clone())
             }),
             TimeUnit::Nanosecond => primitive!(TimestampNanosecondArray, |value| {
-                Value::Timestamp(value, *unit, zone.clone())
+                Value::timestamp_in(value, *unit, zone.clone())
             }),
             _ => return Err(unsupported(data_type, "invalid timestamp unit")),
         },
@@ -398,7 +396,7 @@ pub(crate) fn value_from_array(
                 array.child(type_id).as_ref(),
                 array.value_offset(index),
             )?;
-            Value::from_sequence([Value::from(type_id), payload])
+            Value::from_sequence([Value::from(i64::from(type_id)), payload])
         }
         DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {

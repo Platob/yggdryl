@@ -631,7 +631,9 @@ instant.
 
 A zone is *not* how naive is spelled. A timestamp with no zone at all is
 `DataType::Timestamp(unit, None)`, exactly as Arrow spells it, and giving `Timezone` a `Naive`
-variant would have created two ways to say one thing.
+variant would have created two ways to say one thing. At the value level the split is just as
+sharp: `Value::Timestamp` always has its zone, and the naive wall-clock reading is its own kind,
+`Value::DateTime`.
 
 The registry carries the rules **in force today**, which is what a schema, a partition value, or a
 freshly written batch needs. It is deliberately not a history: applying today's rule to a 1975

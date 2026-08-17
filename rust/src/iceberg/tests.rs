@@ -2855,12 +2855,12 @@ mod datatype_coverage {
                 Value::Bool(true),
                 Value::I64(41),
                 Value::I64(1),
-                Value::Float(crate::generic::Float::from_f64(0.5)),
-                Value::Float(crate::generic::Float::from_f64(2.25)),
+                Value::F64(crate::generic::Float::from_f64(0.5)),
+                Value::F64(crate::generic::Float::from_f64(2.25)),
                 Value::Decimal(1_500_000, 4),
                 Value::Date(20_000),
                 Value::Time(43_200_000_000, TimeUnit::Microsecond),
-                Value::Timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, None),
+                Value::DateTime(1_700_000_000_000_000, TimeUnit::Microsecond),
                 Value::String("alpha".into()),
                 Value::from(vec![1_u8, 2]),
                 Value::from(vec![9_u8, 9, 9, 9]),
@@ -2890,7 +2890,7 @@ mod datatype_coverage {
         assert_eq!(first[5], Value::Decimal(1_500_000, 4));
         assert_eq!(
             first[8],
-            Value::Timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, None)
+            Value::DateTime(1_700_000_000_000_000, TimeUnit::Microsecond)
         );
         assert_eq!(first[11], Value::from(vec![9_u8, 9, 9, 9]));
         let (_, second) = records[1].as_record().unwrap();

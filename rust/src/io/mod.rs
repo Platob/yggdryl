@@ -1050,6 +1050,7 @@ pub(crate) fn select_reader(
     Ok(crate::arrow::cast_reader(reader, &target, options.safe())?)
 }
 
+#[cfg(feature = "arrow")]
 pub(crate) fn leaf_reader(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,

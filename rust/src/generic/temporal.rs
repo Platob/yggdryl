@@ -1,18 +1,21 @@
-//! The four temporals, spelled the same way in every language.
+//! The five temporals, spelled the same way in every language.
 //!
 //! A temporal is a count plus a unit, and for a timestamp a zone as well. Those
 //! parts used to live in a tagged payload - a name over a sequence - which meant
 //! nothing checked that a value tagged `timestamp` actually held a unit, and a
 //! reader had to parse the unit back out of a string on every access. They are
 //! now fields on the value, so a timestamp cannot be built without its unit and
-//! cannot be read without getting one.
+//! cannot be read without getting one - and a timestamp cannot be built
+//! without its zone, because the zoneless reading is its own kind,
+//! [`Value::DateTime`].
 //!
 //! Each variant carries exactly the shape the matching Arrow datatype carries,
 //! so a value converts to a column without a lookup table:
 //!
 //! | Variant | Payload | Arrow datatype |
 //! | --- | --- | --- |
-//! | [`Value::Timestamp`] | count of unit since the epoch, zone | `Timestamp(unit, zone)` |
+//! | [`Value::Timestamp`] | count of unit since the epoch, zone | `Timestamp(unit, Some(zone))` |
+//! | [`Value::DateTime`] | count of unit since the epoch, naive | `Timestamp(unit, None)` |
 //! | [`Value::Date`] | days since the epoch | `Date32` |
 //! | [`Value::Time`] | count of unit since midnight | `Time32`/`Time64(unit)` |
 //! | [`Value::Duration`] | elapsed count of unit | `Duration(unit)` |
@@ -41,19 +44,34 @@ impl Value {
     /// Build a timestamp: a count of `unit` since the Unix epoch.
     ///
     /// The count is always relative to UTC, as Arrow defines it; the zone says
-    /// how to display it, and its absence means a naive wall-clock reading.
+    /// how to display it. Passing no zone builds the naive wall-clock reading,
+    /// [`Value::DateTime`], because "no zone" is not a display detail of an
+    /// instant - it is a different kind of value.
     ///
     /// # Errors
     ///
     /// Returns an error when `zone` is not a time zone name or a fixed offset.
     pub fn timestamp(count: i64, unit: TimeUnit, zone: Option<&str>) -> Result<Self> {
-        let zone = zone.map(Timezone::from_str).transpose()?;
-        Ok(Self::Timestamp(count, unit, zone))
+        match zone {
+            Some(zone) => Ok(Self::Timestamp(count, unit, Timezone::from_str(zone)?)),
+            None => Ok(Self::DateTime(count, unit)),
+        }
     }
 
     /// Build a timestamp from a zone that is already validated.
-    pub const fn timestamp_in(count: i64, unit: TimeUnit, zone: Option<Timezone>) -> Self {
-        Self::Timestamp(count, unit, zone)
+    ///
+    /// An absent zone builds the naive [`Value::DateTime`].
+    pub fn timestamp_in(count: i64, unit: TimeUnit, zone: Option<Timezone>) -> Self {
+        match zone {
+            Some(zone) => Self::Timestamp(count, unit, zone),
+            None => Self::DateTime(count, unit),
+        }
+    }
+
+    /// Build a naive wall-clock reading: a count of `unit` since the epoch,
+    /// in no zone at all.
+    pub const fn datetime(count: i64, unit: TimeUnit) -> Self {
+        Self::DateTime(count, unit)
     }
 
     /// Build a date: a count of days since the Unix epoch.
@@ -71,20 +89,34 @@ impl Value {
         Self::Duration(count, unit)
     }
 
-    /// Read a timestamp as its count, unit, and zone name.
+    /// Read a zoned timestamp or a naive datetime as its count, unit, and
+    /// zone name - `None` for the naive reading.
+    ///
+    /// Both kinds answer, because a caller who asks this question is writing
+    /// into a timestamp column, and the column's own declaration says which
+    /// kind belongs in it.
     pub fn as_timestamp(&self) -> Option<(i64, TimeUnit, Option<&str>)> {
         match self {
-            Self::Timestamp(count, unit, zone) => {
-                Some((*count, *unit, zone.as_ref().map(Timezone::as_str)))
-            }
+            Self::Timestamp(count, unit, zone) => Some((*count, *unit, Some(zone.as_str()))),
+            Self::DateTime(count, unit) => Some((*count, *unit, None)),
             _ => None,
         }
     }
 
-    /// Read a timestamp as its count, unit, and validated zone.
+    /// Read a zoned timestamp or a naive datetime as its count, unit, and
+    /// validated zone - `None` for the naive reading.
     pub const fn as_timestamp_in(&self) -> Option<(i64, TimeUnit, Option<&Timezone>)> {
         match self {
-            Self::Timestamp(count, unit, zone) => Some((*count, *unit, zone.as_ref())),
+            Self::Timestamp(count, unit, zone) => Some((*count, *unit, Some(zone))),
+            Self::DateTime(count, unit) => Some((*count, *unit, None)),
+            _ => None,
+        }
+    }
+
+    /// Read a naive wall-clock reading as its count and unit.
+    pub const fn as_datetime(&self) -> Option<(i64, TimeUnit)> {
+        match self {
+            Self::DateTime(count, unit) => Some((*count, *unit)),
             _ => None,
         }
     }
@@ -122,6 +154,7 @@ impl Value {
     pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64> {
         let (count, current) = match self {
             Self::Timestamp(count, current, _)
+            | Self::DateTime(count, current)
             | Self::Time(count, current)
             | Self::Duration(count, current) => (*count, *current),
             _ => return None,
@@ -136,11 +169,15 @@ impl Value {
             .flatten()
     }
 
-    /// Return whether this value is any of the four temporals.
+    /// Return whether this value is any of the five temporals.
     pub const fn is_temporal(&self) -> bool {
         matches!(
             self,
-            Self::Timestamp(..) | Self::Date(_) | Self::Time(..) | Self::Duration(..)
+            Self::Timestamp(..)
+                | Self::DateTime(..)
+                | Self::Date(_)
+                | Self::Time(..)
+                | Self::Duration(..)
         )
     }
 

@@ -68,11 +68,12 @@ test('JSON and YAML lower extended JavaScript values to natural shapes', () => {
     const decoded = format.loads(bytes)
 
     assert.ok(Buffer.isBuffer(bytes))
-    // An exact integer, bytes, an instant, and every float stay themselves.
+    // An exact integer, bytes, and every float stay themselves; an instant
+    // is spelled as its classic ISO string, the loosely typed deal every
+    // schemaless wire now makes.
     assert.equal(decoded.bigint, value.bigint)
     assert.deepEqual(decoded.bytes, value.bytes)
-    assert.ok(decoded.date instanceof Date)
-    assert.equal(decoded.date.toISOString(), value.date.toISOString())
+    assert.equal(decoded.date, '2026-08-15T12:30:00.000')
     assert.equal(decoded.infinity, Infinity)
     assert.ok(Number.isNaN(decoded.nan))
     assert.ok(Object.is(decoded.negativeZero, -0))
@@ -165,14 +166,11 @@ test('a URL and a Date read their state from the prototype, not the instance', (
   Object.defineProperty(date, 'getTime', {
     value: () => 0,
   })
-  assert.equal(
-    json.loads(json.dumps(date)).toISOString(),
-    '2026-08-15T12:30:00.000Z',
-  )
+  assert.equal(json.loads(json.dumps(date)), '2026-08-15T12:30:00.000')
   assert.throws(() => json.dumps(new Date(NaN)), /invalid Date/)
 })
 
-test('temporal and decimal values cross as themselves in every direction', () => {
+test('temporal values cross as classic ISO strings; a decimal stays typed', () => {
   const values = {
     at: Value.timestamp(1700000000000000n, 'us', 'UTC'),
     naive: Value.timestamp(1700000000123456n, 'us'),
@@ -184,16 +182,14 @@ test('temporal and decimal values cross as themselves in every direction', () =>
 
   for (const format of [json, yaml]) {
     const decoded = format.loads(format.dumps(values))
-    for (const [name, original] of Object.entries(values)) {
-      assert.ok(decoded[name].equals(original), name)
-    }
-    assert.equal(decoded.at.kind, 'timestamp')
-    assert.equal(decoded.at.count, 1700000000000000n)
-    assert.equal(decoded.at.unit, 'us')
-    assert.equal(decoded.at.zone, 'UTC')
-    assert.equal(decoded.naive.zone, null)
-    assert.equal(decoded.on.count, 19723n)
-    assert.equal(decoded.on.unit, null)
+    // The fraction width is the unit, so nothing about the reading is lost -
+    // it is just spelled the way every other tool spells it.
+    assert.equal(decoded.at, '2023-11-14T22:13:20.000000Z')
+    assert.equal(decoded.naive, '2023-11-14T22:13:20.123456')
+    assert.equal(decoded.on, '2024-01-01')
+    assert.equal(decoded.sinceMidnight, '12:34:56.000000')
+    assert.equal(decoded.took, 'PT90S')
+    assert.ok(decoded.price.equals(values.price))
     assert.equal(decoded.price.unscaled, -1050n)
     assert.equal(decoded.price.scale, 2)
   }
@@ -213,19 +209,16 @@ test('a Date is the JavaScript spelling of a naive millisecond timestamp', () =>
   assert.ok(Value.fromJs(date).equals(Value.timestamp(1786797000000n, 'ms')))
   assert.ok(Value.fromJs(date).asJs() instanceof Date)
 
-  // A naive instant in any resolution a Date holds exactly is still a Date.
-  assert.ok(json.loads(json.dumps(Value.timestamp(1786797000n, 's'))) instanceof Date)
-
-  // Anything a Date cannot hold exactly stays a native Value instead.
-  for (const value of [
-    Value.timestamp(1786797000000123n, 'us'),
-    Value.timestamp(1786797000000n, 'ms', 'Europe/Paris'),
-    Value.date(19723),
-    Value.time(45296000000n, 'us'),
-    Value.duration(90n, 's'),
-  ]) {
-    assert.ok(json.loads(json.dumps(value)) instanceof Value, value.kind)
-  }
+  // On the wire every temporal is its classic ISO string; the typed reading
+  // comes back wherever a schema names the column's datatype.
+  assert.equal(
+    json.loads(json.dumps(Value.timestamp(1786797000n, 's'))),
+    '2026-08-15T12:30:00',
+  )
+  assert.equal(
+    json.loads(json.dumps(Value.timestamp(1786797000000n, 'ms', 'Europe/Paris'))),
+    '2026-08-15T14:30:00.000+02:00[Europe/Paris]',
+  )
 })
 
 test('fromJs and asJs are the conversion every codec entry point crosses', () => {
@@ -236,9 +229,11 @@ test('fromJs and asJs are the conversion every codec entry point crosses', () =>
   assert.deepEqual(Value.fromJs(new Map([['id', 1]])).asJs(), { id: 1 })
   assert.equal(Value.fromJs(undefined).kind, 'null')
 
-  // dumps is fromJs with bytes on the far side, and loads is asJs.
-  const value = { id: 1, at: new Date(0), tags: new Set(['a']) }
+  // dumps is fromJs with bytes on the far side, and loads is asJs - except
+  // the instant, which the wire spells as its classic string.
+  const value = { id: 1, tags: new Set(['a']) }
   assert.deepEqual(json.loads(json.dumps(value)), Value.fromJs(value).asJs())
+  assert.equal(json.loads(json.dumps({ at: new Date(0) })).at, '1970-01-01T00:00:00.000')
   assert.throws(() => Value.fromJs({}, { maxDepth: 0 }), /between 1 and 48/)
 })
 
