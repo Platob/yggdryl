@@ -13,8 +13,11 @@ use super::{Folder, location_url};
 ///
 /// Reads map straight through: [`IOBase::pread`] is one
 /// [`ArrowFileSystem::read_range`] - an S3 range GET - and [`IOBase::size`]
-/// one [`ArrowFileSystem::file_info`], so a footer-first reader never fetches
-/// the whole value. Writes cannot map through, because an Arrow filesystem
+/// one [`ArrowFileSystem::file_info`], so asking for a range transfers that
+/// range rather than the value. What a reader above does with that is its
+/// own business: the Parquet reader still fetches whole, as it documents.
+///
+/// Writes cannot map through, because an Arrow filesystem
 /// replaces whole files while [`IOBase::pwrite`] is positional; they stage,
 /// and one [`ArrowFileSystem::write_full`] publishes the staged value on
 /// [`IOBase::flush`] or [`IOBase::close`]. Until then the stored value is

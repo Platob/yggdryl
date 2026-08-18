@@ -450,3 +450,38 @@ test('open and close bracket the staged state without creating anything', () => 
   assert.equal(handle.isOpen(), false)
   assert.equal(handle.readText(), 'later')
 })
+
+test('mkdir creates the container on the same file system', () => {
+  const handler = memory()
+  const handle = IOBase.fromArrowFs(handler, 'bucket/lake')
+
+  // A location does not say which backend it belongs to, so mkdir must not
+  // quietly rebuild the handle on the local disk.
+  handle.mkdir()
+  const child = handle.joinpath(['part-0.bin'])
+  child.writeText('AAPL')
+  child.close()
+
+  assert.equal(Buffer.from(handler.files.get('bucket/lake/part-0.bin')).toString(), 'AAPL')
+  assert.equal(fs.existsSync('bucket/lake'), false)
+})
+
+test('a table hands back a root on its own file system', () => {
+  const handler = memory()
+  const warehouse = IOBase.fromArrowFs(handler, 'warehouse/trades')
+  const schema = iceberg.assignFieldIds(
+    fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
+      nullable: false,
+    }),
+  )
+
+  const table = iceberg.Table.create(warehouse, schema)
+  table.append(trades())
+
+  // The root is the folder the table actually lives in, not the local path
+  // its recorded location happens to spell.
+  const root = table.root
+  assert.equal(root.isDir(), true)
+  assert.ok(root.ls().some((entry) => entry.name === 'metadata'))
+  assert.equal(root.glob('data/**/*.parquet').length, 1)
+})

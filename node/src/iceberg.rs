@@ -541,8 +541,16 @@ impl JsTable {
     }
 
     /// The folder the table lives in.
+    ///
+    /// Taken from the table's own root handle rather than from its recorded
+    /// location, because a location does not say which backend it belongs to:
+    /// a table on a foreign Arrow file system must hand back a folder on that
+    /// file system, not the local path its URL happens to spell.
     #[napi(getter)]
     pub fn root(&self) -> Result<JsIOBase> {
+        if let Some(holder) = crate::io::arrow_folder_holder(self.inner.root()) {
+            return Ok(JsIOBase::from_core(holder));
+        }
         JsIOBase::folder_at(&self.location())
     }
 

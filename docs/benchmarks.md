@@ -197,9 +197,10 @@ ls recursive     (local)          61.49 us     92.84 us   local::Folder
 ```
 
 The ranged read is the row that matters most, and it is the one stated in nanoseconds. Serving
-4 KiB out of a 512 KiB value costs 64 ns, not the 23 us a whole-value read costs, which is the
-measurable form of "a footer-first reader does not download the object to read its footer". The
-vtable itself is the 29 ns difference against `Buffer`: one dynamic call plus a bounds check.
+4 KiB out of a 512 KiB value costs 64 ns, not the 23 us a whole-value read costs, so the handle
+serves a range without materializing the value. The vtable itself is the 29 ns difference against
+`Buffer`: one dynamic call plus a bounds check. This measures the handle, not any reader above it -
+[`parquet`](parquet.md) still fetches its value whole, as that page says.
 
 Whole-value writes are where staging shows. An Arrow filesystem replaces files rather than writing
 ranges, so a write is buffered and published once - 67 us against `Buffer`'s 25 us for 512 KiB,

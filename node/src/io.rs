@@ -65,7 +65,7 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 }
 
 /// Address a foreign-file-system handle's location as a container.
-fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
+pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::ArrowFolder(folder) => folder.clone(),
         Holder::ArrowFile(file) => {
@@ -112,7 +112,7 @@ pub struct JsIOBase {
 }
 
 impl JsIOBase {
-    fn from_core(inner: Holder) -> Self {
+    pub(crate) fn from_core(inner: Holder) -> Self {
         Self { inner }
     }
 
@@ -477,11 +477,19 @@ impl JsIOBase {
     /// afterwards - a plain byte write would have made it a file instead.
     #[napi]
     pub fn mkdir(&mut self) -> Result<()> {
-        let url = self
-            .inner
-            .url()
-            .ok_or_else(|| napi_error("an in-memory resource cannot become a directory"))?;
-        let mut folder = Holder::folder(url.to_path().map_err(napi_error)?).map_err(napi_error)?;
+        // A handle on a foreign file system becomes a container on that file
+        // system. Rebuilding from the location alone would silently move the
+        // handle to the local disk, because a location does not say which
+        // backend it belongs to.
+        let mut folder = if let Some(holder) = arrow_folder_holder(&self.inner) {
+            holder
+        } else {
+            let url = self
+                .inner
+                .url()
+                .ok_or_else(|| napi_error("an in-memory resource cannot become a directory"))?;
+            Holder::folder(url.to_path().map_err(napi_error)?).map_err(napi_error)?
+        };
         folder.truncate(0).map_err(napi_error)?;
         self.inner = folder;
         Ok(())

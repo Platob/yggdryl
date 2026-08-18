@@ -31,6 +31,7 @@ def table() -> pa.Table:
     return pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
 
 
+
 class MemoryHandler(pafs.FileSystemHandler):
     """A custom in-memory filesystem, the way a caller writes their own.
 
@@ -343,6 +344,61 @@ class TestCustomFilesystems:
         assert (base / "trades" / "part-0.parquet").exists()
         assert pq.read_table(base / "trades" / "part-0.parquet").equals(table())
 
+    def test_a_compressible_name_is_stored_as_the_bytes_it_was_given(
+        self, local: pafs.LocalFileSystem, root: str
+    ) -> None:
+        # PyArrow's output stream infers a codec from the suffix unless told
+        # not to, which would gzip a value the handle had already coded - and
+        # store something nothing reads back.
+        handle = IOBase.from_arrow_fs(local, f"{root}/trades.json.gz")
+        handle.write_bytes(b"AAPL")
+        handle.close()
+
+        assert pathlib.Path(root, "trades.json.gz").read_bytes() == b"AAPL"
+        assert handle.read_bytes() == b"AAPL"
+
+    def test_a_content_coding_round_trips_over_a_foreign_filesystem(
+        self, local: pafs.LocalFileSystem, root: str
+    ) -> None:
+        import gzip
+
+        # The coding belongs to the handle, so what lands is gzip exactly once.
+        handle = IOBase.from_arrow_fs(local, f"{root}/coded.json.gz")
+        handle.write_bytes(gzip.compress(b'{"symbol":"AAPL"}'))
+        handle.close()
+
+        stored = pathlib.Path(root, "coded.json.gz").read_bytes()
+        assert gzip.decompress(stored) == b'{"symbol":"AAPL"}'
+
+    def test_mkdir_creates_the_container_on_the_same_filesystem(self) -> None:
+        handler = MemoryHandler()
+        handle = IOBase.from_arrow_fs(pafs.PyFileSystem(handler), "bucket/lake")
+
+        # A location does not say which backend it belongs to, so mkdir must
+        # not quietly rebuild the handle on the local disk.
+        handle.mkdir()
+        child = handle / "part-0.bin"
+        child.write_bytes(b"AAPL")
+        child.close()
+
+        assert handler.files.get("bucket/lake/part-0.bin") == b"AAPL"
+        assert not pathlib.Path("bucket/lake").exists()
+
+    def test_a_table_hands_back_a_root_on_its_own_filesystem(self) -> None:
+        from yggdryl import iceberg
+
+        handler = MemoryHandler()
+        warehouse = IOBase.from_arrow_fs(pafs.PyFileSystem(handler), "warehouse/trades")
+        stored = iceberg.Table.create(warehouse, table().schema)
+        stored.append(table())
+
+        # The root is the folder the table actually lives in, not the local
+        # path its recorded location happens to spell.
+        root_handle = stored.root
+        assert root_handle.is_dir()
+        assert "metadata" in [entry.name for entry in root_handle.iterdir()]
+        assert len(root_handle.glob("data/**/*.parquet")) == 1
+
     def test_a_handler_that_raises_surfaces_its_own_message(self) -> None:
         class Broken(MemoryHandler):
             def open_input_file(self, path: str) -> pa.NativeFile:
@@ -360,6 +416,25 @@ class TestCustomFilesystems:
 
         # The foreign message crosses unchanged rather than being reworded.
         assert "403 Forbidden" in str(failure.value)
+
+    def test_an_exception_with_no_message_still_names_its_class(self) -> None:
+        class Bare(MemoryHandler):
+            def open_input_file(self, path: str) -> pa.NativeFile:
+                # The shape normal Python code raises: the class is the message.
+                raise PermissionError
+
+            def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
+                return [
+                    pafs.FileInfo(path.strip("/"), pafs.FileType.File, size=8)
+                    for path in paths
+                ]
+
+        handle = IOBase.from_arrow_fs(pafs.PyFileSystem(Bare()), "bucket/key.bin")
+        with pytest.raises(ValueError) as failure:
+            handle.read_bytes()
+
+        # With no text to carry, the class is the whole of what the caller has.
+        assert "PermissionError" in str(failure.value)
 
 
 class TestTables:

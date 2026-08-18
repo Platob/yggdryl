@@ -59,11 +59,13 @@ impl PyArrowFileSystem {
 
 /// Carry a Python exception across as a core I/O failure, message intact.
 fn foreign(error: &PyErr) -> Error {
-    Error::Io(std::io::Error::other(Python::attach(|py| {
-        // The traceback is the caller's own; the message is what names the
-        // failure, so that is what crosses.
-        error.value(py).to_string()
-    })))
+    // The whole exception rather than only its value: `PermissionError()` and
+    // `FileNotFoundError()` carry no text at all, and a handler that raises
+    // one is saying everything through the class. Rendering the `PyErr`
+    // spells `TypeName: message`, so the class survives when the message is
+    // empty - which is what the JavaScript binding already does with its own
+    // errors, and what keeps the two boundaries answering alike.
+    Error::Io(std::io::Error::other(error.to_string()))
 }
 
 /// Read one `pyarrow.fs.FileInfo` into the core's shape.
@@ -165,7 +167,16 @@ impl ArrowFileSystem for PyArrowFileSystem {
                     let _ = filesystem.call_method("create_dir", (parent,), Some(&kwargs));
                 }
             }
-            let stream = filesystem.call_method1("open_output_stream", (path,))?;
+            // `compression=None` is load-bearing, not a default spelled out:
+            // `open_output_stream` otherwise defaults to `"detect"` and picks
+            // a codec from the suffix, so writing to `trades.json.gz` would
+            // gzip the bytes on the way down. This method's contract is to
+            // store exactly what it was handed - the content coding belongs
+            // to the handle, where `Coded` already applied it, and applying
+            // it again here would store a value nothing can read back.
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("compression", py.None())?;
+            let stream = filesystem.call_method("open_output_stream", (path,), Some(&kwargs))?;
             stream.call_method1("write", (PyBytes::new(py, bytes),))?;
             stream.call_method0("close")?;
             Ok(())

@@ -198,9 +198,14 @@ mutations in memory and publishes them as exactly one whole-value replacement on
     ```
 
 That is why a file another reader will open is written inside a scope - `with` in Python, `using`
-in JavaScript - which binds to exactly `open` and `close`. Reads need none of it: a read maps
-straight onto one ranged fetch, so a footer-first reader such as Parquet never downloads an object
-to read its footer.
+in JavaScript - which binds to exactly `open` and `close`.
+
+Reads need none of it. A `pread` maps straight onto one ranged fetch, so asking for eight bytes of
+a large object transfers eight bytes rather than the object. What a record encoding does with that
+is its own business, and [`parquet`](parquet.md) currently fetches the value whole - its footer is
+at the end, and a range-reading reader over `pread` is the optimization path that page names.
+Reading one Parquet footer over a bucket therefore still costs a whole object today; the handle is
+what stops being the reason.
 
 ## Folders, globs, and partitions
 

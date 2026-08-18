@@ -50,7 +50,7 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 }
 
 /// Address a foreign-filesystem handle's location as a container.
-fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
+pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::ArrowFolder(folder) => folder.clone(),
         Holder::ArrowFile(file) => {
@@ -554,11 +554,18 @@ impl PyIOBase {
     /// this decides: it becomes a container, and the handle keeps working as
     /// one afterwards - a plain byte write would have made it a file instead.
     fn mkdir(&mut self) -> PyResult<()> {
-        let url = self.inner.url().ok_or_else(|| {
-            PyValueError::new_err("an in-memory resource cannot become a directory")
-        })?;
-        let mut folder =
-            Holder::folder(url.to_path().map_err(value_error)?).map_err(value_error)?;
+        // A handle on a foreign filesystem becomes a container on that
+        // filesystem. Rebuilding from the location alone would silently move
+        // the handle to the local disk, because a location does not say which
+        // backend it belongs to.
+        let mut folder = if let Some(holder) = arrow_folder_holder(&self.inner) {
+            holder
+        } else {
+            let url = self.inner.url().ok_or_else(|| {
+                PyValueError::new_err("an in-memory resource cannot become a directory")
+            })?;
+            Holder::folder(url.to_path().map_err(value_error)?).map_err(value_error)?
+        };
         folder.truncate(0).map_err(value_error)?;
         self.inner = folder;
         Ok(())

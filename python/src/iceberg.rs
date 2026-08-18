@@ -498,13 +498,20 @@ impl PyTable {
     }
 
     /// The folder the table lives in.
+    ///
+    /// Rebuilt from the table's own root handle rather than from its recorded
+    /// location, because a location does not say which backend it belongs to:
+    /// a table on a foreign Arrow filesystem must hand back a folder on that
+    /// filesystem, not the local path its URL happens to spell.
     #[getter]
     fn root(&self) -> PyResult<PyIOBase> {
+        let root = self.inner.root();
+        if let Some(holder) = crate::io::arrow_folder_holder(root) {
+            return Ok(PyIOBase::from_core(holder));
+        }
         Ok(PyIOBase::from_core(
             Holder::folder(
-                self.inner
-                    .root()
-                    .url()
+                root.url()
                     .ok_or_else(|| PyValueError::new_err("this table has no location"))?
                     .to_path()
                     .map_err(value_error)?,

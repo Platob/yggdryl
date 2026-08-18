@@ -1167,7 +1167,14 @@ export declare class Table {
    * describes only the table this call would create.
    */
   static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
-  /** The folder the table lives in. */
+  /**
+   * The folder the table lives in.
+   *
+   * Taken from the table's own root handle rather than from its recorded
+   * location, because a location does not say which backend it belongs to:
+   * a table on a foreign Arrow file system must hand back a folder on that
+   * file system, not the local path its URL happens to spell.
+   */
   get root(): JsIOBase
   /** The table's base location, as a URI. */
   get location(): string
