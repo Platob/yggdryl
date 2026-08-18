@@ -828,6 +828,7 @@
   pub const fn added(snapshot_id: i64, data_file: DataFile) -> Self
   pub const fn is_live(&self) -> bool
   pub struct ManifestFile
+  pub fn read_manifest_for_plan<H: IOBase + ?Sized>(handle: &H, with_stats: bool) -> Result<Vec<ManifestEntry>>
   pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry>>
   pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpec>
   pub fn write_manifest<H: IOBase + ?Sized>(handle: &mut H, version: FormatVersion, schema: &Field, spec: &PartitionSpec, entries: &[ManifestEntry]) -> Result<()>

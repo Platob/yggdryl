@@ -1102,13 +1102,14 @@ const PLANNING_PLAN_CAP: usize = 64;
 /// never consult. When `with_stats` is set, which is a *filtered* plan, the
 /// value counts, null counts, and bounds survive, because file pruning reads
 /// them. This path serves reads only: a rewrite carries entries into new
-/// manifests and must decode them whole with [`read_manifest`].
+/// manifests and must decode them whole with [`read_manifest`], because a
+/// carried entry has to keep its statistics.
 ///
 /// # Errors
 ///
 /// Returns an error when the bytes are not an Avro manifest or a row does not
 /// decode.
-pub(super) fn read_manifest_for_plan<H: IOBase + ?Sized>(
+pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
     handle: &H,
     with_stats: bool,
 ) -> Result<Vec<ManifestEntry>> {
