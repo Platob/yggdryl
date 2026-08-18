@@ -76,6 +76,36 @@ prompt.
 
 ---
 
+## At a glance
+
+Read in order; each row is a section, and the right column is the one thing that
+row must get right.
+
+| § | what it specifies | the property that decides it |
+| --- | --- | --- |
+| 1.1–1.3 | `Expr`, the SQL-like grammar, encapsulators, accessors | `Display` → `from_str` → `Display` is a fixed point; every error carries a byte offset |
+| 1.4 | `bind` — names to slots, literals folded into the column's type | binding happens once per read, never per batch or row |
+| 1.5–1.7 | three evaluators: rows, Arrow batches, column statistics | all three answer identically; `Maybe` is always safe, `AlwaysFalse` must be provable |
+| 1.8–1.9 | `Selection`; `Apply`/`ArrowApply` over every carrier | `apply_field` equals the schema `apply_arrow_batch` produces |
+| 1.10 | chaining and recursion | a chain is one pass: one read, at most one write, nothing materialized between |
+| 1.11 | the plan graph and its optimizer | every rewrite is semantics-preserving under three-valued logic, or it declines |
+| 1.12 | what already exists and must be reused | no second cast, comparator, calendar, walker, or error family |
+| 2 | phases A1–A7, B0–B9 | each phase is complete work on its own |
+| 3 | record options, the read ladder, writes, `apply_expression`, folders, Iceberg | pushdown never changes an answer |
+| 4 | tests, incl. the exhaustive datatype and nested matrix | the matrix enumerates the core's enums, so a new variant fails it |
+| 5 | benchmarks and the outside baselines | every performance claim carries a baseline the reader trusts |
+| 6 | Part A bindings, frames, language protocols | equality, ordering, and hashing agree across all three languages |
+| 7 | Part B — closing the 26 `Rust only` notes | a closed gap deletes its note and replaces it with tabs that run |
+| 8 | documentation and its 30 worked use cases | every example runs under `check_docs_examples.py` |
+| 9–10 | required checks; hard constraints | all green, twice, before handoff |
+
+Three rules that outrank everything else in this document, if they ever
+conflict with something below: **an optimization may never change an answer**;
+**a pruning decision may never lose a row**; and **a rule that cannot prove
+itself declines** rather than guessing.
+
+---
+
 ## 0. Read first (non-negotiable)
 
 1. **`AGENTS.md`, in full.** It is the real spec. The sections that govern this
@@ -643,6 +673,33 @@ documented once:**
 `project_batch`) — it adds one verb, not a second implementation, and no
 existing verb gains an alias (`AGENTS.md:397`).
 
+**`apply_arrow_array` is the per-column entry, and it is total.** Given one
+`ArrayRef` and the `Field` that describes it, it evaluates the expression over
+that column and returns an `ArrayRef` — the shape every other Arrow carrier is
+built from (`apply_arrow_scalar` is it plus the one-row check, exactly as
+`cast_arrow_scalar` relates to `cast_arrow_array` at `field/cast/plan.rs:72`;
+`apply_arrow_batch` is it per referenced column plus one mask; `StructArray` is
+it over children). Three requirements on it:
+
+- **Every datatype variant, including nested ones.** Booleans, every integer
+  width, both floats and `Float16`, all four decimals, `Utf8`/`LargeUtf8`/
+  `Utf8View`, `Binary`/`LargeBinary`/`BinaryView`/`FixedSizeBinary`, all five
+  temporals at every `TimeUnit` and zone, `Null`, `Dictionary`,
+  `RunEndEncoded`, `List`/`LargeList`/`ListView`/`LargeListView`/
+  `FixedSizeList`, `Struct`, `Map`, and dense `Union` — nested to any depth and
+  in any combination. A variant the expression cannot answer for is a typed
+  refusal naming the datatype and the operation, never a panic and never a
+  silently wrong array.
+- **It reuses, it does not re-implement** (§1.12): the cast is `ArrowCast`, the
+  scalar boundary is `arrow::scalar_array` / `scalar_value`, the child access is
+  a zero-copy slice of the existing array, and a case with no kernel falls back
+  to the row path for that node only, with a comment naming the cost.
+- **Nullability and the exact `Field` are the authority**, as everywhere else in
+  this crate: the input `Field` decides null handling, dictionary options, and
+  extension identity, and the returned array carries the `Field`
+  `apply_field` reports for the same input — asserted as an equality, not
+  assumed.
+
 Requirements that make this surface worth having rather than sugar:
 
 - **`apply_field` opens nothing and allocates no data.** It is how
@@ -897,6 +954,51 @@ an explicit test because it is the mistake every optimizer makes once.
   that costs more than it saves on a small predicate is switched off below a
   size threshold, and that threshold is a number, not a guess.
 
+### 1.12 Reuse before writing — what already exists
+
+Nearly every primitive this engine needs is already in the crate, already
+tested, and already the authority on its own rule. **Writing a second one is the
+main way this task can go wrong**, so the table is a checklist, not a
+suggestion: before adding a helper, find its row, and if the row is empty say in
+the commit message why nothing fit.
+
+| the engine needs | it already exists as |
+| --- | --- |
+| casting a value or an array to a target type | `field::cast` — `ArrowCast::cast_arrow_array`, `cast_arrow_batch`, `cast_arrow_scalar`; the plan engine in `field/cast/plan.rs` |
+| one value across the Arrow boundary | `arrow::scalar_array` (value → one-row `ArrayRef`) and `arrow::scalar_value` (one-row array → `Value`) |
+| a value paired with its datatype, without a Field | `TypedValue` (`generic/typed.rs`), incl. `to_arrow_array` / `from_arrow_array` |
+| total ordering and equality of values | `Value: Ord + Eq + Hash` (`generic/value.rs:672`) — never a second comparator |
+| datatype comparability and family checks | `datatype/comparison.rs`, `DataTypeId` / `DataTypeKind`, `datatype/compatibility.rs` |
+| decimals: scale, unscaled coefficient, rescaling | `generic/decimal.rs` (`decimal_unscaled_at`) — never `f64` |
+| calendar and clock arithmetic, ISO parsing and formatting | `generic/iso.rs` and `generic/temporal.rs`; units through `TimeUnit::from_str` |
+| the type grammar inside `CAST(… AS …)` | `DataType::from_str` (`datatype/parser.rs`) |
+| byte-positioned parse errors, recursion limits | the shape of `datatype/parser.rs` and `field/parser.rs`; `Error::Parse` |
+| `expected X, got Y` messages, truncation of long values | `text::expected_got`, `text::elide_display`, `text::Limits` |
+| stable hashing and canonical display | `text::stable_hash_display`, `stable_hash_bytes` |
+| structured disagreement output | `show_diff` / `show_diffs` (`field/diff.rs`) |
+| row validation and canonicalization | `Field::validate_value`, `Field::canonicalize_value` (`field/value.rs`) |
+| name resolution, ASCII-case-insensitive with ambiguity refusal | `Field::index_of`, `get_field_by_name`, and the struct reconciliation in `field/cast/plan.rs` |
+| a recursive rewrite over a schema | the one generic recursive walker (`AGENTS.md:733`) — never a fork |
+| partition text, `null` spelling | `io::partition::partition_text`, `NULL_PARTITION` |
+| Parquet footer statistics | `parquet::metadata::{FileStatistics, RowGroupStatistics, ColumnStatistics}` |
+| Iceberg single-value encoding and its comparison | `iceberg::value::{single_value, compare_single}` |
+| streaming batches | `arrow::BatchReader`, `arrow::batch_reader` |
+| delegating the whole storage contract | `delegate_iobase!` |
+| the five shared record settings on a new options struct | `record_options_fields!` |
+| detecting a foreign class without importing it | `declared_by` (`python/src/record.rs:193`) |
+
+Two rules on top of the table:
+
+- **Extend rather than parallel.** If an existing helper is *almost* right,
+  widen it in place with its own test — one implementation with a new case beats
+  two implementations that agree today.
+- **Every new generic helper is generic once.** Where the same shape repeats
+  across datatypes or across bindings, it is a macro or a generic function, not
+  forty hand-written arms: the crate already does this with
+  `record_options_fields!`, `delegate_iobase!`, and the `typed_array!` table in
+  `field/cast/mod.rs`. Follow those, and keep the expansion readable — a macro
+  that hides a rule is worse than the repetition it removed.
+
 ---
 
 ## 2. Order of work
@@ -906,7 +1008,8 @@ an explicit test because it is the mistake every optimizer makes once.
 - **Phase A1 — the module.** `Expr`, parser (encapsulators and accessors
   included), `Bound`, row evaluation, statistics evaluation, `Selection`, Arrow
   evaluation, the `Apply`/`ArrowApply` surface, the plan graph and its optimizer (§1.11),
-  chaining with its fusion and its recursion bounds (§1.10), edge-case tests, benchmarks,
+  chaining with its fusion and its recursion bounds (§1.10), the reuse audit of
+  §1.12, the exhaustive datatype and nested test matrix, edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
   `!!! note "Rust first"` until Phases A4/A5 land).
 - **Phase A2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
@@ -918,7 +1021,8 @@ an explicit test because it is the mistake every optimizer makes once.
   (§3.1.3).
 - **Phase A3 — Iceberg**: `scan.rs` prunes manifests, files, and partition tuples
   through `evaluate_stats`; `Filter` is deleted; residuals come from `residual`.
-- **Phase A4 — Python binding.** **Phase A5 — JavaScript binding.**
+- **Phase A4 — Python binding**, including the generic protocol helper of §6.2.
+  **Phase A5 — JavaScript binding**, same.
 - **Phase A6 — docs, notebooks, benchmark tables, interop check.**
 - **Phase A7 — required checks** for Part A.
 
@@ -1297,6 +1401,40 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   their true statistics, `evaluate_stats` never answers `AlwaysFalse` when any
   row matches, and never `AlwaysTrue` when any row does not; residual conjunct
   computation.
+- **The type matrix, and it is exhaustive by construction.** This is the test
+  that decides whether the engine is finished or merely demonstrable.
+  - **Enumerate from the enum, never from a hand-written list.** The matrix
+    iterates `DataTypeId`'s variants (and `TimeUnit`'s, and the nested
+    constructors) so that **adding a datatype to the core breaks this test**
+    rather than silently skipping it. A variant the engine deliberately refuses
+    is listed as *refused with this message*, not omitted — the matrix has no
+    empty cells.
+  - **Per datatype**, for a nullable and a non-nullable `Field` of it: build a
+    value and an array holding the normal case, the boundary cases (min, max,
+    zero, empty string, empty list, empty map, longest allowed), and null; then
+    exercise every operator the type admits — equality, ordering, `IN`,
+    `BETWEEN`, `IS NULL`, `LIKE`/`StartsWith` for the text family, arithmetic
+    for the numeric family, accessors for the nested family — through **all
+    four evaluators**: `apply_value`, `apply_arrow_array`, `mask` over a batch,
+    and `evaluate_stats`, asserting they agree.
+  - **Nested to depth**, generated rather than typed out: `List<Struct<…>>`,
+    `Struct<List<Map<…>>>`, `Map<Utf8, List<Struct<…>>>`, `FixedSizeList` of
+    each, `Dictionary` over each key/value pair the core allows,
+    `RunEndEncoded`, and dense `Union` of a mixed set — each to at least three
+    levels, each exercised through an accessor chain that reaches its innermost
+    leaf, and each round-tripping through `apply_field` so the reported schema
+    equals the produced one.
+  - **Cross-type comparison**, per pair the type system admits: int × int of
+    different widths, int × decimal, decimal × decimal of different scales,
+    float × int, date × timestamp, timestamp × timestamp across zones and
+    units, `Utf8` × `Utf8View`, dictionary × its value type. Each pair asserts
+    the comparison happens in the common type, that the literal was folded once
+    at bind time, and that the pairs the type system *refuses* are refused
+    naming both sides.
+  - **Nullability and three-valued logic on every one of the above** — a null
+    on the left, on the right, and on both — because a rule that is right for
+    `Int64` and wrong for `Decimal128` is exactly what this matrix exists to
+    catch.
 - **Arrow parity**: the *same* `Bound` over the *same* data must produce the
   same selection through `matches` (row) and `mask` (vectorized) — a table-driven
   test across every supported type and operator. This is the single most
@@ -1407,6 +1545,15 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
     expression, a 10 000-step chain, an over-deep schema pattern, and an
     over-deep container descent each refused as typed errors naming the limit
     and the depth reached, with the process still standing.
+- **Protocol agreement across the three languages** (§6.2): the same set of
+  values sorts into the same order, compares equal in the same pairs, and
+  produces the same stable hash in Rust, Python, and JavaScript — the assertion
+  that proves the generic protocol helpers delegate to the core instead of
+  reimplementing it. Plus, per binding: every value this work adds implements
+  the full protocol set (a test that enumerates the classes and asserts the
+  methods exist, so a class added later cannot ship half-implemented), `Expr`'s
+  documented comparison exception raises from `__bool__` naming `.equals()`,
+  and Python slice syntax reaches the range accessor.
 - **Boundary inference** (§3.1.3) in both bindings: statement text, a built
   `Statement`, a mapping, a pair sequence, and (Python) keywords all resolve to
   the same statement and the same outcome; a bare predicate is never accepted as
@@ -1439,6 +1586,13 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
   comparison it replaces**, on the same batches. That second baseline is the
   claim this change makes; report it.
 - statistics pruning: files skipped per second over a synthetic manifest;
+- **per datatype, and nested**: `apply_arrow_array` over one column of each
+  family — boolean, `Int64`, `Float64`, `Decimal128`, `Utf8`, `Timestamp`,
+  `Dictionary`, `List<Int64>`, `Struct`, `Map` — against the hand-written kernel
+  for that same family, so a type whose path silently fell back to the row
+  evaluator shows up as an outlier instead of hiding in an average; plus an
+  accessor chain three levels deep against the flat column it resolves to, which
+  is the cost of nesting stated as a number;
 - **chain fusion** (§1.10): a four-statement chain run fused against the same
   four run separately with a materialization between, on the same data — the
   number that says why fusion is in the engine and not in the caller's loop;
@@ -1609,6 +1763,71 @@ them on the same terms.
 - **JavaScript has no frame libraries**: the carrier table's frame rows are
   Rust/Python only, marked with the docs' existing `!!! note` convention rather
   than filled with an invented equivalent.
+
+### 6.2 Language-level ergonomics, from one generic helper each
+
+An expression value that a language cannot compare, hash, order, iterate, print,
+or copy the way that language expects is a foreign object wearing a class name.
+Both bindings therefore implement the **whole** protocol set for every value
+this work adds — `Expr`, `Statement`, `Selection`, `TypedValue`, the reports —
+and they implement it **once**, generically, not per class.
+
+**The generic helper is the requirement, not the individual dunders.** Write one
+macro per binding — `py_value_protocol!(PyExpr, inner)` and the JS equivalent in
+the loader — that emits the full set for any wrapper over a core value, taking
+the behavior from the core: equality is the core's `equals`, hashing is the
+core's `stable_hash`, ordering is the core's `Ord`, printing is the core's
+canonical `Display`. A binding that hand-writes `__eq__` for one class and
+forgets `__hash__` for the next is the failure mode this removes; the crate
+already works this way with `record_options_fields!` and `delegate_iobase!`
+(§1.12).
+
+**Python — the full protocol, no partial implementations**
+
+- Comparison: `__eq__`, `__ne__`, `__lt__`, `__le__`, `__gt__`, `__ge__` through
+  one `__richcmp__`, so ordering is **total** and consistent with `Ord`; plus
+  `__hash__` wherever equality is value equality.
+- The documented exception, and it must be handled explicitly: on `Expr` the
+  comparison dunders **build expressions** rather than answer booleans
+  (`col("price") > 3` is an `Expr`). That class therefore defines `__hash__`
+  from the canonical text, provides `expr.equals(other)` for real equality,
+  raises a clear `TypeError` from `__bool__` naming `.equals()` — because
+  `if expr == other:` must fail loudly rather than be always-truthy — and says
+  all of this in one docstring line. Every *other* class keeps ordinary
+  comparison semantics.
+- Operators for building: `&`, `|`, `~`, `+`, `-`, `*`, `/`, `%`, unary `-`,
+  and the reflected forms (`__rand__`, `__radd__`, …) so `3 < col("p")` and
+  `1 + col("p")` work; `__getitem__` for accessors (`col("a")["k"]`,
+  `col("a")[0]`, and **slices** `col("a")[1:3]` mapping onto the range accessor
+  of §1.3.2 — one place where Python's own syntax is exactly the grammar's).
+- Containers and protocols: `__len__`, `__iter__`, `__contains__`,
+  `__getitem__` on the collection-shaped values (a `Selection`'s items, a
+  chain's statements, a report's counts as a mapping); `__bool__` where
+  emptiness is meaningful; `__repr__` (diagnostic) and `__str__` (canonical,
+  round-tripping through `from_str`); `__copy__`, `__deepcopy__`,
+  `__reduce__` for pickle, and `__format__` where a format spec is meaningful.
+- Typing: everything reflected in `_native.pyi` / `__init__.pyi`, `mypy
+  --strict` green, and `__iter__` typed so a `for` loop is inferred.
+
+**JavaScript — the same set through its own symbols**
+
+- `equals`, `compare`, `stableHash`, `toString` (canonical), `toJSON`,
+  `clone`; `Symbol.for('nodejs.util.inspect.custom')` so `console.log` shows
+  the canonical text rather than `{}`; `Symbol.toPrimitive` for string
+  coercion; `Symbol.iterator` on every collection-shaped value; `Symbol.dispose`
+  bound to `close` on handles (`AGENTS.md:858`).
+- Building is by method chain (`.gt(3).and(…)`, `.get('k')`, `.at(0)`,
+  `.slice(1, 3)`) since JS has no operator overloading — and the docs say that
+  in one line rather than leaving a reader hunting for `>`.
+- Every one of them declared in `index.d.ts`, `tsc --noEmit` green, with a
+  `.types.ts` test that a chain's inferred type is what the reader expects.
+
+**Both, non-negotiably**: the protocol's *behavior* comes from the core.
+Equality, ordering, and hashing that disagree between Rust, Python, and
+JavaScript are three implementations of one contract — so the tests assert the
+same triple of values sorts the same way and hashes to the same digest in all
+three languages, and that assertion is what proves the generic helper is
+actually delegating.
 
 ---
 
@@ -2040,6 +2259,14 @@ native binaries, caches, and `node_modules` after validation.
 - **One recursive walker.** Schema rewrites go through the project's existing
   generic walker; no per-statement, per-pattern, or per-target fork. Every
   recursion carries an explicit bound and refuses past it as a typed error.
+- **Reuse before writing** (§1.12): every primitive with a row in that table is
+  taken from there, extended in place if it is almost right, and never
+  paralleled. Repetition across datatypes or across bindings is a macro or a
+  generic function written once, never forty hand-written arms.
+- **Total over the type system.** Every surface answers for every `DataType`
+  variant including nested ones, or refuses by name with a message that says
+  which datatype and which operation. The test matrix enumerates the core's own
+  enums, so a datatype added later fails the tests rather than slipping through.
 - **One lexer, one accessor resolver.** Encapsulator stripping and accessor
   resolution exist once, in `expressions/parser.rs` and `expressions/bound.rs`;
   no call site, sugar constructor, or binding splits a dotted name, trims a
