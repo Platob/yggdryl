@@ -120,7 +120,7 @@ impl PyIOBase {
     fn over_arrow_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
         let location = crate::uri::path_string_from_value(path)?;
         let backend: std::sync::Arc<dyn yggdryl::arrowfs::ArrowFileSystem> =
-            std::sync::Arc::new(crate::arrowfs::PyArrowFileSystem::new(filesystem)?);
+            std::sync::Arc::new(crate::arrowfs::PyArrowFileSystem::new(filesystem));
         let url =
             yggdryl::arrowfs::location_url(backend.as_ref(), &location).map_err(value_error)?;
         Ok(Self::from_core(yggdryl::arrowfs::located(backend, url)))
@@ -228,7 +228,7 @@ impl PyIOBase {
     /// A `pyarrow.fs.FileSystem` as the first argument names the *backend*
     /// rather than the location, so the second says where on it:
     /// `IOBase(S3FileSystem(region=...), "bucket/key.parquet")`. Every
-    /// filesystem PyArrow ships is accepted, as is a custom one wrapped in
+    /// filesystem `PyArrow` ships is accepted, as is a custom one wrapped in
     /// `PyFileSystem(FileSystemHandler)`, and what comes back is this same
     /// class - nothing filesystem-specific leaks into the surface.
     #[new]
@@ -246,8 +246,7 @@ impl PyIOBase {
             return Err(PyValueError::new_err(format!(
                 "expected a pyarrow.fs.FileSystem to resolve {} against, got {}",
                 path.repr()
-                    .map(|text| text.to_string())
-                    .unwrap_or_else(|_| "a second argument".to_owned()),
+                    .map_or_else(|_| "a second argument".to_owned(), |text| text.to_string()),
                 value.get_type().name()?,
             )));
         }

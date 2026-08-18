@@ -32,15 +32,19 @@ pub(crate) struct PyArrowFileSystem {
 
 impl PyArrowFileSystem {
     /// Hold `filesystem`, reading the name its own API reports.
-    pub(crate) fn new(filesystem: &Bound<'_, PyAny>) -> PyResult<Self> {
+    ///
+    /// An unreadable name is not a failure: it only decides the scheme a
+    /// handle's location carries, and `arrowfs` is the generic one the core
+    /// falls back to anyway.
+    pub(crate) fn new(filesystem: &Bound<'_, PyAny>) -> Self {
         let name = filesystem
             .getattr("type_name")
             .and_then(|name| name.extract::<String>())
             .unwrap_or_else(|_| "arrowfs".to_owned());
-        Ok(Self {
+        Self {
             filesystem: filesystem.clone().unbind(),
             name,
-        })
+        }
     }
 
     /// Run `call` under the GIL, mapping a Python exception to a core error.
@@ -49,12 +53,12 @@ impl PyArrowFileSystem {
     /// what a bucket, a handler, or a credential chain said is what the
     /// caller needs, and rewording it would only hide it.
     fn with_gil<T>(&self, call: impl FnOnce(&Bound<'_, PyAny>) -> PyResult<T>) -> Result<T> {
-        Python::attach(|py| call(self.filesystem.bind(py)).map_err(foreign))
+        Python::attach(|py| call(self.filesystem.bind(py)).map_err(|error| foreign(&error)))
     }
 }
 
 /// Carry a Python exception across as a core I/O failure, message intact.
-fn foreign(error: PyErr) -> Error {
+fn foreign(error: &PyErr) -> Error {
     Error::Io(std::io::Error::other(Python::attach(|py| {
         // The traceback is the caller's own; the message is what names the
         // failure, so that is what crosses.
@@ -193,8 +197,8 @@ impl ArrowFileSystem for PyArrowFileSystem {
 ///
 /// The check walks the type's own bases by module and name rather than
 /// importing `pyarrow.fs` to compare against the class, so a caller who never
-/// installed PyArrow never pays an import - and never receives an
-/// `ImportError` about a library they are not using. Every filesystem PyArrow
+/// installed `PyArrow` never pays an import - and never receives an
+/// `ImportError` about a library they are not using. Every filesystem `PyArrow`
 /// ships, and every `PyFileSystem` wrapping a custom `FileSystemHandler`,
 /// derives from that one base.
 pub(crate) fn is_arrow_filesystem(value: &Bound<'_, PyAny>) -> bool {
