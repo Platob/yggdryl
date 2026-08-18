@@ -49,6 +49,7 @@ Criterion targets for the Rust core and boundary benchmarks for each binding.
     npm run --prefix node bench:io
     npm run --prefix node bench:lines
     npm run --prefix node bench:records
+    npm run --prefix node bench:arrowfs
     ```
 
 Targets live under each member's `benchmarks/` and mirror the core domains. Run them on a quiet
@@ -240,6 +241,27 @@ store, and it is why the read is 14.5 us rather than the 115 us a whole-value re
 A write costs more than PyArrow's because it is a different operation: the wrapper stages the value
 and publishes it once, which is what makes a positional `pwrite` API work over a filesystem that
 only replaces whole files.
+
+JavaScript pays the same shape of cost against `node:fs`, with the handler crossing the boundary on
+every call rather than only the handle. `bench:arrowfs`, release build:
+
+```text
+                            wrapper       node:fs
+handle from path         107,101/s     257,632/s
+write bytes                4,912/s      11,235/s
+read bytes                13,193/s      58,399/s
+read range (4 KiB)       124,733/s     227,893/s
+list children             58,181/s     264,682/s
+glob *.parquet             9,372/s      16,900/s
+read records            15.6M rows/s   11.6M rows/s (local handle)
+write records           10.2M rows/s   22.1M rows/s (local handle)
+```
+
+The ranged read is again the row that carries the claim: it is the *fastest* byte operation of the
+three, not the slowest, because it fetches 4 KiB rather than the whole payload. Records read
+faster than through the local handle because the staged value is already in memory once the first
+read has fetched it, and slower to write for the same reason a Python write is - the value is
+staged and published once.
 
 ## Big gzip log files, end to end
 

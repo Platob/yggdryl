@@ -9,7 +9,7 @@
 //! changes.
 
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Either3, Either4, Env, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 
@@ -18,6 +18,7 @@ use yggdryl::io::IOBase as _;
 use yggdryl::io::LineRecordOptions;
 
 use crate::arrow::JsBatchReader;
+use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
 use crate::codec::JsCodecValue;
 use crate::field::JsField;
 use crate::generic::JsRecordOptions;
@@ -28,6 +29,15 @@ use crate::{exact_u64, napi_error};
 pub(crate) type LocationInput<'a> =
     Either3<ClassInstance<'a, JsIOBase>, ClassInstance<'a, JsUrl>, String>;
 
+/// What the constructor takes first: a location, or the file system one of
+/// its locations sits on.
+pub(crate) type LocationOrFileSystemInput<'a> = Either4<
+    ClassInstance<'a, JsIOBase>,
+    ClassInstance<'a, JsUrl>,
+    String,
+    ArrowFileSystemInput<'a>,
+>;
+
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
 
@@ -36,19 +46,59 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     Holder::local(url.to_path().map_err(napi_error)?).map_err(napi_error)
 }
 
+/// Rebuild a foreign-file-system handle, keeping the file system it stands on.
+///
+/// `None` for anything else, so the local rebuild stays the default path.
+fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
+    match inner {
+        Holder::ArrowFolder(folder) => Some(Holder::ArrowFolder(folder.clone())),
+        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::arrowfs::File::new(
+            file.filesystem().clone(),
+            file.url().clone(),
+        ))),
+        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::arrowfs::Path::new(
+            path.filesystem().clone(),
+            path.url().clone(),
+        ))),
+        _ => None,
+    }
+}
+
+/// Address a foreign-file-system handle's location as a container.
+fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
+    let folder = match inner {
+        Holder::ArrowFolder(folder) => folder.clone(),
+        Holder::ArrowFile(file) => {
+            yggdryl::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
+        }
+        Holder::ArrowPath(path) => {
+            yggdryl::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
+        }
+        _ => return None,
+    };
+    Some(Holder::ArrowFolder(folder))
+}
+
 /// Build a container handle for the location `value` names.
 ///
 /// A folder is asked for by name rather than discovered, because a location
 /// that holds nothing yet reads as a leaf: `Holder::local` cannot tell a
 /// directory that does not exist from a file that does not exist, and a table
-/// root has to be the former before anything is written into it.
+/// root has to be the former before anything is written into it. A handle on
+/// a foreign Arrow file system becomes a container on that same file system,
+/// so a table reached this way never learns which backend it stands on.
 pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
     let url = match value {
-        Either3::A(handle) => handle
-            .inner
-            .url()
-            .cloned()
-            .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?,
+        Either3::A(handle) => {
+            if let Some(holder) = arrow_folder_holder(&handle.inner) {
+                return Ok(holder);
+            }
+            handle
+                .inner
+                .url()
+                .cloned()
+                .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?
+        }
         Either3::B(url) => url.inner.clone(),
         Either3::C(value) => yggdryl::Url::from_str(&value).map_err(napi_error)?,
     };
@@ -68,14 +118,28 @@ impl JsIOBase {
 
     /// Build a second handle on the same location.
     ///
-    /// A handle owns backend state - a mapping, an open descriptor - so it is
-    /// not copied; the location it describes is what gets rebuilt.
+    /// A handle owns backend state - a mapping, an open descriptor, a staged
+    /// value - so it is not copied; the location it describes is what gets
+    /// rebuilt. A handle on a foreign Arrow file system rebuilds onto that
+    /// same file system, because its location alone would not say where it
+    /// lives.
     fn rebuilt(&self) -> Result<Self> {
+        if let Some(holder) = rebuilt_arrow_holder(&self.inner) {
+            return Ok(Self::from_core(holder));
+        }
         let url = self
             .inner
             .url()
             .ok_or_else(|| napi_error("an in-memory resource has no location to rebuild from"))?;
         local_holder(url).map(Self::from_core)
+    }
+
+    /// Build a handle on `path` over a held JavaScript file system handler.
+    fn over_arrow_fs(env: Env, filesystem: &ArrowFileSystemInput<'_>, path: &str) -> Result<Self> {
+        let backend: std::sync::Arc<dyn yggdryl::arrowfs::ArrowFileSystem> =
+            std::sync::Arc::new(JsArrowFileSystem::new(env, filesystem)?);
+        let url = yggdryl::arrowfs::location_url(backend.as_ref(), path).map_err(napi_error)?;
+        Ok(Self::from_core(yggdryl::arrowfs::located(backend, url)))
     }
 
     fn holders(values: Vec<Holder>) -> Vec<Self> {
@@ -98,8 +162,35 @@ impl JsIOBase {
     /// Accepts anything that names one: a path or URL string, a native
     /// [`Url`][crate::uri::JsUrl], or another handle. Per the laziness
     /// contract, nothing is opened, created, or read here.
+    ///
+    /// An Arrow file system handler as the first argument names the *backend*
+    /// rather than the location, so the second says where on it:
+    /// `new IOBase(handler, 'bucket/key.parquet')`. What comes back is this
+    /// same class - nothing file-system-specific leaks into the surface.
     #[napi(constructor)]
-    pub fn new(value: LocationInput<'_>) -> Result<Self> {
+    pub fn new(
+        env: Env,
+        value: LocationOrFileSystemInput<'_>,
+        path: Option<String>,
+    ) -> Result<Self> {
+        let value = match value {
+            Either4::A(handle) => Either3::A(handle),
+            Either4::B(url) => Either3::B(url),
+            Either4::C(value) => Either3::C(value),
+            Either4::D(filesystem) => {
+                let path = path.ok_or_else(|| {
+                    napi_error(
+                        "expected a path on the file system as the second argument, got none",
+                    )
+                })?;
+                return Self::over_arrow_fs(env, &filesystem, &path);
+            }
+        };
+        if let Some(path) = path {
+            return Err(napi_error(format!(
+                "expected an Arrow file system handler to resolve {path:?} against, got a location"
+            )));
+        }
         match value {
             Either3::A(handle) => handle.rebuilt(),
             Either3::B(url) => local_holder(&url.inner).map(Self::from_core),
@@ -114,7 +205,49 @@ impl JsIOBase {
     /// Infer a handle from a native handle, a `Url`, or a location string.
     #[napi(factory, js_name = "from")]
     pub fn from_js(value: LocationInput<'_>) -> Result<Self> {
-        Self::new(value)
+        match value {
+            Either3::A(handle) => handle.rebuilt(),
+            Either3::B(url) => local_holder(&url.inner).map(Self::from_core),
+            Either3::C(value) => local_holder(&yggdryl::Url::from_str(&value).map_err(napi_error)?)
+                .map(Self::from_core),
+        }
+    }
+
+    /// Describe a resource on any Arrow file system a caller supplies.
+    ///
+    /// This is the explicit spelling of what the constructor infers, and it is
+    /// the whole surface a foreign file system needs. Arrow JS ships none, so
+    /// `filesystem` is the vtable `pyarrow.fs` implements, written as a plain
+    /// object in camelCase: `typeName`, `fileInfo`, `list`, `readRange`,
+    /// `writeFull`, `createDir`, `deleteFile`. A `Map`, `node:fs`, an S3
+    /// client, or a caching layer over one reaches those same six calls, so
+    /// none of them needs code of its own here.
+    ///
+    /// ```js
+    /// const handle = IOBase.fromArrowFs(handler, 'bucket/key.parquet')
+    /// const rows = handle.readArrow().toTable()
+    /// ```
+    ///
+    /// The result is an ordinary handle: `ls`, `glob`, `joinpath`, and
+    /// `parent` return handles that still carry the file system, and the three
+    /// record methods work exactly as they do on a local file. Per the
+    /// laziness contract nothing is opened, created, or read here.
+    ///
+    /// A write publishes when the handle is flushed, because an Arrow file
+    /// system replaces whole files rather than writing ranges - so a file
+    /// another reader will open is flushed before it is handed over.
+    ///
+    /// The handler is called synchronously, on the JavaScript thread that
+    /// supplied it and no other: a handle built here cannot be read from a
+    /// `Worker`, because a JavaScript value belongs to one isolate and this
+    /// boundary refuses rather than pretending otherwise.
+    #[napi(factory)]
+    pub fn from_arrow_fs(
+        env: Env,
+        filesystem: ArrowFileSystemInput<'_>,
+        path: String,
+    ) -> Result<Self> {
+        Self::over_arrow_fs(env, &filesystem, &path)
     }
 
     /// Describe an in-memory resource holding `data`.
@@ -389,6 +522,36 @@ impl JsIOBase {
     #[napi]
     pub fn flush(&mut self) -> Result<()> {
         self.inner.flush().map_err(napi_error)
+    }
+
+    /// Materialize the resource and cache what repeated calls would re-derive.
+    ///
+    /// A handle works without this - every operation materializes what it
+    /// needs - so calling it moves that cost to a known point. Opening a
+    /// resource that does not exist yet succeeds without creating it. The
+    /// loader binds `using` to this and to [`Self::close`], so a scope is
+    /// what publishes a written file.
+    #[napi]
+    pub fn open(&mut self) -> Result<()> {
+        self.inner.open().map_err(napi_error)
+    }
+
+    /// Return whether cached state is currently held.
+    #[napi]
+    pub fn is_open(&self) -> bool {
+        self.inner.is_open()
+    }
+
+    /// Publish and release everything [`Self::open`] cached.
+    ///
+    /// The handle stays usable afterwards; a later operation re-materializes.
+    /// This is what publishes a written file at its exact length, and on a
+    /// backend that replaces whole files - any Arrow file system - it is what
+    /// hands the staged value over, so a file another reader will open is
+    /// written inside a scope.
+    #[napi]
+    pub fn close(&mut self) -> Result<()> {
+        self.inner.close().map_err(napi_error)
     }
 
     /// Copy every byte here into `target`, returning the count.

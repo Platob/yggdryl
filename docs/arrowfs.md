@@ -56,9 +56,54 @@ records, and composes with [`Coded`](io.md), [`ipc`](ipc.md), [`parquet`](parque
     assert (root / "trades.bin").read_bytes() == b"AAPL"
     ```
 
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    // Arrow JS ships no filesystem, so the handler is the filesystem: the
+    // same six calls, spelled in camelCase. This one is a Map; an S3 client
+    // or a caching layer answers the same way.
+    const files = new Map()
+    const handler = {
+      typeName: 'memory',
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      list: () => [],
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const handle = IOBase.fromArrowFs(handler, 'bucket/trades.bin')
+
+    // Per the laziness contract nothing exists until something is written.
+    assert.equal(handle.exists(), false)
+    assert.equal(handle.readText(), '')
+
+    handle.writeText('AAPL')
+    handle.close()
+
+    assert.equal(handle.readText(), 'AAPL')
+    assert.equal(String(handle.url), 'memory://bucket/trades.bin')
+    ```
+
 The first path segment is the authority, which is exactly what a bucket is, so `"bucket/key"` on an
 S3 filesystem spells `s3://bucket/key`. In Python the filesystem may also be inferred from the
-first argument: `IOBase(fs, "bucket/key")` means the same as `IOBase.from_arrow_fs(fs, "bucket/key")`.
+first argument: `IOBase(fs, "bucket/key")` means the same as `IOBase.from_arrow_fs(fs, "bucket/key")`,
+and JavaScript infers the same way with `new IOBase(handler, 'bucket/key')`.
+
+!!! note "A JavaScript handler belongs to one thread"
+    The handler is called synchronously, in the middle of the native read or write, so it cannot be
+    reached from another thread: a handle used from a `Worker` refuses with a message saying so
+    rather than queueing work. A worker that needs its own view builds its own handler - only the
+    location string has to travel. This is a named limitation rather than an emulation, because
+    Node-API's only cross-thread call is asynchronous and every method here has to answer now.
 
 The real thing looks like this, and needs credentials and a network, so it is shown rather than run:
 
@@ -119,9 +164,43 @@ mutations in memory and publishes them as exactly one whole-value replacement on
     assert (root / "staged.bin").read_bytes() == b"pending"
     ```
 
-That is why a file another reader will open is written inside a scope - `with` in Python - which
-binds to exactly `open` and `close`. Reads need none of it: a read maps straight onto one ranged
-fetch, so a footer-first reader such as Parquet never downloads an object to read its footer.
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const files = new Map()
+    const handler = {
+      typeName: 'memory',
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      list: () => [],
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const handle = IOBase.fromArrowFs(handler, 'bucket/staged.bin')
+    handle.writeText('pending')
+
+    // The handle presents the pending value; the filesystem has not been
+    // asked to store anything yet.
+    assert.equal(handle.readText(), 'pending')
+    assert.equal(files.has('bucket/staged.bin'), false)
+
+    handle.close()
+    assert.equal(files.get('bucket/staged.bin').toString(), 'pending')
+    ```
+
+That is why a file another reader will open is written inside a scope - `with` in Python, `using`
+in JavaScript - which binds to exactly `open` and `close`. Reads need none of it: a read maps
+straight onto one ranged fetch, so a footer-first reader such as Parquet never downloads an object
+to read its footer.
 
 ## Folders, globs, and partitions
 
@@ -179,6 +258,61 @@ not have written.
     # A child still carries the filesystem it came from.
     part = lake / "year=2024" / "part-0.parquet"
     assert part.read_bytes() == b"PAR1"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    // A directory is a prefix, so `list` derives one from the keys rather
+    // than storing markers the caller's storage would not have written.
+    const files = new Map([
+      ['bucket/year=2024/part-0.parquet', Buffer.from('PAR1')],
+      ['bucket/year=2025/part-0.parquet', Buffer.from('PAR1')],
+    ])
+    const under = (prefix) =>
+      [...files.keys()].filter((name) => prefix === '' || name.startsWith(`${prefix}/`))
+    const handler = {
+      typeName: 'memory',
+      fileInfo(path) {
+        if (files.has(path)) return { path, kind: 'file', size: BigInt(files.get(path).length) }
+        return under(path).length ? { path, kind: 'directory' } : { path, kind: 'not-found' }
+      },
+      list(path, recursive) {
+        const prefix = path === '' ? '' : `${path}/`
+        const directories = new Set()
+        const found = []
+        for (const name of under(path)) {
+          const parts = name.slice(prefix.length).split('/')
+          for (let depth = 1; depth < parts.length; depth += 1) {
+            if (recursive || depth === 1) directories.add(prefix + parts.slice(0, depth).join('/'))
+          }
+          if (parts.length === 1 || recursive) {
+            found.push({ path: name, kind: 'file', size: BigInt(files.get(name).length) })
+          }
+        }
+        for (const name of directories) found.push({ path: name, kind: 'directory' })
+        return found
+      },
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const lake = IOBase.fromArrowFs(handler, 'bucket')
+
+    assert.equal(lake.isDir(), true)
+    assert.equal(lake.ls().length, 2)
+    assert.equal(lake.glob('**/*.parquet').length, 2)
+    assert.equal(lake.glob('year=2024/**/*.parquet').length, 1)
+    assert.equal(lake.childrenWhere({ year: '2024' }).length, 1)
+
+    // A child still carries the filesystem it came from.
+    assert.equal(lake.joinpath('year=2024', 'part-0.parquet').readText(), 'PAR1')
     ```
 
 ## Records
@@ -249,6 +383,42 @@ reimplemented, so the encoding still comes from the media type and never from an
 
     # What landed is an ordinary Parquet file, so PyArrow reads it back.
     assert pq.read_table(root / "trades.parquet").equals(table)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, IOBase } = require('yggdryl')
+
+    const files = new Map()
+    const handler = {
+      typeName: 'memory',
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      list: () => [],
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+    })
+
+    const handle = IOBase.fromArrowFs(handler, 'bucket/trades.arrows')
+    handle.writeArrowBatchReader(BatchReader.from(table))
+    handle.close()
+
+    assert.equal(handle.readArrowBatchReader().toTable().numRows, 2)
+    // The encoding came from the name, never from an argument.
+    assert.equal(String(handle.mediaType), 'application/vnd.apache.arrow.stream')
     ```
 
 A folder handle reads as the partitioned table beneath it, and a folder holding an Iceberg metadata
@@ -456,6 +626,79 @@ A working handler is longer than a documentation page wants, so the complete one
 `python/tests/test_arrowfs.py`, where it is exercised end to end - including an Iceberg table whose
 every byte goes through it.
 
+In JavaScript there is nothing to wrap, because Arrow JS ships no filesystem - so the handler
+object *is* the filesystem, and the six methods are the whole contract. Anything a Node program can
+already reach answers them:
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-arrowfs-'))
+
+    // The same six calls, over node:fs. Absence may throw the way node:fs
+    // does - the boundary asks what is there and turns ENOENT into the
+    // contract's empty answer.
+    const handler = {
+      typeName: 'local',
+      fileInfo(location) {
+        try {
+          const stat = fs.statSync(location)
+          return {
+            path: location,
+            kind: stat.isDirectory() ? 'directory' : 'file',
+            size: BigInt(stat.size),
+          }
+        } catch {
+          return { path: location, kind: 'not-found' }
+        }
+      },
+      list(location, recursive) {
+        const found = []
+        for (const entry of fs.readdirSync(location, { withFileTypes: true })) {
+          const child = path.posix.join(location, entry.name)
+          if (entry.isDirectory()) {
+            found.push({ path: child, kind: 'directory' })
+            if (recursive) found.push(...this.list(child, true))
+          } else {
+            found.push({ path: child, kind: 'file', size: BigInt(fs.statSync(child).size) })
+          }
+        }
+        return found
+      },
+      readRange(location, offset, length) {
+        const descriptor = fs.openSync(location, 'r')
+        try {
+          const buffer = Buffer.alloc(length)
+          const read = fs.readSync(descriptor, buffer, 0, length, Number(offset))
+          return buffer.subarray(0, read)
+        } finally {
+          fs.closeSync(descriptor)
+        }
+      },
+      writeFull(location, bytes) {
+        fs.mkdirSync(path.posix.dirname(location), { recursive: true })
+        fs.writeFileSync(location, bytes)
+      },
+      createDir: (location) => fs.mkdirSync(location, { recursive: true }),
+      deleteFile: (location) => fs.rmSync(location, { force: true }),
+    }
+
+    const handle = IOBase.fromArrowFs(handler, path.posix.join(root, 'lake', 'trades.bin'))
+    handle.writeText('AAPL')
+    handle.close()
+
+    assert.equal(fs.readFileSync(path.join(root, 'lake', 'trades.bin'), 'utf8'), 'AAPL')
+    assert.equal(handle.pread(1, 3).toString(), 'APL')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 
 ## Notebooks
@@ -463,6 +706,7 @@ every byte goes through it.
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
 [Rust](notebooks/arrowfs-rust.ipynb){ download },
-[Python](notebooks/arrowfs-python.ipynb){ download }.
+[Python](notebooks/arrowfs-python.ipynb){ download },
+[JavaScript](notebooks/arrowfs-javascript.ipynb){ download }.
 
 <!-- /notebooks -->

@@ -504,10 +504,46 @@ export declare class IOBase {
    * Accepts anything that names one: a path or URL string, a native
    * [`Url`][crate::uri::JsUrl], or another handle. Per the laziness
    * contract, nothing is opened, created, or read here.
+   *
+   * An Arrow file system handler as the first argument names the *backend*
+   * rather than the location, so the second says where on it:
+   * `new IOBase(handler, 'bucket/key.parquet')`. What comes back is this
+   * same class - nothing file-system-specific leaks into the surface.
    */
-  constructor(value: LocationInput)
+  constructor(value: LocationOrFileSystemInput, path?: string | undefined | null)
   /** Infer a handle from a native handle, a `Url`, or a location string. */
   static from(value: LocationInput): IOBase
+  /**
+   * Describe a resource on any Arrow file system a caller supplies.
+   *
+   * This is the explicit spelling of what the constructor infers, and it is
+   * the whole surface a foreign file system needs. Arrow JS ships none, so
+   * `filesystem` is the vtable `pyarrow.fs` implements, written as a plain
+   * object in camelCase: `typeName`, `fileInfo`, `list`, `readRange`,
+   * `writeFull`, `createDir`, `deleteFile`. A `Map`, `node:fs`, an S3
+   * client, or a caching layer over one reaches those same six calls, so
+   * none of them needs code of its own here.
+   *
+   * ```js
+   * const handle = IOBase.fromArrowFs(handler, 'bucket/key.parquet')
+   * const rows = handle.readArrow().toTable()
+   * ```
+   *
+   * The result is an ordinary handle: `ls`, `glob`, `joinpath`, and
+   * `parent` return handles that still carry the file system, and the three
+   * record methods work exactly as they do on a local file. Per the
+   * laziness contract nothing is opened, created, or read here.
+   *
+   * A write publishes when the handle is flushed, because an Arrow file
+   * system replaces whole files rather than writing ranges - so a file
+   * another reader will open is flushed before it is handed over.
+   *
+   * The handler is called synchronously, on the JavaScript thread that
+   * supplied it and no other: a handle built here cannot be read from a
+   * `Worker`, because a JavaScript value belongs to one isolate and this
+   * boundary refuses rather than pretending otherwise.
+   */
+  static fromArrowFs(filesystem: ArrowFileSystemInput, path: string): IOBase
   /** Describe an in-memory resource holding `data`. */
   static fromBytes(data?: Uint8Array | undefined | null): IOBase
   /** The location this handle addresses. */
@@ -598,6 +634,28 @@ export declare class IOBase {
   truncate(size: number): void
   /** Flush anything buffered. */
   flush(): void
+  /**
+   * Materialize the resource and cache what repeated calls would re-derive.
+   *
+   * A handle works without this - every operation materializes what it
+   * needs - so calling it moves that cost to a known point. Opening a
+   * resource that does not exist yet succeeds without creating it. The
+   * loader binds `using` to this and to [`Self::close`], so a scope is
+   * what publishes a written file.
+   */
+  open(): void
+  /** Return whether cached state is currently held. */
+  isOpen(): boolean
+  /**
+   * Publish and release everything [`Self::open`] cached.
+   *
+   * The handle stays usable afterwards; a later operation re-materializes.
+   * This is what publishes a written file at its exact length, and on a
+   * backend that replaces whole files - any Arrow file system - it is what
+   * hands the staged value over, so a file another reader will open is
+   * written inside a scope.
+   */
+  close(): void
   /** Copy every byte here into `target`, returning the count. */
   copyInto(target: IOBase): number
   /**
@@ -1638,6 +1696,31 @@ export declare class Value {
   equals(other: Value): boolean
 }
 export type JsCodecValue = Value
+
+/**
+ * What a file system handler reports about one path.
+ *
+ * The shape `pyarrow.fs.FileInfo` carries, in the spellings the core already
+ * publishes: `kind` is an [`IOKind`] name and `size` a 64-bit length, so a
+ * value larger than a JavaScript number holds still crosses exactly.
+ */
+export interface ArrowFileInfo {
+  /**
+   * The location, as the file system itself names it. Omitted, it is the
+   * path that was asked about - which is what a handler echoes anyway.
+   */
+  path?: string
+  /**
+   * `'file'`, `'directory'`, or `'unknown'` for a path holding nothing
+   * yet. Arrow spells that last one `'not-found'`, and so may a handler.
+   */
+  kind: string
+  /**
+   * The byte length, as a `bigint`; a `number` is read when it is exact.
+   * Anything but a file has none.
+   */
+  size?: bigint | number
+}
 
 /** Infer a codec format through the native extension rules. */
 export declare function codecInferFormat(path: string): string

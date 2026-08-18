@@ -1667,6 +1667,20 @@ Object.defineProperty(IOBase.prototype, Symbol.iterator, {
   },
 })
 
+// `using` is the scope construct the binding contract binds to open/close, so
+// a handle leaving scope publishes what was written through it. That matters
+// most on a backend that replaces whole files - any Arrow file system - where
+// the bytes are staged until the handle closes. Node exposes the symbol only
+// from 20.11, so the binding is conditional rather than assumed.
+if (typeof Symbol.dispose === 'symbol') {
+  Object.defineProperty(IOBase.prototype, Symbol.dispose, {
+    configurable: true,
+    value: function dispose() {
+      this.close()
+    },
+  })
+}
+
 function pathParts(values) {
   const parts = []
   for (const value of values) {
