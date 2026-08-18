@@ -41,7 +41,14 @@ fn schema() -> Value {
 
 /// The rows both sides assert, in file order.
 fn expected_rows() -> Vec<Value> {
-    let row = |symbol: &str, quantity: i64, price: Value, day: i32, at: i64, cost: i128, tags: &[&str], flag: bool| {
+    let row = |symbol: &str,
+               quantity: i64,
+               price: Value,
+               day: i32,
+               at: i64,
+               cost: i128,
+               tags: &[&str],
+               flag: bool| {
         Value::from_mapping([
             (Value::from("symbol"), Value::from(symbol)),
             (Value::from("quantity"), Value::from(quantity)),
@@ -76,7 +83,16 @@ fn expected_rows() -> Vec<Value> {
             true,
         ),
         // A pre-epoch date, a negative decimal, an empty array.
-        row("MSFT", -25, Value::Null, -3_652, -1_000_000, -99, &[], false),
+        row(
+            "MSFT",
+            -25,
+            Value::Null,
+            -3_652,
+            -1_000_000,
+            -99,
+            &[],
+            false,
+        ),
     ]
 }
 
@@ -107,8 +123,8 @@ fn reads_the_container_the_external_writer_produced() {
     assert_eq!(container.rows, expected_rows());
     // The resolved path over the same file must agree with the direct one.
     let reader = avro::Schema::from_json(&schema()).expect("the schema parses");
-    let resolved = avro::read_container_resolved(&handle, &reader)
-        .expect("the external container resolves");
+    let resolved =
+        avro::read_container_resolved(&handle, &reader).expect("the external container resolves");
     assert_eq!(resolved.rows, container.rows);
     println!("avro-interop: read");
 }

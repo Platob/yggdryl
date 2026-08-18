@@ -47,6 +47,30 @@
   pub fn to_canonical_form(&self) -> String
   pub fn fingerprint(&self) -> u64
 
+### yggdryl::avro::batch  [rust\src\avro\batch.rs]
+  pub const DEFAULT_ROOT_NAME: &str = "row";
+  pub struct AvroOptions
+  pub fn new() -> Self
+  pub fn with_codec(mut self, codec: impl Into<SmolStr>) -> Self
+  pub fn with_sync_marker(mut self, sync_marker: [u8; 16]) -> Self
+  pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &AvroOptions) -> Result<Field>
+  pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &AvroOptions, ) -> Result<BatchReader>
+  pub fn write_batch_reader<H>( handle: &mut H, batches: BatchReader, options: &AvroOptions, ) -> Result<()> where H: IOBase + ?Sized,
+  pub struct Avro<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(mut self, options: AvroOptions) -> Self
+  pub fn with_schema(mut self, schema: Field) -> Self
+  pub fn with_root_name(mut self, root_name: impl Into<SmolStr>) -> Self
+  pub fn with_level(mut self, level: Level) -> Self
+  pub const fn options(&self) -> &AvroOptions
+  pub const fn options_mut(&mut self) -> &mut AvroOptions
+  pub const fn handle(&self) -> &H
+  pub const fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+  pub fn schema(&self) -> Result<Field>
+  pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<BatchReader>
+  pub fn write_batch_reader(&mut self, batches: BatchReader) -> Result<()>
+
 ### yggdryl::avro::container  [rust\src\avro\container.rs]
   pub struct Container
   pub fn get(&self, key: &str) -> Option<&str>
@@ -762,6 +786,7 @@
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
   pub fn ipc(handle: Holder) -> Self
   pub fn parquet(handle: Holder) -> Self
+  pub fn avro(handle: Holder) -> Self
   pub fn with_schema(self, schema: Field) -> Self
   pub fn schema(&mut self) -> Result<Field>
   pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<crate::arrow::BatchReader>

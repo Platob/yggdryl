@@ -63,9 +63,11 @@ layer compiling annotations into native values.
   `cast/mod.rs`). `arrow` feature is default; schema-only callers use
   `default-features = false`. Never a separate Arrow crate.
 - One module per record encoding: `rust/src/ipc/`, `rust/src/parquet/`
-  (non-default `parquet` feature). Each owns free functions over any `IOBase`
-  handle plus a stateful type (`Ipc`, `Parquet`) holding handle, options,
-  cache; `IOBase`'s record methods dispatch to those functions.
+  (non-default `parquet` feature), and the record surface of `rust/src/avro/`
+  (behind the default `arrow` feature; the Value-level codec beneath it is
+  unconditional). Each owns free functions over any `IOBase` handle plus a
+  stateful type (`Ipc`, `Parquet`, `Avro`) holding handle, options, cache;
+  `IOBase`'s record methods dispatch to those functions.
 - Apache Avro below `rust/src/avro/`: an unconditional codec module (it adds
   no dependency) reading and writing object containers as the shared `Value`
   over any `IOBase` handle. Iceberg sits on it, never the other way around.

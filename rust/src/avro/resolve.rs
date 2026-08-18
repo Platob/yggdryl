@@ -286,9 +286,10 @@ impl Builder<'_> {
         for from in &writer.fields {
             // A reader field matches by name, or by declaring the writer's
             // name among its aliases.
-            let slot = reader.fields.iter().position(|to| {
-                to.name == from.name || to.aliases.contains(&from.name)
-            });
+            let slot = reader
+                .fields
+                .iter()
+                .position(|to| to.name == from.name || to.aliases.contains(&from.name));
             match slot {
                 Some(index) => {
                     matched[index] = true;

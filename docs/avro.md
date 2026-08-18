@@ -241,6 +241,57 @@ datum as `C3 01`, the writer schema's Rabin fingerprint in little-endian
 order, and the body. The fingerprint is how a receiver picks the writer schema
 out of a store - and the natural key for caching a [`Resolution`].
 
+## The record surface
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use yggdryl::io::{Buffer, IOBase};
+use yggdryl::{DataType, Url};
+
+let schema = DataType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::Utf8.nullable_field("symbol"),
+])?
+.required_field("row");
+let arrow_schema = schema.to_arrow_schema()?;
+let batch = RecordBatch::try_new(
+    Arc::clone(&arrow_schema),
+    vec![
+        Arc::new(Int64Array::from(vec![1, 2])),
+        Arc::new(StringArray::from(vec![Some("AAPL"), None])),
+    ],
+)?;
+
+// The name decides the encoding; nothing else in the call changes.
+let mut handle =
+    Buffer::new().with_media_type(Url::from_str("file:///trades.avro")?.media_type());
+let options = handle.record_options()?;
+handle.write_arrow_batch_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]), &options)?;
+assert_eq!(handle.read_arrow_batch_reader(&options)?.count(), 1);
+```
+
+Avro answers the same three record methods as every other encoding: a handle
+whose media type says `avro` reads and writes Arrow batches with no format
+argument anywhere. Decoding is columnar - one builder per leaf, appended per
+record, with no intermediate `Value` tree on that path - and a declared schema
+becomes the encoding's own projection: an unselected top-level column's bytes
+are *skipped*, not decoded, so a projection saves decode, allocation, and
+those bytes. What it cannot save is reading the row, because Avro interleaves
+columns per record; Parquet, whose column chunks are separately addressable,
+is where a projection also skips reading.
+
+`avro::Avro` is the stateful form - handle, options, and a schema cache that
+[`IOBase::open`](io.md) fills and `close` releases - and `avro::AvroOptions`
+adds two settings to the shared surface: the block codec name and an optional
+fixed synchronization marker for byte-reproducible writes. A union wider than
+`null` plus one branch, a recursive schema, or a datatype Avro cannot spell is
+refused by name on this surface; the `Value`-level functions above have no
+such limits. Avro compresses inside its blocks, so - like Parquet and unlike
+IPC - a handle declaring an outer content coding such as `trades.avro.gz` is
+rejected rather than double-compressed.
+
 ## Codecs and limits
 
 Blocks are decompressed with the codec the header names: `null`, `deflate`,

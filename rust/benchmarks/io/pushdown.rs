@@ -6,7 +6,9 @@
 //! also a decoding saving: its column chunks are separately addressable, so a
 //! masked read never decompresses what it skipped. The Arrow IPC pair shares
 //! the allocation saving but still reads the whole message body, because an IPC
-//! record batch is one contiguous message.
+//! record batch is one contiguous message. The Avro pair sits between the two:
+//! rows interleave columns, so the whole block is still decompressed, but an
+//! unselected column's bytes are skipped instead of decoded.
 //!
 //! The subset is declared as the read's schema, which is what pushes it into
 //! the encoding. It also casts, so the measured saving is what survives after
@@ -23,7 +25,11 @@ use super::{materialized, narrow, stored};
 pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("io_pushdown");
 
-    for (label, name) in [("ipc", "bench.arrows"), ("parquet", "bench.parquet")] {
+    for (label, name) in [
+        ("ipc", "bench.arrows"),
+        ("parquet", "bench.parquet"),
+        ("avro", "bench.avro"),
+    ] {
         if label == "parquet" && !cfg!(feature = "parquet") {
             continue;
         }

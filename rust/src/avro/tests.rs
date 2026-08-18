@@ -884,8 +884,13 @@ mod streaming {
         )
         .unwrap();
         let mut handle = super::buffer();
-        avro::write_container(&mut handle, &schema, &[("k", "v")], std::slice::from_ref(&row))
-            .unwrap();
+        avro::write_container(
+            &mut handle,
+            &schema,
+            &[("k", "v")],
+            std::slice::from_ref(&row),
+        )
+        .unwrap();
 
         let mut blocks = avro::read_blocks(&handle).unwrap();
         assert_eq!(blocks.get("k"), Some("v"));
@@ -1022,5 +1027,275 @@ mod hardening {
         let handle = super::handmade_container("\"long\"", "null", &[(1, vec![0x80, 0x80])]);
         let message = avro::read_container(&handle).unwrap_err().to_string();
         assert!(message.contains("expected"), "{message}");
+    }
+}
+
+#[cfg(feature = "arrow")]
+mod records {
+    use std::sync::Arc;
+
+    use arrow_array::builder::{Float64Builder, Int64Builder, ListBuilder, StringBuilder};
+    use arrow_array::types::{Float64Type, Int64Type};
+    use arrow_array::{Array, RecordBatch, cast::AsArray};
+
+    use crate::avro::{Avro, AvroOptions};
+    use crate::generic::IORecordOptions;
+    use crate::io::{Buffer, IOBase};
+    use crate::{DataType, Field, Url, avro};
+
+    /// One canonical batch with a nullable column and a list column.
+    fn batch() -> (Field, RecordBatch) {
+        let schema = Field::new(
+            "trades",
+            DataType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::Utf8.nullable_field("symbol"),
+                DataType::Float64.nullable_field("price"),
+                DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
+            ])
+            .unwrap(),
+            false,
+        );
+        let mut symbols = StringBuilder::new();
+        symbols.append_value("AAPL");
+        symbols.append_null();
+        symbols.append_value("MSFT");
+        let mut prices = Float64Builder::new();
+        prices.append_value(187.5);
+        prices.append_value(12.25);
+        prices.append_null();
+        let mut legs = ListBuilder::new(Int64Builder::new());
+        legs.append_value([Some(1), Some(2)]);
+        legs.append_value([]);
+        legs.append_value([Some(7)]);
+        let legs = {
+            // The canonical list item is a required field called `item`.
+            let array = legs.finish();
+            let (_, offsets, values, nulls) = array.into_parts();
+            arrow_array::ListArray::new(
+                Arc::new(arrow_schema::Field::new(
+                    "item",
+                    arrow_schema::DataType::Int64,
+                    false,
+                )),
+                offsets,
+                values,
+                nulls,
+            )
+        };
+        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            arrow_schema,
+            vec![
+                Arc::new(arrow_array::Int64Array::from(vec![1, 2, 3])),
+                Arc::new(symbols.finish()),
+                Arc::new(prices.finish()),
+                Arc::new(legs),
+            ],
+        )
+        .unwrap();
+        (schema, batch)
+    }
+
+    fn handle() -> Buffer {
+        Buffer::new().with_media_type(Url::from_str("file:///trades.avro").unwrap().media_type())
+    }
+
+    #[test]
+    fn batches_round_trip_through_the_record_surface() {
+        let (schema, batch) = batch();
+        let mut handle = handle();
+        let options = crate::generic::RecordOptions::for_media_type(handle.media_type()).unwrap();
+        handle
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
+                &options,
+            )
+            .unwrap();
+
+        let read: Vec<RecordBatch> = handle
+            .read_arrow_batch_reader(&options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].num_rows(), 3);
+        assert_eq!(
+            read[0].column(0).as_primitive::<Int64Type>().values(),
+            &[1, 2, 3]
+        );
+        let symbols = read[0].column(1).as_string::<i32>();
+        assert_eq!(symbols.value(0), "AAPL");
+        assert!(symbols.is_null(1));
+        let legs = read[0].column(3).as_list::<i32>();
+        assert_eq!(legs.value(0).len(), 2);
+        assert_eq!(legs.value(1).len(), 0);
+        let _ = schema;
+    }
+
+    #[test]
+    fn a_projection_skips_the_bytes_of_unselected_columns() {
+        let (_, batch) = batch();
+        let mut handle = handle();
+        let options = AvroOptions::new();
+        avro::write_batch_reader(
+            &mut handle,
+            crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
+            &options,
+        )
+        .unwrap();
+
+        let narrow = Field::new(
+            "trades",
+            DataType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::Float64.nullable_field("price"),
+            ])
+            .unwrap(),
+            false,
+        );
+        let read: Vec<RecordBatch> = avro::read_batch_reader(&handle, Some(&narrow), &options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(read[0].num_columns(), 2, "{:?}", read[0].schema());
+        assert_eq!(
+            read[0].column(0).as_primitive::<Int64Type>().values(),
+            &[1, 2, 3]
+        );
+        assert_eq!(
+            read[0].column(1).as_primitive::<Float64Type>().value(0),
+            187.5
+        );
+        assert!(read[0].column(1).as_primitive::<Float64Type>().is_null(2));
+    }
+
+    #[test]
+    fn an_empty_handle_reads_as_no_batches() {
+        let handle = handle();
+        let options = AvroOptions::new().with_schema(batch().0);
+        let read = avro::read_batch_reader(&handle, None, &options).unwrap();
+        assert_eq!(read.count(), 0);
+    }
+
+    #[test]
+    fn an_outer_content_coding_is_rejected_by_name() {
+        let handle = Buffer::new().with_media_type(
+            Url::from_str("file:///trades.avro.gz")
+                .unwrap()
+                .media_type(),
+        );
+        let message = avro::read_field(&handle, &AvroOptions::new())
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("outer content coding"), "{message}");
+        assert!(message.contains("gzip"), "{message}");
+    }
+
+    #[test]
+    fn the_stateful_wrapper_caches_the_schema_between_open_and_close() {
+        let (schema, batch) = batch();
+        // An Arrow schema is anonymous, so the record's name is the options'
+        // root name; naming it keeps the round trip exact.
+        let mut media = Avro::new(handle()).with_root_name("trades");
+        media
+            .write_batch_reader(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        assert!(media.is_open(), "a write refreshes the cache");
+        media.close().unwrap();
+        assert!(!media.is_open());
+        media.open().unwrap();
+        assert!(media.is_open());
+        let derived = media.schema().unwrap();
+        assert_eq!(derived.name(), schema.name());
+        assert_eq!(derived.field_len(), schema.field_len());
+    }
+
+    #[test]
+    fn a_wide_union_is_refused_for_the_record_surface() {
+        let mut handle = handle();
+        avro::write_container(
+            &mut handle,
+            &crate::json::from_str(
+                r#"{"type":"record","name":"row","fields":[
+                    {"name":"v","type":["null","long","string"]}
+                ]}"#,
+            )
+            .unwrap(),
+            &[],
+            &[],
+        )
+        .unwrap();
+        let message = avro::read_field(&handle, &AvroOptions::new())
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("3 branches"), "{message}");
+    }
+
+    #[test]
+    fn logical_columns_round_trip_columnar() {
+        let schema = Field::new(
+            "row",
+            DataType::from_fields([
+                DataType::Date32.required_field("day"),
+                DataType::Timestamp(
+                    crate::enums::TimeUnit::Microsecond,
+                    Some(crate::Timezone::UTC),
+                )
+                .nullable_field("at"),
+                DataType::decimal128(10, 2).unwrap().required_field("cost"),
+            ])
+            .unwrap(),
+            false,
+        );
+        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            arrow_schema,
+            vec![
+                Arc::new(arrow_array::Date32Array::from(vec![19_782, -3_652])),
+                Arc::new(
+                    arrow_array::TimestampMicrosecondArray::from(vec![
+                        Some(1_700_000_000_000_000),
+                        None,
+                    ])
+                    .with_timezone("UTC"),
+                ),
+                Arc::new(
+                    arrow_array::Decimal128Array::from(vec![18_750_i128, -99])
+                        .with_precision_and_scale(10, 2)
+                        .unwrap(),
+                ),
+            ],
+        )
+        .unwrap();
+
+        let mut handle = handle();
+        let options = AvroOptions::new();
+        avro::write_batch_reader(
+            &mut handle,
+            crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
+            &options,
+        )
+        .unwrap();
+
+        // The container is readable at the Value level with typed temporals.
+        let container = avro::read_container(&handle).unwrap();
+        assert_eq!(
+            container.rows[0].get_key_str("day"),
+            Some(&crate::Value::Date(19_782))
+        );
+        assert_eq!(
+            container.rows[1].get_key_str("cost"),
+            Some(&crate::Value::Decimal(-99, 2))
+        );
+
+        // And columnar reads reproduce the arrays exactly.
+        let read: Vec<RecordBatch> = avro::read_batch_reader(&handle, None, &options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(read[0].column(0).as_ref(), batch.column(0).as_ref());
+        assert_eq!(read[0].column(1).as_ref(), batch.column(1).as_ref());
+        assert_eq!(read[0].column(2).as_ref(), batch.column(2).as_ref());
     }
 }

@@ -1,0 +1,1415 @@
+//! Avro object containers as a record encoding over any byte handle.
+//!
+//! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
+//! [`write_batch_reader`] - that take any [`IOBase`] handle and one
+//! [`AvroOptions`]. That is what [`IOBase::read_arrow_batch_reader`] and its
+//! two siblings call, so reading a container needs nothing but a handle whose
+//! media type says `avro`. These functions are the encoding and nothing more -
+//! the `field` they take is a column pushdown, and the casting, merging, and
+//! partition routing a caller sees belong to [`IOBase`]'s three record methods
+//! above them.
+//!
+//! Decoding is columnar: one builder per leaf, appended per record, with no
+//! intermediate [`Value`](crate::Value) tree. A pushed-down projection turns
+//! every unselected top-level column into a skip - length-prefixed values jump
+//! by their prefix, size-carrying blocks jump whole - so a projection saves
+//! decode, allocation, *and* the bytes of the skipped fields; what it cannot
+//! save is reading the row, because Avro interleaves columns per record.
+//!
+//! Avro compresses its blocks internally, so - like Parquet and unlike IPC - a
+//! handle declaring an outer content coding is rejected rather than silently
+//! double-compressed.
+
+use std::sync::Arc;
+
+use arrow_array::builder::{
+    BinaryBuilder, BooleanBuilder, Decimal128Builder, FixedSizeBinaryBuilder, PrimitiveBuilder,
+    StringBuilder,
+};
+use arrow_array::types::{
+    Date32Type, Float32Type, Float64Type, Int32Type, Int64Type, IntervalMonthDayNanoType,
+    Time32MillisecondType, Time64MicrosecondType, TimestampMicrosecondType,
+    TimestampMillisecondType, TimestampNanosecondType,
+};
+use arrow_array::{
+    Array, ArrayRef, ListArray, MapArray, RecordBatch, RecordBatchIterator, RecordBatchOptions,
+    StructArray, cast::AsArray,
+};
+use arrow_buffer::{IntervalMonthDayNano, NullBufferBuilder, OffsetBuffer, ScalarBuffer};
+use arrow_schema::{ArrowError, DataType as ArrowDataType, FieldRef, SchemaRef};
+use smol_str::{SmolStr, format_smolstr};
+
+use crate::arrow::{BatchReader, Result, record_schema_from_arrow, schema_from_field};
+use crate::generic::IORecordOptions;
+use crate::io::IOBase;
+use crate::{Field, Level, Limits};
+
+use super::arrow::{field_from_schema, schema_json_from_field};
+use super::container::{
+    BlockCoding, CODEC_KEY, MAGIC, SCHEMA_KEY, SYNC_LEN, check_magic, parse_header, sync_marker,
+};
+use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
+use super::schema::{Node, Schema};
+
+/// The default root Field name used when a schema is inferred.
+pub const DEFAULT_ROOT_NAME: &str = "row";
+
+/// The settings an Avro record read or write takes.
+///
+/// Avro adds two settings to the shared surface: the block compression codec,
+/// named in Avro's own vocabulary because that is what the header stores, and
+/// an optional fixed synchronization marker for byte-reproducible output.
+#[derive(Clone, Debug)]
+pub struct AvroOptions {
+    /// Declared canonical schema; inferred from the container when absent.
+    pub schema: Option<Field>,
+    /// Root Field name used for an inferred schema.
+    pub root_name: SmolStr,
+    /// Whether a cast may null a value it cannot convert.
+    pub safe: bool,
+    /// Rows per batch a reader yields.
+    pub batch_size: Option<usize>,
+    /// Compression level for the block codec.
+    pub level: Level,
+    /// Column names forming a write's match key; empty means overwrite.
+    pub merge_by_names: Vec<String>,
+    /// Column names a read or write is narrowed to; empty selects everything.
+    pub select_by_names: Vec<String>,
+    /// Partition equalities a read is pruned and filtered by; empty keeps all.
+    pub filter_partitions: Vec<(String, String)>,
+    /// The Avro codec name blocks are written with: `null`, `deflate`,
+    /// `zstandard`, or - with the `parquet` feature - `snappy`.
+    pub codec: SmolStr,
+    /// A fixed synchronization marker, for writes that must be reproducible
+    /// byte for byte; a fresh random marker is used when absent.
+    pub sync_marker: Option<[u8; 16]>,
+}
+
+impl AvroOptions {
+    /// Build the default Avro options.
+    pub fn new() -> Self {
+        Self {
+            schema: None,
+            root_name: SmolStr::new_static(DEFAULT_ROOT_NAME),
+            safe: false,
+            batch_size: None,
+            level: Level::DEFAULT,
+            merge_by_names: Vec::new(),
+            select_by_names: Vec::new(),
+            filter_partitions: Vec::new(),
+            codec: SmolStr::new_static("deflate"),
+            sync_marker: None,
+        }
+    }
+
+    /// Return these options with a different block codec name.
+    #[must_use]
+    pub fn with_codec(mut self, codec: impl Into<SmolStr>) -> Self {
+        self.codec = codec.into();
+        self
+    }
+
+    /// Return these options with a fixed synchronization marker.
+    #[must_use]
+    pub fn with_sync_marker(mut self, sync_marker: [u8; 16]) -> Self {
+        self.sync_marker = Some(sync_marker);
+        self
+    }
+}
+
+impl Default for AvroOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IORecordOptions for AvroOptions {
+    crate::record_options_fields!();
+}
+
+/// How many rows one batch carries when the caller does not say.
+const DEFAULT_BATCH_ROWS: usize = 65_536;
+
+/// Read the schema of the container `handle` holds.
+///
+/// Only the header is read, over `pread`, so asking a large container for its
+/// schema never decodes a row.
+///
+/// # Errors
+///
+/// Returns a read, decoding, or schema failure.
+pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &AvroOptions) -> Result<Field> {
+    if let Some(schema) = options.schema() {
+        return Ok(schema.clone());
+    }
+    reject_outer_coding(handle)?;
+    let blocks = super::container::read_blocks(handle)?;
+    Ok(field_from_schema(blocks.schema(), options.root_name())?)
+}
+
+/// Read the container `handle` holds, keeping only the columns `field` names.
+///
+/// Batches are returned exactly as they were written, without being cast to a
+/// declared schema. A `field` naming a subset of the stored columns becomes
+/// skip steps in the decoder: an unselected column's bytes are jumped, not
+/// decoded, so the projection saves decode, allocation, and those bytes. A
+/// `field` naming anything the container does not carry is ignored, because a
+/// projection can only drop columns, never invent them.
+///
+/// # Errors
+///
+/// Returns a read or decoding failure.
+pub fn read_batch_reader<H: IOBase + ?Sized>(
+    handle: &H,
+    field: Option<&Field>,
+    options: &AvroOptions,
+) -> Result<BatchReader> {
+    reject_outer_coding(handle)?;
+    let bytes = handle.read_all()?;
+    if bytes.is_empty() {
+        // Per the laziness contract, a missing container holds no batches.
+        let schema = match options.schema() {
+            Some(schema) => schema_from_field(schema)?,
+            None => Arc::new(arrow_schema::Schema::empty()),
+        };
+        return Ok(Box::new(RecordBatchIterator::new(
+            std::iter::empty(),
+            schema,
+        )));
+    }
+
+    let limits = Limits::default();
+    let mut cursor = Cursor::new(&bytes);
+    check_magic(cursor.take(MAGIC.len())?)?;
+    let header = parse_header(&mut cursor, limits)?;
+    let blocks_at = cursor.position;
+
+    let keep: Option<Vec<&str>> =
+        field.map(|field| field.fields().iter().map(|child| child.name()).collect());
+    let (root, arrow_schema) =
+        RootReader::new(&header.schema, options.root_name(), keep.as_deref())?;
+
+    Ok(Box::new(AvroBatchReader {
+        bytes,
+        position: blocks_at,
+        schema: arrow_schema,
+        writer: header.schema,
+        coding: header.coding,
+        sync: header.sync,
+        limits,
+        root,
+        batch_size: options.batch_size().unwrap_or(DEFAULT_BATCH_ROWS).max(1),
+        block: None,
+        failed: false,
+    }))
+}
+
+/// Replace the container `handle` holds with every batch `batches` yields.
+///
+/// The container's schema is derived from the reader's schema, refusing any
+/// datatype Avro cannot spell by name; each incoming batch becomes one block,
+/// compressed with the options' codec.
+///
+/// # Errors
+///
+/// Returns a schema, encoding, or write failure.
+pub fn write_batch_reader<H>(
+    handle: &mut H,
+    batches: BatchReader,
+    options: &AvroOptions,
+) -> Result<()>
+where
+    H: IOBase + ?Sized,
+{
+    reject_outer_coding(handle)?;
+    let root = record_schema_from_arrow(options.root_name(), batches.schema().as_ref())?;
+    let schema_json = schema_json_from_field(&root)?;
+    let schema = Schema::from_json(&schema_json)?;
+    // The canonical shape is what the encoder walks: casting each batch onto
+    // it first means the encoder only ever sees the arrow types the mapping
+    // produces, and an exact batch passes through untouched.
+    let canonical = field_from_schema(&schema, root.name())?;
+
+    let coding = BlockCoding::from_name(&options.codec)?;
+    let sync = options.sync_marker.unwrap_or_else(sync_marker);
+    let encoded_schema = crate::json::to_vec(&schema_json)?;
+
+    let mut output = Vec::with_capacity(1024);
+    output.extend_from_slice(&MAGIC);
+    put_long(&mut output, 2);
+    put_bytes(&mut output, SCHEMA_KEY.as_bytes());
+    put_bytes(&mut output, &encoded_schema);
+    put_bytes(&mut output, CODEC_KEY.as_bytes());
+    put_bytes(&mut output, coding.name().as_bytes());
+    put_long(&mut output, 0);
+    output.extend_from_slice(&sync);
+
+    let mut payload = Vec::new();
+    for batch in batches {
+        let batch = batch.map_err(crate::arrow::from_reader_error)?;
+        if batch.num_rows() == 0 {
+            continue;
+        }
+        let batch = crate::field::cast::cast_record_batch(&canonical, batch, false)?;
+        payload.clear();
+        encode_batch(&schema.node, &schema, &batch, &mut payload)?;
+        let compressed = coding.dump(&payload, options.level())?;
+        put_long(&mut output, batch.num_rows() as i64);
+        put_bytes(&mut output, &compressed);
+        output.extend_from_slice(&sync);
+    }
+
+    handle.write_all_bytes(&output)?;
+    Ok(())
+}
+
+/// Refuse a handle whose media type declares an outer content coding.
+///
+/// Avro compresses inside its blocks, so an outer coding would produce a file
+/// no Avro reader could open without knowing about it.
+fn reject_outer_coding<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
+    let media_type = handle.media_type();
+    if let Some(encoding) = media_type.encodings().last() {
+        return Err(crate::arrow::Error::from(invalid(format_smolstr!(
+            "expected an Avro container without an outer content coding, got {encoding}"
+        ))));
+    }
+    Ok(())
+}
+
+/// The lazy batch iterator over one container's blocks.
+struct AvroBatchReader {
+    /// The whole container. DESIGN: owned because a `BatchReader` outlives the
+    /// borrow of the handle it came from; decompression and decoding stay
+    /// lazy, one block at a time.
+    bytes: Vec<u8>,
+    /// The offset of the next unread block.
+    position: usize,
+    /// The projected batch schema.
+    schema: SchemaRef,
+    /// The writer schema, for skips and reference resolution.
+    writer: Schema,
+    /// The block compression.
+    coding: BlockCoding,
+    /// The marker that closes every block.
+    sync: [u8; SYNC_LEN],
+    /// The decode bounds.
+    limits: Limits,
+    /// The columnar decoder.
+    root: RootReader,
+    /// Rows per yielded batch.
+    batch_size: usize,
+    /// The block being decoded: decompressed payload, offset, rows left.
+    block: Option<(Vec<u8>, usize, u64)>,
+    /// Whether an error ended the stream.
+    failed: bool,
+}
+
+impl AvroBatchReader {
+    /// Pull the next block into `self.block`, or report the end.
+    fn next_block(&mut self) -> crate::Result<bool> {
+        let mut cursor = Cursor::new(&self.bytes);
+        cursor.position = self.position;
+        if cursor.is_exhausted() {
+            return Ok(false);
+        }
+        let count = cursor.long()?;
+        let count = u64::try_from(count).map_err(|_| {
+            codec(
+                cursor.position,
+                format_smolstr!("expected a non-negative Avro block count, got {count}"),
+            )
+        })?;
+        let payload = cursor.bytes()?;
+        let marker = cursor.take(SYNC_LEN)?;
+        if marker != self.sync {
+            return Err(codec(
+                cursor.position,
+                SmolStr::new_static(
+                    "expected the header's synchronization marker after an Avro block",
+                ),
+            ));
+        }
+        if count as usize > self.limits.max_nodes() {
+            return Err(invalid(format_smolstr!(
+                "expected at most {} rows in a block",
+                self.limits.max_nodes()
+            )));
+        }
+        let decoded = self.coding.load(payload, self.limits)?;
+        self.position = cursor.position;
+        self.block = Some((decoded, 0, count));
+        Ok(true)
+    }
+
+    /// Decode up to one batch of rows.
+    fn next_batch(&mut self) -> crate::Result<Option<RecordBatch>> {
+        let mut rows = 0_usize;
+        while rows < self.batch_size {
+            let Some((payload, mut offset, mut left)) = self.block.take() else {
+                if !self.next_block()? {
+                    break;
+                }
+                continue;
+            };
+            while rows < self.batch_size && left > 0 {
+                let mut cursor = Cursor::new(&payload);
+                cursor.position = offset;
+                let mut budget = self.limits.max_nodes();
+                let datum = DatumCodec {
+                    names: &self.writer.names,
+                    limits: self.limits,
+                };
+                self.root.append(&mut cursor, &datum, &mut budget)?;
+                offset = cursor.position;
+                left -= 1;
+                rows += 1;
+            }
+            if left > 0 {
+                self.block = Some((payload, offset, left));
+            }
+        }
+        if rows == 0 {
+            return Ok(None);
+        }
+        Ok(Some(self.root.finish(&self.schema, rows)?))
+    }
+}
+
+impl Iterator for AvroBatchReader {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.failed {
+            return None;
+        }
+        match self.next_batch() {
+            Ok(batch) => batch.map(Ok),
+            Err(error) => {
+                self.failed = true;
+                Some(Err(ArrowError::ExternalError(Box::new(error))))
+            }
+        }
+    }
+}
+
+impl arrow_array::RecordBatchReader for AvroBatchReader {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+/// The decoder for one row's top level.
+struct RootReader {
+    /// One step per writer field, or one reader for a wrapped scalar root.
+    steps: Vec<RootStep>,
+}
+
+/// What to do with one top-level writer field.
+enum RootStep {
+    /// Decode into a column.
+    Read(ColumnReader),
+    /// Jump the bytes without decoding.
+    Skip(Node),
+}
+
+impl RootReader {
+    /// Build the decoder and the projected batch schema.
+    fn new(
+        schema: &Schema,
+        root_name: &str,
+        keep: Option<&[&str]>,
+    ) -> crate::Result<(Self, SchemaRef)> {
+        let root_field = field_from_schema(schema, root_name)?;
+        let full =
+            schema_from_field(&root_field).map_err(|error| invalid(format_smolstr!("{error}")))?;
+
+        let mut steps = Vec::new();
+        let mut kept_fields = Vec::new();
+        if let Node::Record(record) = &schema.node {
+            for (index, field) in record.fields.iter().enumerate() {
+                let wanted = keep.is_none_or(|names| {
+                    names
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(&field.name))
+                });
+                if wanted {
+                    let arrow_field = full.field(index).clone();
+                    steps.push(RootStep::Read(ColumnReader::new(
+                        &field.schema,
+                        schema,
+                        arrow_field.data_type(),
+                    )?));
+                    kept_fields.push(arrow_field);
+                } else {
+                    steps.push(RootStep::Skip(field.schema.clone()));
+                }
+            }
+        } else {
+            // A non-record root reads as one column called `value`.
+            let arrow_field = full.field(0).clone();
+            steps.push(RootStep::Read(ColumnReader::new(
+                &schema.node,
+                schema,
+                arrow_field.data_type(),
+            )?));
+            kept_fields.push(arrow_field);
+        }
+        let projected = Arc::new(arrow_schema::Schema::new(kept_fields));
+        Ok((Self { steps }, projected))
+    }
+
+    /// Decode one row.
+    fn append(
+        &mut self,
+        cursor: &mut Cursor<'_>,
+        datum: &DatumCodec<'_>,
+        budget: &mut usize,
+    ) -> crate::Result<()> {
+        for step in &mut self.steps {
+            match step {
+                RootStep::Read(reader) => reader.append(cursor, datum, budget)?,
+                RootStep::Skip(node) => datum.skip(node, cursor, 0, budget)?,
+            }
+        }
+        Ok(())
+    }
+
+    /// Assemble the accumulated rows into one batch.
+    fn finish(&mut self, schema: &SchemaRef, rows: usize) -> crate::Result<RecordBatch> {
+        let mut arrays = Vec::new();
+        for step in &mut self.steps {
+            if let RootStep::Read(reader) = step {
+                arrays.push(reader.finish()?);
+            }
+        }
+        RecordBatch::try_new_with_options(
+            schema.clone(),
+            arrays,
+            &RecordBatchOptions::new().with_row_count(Some(rows)),
+        )
+        .map_err(|error| invalid(format_smolstr!("{error}")))
+    }
+}
+
+/// One column's decoder: a builder per leaf, appended per record.
+enum ColumnReader {
+    /// The empty type: rows counted, no bytes.
+    Null { length: usize },
+    /// One byte per value.
+    Boolean(BooleanBuilder),
+    /// A zig-zag 32-bit integer.
+    Int32(PrimitiveBuilder<Int32Type>),
+    /// A zig-zag 64-bit integer.
+    Int64(PrimitiveBuilder<Int64Type>),
+    /// Four little-endian bytes.
+    Float32(PrimitiveBuilder<Float32Type>),
+    /// Eight little-endian bytes.
+    Float64(PrimitiveBuilder<Float64Type>),
+    /// A length-prefixed byte run.
+    Binary(BinaryBuilder),
+    /// A length-prefixed UTF-8 run.
+    Utf8(StringBuilder),
+    /// A `date` int.
+    Date32(PrimitiveBuilder<Date32Type>),
+    /// A `time-millis` int.
+    Time32(PrimitiveBuilder<Time32MillisecondType>),
+    /// A `time-micros` long.
+    Time64(PrimitiveBuilder<Time64MicrosecondType>),
+    /// A `timestamp-millis` or `local-timestamp-millis` long.
+    TimestampMillis(PrimitiveBuilder<TimestampMillisecondType>, bool),
+    /// A `timestamp-micros` or `local-timestamp-micros` long.
+    TimestampMicros(PrimitiveBuilder<TimestampMicrosecondType>, bool),
+    /// A `timestamp-nanos` or `local-timestamp-nanos` long.
+    TimestampNanos(PrimitiveBuilder<TimestampNanosecondType>, bool),
+    /// A `duration` fixed(12): months, days, milliseconds.
+    Interval(PrimitiveBuilder<IntervalMonthDayNanoType>),
+    /// A `decimal` over bytes or fixed.
+    Decimal {
+        /// The unscaled integers.
+        builder: Decimal128Builder,
+        /// Declared precision.
+        precision: u8,
+        /// Declared scale.
+        scale: i8,
+        /// The fixed width, when not over bytes.
+        size: Option<usize>,
+    },
+    /// A fixed-width byte run.
+    Fixed {
+        /// The values.
+        builder: FixedSizeBinaryBuilder,
+        /// The declared width.
+        size: usize,
+    },
+    /// An enum index decoded to its symbol.
+    Enum {
+        /// The symbols as strings.
+        builder: StringBuilder,
+        /// The declared symbols, by index.
+        symbols: Arc<[SmolStr]>,
+    },
+    /// Fields back to back.
+    Struct {
+        /// The arrow shape of the children.
+        fields: arrow_schema::Fields,
+        /// One decoder per child.
+        children: Vec<ColumnReader>,
+        /// Validity per row.
+        nulls: NullBufferBuilder,
+        /// Rows appended.
+        length: usize,
+    },
+    /// Item blocks.
+    List {
+        /// The arrow item field.
+        field: FieldRef,
+        /// The item decoder.
+        child: Box<ColumnReader>,
+        /// Row offsets into the child.
+        offsets: Vec<i32>,
+        /// Items appended to the child.
+        child_length: i32,
+        /// Validity per row.
+        nulls: NullBufferBuilder,
+    },
+    /// Entry blocks.
+    Map {
+        /// The arrow entries field.
+        field: FieldRef,
+        /// The entry keys.
+        keys: StringBuilder,
+        /// The entry values.
+        values: Box<ColumnReader>,
+        /// Row offsets into the entries.
+        offsets: Vec<i32>,
+        /// Entries appended.
+        child_length: i32,
+        /// Validity per row.
+        nulls: NullBufferBuilder,
+    },
+    /// A union of `null` and one branch.
+    Nullable {
+        /// The branch index that means null.
+        null_branch: usize,
+        /// The value decoder.
+        inner: Box<ColumnReader>,
+    },
+}
+
+impl ColumnReader {
+    /// Build the decoder for one node against its mapped arrow type.
+    fn new(node: &Node, schema: &Schema, arrow: &ArrowDataType) -> crate::Result<Self> {
+        Ok(match node {
+            Node::Null => Self::Null { length: 0 },
+            Node::Boolean => Self::Boolean(BooleanBuilder::new()),
+            Node::Int => Self::Int32(PrimitiveBuilder::new()),
+            Node::Long => Self::Int64(PrimitiveBuilder::new()),
+            Node::Float => Self::Float32(PrimitiveBuilder::new()),
+            Node::Double => Self::Float64(PrimitiveBuilder::new()),
+            Node::Bytes => Self::Binary(BinaryBuilder::new()),
+            Node::String | Node::Uuid => Self::Utf8(StringBuilder::new()),
+            Node::Date => Self::Date32(PrimitiveBuilder::new()),
+            Node::TimeMillis => Self::Time32(PrimitiveBuilder::new()),
+            Node::TimeMicros => Self::Time64(PrimitiveBuilder::new()),
+            Node::TimestampMillis => Self::TimestampMillis(PrimitiveBuilder::new(), true),
+            Node::TimestampMicros => Self::TimestampMicros(PrimitiveBuilder::new(), true),
+            Node::TimestampNanos => Self::TimestampNanos(PrimitiveBuilder::new(), true),
+            Node::LocalTimestampMillis => Self::TimestampMillis(PrimitiveBuilder::new(), false),
+            Node::LocalTimestampMicros => Self::TimestampMicros(PrimitiveBuilder::new(), false),
+            Node::LocalTimestampNanos => Self::TimestampNanos(PrimitiveBuilder::new(), false),
+            Node::Duration(_) => Self::Interval(PrimitiveBuilder::new()),
+            Node::Decimal(decimal) => Self::Decimal {
+                builder: Decimal128Builder::new(),
+                precision: u8::try_from(decimal.precision).unwrap_or(38),
+                scale: i8::try_from(decimal.scale).unwrap_or(0),
+                size: decimal.fixed.as_ref().map(|fixed| fixed.size),
+            },
+            Node::UuidFixed(fixed) | Node::Fixed(fixed) => Self::Fixed {
+                builder: FixedSizeBinaryBuilder::new(i32::try_from(fixed.size).unwrap_or(0)),
+                size: fixed.size,
+            },
+            Node::Enum(declared) => Self::Enum {
+                builder: StringBuilder::new(),
+                symbols: declared.symbols.clone(),
+            },
+            Node::Record(record) => {
+                let ArrowDataType::Struct(fields) = arrow else {
+                    return Err(shape_error(node, arrow));
+                };
+                let mut children = Vec::with_capacity(record.fields.len());
+                for (child, arrow_field) in record.fields.iter().zip(fields.iter()) {
+                    children.push(Self::new(&child.schema, schema, arrow_field.data_type())?);
+                }
+                Self::Struct {
+                    fields: fields.clone(),
+                    children,
+                    nulls: NullBufferBuilder::new(1024),
+                    length: 0,
+                }
+            }
+            Node::Array(items) => {
+                let ArrowDataType::List(field) = arrow else {
+                    return Err(shape_error(node, arrow));
+                };
+                Self::List {
+                    field: field.clone(),
+                    child: Box::new(Self::new(items, schema, field.data_type())?),
+                    offsets: vec![0],
+                    child_length: 0,
+                    nulls: NullBufferBuilder::new(1024),
+                }
+            }
+            Node::Map(values) => {
+                let ArrowDataType::Map(entries, _) = arrow else {
+                    return Err(shape_error(node, arrow));
+                };
+                let ArrowDataType::Struct(pair) = entries.data_type() else {
+                    return Err(shape_error(node, arrow));
+                };
+                let value_field = pair.get(1).ok_or_else(|| shape_error(node, arrow))?;
+                Self::Map {
+                    field: entries.clone(),
+                    keys: StringBuilder::new(),
+                    values: Box::new(Self::new(values, schema, value_field.data_type())?),
+                    offsets: vec![0],
+                    child_length: 0,
+                    nulls: NullBufferBuilder::new(1024),
+                }
+            }
+            Node::Union(branches) => {
+                let null_branch = branches
+                    .iter()
+                    .position(|branch| matches!(branch, Node::Null))
+                    .ok_or_else(|| shape_error(node, arrow))?;
+                let value = branches.iter().find(|branch| !matches!(branch, Node::Null));
+                match value {
+                    Some(value) => Self::Nullable {
+                        null_branch,
+                        inner: Box::new(Self::new(value, schema, arrow)?),
+                    },
+                    None => Self::Null { length: 0 },
+                }
+            }
+            Node::Ref(name) => {
+                let target = schema.names.get(name).cloned().ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a declared Avro type named {name:?}"
+                    ))
+                })?;
+                Self::new(&target, schema, arrow)?
+            }
+        })
+    }
+
+    /// Decode one value into the column.
+    fn append(
+        &mut self,
+        cursor: &mut Cursor<'_>,
+        datum: &DatumCodec<'_>,
+        budget: &mut usize,
+    ) -> crate::Result<()> {
+        datum.spend(budget)?;
+        match self {
+            Self::Null { length } => *length += 1,
+            Self::Boolean(builder) => {
+                builder.append_value(cursor.take(1)?.first().is_some_and(|byte| *byte != 0));
+            }
+            Self::Int32(builder) => builder.append_value(cursor.int()?),
+            Self::Int64(builder) => builder.append_value(cursor.long()?),
+            Self::Float32(builder) => builder.append_value(cursor.float()?),
+            Self::Float64(builder) => builder.append_value(cursor.double()?),
+            Self::Binary(builder) => builder.append_value(cursor.bytes()?),
+            Self::Utf8(builder) => builder.append_value(cursor.string()?),
+            Self::Date32(builder) => builder.append_value(cursor.int()?),
+            Self::Time32(builder) => builder.append_value(cursor.int()?),
+            Self::Time64(builder) => builder.append_value(cursor.long()?),
+            Self::TimestampMillis(builder, _) => builder.append_value(cursor.long()?),
+            Self::TimestampMicros(builder, _) => builder.append_value(cursor.long()?),
+            Self::TimestampNanos(builder, _) => builder.append_value(cursor.long()?),
+            Self::Interval(builder) => {
+                let bytes = cursor.take(12)?;
+                let part = |index: usize| {
+                    u32::from_le_bytes(bytes[index..index + 4].try_into().unwrap_or_default())
+                };
+                let months = i32::try_from(part(0)).unwrap_or(i32::MAX);
+                let days = i32::try_from(part(4)).unwrap_or(i32::MAX);
+                let nanos = i64::from(part(8)) * 1_000_000;
+                builder.append_value(IntervalMonthDayNano::new(months, days, nanos));
+            }
+            Self::Decimal { builder, size, .. } => {
+                let bytes = match size {
+                    Some(size) => cursor.take(*size)?,
+                    None => cursor.bytes()?,
+                };
+                let unscaled = super::datum::decimal_from_bytes(bytes).ok_or_else(|| {
+                    codec(
+                        cursor.position,
+                        format_smolstr!(
+                            "expected a decimal of at most 38 digits, got {} bytes",
+                            bytes.len()
+                        ),
+                    )
+                })?;
+                builder.append_value(unscaled);
+            }
+            Self::Fixed { builder, size } => {
+                builder
+                    .append_value(cursor.take(*size)?)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?;
+            }
+            Self::Enum { builder, symbols } => {
+                let index = cursor.long()?;
+                let symbol = usize::try_from(index)
+                    .ok()
+                    .and_then(|index| symbols.get(index))
+                    .ok_or_else(|| {
+                        codec(
+                            cursor.position,
+                            format_smolstr!(
+                                "expected an Avro enum index below {}, got {index}",
+                                symbols.len()
+                            ),
+                        )
+                    })?;
+                builder.append_value(symbol);
+            }
+            Self::Struct {
+                children,
+                nulls,
+                length,
+                ..
+            } => {
+                for child in children {
+                    child.append(cursor, datum, budget)?;
+                }
+                nulls.append_non_null();
+                *length += 1;
+            }
+            Self::List {
+                child,
+                offsets,
+                child_length,
+                nulls,
+                ..
+            } => {
+                loop {
+                    let (count, _) = block_count(cursor)?;
+                    if count == 0 {
+                        break;
+                    }
+                    for _ in 0..count {
+                        child.append(cursor, datum, budget)?;
+                        *child_length += 1;
+                    }
+                }
+                offsets.push(*child_length);
+                nulls.append_non_null();
+            }
+            Self::Map {
+                keys,
+                values,
+                offsets,
+                child_length,
+                nulls,
+                ..
+            } => {
+                loop {
+                    let (count, _) = block_count(cursor)?;
+                    if count == 0 {
+                        break;
+                    }
+                    for _ in 0..count {
+                        datum.spend(budget)?;
+                        keys.append_value(cursor.string()?);
+                        values.append(cursor, datum, budget)?;
+                        *child_length += 1;
+                    }
+                }
+                offsets.push(*child_length);
+                nulls.append_non_null();
+            }
+            Self::Nullable { null_branch, inner } => {
+                let index = cursor.long()?;
+                let index = usize::try_from(index).map_err(|_| {
+                    codec(
+                        cursor.position,
+                        format_smolstr!("expected a non-negative union branch, got {index}"),
+                    )
+                })?;
+                if index == *null_branch {
+                    inner.append_null()?;
+                } else {
+                    inner.append(cursor, datum, budget)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Append one null.
+    fn append_null(&mut self) -> crate::Result<()> {
+        match self {
+            Self::Null { length } => *length += 1,
+            Self::Boolean(builder) => builder.append_null(),
+            Self::Int32(builder) => builder.append_null(),
+            Self::Int64(builder) => builder.append_null(),
+            Self::Float32(builder) => builder.append_null(),
+            Self::Float64(builder) => builder.append_null(),
+            Self::Binary(builder) => builder.append_null(),
+            Self::Utf8(builder) => builder.append_null(),
+            Self::Date32(builder) => builder.append_null(),
+            Self::Time32(builder) => builder.append_null(),
+            Self::Time64(builder) => builder.append_null(),
+            Self::TimestampMillis(builder, _) => builder.append_null(),
+            Self::TimestampMicros(builder, _) => builder.append_null(),
+            Self::TimestampNanos(builder, _) => builder.append_null(),
+            Self::Interval(builder) => builder.append_null(),
+            Self::Decimal { builder, .. } => builder.append_null(),
+            Self::Fixed { builder, .. } => builder.append_null(),
+            Self::Enum { builder, .. } => builder.append_null(),
+            Self::Struct {
+                children,
+                nulls,
+                length,
+                ..
+            } => {
+                // A null struct still owes its children a physical slot.
+                for child in children {
+                    child.append_null()?;
+                }
+                nulls.append_null();
+                *length += 1;
+            }
+            Self::List {
+                offsets,
+                child_length,
+                nulls,
+                ..
+            } => {
+                offsets.push(*child_length);
+                nulls.append_null();
+            }
+            Self::Map {
+                offsets,
+                child_length,
+                nulls,
+                ..
+            } => {
+                offsets.push(*child_length);
+                nulls.append_null();
+            }
+            Self::Nullable { inner, .. } => inner.append_null()?,
+        }
+        Ok(())
+    }
+
+    /// Assemble the accumulated values and reset for the next batch.
+    fn finish(&mut self) -> crate::Result<ArrayRef> {
+        Ok(match self {
+            Self::Null { length } => {
+                let array: ArrayRef = Arc::new(arrow_array::NullArray::new(*length));
+                *length = 0;
+                array
+            }
+            Self::Boolean(builder) => Arc::new(builder.finish()),
+            Self::Int32(builder) => Arc::new(builder.finish()),
+            Self::Int64(builder) => Arc::new(builder.finish()),
+            Self::Float32(builder) => Arc::new(builder.finish()),
+            Self::Float64(builder) => Arc::new(builder.finish()),
+            Self::Binary(builder) => Arc::new(builder.finish()),
+            Self::Utf8(builder) => Arc::new(builder.finish()),
+            Self::Date32(builder) => Arc::new(builder.finish()),
+            Self::Time32(builder) => Arc::new(builder.finish()),
+            Self::Time64(builder) => Arc::new(builder.finish()),
+            Self::TimestampMillis(builder, zoned) => {
+                let array = builder.finish();
+                Arc::new(if *zoned {
+                    array.with_timezone("UTC")
+                } else {
+                    array
+                })
+            }
+            Self::TimestampMicros(builder, zoned) => {
+                let array = builder.finish();
+                Arc::new(if *zoned {
+                    array.with_timezone("UTC")
+                } else {
+                    array
+                })
+            }
+            Self::TimestampNanos(builder, zoned) => {
+                let array = builder.finish();
+                Arc::new(if *zoned {
+                    array.with_timezone("UTC")
+                } else {
+                    array
+                })
+            }
+            Self::Interval(builder) => Arc::new(builder.finish()),
+            Self::Decimal {
+                builder,
+                precision,
+                scale,
+                ..
+            } => Arc::new(
+                builder
+                    .finish()
+                    .with_precision_and_scale(*precision, *scale)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?,
+            ),
+            Self::Fixed { builder, .. } => Arc::new(builder.finish()),
+            Self::Enum { builder, .. } => Arc::new(builder.finish()),
+            Self::Struct {
+                fields,
+                children,
+                nulls,
+                length,
+            } => {
+                let mut arrays = Vec::with_capacity(children.len());
+                for child in children {
+                    arrays.push(child.finish()?);
+                }
+                let array = if fields.is_empty() {
+                    StructArray::new_empty_fields(*length, nulls.finish())
+                } else {
+                    StructArray::try_new(fields.clone(), arrays, nulls.finish())
+                        .map_err(|error| invalid(format_smolstr!("{error}")))?
+                };
+                *length = 0;
+                Arc::new(array)
+            }
+            Self::List {
+                field,
+                child,
+                offsets,
+                child_length,
+                nulls,
+            } => {
+                let values = child.finish()?;
+                let taken = std::mem::replace(offsets, vec![0]);
+                *child_length = 0;
+                let array = ListArray::try_new(
+                    field.clone(),
+                    OffsetBuffer::new(ScalarBuffer::from(taken)),
+                    values,
+                    nulls.finish(),
+                )
+                .map_err(|error| invalid(format_smolstr!("{error}")))?;
+                Arc::new(array)
+            }
+            Self::Map {
+                field,
+                keys,
+                values,
+                offsets,
+                child_length,
+                nulls,
+            } => {
+                let keys: ArrayRef = Arc::new(keys.finish());
+                let values = values.finish()?;
+                let ArrowDataType::Struct(pair) = field.data_type() else {
+                    return Err(invalid(SmolStr::new_static(
+                        "expected a struct entries field on a map",
+                    )));
+                };
+                let entries = StructArray::try_new(pair.clone(), vec![keys, values], None)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?;
+                let taken = std::mem::replace(offsets, vec![0]);
+                *child_length = 0;
+                let array = MapArray::try_new(
+                    field.clone(),
+                    OffsetBuffer::new(ScalarBuffer::from(taken)),
+                    entries,
+                    nulls.finish(),
+                    false,
+                )
+                .map_err(|error| invalid(format_smolstr!("{error}")))?;
+                Arc::new(array)
+            }
+            Self::Nullable { inner, .. } => inner.finish()?,
+        })
+    }
+}
+
+/// Report a schema node whose mapped arrow type does not line up.
+fn shape_error(node: &Node, arrow: &ArrowDataType) -> crate::Error {
+    invalid(format_smolstr!(
+        "expected the arrow shape of an Avro {}, got {arrow}",
+        node.kind()
+    ))
+}
+
+/// Encode every row of one canonical batch.
+fn encode_batch(
+    node: &Node,
+    schema: &Schema,
+    batch: &RecordBatch,
+    payload: &mut Vec<u8>,
+) -> crate::Result<()> {
+    let Node::Record(record) = node else {
+        return Err(invalid(SmolStr::new_static(
+            "expected a record schema to encode batches",
+        )));
+    };
+    let columns = batch.columns();
+    for row in 0..batch.num_rows() {
+        for (field, column) in record.fields.iter().zip(columns) {
+            encode_cell(&field.schema, schema, column.as_ref(), row, payload)
+                .map_err(|error| locate_column(error, &field.name))?;
+        }
+    }
+    Ok(())
+}
+
+/// Encode one cell of one canonical column.
+fn encode_cell(
+    node: &Node,
+    schema: &Schema,
+    column: &dyn Array,
+    row: usize,
+    payload: &mut Vec<u8>,
+) -> crate::Result<()> {
+    if let Node::Union(branches) = node {
+        let null_branch = branches
+            .iter()
+            .position(|branch| matches!(branch, Node::Null))
+            .ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected a union carrying null on the record surface",
+                ))
+            })?;
+        if column.is_null(row) {
+            put_long(payload, null_branch as i64);
+            return Ok(());
+        }
+        let (index, value) = branches
+            .iter()
+            .enumerate()
+            .find(|(_, branch)| !matches!(branch, Node::Null))
+            .ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected a union carrying a value branch",
+                ))
+            })?;
+        put_long(payload, index as i64);
+        return encode_cell(value, schema, column, row, payload);
+    }
+    if column.is_null(row) {
+        return Err(invalid(SmolStr::new_static(
+            "expected a value for a required column, got null",
+        )));
+    }
+    match node {
+        Node::Null => {}
+        Node::Boolean => payload.push(u8::from(column.as_boolean().value(row))),
+        Node::Int => put_long(
+            payload,
+            i64::from(column.as_primitive::<Int32Type>().value(row)),
+        ),
+        Node::Long => put_long(payload, column.as_primitive::<Int64Type>().value(row)),
+        Node::Float => payload.extend_from_slice(
+            &column
+                .as_primitive::<Float32Type>()
+                .value(row)
+                .to_le_bytes(),
+        ),
+        Node::Double => payload.extend_from_slice(
+            &column
+                .as_primitive::<Float64Type>()
+                .value(row)
+                .to_le_bytes(),
+        ),
+        Node::Bytes => put_bytes(payload, column.as_binary::<i32>().value(row)),
+        Node::String | Node::Uuid => {
+            put_bytes(payload, column.as_string::<i32>().value(row).as_bytes());
+        }
+        Node::Date => put_long(
+            payload,
+            i64::from(column.as_primitive::<Date32Type>().value(row)),
+        ),
+        Node::TimeMillis => put_long(
+            payload,
+            i64::from(column.as_primitive::<Time32MillisecondType>().value(row)),
+        ),
+        Node::TimeMicros => put_long(
+            payload,
+            column.as_primitive::<Time64MicrosecondType>().value(row),
+        ),
+        Node::TimestampMillis | Node::LocalTimestampMillis => put_long(
+            payload,
+            column.as_primitive::<TimestampMillisecondType>().value(row),
+        ),
+        Node::TimestampMicros | Node::LocalTimestampMicros => put_long(
+            payload,
+            column.as_primitive::<TimestampMicrosecondType>().value(row),
+        ),
+        Node::TimestampNanos | Node::LocalTimestampNanos => put_long(
+            payload,
+            column.as_primitive::<TimestampNanosecondType>().value(row),
+        ),
+        Node::Duration(_) => {
+            let value = column.as_primitive::<IntervalMonthDayNanoType>().value(row);
+            if value.nanoseconds % 1_000_000 != 0 {
+                return Err(invalid(format_smolstr!(
+                    "expected whole milliseconds for an Avro duration, got {} nanoseconds",
+                    value.nanoseconds
+                )));
+            }
+            let months = u32::try_from(value.months).unwrap_or_default();
+            let days = u32::try_from(value.days).unwrap_or_default();
+            let millis = u32::try_from(value.nanoseconds / 1_000_000).unwrap_or_default();
+            payload.extend_from_slice(&months.to_le_bytes());
+            payload.extend_from_slice(&days.to_le_bytes());
+            payload.extend_from_slice(&millis.to_le_bytes());
+        }
+        Node::Decimal(decimal) => {
+            let unscaled = column
+                .as_primitive::<arrow_array::types::Decimal128Type>()
+                .value(row);
+            match &decimal.fixed {
+                Some(fixed) => {
+                    let bytes =
+                        super::datum::decimal_to_fixed(unscaled, fixed.size).ok_or_else(|| {
+                            invalid(format_smolstr!(
+                                "expected a decimal fitting {} fixed bytes, got {unscaled}",
+                                fixed.size
+                            ))
+                        })?;
+                    payload.extend_from_slice(&bytes);
+                }
+                None => put_bytes(payload, &super::datum::decimal_to_bytes(unscaled)),
+            }
+        }
+        Node::UuidFixed(_) | Node::Fixed(_) => {
+            payload.extend_from_slice(column.as_fixed_size_binary().value(row));
+        }
+        Node::Enum(declared) => {
+            let symbol = column.as_string::<i32>().value(row);
+            let index = declared
+                .symbols
+                .iter()
+                .position(|candidate| candidate == symbol)
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected one of the Avro enum symbols {:?}, got {symbol:?}",
+                        declared.symbols
+                    ))
+                })?;
+            put_long(payload, index as i64);
+        }
+        Node::Record(record) => {
+            let entries = column.as_struct();
+            for (field, child) in record.fields.iter().zip(entries.columns()) {
+                encode_cell(&field.schema, schema, child.as_ref(), row, payload)
+                    .map_err(|error| locate_column(error, &field.name))?;
+            }
+        }
+        Node::Array(items) => {
+            let list = column.as_list::<i32>();
+            let values = list.value(row);
+            if !values.is_empty() {
+                put_long(payload, values.len() as i64);
+                for index in 0..values.len() {
+                    encode_cell(items, schema, values.as_ref(), index, payload)?;
+                }
+            }
+            put_long(payload, 0);
+        }
+        Node::Map(value_node) => {
+            let map = column.as_map();
+            let entries = map.value(row);
+            let keys = entries.column(0).as_string::<i32>();
+            let values = entries.column(1);
+            if !entries.is_empty() {
+                put_long(payload, entries.len() as i64);
+                for index in 0..entries.len() {
+                    put_bytes(payload, keys.value(index).as_bytes());
+                    encode_cell(value_node, schema, values.as_ref(), index, payload)?;
+                }
+            }
+            put_long(payload, 0);
+        }
+        Node::Union(_) => unreachable!("handled above"),
+        Node::Ref(name) => {
+            let target = schema.names.get(name).cloned().ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a declared Avro type named {name:?}"
+                ))
+            })?;
+            encode_cell(&target, schema, column, row, payload)?;
+        }
+    }
+    Ok(())
+}
+
+/// Locate an encode failure at its column.
+fn locate_column(error: crate::Error, column: &str) -> crate::Error {
+    match error {
+        crate::Error::Codec {
+            format,
+            position,
+            reason,
+        } => crate::Error::Codec {
+            format,
+            position,
+            reason: format_smolstr!("{column}: {reason}"),
+        },
+        other => other,
+    }
+}
+
+/// An Avro object container bound to one [`IOBase`] handle.
+///
+/// Every read and write goes through this type, so the handle, the options,
+/// and the cached schema live in one place rather than being repeated at each
+/// call.
+#[derive(Debug)]
+pub struct Avro<H: IOBase> {
+    handle: H,
+    options: AvroOptions,
+    /// Schema cached by `open`, discarded by `close` or replaced by a write.
+    cached_schema: Option<Field>,
+}
+
+impl<H: IOBase> Avro<H> {
+    /// Bind an Avro container to a handle.
+    pub fn new(handle: H) -> Self {
+        Self {
+            handle,
+            options: AvroOptions::new(),
+            cached_schema: None,
+        }
+    }
+
+    /// Return this container with different options.
+    #[must_use]
+    pub fn with_options(mut self, options: AvroOptions) -> Self {
+        self.options = options;
+        self.cached_schema = None;
+        self
+    }
+
+    /// Return this container with an explicit canonical schema.
+    #[must_use]
+    pub fn with_schema(mut self, schema: Field) -> Self {
+        self.options.set_schema(schema);
+        self.cached_schema = None;
+        self
+    }
+
+    /// Return this container with a different inferred-root Field name.
+    #[must_use]
+    pub fn with_root_name(mut self, root_name: impl Into<SmolStr>) -> Self {
+        self.options.set_root_name(root_name.into());
+        self.cached_schema = None;
+        self
+    }
+
+    /// Return this container with a different compression level.
+    #[must_use]
+    pub fn with_level(mut self, level: Level) -> Self {
+        self.options.set_level(level);
+        self
+    }
+
+    /// Borrow the options this container reads and writes with.
+    pub const fn options(&self) -> &AvroOptions {
+        &self.options
+    }
+
+    /// Borrow the options mutably.
+    pub const fn options_mut(&mut self) -> &mut AvroOptions {
+        &mut self.options
+    }
+
+    /// Borrow the underlying handle.
+    pub const fn handle(&self) -> &H {
+        &self.handle
+    }
+
+    /// Borrow the underlying handle mutably.
+    pub const fn handle_mut(&mut self) -> &mut H {
+        &mut self.handle
+    }
+
+    /// Consume the container and return its handle.
+    pub fn into_handle(self) -> H {
+        self.handle
+    }
+
+    /// Return the container's canonical schema.
+    ///
+    /// A declared schema is returned as-is. An open container answers from
+    /// the cache [`IOBase::open`] filled; a closed one reads the header fresh
+    /// every time, because a cache nobody asked for is how a handle serves a
+    /// stale schema after the resource changes underneath it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a read, decoding, or schema failure.
+    pub fn schema(&self) -> Result<Field> {
+        if let Some(schema) = self.options.schema() {
+            return Ok(schema.clone());
+        }
+        if let Some(cached) = &self.cached_schema {
+            return Ok(cached.clone());
+        }
+        read_field(&self.handle, &self.options)
+    }
+
+    /// Read the container, keeping only the columns `field` names.
+    ///
+    /// # Errors
+    ///
+    /// Returns a read or decoding failure.
+    pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<BatchReader> {
+        read_batch_reader(&self.handle, field, &self.options)
+    }
+
+    /// Replace the container with every batch `batches` yields.
+    ///
+    /// # Errors
+    ///
+    /// Returns a schema, encoding, or write failure.
+    pub fn write_batch_reader(&mut self, batches: BatchReader) -> Result<()> {
+        let written = batches.schema();
+        write_batch_reader(&mut self.handle, batches, &self.options)?;
+        // The batches just written are the container's schema, so the cache
+        // is refreshed rather than dropped; a schema that will not project
+        // back into a Field drops the cache and the next read derives it.
+        self.cached_schema =
+            record_schema_from_arrow(self.options.root_name(), written.as_ref()).ok();
+        Ok(())
+    }
+}
+
+/// An `Avro` mirrors the bytes of the handle it owns, so a caller can reach
+/// the raw container - to copy it, upload it, or hand it to a foreign reader -
+/// without unwrapping the media type first.
+///
+/// [`IOBase::open`] additionally caches the container's schema and
+/// [`IOBase::close`] releases it.
+impl<H: IOBase> IOBase for Avro<H> {
+    crate::delegate_iobase!(handle);
+
+    /// Materialize the handle and cache the container's schema.
+    fn open(&mut self) -> crate::Result<()> {
+        self.handle.open()?;
+        if self.cached_schema.is_none() && !self.handle.is_empty() {
+            self.cached_schema = Some(read_field(&self.handle, &self.options)?);
+        }
+        Ok(())
+    }
+
+    /// Return whether a schema is currently cached.
+    fn is_open(&self) -> bool {
+        self.cached_schema.is_some()
+    }
+
+    /// Flush the handle and drop the cached schema.
+    fn close(&mut self) -> crate::Result<()> {
+        self.cached_schema = None;
+        self.handle.close()
+    }
+}

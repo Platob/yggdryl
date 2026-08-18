@@ -957,7 +957,7 @@ pub(crate) fn decimal_from_bytes(bytes: &[u8]) -> Option<i128> {
 }
 
 /// Render an unscaled integer as its minimal big-endian two's complement.
-fn decimal_to_bytes(unscaled: i128) -> Vec<u8> {
+pub(crate) fn decimal_to_bytes(unscaled: i128) -> Vec<u8> {
     let bytes = unscaled.to_be_bytes();
     let filler = if unscaled < 0 { 0xFF } else { 0x00 };
     let mut start = 0;
@@ -968,7 +968,7 @@ fn decimal_to_bytes(unscaled: i128) -> Vec<u8> {
 }
 
 /// Render an unscaled integer sign-extended to a fixed size.
-fn decimal_to_fixed(unscaled: i128, size: usize) -> Option<Vec<u8>> {
+pub(crate) fn decimal_to_fixed(unscaled: i128, size: usize) -> Option<Vec<u8>> {
     let minimal = decimal_to_bytes(unscaled);
     if minimal.len() > size {
         return None;

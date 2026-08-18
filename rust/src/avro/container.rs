@@ -19,16 +19,16 @@ use super::resolve::Resolution;
 use super::schema::Schema;
 
 /// The four bytes that open every Avro object container.
-const MAGIC: [u8; 4] = [b'O', b'b', b'j', 1];
+pub(crate) const MAGIC: [u8; 4] = [b'O', b'b', b'j', 1];
 
 /// The header key naming the writer schema.
-const SCHEMA_KEY: &str = "avro.schema";
+pub(crate) const SCHEMA_KEY: &str = "avro.schema";
 
 /// The header key naming the block compression codec.
-const CODEC_KEY: &str = "avro.codec";
+pub(crate) const CODEC_KEY: &str = "avro.codec";
 
 /// Length of the synchronization marker that closes every block.
-const SYNC_LEN: usize = 16;
+pub(crate) const SYNC_LEN: usize = 16;
 
 /// One decoded Avro object container.
 #[derive(Debug)]
@@ -62,7 +62,7 @@ pub(crate) enum BlockCoding {
 
 impl BlockCoding {
     /// Return the coding one Avro codec name selects.
-    fn from_name(name: &str) -> Result<Self> {
+    pub(crate) fn from_name(name: &str) -> Result<Self> {
         match name {
             "null" => Ok(Self::Shared(Codec::Identity)),
             // Avro's "deflate" is the raw stream, with no zlib wrapper.
@@ -78,7 +78,7 @@ impl BlockCoding {
     }
 
     /// Decode one block payload, bounded by the limits.
-    fn load(self, payload: &[u8], limits: Limits) -> Result<Vec<u8>> {
+    pub(crate) fn load(self, payload: &[u8], limits: Limits) -> Result<Vec<u8>> {
         let bound = limits.max_input_bytes();
         match self {
             Self::Shared(Codec::Identity) => Ok(payload.to_vec()),
@@ -183,19 +183,19 @@ fn implemented_codecs() -> &'static str {
 }
 
 /// The parsed container header.
-struct Header {
+pub(crate) struct Header {
     /// The writer schema.
-    schema: Schema,
+    pub(crate) schema: Schema,
     /// Metadata minus the reserved keys.
-    metadata: Vec<(SmolStr, SmolStr)>,
+    pub(crate) metadata: Vec<(SmolStr, SmolStr)>,
     /// The block compression.
-    coding: BlockCoding,
+    pub(crate) coding: BlockCoding,
     /// The marker that closes every block.
-    sync: [u8; SYNC_LEN],
+    pub(crate) sync: [u8; SYNC_LEN],
 }
 
 /// Parse the header entries after the magic.
-fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<Header> {
+pub(crate) fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<Header> {
     let mut entries = Vec::new();
     loop {
         let (count, _) = block_count(cursor)?;
@@ -258,7 +258,7 @@ fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<Header> {
 }
 
 /// Check the opening magic.
-fn check_magic(magic: &[u8]) -> Result<()> {
+pub(crate) fn check_magic(magic: &[u8]) -> Result<()> {
     if magic != MAGIC {
         return Err(invalid(format_smolstr!(
             "expected an Avro object container starting with {MAGIC:?}, got {magic:?}"
@@ -459,7 +459,7 @@ pub fn write_container<H: IOBase + ?Sized>(
 /// The marker only has to be constant within one file and improbable in its
 /// data, so hashing process-seeded state is enough and avoids a dependency
 /// whose only job would be sixteen bytes.
-fn sync_marker() -> [u8; SYNC_LEN] {
+pub(crate) fn sync_marker() -> [u8; SYNC_LEN] {
     use std::hash::{BuildHasher, Hasher};
 
     let state = std::collections::hash_map::RandomState::new();

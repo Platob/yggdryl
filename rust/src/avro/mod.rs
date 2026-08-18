@@ -25,12 +25,20 @@
 //! fields fill from defaults. [`Schema::fingerprint`] names a schema for
 //! caches and for the single-object framing in [`to_single_object_vec`].
 
+#[cfg(feature = "arrow")]
+mod arrow;
+#[cfg(feature = "arrow")]
+mod batch;
 mod container;
 mod datum;
 mod resolve;
 mod schema;
 mod single;
 
+#[cfg(feature = "arrow")]
+pub use batch::{
+    Avro, AvroOptions, DEFAULT_ROOT_NAME, read_batch_reader, read_field, write_batch_reader,
+};
 pub use container::{
     Block, Blocks, Container, read_blocks, read_blocks_with_limits, read_container,
     read_container_resolved, read_container_resolved_with_limits, read_container_with_limits,
