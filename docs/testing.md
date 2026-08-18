@@ -102,6 +102,20 @@ tables with PyIceberg in both directions, covering format versions 1, 2, and
 3 where PyIceberg can write them. Each driver fails when a half was skipped,
 so a skipped exchange can never read as a pass.
 
+The Iceberg module is also verified against Apache Spark, the format's
+reference implementation, over one shared Hadoop warehouse in both
+directions:
+
+```console
+python scripts/setup_spark_interop.py
+python -m pytest python/tests -m spark_interop
+```
+
+The suite carries its own pytest marker, is deselected from the default run,
+and skips itself - naming what is missing - when Java, `pyspark`, or the
+`iceberg-spark-runtime` jar is absent; the setup script provisions the latter
+two, and a dedicated CI job runs exactly this suite.
+
 The Avro fuzz sweeps run seeded mutations in the ordinary test pass; a longer
 sweep scales the same tests with `AVRO_FUZZ_ITERATIONS`:
 
