@@ -140,3 +140,42 @@ fn truncation_shrinks_and_grows_the_decoded_value() {
     handle.truncate(8).unwrap();
     assert_eq!(handle.read_all().unwrap(), b"symbol\0\0");
 }
+
+#[test]
+fn an_open_handle_answers_reads_out_of_what_it_holds() {
+    use crate::buffered::tests::Counting;
+
+    let mut source = Coded::new(Buffer::new(), Codec::Gzip);
+    source.write_all_bytes(PAYLOAD).unwrap();
+    source.flush().unwrap();
+    let encoded = source.into_handle().unwrap().into_bytes();
+
+    let mut handle = Coded::new(Counting::from_bytes(encoded), Codec::Gzip);
+    handle.open().unwrap();
+    let reads = handle.handle().reads();
+    let sizes = handle.handle().sizes();
+
+    // Between `open` and `close` the decoded value is held, so a positional
+    // read is a range copy out of it: it reaches the wrapped handle for
+    // nothing, and it does not copy the whole payload to serve four bytes.
+    for offset in [0, 7, 32, PAYLOAD.len() as u64 - 4] {
+        let mut target = [0_u8; 4];
+        assert_eq!(handle.pread(offset, &mut target).unwrap(), 4);
+        let at = offset as usize;
+        assert_eq!(&target, &PAYLOAD[at..at + 4]);
+    }
+    assert_eq!(handle.size(), PAYLOAD.len() as u64);
+    assert_eq!(
+        handle.handle().reads(),
+        reads,
+        "an open handle re-reads nothing"
+    );
+    assert_eq!(handle.handle().sizes(), sizes, "nor re-measures anything");
+
+    // Closing releases it, and the handle keeps working by decoding again.
+    handle.close().unwrap();
+    let mut head = [0_u8; 6];
+    assert_eq!(handle.pread(0, &mut head).unwrap(), 6);
+    assert_eq!(&head, &PAYLOAD[..6]);
+    assert!(handle.handle().reads() > reads);
+}
