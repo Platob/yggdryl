@@ -140,6 +140,74 @@ def write_with_fastavro() -> None:
         print(f"fastavro: wrote with {codec}, Rust read it back")
 
 
+APACHE_PROBE_MANIFEST = """\
+[package]
+name = "avro-interop-apache"
+version = "0.0.0"
+edition = "2021"
+
+# The probe lives under the repository's target directory; an empty workspace
+# table keeps cargo from adopting it into the repository workspace.
+[workspace]
+
+[dependencies]
+apache-avro = "0.17"
+"""
+
+APACHE_PROBE_MAIN = """\
+//! Round-trip the Rust-written container through the apache-avro crate.
+
+use apache_avro::{Reader, Writer};
+
+fn main() {
+    let exchange = std::path::PathBuf::from(std::env::args().nth(1).expect("an exchange dir"));
+    let source = std::fs::File::open(exchange.join("from-rust.avro")).expect("the Rust file");
+    let reader = Reader::new(source).expect("an apache-avro reader");
+    let schema = reader.writer_schema().clone();
+    let rows: Vec<apache_avro::types::Value> =
+        reader.map(|row| row.expect("a decoded row")).collect();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    let spelled = format!("{:?}", rows[0]);
+    for needle in ["AAPL", "Date(19782)", "TimestampMicros(1700000000000000)"] {
+        assert!(spelled.contains(needle), "{spelled}");
+    }
+
+    let target = std::fs::File::create(exchange.join("from-apache.avro")).expect("a target");
+    let mut writer = Writer::new(&schema, target);
+    for row in rows {
+        writer.append_value_ref(&row).expect("an appended row");
+    }
+    writer.flush().expect("a flushed container");
+    println!("apache-avro: round-tripped the Rust container");
+}
+"""
+
+
+def check_with_apache_avro() -> bool:
+    """Round-trip through the apache-avro crate in a scratch project.
+
+    The crate is a checking tool of this script only. A build failure - an
+    offline runner, a yanked version - is reported and tolerated; a probe
+    that *ran* must be read back, which main() enforces by marker.
+    """
+    probe = EXCHANGE / "apache-probe"
+    (probe / "src").mkdir(parents=True, exist_ok=True)
+    (probe / "Cargo.toml").write_text(APACHE_PROBE_MANIFEST)
+    (probe / "src" / "main.rs").write_text(APACHE_PROBE_MAIN)
+    result = subprocess.run(
+        ["cargo", "run", "--quiet", "--", str(EXCHANGE)],
+        cwd=probe,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"apache-avro: probe unavailable, skipping ({result.stderr.strip()[-200:]})")
+        return False
+    print(result.stdout.strip())
+    return True
+
+
 def main() -> None:
     EXCHANGE.mkdir(parents=True, exist_ok=True)
     output = run_cargo(allow_skip=True)
@@ -147,6 +215,11 @@ def main() -> None:
         raise SystemExit(f"the Rust writer never confirmed:\n{output}")
     read_with_fastavro()
     write_with_fastavro()
+    if check_with_apache_avro():
+        output = run_cargo(allow_skip=False)
+        if "avro-interop: read apache" not in output:
+            raise SystemExit(f"the Rust reader never confirmed the apache file:\n{output}")
+        print("apache-avro: Rust read it back")
     print("avro interop: ok")
 
 

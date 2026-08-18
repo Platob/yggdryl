@@ -367,6 +367,11 @@ impl AvroBatchReader {
             }
             if left > 0 {
                 self.block = Some((payload, offset, left));
+            } else if offset < payload.len() {
+                return Err(codec(
+                    offset,
+                    SmolStr::new_static("expected the block to end after its declared rows"),
+                ));
             }
         }
         if rows == 0 {

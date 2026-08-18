@@ -1299,3 +1299,285 @@ mod records {
         assert_eq!(read[0].column(2).as_ref(), batch.column(2).as_ref());
     }
 }
+
+mod matrix {
+    use crate::enums::TimeUnit;
+    use crate::{Value, avro};
+
+    /// Round-trip rows through a container and hand them back.
+    fn round_trip(schema: &str, rows: &[Value]) -> Vec<Value> {
+        let schema = crate::json::from_str(schema).unwrap();
+        let mut handle = super::buffer();
+        avro::write_container(&mut handle, &schema, &[], rows).unwrap();
+        avro::read_container(&handle).unwrap().rows
+    }
+
+    #[test]
+    fn maps_round_trip_including_the_empty_one() {
+        let schema = r#"{"type":"record","name":"row","fields":[
+            {"name":"counts","type":{"type":"map","values":"long"}}
+        ]}"#;
+        let full = Value::from_mapping([(
+            Value::from("counts"),
+            Value::from_mapping([
+                (Value::from("a"), Value::from(1_i64)),
+                (Value::from("b"), Value::from(-2_i64)),
+            ])
+            .unwrap(),
+        )])
+        .unwrap();
+        let empty =
+            Value::from_mapping([(Value::from("counts"), Value::from_mapping([]).unwrap())])
+                .unwrap();
+        let rows = round_trip(schema, &[full.clone(), empty.clone()]);
+        assert_eq!(rows, [full, empty]);
+    }
+
+    #[test]
+    fn four_levels_of_nesting_round_trip() {
+        // array<record<map<string, array<record<flag>>>>>
+        let schema = r#"{"type":"record","name":"row","fields":[
+            {"name":"outer","type":{"type":"array","items":
+                {"type":"record","name":"middle","fields":[
+                    {"name":"by_name","type":{"type":"map","values":
+                        {"type":"array","items":
+                            {"type":"record","name":"leaf","fields":[
+                                {"name":"flag","type":"boolean"}
+                            ]}}}}
+                ]}}}
+        ]}"#;
+        let row = crate::json::from_str(
+            r#"{"outer":[{"by_name":{"legs":[{"flag":true},{"flag":false}],"none":[]}}]}"#,
+        )
+        .unwrap();
+        let rows = round_trip(schema, std::slice::from_ref(&row));
+        assert_eq!(rows[0], row);
+        assert_eq!(
+            rows[0]
+                .path("outer.0.by_name.legs.1.flag")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn unions_of_records_choose_the_branch_by_shape_order() {
+        let schema = r#"{"type":"record","name":"row","fields":[
+            {"name":"v","type":["null",
+                {"type":"record","name":"point","fields":[{"name":"x","type":"long"}]}
+            ]}
+        ]}"#;
+        let some = crate::json::from_str(r#"{"v":{"x":9}}"#).unwrap();
+        let none = crate::json::from_str(r#"{"v":null}"#).unwrap();
+        let rows = round_trip(schema, &[some.clone(), none.clone()]);
+        assert_eq!(rows, [some, none]);
+    }
+
+    #[test]
+    fn time_boundaries_round_trip_exactly() {
+        let schema = r#"{"type":"record","name":"row","fields":[
+            {"name":"ms","type":{"type":"int","logicalType":"time-millis"}},
+            {"name":"us","type":{"type":"long","logicalType":"time-micros"}}
+        ]}"#;
+        let row = Value::from_mapping([
+            (Value::from("ms"), Value::Time(0, TimeUnit::Millisecond)),
+            (
+                Value::from("us"),
+                Value::Time(86_399_999_999, TimeUnit::Microsecond),
+            ),
+        ])
+        .unwrap();
+        assert_eq!(round_trip(schema, std::slice::from_ref(&row))[0], row);
+    }
+
+    #[test]
+    fn a_leap_day_survives_as_the_date_it_is() {
+        // 2024-02-29 is day 19_782 since the epoch.
+        let schema = r#"{"type":"record","name":"row","fields":[
+            {"name":"day","type":{"type":"int","logicalType":"date"}}
+        ]}"#;
+        let row = Value::from_mapping([(Value::from("day"), Value::Date(19_782))]).unwrap();
+        assert_eq!(round_trip(schema, std::slice::from_ref(&row))[0], row);
+    }
+
+    #[test]
+    fn trailing_bytes_after_the_declared_rows_are_an_error() {
+        // A block declaring one null row but carrying a stray byte.
+        let handle = super::handmade_container("\"null\"", "null", &[(1, vec![0x2A])]);
+        let message = crate::avro::read_container(&handle)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("end after 1 declared rows"), "{message}");
+    }
+}
+
+mod snapshots {
+    use crate::io::IOBase;
+    use crate::{Value, avro};
+
+    /// The byte snapshot of one fixed schema and data pair.
+    ///
+    /// The writer is a pure function of its input, so any encoding change -
+    /// varints, field order, header layout, the derived sync marker, the
+    /// deflate stream - surfaces here immediately. Update the expectation
+    /// only for a deliberate format change, never to quiet the test.
+    #[test]
+    fn a_fixed_container_encodes_to_exactly_these_bytes() {
+        let schema = crate::json::from_str(
+            r#"{"type":"record","name":"snap","fields":[
+                {"name":"id","type":"long"},
+                {"name":"tag","type":"string"}
+            ]}"#,
+        )
+        .unwrap();
+        let rows = [
+            crate::json::from_str(r#"{"id":1,"tag":"a"}"#).unwrap(),
+            crate::json::from_str(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
+        ];
+        let mut handle = super::buffer();
+        avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
+        let bytes = handle.read_all().unwrap();
+        let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+        let expected = concat!(
+            "4f626a0106166176726f2e736368656d61ca017b2274797065223a227265636f72",
+            "64222c226e616d65223a22736e6170222c226669656c6473223a5b7b226e616d65",
+            "223a226964222c2274797065223a226c6f6e67227d2c7b226e616d65223a227461",
+            "67222c2274797065223a22737472696e67227d5d7d146176726f2e636f6465630e",
+            "6465666c617465026b02760093d719303c57b434de8a739deedae53b041263624a",
+            "6466494a060093d719303c57b434de8a739deedae53b",
+        );
+        assert_eq!(
+            hex, expected,
+            "the container's bytes changed; was that deliberate?"
+        );
+
+        // The same input encodes to the same bytes, every time.
+        let mut again = super::buffer();
+        avro::write_container(&mut again, &schema, &[("k", "v")], &rows).unwrap();
+        assert_eq!(bytes, again.read_all().unwrap());
+
+        // And they still decode to the rows that produced them.
+        let decoded = avro::read_container(&handle).unwrap();
+        assert_eq!(decoded.rows.to_vec(), rows);
+        assert_eq!(decoded.get("k"), Some("v"));
+    }
+
+    /// The single-object framing is fixed by the specification.
+    #[test]
+    fn a_single_object_datum_encodes_to_exactly_these_bytes() {
+        let schema = avro::Schema::from_str("\"long\"").unwrap();
+        let framed = avro::to_single_object_vec(&schema, &Value::I64(3)).unwrap();
+        let hex: String = framed.iter().map(|byte| format!("{byte:02x}")).collect();
+        // C3 01, the little-endian Rabin fingerprint of "long" (the value
+        // fastavro computes for the same schema), then zig-zag 3.
+        assert_eq!(hex, "c301b71df49344e154d006");
+    }
+}
+
+mod fuzz_lite {
+    //! Seeded mutation sweeps: every outcome must be a value or a typed
+    //! error - no panic, no runaway allocation. A longer sweep scales with
+    //! `AVRO_FUZZ_ITERATIONS`, matching how the repository gates its slow
+    //! legs outside the default test run.
+
+    use crate::io::IOBase;
+    use crate::{Limits, avro};
+
+    /// A deterministic pseudo-random byte source.
+    struct Lcg(u64);
+
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.0
+        }
+
+        fn byte(&mut self) -> u8 {
+            (self.next() >> 33) as u8
+        }
+
+        fn below(&mut self, bound: usize) -> usize {
+            (self.next() >> 16) as usize % bound.max(1)
+        }
+    }
+
+    fn iterations() -> usize {
+        std::env::var("AVRO_FUZZ_ITERATIONS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(400)
+    }
+
+    #[test]
+    fn mutated_containers_never_panic() {
+        let schema = super::manifest_shaped_schema();
+        let rows = [crate::json::from_str(
+            r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,3],
+                "nested":{"flag":true}}"#,
+        )
+        .unwrap()];
+        let mut handle = super::buffer();
+        avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
+        let valid = handle.read_all().unwrap();
+
+        let limits = Limits::new(32, 1 << 16, 1 << 12, 64);
+        let mut random = Lcg(0x5EED);
+        for _ in 0..iterations() {
+            let mut mutated = valid.clone();
+            for _ in 0..1 + random.below(4) {
+                let index = random.below(mutated.len());
+                mutated[index] = random.byte();
+            }
+            let mut corrupt = super::buffer();
+            corrupt.write_all_bytes(&mutated).unwrap();
+            // A value or a typed error; anything else fails the test by panic.
+            let _ = avro::read_container_with_limits(&corrupt, limits);
+        }
+    }
+
+    #[test]
+    fn random_bytes_never_panic_any_entry_point() {
+        let limits = Limits::new(32, 1 << 14, 1 << 10, 64);
+        let mut random = Lcg(0xACE5);
+        for _ in 0..iterations() {
+            let length = random.below(512);
+            let bytes: Vec<u8> = (0..length).map(|_| random.byte()).collect();
+            let mut handle = super::buffer();
+            handle.write_all_bytes(&bytes).unwrap();
+            let _ = avro::read_container_with_limits(&handle, limits);
+            if let Ok(mut blocks) = avro::read_blocks_with_limits(&handle, limits) {
+                while let Ok(Some(block)) = blocks.next_block() {
+                    let _ = block.rows();
+                }
+            }
+            if let Ok(text) = std::str::from_utf8(&bytes) {
+                let _ = avro::Schema::from_str(text);
+            }
+        }
+    }
+
+    #[test]
+    fn mutated_schema_documents_never_panic() {
+        let source = r#"{"type":"record","name":"row","fields":[
+            {"name":"a","type":["null","long"],"default":null},
+            {"name":"b","type":{"type":"array","items":"string"}},
+            {"name":"c","type":{"type":"fixed","name":"f","size":4,"logicalType":"decimal",
+             "precision":9,"scale":2}}
+        ]}"#;
+        let mut random = Lcg(0xF00D);
+        let bytes = source.as_bytes();
+        for _ in 0..iterations() {
+            let mut mutated = bytes.to_vec();
+            for _ in 0..1 + random.below(3) {
+                let index = random.below(mutated.len());
+                mutated[index] = random.byte();
+            }
+            if let Ok(text) = std::str::from_utf8(&mutated) {
+                let _ = avro::Schema::from_str(text);
+            }
+        }
+    }
+}

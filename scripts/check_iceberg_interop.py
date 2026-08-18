@@ -251,6 +251,85 @@ def write_with_pyiceberg() -> None:
         print(f"     {name}")
 
 
+def read_versions_with_pyiceberg() -> None:
+    """Read the v1 and v3 tables the Rust half wrote."""
+    from pyiceberg.table import StaticTable
+
+    for version in (1, 3):
+        root = INTEROP / f"from-rust-v{version}"
+        hint = (root / "metadata" / "version-hint.text").read_text().strip()
+        table = StaticTable.from_metadata(
+            file_uri(root / "metadata" / f"v{hint}.metadata.json")
+        )
+        assert table.metadata.format_version == version, table.metadata.format_version
+        rows = sorted(
+            (row["id"], row["symbol"], row["venue"])
+            for row in table.scan().to_arrow().to_pylist()
+        )
+        expected = sorted(APPENDED)
+        assert rows == expected, f"v{version}: {rows}"
+        print(f"pyiceberg: read the Rust v{version} table")
+
+
+def write_versions_with_pyiceberg() -> list[int]:
+    """Write v1 and v3 tables for the Rust reader; report which succeeded.
+
+    PyIceberg's v3 write support is still growing, so a v3 refusal is
+    reported and tolerated rather than failed - but a version it *did* write
+    must be read back, which main() enforces by marker.
+    """
+    import pyarrow as pa
+    from pyiceberg.catalog.sql import SqlCatalog
+    from pyiceberg.transforms import IdentityTransform
+
+    written = []
+    for version in (1, 3):
+        target = INTEROP / f"from-pyiceberg-v{version}"
+        shutil.rmtree(target, ignore_errors=True)
+        warehouse = INTEROP / f"py-warehouse-v{version}"
+        shutil.rmtree(warehouse, ignore_errors=True)
+        warehouse.mkdir(parents=True, exist_ok=True)
+        catalog = SqlCatalog(
+            f"interop-v{version}",
+            uri=f"sqlite:///{warehouse / 'catalog.db'}",
+            warehouse=file_uri(warehouse),
+        )
+        catalog.create_namespace("ns")
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64(), nullable=False),
+                pa.field("symbol", pa.string()),
+                pa.field("venue", pa.string()),
+            ]
+        )
+        try:
+            table = catalog.create_table(
+                "ns.trades",
+                schema=schema,
+                location=file_uri(target),
+                properties={"format-version": str(version)},
+            )
+            with table.update_spec() as update:
+                update.add_field("venue", IdentityTransform(), "venue")
+            table.append(
+                pa.table(
+                    {
+                        "id": [row[0] for row in APPENDED],
+                        "symbol": [row[1] for row in APPENDED],
+                        "venue": [row[2] for row in APPENDED],
+                    },
+                    schema=schema,
+                )
+            )
+        except Exception as error:  # noqa: BLE001 - report and move on
+            print(f"pyiceberg: cannot write a v{version} table ({error})")
+            shutil.rmtree(target, ignore_errors=True)
+            continue
+        written.append(version)
+        print(f"pyiceberg: wrote a v{version} table")
+    return written
+
+
 def main() -> int:
     if VENV_PYTHON.exists() and Path(sys.executable).resolve() != VENV_PYTHON.resolve():
         print(f"re-running under {VENV_PYTHON}")
@@ -262,9 +341,14 @@ def main() -> int:
     first = run_cargo()
     if "iceberg-interop: wrote" not in first:
         raise SystemExit("the Rust half did not report writing a table")
+    for name in ("from-rust-v1", "from-rust-v3"):
+        if f"iceberg-interop: wrote {name}" not in first:
+            raise SystemExit(f"the Rust half did not report writing {name}")
 
     read_with_pyiceberg()
+    read_versions_with_pyiceberg()
     write_with_pyiceberg()
+    versions = write_versions_with_pyiceberg()
 
     print("\n== Rust reads the PyIceberg half")
     second = run_cargo()
@@ -272,6 +356,11 @@ def main() -> int:
         raise SystemExit("the Rust side skipped the external table; nothing was cross-validated")
     if "iceberg-interop: read" not in second:
         raise SystemExit("the Rust side did not report reading the external table")
+    for version in versions:
+        if f"iceberg-interop: read from-pyiceberg-v{version}" not in second:
+            raise SystemExit(
+                f"the Rust side did not read the v{version} table PyIceberg wrote"
+            )
 
     print("\nBoth directions agree.")
     return 0

@@ -1166,6 +1166,11 @@ pub(super) fn read_manifest_for_plan<H: IOBase + ?Sized>(
             let row = plan.decode(&mut block, limits, &mut budget)?;
             entries.push(entry_from_value(&row)?);
         }
+        if !block.is_exhausted() {
+            return Err(invalid(format_smolstr!(
+                "expected the block to end after {count} declared rows"
+            )));
+        }
     }
     Ok(entries)
 }

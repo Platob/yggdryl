@@ -423,6 +423,12 @@ fn decode_container<H: IOBase + ?Sized>(
                 None => datum.decode(&header.schema.node, &mut block, 0, &mut budget)?,
             });
         }
+        if !block.is_exhausted() {
+            return Err(codec(
+                block.position,
+                format_smolstr!("expected the block to end after {count} declared rows"),
+            ));
+        }
     }
 
     Ok(Container {
@@ -867,7 +873,22 @@ impl Block {
             let mut budget = self.limits.max_nodes();
             rows.push(datum.decode(&self.schema.node, &mut cursor, 0, &mut budget)?);
         }
+        self.ended(&cursor)?;
         Ok(rows)
+    }
+
+    /// Check that a decoded block consumed its whole payload.
+    fn ended(&self, cursor: &Cursor<'_>) -> Result<()> {
+        if !cursor.is_exhausted() {
+            return Err(codec(
+                cursor.position,
+                format_smolstr!(
+                    "expected the block to end after {} declared rows",
+                    self.count
+                ),
+            ));
+        }
+        Ok(())
     }
 
     /// Decompress and decode every row through a resolution plan.
@@ -884,6 +905,7 @@ impl Block {
             let mut budget = self.limits.max_nodes();
             rows.push(resolution.decode(&mut cursor, self.limits, &mut budget)?);
         }
+        self.ended(&cursor)?;
         Ok(rows)
     }
 }

@@ -128,3 +128,19 @@ fn reads_the_container_the_external_writer_produced() {
     assert_eq!(resolved.rows, container.rows);
     println!("avro-interop: read");
 }
+
+#[test]
+fn reads_the_container_the_apache_avro_crate_produced() {
+    // The driver builds a scratch crate around apache-avro - a checking tool
+    // on the script side only, never a dependency of this crate - which
+    // round-trips the Rust-written container into this file.
+    let path = exchange_dir().join("from-apache.avro");
+    if !path.exists() {
+        println!("avro-interop: absent from-apache.avro");
+        return;
+    }
+    let handle = File::new(&path).expect("a file handle");
+    let container = avro::read_container(&handle).expect("the apache-avro container reads");
+    assert_eq!(container.rows, expected_rows());
+    println!("avro-interop: read apache");
+}

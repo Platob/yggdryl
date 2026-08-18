@@ -288,3 +288,44 @@ fn a_table_written_by_pyiceberg_reads_here() {
         bounded.files_skipped()
     );
 }
+
+#[test]
+fn tables_of_the_other_format_versions_are_left_for_an_external_reader() {
+    for (version, name) in [
+        (FormatVersion::V1, "from-rust-v1"),
+        (FormatVersion::V3, "from-rust-v3"),
+    ] {
+        let path = interop_root().join(name);
+        let _ = std::fs::remove_dir_all(&path);
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a partition spec");
+        let mut table = Table::create(Folder::new(&path).expect("a folder"), version, schema, spec)
+            .expect("a created table");
+        let batch = rows();
+        table
+            .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .expect("an appended snapshot");
+        assert_eq!(collect(table.scan(None).expect("a scan")), appended());
+        println!("iceberg-interop: wrote {name}");
+    }
+}
+
+#[test]
+fn tables_written_by_pyiceberg_at_other_versions_read_here() {
+    // The driver knows which versions PyIceberg managed to write, so absence
+    // is reported per version rather than failing the standalone run.
+    for name in ["from-pyiceberg-v1", "from-pyiceberg-v3"] {
+        let path = interop_root().join(name);
+        if !path.join("metadata").is_dir() {
+            println!("iceberg-interop: absent {name}");
+            continue;
+        }
+        let table = Table::open(Folder::new(&path).expect("a folder")).expect("an external table");
+        // The rows come back through this crate's manifest reader, so the
+        // exchange covers the per-version manifest schemas both ways.
+        assert_eq!(collect(table.scan(None).expect("a scan")), appended());
+        let plan = table.plan(&[("venue", "XNAS")]).expect("a filtered plan");
+        assert_eq!(plan.tasks.len(), 1, "one venue, one file in {name}");
+        println!("iceberg-interop: read {name}");
+    }
+}
