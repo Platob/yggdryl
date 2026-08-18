@@ -790,14 +790,15 @@ pub trait IOBase: Send {
         Cursor::at(self, position)
     }
 
-    /// Consume this handle into a page-cached [`Buffered`] one.
+    /// Consume this handle into a page-cached [`Buffered`](crate::buffered::Buffered) one.
     ///
     /// Reads are served from fixed-size pages held under a byte budget, with
     /// the first page and the page holding the last byte pinned so a
     /// header-and-footer access pattern never re-reads either end. Everything
     /// else answers exactly as this handle does.
     ///
-    /// [`Buffered`] shadows this with an inherent method of the same name, so
+    /// [`Buffered`](crate::buffered::Buffered) shadows this with an inherent
+    /// method of the same name, so
     /// buffering an already-buffered handle re-wraps the handle it holds
     /// rather than stacking a second cache.
     ///
