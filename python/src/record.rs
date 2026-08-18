@@ -959,7 +959,7 @@ fn set_record_option(
             options.set_schema(field);
         }
         "safe" => options.set_safe(value.extract::<bool>()?),
-        "batch_size" => options.set_batch_size(value.extract::<Option<usize>>()?),
+        "batch_size" => set_batch_size_option(options, value.extract::<Option<usize>>()?)?,
         "level" => options.set_level(Level::new(value.extract::<u8>()?)),
         "merge_by_names" => {
             options.set_merge_by_names(crate::media::strings_from_iterable(
@@ -1044,6 +1044,21 @@ fn set_max_row_group_size_option(options: &mut RecordOptions, rows: usize) -> Py
             Err(not_parquet(options, "set a row-group size"))
         }
     }
+}
+
+/// Set the row-per-batch bound, refusing a bound of nothing.
+///
+/// A batch of zero rows is not a small batch: the readers chunk by this number,
+/// so it turns a read of a hundred rows into a successful read of none. `None`
+/// is how "no bound" is spelled, and it is already available.
+fn set_batch_size_option(options: &mut RecordOptions, batch_size: Option<usize>) -> PyResult<()> {
+    if batch_size == Some(0) {
+        return Err(PyValueError::new_err(
+            "expected a positive row count for batch_size, got 0; pass None for no bound",
+        ));
+    }
+    options.set_batch_size(batch_size);
+    Ok(())
 }
 
 /// Set the Parquet footer metadata, or say these are not Parquet options.
@@ -1154,8 +1169,8 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_batch_size(&mut self, batch_size: Option<usize>) {
-        self.inner.set_batch_size(batch_size);
+    fn set_batch_size(&mut self, batch_size: Option<usize>) -> PyResult<()> {
+        set_batch_size_option(&mut self.inner, batch_size)
     }
 
     /// The compression level applied to a content coding, on the 0-to-9 scale.

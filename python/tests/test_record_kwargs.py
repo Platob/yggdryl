@@ -134,6 +134,24 @@ class TestKwargsOnlyCalls:
             resource.write_arrow(ROWS, compression="zstd(3)")
 
 
+    def test_a_batch_size_of_zero_is_refused_rather_than_read_as_nothing(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Zero is not a small batch; it is a read that returns no rows at all.
+
+        The readers chunk by this number, so storing it turned a hundred stored
+        rows into a successful read of none. ``None`` already spells "no bound".
+        """
+        resource = handle(tmp_path, "parquet")
+        resource.write_arrow(ROWS)
+
+        with pytest.raises(ValueError, match="got 0"):
+            resource.read_arrow(batch_size=0)
+
+        assert resource.read_arrow(batch_size=None).read_all().num_rows == 3
+        assert [batch.num_rows for batch in resource.read_arrow(batch_size=2)] == [2, 1]
+
+
 class TestResolutionOrder:
     """options is the base; an explicit keyword always wins; never mutated."""
 

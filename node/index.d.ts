@@ -1200,7 +1200,13 @@ export declare class RecordOptions {
   set safe(safe: boolean)
   /** The rows-per-batch bound, when one is set. */
   get batchSize(): number | null
-  /** Set the rows-per-batch bound. */
+  /**
+   * Set the rows-per-batch bound.
+   *
+   * A bound of zero is refused rather than stored: the readers chunk by this
+   * number, so it turns a read of a hundred rows into a successful read of
+   * none. `null` is how "no bound" is spelled.
+   */
   set batchSize(batchSize: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
