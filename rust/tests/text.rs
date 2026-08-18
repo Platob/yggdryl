@@ -1,5 +1,7 @@
 #[path = "text/format.rs"]
 mod format;
+#[path = "text/placeholder.rs"]
+mod placeholder;
 #[path = "text/value.rs"]
 mod value;
 

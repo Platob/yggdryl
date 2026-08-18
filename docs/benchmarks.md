@@ -63,7 +63,7 @@ machine against release artifacts, and compare like-for-like toolchains.
 | `field` | Construction, metadata mutation and cache invalidation, comparison, typed views |
 | `enums` | MIME and media parsing, compound filename inference, content-coding recovery |
 | `uri` | Parsing, component access, path segments, path interop |
-| `text` | Value construction, format inference, display and elision helpers |
+| `text` | Value construction, format inference, display and elision helpers, and the `{{ }}` placeholder guard against the substitution it guards |
 | `json`, `toml`, `yaml` | Whole-value and streaming encode and decode |
 | `avro` | Container decode and encode by type family, codec x block-size sweep, projection skips, resolution plans, the varint floor |
 | `io` | Record round-trips over handles, projection pushdown, the line-record Arrow projection and its hash, and (`lines_gzip`) a million-record rotated gzip log folder: content coding, folder shape, typed captures, and a scale sweep |
@@ -375,76 +375,126 @@ spread precisely so nobody reads one.
 
 ### The pipeline those numbers measure
 
-The same read, small enough to run: a rotated gzip folder parsed into batches, then filtered and
-totalled through the typed columns. `took=(?<latency_us>\d+)` infers `int64` from its own
-sub-pattern, so the aggregate is arithmetic on a number column rather than per-row string
-parsing, and the stack trace stays one row with `lines` of 3.
+The same read, small enough to run, and carried through to a table: a folder of rotated leaves -
+one gzip, one plain, one zstd - parsed into batches, combined with a second parse whose schema is
+one column short, and appended to an Iceberg table in one commit. Nothing names a codec or a format
+anywhere in it, nothing checks whether a resource exists, and nothing is collected: this is the
+shape that carries a season of logs larger than memory.
+
+The stages, and what each one proves:
+
+1. **The table exists before the first record does.** `schema_from_pattern` derives the projection's
+   root from the extractor configuration alone - no resource, no reader - and its
+   [partition marks](field.md#a-field-can-be-a-partition-column) become the table's spec.
+2. **One handle reads mixed codings.** `incoming/` holds `app-0.log.gz`, `app-1.log`, and
+   `app-2.log.zst`; each leaf is decoded by its *own* media type, in name-sorted order, one at a
+   time, and no line here says gzip or zstd.
+3. **The extractor is the parse and half the transform.** `took=(?<latency_us>\d+)` infers `int64`
+   from its own sub-pattern, so the arithmetic below is on a number column rather than on per-row
+   string parsing; `custom_fields` stamps the constant `source` column; `byte_size` closes each
+   batch on decoded input bytes.
+4. **The combine is the other half, and it is lazy.** The archived leaves are parsed by an older
+   extractor that has no `thread_id` capture. `combined` derives the root the two schemas merge
+   into - from the schemas alone, which a reader answers without pulling a batch - so the archived
+   rows arrive with a null `thread_id` and neither side is drained to find that out.
+5. **The append is one commit** of that lazy reader, and the read-back asserts on the *table*
+   rather than on anything the example still holds in memory.
+
+A record spanning a stack trace stays in the fixture, because multi-line grouping is the case that
+makes the line surface worth having.
 
 === "Rust"
 
     ```rust
-    use arrow_array::{Array, Int32Array, Int64Array, StringArray};
+    use arrow_array::{Array, Int64Array};
+    use yggdryl::iceberg::Catalog;
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
     use yggdryl::text::TextLineOptions;
+    use yggdryl::Value;
 
     let pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\] \[(?<thread_id>\d+)\] took=(?<latency_us>\d+)";
+    // The older extractor: same records, no thread column.
+    let archived = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\] \[\d+\] took=(?<latency_us>\d+)";
 
-    let root = std::env::temp_dir().join("yggdryl-docs-gzip-lines");
+    let root = std::env::temp_dir().join(format!("yggdryl-docs-pipeline-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root)?;
+    let incoming = root.join("incoming");
+    let archive = root.join("archive");
+    std::fs::create_dir_all(&incoming)?;
+    std::fs::create_dir_all(&archive)?;
 
-    // Two rotated leaves; the second record of the first spans a stack trace.
-    let leaves = [
-        concat!(
-            "2024-02-01 10:00:00.000000 [ii] [engine] [3] took=120 fill 100 SYMB-0001\n",
-            "2024-02-01 10:00:01.000000 [ee] [engine] [4] took=980 fill 101 SYMB-0002\n",
-            "    at engine::match(order.rs:118)\n",
-            "    at engine::step(order.rs:64)\n",
-            "2024-02-01 10:00:02.000000 [ww] [router] [5] took=240 fill 102 SYMB-0003\n",
-        ),
-        concat!(
-            "2024-02-01 10:00:03.000000 [ee] [ledger] [6] took=770 fill 103 SYMB-0004\n",
-            "2024-02-01 10:00:04.000000 [ii] [feed] [7] took=100 fill 104 SYMB-0005\n",
-        ),
-    ];
-    for (index, text) in leaves.iter().enumerate() {
-        std::fs::write(
-            root.join(format!("app-{index}.log.gz")),
-            yggdryl::gzip::dump(text.as_bytes())?,
-        )?;
-    }
+    // Three rotated leaves in three codings; the second record spans a stack trace.
+    let first = concat!(
+        "2024-02-01 10:00:00.000000 [ii] [engine] [3] took=120 fill 100 SYMB-0001\n",
+        "2024-02-01 10:00:01.000000 [ee] [engine] [4] took=980 fill 101 SYMB-0002\n",
+        "    at engine::match(order.rs:118)\n",
+        "    at engine::step(order.rs:64)\n",
+        "2024-02-01 10:00:02.000000 [ww] [router] [5] took=240 fill 102 SYMB-0003\n",
+    );
+    std::fs::write(incoming.join("app-0.log.gz"), yggdryl::gzip::dump(first.as_bytes())?)?;
+    std::fs::write(
+        incoming.join("app-1.log"),
+        b"2024-02-01 10:00:03.000000 [ee] [ledger] [6] took=770 fill 103 SYMB-0004\n",
+    )?;
+    std::fs::write(
+        incoming.join("app-2.log.zst"),
+        yggdryl::zstd::dump(b"2024-02-01 10:00:04.000000 [ii] [feed] [7] took=100 fill 104 SYMB-0005\n")?,
+    )?;
+    std::fs::write(
+        archive.join("app-9.log.gz"),
+        yggdryl::gzip::dump(b"2024-01-31 23:59:59.000000 [ee] [engine] [2] took=310 fill 099 SYMB-0000\n")?,
+    )?;
 
-    let folder = Folder::new(&root)?;
-    let options = TextLineOptions::with_pattern(pattern)?;
-    let (mut rows, mut errors, mut latency, mut traced) = (0_usize, 0_usize, 0_i64, 0_usize);
+    // 1. The extractor, and the table it implies - both before anything is read.
+    let options = TextLineOptions::with_pattern(pattern)?
+        .try_with_custom_fields([("source", Value::from("gateway"))])?
+        .with_byte_size(8 * 1024 * 1024);
+    let marked = options.schema().with_partition_fields(&["level"])?;
 
-    // One batch in memory at a time, each leaf decoded as a stream.
-    for batch in folder.read_arrow_lines(&options)? {
+    let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
+    let mut table = catalog.create_table("logs.app", marked)?;
+
+    // 2, 3, 4. One handle per folder, and one lazy combine over the two.
+    let older = TextLineOptions::with_pattern(archived)?
+        .try_with_custom_fields([("source", Value::from("archive"))])?;
+    let stream = yggdryl::arrow::combined(
+        Folder::new(&incoming)?.into_arrow_lines(&options)?,
+        Folder::new(&archive)?.into_arrow_lines(&older)?,
+    )?;
+
+    // 5. One commit, handed the reader itself - never a Vec of batches.
+    table.append(stream)?;
+
+    // The read-back asserts on the table, not on anything held in memory.
+    let mut rows = 0_usize;
+    let mut latency = 0_i64;
+    let mut threadless = 0_usize;
+    for batch in table.scan(None)? {
         let batch = batch?;
-        let level = batch.column_by_name("level").unwrap();
-        let level = level.as_any().downcast_ref::<StringArray>().unwrap();
-        // Already an integer: nothing here parses text.
-        let took = batch.column_by_name("latency_us").unwrap();
-        let took = took.as_any().downcast_ref::<Int64Array>().unwrap();
-        let spans = batch.column_by_name("lines").unwrap();
-        let spans = spans.as_any().downcast_ref::<Int32Array>().unwrap();
-
         rows += batch.num_rows();
-        for row in 0..batch.num_rows() {
-            if spans.value(row) > 1 {
-                traced += 1;
-            }
-            if level.value(row) == "ee" {
-                errors += 1;
-                latency += took.value(row);
-            }
-        }
+        let took = batch
+            .column_by_name("latency_us")
+            .expect("the typed capture")
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("int64 by inference, not by declaration");
+        latency += (0..batch.num_rows()).map(|row| took.value(row)).sum::<i64>();
+        threadless += batch
+            .column_by_name("thread_id")
+            .expect("the merged column")
+            .null_count();
     }
+    // Five live records - not the seven lines they occupy - and one archived.
+    assert_eq!(rows, 6);
+    assert_eq!(latency, 120 + 980 + 240 + 770 + 100 + 310);
+    assert_eq!(threadless, 1, "the archived extractor had no thread column");
 
-    // Five records, not the seven lines they occupy.
-    assert_eq!((rows, errors, traced), (5, 2, 1));
-    assert_eq!(latency, 980 + 770);
+    let reopened = catalog.table("logs.app")?;
+    assert_eq!(reopened.metadata().default_spec()?.fields[0].name, "level");
+    assert!(reopened.schema()?.get_field_by_name("source").is_some());
+
+    let _ = std::fs::remove_dir_all(&root);
     ```
 
 === "Python"
@@ -452,48 +502,86 @@ parsing, and the stack trace stays one row with `lines` of 3.
     ```python
     import gzip
     import pathlib
+    import shutil
     import tempfile
 
     import pyarrow as pa
     import pyarrow.compute as pc
 
-    from yggdryl import IOBase
+    from yggdryl import IOBase, combined, schema_from_pattern, zstd
+    from yggdryl.iceberg import Catalog
 
     pattern = (
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*"
         r" \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]"
         r" \[(?<thread_id>\d+)\] took=(?<latency_us>\d+)"
     )
+    # The older extractor: same records, no thread column.
+    archived_pattern = pattern.replace(r"\[(?<thread_id>\d+)\]", r"\[\d+\]")
 
-    # Two rotated leaves; the second record of the first spans a stack trace.
-    leaves = [
-        "2024-02-01 10:00:00.000000 [ii] [engine] [3] took=120 fill 100 SYMB-0001\n"
-        "2024-02-01 10:00:01.000000 [ee] [engine] [4] took=980 fill 101 SYMB-0002\n"
-        "    at engine::match(order.rs:118)\n"
-        "    at engine::step(order.rs:64)\n"
-        "2024-02-01 10:00:02.000000 [ww] [router] [5] took=240 fill 102 SYMB-0003\n",
-        "2024-02-01 10:00:03.000000 [ee] [ledger] [6] took=770 fill 103 SYMB-0004\n"
-        "2024-02-01 10:00:04.000000 [ii] [feed] [7] took=100 fill 104 SYMB-0005\n",
-    ]
-    root = pathlib.Path(tempfile.mkdtemp())
-    for index, text in enumerate(leaves):
-        (root / f"app-{index}.log.gz").write_bytes(gzip.compress(text.encode()))
+    extractor = {
+        "pattern": pattern,
+        "byte_size": 8 * 1024 * 1024,
+        "custom_fields": {"source": "gateway"},
+    }
+    older = {"pattern": archived_pattern, "custom_fields": {"source": "archive"}}
 
-    rows = errors = traced = 0
-    latency = 0
-    # The reader is lazy: one batch crosses at a time, over the C Stream.
-    for batch in IOBase(root).read_arrow_lines(pattern):
-        rows += batch.num_rows
-        traced += pc.sum(pc.cast(pc.greater(batch.column("lines"), 1), pa.int64())).as_py()
-        kept = batch.filter(pc.equal(batch.column("level"), "ee"))
-        errors += kept.num_rows
-        if kept.num_rows:
-            # `latency_us` is int64 already, so this is a sum, not a parse.
-            latency += pc.sum(kept.column("latency_us")).as_py()
+    root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-"))
+    incoming = root / "incoming"
+    archive = root / "archive"
+    incoming.mkdir()
+    archive.mkdir()
 
-    assert (rows, errors, traced) == (5, 2, 1)
-    assert latency == 980 + 770
-    assert IOBase(root).read_arrow_lines(pattern).schema.field("latency_us").type == pa.int64()
+    # Three rotated leaves in three codings; the second record spans a stack trace.
+    (incoming / "app-0.log.gz").write_bytes(
+        gzip.compress(
+            b"2024-02-01 10:00:00.000000 [ii] [engine] [3] took=120 fill 100 SYMB-0001\n"
+            b"2024-02-01 10:00:01.000000 [ee] [engine] [4] took=980 fill 101 SYMB-0002\n"
+            b"    at engine::match(order.rs:118)\n"
+            b"    at engine::step(order.rs:64)\n"
+            b"2024-02-01 10:00:02.000000 [ww] [router] [5] took=240 fill 102 SYMB-0003\n"
+        )
+    )
+    (incoming / "app-1.log").write_bytes(
+        b"2024-02-01 10:00:03.000000 [ee] [ledger] [6] took=770 fill 103 SYMB-0004\n"
+    )
+    (incoming / "app-2.log.zst").write_bytes(
+        zstd.dumps(b"2024-02-01 10:00:04.000000 [ii] [feed] [7] took=100 fill 104 SYMB-0005\n")
+    )
+    (archive / "app-9.log.gz").write_bytes(
+        gzip.compress(
+            b"2024-01-31 23:59:59.000000 [ee] [engine] [2] took=310 fill 099 SYMB-0000\n"
+        )
+    )
+
+    # 1. The table exists before the first record does.
+    marked = schema_from_pattern(options=extractor).with_partition_fields(["level"])
+    catalog = Catalog(root / "warehouse")
+    table = catalog.create_table("logs.app", marked)
+
+    # 2, 3, 4. One handle per folder, and one lazy combine over the two: both
+    # schemas are answered without pulling a batch, so nothing is read yet.
+    stream = combined(
+        IOBase(incoming).read_arrow_lines(options=extractor),
+        IOBase(archive).read_arrow_lines(options=older),
+    )
+
+    # 5. One commit, handed the reader itself - never a list of batches.
+    table.append(stream)
+
+    # The read-back asserts on the table, not on anything held in memory.
+    rows = table.scan().read_all()
+    # Five live records - not the seven lines they occupy - and one archived.
+    assert rows.num_rows == 6
+    assert pc.sum(rows.column("latency_us")).as_py() == 120 + 980 + 240 + 770 + 100 + 310
+    assert rows.schema.field("latency_us").type == pa.int64()
+    assert rows.column("thread_id").null_count == 1
+
+    reopened = catalog.table("logs.app")
+    assert [field.name for field in reopened.spec.fields] == ["level"]
+    assert set(rows.column("source").to_pylist()) == {"gateway", "archive"}
+
+    shutil.rmtree(root)
     ```
 
 === "JavaScript"
@@ -504,52 +592,115 @@ parsing, and the stack trace stays one row with `lines` of 3.
     const os = require('node:os')
     const path = require('node:path')
     const zlib = require('node:zlib')
-    const { IOBase } = require('yggdryl')
+    const { IOBase, iceberg, schemaFromPattern, zstd } = require('yggdryl')
 
     const pattern =
       '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S*' +
       ' \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]' +
       ' \\[(?<thread_id>\\d+)\\] took=(?<latency_us>\\d+)'
+    // The older extractor: same records, no thread column.
+    const archivedPattern = pattern.replace('\\[(?<thread_id>\\d+)\\]', '\\[\\d+\\]')
 
-    // Two rotated leaves; the second record of the first spans a stack trace.
-    const leaves = [
-      '2024-02-01 10:00:00.000000 [ii] [engine] [3] took=120 fill 100 SYMB-0001\n' +
-        '2024-02-01 10:00:01.000000 [ee] [engine] [4] took=980 fill 101 SYMB-0002\n' +
-        '    at engine::match(order.rs:118)\n' +
-        '    at engine::step(order.rs:64)\n' +
-        '2024-02-01 10:00:02.000000 [ww] [router] [5] took=240 fill 102 SYMB-0003\n',
-      '2024-02-01 10:00:03.000000 [ee] [ledger] [6] took=770 fill 103 SYMB-0004\n' +
-        '2024-02-01 10:00:04.000000 [ii] [feed] [7] took=100 fill 104 SYMB-0005\n',
-    ]
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    leaves.forEach((text, index) => {
-      fs.writeFileSync(path.join(root, `app-${index}.log.gz`), zlib.gzipSync(Buffer.from(text)))
-    })
-
-    let rows = 0
-    let errors = 0
-    let traced = 0
-    let latency = 0n // an int64 column reads as BigInt
-
-    for (const batch of new IOBase(root).readArrowLines(pattern)) {
-      const level = batch.getChild('level')
-      const took = batch.getChild('latency_us')
-      const spans = batch.getChild('lines')
-      rows += batch.numRows
-      for (let row = 0; row < batch.numRows; row += 1) {
-        if (spans.get(row) > 1) traced += 1
-        if (level.get(row) === 'ee') {
-          errors += 1
-          latency += took.get(row) // no Number() round trip
-        }
-      }
+    const extractor = {
+      pattern,
+      byteSize: 8 * 1024 * 1024,
+      customFields: { source: 'gateway' },
     }
+    const older = { pattern: archivedPattern, customFields: { source: 'archive' } }
 
-    assert.deepEqual([rows, errors, traced], [5, 2, 1])
-    assert.equal(latency, 1750n)
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
+    const incoming = path.join(root, 'incoming')
+    const archive = path.join(root, 'archive')
+    fs.mkdirSync(incoming)
+    fs.mkdirSync(archive)
+
+    // Three rotated leaves in three codings; the second record spans a stack trace.
+    fs.writeFileSync(
+      path.join(incoming, 'app-0.log.gz'),
+      zlib.gzipSync(
+        Buffer.from(
+          '2024-02-01 10:00:00.000000 [ii] [engine] [3] took=120 fill 100 SYMB-0001\n' +
+            '2024-02-01 10:00:01.000000 [ee] [engine] [4] took=980 fill 101 SYMB-0002\n' +
+            '    at engine::match(order.rs:118)\n' +
+            '    at engine::step(order.rs:64)\n' +
+            '2024-02-01 10:00:02.000000 [ww] [router] [5] took=240 fill 102 SYMB-0003\n',
+        ),
+      ),
+    )
+    fs.writeFileSync(
+      path.join(incoming, 'app-1.log'),
+      '2024-02-01 10:00:03.000000 [ee] [ledger] [6] took=770 fill 103 SYMB-0004\n',
+    )
+    fs.writeFileSync(
+      path.join(incoming, 'app-2.log.zst'),
+      zstd.dumps(
+        Buffer.from('2024-02-01 10:00:04.000000 [ii] [feed] [7] took=100 fill 104 SYMB-0005\n'),
+      ),
+    )
+    fs.writeFileSync(
+      path.join(archive, 'app-9.log.gz'),
+      zlib.gzipSync(
+        Buffer.from('2024-01-31 23:59:59.000000 [ee] [engine] [2] took=310 fill 099 SYMB-0000\n'),
+      ),
+    )
+
+    // 1. The table exists before the first record does.
+    const marked = schemaFromPattern(extractor).withPartitionFields(['level'])
+    const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
+    const table = catalog.createTable('logs.app', marked)
+
+    // 2, 3, 4. One handle per folder, and one lazy combine over the two.
+    const stream = new IOBase(incoming)
+      .readArrowLines(extractor)
+      .combined(new IOBase(archive).readArrowLines(older))
+
+    // 5. One commit, handed the reader itself - never an array of batches.
+    table.append(stream)
+
+    // The read-back asserts on the table, not on anything held in memory.
+    const rows = table.scan().toTable()
+    // Five live records - not the seven lines they occupy - and one archived.
+    assert.equal(rows.numRows, 6)
+    const latency = [...rows.getChild('latency_us')].reduce((total, took) => total + took, 0n)
+    assert.equal(latency, 120n + 980n + 240n + 770n + 100n + 310n)
+    assert.equal(rows.getChild('thread_id').nullCount, 1)
+    assert.deepEqual(
+      new Set(rows.getChild('source')),
+      new Set(['gateway', 'archive']),
+    )
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
+
+## Placeholder substitution
+
+`{{ }}` substitution is a feature almost no document uses, so the question that matters is what it
+costs the documents that do *not*. `codec/placeholder` answers it directly: the same 256-entry JSON
+document parsed with the feature off and on, at three placeholder densities. From one containerized
+x86_64 Linux run (`cargo bench --features "parquet iceberg" --bench text -- codec/placeholder`;
+Criterion medians with 95% intervals):
+
+```text
+codec/placeholder/none/off   88.786 us   [88.029 us 89.799 us]
+codec/placeholder/none/on    91.827 us   [91.692 us 91.978 us]
+codec/placeholder/few/off    90.048 us   [89.508 us 90.662 us]
+codec/placeholder/few/on    130.400 us   [129.45 us 131.43 us]
+codec/placeholder/most/off   88.717 us   [87.809 us 88.717 us]
+codec/placeholder/most/on   219.970 us   [219.66 us 220.30 us]
+```
+
+**The guard costs about 3 us on a 7.6 KiB document - 3.4% of the parse, ~0.4 ns a byte.** That is
+the whole delta between `none/off` and `none/on`: one linear scan for `{{`, and when it finds
+nothing the parsed value is returned untouched - no walk, no allocation, no per-scalar inspection.
+It is small, and it is not zero, so it is stated rather than rounded away. It is written as a
+single-byte search that checks its neighbour rather than as a two-byte window comparison, which
+measured worse; a SIMD byte-search dependency would shrink it further and has not been taken for
+3 us.
+
+The other two rows are the work itself, not the guard: eight placeholders in 256 scalars costs
+40 us (`few`), and 256 of them cost 131 us - about 0.5 us a substituted scalar either way, which is
+the fresh string each one builds. Only string scalars are visited, and only the ones that actually
+contain a placeholder are rebuilt.
 
 ## Avro against fastavro and PyIceberg, on identical bytes
 

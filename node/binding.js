@@ -526,7 +526,28 @@ function checkedOptions(options) {
   if (options.format !== undefined && typeof options.format !== 'string') {
     throw new TypeError('codec format must be a string')
   }
+  if (
+    options.placeholders !== undefined &&
+    options.placeholders !== null &&
+    (typeof options.placeholders !== 'object' || Array.isArray(options.placeholders))
+  ) {
+    throw new TypeError('placeholders must be a mapping of variable names to values')
+  }
+  if (options.environment !== undefined && typeof options.environment !== 'boolean') {
+    throw new TypeError('environment must be a boolean')
+  }
   return options
+}
+
+// The two `{{ }}` switches, crossing as one native `Value` and one boolean.
+// Both stay `undefined` unless the caller set them, so a plain load is exactly
+// the plain load: no substitution pass, and no environment access at all.
+function fillingArguments(options) {
+  const { placeholders, environment } = options
+  return [
+    placeholders === undefined || placeholders === null ? null : Value.fromJs(placeholders),
+    environment === undefined ? null : environment,
+  ]
 }
 
 function toNativeContent(content) {
@@ -822,7 +843,11 @@ function nativeFormat(format) {
 function nativeLoads(content, format, options) {
   options = checkedOptions(options)
   return fromTransport(
-    nativeFormat(format).loads(toNativeContent(content), options.maxDepth),
+    nativeFormat(format).loads(
+      toNativeContent(content),
+      options.maxDepth,
+      ...fillingArguments(options),
+    ),
   )
 }
 
@@ -844,7 +869,9 @@ function nativeLoadsAll(content, format, options) {
 
 function nativeLoadPath(path, format, options) {
   options = checkedOptions(options)
-  return fromTransport(nativeFormat(format).loadPath(path, options.maxDepth))
+  return fromTransport(
+    nativeFormat(format).loadPath(path, options.maxDepth, ...fillingArguments(options)),
+  )
 }
 
 function nativeLoadAllPath(path, format, options) {

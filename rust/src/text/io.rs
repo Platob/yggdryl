@@ -148,6 +148,22 @@ pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value> {
     crate::text::from_slice_with_limits(&decoded, plan.format(), limits)
 }
 
+/// Read one structured value under [`Loading`](crate::text::Loading).
+///
+/// The handle form of [`from_slice_with`](crate::text::from_slice_with): the
+/// content coding is peeled first, so the `{{` guard and the substitution both
+/// see the *decoded* document rather than its compressed bytes.
+///
+/// # Errors
+///
+/// Returns a read, decoding, or parse failure, or the substitution's refusal.
+pub fn load_with(source: &impl IOBase, loading: &crate::text::Loading) -> Result<Value> {
+    let bytes = source.read_all()?;
+    let plan = Plan::detect(source, &bytes)?;
+    let decoded = plan.codec().load(&bytes)?;
+    crate::text::from_slice_with(&decoded, plan.format(), loading)
+}
+
 /// Read every structured value from a multi-document handle.
 ///
 /// # Errors

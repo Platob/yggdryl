@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Literal, TypeVar, overload
 
 from .._codec import (
@@ -23,6 +24,8 @@ def loads(
     cls: type[_T],
     safe: bool = True,
     errors: _ErrorPolicy = "raise",
+    placeholders: Mapping[str, Any] | None = None,
+    environment: bool = False,
 ) -> _T: ...
 @overload
 def loads(
@@ -31,6 +34,8 @@ def loads(
     cls: None = None,
     safe: bool = True,
     errors: _ErrorPolicy = "raise",
+    placeholders: Mapping[str, Any] | None = None,
+    environment: bool = False,
 ) -> Any: ...
 
 load = loads

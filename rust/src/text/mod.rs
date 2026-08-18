@@ -10,6 +10,8 @@ mod formatting;
 mod io;
 mod limits;
 pub mod line;
+mod loading;
+mod placeholder;
 pub(crate) mod position;
 pub(crate) mod wire;
 
@@ -24,13 +26,15 @@ pub use format::Format;
 pub use formatting::{Formatting, Indent};
 pub use io::{
     Plan, dump, dump_all, dump_all_with, dump_with, dump_with_level, load, load_all,
-    load_all_with_limits, load_with_limits,
+    load_all_with_limits, load_with, load_with_limits,
 };
 pub use limits::Limits;
 pub use line::{
     LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines,
     schema_from_pattern,
 };
+pub use loading::Loading;
+pub use placeholder::Placeholders;
 
 use crate::{Error, Result, json, toml, yaml};
 
@@ -63,6 +67,23 @@ impl Iterator for ValueIter<'_> {
     }
 }
 
+/// Apply `loading`'s placeholders to a freshly parsed value, if any apply.
+///
+/// The cheap guard lives here: substitution is off unless a caller turned it
+/// on, and even then a document whose bytes contain no `{{` is returned
+/// untouched - no walk, no allocation, no per-scalar inspection. The
+/// overwhelming majority of documents have no placeholders and must not pay for
+/// the feature.
+fn filled(value: Value, input: &[u8], loading: &Loading) -> Result<Value> {
+    let Some(placeholders) = loading.placeholders() else {
+        return Ok(value);
+    };
+    if !placeholder::present(input) {
+        return Ok(value);
+    }
+    placeholder::substitute(value, placeholders)
+}
+
 /// Decode one value from borrowed UTF-8 text using the selected format.
 ///
 /// This delegates through the string's borrowed bytes without an intermediate
@@ -84,6 +105,22 @@ pub fn from_str_with_limits(input: &str, format: Format, limits: Limits) -> Resu
     }
 }
 
+/// Decode one value from borrowed UTF-8 text under [`Loading`].
+///
+/// The parse itself is unchanged - `loading`'s limits are the same limits - so
+/// a malformed document still fails exactly where it is malformed, with exact
+/// byte positions. `{{ }}` placeholders, when [`Loading::with_placeholders`]
+/// turned them on, are resolved *after* that, by walking the parsed value.
+///
+/// # Errors
+///
+/// Returns the codec's parse failure, or the substitution's refusal - an
+/// unresolved variable, a malformed placeholder - naming where it sits.
+pub fn from_str_with(input: &str, format: Format, loading: &Loading) -> Result<Value> {
+    let value = from_str_with_limits(input, format, loading.limits())?;
+    filled(value, input.as_bytes(), loading)
+}
+
 /// Decode one value using the selected format.
 pub fn from_slice(input: &[u8], format: Format) -> Result<Value> {
     from_slice_with_limits(input, format, Limits::default())
@@ -99,6 +136,16 @@ pub fn from_slice_with_limits(input: &[u8], format: Format, limits: Limits) -> R
         Format::Yaml => yaml::from_slice_with_limits(input, limits),
         Format::Toml => toml::from_slice_with_limits(input, limits),
     }
+}
+
+/// Decode one value from bytes under [`Loading`], as [`from_str_with`] does.
+///
+/// # Errors
+///
+/// Returns the codec's parse failure, or the substitution's refusal.
+pub fn from_slice_with(input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
+    let value = from_slice_with_limits(input, format, loading.limits())?;
+    filled(value, input, loading)
 }
 
 /// Decode one value from a byte reader using the selected format.
@@ -120,6 +167,31 @@ pub fn from_reader_with_limits<R: Read>(
         Format::Yaml => yaml::from_reader_with_limits(reader, limits),
         Format::Toml => toml::from_reader_with_limits(reader, limits),
     }
+}
+
+/// Decode one value from a byte reader under [`Loading`].
+///
+/// With placeholders off this is [`from_reader_with_limits`] exactly, reader
+/// and all. With them on the reader is drained into memory first - bounded by
+/// [`Limits::max_input_bytes`] - because the cheap `{{` guard needs the bytes,
+/// and a document small enough to want substitution is small enough to hold.
+///
+/// # Errors
+///
+/// Returns the read failure, the codec's parse failure, or the substitution's
+/// refusal.
+pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -> Result<Value> {
+    let Some(_) = loading.placeholders() else {
+        return from_reader_with_limits(reader, format, loading.limits());
+    };
+    let mut bytes = Vec::new();
+    let limit = loading.limits().max_input_bytes();
+    // One past the limit, so exceeding it is the codec's own refusal rather
+    // than a silent truncation here.
+    reader
+        .take(limit.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)?;
+    from_slice_with(&bytes, format, loading)
 }
 
 /// Decode all values or documents in an in-memory byte stream.

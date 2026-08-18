@@ -1,0 +1,142 @@
+'use strict'
+
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const test = require('node:test')
+
+const { json, toml, yaml } = require('yggdryl')
+
+// The same document, written the way each format spells it. YAML *requires*
+// the quotes: a bare `{{ X }}` is a flow mapping.
+const DOCUMENTS = [
+  [json, (scalar) => `{"value": ${JSON.stringify(scalar)}}`],
+  [yaml, (scalar) => `value: ${JSON.stringify(scalar)}\n`],
+  [toml, (scalar) => `value = ${JSON.stringify(scalar)}\n`],
+]
+
+function resolved(scalar, options) {
+  return DOCUMENTS.map(([codec, document]) => codec.loads(document(scalar), options).value)
+}
+
+test('a whole-scalar placeholder adopts the resolved value type', () => {
+  const placeholders = { PORT: 8080, DEBUG: true, HOSTS: ['a', 'b'], NOTHING: null }
+  assert.deepEqual(resolved('{{ PORT }}', { placeholders }), [8080, 8080, 8080])
+  assert.deepEqual(resolved('{{ DEBUG }}', { placeholders }), [true, true, true])
+  assert.deepEqual(resolved('{{ HOSTS }}', { placeholders }), [
+    ['a', 'b'],
+    ['a', 'b'],
+    ['a', 'b'],
+  ])
+})
+
+test('an embedded placeholder is textual and stays a string', () => {
+  const placeholders = { ROOT: '/var/log', PORT: 8080 }
+  assert.deepEqual(resolved('{{ ROOT }}/app', { placeholders }), [
+    '/var/log/app',
+    '/var/log/app',
+    '/var/log/app',
+  ])
+  assert.deepEqual(resolved('h:{{ PORT }}/x', { placeholders }), [
+    'h:8080/x',
+    'h:8080/x',
+    'h:8080/x',
+  ])
+  // A container has no text form inside a larger string.
+  assert.throws(
+    () => json.loads('{"a": "x{{ HOSTS }}"}', { placeholders: { HOSTS: ['a'] } }),
+    /resolve to a scalar/,
+  )
+})
+
+test('a missing variable names itself rather than resolving to nothing', () => {
+  assert.throws(
+    () => json.loads('{"a": {"b": "{{ MISSING }}"}}', { placeholders: {} }),
+    /MISSING[\s\S]*\$\.a\.b|\$\.a\.b[\s\S]*MISSING/,
+  )
+})
+
+test('a default makes a variable optional and carries its own type', () => {
+  assert.deepEqual(resolved('{{ PORT | default(8080) }}', { placeholders: {} }), [
+    8080, 8080, 8080,
+  ])
+  assert.deepEqual(resolved('{{ R | default("/tmp") }}', { placeholders: {} }), [
+    '/tmp',
+    '/tmp',
+    '/tmp',
+  ])
+  // A supplied value wins over the default.
+  assert.deepEqual(resolved('{{ P | default(1) }}', { placeholders: { P: 2 } }), [2, 2, 2])
+  // `default` is the only filter there is.
+  assert.throws(
+    () => json.loads('{"a": "{{ R | upper }}"}', { placeholders: { R: 'x' } }),
+    /default\(LITERAL\)/,
+  )
+})
+
+test('a doubled opener is a literal one', () => {
+  assert.deepEqual(resolved('{{{{ NAME }}', { placeholders: {} }), [
+    '{{ NAME }}',
+    '{{ NAME }}',
+    '{{ NAME }}',
+  ])
+  assert.throws(() => json.loads('{"a": "{{ NAME"}', { placeholders: {} }), /unterminated/)
+})
+
+test('substitution is off unless asked for, and the environment is its own switch', () => {
+  // No options at all: the braces are ordinary text.
+  assert.equal(json.loads('{"a": "{{ MISSING }}"}').a, '{{ MISSING }}')
+
+  const name = 'YGGDRYL_PLACEHOLDER_NODE_VALUE'
+  process.env[name] = 'from-environment'
+  try {
+    const scalar = `{{ ${name} }}`
+    // Set, and still not resolved: the environment was not consulted.
+    assert.throws(() => resolved(scalar, { placeholders: {} }), /not consulted/)
+
+    assert.deepEqual(resolved(scalar, { environment: true }), [
+      'from-environment',
+      'from-environment',
+      'from-environment',
+    ])
+    // The supplied mapping wins.
+    assert.deepEqual(
+      resolved(scalar, { placeholders: { [name]: 'from-mapping' }, environment: true }),
+      ['from-mapping', 'from-mapping', 'from-mapping'],
+    )
+  } finally {
+    delete process.env[name]
+  }
+})
+
+test('a document without placeholders parses identically either way', (t) => {
+  const document = '{"a": "plain", "b": [1, 2], "c": {"d": null}}'
+  assert.deepEqual(json.loads(document, { placeholders: { X: 1 } }), json.loads(document))
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-placeholder-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'config.json')
+  fs.writeFileSync(target, '{"a": "{{ NAME }}"}')
+  const options = { placeholders: { NAME: 'app' } }
+  assert.deepEqual(json.load(target, options), { a: 'app' })
+  assert.deepEqual(json.loads(fs.readFileSync(target), options), { a: 'app' })
+
+  // And nothing about the options is guessed for the caller.
+  assert.throws(() => json.loads(document, { placeholders: ['a'] }), TypeError)
+  assert.throws(() => json.loads(document, { environment: 'yes' }), TypeError)
+})
+
+test('an unquoted YAML placeholder is what YAML says it is', () => {
+  const options = { placeholders: { PORT: 8080 } }
+  assert.equal(yaml.loads('port: "{{ PORT }}"\n', options).port, 8080)
+
+  // Unquoted, YAML read a flow mapping before anything here ran.
+  const bare = yaml.loads('port: {{ PORT }}\n', options).port
+  assert.equal(typeof bare, 'object')
+})
+
+test('dumping never reintroduces a placeholder', () => {
+  const value = json.loads('{"path": "{{ ROOT }}/x"}', { placeholders: { ROOT: '/srv' } })
+  assert.equal(json.dumps(value).toString(), '{"path":"/srv/x"}')
+})

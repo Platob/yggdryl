@@ -713,6 +713,22 @@ export interface CodecOptions {
   format?: SingleCodecFormat
   /** Maximum recursive container depth in the inclusive range 1..48. */
   maxDepth?: number
+  /**
+   * Resolve Jinja-style `{{ NAME }}` placeholders from this mapping.
+   *
+   * Substitution is off unless this or `environment` is set. A name nothing
+   * resolves is an error naming it, never a silent empty string, and this
+   * mapping wins over the environment.
+   */
+  placeholders?: Record<string, unknown> | ReadonlyMap<string, unknown> | null
+  /**
+   * Also resolve placeholders from the process environment.
+   *
+   * Its own switch, and off by default: with it off no environment variable is
+   * read at all. A document that resolves a secret into a value that is then
+   * dumped, logged, or written to a table has leaked it.
+   */
+  environment?: boolean
 }
 
 export interface JsonLinesCodecOptions extends Omit<CodecOptions, 'format'> {
