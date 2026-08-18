@@ -128,8 +128,12 @@ impl Filter {
                 .map(|field| field.name())
                 .collect::<Vec<_>>()
                 .join(", ");
-            invalid(crate::text::expected_got(
-                format_args!("a filter column the table schema declares, got {column:?}; it has"),
+            // The contract sentence is spelled out rather than built by
+            // `expected_got`, because what follows the name is the list of
+            // columns that do exist, not a second "got" - routing it through
+            // the two-slot helper renders "it has, got id, venue".
+            invalid(format_smolstr!(
+                "expected a filter column the table schema declares, got {column:?}; it has {}",
                 crate::text::elide_display(&columns),
             ))
         })?;

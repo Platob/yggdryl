@@ -1270,8 +1270,16 @@ mod planning {
     fn a_filter_naming_a_column_the_schema_does_not_have_lists_the_ones_it_does() {
         let (_path, table) = venues("plan-unknown");
         let message = table.plan(&[("exchange", "XNAS")]).unwrap_err().to_string();
-        assert!(message.contains("exchange"), "{message}");
-        assert!(message.contains("id, symbol, venue"), "{message}");
+        // The whole clause, not just the two names in it: asserting only that
+        // the column list appears somewhere let a stray ", got" sit between
+        // "it has" and the list, which is what a reader would actually see.
+        assert!(
+            message.contains(
+                "expected a filter column the table schema declares, got \"exchange\"; it has id, \
+                 symbol, venue"
+            ),
+            "{message}"
+        );
     }
 
     #[test]
