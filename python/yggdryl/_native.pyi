@@ -904,6 +904,8 @@ class IOBase:
     @media_type.setter
     def media_type(self, media_type: MediaType | MimeType | str) -> None: ...
     @property
+    def codec(self) -> str | None: ...
+    @property
     def size(self) -> int: ...
     @property
     def parent(self) -> IOBase | None: ...
@@ -954,6 +956,10 @@ class IOBase:
         traceback: Any | None = None,
     ) -> bool: ...
     def copy_into(self, target: IOBase) -> int: ...
+    def compress_into(
+        self, target: IOBase, codec: str | None = None, level: int | None = None
+    ) -> int: ...
+    def decompress_into(self, target: IOBase, codec: str | None = None) -> int: ...
     def record_options(self) -> RecordOptions: ...
     def read_lines(self, pattern: str | None = None) -> LineIterator: ...
     def read_arrow_lines(
@@ -1625,9 +1631,43 @@ class Table:
     @property
     def schemas(self) -> list[Field]: ...
     def manifests(self) -> list[ManifestFile]: ...
+    def manifests_at(self, snapshot_id: int) -> list[ManifestFile]: ...
     def data_files(self) -> list[tuple[DataFile, PartitionSpec]]: ...
     def scan(
         self,
+        field: FieldLike | None = None,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
+    def scan_where(
+        self,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        field: FieldLike | None = None,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
+    def scan_ref(
+        self,
+        name: str,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
         field: FieldLike | None = None,
         *,
         options: IcebergOptions | None = None,
@@ -1658,7 +1698,20 @@ class Table:
         compact_after_commits: int | None = None,
         data_format: str | None = None,
     ) -> pyarrow.RecordBatchReader: ...
+    def plan(
+        self, filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None
+    ) -> ScanPlan: ...
+    def plan_at(
+        self,
+        snapshot_id: int,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+    ) -> ScanPlan: ...
     def snapshot_by_ref(self, name: str) -> Snapshot: ...
+    def create_branch(self, name: str, snapshot_id: int) -> None: ...
+    def create_tag(self, name: str, snapshot_id: int) -> None: ...
+    def remove_ref(self, name: str) -> None: ...
+    def fast_forward(self, name: str, snapshot_id: int) -> None: ...
+    def expire_snapshots(self, older_than_ms: int) -> list[int]: ...
     @property
     def target_file_size(self) -> int: ...
     def append(
@@ -1680,6 +1733,57 @@ class Table:
         self,
         batches: BatchesLike,
         *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def overwrite_where(
+        self,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
+        batches: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def merge(
+        self,
+        batches: BatchesLike,
+        merge_by_names: Iterable[str],
+        *,
+        safe: bool = True,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def merge_where(
+        self,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
+        batches: BatchesLike,
+        merge_by_names: Iterable[str],
+        *,
+        safe: bool = True,
         options: IcebergOptions | None = None,
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
@@ -1738,6 +1842,21 @@ class SchemaUpdate:
         exception: object = None,
         traceback: object = None,
     ) -> bool: ...
+    def __repr__(self) -> str: ...
+
+class ScanPlan:
+    """What a scan decided to read, before a single row was read."""
+
+    @property
+    def record_count(self) -> int: ...
+    @property
+    def files_planned(self) -> int: ...
+    @property
+    def files_skipped(self) -> int: ...
+    @property
+    def manifests_read(self) -> int: ...
+    @property
+    def manifests_skipped(self) -> int: ...
     def __repr__(self) -> str: ...
 
 class Compaction:
@@ -1904,5 +2023,7 @@ def gzip_loads(data: bytes) -> bytes: ...
 def gzip_dumps(data: bytes, level: int | None = None) -> bytes: ...
 def zlib_loads(data: bytes) -> bytes: ...
 def zlib_dumps(data: bytes, level: int | None = None) -> bytes: ...
+def zlib_loads_raw(data: bytes) -> bytes: ...
+def zlib_dumps_raw(data: bytes, level: int | None = None) -> bytes: ...
 def zstd_loads(data: bytes) -> bytes: ...
 def zstd_dumps(data: bytes, level: int | None = None) -> bytes: ...

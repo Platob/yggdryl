@@ -18,8 +18,8 @@ use pyo3::types::{PyDict, PyTuple, PyType};
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
     Catalog, Compaction, DataFile, FileFormat, FormatVersion, IcebergOptions, ManifestContent,
-    ManifestFile, PartitionField, PartitionSpec, SchemaUpdate, Snapshot, Table, assign_field_ids,
-    can_promote, last_field_id, schema_from_json, schema_to_json,
+    ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
+    assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
 };
 use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Value};
@@ -223,6 +223,18 @@ fn filter_pairs_from_value(value: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<(St
         Some(value) => string_pairs_from_value(value),
         None => Ok(Vec::new()),
     }
+}
+
+/// Borrow owned filter pairs as the slice of string pairs the core takes.
+///
+/// The owned pairs outlive the call because a filter is read at the boundary
+/// and the core is entered afterwards, so the borrow is taken here rather than
+/// where the pairs are built.
+fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
+    pairs
+        .iter()
+        .map(|(column, value)| (column.as_str(), value.as_str()))
+        .collect()
 }
 
 /// Read a warehouse folder out of what Python names one with.
@@ -923,6 +935,36 @@ impl PyTable {
             .collect())
     }
 
+    /// Every manifest one retained snapshot points at.
+    ///
+    /// The snapshot is named by identifier rather than passed as a value,
+    /// because the table is the authority on which snapshots it still retains
+    /// - a `Snapshot` a caller kept from before an expiry describes a
+    /// manifest list that may be gone. An identifier the table no longer
+    /// retains is a `ValueError` naming it and the ones it does, the same
+    /// failure [`scan_at`](Self::scan_at) reports for the same reason.
+    fn manifests_at(&self, snapshot_id: i64) -> PyResult<Vec<PyManifestFile>> {
+        let metadata = self.inner.metadata();
+        let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
+            let retained: Vec<String> = metadata
+                .snapshots
+                .iter()
+                .map(|snapshot| snapshot.snapshot_id.to_string())
+                .collect();
+            PyValueError::new_err(format!(
+                "expected a retained snapshot id, got {snapshot_id}; the table retains [{}]",
+                retained.join(", ")
+            ))
+        })?;
+        Ok(self
+            .inner
+            .manifests_at(snapshot)
+            .map_err(value_error)?
+            .into_iter()
+            .map(PyManifestFile::from_core)
+            .collect())
+    }
+
     /// Every live data file of the current snapshot, with the spec it was
     /// written under.
     fn data_files(&self) -> PyResult<Vec<(PyDataFile, PyPartitionSpec)>> {
@@ -967,6 +1009,69 @@ impl PyTable {
         batch_reader_to_pyarrow(py, reader)
     }
 
+    /// Read the rows matching `filters` as a `pyarrow.RecordBatchReader`.
+    ///
+    /// `filters` is a mapping or a sequence of `(column, value)` pairs - the
+    /// vocabulary `IOBase.children_where` uses. A filter on a partition column
+    /// is answered by the plan alone, because every row of a file whose
+    /// partition tuple matches holds that value; a filter on any other column
+    /// is applied to the rows the surviving files hold, because statistics
+    /// bound a file rather than select a row. Either way the rows that come
+    /// back are the rows that match. `field` and the options mean exactly what
+    /// they mean on [`scan`](Self::scan).
+    #[pyo3(signature = (filters = None, field = None, *, options = None, **kwargs))]
+    fn scan_where<'py>(
+        &mut self,
+        py: Python<'py>,
+        filters: Option<&Bound<'_, PyAny>>,
+        field: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let resolved =
+            iceberg_call_options("scan_where", self.inner.explicit_options(), options, kwargs)?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let field = field
+            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .transpose()?;
+        let reader = with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .scan_where(&borrowed_pairs(&pairs), field.as_ref())
+                .map_err(value_error)
+        })?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Read the rows a branch or tag names, as a `pyarrow.RecordBatchReader`.
+    ///
+    /// This is [`snapshot_by_ref`](Self::snapshot_by_ref) followed by
+    /// [`scan_at`](Self::scan_at), so a ref is read as the schema its snapshot
+    /// was written under and `filters` and `field` mean what they mean there.
+    /// A name the table does not carry is an error naming the refs it does.
+    #[pyo3(signature = (name, filters = None, field = None, *, options = None, **kwargs))]
+    fn scan_ref<'py>(
+        &mut self,
+        py: Python<'py>,
+        name: &str,
+        filters: Option<&Bound<'_, PyAny>>,
+        field: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let resolved =
+            iceberg_call_options("scan_ref", self.inner.explicit_options(), options, kwargs)?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let field = field
+            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .transpose()?;
+        let reader = with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .scan_ref(name, &borrowed_pairs(&pairs), field.as_ref())
+                .map_err(value_error)
+        })?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
     /// Append `batches` as a new snapshot, keeping everything already stored.
     ///
     /// `options` and the [`IcebergOptions`] keywords - `target_file_size`,
@@ -1004,6 +1109,105 @@ impl PyTable {
         let batches = batch_reader_from_value(batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table.overwrite(batches).map_err(value_error)
+        })
+    }
+
+    /// Replace only the rows `filters` selects with `batches`, keeping every
+    /// other file.
+    ///
+    /// A file the filters exclude is carried into the new snapshot exactly as
+    /// it is - same location, same statistics, same commit order - so
+    /// overwriting one partition of a thousand rewrites one partition. Unlike
+    /// [`append`](Self::append), an overwrite beaten by a concurrent commit
+    /// cannot rebase: what it keeps was planned against a snapshot the winner
+    /// may have replaced, and the incoming rows are already consumed, so it
+    /// raises rather than risk losing the winner's rows. The caller re-reads
+    /// and retries with fresh input.
+    #[pyo3(signature = (filters, batches, *, options = None, **kwargs))]
+    fn overwrite_where(
+        &mut self,
+        filters: Option<&Bound<'_, PyAny>>,
+        batches: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved = iceberg_call_options(
+            "overwrite_where",
+            self.inner.explicit_options(),
+            options,
+            kwargs,
+        )?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let batches = batch_reader_from_value(batches)?;
+        with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .overwrite_where(&borrowed_pairs(&pairs), batches)
+                .map_err(value_error)
+        })
+    }
+
+    /// Merge `batches` into the stored rows, matching on `merge_by_names`.
+    ///
+    /// An incoming row replaces the stored row whose match-key columns equal
+    /// its own and is inserted when there is none, so this is the upsert. Only
+    /// the files whose recorded bounds can hold an incoming key are read and
+    /// rewritten - a file that is not read keeps every row it had, however
+    /// coarse the statistics are - so the write costs the files it can
+    /// actually change rather than the whole table. Matching on no column at
+    /// all is a plain overwrite, because every row would then match every row.
+    ///
+    /// `safe` is the cast strictness the incoming batches are held to: the
+    /// default refuses a value the table's column cannot hold rather than
+    /// storing a silently wrapped one.
+    #[pyo3(signature = (batches, merge_by_names, *, safe = true, options = None, **kwargs))]
+    fn merge(
+        &mut self,
+        batches: &Bound<'_, PyAny>,
+        merge_by_names: &Bound<'_, PyAny>,
+        safe: bool,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved =
+            iceberg_call_options("merge", self.inner.explicit_options(), options, kwargs)?;
+        let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let batches = batch_reader_from_value(batches)?;
+        with_call_options(&mut self.inner, resolved, |table| {
+            table.merge(batches, &names, safe).map_err(value_error)
+        })
+    }
+
+    /// Merge `batches` into the rows `filters` selects, matching on
+    /// `merge_by_names`.
+    ///
+    /// The filters narrow which stored files the merge may touch at all, and
+    /// the key bounds narrow that further, so an upsert into one partition
+    /// reads one partition. Everything else - the match rule, `safe`, the
+    /// refusal to rebase after a lost commit - is exactly
+    /// [`merge`](Self::merge).
+    #[pyo3(signature = (filters, batches, merge_by_names, *, safe = true, options = None, **kwargs))]
+    fn merge_where(
+        &mut self,
+        filters: Option<&Bound<'_, PyAny>>,
+        batches: &Bound<'_, PyAny>,
+        merge_by_names: &Bound<'_, PyAny>,
+        safe: bool,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved = iceberg_call_options(
+            "merge_where",
+            self.inner.explicit_options(),
+            options,
+            kwargs,
+        )?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let batches = batch_reader_from_value(batches)?;
+        with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .merge_where(&borrowed_pairs(&pairs), batches, &names, safe)
+                .map_err(value_error)
         })
     }
 
@@ -1070,22 +1274,55 @@ impl PyTable {
             .map(|schema| core_root_field_from_value(schema, SCHEMA_ROOT_NAME))
             .transpose()?;
         let reader = with_call_options(&mut self.inner, resolved, |table| {
-            let borrowed: Vec<(&str, &str)> = pairs
-                .iter()
-                .map(|(column, value)| (column.as_str(), value.as_str()))
-                .collect();
             table
-                .scan_at(snapshot_id, &borrowed, field.as_ref())
+                .scan_at(snapshot_id, &borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)
         })?;
         batch_reader_to_pyarrow(py, reader)
     }
 
+    /// Plan the current snapshot's scan without reading a single row.
+    ///
+    /// The plan is what the metadata alone decided: which data files a scan
+    /// would open, and how many files and manifests the partition tuples and
+    /// column statistics let it leave closed. `filters` is the mapping or
+    /// sequence of `(column, value)` pairs [`scan_where`](Self::scan_where)
+    /// takes, so a caller can assert on the pruning before paying for the
+    /// read.
+    #[pyo3(signature = (filters = None))]
+    fn plan(&self, filters: Option<&Bound<'_, PyAny>>) -> PyResult<PyScanPlan> {
+        let pairs = filter_pairs_from_value(filters)?;
+        self.inner
+            .plan(&borrowed_pairs(&pairs))
+            .map(|plan| PyScanPlan::from_core(&plan))
+            .map_err(value_error)
+    }
+
+    /// Plan one retained snapshot's scan: the planning half of time travel.
+    ///
+    /// The filters are resolved against the schema that was current when the
+    /// snapshot was written, and the same three-level pruning a
+    /// [`plan`](Self::plan) of the present runs applies, so history reports
+    /// the numbers the present reports.
+    #[pyo3(signature = (snapshot_id, filters = None))]
+    fn plan_at(
+        &self,
+        snapshot_id: i64,
+        filters: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyScanPlan> {
+        let pairs = filter_pairs_from_value(filters)?;
+        self.inner
+            .plan_at(snapshot_id, &borrowed_pairs(&pairs))
+            .map(|plan| PyScanPlan::from_core(&plan))
+            .map_err(value_error)
+    }
+
     /// Create a branch at one retained snapshot, as one metadata commit.
     ///
-    /// Writing *to* a branch other than `main` remains future work; a branch
-    /// is read with [`scan_at`](Self::scan_at) through
-    /// [`snapshot_by_ref`](Self::snapshot_by_ref).
+    /// Writing *to* a branch other than `main` remains future work - a
+    /// commit's parent is always the current snapshot - so a branch is read
+    /// with [`scan_ref`](Self::scan_ref) and moved with
+    /// [`fast_forward`](Self::fast_forward).
     fn create_branch(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
         self.inner
             .create_branch(name, snapshot_id)
@@ -1105,6 +1342,33 @@ impl PyTable {
     /// commit.
     fn remove_ref(&mut self, name: &str) -> PyResult<()> {
         self.inner.remove_ref(name).map(|_| ()).map_err(value_error)
+    }
+
+    /// Move a branch forward to a descendant snapshot, as one metadata commit.
+    ///
+    /// The target must be retained and must reach the branch's head by walking
+    /// parent identifiers, so a fast-forward can never lose history: it is the
+    /// one way a branch other than `main` moves, since a commit's parent is
+    /// always the current snapshot.
+    fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
+        self.inner
+            .fast_forward(name, snapshot_id)
+            .map_err(value_error)
+    }
+
+    /// Expire the snapshots retention no longer keeps, returning their ids.
+    ///
+    /// `older_than_ms` is the default age cutoff, in milliseconds since the
+    /// Unix epoch; every branch's and tag's own retention settings are honored
+    /// first, so a tagged snapshot survives a cutoff that would otherwise
+    /// reach it. A table with nothing old commits nothing at all - the check
+    /// runs on a copy first - so an empty expiry costs no version. The
+    /// metadata stops naming the expired snapshots; their files are left
+    /// where they are.
+    fn expire_snapshots(&mut self, older_than_ms: i64) -> PyResult<Vec<i64>> {
+        self.inner
+            .expire_snapshots(older_than_ms)
+            .map_err(value_error)
     }
 
     /// Return the retained snapshot a branch or tag names.
@@ -1479,6 +1743,91 @@ impl PySchemaUpdate {
             "SchemaUpdate(ops={}, committed={})",
             self.ops.len(),
             if self.consumed { "True" } else { "False" },
+        )
+    }
+}
+
+/// What a scan decided to read, before a single row was read.
+///
+/// The core plan holds the data files themselves, because a write needs them;
+/// this view keeps only the counts, because a caller asking what the metadata
+/// pruned is asking a question about numbers - "did partitioning work" - and
+/// the file list is the scan's own business. The counts are the whole answer:
+/// `files_planned` plus `files_skipped` is every live file a read manifest
+/// listed, and `manifests_read` plus `manifests_skipped` is every manifest the
+/// snapshot points at.
+#[pyclass(
+    name = "ScanPlan",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyScanPlan {
+    /// The rows the planned files hold, as the manifests counted them.
+    record_count: i64,
+    /// The data files the scan will open.
+    files_planned: usize,
+    /// Live files a read manifest listed that the filters excluded.
+    files_skipped: usize,
+    /// Manifests that had to be opened because their summaries allowed a match.
+    manifests_read: usize,
+    /// Manifests excluded on their summary alone, never opened.
+    manifests_skipped: usize,
+}
+
+impl PyScanPlan {
+    fn from_core(plan: &ScanPlan) -> Self {
+        Self {
+            record_count: plan.record_count(),
+            files_planned: plan.tasks.len(),
+            files_skipped: plan.files_skipped(),
+            manifests_read: plan.manifests_read,
+            manifests_skipped: plan.manifests_skipped(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyScanPlan {
+    /// The rows the planned files hold, as the manifests counted them.
+    ///
+    /// This is the count a scan would yield only when every filter is on a
+    /// partition column: a file survives on its statistics, and a filter on
+    /// any other column then selects rows within it.
+    #[getter]
+    fn record_count(&self) -> i64 {
+        self.record_count
+    }
+
+    /// How many data files the scan will open.
+    #[getter]
+    fn files_planned(&self) -> usize {
+        self.files_planned
+    }
+
+    /// How many live data files the metadata let the scan leave closed.
+    #[getter]
+    fn files_skipped(&self) -> usize {
+        self.files_skipped
+    }
+
+    /// How many manifests had to be opened to plan the scan.
+    #[getter]
+    fn manifests_read(&self) -> usize {
+        self.manifests_read
+    }
+
+    /// How many manifests the manifest-list summaries alone ruled out.
+    #[getter]
+    fn manifests_skipped(&self) -> usize {
+        self.manifests_skipped
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ScanPlan(record_count={}, files_planned={}, files_skipped={})",
+            self.record_count, self.files_planned, self.files_skipped,
         )
     }
 }

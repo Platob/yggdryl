@@ -64,7 +64,15 @@ function arrowKind(value) {
   return null
 }
 
-function installRecords({ BatchReader, Field, IOBase, Namespace, RecordOptions, Table }) {
+function installRecords({
+  BatchReader,
+  Field,
+  IOBase,
+  Namespace,
+  RecordOptions,
+  Table,
+  Tables,
+}) {
   const nextIpc = BatchReader.prototype._nextIpcNative
   if (typeof nextIpc !== 'function') {
     throw new TypeError('native binding is missing BatchReader._nextIpcNative')
@@ -411,21 +419,82 @@ function installRecords({ BatchReader, Field, IOBase, Namespace, RecordOptions, 
     })
   }
 
+  // The writes that take rows widen them the way every other write here does,
+  // and pass the trailing per-call options through untouched. Forwarding it
+  // is not optional bookkeeping: a wrapper that drops the argument leaves a
+  // documented option silently doing nothing, which is worse than not having
+  // it at all.
   for (const name of ['append', 'overwrite']) {
     const native = Table.prototype[name]
     Object.defineProperty(Table.prototype, name, {
       configurable: true,
-      value(batches) {
-        return native.call(this, batchReader(batches))
+      value(batches, options) {
+        return native.call(this, batchReader(batches), options)
       },
     })
   }
 
-  const scan = Table.prototype.scan
-  Object.defineProperty(Table.prototype, 'scan', {
+  // `overwriteWhere`, `merge`, and `mergeWhere` take the filters or the match
+  // key first, so each one names where its rows sit rather than sharing one
+  // positional rule.
+  const overwriteWhere = Table.prototype.overwriteWhere
+  if (overwriteWhere) {
+    Object.defineProperty(Table.prototype, 'overwriteWhere', {
+      configurable: true,
+      value(filters, batches, options) {
+        return overwriteWhere.call(this, filters, batchReader(batches), options)
+      },
+    })
+  }
+
+  const merge = Table.prototype.merge
+  if (merge) {
+    Object.defineProperty(Table.prototype, 'merge', {
+      configurable: true,
+      value(batches, mergeByNames, safe, options) {
+        return merge.call(this, batchReader(batches), mergeByNames, safe, options)
+      },
+    })
+  }
+
+  const mergeWhere = Table.prototype.mergeWhere
+  if (mergeWhere) {
+    Object.defineProperty(Table.prototype, 'mergeWhere', {
+      configurable: true,
+      value(filters, batches, mergeByNames, safe, options) {
+        return mergeWhere.call(
+          this,
+          filters,
+          batchReader(batches),
+          mergeByNames,
+          safe,
+          options,
+        )
+      },
+    })
+  }
+
+  for (const name of ['scan', 'scanWhere', 'scanRef']) {
+    const native = Table.prototype[name]
+    if (!native) continue
+    Object.defineProperty(Table.prototype, name, {
+      configurable: true,
+      // `scan` takes the projection first; the filtered pair takes what it
+      // filters on first and the projection after, so the projection is
+      // coerced wherever it sits.
+      value(...args) {
+        const at = name === 'scan' ? 0 : name === 'scanWhere' ? 1 : 2
+        if (args.length > at) args[at] = schemaField(args[at])
+        return native.apply(this, args)
+      },
+    })
+  }
+
+  const scanAt = Table.prototype.scanAt
+  Object.defineProperty(Table.prototype, 'scanAt', {
     configurable: true,
-    value(field) {
-      return scan.call(this, schemaField(field))
+    value(snapshotId, filters, field, options) {
+      return scanAt.call(this, snapshotId, filters, schemaField(field), options)
     },
   })
 
@@ -436,6 +505,31 @@ function installRecords({ BatchReader, Field, IOBase, Namespace, RecordOptions, 
       return evolveSchema.call(this, schemaField(schema))
     },
   })
+
+  // The tables view's own writes take a name first and then the rows, so they
+  // widen the rows the same way the table's do and pass the options along.
+  if (Tables) {
+    for (const name of ['append', 'overwrite']) {
+      const native = Tables.prototype[name]
+      if (!native) continue
+      Object.defineProperty(Tables.prototype, name, {
+        configurable: true,
+        value(table, batches, options) {
+          return native.call(this, table, batchReader(batches), options)
+        },
+      })
+    }
+    for (const name of ['create', 'openOrCreate']) {
+      const native = Tables.prototype[name]
+      if (!native) continue
+      Object.defineProperty(Tables.prototype, name, {
+        configurable: true,
+        value(table, schema) {
+          return native.call(this, table, schemaField(schema))
+        },
+      })
+    }
+  }
 }
 
 module.exports = { installRecords }

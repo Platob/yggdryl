@@ -1708,6 +1708,7 @@ installRecords({
   Namespace: binding.Namespace,
   RecordOptions,
   Table: binding.Table,
+  Tables: binding.Tables,
 })
 
 // A retained snapshot is read with the vocabulary the rest of the package
@@ -1797,9 +1798,14 @@ for (const name of ['append', 'overwrite']) {
 const nativeSchemaFromJson = binding.icebergSchemaFromJsonNative
 const iceberg = Object.freeze({
   Catalog: binding.Catalog,
+  Namespace: binding.Namespace,
+  Namespaces: binding.Namespaces,
+  Tables: binding.Tables,
   Table: binding.Table,
+  IcebergOptions: binding.IcebergOptions,
   PartitionSpec: binding.PartitionSpec,
   DataFile: binding.DataFile,
+  ScanPlan: binding.ScanPlan,
   assignFieldIds: binding.icebergAssignFieldIdsNative,
   canPromote: binding.icebergCanPromoteNative,
   // A metadata document is whatever the JSON facade decoded, so a plain object
@@ -1819,15 +1825,25 @@ for (const name of [
   'Catalog',
   'DataFile',
   'DifferenceIterator',
+  'IcebergOptions',
   'JsCatalog',
   'JsDataFile',
   'JsDifferenceIterator',
+  'JsIcebergOptions',
+  'JsNamespace',
+  'JsNamespaces',
   'JsPartitionSpec',
+  'JsScanPlan',
   'JsSchemaUpdate',
   'JsTable',
+  'JsTables',
+  'Namespace',
+  'Namespaces',
   'PartitionSpec',
+  'ScanPlan',
   'SchemaUpdate',
   'Table',
+  'Tables',
   'icebergAssignFieldIdsNative',
   'icebergCanPromoteNative',
   'icebergSchemaFromJsonNative',
@@ -1944,7 +1960,18 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   const dumps = binding[`_${name}Dumps`]
   delete binding[`_${name}Loads`]
   delete binding[`_${name}Dumps`]
-  binding[name] = Object.freeze({ loads, dumps })
+  // zlib carries a second framing of the same algorithm - raw DEFLATE, with
+  // no header and no checksum - so its namespace has four halves where the
+  // others have two. The pair is named rather than inferred, because raw
+  // bytes carry nothing to sniff a framing from.
+  const raw = {}
+  if (binding[`_${name}LoadsRaw`]) {
+    raw.loadsRaw = binding[`_${name}LoadsRaw`]
+    raw.dumpsRaw = binding[`_${name}DumpsRaw`]
+    delete binding[`_${name}LoadsRaw`]
+    delete binding[`_${name}DumpsRaw`]
+  }
+  binding[name] = Object.freeze({ loads, dumps, ...raw })
 }
 
 binding.codec = codec

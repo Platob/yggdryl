@@ -15,6 +15,7 @@ use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 use yggdryl::generic::{Holder, RecordOptions};
 use yggdryl::io::IOBase as _;
 use yggdryl::io::LineRecordOptions;
+use yggdryl::{Codec, Level};
 
 use crate::field::PyField;
 use crate::record::{
@@ -304,6 +305,21 @@ impl PyIOBase {
         Ok(())
     }
 
+    /// The content coding the media type declares, or `None` for none.
+    ///
+    /// This is what a name says the bytes are wrapped in - `data.json.gz`
+    /// reads as `"gzip"` - and it is what [`decompress_into`][Self::decompress_into]
+    /// decodes with when the caller names no coding. Identity is spelled
+    /// `None` rather than `"identity"`, because "these bytes carry no coding"
+    /// is the question a caller is actually asking.
+    #[getter]
+    fn codec(&self) -> Option<&'static str> {
+        match self.inner.codec() {
+            Codec::Identity => None,
+            codec => Some(codec.as_str()),
+        }
+    }
+
     /// The number of bytes here, as `Path.stat().st_size`.
     #[getter]
     fn size(&self) -> u64 {
@@ -580,6 +596,66 @@ impl PyIOBase {
     /// Copy every byte here into `target`, returning the count.
     fn copy_into(&self, target: &mut Self) -> PyResult<u64> {
         self.inner.copy_into(&mut target.inner).map_err(value_error)
+    }
+
+    /// Encode every byte here into `target`, returning the bytes written.
+    ///
+    /// `codec` names the coding - `"gzip"`, `"zlib"`, `"deflate"`, `"zstd"`,
+    /// `"identity"` - and defaults to the one `target`'s own name declares, so
+    /// `handle.compress_into(root / "rows.json.gz")` needs no second spelling
+    /// of "gzip". A target that declares none is refused rather than silently
+    /// copied, because a coding nobody named is a coding nobody can decode by
+    /// name later. `level` is the shared 0-9 scale.
+    ///
+    /// The target's media type records the added coding, which is what lets
+    /// [`decompress_into`][Self::decompress_into] undo this with no argument.
+    #[pyo3(signature = (target, codec = None, level = None))]
+    fn compress_into(
+        &self,
+        target: &mut Self,
+        codec: Option<&str>,
+        level: Option<u8>,
+    ) -> PyResult<u64> {
+        let codec = match codec {
+            Some(name) => name.parse::<Codec>().map_err(value_error)?,
+            None => match target.inner.codec() {
+                Codec::Identity => {
+                    return Err(PyValueError::new_err(format!(
+                        "expected a target naming a content coding, got {:?}; pass codec= to say \
+                         which coding to write",
+                        target.name(),
+                    )));
+                }
+                codec => codec,
+            },
+        };
+        let level = level.map_or(Level::DEFAULT, Level::new);
+        self.inner
+            .compress_into_with_level(&mut target.inner, codec, level)
+            .map_err(value_error)
+    }
+
+    /// Decode every byte here into `target`, returning the bytes written.
+    ///
+    /// `codec` defaults to [`self.codec`][Self::codec] - the coding this
+    /// handle's own name declares - so a `.gz` file decodes into a plain one
+    /// without the caller repeating what the name already said; naming a
+    /// coding overrides that, for bytes whose name does not admit what they
+    /// are. The target's media type loses the coding this removed.
+    #[pyo3(signature = (target, codec = None))]
+    fn decompress_into(&self, target: &mut Self, codec: Option<&str>) -> PyResult<u64> {
+        match codec {
+            Some(name) => {
+                let codec = name.parse::<Codec>().map_err(value_error)?;
+                self.inner
+                    .decompress_into_with(&mut target.inner, codec)
+                    .map_err(value_error)
+            }
+            None => self
+                .inner
+                .decompress_into(&mut target.inner)
+                .map_err(value_error),
+        }
     }
 
     /// A positioned view over this resource, as Python files position them.
