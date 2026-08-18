@@ -576,6 +576,78 @@ answers the same trait.
 Only JSON Lines and YAML hold more than one document. `is_multi_document` says which, and the
 bindings enforce it by simply not exposing an `_all` form on `toml`.
 
+## Laying out a dump
+
+`Formatting` is the one layout value all three formats share. It is deliberately not called `Format`
+- that name already belongs to the `Json`/`Yaml`/`Toml` enum, and a second type beside it would be
+genuinely confusing.
+
+`Indent` has three states, because "the format's own default" and "explicitly none" are different
+requests: `Default` is what every existing dump method uses, `None` is no layout at all, and
+`Spaces(n)` / `Tabs` name a width. What each means is the format's own business, stated on its page:
+[JSON](json.md#laying-out-a-dump), [YAML](yaml.md#laying-out-a-dump), [TOML](toml.md#laying-out-a-dump).
+
+Formatting changes **bytes, never meaning**. Parsing any formatting of the same value yields an equal
+value, in every format, and dumping the same value under the same formatting twice is byte-identical.
+A knob that quietly altered what round-trips would be worse than no knob at all.
+
+The level a redirected dump encodes at rides on the same value, so `dump` keeps *one* options
+companion - `dump_with` - rather than growing `dump_with_level_and_formatting`. Two orthogonal knobs
+today become three tomorrow; one options value absorbs that, a naming cross-product does not.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::Value;
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::{Format, Formatting, Indent, dump_with, load, to_vec_with_formatting};
+    use yggdryl::{Level, Url};
+
+    let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
+
+    // One value, three formats, each resolving the layout its own way.
+    assert_eq!(to_vec_with_formatting(&value, Format::Json, Formatting::indented(2))?,
+               b"{\n  \"id\": 1\n}");
+    assert_eq!(to_vec_with_formatting(&value, Format::Yaml, Formatting::compact())?,
+               b"{id: 1}\n");
+
+    // Layout and coding level ride on one options value, so `dump` keeps one
+    // companion rather than a name per knob combination.
+    let mut handle = Buffer::new().with_media_type(Url::from_str("file:///a.json.gz")?.media_type());
+    dump_with(
+        &mut handle,
+        &value,
+        Formatting::indented(2).with_level(Level::BEST),
+    )?;
+    assert_eq!(load(&handle)?, value);
+    assert_eq!(Formatting::default().indent(), Indent::Default);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    field = Field("id", "int64", nullable=False)
+
+    # `indent` is the Python spelling, matching `json.dumps`.
+    assert "\n" not in field.to_json()
+    assert field.to_json(indent=2).startswith('{\n  "name": "id",')
+    assert field.to_yaml().startswith("name: id\n")
+
+    # Bytes change, meaning does not.
+    for indent in (None, 2, 4):
+        assert Field.from_json(field.to_json(indent=indent)) == field
+        assert Field.from_yaml(field.to_yaml(indent=indent)) == field
+        assert Field.from_toml(field.to_toml(indent=indent)) == field
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The layout option lands in the JavaScript facades once the core surface settles.
+
+
 ## Inferring the format
 
 === "Rust"

@@ -56,6 +56,7 @@ pub mod floating;
 pub mod integer;
 pub mod nested;
 mod parser;
+mod pretty;
 pub mod scalar;
 mod serde;
 pub mod temporal;
@@ -1987,6 +1988,12 @@ impl fmt::Display for FieldLayoutDisplay<'_> {
 
 impl fmt::Display for Field {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // `{:#}` is the readable, indented rendering; the plain form is the
+        // compact constructor spelling, which round-trips through `from_str`
+        // and is what `__repr__`, the errors, and the docs depend on.
+        if formatter.alternate() {
+            return fmt::Display::fmt(&self.pretty(), formatter);
+        }
         formatter.write_str("field(")?;
         write_quoted(formatter, &self.name)?;
         write!(

@@ -756,13 +756,29 @@ export declare class IOBase {
    * Delete the resource here, as `fs.unlinkSync` on a leaf.
    *
    * A thin spelling of `remove(false)`; unlike `fs.unlinkSync`, a resource
-   * that is not there is not an error.
+   * that is not there is not an error, because absence is a no-op success
+   * everywhere on this handle.
    */
   unlink(): void
-  /** Empty the contents, keeping the resource. */
+  /**
+   * Empty the contents, keeping the resource.
+   *
+   * A leaf keeps existing with size 0; a directory keeps existing and is
+   * emptied of every child, recursively; a resource that is not there is
+   * left alone. Nothing is created.
+   */
   clear(): void
-  /** Delete the resource completely; a directory needs `recursive`. */
-  remove(recursive?: boolean): void
+  /**
+   * Delete the resource completely.
+   *
+   * After this returns nothing of what the handle addressed remains - the
+   * bytes, the tree below a directory, and any cached schema or footer. A
+   * leaf ignores `recursive`. A directory needs `recursive` to delete
+   * anything below it; without it, one that still has children throws
+   * rather than silently succeeding or silently recursing. A resource that
+   * is not there succeeds, having done nothing.
+   */
+  remove(recursive?: boolean | undefined | null): void
   /** Cut this resource to `size` bytes, as `fs.truncateSync`. */
   truncate(size: number): void
   /** Flush anything buffered. */

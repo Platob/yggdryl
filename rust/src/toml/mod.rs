@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 mod parser;
 mod wire;
 
-use crate::text::{Limits, Value, ValueIter, check_input_size};
+use crate::text::{Formatting, Limits, Value, ValueIter, check_input_size};
 use crate::{Error, Result};
 
 /// Maximum structural nesting accepted by TOML parsing and conversion.
@@ -177,14 +177,58 @@ impl<R: Read> ExactSizeIterator for Reader<R> {}
 
 /// Encode one value as a TOML document in a new byte vector.
 pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
+    to_vec_with_formatting(value, Formatting::default())
+}
+
+/// Encode one value as a TOML document, laid out as `formatting` asks.
+///
+/// TOML's whitespace is largely insignificant, so this affects readability and
+/// nothing else - the parse is identical either way. What an indent actually
+/// reaches is the indentation of **array** entries, the one nested structure
+/// every version of the grammar lets span lines; inline *tables* stay on one
+/// line because multi-line inline tables are a TOML 1.1 addition a 1.0 reader
+/// would refuse. `$yggdryl` envelope bodies stay flat for the same reason.
+///
+/// ```
+/// use yggdryl::generic::Value;
+/// use yggdryl::text::Formatting;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let value = Value::from_mapping([(
+///     Value::String("ids".into()),
+///     Value::from_sequence([Value::I64(1), Value::I64(2)]),
+/// )])?;
+/// assert_eq!(yggdryl::toml::to_vec(&value)?, b"\"ids\" = [1, 2]\n");
+///
+/// let indented = yggdryl::toml::to_vec_with_formatting(&value, Formatting::indented(2))?;
+/// assert_eq!(indented, b"\"ids\" = [\n  1,\n  2,\n]\n");
+/// // Formatting changes bytes, never meaning.
+/// assert_eq!(yggdryl::toml::from_slice(&indented)?, value);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn to_vec_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer(&mut output, value)?;
+    to_writer_with_formatting(&mut output, value, formatting)?;
     Ok(output)
 }
 
 /// Consume and encode one value as a TOML document.
 pub fn into_vec(value: Value) -> Result<Vec<u8>> {
     to_vec(&value)
+}
+
+/// Consume and encode one value as a TOML document, laid out as asked.
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn into_vec_with_formatting(value: Value, formatting: Formatting) -> Result<Vec<u8>> {
+    to_vec_with_formatting(&value, formatting)
 }
 
 /// Validate the exact TOML wire projection before opening a destination.
@@ -206,15 +250,37 @@ pub fn validate_for_write_with_limits(value: &Value, limits: Limits) -> Result<(
 }
 
 /// Encode one value as a TOML document to a byte writer.
-pub fn to_writer<W: Write>(mut writer: W, value: &Value) -> Result<()> {
+pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()> {
+    to_writer_with_formatting(writer, value, Formatting::default())
+}
+
+/// Encode one value to a byte writer, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's or the sink's failure.
+pub fn to_writer_with_formatting<W: Write>(
+    mut writer: W,
+    value: &Value,
+    formatting: Formatting,
+) -> Result<()> {
     validate_for_write(value)?;
-    wire::write_document(&mut writer, value)
+    wire::write_document(&mut writer, value, formatting.into())
 }
 
 /// Encode exactly one value as a TOML document in a new byte vector.
 pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
+    to_vec_all_with_formatting(values, Formatting::default())
+}
+
+/// Encode exactly one value as a TOML document, laid out as asked.
+///
+/// # Errors
+///
+/// Returns the encoder's failure, or a refusal naming zero or two values.
+pub fn to_vec_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_all(&mut output, values)?;
+    to_writer_all_with_formatting(&mut output, values, formatting)?;
     Ok(output)
 }
 
@@ -223,6 +289,25 @@ pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
 /// TOML has no multi-document stream syntax. Zero values and a second value
 /// are rejected before any bytes are written.
 pub fn to_writer_all<W, I, V>(writer: W, values: I) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = V>,
+    V: Borrow<Value>,
+{
+    to_writer_all_with_formatting(writer, values, Formatting::default())
+}
+
+/// Encode exactly one value to a TOML writer, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's or the sink's failure, or a refusal naming zero or
+/// two values.
+pub fn to_writer_all_with_formatting<W, I, V>(
+    writer: W,
+    values: I,
+    formatting: Formatting,
+) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
@@ -241,5 +326,5 @@ where
             reason: "TOML does not support multiple documents".into(),
         });
     }
-    to_writer(writer, value.borrow())
+    to_writer_with_formatting(writer, value.borrow(), formatting)
 }

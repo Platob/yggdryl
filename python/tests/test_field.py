@@ -1019,3 +1019,99 @@ def test_child_mutation_replaces_by_position_and_appends_by_unknown_name() -> No
         row.data_type["price"] = Field("price", "int64")
     with pytest.raises(TypeError):
         del row.data_type["price"]
+
+
+def test_the_three_formats_share_one_structural_model() -> None:
+    field = Field(
+        "order",
+        DataType.from_fields([
+            Field("id", "int64", nullable=False),
+            Field(
+                "line",
+                DataType.from_fields([Field("price", "float64", nullable=False)]),
+                nullable=True,
+            ),
+        ]),
+        nullable=False,
+        metadata={"owner": "trading"},
+    )
+
+    # One `dict` model, three writers over it - so the three agree by
+    # construction rather than by three sets of tests.
+    assert Field.from_dict(field.to_dict()) == field
+    assert Field.from_json(field.to_json()) == field
+    assert Field.from_yaml(field.to_yaml()) == field
+    assert Field.from_toml(field.to_toml()) == field
+
+    assert DataType.from_dict(field.data_type.to_dict()) == field.data_type
+    assert DataType.from_yaml(field.data_type.to_yaml()) == field.data_type
+    assert DataType.from_toml(field.data_type.to_toml()) == field.data_type
+
+    # The mapping is a plain dict a caller can build and edit.
+    shape = field.to_dict()
+    assert isinstance(shape, dict)
+    assert shape["name"] == "order"
+    assert shape["data_type"]["type"] == "struct"
+    # Unset optional attributes are absent rather than null.
+    assert "dictionary_id" not in shape
+
+
+def test_indent_lays_out_bytes_without_changing_meaning() -> None:
+    field = Field(
+        "row",
+        DataType.from_fields([Field("id", "int64", nullable=False)]),
+        nullable=False,
+    )
+
+    # JSON: compact by default, `json.dumps(indent=n)` on request.
+    assert "\n" not in field.to_json()
+    assert field.to_json(indent=2).startswith('{\n  "name": "row",')
+    assert field.to_json(indent=4).startswith('{\n    "name": "row",')
+
+    # YAML: block style at two spaces by default, flow style only on request.
+    assert field.to_yaml().startswith("name: row\ndata_type:\n  type: struct")
+    assert field.to_yaml(indent=4).startswith("name: row\ndata_type:\n    type: struct")
+    assert field.to_yaml(indent=None).startswith("{name: row,")
+
+    # Round-trip and idempotence, per format per setting.
+    for dump, parse in (
+        (field.to_json, Field.from_json),
+        (field.to_yaml, Field.from_yaml),
+        (field.to_toml, Field.from_toml),
+    ):
+        for indent in (None, 2, 4):
+            text = dump(indent=indent)
+            assert parse(text) == field
+            assert dump(indent=indent) == text
+
+
+def test_str_and_repr_are_unchanged_and_pretty_is_the_readable_form() -> None:
+    field = Field(
+        "order",
+        DataType.from_fields([
+            Field("id", "int64", nullable=False),
+            Field(
+                "line",
+                DataType.from_fields([Field("price", "float64", nullable=False)]),
+                nullable=True,
+            ),
+        ]),
+        nullable=False,
+    )
+
+    # `repr` stays the eval-round-trip form Python expects.
+    assert repr(field).startswith("Field.from_str(")
+    assert eval(repr(field)) == field  # noqa: S307 - the point of `repr`
+    assert Field.from_str(str(field)) == field
+    assert "\n" not in str(field)
+
+    # `pretty` is the readable form: one fact per line, one indent per level.
+    assert field.pretty() == (
+        "order: struct[2], required\n"
+        "  id: int64, required\n"
+        "  line: struct[1], nullable\n"
+        "    price: float64, required"
+    )
+    assert field.data_type.pretty().startswith("struct[2]")
+    # Stable across runs.
+    assert field.pretty() == field.pretty()

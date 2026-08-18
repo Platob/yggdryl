@@ -201,6 +201,66 @@ hold, and `max_input_bytes` bounds the whole input. Two ceilings are the parser'
 limit raises them: `MAX_FLOW_DEPTH` (255) for `[` and `{` flow nesting, and `MAX_PARSER_DEPTH`
 (384) for block nesting.
 
+## Laying out a dump
+
+Every dump method has a `_with_formatting` companion taking one shared
+[`Formatting`](text.md#laying-out-a-dump) value, and every existing method delegates to it with the
+default - so no output changes a byte unless a caller asks. Formatting changes **bytes, never
+meaning**: parsing any formatting of the same value yields an equal value, and dumping the same value
+under the same formatting twice is byte-identical.
+
+Block style with a two-space indent is today's behavior and stays the default; an integer width
+simply replaces the `2`. **No indent means flow style** - `{a: 1, b: 2}` on one line - which is valid
+YAML and round-trips, and is an explicitly requested opt-in, never what a caller gets by accident.
+A schema dump's one-key-per-line block style is the default precisely so nobody has to ask for it.
+A tab request falls back to the default width, because YAML forbids tabs as indentation outright and
+emitting one would produce a document that will not parse.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::Value;
+    use yggdryl::text::Formatting;
+
+    let value = Value::from_mapping([
+        (Value::String("id".into()), Value::I64(1)),
+        (Value::String("tags".into()), Value::from_sequence([Value::String("a".into())])),
+    ])?;
+
+    assert_eq!(yggdryl::yaml::to_vec(&value)?, b"id: 1\ntags:\n  - a\n");
+    assert_eq!(
+        yggdryl::yaml::to_vec_with_formatting(&value, Formatting::indented(4))?,
+        b"id: 1\ntags:\n    - a\n",
+    );
+
+    // Flow style is the explicit opt-in, and it round-trips.
+    let flow = yggdryl::yaml::to_vec_with_formatting(&value, Formatting::compact())?;
+    assert_eq!(flow, b"{id: 1, tags: [a]}\n");
+    assert_eq!(yggdryl::yaml::from_slice(&flow)?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field
+
+    field = Field("id", "int64", nullable=False)
+
+    # Block style at two spaces is the default; a width replaces the 2.
+    assert field.to_yaml().startswith("name: id\ndata_type:\n  type: int64")
+    assert field.to_yaml(indent=4).startswith("name: id\ndata_type:\n    type: int64")
+
+    # `indent=None` asks for flow style, which is valid YAML and round-trips.
+    assert field.to_yaml(indent=None).startswith("{name: id,")
+    assert Field.from_yaml(field.to_yaml(indent=None)) == field
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The layout option lands in the JavaScript facades once the core surface settles.
+
+
 ## Tags are read, never written
 
 === "Rust"

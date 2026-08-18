@@ -584,6 +584,117 @@ canonical default - without allocating the default first.
 A bare `DataType` has no nullability, so its default is the non-null one. Ask a
 [`Field`](field.md) instead when the answer depends on whether the slot may be null.
 
+## Serializing a schema
+
+`DataType` reads and writes the three structured-text formats through **one** structural model. There
+is exactly one `DataType` ⇄ `Value` mapping - `to_value`/`from_value` in Rust, `to_dict`/`from_dict` in
+Python - and JSON, YAML, and TOML are three writers over it, so the three agree by construction
+rather than by three sets of tests. That is also what makes a schema *embeddable*: a configuration
+document can carry a declared schema inline beside the rest of its settings, with no
+JSON-string-inside-YAML awkwardness.
+
+The shape is what the JSON emit has always been: `name`, `data_type`, `nullable`, then
+`dictionary_id` only when it is non-zero and `dictionary_is_ordered` only when it is set, then
+`metadata`. An unset optional attribute is **omitted**, never emitted as null - which is also why
+TOML, which has no null, loses nothing on the way out.
+
+Each format takes the shared [`Formatting`](text.md#laying-out-a-dump) option; Python spells it as an
+`indent` keyword.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::DataType;
+    use yggdryl::generic::Value;
+
+    let data_type = DataType::decimal128(9, 2)?;
+
+    // One structural model, three formats over it.
+    assert_eq!(DataType::from_value(data_type.to_value())?, data_type);
+    assert_eq!(DataType::from_json(&data_type.to_json()?)?, data_type);
+    assert_eq!(DataType::from_yaml(&data_type.to_yaml()?)?, data_type);
+    assert_eq!(DataType::from_toml(&data_type.to_toml()?)?, data_type);
+
+    let shape = data_type.to_value();
+    assert_eq!(shape.get_key_str("type").and_then(Value::as_str), Some("decimal128"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType
+
+    data_type = DataType.decimal(9, 2)
+
+    assert DataType.from_dict(data_type.to_dict()) == data_type
+    assert DataType.from_json(data_type.to_json()) == data_type
+    assert DataType.from_yaml(data_type.to_yaml()) == data_type
+    assert DataType.from_toml(data_type.to_toml()) == data_type
+
+    assert data_type.to_dict()["type"] == "decimal128"
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The YAML and TOML pair lands in the JavaScript binding once the core surface settles;
+        `toJSON` is already there.
+
+## A readable rendering
+
+`Display` - and Python's `str`/`repr` - is the compact constructor form, and it stays exactly as it
+is: it round-trips through `from_str`, and the error messages, the documentation, and Python's
+`repr` all depend on that. It is also unreadable the moment a struct nests three levels deep.
+
+The readable form is the **alternate**: `{:#}` in Rust, or the named `pretty()` adapter that backs
+it, and `pretty()` in Python. One fact per line, one indent per nesting level, and only the
+attributes that are actually set - a `dictionary_id` of `0` or empty metadata is noise the compact
+form already omits. Metadata renders as indented `@key = value` lines rather than one braced blob.
+The output is stable across runs; nothing in it iterates a hash map.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::DataType;
+
+    let rows = DataType::list(
+        DataType::from_fields([DataType::Utf8.nullable_field("venue")])?.nullable_field("item"),
+    );
+
+    // Compact still round-trips.
+    assert_eq!(DataType::from_str(&rows.to_string())?, rows);
+
+    // Readable is the alternate, or the named adapter - one implementation.
+    assert_eq!(format!("{rows:#}"), rows.pretty().to_string());
+    assert_eq!(
+        format!("{rows:#}"),
+        "\
+list
+  item: struct[1], nullable
+    venue: utf8, nullable",
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    rows = DataType.from_fields([Field("venue", "utf8")])
+
+    # `repr` is unchanged - the eval-round-trip form Python expects.
+    assert repr(rows).startswith("DataType.from_str(")
+    assert DataType.from_str(str(rows)) == rows
+
+    assert rows.pretty() == "struct[1]\n  venue: utf8, nullable"
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        `pretty` lands in the JavaScript binding once the core surface settles.
+
+
 ## Compatibility rewriting
 
 === "Rust"

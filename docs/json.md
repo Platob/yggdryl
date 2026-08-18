@@ -395,6 +395,69 @@ source as it arrives and decode one row per pull; `loads_all` and `loadsAll` dec
 buffer already in hand. In both languages a failing row raises out of the iterator and
 ends it.
 
+## Laying out a dump
+
+Every dump method has a `_with_formatting` companion taking one shared
+[`Formatting`](text.md#laying-out-a-dump) value, and every existing method delegates to it with the
+default - so no output changes a byte unless a caller asks. Formatting changes **bytes, never
+meaning**: parsing any formatting of the same value yields an equal value, and dumping the same value
+under the same formatting twice is byte-identical.
+
+`Indent::Default` and `Indent::None` are both today's compact output. An integer width
+pretty-prints with that many spaces per nesting level, exactly as `json.dumps(indent=n)` reads.
+JSON Lines stays compact by default, because the stream separator is the newline *between*
+documents and an indented document no longer occupies one line.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::Value;
+    use yggdryl::text::Formatting;
+
+    let value = Value::from_mapping([
+        (Value::String("id".into()), Value::I64(1)),
+        (Value::String("tags".into()), Value::from_sequence([Value::String("a".into())])),
+    ])?;
+
+    assert_eq!(yggdryl::json::to_vec(&value)?, br#"{"id":1,"tags":["a"]}"#);
+    assert_eq!(
+        yggdryl::json::to_vec_with_formatting(&value, Formatting::indented(2))?,
+        b"{\n  \"id\": 1,\n  \"tags\": [\n    \"a\"\n  ]\n}",
+    );
+
+    // Formatting changes bytes, never meaning.
+    assert_eq!(
+        yggdryl::json::from_slice(
+            &yggdryl::json::to_vec_with_formatting(&value, Formatting::indented(4))?,
+        )?,
+        value,
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field, json
+
+    field = Field("id", "int64", nullable=False)
+
+    # `indent=None` is compact - the default, as `json.dumps` has it.
+    assert "\n" not in field.to_json()
+    assert field.to_json(indent=2).startswith('{\n  "name": "id",')
+
+    # Round-trip and idempotence hold for every setting.
+    for indent in (None, 2, 4):
+        text = field.to_json(indent=indent)
+        assert Field.from_json(text) == field
+        assert field.to_json(indent=indent) == text
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The layout option lands in the JavaScript facades once the core surface settles.
+
+
 ## Limits
 
 === "Rust"

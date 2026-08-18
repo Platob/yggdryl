@@ -59,6 +59,20 @@ fn normalize_index(index: isize, length: usize) -> Option<usize> {
     }
 }
 
+/// Map Python's `indent` keyword onto the core formatting value.
+///
+/// `None` is what a Python caller means by "no layout" - `json.dumps`'s own
+/// default - so it maps to the explicit no-indent request rather than to the
+/// format's default. Each bound method chooses its own natural default in its
+/// signature (`indent=None` for JSON and TOML, `indent=2` for YAML), which is
+/// what makes the zero-argument call read right in every format.
+pub(crate) fn formatting_of(indent: Option<u8>) -> yggdryl::text::Formatting {
+    match indent {
+        None => yggdryl::text::Formatting::compact(),
+        Some(width) => yggdryl::text::Formatting::indented(width),
+    }
+}
+
 /// Resolve a subscript key to a child position on a schema node.
 ///
 /// The one implementation behind `Field.__getitem__` and

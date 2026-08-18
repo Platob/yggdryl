@@ -715,6 +715,141 @@ column is rounded through `f32` - and returns the input untouched when nothing n
 a correctly built row costs nothing. Both walk the schema, not the value, and both report the
 dot/bracket path of the first thing that does not fit.
 
+## Serializing a schema
+
+`Field` reads and writes the three structured-text formats through **one** structural model. There
+is exactly one `Field` ⇄ `Value` mapping - `to_value`/`from_value` in Rust, `to_dict`/`from_dict` in
+Python - and JSON, YAML, and TOML are three writers over it, so the three agree by construction
+rather than by three sets of tests. That is also what makes a schema *embeddable*: a configuration
+document can carry a declared schema inline beside the rest of its settings, with no
+JSON-string-inside-YAML awkwardness.
+
+The shape is what the JSON emit has always been: `name`, `data_type`, `nullable`, then
+`dictionary_id` only when it is non-zero and `dictionary_is_ordered` only when it is set, then
+`metadata`. An unset optional attribute is **omitted**, never emitted as null - which is also why
+TOML, which has no null, loses nothing on the way out.
+
+Each format takes the shared [`Formatting`](text.md#laying-out-a-dump) option; Python spells it as an
+`indent` keyword.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field};
+    use yggdryl::generic::Value;
+
+    let field = Field::from_parts("price", DataType::Float64, false, [("venue", "XPAR")])?;
+
+    // One structural model, three formats over it.
+    assert_eq!(Field::from_value(field.to_value())?, field);
+    assert_eq!(Field::from_json(&field.to_json()?)?, field);
+    assert_eq!(Field::from_yaml(&field.to_yaml()?)?, field);
+    assert_eq!(Field::from_toml(&field.to_toml()?)?, field);
+
+    // The mapping is the shared `Value`, so it drops into any document.
+    let shape = field.to_value();
+    assert_eq!(shape.get_key_str("name").and_then(Value::as_str), Some("price"));
+    // Unset optional attributes are absent rather than null.
+    assert!(shape.get_key_str("dictionary_id").is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    field = Field("price", "float64", nullable=False, metadata={"venue": "XPAR"})
+
+    assert Field.from_dict(field.to_dict()) == field
+    assert Field.from_json(field.to_json()) == field
+    assert Field.from_yaml(field.to_yaml()) == field
+    assert Field.from_toml(field.to_toml()) == field
+
+    shape = field.to_dict()
+    assert shape["name"] == "price"
+    assert "dictionary_id" not in shape
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The YAML and TOML pair lands in the JavaScript binding once the core surface settles;
+        `toJSON` is already there.
+
+## A readable rendering
+
+`Display` - and Python's `str`/`repr` - is the compact constructor form, and it stays exactly as it
+is: it round-trips through `from_str`, and the error messages, the documentation, and Python's
+`repr` all depend on that. It is also unreadable the moment a struct nests three levels deep.
+
+The readable form is the **alternate**: `{:#}` in Rust, or the named `pretty()` adapter that backs
+it, and `pretty()` in Python. One fact per line, one indent per nesting level, and only the
+attributes that are actually set - a `dictionary_id` of `0` or empty metadata is noise the compact
+form already omits. Metadata renders as indented `@key = value` lines rather than one braced blob.
+The output is stable across runs; nothing in it iterates a hash map.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field};
+
+    let order = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::from_fields([DataType::Float64.required_field("price")])?
+            .nullable_field("line"),
+    ])?
+    .required_field("order");
+
+    // Compact still round-trips.
+    assert_eq!(Field::from_str(&order.to_string())?, order);
+
+    // Readable is the alternate, or the named adapter - one implementation.
+    assert_eq!(format!("{order:#}"), order.pretty().to_string());
+    assert_eq!(
+        format!("{order:#}"),
+        "\
+order: struct[2], required
+  id: int64, required
+  line: struct[1], nullable
+    price: float64, required",
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    order = Field(
+        "order",
+        DataType.from_fields([
+            Field("id", "int64", nullable=False),
+            Field(
+                "line",
+                DataType.from_fields([Field("price", "float64", nullable=False)]),
+            ),
+        ]),
+        nullable=False,
+    )
+
+    # `repr` is unchanged - the eval-round-trip form Python expects.
+    assert repr(order).startswith("Field.from_str(")
+    assert Field.from_str(str(order)) == order
+
+    assert order.pretty() == (
+        "order: struct[2], required\n"
+        "  id: int64, required\n"
+        "  line: struct[1], nullable\n"
+        "    price: float64, required"
+    )
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        `pretty` lands in the JavaScript binding once the core surface settles.
+
+
 ## Comparing two fields
 
 === "Rust"

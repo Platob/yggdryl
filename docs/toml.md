@@ -550,6 +550,70 @@ about the format: `from_str_all` returns a one-element `Vec`, `Reader` is an
 `ExactSizeIterator` with one item, and `to_writer_all` fails on a count other than one
 rather than emitting something no TOML parser would read back.
 
+## Laying out a dump
+
+Every dump method has a `_with_formatting` companion taking one shared
+[`Formatting`](text.md#laying-out-a-dump) value, and every existing method delegates to it with the
+default - so no output changes a byte unless a caller asks. Formatting changes **bytes, never
+meaning**: parsing any formatting of the same value yields an equal value, and dumping the same value
+under the same formatting twice is byte-identical.
+
+TOML's whitespace is largely insignificant, so this affects readability and nothing else - the
+parse is identical either way. What an indent actually reaches is the indentation of **array**
+entries, the one nested structure every version of the grammar lets span lines. Inline *tables* stay
+on one line, because multi-line inline tables are a TOML 1.1 addition and a 1.0 reader would refuse
+the document; `$yggdryl` envelope bodies stay flat for the same reason.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::Value;
+    use yggdryl::text::Formatting;
+
+    let value = Value::from_mapping([
+        (Value::String("id".into()), Value::I64(1)),
+        (Value::String("tags".into()), Value::from_sequence([Value::String("a".into())])),
+    ])?;
+
+    assert_eq!(yggdryl::toml::to_vec(&value)?, b"\"id\" = 1\n\"tags\" = [\"a\"]\n");
+    assert_eq!(
+        yggdryl::toml::to_vec_with_formatting(&value, Formatting::indented(2))?,
+        b"\"id\" = 1\n\"tags\" = [\n  \"a\",\n]\n",
+    );
+
+    // Formatting changes bytes, never meaning.
+    assert_eq!(
+        yggdryl::toml::from_slice(
+            &yggdryl::toml::to_vec_with_formatting(&value, Formatting::indented(2))?,
+        )?,
+        value,
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field
+
+    field = Field("id", "int64", nullable=False)
+
+    # TOML has no null: an unset optional attribute is omitted, never faked.
+    assert '"nullable" = false' in field.to_toml()
+    assert "dictionary_id" not in field.to_toml()
+
+    # Round-trip and idempotence hold for every setting.
+    for indent in (None, 2):
+        text = field.to_toml(indent=indent)
+        assert Field.from_toml(text) == field
+        assert field.to_toml(indent=indent) == text
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The layout option lands in the JavaScript facades once the core surface settles.
+
+
 ## Failures
 
 === "Rust"

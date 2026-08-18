@@ -691,13 +691,116 @@ impl PyDataType {
         core_data_type_to_pyarrow(py, &self.inner)
     }
 
-    fn to_json(&self) -> PyResult<String> {
-        self.inner.to_json().map_err(value_error)
+    /// Serialize as deterministic structural JSON.
+    ///
+    /// `indent=None` is compact - today's output and the default; an integer
+    /// pretty-prints with that many spaces per nesting level, exactly as
+    /// `json.dumps(indent=n)` reads.
+    #[pyo3(signature = (*, indent = None))]
+    fn to_json(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .to_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
+    /// Consume and serialize as structural JSON.
     #[allow(clippy::wrong_self_convention)]
-    fn into_json(&self) -> PyResult<String> {
-        self.inner.clone().into_json().map_err(value_error)
+    #[pyo3(signature = (*, indent = None))]
+    fn into_json(&self, indent: Option<u8>) -> PyResult<String> {
+        self.to_json(indent)
+    }
+
+    /// Deserialize and validate from structural YAML.
+    ///
+    /// The same structure `from_json` reads, in YAML's syntax - so a config
+    /// document can carry a declared schema inline beside its other settings.
+    #[staticmethod]
+    fn from_yaml(value: &str) -> PyResult<Self> {
+        CoreDataType::from_yaml(value)
+            .map_err(value_error)
+            .and_then(Self::from_validated)
+    }
+
+    /// Serialize as YAML: block style, one key per line.
+    ///
+    /// `indent=2` is the default. `indent=None` asks for flow style -
+    /// `{a: 1, b: 2}` on one line - which is valid YAML and round-trips, and
+    /// is never what a caller gets by accident.
+    #[pyo3(signature = (*, indent = Some(2)))]
+    fn to_yaml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .to_yaml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Consume and serialize as YAML.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = Some(2)))]
+    fn into_yaml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.to_yaml(indent)
+    }
+
+    /// Deserialize and validate from structural TOML.
+    #[staticmethod]
+    fn from_toml(value: &str) -> PyResult<Self> {
+        CoreDataType::from_toml(value)
+            .map_err(value_error)
+            .and_then(Self::from_validated)
+    }
+
+    /// Serialize as TOML.
+    ///
+    /// TOML has no null, and this model never needs one: an unset optional
+    /// attribute is omitted rather than faked, so nothing is lost.
+    #[pyo3(signature = (*, indent = None))]
+    fn to_toml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .to_toml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Consume and serialize as TOML.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_toml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.to_toml(indent)
+    }
+
+    /// Project this value onto a plain structural mapping.
+    ///
+    /// The core's one structural model - the model JSON, YAML, and TOML are
+    /// all expressed over - handed back as a `dict`, so a schema drops into any
+    /// document a caller already builds. Spelled `to_dict` rather than
+    /// `to_value` because `from_value` is already this module's
+    /// boundary-inference entry point and a Python caller reads a `dict` here.
+    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        crate::value::as_py(py, &self.inner.to_value())
+    }
+
+    /// Read this value back from a plain structural mapping.
+    ///
+    /// The inverse of `to_dict`, through the core's one conversion.
+    #[staticmethod]
+    fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        CoreDataType::from_value(crate::value::from_py(value)?)
+            .map_err(value_error)
+            .and_then(Self::from_validated)
+    }
+
+    /// A readable, indented rendering of this value and everything under it.
+    ///
+    /// `str` and `repr` are unchanged - the compact constructor form, which
+    /// round-trips through `from_str` - because that is what a Python reader
+    /// expects of `repr` and what the parsers depend on. This is the form for
+    /// a human looking at a schema three levels deep.
+    fn pretty(&self) -> String {
+        format!("{:#}", self.inner)
+    }
+
+    /// The readable rendering, for IPython and notebook cells.
+    fn _repr_pretty_(&self, printer: &Bound<'_, PyAny>, _cycle: bool) -> PyResult<()> {
+        printer.call_method1("text", (self.pretty(),))?;
+        Ok(())
     }
 
     /// Coarse datatype family, such as ``integer`` or ``list``.

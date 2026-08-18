@@ -35,6 +35,11 @@ impl FromStr for DataType {
 impl fmt::Display for DataType {
     #[allow(clippy::too_many_lines)]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // `{:#}` is the readable, indented rendering; the plain form is the
+        // canonical expression, which round-trips through `from_str`.
+        if formatter.alternate() {
+            return fmt::Display::fmt(&self.pretty(), formatter);
+        }
         use DataType as D;
         match self {
             D::Null => formatter.write_str("null"),

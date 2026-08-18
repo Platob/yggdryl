@@ -1380,7 +1380,7 @@ than silently recursed into.
     const root = path.join(os.tmpdir(), `yggdryl-docs-lifecycle-${process.pid}`)
     const handle = new IOBase(path.join(root, 'logs'))
     handle.mkdir()
-    handle.childBy('a.log').writeText('line\n')
+    handle.joinpath(['a.log']).writeText('line\n')
 
     // Clearing empties the container and keeps it.
     handle.clear()

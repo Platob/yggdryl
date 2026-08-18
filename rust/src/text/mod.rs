@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 mod codec;
 mod display;
 mod format;
+mod formatting;
 mod io;
 mod limits;
 pub(crate) mod position;
@@ -19,8 +20,10 @@ pub(crate) use display::ERROR_TEXT_LIMIT;
 pub use display::stable_hash_bytes;
 pub(crate) use display::{elide_display, elide_to, expected_got, stable_hash_display};
 pub use format::Format;
+pub use formatting::{Formatting, Indent};
 pub use io::{
-    Plan, dump, dump_all, dump_with_level, load, load_all, load_all_with_limits, load_with_limits,
+    Plan, dump, dump_all, dump_all_with, dump_with, dump_with_level, load, load_all,
+    load_all_with_limits, load_with_limits,
 };
 pub use limits::Limits;
 
@@ -191,17 +194,35 @@ pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
 
 /// Encode one value to a new byte vector.
 pub fn to_vec(value: &Value, format: Format) -> Result<Vec<u8>> {
+    to_vec_with_formatting(value, format, Formatting::default())
+}
+
+/// Encode one value to a new byte vector, laid out as `formatting` asks.
+///
+/// Each format resolves the layout its own way - see
+/// [`json::to_vec_with_formatting`], [`yaml::to_vec_with_formatting`], and
+/// [`toml::to_vec_with_formatting`]. Formatting changes bytes, never meaning:
+/// parsing any formatting of the same value yields an equal value.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure.
+pub fn to_vec_with_formatting(
+    value: &Value,
+    format: Format,
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
     match format {
-        Format::Json => json::to_vec(value),
+        Format::Json => json::to_vec_with_formatting(value, formatting),
         Format::JsonLines => {
             if let Value::Sequence(values) = value {
-                json::to_vec_all(values)
+                json::to_vec_all_with_formatting(values, formatting)
             } else {
-                json::to_vec_all(std::slice::from_ref(value))
+                json::to_vec_all_with_formatting(std::slice::from_ref(value), formatting)
             }
         }
-        Format::Yaml => yaml::to_vec(value),
-        Format::Toml => toml::to_vec(value),
+        Format::Yaml => yaml::to_vec_with_formatting(value, formatting),
+        Format::Toml => toml::to_vec_with_formatting(value, formatting),
     }
 }
 
@@ -213,19 +234,46 @@ pub fn into_vec(value: Value, format: Format) -> Result<Vec<u8>> {
     to_vec(&value, format)
 }
 
+/// Consume and encode one value, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure.
+pub fn into_vec_with_formatting(
+    value: Value,
+    format: Format,
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
+    to_vec_with_formatting(&value, format, formatting)
+}
+
 /// Encode one value to a byte writer.
 pub fn to_writer<W: Write>(writer: W, value: &Value, format: Format) -> Result<()> {
+    to_writer_with_formatting(writer, value, format, Formatting::default())
+}
+
+/// Encode one value to a byte writer, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure or the sink's.
+pub fn to_writer_with_formatting<W: Write>(
+    writer: W,
+    value: &Value,
+    format: Format,
+    formatting: Formatting,
+) -> Result<()> {
     match format {
-        Format::Json => json::to_writer(writer, value),
+        Format::Json => json::to_writer_with_formatting(writer, value, formatting),
         Format::JsonLines => {
             if let Value::Sequence(values) = value {
-                json::to_writer_all(writer, values.iter())
+                json::to_writer_all_with_formatting(writer, values.iter(), formatting)
             } else {
-                json::to_writer_all(writer, std::slice::from_ref(value))
+                json::to_writer_all_with_formatting(writer, std::slice::from_ref(value), formatting)
             }
         }
-        Format::Yaml => yaml::to_writer(writer, value),
-        Format::Toml => toml::to_writer(writer, value),
+        Format::Yaml => yaml::to_writer_with_formatting(writer, value, formatting),
+        Format::Toml => toml::to_writer_with_formatting(writer, value, formatting),
     }
 }
 
@@ -236,10 +284,31 @@ where
     I: IntoIterator<Item = V>,
     V: Borrow<Value>,
 {
+    to_writer_all_with_formatting(writer, values, format, Formatting::default())
+}
+
+/// Encode multiple values or documents, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure or the sink's.
+pub fn to_writer_all_with_formatting<W, I, V>(
+    writer: W,
+    values: I,
+    format: Format,
+    formatting: Formatting,
+) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = V>,
+    V: Borrow<Value>,
+{
     match format {
-        Format::Json | Format::JsonLines => json::to_writer_all(writer, values),
-        Format::Yaml => yaml::to_writer_all(writer, values),
-        Format::Toml => toml::to_writer_all(writer, values),
+        Format::Json | Format::JsonLines => {
+            json::to_writer_all_with_formatting(writer, values, formatting)
+        }
+        Format::Yaml => yaml::to_writer_all_with_formatting(writer, values, formatting),
+        Format::Toml => toml::to_writer_all_with_formatting(writer, values, formatting),
     }
 }
 

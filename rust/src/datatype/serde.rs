@@ -3,6 +3,9 @@
 use ::serde::ser::SerializeSeq;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use smol_str::{SmolStr, format_smolstr};
+
+use crate::generic::Value;
 use crate::{Error, Field, Result};
 
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
@@ -418,4 +421,652 @@ impl<'de> Deserialize<'de> for DataType {
         value.validate().map_err(::serde::de::Error::custom)?;
         Ok(value)
     }
+}
+
+// ---------------------------------------------------------------------------
+// The one structural mapping between a `DataType` and the shared `Value`.
+//
+// Every serialized form of a schema goes through here. JSON, YAML, and TOML
+// are three writers over one model rather than three hand-written serializers,
+// which is what makes them agree by construction instead of by three sets of
+// tests. The shape is exactly what `to_json` has always emitted - the same
+// keys, the same order, the same conditional omissions - so re-expressing the
+// JSON path over this conversion changes no byte a caller could observe.
+// ---------------------------------------------------------------------------
+
+/// The tag key every datatype mapping opens with.
+const TYPE_KEY: &str = "type";
+
+impl DataType {
+    /// Project this datatype onto the shared structural [`Value`].
+    ///
+    /// A tagged mapping - `{"type": "decimal128", "precision": 9, "scale": 2}` -
+    /// whose keys are emitted in a fixed order so two equal datatypes produce
+    /// byte-identical output in every format. Nested datatypes recurse through
+    /// the same conversion, so a struct's children, a list's item, a map's key
+    /// and value, a union's variants, and a dictionary's index and value are
+    /// all described the one way.
+    ///
+    /// Infallible: every value of this type is representable.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::generic::Value;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+    /// let value = row.to_value();
+    ///
+    /// assert_eq!(value.get_key_str("type").and_then(Value::as_str), Some("struct"));
+    /// assert_eq!(DataType::from_value(value)?, row);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    #[allow(clippy::too_many_lines)]
+    pub fn to_value(&self) -> Value {
+        use DataType as D;
+        let mut entries: Vec<(Value, Value)> = Vec::with_capacity(4);
+        let mut tag = |name: &str| entries.push((key(TYPE_KEY), Value::String(SmolStr::new(name))));
+        match self {
+            D::Null => tag("null"),
+            D::Boolean => tag("boolean"),
+            D::Int8 => tag("int8"),
+            D::Int16 => tag("int16"),
+            D::Int32 => tag("int32"),
+            D::Int64 => tag("int64"),
+            D::UInt8 => tag("u_int8"),
+            D::UInt16 => tag("u_int16"),
+            D::UInt32 => tag("u_int32"),
+            D::UInt64 => tag("u_int64"),
+            D::Float16 => tag("float16"),
+            D::Float32 => tag("float32"),
+            D::Float64 => tag("float64"),
+            D::Date32 => tag("date32"),
+            D::Date64 => tag("date64"),
+            D::Binary => tag("binary"),
+            D::LargeBinary => tag("large_binary"),
+            D::BinaryView => tag("binary_view"),
+            D::Utf8 => tag("utf8"),
+            D::LargeUtf8 => tag("large_utf8"),
+            D::Utf8View => tag("utf8_view"),
+            D::Timestamp(unit, timezone) => {
+                tag("timestamp");
+                entries.push((key("unit"), unit_value(*unit)));
+                // Omitted rather than null when absent, exactly as the JSON
+                // path skips it - a naive timestamp carries no zone at all.
+                if let Some(timezone) = timezone {
+                    entries.push((
+                        key("timezone"),
+                        Value::String(SmolStr::new(timezone.as_str())),
+                    ));
+                }
+            }
+            D::Time32(unit) => {
+                tag("time32");
+                entries.push((key("unit"), unit_value(*unit)));
+            }
+            D::Time64(unit) => {
+                tag("time64");
+                entries.push((key("unit"), unit_value(*unit)));
+            }
+            D::Duration(unit) => {
+                tag("duration");
+                entries.push((key("unit"), unit_value(*unit)));
+            }
+            D::Interval(unit) => {
+                tag("interval");
+                entries.push((key("unit"), unit_value(*unit)));
+            }
+            D::FixedSizeBinary(width) => {
+                tag("fixed_size_binary");
+                entries.push((key("width"), Value::I32(*width)));
+            }
+            D::List(field) => {
+                tag("list");
+                entries.push((key("field"), field.to_value()));
+            }
+            D::ListView(field) => {
+                tag("list_view");
+                entries.push((key("field"), field.to_value()));
+            }
+            D::FixedSizeList(field, length) => {
+                tag("fixed_size_list");
+                entries.push((key("field"), field.to_value()));
+                entries.push((key("length"), Value::I32(*length)));
+            }
+            D::LargeList(field) => {
+                tag("large_list");
+                entries.push((key("field"), field.to_value()));
+            }
+            D::LargeListView(field) => {
+                tag("large_list_view");
+                entries.push((key("field"), field.to_value()));
+            }
+            D::Struct(fields) => {
+                tag("struct");
+                entries.push((
+                    key("fields"),
+                    Value::from_sequence(fields.as_fields().iter().map(Field::to_value)),
+                ));
+            }
+            D::Union(fields, mode) => {
+                tag("union");
+                entries.push((
+                    key("mode"),
+                    Value::String(SmolStr::new(match mode {
+                        UnionMode::Sparse => "sparse",
+                        UnionMode::Dense => "dense",
+                    })),
+                ));
+                entries.push((
+                    key("fields"),
+                    Value::from_sequence(
+                        fields
+                            .iter()
+                            .map(|(type_id, field)| union_member(type_id, field)),
+                    ),
+                ));
+            }
+            D::Dictionary(dictionary) => {
+                tag("dictionary");
+                entries.push((key("key"), dictionary.key.to_value()));
+                entries.push((key("value"), dictionary.value.to_value()));
+            }
+            D::Decimal32 { precision, scale } => {
+                decimal(&mut entries, "decimal32", *precision, *scale)
+            }
+            D::Decimal64 { precision, scale } => {
+                decimal(&mut entries, "decimal64", *precision, *scale)
+            }
+            D::Decimal128 { precision, scale } => {
+                decimal(&mut entries, "decimal128", *precision, *scale);
+            }
+            D::Decimal256 { precision, scale } => {
+                decimal(&mut entries, "decimal256", *precision, *scale);
+            }
+            D::Map(map) => {
+                tag("map");
+                entries.push((key("entries"), map.entries.to_value()));
+                entries.push((key("keys_sorted"), Value::Bool(map.keys_sorted)));
+            }
+            D::RunEndEncoded(encoded) => {
+                tag("run_end_encoded");
+                entries.push((key("run_ends"), encoded.run_ends.to_value()));
+                entries.push((key("values"), encoded.values.to_value()));
+            }
+        }
+        // The keys are distinct literals, so the mapping cannot be rejected.
+        Value::from_mapping(entries).unwrap_or(Value::Null)
+    }
+
+    /// Read a datatype back from the shared structural [`Value`].
+    ///
+    /// Fallible and validating: a malformed or incomplete mapping is refused
+    /// with the same typed error the JSON path raises, and every constructed
+    /// datatype goes through the native constructor's own validation rather
+    /// than being assembled by hand.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let list = DataType::list(DataType::Utf8.nullable_field("item"));
+    /// assert_eq!(DataType::from_value(list.to_value())?, list);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the path and the expectation when the value is
+    /// not a datatype mapping, its `type` names nothing this model holds, a
+    /// required parameter is missing or wrongly typed, or the resulting
+    /// datatype does not validate.
+    #[allow(clippy::too_many_lines)]
+    pub fn from_value(value: Value) -> Result<Self> {
+        let entries = value.as_mapping().ok_or_else(|| {
+            invalid(
+                "$",
+                "a datatype mapping",
+                format_smolstr!("{}", value.kind()),
+            )
+        })?;
+        let tag = entries
+            .iter()
+            .find(|(name, _)| name.as_str() == Some(TYPE_KEY))
+            .and_then(|(_, held)| held.as_str())
+            .ok_or_else(|| invalid("$.type", "a datatype name", "nothing"))?
+            .to_owned();
+        let at = |name: &str| -> Option<&Value> {
+            entries
+                .iter()
+                .find(|(held, _)| held.as_str() == Some(name))
+                .map(|(_, held)| held)
+        };
+        let unit = |name: &str| -> Result<TimeUnit> {
+            let text = at(name)
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid(&format!("$.{name}"), "a time unit", "nothing"))?;
+            text.parse()
+        };
+        let width = |name: &str| -> Result<i32> { integer(at(name), name) };
+        let child = |name: &str| -> Result<Field> {
+            let held = at(name)
+                .ok_or_else(|| invalid(&format!("$.{name}"), "a field mapping", "nothing"))?;
+            Field::from_value(held.clone())
+        };
+        let nested = |name: &str| -> Result<Self> {
+            let held = at(name)
+                .ok_or_else(|| invalid(&format!("$.{name}"), "a datatype mapping", "nothing"))?;
+            Self::from_value(held.clone())
+        };
+        let precision_scale = || -> Result<(u8, i8)> {
+            let precision = u8::try_from(integer(at("precision"), "precision")?).map_err(|_| {
+                invalid(
+                    "$.precision",
+                    "a decimal precision",
+                    "an out-of-range value",
+                )
+            })?;
+            let scale = i8::try_from(integer(at("scale"), "scale")?)
+                .map_err(|_| invalid("$.scale", "a decimal scale", "an out-of-range value"))?;
+            Ok((precision, scale))
+        };
+
+        let data_type = match tag.as_str() {
+            "null" => Self::Null,
+            "boolean" => Self::Boolean,
+            "int8" => Self::Int8,
+            "int16" => Self::Int16,
+            "int32" => Self::Int32,
+            "int64" => Self::Int64,
+            "u_int8" => Self::UInt8,
+            "u_int16" => Self::UInt16,
+            "u_int32" => Self::UInt32,
+            "u_int64" => Self::UInt64,
+            "float16" => Self::Float16,
+            "float32" => Self::Float32,
+            "float64" => Self::Float64,
+            "date32" => Self::Date32,
+            "date64" => Self::Date64,
+            "binary" => Self::Binary,
+            "large_binary" => Self::LargeBinary,
+            "binary_view" => Self::BinaryView,
+            "utf8" => Self::Utf8,
+            "large_utf8" => Self::LargeUtf8,
+            "utf8_view" => Self::Utf8View,
+            "timestamp" => {
+                let timezone = match at("timezone").filter(|held| !matches!(held, Value::Null)) {
+                    Some(held) => {
+                        let text = held.as_str().ok_or_else(|| {
+                            invalid("$.timezone", "a time zone name", "a non-string value")
+                        })?;
+                        Some(text.parse()?)
+                    }
+                    None => None,
+                };
+                Self::Timestamp(unit("unit")?, timezone)
+            }
+            "time32" => Self::time32(unit("unit")?)?,
+            "time64" => Self::time64(unit("unit")?)?,
+            "duration" => Self::Duration(unit("unit")?),
+            "interval" => Self::Interval(unit("unit")?),
+            "fixed_size_binary" => Self::fixed_size_binary(width("width")?)?,
+            "list" => Self::list(child("field")?),
+            "list_view" => Self::list_view(child("field")?),
+            "fixed_size_list" => Self::fixed_size_list(child("field")?, width("length")?)?,
+            "large_list" => Self::large_list(child("field")?),
+            "large_list_view" => Self::large_list_view(child("field")?),
+            "struct" => {
+                let fields = at("fields")
+                    .and_then(Value::as_sequence)
+                    .ok_or_else(|| invalid("$.fields", "a sequence of fields", "nothing"))?;
+                let mut children = Vec::with_capacity(fields.len());
+                for held in fields {
+                    children.push(Field::from_value(held.clone())?);
+                }
+                Self::from_fields(children)?
+            }
+            "union" => {
+                let mode = match at("mode").and_then(Value::as_str) {
+                    Some("sparse") => UnionMode::Sparse,
+                    Some("dense") => UnionMode::Dense,
+                    other => {
+                        return Err(invalid(
+                            "$.mode",
+                            "\"sparse\" or \"dense\"",
+                            format_smolstr!("{other:?}"),
+                        ));
+                    }
+                };
+                let members = at("fields")
+                    .and_then(Value::as_sequence)
+                    .ok_or_else(|| invalid("$.fields", "a sequence of union members", "nothing"))?;
+                let mut variants = Vec::with_capacity(members.len());
+                for held in members {
+                    let type_id = i8::try_from(integer(held.get_key_str("type_id"), "type_id")?)
+                        .map_err(|_| {
+                            invalid(
+                                "$.fields[].type_id",
+                                "an 8-bit type id",
+                                "an out-of-range value",
+                            )
+                        })?;
+                    let field = held
+                        .get_key_str("field")
+                        .ok_or_else(|| invalid("$.fields[].field", "a field mapping", "nothing"))?;
+                    variants.push((type_id, Field::from_value(field.clone())?));
+                }
+                Self::union(variants, mode)?
+            }
+            "dictionary" => Self::dictionary(nested("key")?, nested("value")?)?,
+            "decimal32" => {
+                let (precision, scale) = precision_scale()?;
+                Self::decimal32(precision, scale)?
+            }
+            "decimal64" => {
+                let (precision, scale) = precision_scale()?;
+                Self::decimal64(precision, scale)?
+            }
+            "decimal128" => {
+                let (precision, scale) = precision_scale()?;
+                Self::decimal128(precision, scale)?
+            }
+            "decimal256" => {
+                let (precision, scale) = precision_scale()?;
+                Self::decimal256(precision, scale)?
+            }
+            "map" => {
+                let keys_sorted = match at("keys_sorted") {
+                    Some(Value::Bool(held)) => *held,
+                    other => {
+                        return Err(invalid(
+                            "$.keys_sorted",
+                            "a boolean",
+                            other.map_or("nothing", Value::kind),
+                        ));
+                    }
+                };
+                Self::map(child("entries")?, keys_sorted)?
+            }
+            "run_end_encoded" => Self::run_end_encoded(child("run_ends")?, child("values")?)?,
+            other => {
+                return Err(invalid(
+                    "$.type",
+                    "a datatype this model holds",
+                    format_smolstr!("{other:?}"),
+                ));
+            }
+        };
+        data_type.validate()?;
+        Ok(data_type)
+    }
+}
+
+impl From<&DataType> for Value {
+    fn from(value: &DataType) -> Self {
+        value.to_value()
+    }
+}
+
+impl TryFrom<Value> for DataType {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        Self::from_value(value)
+    }
+}
+
+/// One union member as the `{type_id, field}` pair the JSON shape uses.
+fn union_member(type_id: i8, field: &Field) -> Value {
+    Value::from_mapping([
+        (key("type_id"), Value::I8(type_id)),
+        (key("field"), field.to_value()),
+    ])
+    .unwrap_or(Value::Null)
+}
+
+/// Append the decimal tag and its two parameters, in emission order.
+fn decimal(entries: &mut Vec<(Value, Value)>, name: &str, precision: u8, scale: i8) {
+    entries.push((key(TYPE_KEY), Value::String(SmolStr::new(name))));
+    entries.push((key("precision"), Value::U8(precision)));
+    entries.push((key("scale"), Value::I8(scale)));
+}
+
+/// A mapping key, which is always a plain string in a schema document.
+pub(crate) fn key(name: &str) -> Value {
+    Value::String(SmolStr::new(name))
+}
+
+/// A time unit as its snake_case full name, exactly as the JSON path emits it.
+///
+/// Not [`TimeUnit::as_str`], which answers the canonical *short* spelling
+/// (`us`): the serialized vocabulary is the full name, and `from_str` accepts
+/// both, so the two stay interchangeable on the read side.
+fn unit_value(unit: TimeUnit) -> Value {
+    Value::String(SmolStr::new(match unit {
+        TimeUnit::Second => "second",
+        TimeUnit::Millisecond => "millisecond",
+        TimeUnit::Microsecond => "microsecond",
+        TimeUnit::Nanosecond => "nanosecond",
+        TimeUnit::YearMonth => "year_month",
+        TimeUnit::DayTime => "day_time",
+        TimeUnit::MonthDayNano => "month_day_nano",
+    }))
+}
+
+/// Read an integer parameter, accepting every width the model may carry it in.
+pub(crate) fn integer(held: Option<&Value>, name: &str) -> Result<i32> {
+    let held = held.ok_or_else(|| invalid(&format!("$.{name}"), "an integer", "nothing"))?;
+    let value = match held {
+        Value::I8(value) => i64::from(*value),
+        Value::I16(value) => i64::from(*value),
+        Value::I32(value) => i64::from(*value),
+        Value::I64(value) => *value,
+        Value::U8(value) => i64::from(*value),
+        Value::U16(value) => i64::from(*value),
+        Value::U32(value) => i64::from(*value),
+        Value::U64(value) => i64::try_from(*value)
+            .map_err(|_| invalid(&format!("$.{name}"), "an integer", "an out-of-range value"))?,
+        // A structured-text document may carry a wide integer as text; the
+        // JSON path already accepts the decimal-string spelling for the same
+        // reason, so the two stay interchangeable.
+        Value::String(text) => text.parse::<i64>().map_err(|_| {
+            invalid(
+                &format!("$.{name}"),
+                "an integer",
+                format_smolstr!("{text:?}"),
+            )
+        })?,
+        other => {
+            return Err(invalid(
+                &format!("$.{name}"),
+                "an integer",
+                format_smolstr!("{}", other.kind()),
+            ));
+        }
+    };
+    i32::try_from(value).map_err(|_| {
+        invalid(
+            &format!("$.{name}"),
+            "a 32-bit integer",
+            "an out-of-range value",
+        )
+    })
+}
+
+/// A typed structural failure naming the path, the expectation, and the actual.
+pub(crate) fn invalid(
+    path: &str,
+    expected: impl std::fmt::Display,
+    actual: impl std::fmt::Display,
+) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new(path),
+        reason: crate::text::expected_got(expected.to_string(), actual.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The three formats, all over the one `Value` conversion.
+//
+// `to_json` keeps the Serde path because `DataType` is `Serialize`/`Deserialize`
+// for the serde ecosystem - it is nested inside other derived structures
+// across the tree, and AGENTS.md requires those traits on a native value. The
+// two are not a second structural model: the parity test in
+// `tests/field/serde.rs` dumps every shape through both routes and compares the
+// bytes, so the Serde impl cannot drift from the `Value` mapping without
+// failing a test. Every *other* format goes through `to_value` alone.
+// ---------------------------------------------------------------------------
+
+impl DataType {
+    /// Serialize this value as deterministic structural JSON, laid out as asked.
+    ///
+    /// The companion of [`Self::to_json`]; see
+    /// [`json::to_vec_with_formatting`](crate::json::to_vec_with_formatting)
+    /// for what each [`Indent`](crate::text::Indent) means.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn to_json_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
+        text_of(crate::json::to_vec_with_formatting(
+            &self.to_value(),
+            formatting,
+        )?)
+    }
+
+    /// Consume and serialize as structural JSON, laid out as asked.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        self.to_json_with_formatting(formatting)
+    }
+
+    /// Deserialize and validate from structural YAML.
+    ///
+    /// The same structure [`Self::from_json`] reads, in YAML's syntax - so a
+    /// configuration document can carry a declared schema inline beside the
+    /// rest of its settings, with no JSON-string-inside-YAML awkwardness.
+    ///
+    /// # Errors
+    ///
+    /// Returns the parser's failure, or the structural refusal naming the path
+    /// and the expectation.
+    pub fn from_yaml(value: &str) -> Result<Self> {
+        Self::from_value(crate::yaml::from_str(value)?)
+    }
+
+    /// Serialize as YAML: block style, one key per line, one indent per level.
+    ///
+    /// Key order is the same as the JSON emit, so the two are comparable side
+    /// by side, and an unset optional attribute is omitted rather than emitted
+    /// as null.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn to_yaml(&self) -> Result<String> {
+        self.to_yaml_with_formatting(crate::text::Formatting::default())
+    }
+
+    /// Serialize as YAML, laid out as asked.
+    ///
+    /// Block style at the requested width; flow style only if a caller
+    /// explicitly asks for [`Indent::None`](crate::text::Indent::None).
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn to_yaml_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
+        text_of(crate::yaml::to_vec_with_formatting(
+            &self.to_value(),
+            formatting,
+        )?)
+    }
+
+    /// Consume and serialize as YAML.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn into_yaml(self) -> Result<String> {
+        self.to_yaml()
+    }
+
+    /// Consume and serialize as YAML, laid out as asked.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn into_yaml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        self.to_yaml_with_formatting(formatting)
+    }
+
+    /// Deserialize and validate from structural TOML.
+    ///
+    /// # Errors
+    ///
+    /// Returns the parser's failure, or the structural refusal naming the path
+    /// and the expectation.
+    pub fn from_toml(value: &str) -> Result<Self> {
+        Self::from_value(crate::toml::from_str(value)?)
+    }
+
+    /// Serialize as TOML.
+    ///
+    /// TOML has no null, and this model never needs one: an unset optional
+    /// attribute is *omitted* rather than faked, so nothing is lost on the way
+    /// out and `from_toml` reads the same value back.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn to_toml(&self) -> Result<String> {
+        self.to_toml_with_formatting(crate::text::Formatting::default())
+    }
+
+    /// Serialize as TOML, laid out as asked.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn to_toml_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
+        text_of(crate::toml::to_vec_with_formatting(
+            &self.to_value(),
+            formatting,
+        )?)
+    }
+
+    /// Consume and serialize as TOML.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn into_toml(self) -> Result<String> {
+        self.to_toml()
+    }
+
+    /// Consume and serialize as TOML, laid out as asked.
+    ///
+    /// # Errors
+    ///
+    /// Returns the encoder's failure.
+    pub fn into_toml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        self.to_toml_with_formatting(formatting)
+    }
+}
+
+/// A dumped document as text, or the encoder's own UTF-8 failure.
+///
+/// Every writer here emits UTF-8 by construction, so this only ever converts.
+fn text_of(bytes: Vec<u8>) -> Result<String> {
+    String::from_utf8(bytes).map_err(|error| Error::Codec {
+        format: "text",
+        position: 0,
+        reason: smol_str::format_smolstr!("expected UTF-8 output, got {error}"),
+    })
 }
