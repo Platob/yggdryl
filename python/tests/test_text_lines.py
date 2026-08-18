@@ -86,7 +86,9 @@ custom_fields:
     assert schema["source"].data_type == DataType("utf8")
 
     reader = handle(tmp_path, LOG).read_arrow_lines(options=options)
-    assert reader.schema.names == schema.to_arrow().type.names if False else True
+    # The reader emits exactly the schema the builder answered from the
+    # document, so the table can be created before any resource exists.
+    assert reader.schema.names == [field.name for field in schema]
     table = reader.read_all()
     assert table.num_rows == 2
     assert table.column("level").to_pylist() == ["ERROR", "INFO"]

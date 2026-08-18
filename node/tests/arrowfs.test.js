@@ -185,9 +185,11 @@ test('bytes round trip, and a write publishes when the handle is flushed', () =>
   const handler = memory()
   const handle = IOBase.fromArrowFs(handler, 'bucket/staged.bin')
 
-  handle.writeText('pending')
-  // An Arrow file system replaces whole files rather than writing ranges, so
-  // the value stages until it is published as one replacement.
+  // Positional writes are pieces of a value, so they stage: an Arrow file
+  // system replaces whole files rather than writing ranges, and must never be
+  // handed a half-written one.
+  handle.pwrite(0, Buffer.from('pend'))
+  handle.pwrite(4, Buffer.from('ing'))
   assert.ok(!handler.files.has('bucket/staged.bin'))
   // The handle itself reads what it staged, and says a file is there now.
   assert.equal(handle.readText(), 'pending')
@@ -195,6 +197,12 @@ test('bytes round trip, and a write publishes when the handle is flushed', () =>
 
   handle.flush()
   assert.equal(handler.files.get('bucket/staged.bin').toString(), 'pending')
+
+  // A whole-value write needs no scope at all: it is one replacement, so it
+  // publishes when it finishes.
+  const whole = IOBase.fromArrowFs(handler, 'bucket/whole.bin')
+  whole.writeText('published')
+  assert.equal(handler.files.get('bucket/whole.bin').toString(), 'published')
 
   // Positional access needs no mode here either, and the ranged read maps
   // straight onto one `readRange`.
@@ -421,7 +429,7 @@ test('a scope publishes the staged value it wrote', () => {
   // Node this suite runs on, while the protocol it calls is not.
   {
     const handle = IOBase.fromArrowFs(handler, 'bucket/scoped.bin')
-    handle.writeText('AAPL')
+    handle.pwrite(0, Buffer.from('AAPL'))
     // Still staged: the handler has not been asked to store anything yet.
     assert.equal(handler.files.has('bucket/scoped.bin'), false)
     assert.equal(typeof handle[Symbol.dispose], 'function')

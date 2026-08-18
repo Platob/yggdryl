@@ -859,12 +859,6 @@ export declare class IOBase {
    */
   decompressInto(target: IOBase, codec?: string | undefined | null): number
   /**
-   * Iterate the resource's decoded text lines, one line at a time.
-   *
-   * Any content codings the resource's name declares - `trades.jsonl.gz`,
-   * `log.txt.zst` - decode as streams, so a compressed resource is read
-   * without ever holding its decompressed value. A line is what `
-  ` ends,
    * A positioned view over this resource.
    *
    * The cursor shares this handle - a write through the cursor is a write
@@ -872,14 +866,6 @@ export declare class IOBase {
    * and `tell` move and report it, and two cursors advance independently.
    */
   cursor(position?: number | undefined | null): JsIOCursor
-  /**
-   * a trailing `\r` belongs to the terminator, and the last line needs no
-   * terminator. The returned iterator owns a rebuilt handle, so it stays
-   * valid however long the caller keeps it.
-   * With `pattern`, lines group into records: one starts at a matching
-   * line and carries every following line until the next match.
-   */
-  readLines(pattern?: string | undefined | null): JsLineIterator
   /**
    * Return the record settings this handle's media type names.
    *
@@ -949,17 +935,22 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
- * Iterator over a resource's decoded text lines, one line at a time.
+ * Iterator over a resource's text records, one at a time.
  *
- * Built by [`JsIOBase::read_lines`]. The handle is rebuilt from its location
- * and owned here, bytes stream through a fixed buffer, and any content
- * codings the name declares decode as streams, so a compressed resource is
- * read without ever holding its decompressed value. `next()` is the native
- * half of the iteration protocol; the loader wraps it so `for...of` yields
- * strings.
+ * Built by `readLines`. The handle is rebuilt from its location and owned
+ * here, bytes stream through one bounded window, and any content codings the
+ * name declares decode as streams, so a compressed resource costs one window
+ * rather than its decoded size. `next()` is the native half of the iteration
+ * protocol; the loader wraps it so `for...of` yields strings.
+ *
+ * Each record crosses as a JavaScript string. The core hands back a
+ * *borrowed* view whose lifetime ends at the next read, and a JavaScript
+ * value cannot borrow it - so this is the one place the line surface copies,
+ * and it copies because the boundary requires it, not because the reader
+ * does.
  */
 export declare class LineIterator {
-  /** The next line, or `null` when the resource is exhausted. */
+  /** The next record, or `null` when the resource is exhausted. */
   next(): string | null
 }
 export type JsLineIterator = LineIterator

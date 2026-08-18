@@ -6,6 +6,7 @@ import {
   schemaFromPattern,
   type BatchReader,
   type Field,
+  type LineIterator,
   type LocationInput,
   type PartitionEntry,
   type PartitionFilters,
@@ -107,6 +108,35 @@ const lineSchema: Field = schemaFromPattern('^(?<qty>\\d+)', {
   customFields: { venue: 'XNAS' },
   captureTypes: { qty: 'decimal(9, 2)' },
 })
+// The whole extractor as one object, with no pattern to name positionally.
+const lineSchemaFromOptions: Field = schemaFromPattern({
+  logs: true,
+  timezone: 'Europe/Paris',
+})
+const lineRecords: LineIterator = handle.readLines()
+const lineRecordsByPattern: LineIterator = handle.readLines('^\\d{4}')
+const lineRecordsFromLogs: LineIterator = handle.readLines({
+  logs: true,
+  byteSize: 1 << 20,
+  lstrip: 'none',
+})
+const lineBatchesFromOptions: BatchReader = handle.readArrowLines({
+  logs: true,
+  batchSize: 512,
+})
+handle.writeLines(['one', 'two'])
+handle.appendLines(
+  (function* tail() {
+    yield 'three'
+  })(),
+  { linesep: '\\r\\n' },
+)
+
+void lineSchemaFromOptions
+void lineRecords
+void lineRecordsByPattern
+void lineRecordsFromLogs
+void lineBatchesFromOptions
 
 void asPath
 void printed
