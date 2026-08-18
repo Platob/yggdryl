@@ -503,7 +503,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
     }
 
     /// Return whether a footer is currently cached.
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.cached.is_some()
     }
 

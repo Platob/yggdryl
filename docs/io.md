@@ -1191,15 +1191,15 @@ themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), 
     use yggdryl::Codec;
 
     let mut handle = Coded::new(Buffer::new(), Codec::Zstd);
-    assert!(!handle.is_open());
+    assert!(!handle.opened());
 
     handle.open()?;
-    assert!(handle.is_open());
+    assert!(handle.opened());
     handle.write_all_bytes(b"symbol,price\n")?;
 
     // Closing publishes the pending write and releases the cache.
     handle.close()?;
-    assert!(!handle.is_open());
+    assert!(!handle.opened());
 
     // The handle stays usable; the next read re-materializes.
     assert_eq!(handle.read_all()?, b"symbol,price\n");
@@ -1218,7 +1218,8 @@ themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), 
     # `with` is the scoped pair: `__enter__` opens and `__exit__` closes.
     with IOBase(path) as handle:
         handle.write_text("symbol,price\n")
-        assert handle.is_open()
+        assert handle.opened
+        assert not handle.closed
 
     # Closing published the bytes at their exact length, which is what another
     # reader needs; the handle stays usable and simply re-materializes.
@@ -1239,7 +1240,7 @@ operations against one resource cheap. Nothing fills the cache as a side effect 
 because a cache nobody asked for is how a handle serves a stale answer.
 
 What is cached depends on the implementation. `Buffer` has nothing to cache, so the trait defaults
-apply and `is_open` stays `false`. `local::File` caches the descriptor and the memory mapping.
+apply and `opened` stays `false`. `local::File` caches the descriptor and the memory mapping.
 `Coded` caches the decoded value. The media wrappers cache exactly the metadata their format keeps
 re-reading: `Ipc` the stream's schema, `Parquet` the footer - so a schema probe, a statistics read,
 and a batch read inside one scope pay for the footer once. These are the operations a scoped context
@@ -1454,7 +1455,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `delegate_iobase!` expands to the forwarding bodies for every byte method - `pread`, `pwrite`, `size`,
 `capacity`, `reserve`, `truncate`, `url`, `media_type`, `set_media_type`, `flush`, `parent`,
 `child_by`, `ls`, `kind` - inside an `impl IOBase for` block. It deliberately does not forward `open`,
-`is_open`, or `close`: a wrapper that caches something of its own writes those after the invocation,
+`opened`, or `close`: a wrapper that caches something of its own writes those after the invocation,
 as the example does. [ipc.md](ipc.md), [parquet.md](parquet.md), and the compression handles are all
 built this way.
 

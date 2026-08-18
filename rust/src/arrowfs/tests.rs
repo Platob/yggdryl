@@ -284,7 +284,7 @@ mod staging {
         let mut handle = File::from_location(filesystem.clone(), "bucket/trades.bin").unwrap();
         handle.write_all_bytes(b"first").unwrap();
         handle.close().unwrap();
-        assert!(!handle.is_open());
+        assert!(!handle.opened());
 
         // The value changes underneath the handle.
         filesystem

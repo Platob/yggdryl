@@ -769,7 +769,9 @@ export declare class IOBase {
    */
   open(): void
   /** Return whether cached state is currently held. */
-  isOpen(): boolean
+  opened(): boolean
+  /** Return whether no cached state is currently held. */
+  closed(): boolean
   /**
    * Publish and release everything [`Self::open`] cached.
    *

@@ -211,20 +211,20 @@ mod hierarchy {
         directory.create().unwrap();
 
         let mut leaf = directory.child_by("cached.bin").unwrap();
-        assert!(!leaf.is_open());
+        assert!(!leaf.opened());
 
         leaf.pwrite(0, b"cached").unwrap();
-        assert!(leaf.is_open());
+        assert!(leaf.opened());
 
         // Closing publishes and releases; the handle stays usable.
         leaf.close().unwrap();
-        assert!(!leaf.is_open());
+        assert!(!leaf.opened());
         assert_eq!(leaf.read_all().unwrap(), b"cached");
 
         // Opening a handle for a missing file caches nothing and creates nothing.
         let mut absent = directory.child_by("absent.bin").unwrap();
         absent.open().unwrap();
-        assert!(!absent.is_open());
+        assert!(!absent.opened());
 
         let _ = std::fs::remove_dir_all(&path);
     }

@@ -333,9 +333,11 @@ class TestAbsenceAndScope:
 
         with IOBase(path) as handle:
             # Opening never creates, so the mapping appears with the write.
-            assert not handle.is_open()
+            assert not handle.opened
+            assert handle.closed
             handle.write_arrow_batch_reader([_batch()])
-            assert handle.is_open()
+            assert handle.opened
+            assert not handle.closed
 
         # Closing published the bytes at their exact length, which is what
         # another reader needs to find the end of the stream.

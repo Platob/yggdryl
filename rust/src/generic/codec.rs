@@ -178,8 +178,8 @@ impl<H: IOBase> IOBase for Codec<H> {
         self.as_io_mut().open()
     }
 
-    fn is_open(&self) -> bool {
-        self.as_io().is_open()
+    fn opened(&self) -> bool {
+        self.as_io().opened()
     }
 
     fn close(&mut self) -> Result<()> {

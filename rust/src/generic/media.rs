@@ -245,8 +245,8 @@ impl IOBase for Media {
         self.as_io_mut().open()
     }
 
-    fn is_open(&self) -> bool {
-        self.as_io().is_open()
+    fn opened(&self) -> bool {
+        self.as_io().opened()
     }
 
     fn close(&mut self) -> crate::Result<()> {

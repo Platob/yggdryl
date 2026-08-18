@@ -445,9 +445,11 @@ test('open and close bracket the staged state without creating anything', () => 
   assert.equal(handler.files.has('bucket/absent.bin'), false)
 
   handle.writeText('later')
-  assert.equal(handle.isOpen(), true)
+  assert.equal(handle.opened(), true)
+  assert.equal(handle.closed(), false)
   handle.close()
-  assert.equal(handle.isOpen(), false)
+  assert.equal(handle.opened(), false)
+  assert.equal(handle.closed(), true)
   assert.equal(handle.readText(), 'later')
 })
 

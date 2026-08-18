@@ -100,14 +100,14 @@ fn a_missing_resource_reads_as_empty_rather_than_failing() {
 #[test]
 fn open_materializes_and_close_publishes() {
     let mut handle = Coded::new(Buffer::new(), Codec::Gzip);
-    assert!(!handle.is_open());
+    assert!(!handle.opened());
 
     handle.open().unwrap();
-    assert!(handle.is_open());
+    assert!(handle.opened());
 
     handle.write_all_bytes(PAYLOAD).unwrap();
     handle.close().unwrap();
-    assert!(!handle.is_open());
+    assert!(!handle.opened());
 
     // Closing published the write, so the encoded bytes are there.
     assert_eq!(handle.read_all().unwrap(), PAYLOAD);

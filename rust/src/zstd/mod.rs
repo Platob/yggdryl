@@ -196,8 +196,8 @@ impl<H: IOBase> IOBase for Zstd<H> {
         self.coded.open()
     }
 
-    fn is_open(&self) -> bool {
-        self.coded.is_open()
+    fn opened(&self) -> bool {
+        self.coded.opened()
     }
 
     fn close(&mut self) -> crate::Result<()> {

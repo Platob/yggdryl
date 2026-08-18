@@ -285,8 +285,38 @@ pub trait IOBase: Send {
     }
 
     /// Return whether cached state is currently held.
-    fn is_open(&self) -> bool {
+    ///
+    /// This reports a state of the *handle*, not a property of the resource -
+    /// which is why it reads `opened` rather than `is_open`, matching the
+    /// past-participle form the [`open`](Self::open)/[`close`](Self::close)
+    /// pair already establishes. [`Self::is_container`] and [`Self::is_empty`]
+    /// keep the `is_` prefix because they genuinely are predicates over the
+    /// resource.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new();
+    /// // A plain buffer caches nothing, so it is never open.
+    /// assert!(!handle.opened());
+    /// assert!(handle.closed());
+    /// handle.open()?;
+    /// assert_eq!(handle.opened(), !handle.closed());
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn opened(&self) -> bool {
         false
+    }
+
+    /// Return whether no cached state is currently held.
+    ///
+    /// Exactly `!`[`Self::opened`], so the pair can never disagree: this is a
+    /// derived reading, never something an implementation answers
+    /// independently.
+    fn closed(&self) -> bool {
+        !self.opened()
     }
 
     /// Flush and release everything [`Self::open`] cached.

@@ -267,7 +267,7 @@ impl<H: IOBase> IOBase for Coded<H> {
         Ok(())
     }
 
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.plain.is_some()
     }
 

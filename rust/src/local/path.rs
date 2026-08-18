@@ -264,8 +264,8 @@ impl IOBase for Path {
         self.with_resolved_mut(|handle| handle.open())?
     }
 
-    fn is_open(&self) -> bool {
-        self.with_resolved(false, |handle| handle.is_open())
+    fn opened(&self) -> bool {
+        self.with_resolved(false, |handle| handle.opened())
             .unwrap_or(false)
     }
 

@@ -327,7 +327,7 @@ impl IOBase for File {
         Ok(())
     }
 
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.stage.lock().is_ok_and(|stage| stage.is_some())
     }
 

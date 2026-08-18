@@ -694,8 +694,18 @@ impl PyIOBase {
     }
 
     /// Return whether cached state is currently held.
-    fn is_open(&self) -> bool {
-        self.inner.is_open()
+    ///
+    /// A property rather than a method, because `io.IOBase.closed` is one and
+    /// this module mirrors that vocabulary.
+    #[getter]
+    fn opened(&self) -> bool {
+        self.inner.opened()
+    }
+
+    /// Return whether no cached state is currently held, as `io.IOBase.closed`.
+    #[getter]
+    fn closed(&self) -> bool {
+        self.inner.closed()
     }
 
     /// Publish and release everything `open` cached.

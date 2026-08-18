@@ -1459,7 +1459,7 @@ impl<H: IOBase> IOBase for Avro<H> {
     }
 
     /// Return whether a schema is currently cached.
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.cached_schema.is_some()
     }
 

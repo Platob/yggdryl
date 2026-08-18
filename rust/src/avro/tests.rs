@@ -1356,11 +1356,11 @@ mod records {
         media
             .write_batch_reader(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
-        assert!(media.is_open(), "a write refreshes the cache");
+        assert!(media.opened(), "a write refreshes the cache");
         media.close().unwrap();
-        assert!(!media.is_open());
+        assert!(!media.opened());
         media.open().unwrap();
-        assert!(media.is_open());
+        assert!(media.opened());
         let derived = media.schema().unwrap();
         assert_eq!(derived.name(), schema.name());
         assert_eq!(derived.field_len(), schema.field_len());

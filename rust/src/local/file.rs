@@ -352,7 +352,7 @@ impl IOBase for File {
         Ok(())
     }
 
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.state.lock().is_ok_and(|state| state.is_some())
     }
 

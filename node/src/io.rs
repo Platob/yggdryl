@@ -546,8 +546,14 @@ impl JsIOBase {
 
     /// Return whether cached state is currently held.
     #[napi]
-    pub fn is_open(&self) -> bool {
-        self.inner.is_open()
+    pub fn opened(&self) -> bool {
+        self.inner.opened()
+    }
+
+    /// Return whether no cached state is currently held.
+    #[napi]
+    pub fn closed(&self) -> bool {
+        self.inner.closed()
     }
 
     /// Publish and release everything [`Self::open`] cached.
