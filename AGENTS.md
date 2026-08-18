@@ -66,10 +66,13 @@ layer compiling annotations into native values.
   (non-default `parquet` feature). Each owns free functions over any `IOBase`
   handle plus a stateful type (`Ipc`, `Parquet`) holding handle, options,
   cache; `IOBase`'s record methods dispatch to those functions.
+- Apache Avro below `rust/src/avro/`: an unconditional codec module (it adds
+  no dependency) reading and writing object containers as the shared `Value`
+  over any `IOBase` handle. Iceberg sits on it, never the other way around.
 - Apache Iceberg below `rust/src/iceberg/` (non-default `iceberg` feature,
   implies `parquet`), one file per concern: `types.rs`, `schema.rs`,
   `partition.rs`, `snapshot.rs` (snapshots and refs), `metadata.rs`,
-  `manifest.rs`, `avro.rs`, `statistics.rs`, `value.rs` (Iceberg's text and
+  `manifest.rs`, `statistics.rs`, `value.rs` (Iceberg's text and
   single-value renderings of a scalar), `scan.rs`, `table.rs`, `options.rs`,
   `catalog.rs`, `evolve.rs`, `inspect.rs`. A table format sits on the record
   encodings; it never becomes one.
@@ -220,7 +223,7 @@ meets all of these; a new media that cannot yet is not done:
   first. Catalog-free location works like `HadoopTables`:
   `metadata/version-hint.text`, else highest-numbered `*.metadata.json`.
 - **No dependency for the format itself.** Metadata is JSON via
-  `rust/src/json/`; manifests are Avro via `iceberg/avro.rs`; data files are
+  `rust/src/json/`; manifests are Avro via `rust/src/avro/`; data files are
   what `rust/src/parquet/` wrote, with statistics from that footer. Never add
   an Iceberg/Avro/catalog crate or `serde_json` here. The published `iceberg`
   crate was rejected: it pins arrow/parquet 55 vs this workspace's 59, storage
@@ -339,7 +342,7 @@ meets all of these; a new media that cannot yet is not done:
 - **One page per core module folder**: `docs/<module>.md` documents
   `yggdryl::<module>` and nothing else (`enums`, `datatype`, `field`,
   `arrow`, `io`, `generic`, `local`, `gzip`, `zlib`, `zstd`, `ipc`,
-  `parquet`, `iceberg`, `uri`, `text`, `json`, `yaml`, `toml`).
+  `parquet`, `avro`, `iceberg`, `uri`, `text`, `json`, `yaml`, `toml`).
   `docs/extensions/{python,javascript}.md` document only their boundary.
 - Every page opens with one H1 and exactly one short sentence saying what the
   module is for.

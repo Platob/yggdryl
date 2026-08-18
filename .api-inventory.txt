@@ -35,6 +35,12 @@
   pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field>
   pub fn record_schema_to_arrow(schema: &Field) -> Result<Schema>
 
+### yggdryl::avro  [rust\src\avro\container.rs]
+  pub struct Container
+  pub fn get(&self, key: &str) -> Option<&str>
+  pub fn read_container<H: IOBase + ?Sized>(handle: &H) -> Result<Container>
+  pub fn write_container<H: IOBase + ?Sized>( handle: &mut H, schema_json: &Value, metadata: &[(&str, &str)], rows: &[Value], ) -> Result<()>
+
 ### yggdryl::datatype::arrow  [rust\src\datatype\arrow.rs]
   pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
   pub fn to_arrow(&self) -> Result<ArrowDataType>

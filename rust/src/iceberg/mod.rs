@@ -89,7 +89,6 @@
 //! table is unaffected, because a manifest already records which partition each
 //! file belongs to.
 
-mod avro;
 mod catalog;
 mod evolve;
 mod inspect;

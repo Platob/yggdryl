@@ -4,7 +4,7 @@
 //! snapshot names one *manifest list*; each row of that list is a *manifest*;
 //! each row of a manifest is one *data file* with its partition tuple and its
 //! statistics. Both levels are Avro, both are read and written here through
-//! [`super::avro`], and both are reached through the handle the table was
+//! [`crate::avro`], and both are reached through the handle the table was
 //! constructed from - never by opening a path.
 //!
 //! The Avro schemas are built rather than stored, because the `partition`
@@ -300,7 +300,7 @@ pub struct ManifestFile {
 /// Returns an error when the bytes are not an Avro manifest or an entry is
 /// missing a field the specification requires.
 pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry>> {
-    let container = super::avro::read_container(handle)?;
+    let container = crate::avro::read_container(handle)?;
     let mut entries = Vec::with_capacity(container.rows.len());
     for row in &container.rows {
         entries.push(entry_from_value(row)?);
@@ -314,7 +314,7 @@ pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry
 ///
 /// Returns an error when the header's `partition-spec` is not a spec document.
 pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpec> {
-    let container = super::avro::read_container(handle)?;
+    let container = crate::avro::read_container(handle)?;
     let Some(encoded) = container.get("partition-spec") else {
         return Ok(PartitionSpec::unpartitioned());
     };
@@ -354,28 +354,26 @@ pub fn write_manifest<H: IOBase + ?Sized>(
     }
 
     let schema_json = super::schema_to_json(schema)?;
+    let schema_text = String::from_utf8_lossy(&crate::json::to_vec(&schema_json)?).into_owned();
+    let spec_text =
+        String::from_utf8_lossy(&crate::json::to_vec(&spec.to_v1_json()?)?).into_owned();
+    let spec_id = spec.spec_id.to_string();
+    let format_version = version.number().to_string();
     let metadata = [
-        (
-            "schema",
-            String::from_utf8_lossy(&crate::json::to_vec(&schema_json)?).into_owned(),
-        ),
+        ("schema", schema_text.as_str()),
         (
             "schema-id",
             schema
                 .iceberg()
                 .get(super::schema::SCHEMA_ID)
-                .unwrap_or("0")
-                .to_owned(),
+                .unwrap_or("0"),
         ),
-        (
-            "partition-spec",
-            String::from_utf8_lossy(&crate::json::to_vec(&spec.to_v1_json()?)?).into_owned(),
-        ),
-        ("partition-spec-id", spec.spec_id.to_string()),
-        ("format-version", version.number().to_string()),
-        ("content", "data".to_owned()),
+        ("partition-spec", spec_text.as_str()),
+        ("partition-spec-id", spec_id.as_str()),
+        ("format-version", format_version.as_str()),
+        ("content", "data"),
     ];
-    super::avro::write_container(handle, &avro_schema, &metadata, &rows)
+    crate::avro::write_container(handle, &avro_schema, &metadata, &rows)
 }
 
 /// Read every manifest a manifest list names.
@@ -385,7 +383,7 @@ pub fn write_manifest<H: IOBase + ?Sized>(
 /// Returns an error when the bytes are not an Avro manifest list or a row is
 /// missing a field the specification requires.
 pub fn read_manifest_list<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestFile>> {
-    let container = super::avro::read_container(handle)?;
+    let container = crate::avro::read_container(handle)?;
     let mut manifests = Vec::with_capacity(container.rows.len());
     for row in &container.rows {
         manifests.push(manifest_from_value(row)?);
@@ -412,18 +410,19 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
     for manifest in manifests {
         rows.push(manifest_to_value(manifest, version)?);
     }
+    let snapshot_text = snapshot_id.to_string();
+    let parent_text = parent_snapshot_id.map_or_else(|| "null".to_owned(), |id| id.to_string());
+    let sequence_text = sequence_number.to_string();
+    let format_version = version.number().to_string();
     let mut metadata = vec![
-        ("snapshot-id", snapshot_id.to_string()),
-        (
-            "parent-snapshot-id",
-            parent_snapshot_id.map_or_else(|| "null".to_owned(), |id| id.to_string()),
-        ),
-        ("format-version", version.number().to_string()),
+        ("snapshot-id", snapshot_text.as_str()),
+        ("parent-snapshot-id", parent_text.as_str()),
+        ("format-version", format_version.as_str()),
     ];
     if version >= FormatVersion::V2 {
-        metadata.insert(2, ("sequence-number", sequence_number.to_string()));
+        metadata.insert(2, ("sequence-number", sequence_text.as_str()));
     }
-    super::avro::write_container(handle, &avro_schema, &metadata, &rows)
+    crate::avro::write_container(handle, &avro_schema, &metadata, &rows)
 }
 
 /// Build the Avro schema one manifest's entries are written against.
