@@ -20,6 +20,15 @@ pub mod generic;
 pub mod gzip;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
+// The line projection consults the Iceberg type vocabulary even when the
+// table format itself is not compiled in, so the schema it accepts never
+// depends on the feature set. Without the feature the module is exactly the
+// vocabulary - the one self-contained `types.rs`, never a duplicate - and
+// enabling the feature only *adds* the rest of the format, so the features
+// stay additive.
+#[cfg(all(feature = "arrow", not(feature = "iceberg")))]
+#[path = "iceberg/types.rs"]
+pub mod iceberg;
 pub mod io;
 #[cfg(feature = "arrow")]
 pub mod ipc;

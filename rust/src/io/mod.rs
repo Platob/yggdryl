@@ -42,6 +42,10 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 mod buffer;
 mod coding;
 mod cursor;
+// The Arrow projection of matched line records - a text-line surface beside
+// `read_lines`, never a fourth record method.
+#[cfg(feature = "arrow")]
+pub mod lines;
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
@@ -53,6 +57,8 @@ mod roles;
 pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
+#[cfg(feature = "arrow")]
+pub use lines::LineRecordOptions;
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -766,6 +772,7 @@ pub trait IOBase: Send {
             lines: self.read_lines()?,
             pattern,
             pending: None,
+            pending_offset: 0,
             done: false,
         })
     }
@@ -790,6 +797,7 @@ pub trait IOBase: Send {
             lines: self.into_read_lines()?,
             pattern,
             pending: None,
+            pending_offset: 0,
             done: false,
         })
     }
@@ -814,6 +822,69 @@ pub trait IOBase: Send {
 
     // (decoded_stream peels the codings for the owned variant; the borrowed
     // one inlines the same walk because its boxes carry no Send.)
+
+    /// Project the matched line records of this resource into Arrow batches.
+    ///
+    /// This is a text-line projection like [`Self::read_lines`], **not a
+    /// fourth record method**: the record surface stays exactly
+    /// [`Self::read_arrow_batch_reader`], [`Self::write_arrow_batch_reader`],
+    /// and [`Self::append_arrow_batch_reader`], and this method never touches
+    /// how a record encoding decodes rows. What it reads is text - the same
+    /// decoded lines [`Self::read_lines_matching`] yields, grouped into
+    /// records by the options' header pattern - and what it returns is those
+    /// records as one streaming [`BatchReader`](crate::arrow::BatchReader),
+    /// one batch in memory at a time. The columns are described on
+    /// [`LineRecordOptions`].
+    ///
+    /// [`IOKind`] decides the shape, never a second existence check:
+    ///
+    /// - A leaf ([`IOKind::File`], [`IOKind::Memory`]) parses that one
+    ///   resource's lines. This borrowed variant needs an owned view of the
+    ///   resource behind the reader it returns, so it reopens the same
+    ///   location through [`Self::parent`] and [`Self::child_by`]; a handle
+    ///   with no parent - an in-memory buffer - contributes a snapshot of its
+    ///   still-encoded bytes instead, which those handles already hold in
+    ///   memory. [`Self::into_arrow_lines`] avoids both by consuming the
+    ///   handle.
+    /// - A container ([`IOKind::Directory`]) streams across the leaf files
+    ///   beneath it in deterministic name-sorted order, each leaf opened
+    ///   lazily when the reader reaches it, each contributing its own `url`
+    ///   and restarting `rownum` at 1, and each decoded by its *own* media
+    ///   type - a folder mixing `a.log` and `b.log.gz` reads uniformly. A
+    ///   batch never spans two leaves.
+    /// - [`IOKind::Unknown`] - the resource does not exist - reads as an
+    ///   **empty** reader: zero batches, schema still answered, exactly as
+    ///   [`Self::read_lines`] yields no lines and [`Self::pread`] reads zero
+    ///   bytes. Absence is never an error on the read path.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing or reopen failure; each yielded batch carries the
+    /// read, decode, or parse failure of its rows.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(&self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized,
+    {
+        lines::read_arrow_lines(self, options)
+    }
+
+    /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
+    ///
+    /// This is the shape the bindings hand across FFI, and the one a Rust
+    /// caller needs when the batches outlive the scope that built the handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing failure; each yielded batch carries the read,
+    /// decode, or parse failure of its rows.
+    #[cfg(feature = "arrow")]
+    fn into_arrow_lines(self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized + 'static,
+    {
+        lines::into_arrow_lines(self, options)
+    }
 
     /// Return the record options this resource's encoding names.
     ///
@@ -1263,10 +1334,20 @@ impl Read for Reader<'_> {
 /// pulled through a fixed-size buffer and any content codings the resource
 /// declares are peeled as streams, so one line is in memory at a time whether
 /// the resource is plain or compressed. A line is what `\n` ends, a trailing
-/// `\r` is part of the terminator, and the last line needs no terminator.
+/// `\r` is part of the terminator, and the last line needs no terminator. A
+/// UTF-8 byte-order mark opening the resource is an encoding signature rather
+/// than content, so it is stripped from the first line.
 pub struct Lines<R> {
     reader: std::io::BufReader<R>,
     buffer: Vec<u8>,
+    /// Byte offset in the decoded stream where the last yielded line starts.
+    ///
+    /// Tracked so a consumer that groups lines into records - the Arrow line
+    /// projection - can report where a record begins, which is the resume key
+    /// a tailing reader seeks back to.
+    start: u64,
+    /// Decoded bytes consumed so far, line terminators included.
+    consumed: u64,
     done: bool,
 }
 
@@ -1276,6 +1357,8 @@ impl<R: Read> Lines<R> {
         Self {
             reader: std::io::BufReader::with_capacity(TRANSFER_CHUNK, source),
             buffer: Vec::new(),
+            start: 0,
+            consumed: 0,
             done: false,
         }
     }
@@ -1296,7 +1379,9 @@ impl<R: Read> Iterator for Lines<R> {
                 self.done = true;
                 None
             }
-            Ok(_) => {
+            Ok(read) => {
+                self.start = self.consumed;
+                self.consumed += read as u64;
                 if self.buffer.last() == Some(&b'\n') {
                     self.buffer.pop();
                     if self.buffer.last() == Some(&b'\r') {
@@ -1304,7 +1389,18 @@ impl<R: Read> Iterator for Lines<R> {
                     }
                 }
                 match std::str::from_utf8(&self.buffer) {
-                    Ok(line) => Some(Ok(line.to_owned())),
+                    Ok(line) => {
+                        // A byte-order mark is an encoding signature, not
+                        // content: stripped off the first line so an anchored
+                        // pattern still opens the file's first record. The
+                        // byte offsets keep counting it, so seeks stay exact.
+                        let line = if self.start == 0 {
+                            line.strip_prefix('\u{feff}').unwrap_or(line)
+                        } else {
+                            line
+                        };
+                        Some(Ok(line.to_owned()))
+                    }
                     Err(error) => {
                         self.done = true;
                         Some(Err(Error::Io(std::io::Error::new(
@@ -1334,25 +1430,34 @@ pub struct LineRecords<R> {
     lines: Lines<R>,
     pattern: regex_lite::Regex,
     pending: Option<String>,
+    /// Where, in the decoded stream, the pending record's first line starts.
+    pending_offset: u64,
     done: bool,
 }
 
-impl<R: Read> Iterator for LineRecords<R> {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<R: Read> LineRecords<R> {
+    /// The next record with the byte offset its first line starts at.
+    ///
+    /// The offset counts decoded bytes - the stream after every content
+    /// coding is peeled - so it is the position a reader of the decoded value
+    /// seeks back to, and it is exact whatever the line terminators were.
+    /// This is the one grouping implementation; [`Iterator::next`] merely
+    /// drops the offset.
+    pub(crate) fn next_with_offset(&mut self) -> Option<Result<(u64, String)>> {
         if self.done {
             return None;
         }
         loop {
             match self.lines.next() {
                 Some(Ok(line)) => {
+                    let start = self.lines.start;
                     if self.pattern.is_match(&line) {
                         // A match opens the next record; whatever accumulated
                         // is the finished one.
                         let finished = self.pending.replace(line);
+                        let opened_at = std::mem::replace(&mut self.pending_offset, start);
                         if let Some(record) = finished {
-                            return Some(Ok(record));
+                            return Some(Ok((opened_at, record)));
                         }
                     } else {
                         match &mut self.pending {
@@ -1360,7 +1465,10 @@ impl<R: Read> Iterator for LineRecords<R> {
                                 pending.push('\n');
                                 pending.push_str(&line);
                             }
-                            None => self.pending = Some(line),
+                            None => {
+                                self.pending = Some(line);
+                                self.pending_offset = start;
+                            }
                         }
                     }
                 }
@@ -1370,10 +1478,19 @@ impl<R: Read> Iterator for LineRecords<R> {
                 }
                 None => {
                     self.done = true;
-                    return self.pending.take().map(Ok);
+                    let offset = self.pending_offset;
+                    return self.pending.take().map(|record| Ok((offset, record)));
                 }
             }
         }
+    }
+}
+
+impl<R: Read> Iterator for LineRecords<R> {
+    type Item = Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.next_with_offset()?.map(|(_, record)| record))
     }
 }
 

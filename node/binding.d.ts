@@ -1007,6 +1007,27 @@ declare module './index' {
     readArrowField(options?: RecordOptionsInput | null): Field
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowBatchReader(options?: RecordOptionsInput | null): BatchReader
+    /**
+     * Project matched line records into a `BatchReader`.
+     *
+     * A text-line surface beside `readLines`, never a record method: lines
+     * group into records where `pattern` matches and each record becomes one
+     * typed row, with one nullable string column per named capture group and
+     * the constant `customFields` columns after them. The boundary is the
+     * standard copied IPC one, never zero-copy.
+     */
+    readArrowLines(
+      pattern: string,
+      options?: {
+        batchSize?: number | null
+        customFields?:
+          | ReadonlyMap<string, unknown>
+          | Iterable<readonly [string, unknown]>
+          | Record<string, unknown>
+          | null
+        timestampCapture?: string | null
+      } | null,
+    ): BatchReader
     /** Replace or merge this resource's rows with every batch `batches` yields. */
     writeArrowBatchReader(
       batches: BatchSource,

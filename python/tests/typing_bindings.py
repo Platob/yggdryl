@@ -292,6 +292,13 @@ stored_root: Field = record_handle.read_arrow_field()
 record_handle.write_arrow_batch_reader(record_batches, options=record_options)
 record_handle.append_arrow_batch_reader(record_batches, options=record_options)
 
+line_batches: pa.RecordBatchReader = record_handle.read_arrow_lines(
+    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<level>[^\]]+)\]",
+    batch_size=512,
+    custom_fields={"venue": "XNAS", "session": 7},
+    timestamp_capture=None,
+)
+
 generic_batches: pa.RecordBatchReader = record_handle.read_arrow(options=record_options)
 record_handle.write_arrow(pa.table({"id": [1]}))
 record_handle.write_arrow([{"id": 1}], options=record_options)

@@ -1457,12 +1457,17 @@ creating it from the rows' own schema on first write.
 === "Python"
 
     ```python
+    import pathlib
+    import shutil
+    import tempfile
+
     import pyarrow as pa
 
     from yggdryl import DataType, Field
     from yggdryl.iceberg import Catalog
 
-    catalog = Catalog("warehouse")
+    warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
+    catalog = Catalog(warehouse)
     analytics = catalog["analytics"]
 
     # Assigning a schema gets or creates; assigning again is the same table.
@@ -1477,22 +1482,37 @@ creating it from the rows' own schema on first write.
     assert "trades" in analytics
     assert sorted(analytics) == ["quotes", "trades"]
     table = catalog["analytics"]["trades"]
+    assert table.scan().read_all().num_rows == 0
+
+    shutil.rmtree(warehouse.parent)
     ```
 
 === "JavaScript"
 
     ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
     const { Field, iceberg } = require('yggdryl')
 
-    const catalog = new iceberg.Catalog('warehouse')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
+    const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
     const analytics = catalog.namespace('analytics')
 
     // set() gets or creates: a schema opens the table, rows replace them.
     analytics.set('trades', new Field('row', 'struct<id: int64>', false))
+    const rows = new arrow.Table({
+      symbol: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()),
+    })
     analytics.set('quotes', rows)
 
     assert.ok(analytics.has('trades'))
     const table = analytics.get('trades')
+    assert.equal(table.scan().toTable().numRows, 0)
+
+    fs.rmSync(root, { recursive: true, force: true })
     ```
 
 ## Data files aim at a size

@@ -393,7 +393,6 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::{arrow, DataType, Value};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::Utf8.nullable_field("venue"),
@@ -416,8 +415,6 @@ let record = Value::record(schema.clone(), [Value::I64(7), Value::Null])?;
 assert_eq!(record.data_type()?, schema);
 assert!(yggdryl::yaml::to_vec(&record).is_ok());
 assert!(yggdryl::toml::to_vec(&record).is_ok());
-# Ok(())
-# }
 ```
 
 ## One value against one datatype

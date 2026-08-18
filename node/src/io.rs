@@ -15,8 +15,10 @@ use napi_derive::napi;
 
 use yggdryl::generic::{Holder, IORecordOptions as _};
 use yggdryl::io::IOBase as _;
+use yggdryl::io::LineRecordOptions;
 
 use crate::arrow::JsBatchReader;
+use crate::codec::JsCodecValue;
 use crate::field::JsField;
 use crate::generic::JsRecordOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
@@ -438,6 +440,45 @@ impl JsIOBase {
             None => Box::new(handle.inner.into_read_lines().map_err(napi_error)?),
         };
         Ok(JsLineIterator { inner })
+    }
+
+    /// Project matched line records into a `BatchReader`.
+    ///
+    /// The loader's `readArrowLines` wraps this with its option coercion: the
+    /// custom constant columns arrive as parallel name and native-value
+    /// vectors, converted through the one JavaScript-to-core conversion. The
+    /// boundary is the standard copied IPC one - each batch crosses as its
+    /// own self-contained Arrow IPC stream, never zero-copy.
+    #[napi(js_name = "_readArrowLinesNative", skip_typescript)]
+    pub fn read_arrow_lines_native(
+        &self,
+        pattern: String,
+        batch_size: Option<u32>,
+        custom_names: Vec<String>,
+        custom_values: Vec<ClassInstance<'_, JsCodecValue>>,
+        timestamp_capture: Option<String>,
+    ) -> Result<JsBatchReader> {
+        let mut options = LineRecordOptions::new(&pattern).map_err(napi_error)?;
+        options.set_batch_size(batch_size.map(|size| size as usize));
+        if let Some(capture) = timestamp_capture {
+            options
+                .set_timestamp_capture(Some(capture.into()))
+                .map_err(napi_error)?;
+        }
+        if !custom_names.is_empty() {
+            let values = custom_values.iter().map(|value| value.inner.clone());
+            options = options
+                .try_with_custom_fields(custom_names.into_iter().zip(values))
+                .map_err(napi_error)?;
+        }
+        // The borrowed core projection: it reopens a located leaf itself -
+        // keeping a declared media-type override - and snapshots an
+        // in-memory handle, so `fromBytes` parses exactly as a file does.
+        let reader = self
+            .inner
+            .read_arrow_lines(&options)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, "row"))
     }
 
     /// Return the record settings this handle's media type names.

@@ -1853,6 +1853,53 @@ if (binding.LineIterator) {
   })
 }
 
+// The Arrow projection of matched line records. The native half takes the
+// constant columns as parallel name and native-value vectors; this wrapper is
+// where a plain object, a Map, or an iterable of pairs becomes those, with
+// each value crossing through the one JavaScript-to-core conversion.
+{
+  const nativeReadArrowLines = IOBase.prototype._readArrowLinesNative
+  delete IOBase.prototype._readArrowLinesNative
+  Object.defineProperty(IOBase.prototype, 'readArrowLines', {
+    configurable: true,
+    value: function readArrowLines(pattern, options) {
+      const { batchSize, customFields, timestampCapture } = options ?? {}
+      if (
+        batchSize !== undefined &&
+        batchSize !== null &&
+        (!Number.isInteger(batchSize) || batchSize <= 0)
+      ) {
+        throw new TypeError(`batchSize must be a positive integer, got ${batchSize}`)
+      }
+      const names = []
+      const values = []
+      if (customFields !== undefined && customFields !== null) {
+        if (typeof customFields !== 'object') {
+          // A string is iterable and would silently become per-character
+          // columns; nothing non-object names columns.
+          throw new TypeError(
+            'customFields must be a Map, an iterable of [name, value] pairs, or a plain object',
+          )
+        }
+        const entries =
+          Symbol.iterator in customFields ? customFields : Object.entries(customFields)
+        for (const [name, value] of entries) {
+          names.push(name)
+          values.push(Value.fromJs(value))
+        }
+      }
+      return nativeReadArrowLines.call(
+        this,
+        pattern,
+        batchSize ?? null,
+        names,
+        values,
+        timestampCapture ?? null,
+      )
+    },
+  })
+}
+
 // The three byte codings, grouped the way the documentation names them. The
 // native halves carry a leading underscore so only these namespaces are the
 // public spelling.

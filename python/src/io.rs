@@ -14,6 +14,7 @@ use pyo3::types::{PyBytes, PyTuple, PyType};
 
 use yggdryl::generic::{Holder, RecordOptions};
 use yggdryl::io::IOBase as _;
+use yggdryl::io::LineRecordOptions;
 
 use crate::field::PyField;
 use crate::record::{
@@ -579,6 +580,49 @@ impl PyIOBase {
         })
     }
 
+    /// Project matched line records into a `pyarrow.RecordBatchReader`.
+    ///
+    /// A text-line surface beside `read_lines`, never a record method: lines
+    /// group into records where `pattern` matches, and each record becomes
+    /// one row - `url`, `rownum`, `date`, `time`, `unix`, `hash`, `header`,
+    /// `message`, `offset`, `lines`, one nullable string column per named
+    /// capture group, then the constant `custom_fields` columns. Every
+    /// column's datatype is one Iceberg accepts as declared. The reader stays
+    /// lazy across the boundary: `PyArrow` pulls one batch at a time through
+    /// the C stream, content codings decoded as streams, a folder read leaf
+    /// by leaf - so a season of compressed logs is readable from Python
+    /// exactly as it is from Rust.
+    #[pyo3(signature = (pattern, *, batch_size = None, custom_fields = None, timestamp_capture = None))]
+    fn read_arrow_lines<'py>(
+        &self,
+        py: Python<'py>,
+        pattern: &str,
+        batch_size: Option<usize>,
+        custom_fields: Option<&Bound<'_, PyAny>>,
+        timestamp_capture: Option<&str>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let mut options = LineRecordOptions::new(pattern).map_err(value_error)?;
+        options.set_batch_size(batch_size);
+        if let Some(capture) = timestamp_capture {
+            options
+                .set_timestamp_capture(Some(capture.into()))
+                .map_err(value_error)?;
+        }
+        if let Some(fields) = custom_fields {
+            options = options
+                .try_with_custom_fields(line_custom_fields(fields)?)
+                .map_err(value_error)?;
+        }
+        // The borrowed core projection: it reopens a located leaf itself -
+        // keeping a declared media-type override - and snapshots an
+        // in-memory handle, so `from_bytes` parses exactly as a file does.
+        let reader = self
+            .inner
+            .read_arrow_lines(&options)
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
     /// Read the canonical non-null struct root `Field` of this resource.
     #[pyo3(signature = (*, options = None))]
     fn read_arrow_field(&self, options: Option<&Bound<'_, PyAny>>) -> PyResult<PyField> {
@@ -1007,6 +1051,31 @@ impl PyIOBaseIterator {
     fn __length_hint__(&self) -> usize {
         self.entries.len()
     }
+}
+
+/// Coerce the `custom_fields` argument into the core's ordered pairs.
+///
+/// A mapping keeps its insertion order - a Python `dict` is ordered - and
+/// anything else is consumed as an iterable of `(name, value)` pairs. Values
+/// convert through the one Python-to-core conversion, so a `str`, `int`,
+/// `date`, or `Decimal` lands as the typed constant it already is.
+fn line_custom_fields(fields: &Bound<'_, PyAny>) -> PyResult<Vec<(String, yggdryl::Value)>> {
+    // Anything mapping-shaped - a dict, a MappingProxyType, a ChainMap -
+    // answers `items()`, which keeps its own order; everything else is
+    // consumed as an iterable of pairs.
+    let entries = if fields.hasattr("items")? {
+        fields.call_method0("items")?
+    } else {
+        fields.clone()
+    };
+    let pairs: Vec<(String, Bound<'_, PyAny>)> = entries
+        .try_iter()?
+        .map(|item| item?.extract::<(String, Bound<'_, PyAny>)>())
+        .collect::<PyResult<_>>()?;
+    pairs
+        .into_iter()
+        .map(|(name, value)| Ok((name, crate::value::from_py(&value)?)))
+        .collect()
 }
 
 /// Iterator over a resource's decoded text lines, one line at a time.

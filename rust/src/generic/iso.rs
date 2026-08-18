@@ -25,7 +25,7 @@ const DAY: i64 = 86_400;
 /// The subdivisions of one second a resolution unit holds.
 ///
 /// An interval layout has no fixed width, so it has no classic spelling.
-const fn per_second(unit: TimeUnit) -> Option<i64> {
+pub(crate) const fn per_second(unit: TimeUnit) -> Option<i64> {
     match unit {
         TimeUnit::Second => Some(1),
         TimeUnit::Millisecond => Some(1_000),
@@ -217,6 +217,12 @@ fn parse_date_at(text: &str, position: usize) -> Result<i32> {
 }
 
 /// Parse `HH:MM:SS[.fraction]`, returning the count, unit, and end position.
+///
+/// The fraction accepts `_` digit-group separators - `.000_000` reads exactly
+/// as `.000000` - because that is how a log emitter that groups microseconds
+/// spells a clock. A separator is legal only *between* digits; the digit count
+/// with separators removed keeps the 1-to-9 rule, so grouping never changes
+/// the unit a width names.
 fn parse_clock_at(
     text: &str,
     position: usize,
@@ -237,16 +243,41 @@ fn parse_clock_at(
     }
     end += 1;
     let start = end;
-    while text.as_bytes().get(end).is_some_and(u8::is_ascii_digit) {
-        end += 1;
+    let mut width = 0_usize;
+    let mut fraction: i64 = 0;
+    loop {
+        match text.as_bytes().get(end) {
+            Some(byte) if byte.is_ascii_digit() => {
+                width += 1;
+                if width > 9 {
+                    return Err(iso_error(target, start, "fraction must hold 1 to 9 digits"));
+                }
+                fraction = fraction * 10 + i64::from(byte - b'0');
+                end += 1;
+            }
+            Some(b'_') => {
+                // `_` groups digits, so one digit sits on each side of it:
+                // `.5_` , `._5`, and `.5__5` are all malformed.
+                let follows_digit =
+                    end > start && text.as_bytes().get(end - 1).is_some_and(u8::is_ascii_digit);
+                let precedes_digit = text.as_bytes().get(end + 1).is_some_and(u8::is_ascii_digit);
+                if !follows_digit || !precedes_digit {
+                    return Err(iso_error(
+                        target,
+                        end,
+                        "a fraction separator sits between digits",
+                    ));
+                }
+                end += 1;
+            }
+            _ => break,
+        }
     }
-    let width = end - start;
-    if width == 0 || width > 9 {
+    if width == 0 {
         return Err(iso_error(target, start, "fraction must hold 1 to 9 digits"));
     }
     let unit = unit_of_fraction(width);
     let full = fraction_digits(unit);
-    let mut fraction = digits(text, start, width, target)?;
     // A short fraction is right-padded to the unit's width: `.5` is `500`
     // milliseconds.
     for _ in width..full {
@@ -279,6 +310,16 @@ fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit,
         .and_then(|days| days.checked_add(in_day))
         .ok_or_else(|| iso_error(target, 0, "datetime is out of range"))?;
     Ok((count, unit, end))
+}
+
+/// Parse a naive datetime opening `text`, returning the end position too.
+///
+/// This is the shape a log parser needs: an entry's header starts with its
+/// timestamp and continues with the entry, so the datetime is read off the
+/// front and whatever follows stays the caller's business.
+#[cfg(feature = "arrow")]
+pub(crate) fn parse_datetime_prefix(text: &str) -> Result<(i64, TimeUnit, usize)> {
+    parse_datetime_at(text, "datetime")
 }
 
 /// Parse a naive datetime into a count of `unit` since the Unix epoch.
