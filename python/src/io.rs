@@ -592,25 +592,21 @@ impl PyIOBase {
     /// the C stream, content codings decoded as streams, a folder read leaf
     /// by leaf - so a season of compressed logs is readable from Python
     /// exactly as it is from Rust.
-    #[pyo3(signature = (pattern, *, batch_size = None, custom_fields = None, timestamp_capture = None))]
+    #[pyo3(signature = (pattern, *, batch_size = None, custom_fields = None, capture_types = None, timestamp_capture = None))]
     fn read_arrow_lines<'py>(
         &self,
         py: Python<'py>,
         pattern: &str,
         batch_size: Option<usize>,
         custom_fields: Option<&Bound<'_, PyAny>>,
+        capture_types: Option<&Bound<'_, PyAny>>,
         timestamp_capture: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let mut options = LineRecordOptions::new(pattern).map_err(value_error)?;
+        let mut options = line_record_options(pattern, custom_fields, capture_types)?;
         options.set_batch_size(batch_size);
         if let Some(capture) = timestamp_capture {
             options
                 .set_timestamp_capture(Some(capture.into()))
-                .map_err(value_error)?;
-        }
-        if let Some(fields) = custom_fields {
-            options = options
-                .try_with_custom_fields(line_custom_fields(fields)?)
                 .map_err(value_error)?;
         }
         // The borrowed core projection: it reopens a located leaf itself -
@@ -1059,6 +1055,65 @@ impl PyIOBaseIterator {
 /// anything else is consumed as an iterable of `(name, value)` pairs. Values
 /// convert through the one Python-to-core conversion, so a `str`, `int`,
 /// `date`, or `Decimal` lands as the typed constant it already is.
+/// Build the line projection's root Struct Field straight from a pattern.
+///
+/// The schema the reader emits, without a resource or a reader in sight:
+/// named captures become typed columns - `(?<thread_id>\d+)` infers `int64`,
+/// a `capture_types` entry declares - so a caller marks its partition columns
+/// and creates the Iceberg table before the first log line exists.
+#[pyfunction]
+#[pyo3(signature = (pattern, *, custom_fields = None, capture_types = None))]
+pub(crate) fn schema_from_pattern(
+    pattern: &str,
+    custom_fields: Option<&Bound<'_, PyAny>>,
+    capture_types: Option<&Bound<'_, PyAny>>,
+) -> PyResult<PyField> {
+    line_record_options(pattern, custom_fields, capture_types)
+        .map(|options| PyField::from_inner(options.into_schema()))
+}
+
+/// Assemble validated line-record options from the boundary's arguments.
+fn line_record_options(
+    pattern: &str,
+    custom_fields: Option<&Bound<'_, PyAny>>,
+    capture_types: Option<&Bound<'_, PyAny>>,
+) -> PyResult<LineRecordOptions> {
+    let mut options = LineRecordOptions::new(pattern).map_err(value_error)?;
+    if let Some(fields) = custom_fields {
+        options = options
+            .try_with_custom_fields(line_custom_fields(fields)?)
+            .map_err(value_error)?;
+    }
+    if let Some(types) = capture_types {
+        options = options
+            .try_with_capture_types(line_capture_types(types)?)
+            .map_err(value_error)?;
+    }
+    Ok(options)
+}
+
+/// Coerce the `capture_types` argument into the core's declarations.
+///
+/// The same shapes `custom_fields` takes - a mapping or an iterable of
+/// pairs - with each value coerced through the one datatype inference, so a
+/// `str` expression, a native `DataType`, or a `PyArrow` type all declare.
+fn line_capture_types(
+    types: &Bound<'_, PyAny>,
+) -> PyResult<Vec<(String, yggdryl::DataType)>> {
+    let entries = if types.hasattr("items")? {
+        types.call_method0("items")?
+    } else {
+        types.clone()
+    };
+    entries
+        .try_iter()?
+        .map(|item| {
+            let (name, value) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
+            Ok((name, crate::datatype::core_data_type_from_value(&value)?))
+        })
+        .collect()
+}
+
 fn line_custom_fields(fields: &Bound<'_, PyAny>) -> PyResult<Vec<(String, yggdryl::Value)>> {
     // Anything mapping-shaped - a dict, a MappingProxyType, a ChainMap -
     // answers `items()`, which keeps its own order; everything else is

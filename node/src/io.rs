@@ -450,25 +450,28 @@ impl JsIOBase {
     /// boundary is the standard copied IPC one - each batch crosses as its
     /// own self-contained Arrow IPC stream, never zero-copy.
     #[napi(js_name = "_readArrowLinesNative", skip_typescript)]
+    #[allow(clippy::too_many_arguments)]
     pub fn read_arrow_lines_native(
         &self,
         pattern: String,
         batch_size: Option<u32>,
         custom_names: Vec<String>,
         custom_values: Vec<ClassInstance<'_, JsCodecValue>>,
+        capture_names: Vec<String>,
+        capture_types: Vec<Either<ClassInstance<'_, crate::datatype::JsDataType>, String>>,
         timestamp_capture: Option<String>,
     ) -> Result<JsBatchReader> {
-        let mut options = LineRecordOptions::new(&pattern).map_err(napi_error)?;
+        let mut options = line_record_options(
+            &pattern,
+            custom_names,
+            &custom_values,
+            capture_names,
+            capture_types,
+        )?;
         options.set_batch_size(batch_size.map(|size| size as usize));
         if let Some(capture) = timestamp_capture {
             options
                 .set_timestamp_capture(Some(capture.into()))
-                .map_err(napi_error)?;
-        }
-        if !custom_names.is_empty() {
-            let values = custom_values.iter().map(|value| value.inner.clone());
-            options = options
-                .try_with_custom_fields(custom_names.into_iter().zip(values))
                 .map_err(napi_error)?;
         }
         // The borrowed core projection: it reopens a located leaf itself -
@@ -682,4 +685,57 @@ impl JsIOCursor {
     pub fn flush(&mut self) -> Result<()> {
         self.handle.inner.flush().map_err(napi_error)
     }
+}
+
+/// Build the line projection's root Struct Field straight from a pattern.
+///
+/// The loader's `schemaFromPattern` wraps this with the same option coercion
+/// `readArrowLines` uses: the schema the reader emits - named captures typed
+/// by inference or declaration - without a resource or a reader in sight, so
+/// a caller marks its partition columns and creates the Iceberg table before
+/// the first log line exists.
+#[napi(js_name = "_schemaFromPatternNative", skip_typescript)]
+// Discovered through NAPI's generated registration inventory rather than an
+// ordinary Rust call site.
+#[allow(dead_code)]
+pub fn schema_from_pattern_native(
+    pattern: String,
+    custom_names: Vec<String>,
+    custom_values: Vec<ClassInstance<'_, JsCodecValue>>,
+    capture_names: Vec<String>,
+    capture_types: Vec<Either<ClassInstance<'_, crate::datatype::JsDataType>, String>>,
+) -> Result<JsField> {
+    line_record_options(
+        &pattern,
+        custom_names,
+        &custom_values,
+        capture_names,
+        capture_types,
+    )
+    .map(|options| JsField::from_core(options.into_schema()))
+}
+
+/// Assemble validated line-record options from the boundary's coerced parts.
+fn line_record_options(
+    pattern: &str,
+    custom_names: Vec<String>,
+    custom_values: &[ClassInstance<'_, JsCodecValue>],
+    capture_names: Vec<String>,
+    capture_types: Vec<Either<ClassInstance<'_, crate::datatype::JsDataType>, String>>,
+) -> Result<LineRecordOptions> {
+    let mut options = LineRecordOptions::new(pattern).map_err(napi_error)?;
+    if !custom_names.is_empty() {
+        let values = custom_values.iter().map(|value| value.inner.clone());
+        options = options
+            .try_with_custom_fields(custom_names.into_iter().zip(values))
+            .map_err(napi_error)?;
+    }
+    if !capture_names.is_empty() {
+        let mut declared = Vec::with_capacity(capture_names.len());
+        for (name, data_type) in capture_names.into_iter().zip(capture_types) {
+            declared.push((name, crate::datatype::data_type_from_input(data_type)?));
+        }
+        options = options.try_with_capture_types(declared).map_err(napi_error)?;
+    }
+    Ok(options)
 }

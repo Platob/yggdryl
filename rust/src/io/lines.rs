@@ -30,12 +30,24 @@
 //! | `offset`  | `int64`               | `long`   | byte offset of the record's first line in the *decoded* stream - the resume key a tailing reader seeks back to |
 //! | `lines`   | `int32`               | `int`    | how many lines the record spans - a free flag for stack traces |
 //!
-//! Then one nullable `utf8` column per **named capture group** of the header
-//! pattern, in group order - the primary custom-field mechanism - and then the
-//! constant [`custom_fields`](LineRecordOptions::custom_fields) columns, typed
-//! from their [`Value`] and validated against the Iceberg vocabulary when the
+//! Then one nullable column per **named capture group** of the header
+//! pattern, in group order - the primary custom-field mechanism. A capture
+//! whose whole sub-pattern is one of a closed table of exact spellings types
+//! itself - `(?<thread_id>\d+)` or `[0-9]+` is `int64`, `(?<qty>\d+\.\d+)`
+//! is `float64` - and every other capture is `utf8`; the table is exact
+//! because inference is deterministic, never a guess about what a regex
+//! might match. [`LineRecordOptions::try_with_capture_types`] declares a
+//! capture's datatype explicitly - `(?<price>[0-9.]+)` as `decimal(9, 2)`,
+//! or an inferred numeric back to `utf8` - and the typed columns parse
+//! through the one cast definition as each batch closes, strictly: a
+//! captured text the datatype cannot read is an error, never a silent null.
+//! Then the constant [`custom_fields`](LineRecordOptions::custom_fields)
+//! columns, typed from their [`Value`]. Capture declarations and custom
+//! columns alike are validated against the Iceberg vocabulary when the
 //! options are built, so an unspellable column fails before the first batch
-//! rather than at table-append time.
+//! rather than at table-append time. [`schema_from_pattern`] answers the
+//! emitted root straight from a pattern - the schema without a reader, for
+//! creating the table before the first log line exists.
 //!
 //! A record whose opening line the pattern did not match - the preamble a
 //! rotated file starts with - has null `date`, `time`, `unix`, `header`, and
@@ -122,6 +134,8 @@ pub struct LineRecordOptions {
     batch_size: Option<usize>,
     timestamp_capture: Option<SmolStr>,
     custom_fields: Vec<(SmolStr, Value)>,
+    /// Declared capture column datatypes, overriding the inferred ones.
+    capture_types: Vec<(SmolStr, DataType)>,
     /// The emitted root, rebuilt on every effective mutation.
     schema: Field,
 }
@@ -134,8 +148,11 @@ impl LineRecordOptions {
     /// Compile a header pattern into line-record options.
     ///
     /// `pattern` opens a record exactly as [`IOBase::read_lines_matching`]
-    /// does; its named capture groups become nullable `utf8` columns in group
-    /// order.
+    /// does; its named capture groups become nullable columns in group
+    /// order, typed by the capture's own sub-pattern where the deterministic
+    /// table recognizes it - `(?<thread_id>\d+)` is an `int64` column - and
+    /// `utf8` otherwise. [`Self::try_with_capture_types`] overrides either
+    /// way.
     ///
     /// # Errors
     ///
@@ -165,13 +182,18 @@ impl LineRecordOptions {
                 return Err(collision(name, "another capture group of the pattern"));
             }
         }
-        let schema = build_schema(&captures, &[])?;
+        let schema = build_schema(
+            &resolved_capture_types(pattern.as_str(), &captures, &[]),
+            &captures,
+            &[],
+        )?;
         Ok(Self {
             pattern,
             captures,
             batch_size: None,
             timestamp_capture: None,
             custom_fields: Vec::new(),
+            capture_types: Vec::new(),
             schema,
         })
     }
@@ -265,7 +287,12 @@ impl LineRecordOptions {
     /// collision with a base, capture, or earlier custom column. Failure
     /// leaves the options unchanged.
     pub fn set_custom_fields(&mut self, custom_fields: Vec<(SmolStr, Value)>) -> Result<()> {
-        let schema = build_schema_checked(&self.captures, &custom_fields)?;
+        let schema = build_schema_checked(
+            self.pattern.as_str(),
+            &self.captures,
+            &self.capture_types,
+            &custom_fields,
+        )?;
         self.custom_fields = custom_fields;
         self.schema = schema;
         Ok(())
@@ -295,13 +322,99 @@ impl LineRecordOptions {
         Ok(self)
     }
 
+    /// Borrow the declared capture column datatypes, in declaration order.
+    pub fn capture_types(&self) -> &[(SmolStr, DataType)] {
+        &self.capture_types
+    }
+
+    /// Declare capture column datatypes, overriding the inferred ones.
+    ///
+    /// A declared capture parses through the one cast definition as each
+    /// batch closes - `(?<price>[0-9.]+)` declared `decimal(9, 2)` lands
+    /// typed - and a declaration of `utf8` turns an inferred numeric column
+    /// back into text. The cast is strict: a captured text the datatype
+    /// cannot read is an error, never a silent null. Each datatype passes
+    /// the same Iceberg gate as a custom field, so the schema stays
+    /// table-creatable as declared.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a name is not a capture group of the pattern,
+    /// is declared twice, or names a datatype the created Iceberg tables
+    /// cannot declare. Failure leaves the options unchanged.
+    pub fn set_capture_types(&mut self, capture_types: Vec<(SmolStr, DataType)>) -> Result<()> {
+        for (index, (name, _)) in capture_types.iter().enumerate() {
+            if !self.captures.iter().any(|held| held == name) {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$.{name}"),
+                    reason: crate::text::expected_got(
+                        format_smolstr!(
+                            "a named capture group of the pattern ({:?})",
+                            self.captures
+                        ),
+                        format_smolstr!("{name:?}"),
+                    ),
+                });
+            }
+            if capture_types[..index].iter().any(|(held, _)| held == name) {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$.{name}"),
+                    reason: crate::text::expected_got(
+                        "one datatype declaration per capture",
+                        format_smolstr!("{name:?} declared twice"),
+                    ),
+                });
+            }
+        }
+        let schema = build_schema_checked(
+            self.pattern.as_str(),
+            &self.captures,
+            &capture_types,
+            &self.custom_fields,
+        )?;
+        self.capture_types = capture_types;
+        self.schema = schema;
+        Ok(())
+    }
+
+    /// Return these options with declared capture column datatypes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a name is not a capture group or a datatype has
+    /// no Iceberg spelling.
+    pub fn try_with_capture_types<I, N>(mut self, capture_types: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = (N, DataType)>,
+        N: Into<SmolStr>,
+    {
+        self.set_capture_types(
+            capture_types
+                .into_iter()
+                .map(|(name, data_type)| (name.into(), data_type))
+                .collect(),
+        )?;
+        Ok(self)
+    }
+
     /// Borrow the non-null Struct root the projection emits.
     ///
-    /// Base columns, then one nullable `utf8` per named capture, then the
-    /// custom constant columns. Every column passes the strict Iceberg codec
-    /// unchanged, so this root creates an Iceberg table as it stands.
+    /// Base columns, then one nullable column per named capture (typed by
+    /// declaration, then by the deterministic sub-pattern table, then
+    /// `utf8`), then the custom constant columns. Every column passes the
+    /// strict Iceberg codec unchanged, so this root creates an Iceberg table
+    /// as it stands.
     pub const fn schema(&self) -> &Field {
         &self.schema
+    }
+
+    /// Consume these options into the root Struct Field they emit.
+    ///
+    /// The owned spelling of [`Self::schema`], for a caller that built the
+    /// options only to get the schema - creating a table before the first
+    /// log line exists.
+    pub fn into_schema(self) -> Field {
+        self.schema
     }
 
     /// The row count a batch is closed at.
@@ -328,8 +441,45 @@ fn collision(name: &str, taken_by: &str) -> Error {
     }
 }
 
-/// Build the emitted root after re-running every custom-column validation.
-fn build_schema_checked(captures: &[SmolStr], customs: &[(SmolStr, Value)]) -> Result<Field> {
+/// Refuse a column datatype the created Iceberg tables cannot declare.
+///
+/// The strict codec is the arbiter: what it refuses here would have been
+/// refused at table-append time, when rows already streamed. The v3-only
+/// types - `unknown`, the nanosecond timestamps - are refused too, because
+/// the tables this crate creates are format v2 and a column they cannot
+/// legally declare must fail before the metadata is committed.
+fn iceberg_safe(name: &str, data_type: &DataType) -> Result<()> {
+    let primitive =
+        PrimitiveType::from_data_type(data_type).map_err(|error| Error::InvalidRecord {
+            path: format_smolstr!("$.{name}"),
+            reason: error.to_smolstr(),
+        })?;
+    if matches!(
+        primitive,
+        PrimitiveType::Unknown | PrimitiveType::TimestampNs | PrimitiveType::TimestamptzNs
+    ) {
+        return Err(Error::InvalidRecord {
+            path: format_smolstr!("$.{name}"),
+            reason: crate::text::expected_got(
+                "a column every Iceberg format version spells (microsecond timestamps; no \
+                 null constants)",
+                format_smolstr!("{primitive}, which Iceberg adds in format v3"),
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Build the emitted root after re-running every column validation.
+fn build_schema_checked(
+    pattern: &str,
+    captures: &[SmolStr],
+    capture_types: &[(SmolStr, DataType)],
+    customs: &[(SmolStr, Value)],
+) -> Result<Field> {
+    for (name, data_type) in capture_types {
+        iceberg_safe(name, data_type)?;
+    }
     for (index, (name, value)) in customs.iter().enumerate() {
         if is_base_column(name) {
             return Err(collision(name, "a base column of the line projection"));
@@ -347,36 +497,122 @@ fn build_schema_checked(captures: &[SmolStr], customs: &[(SmolStr, Value)]) -> R
             path: format_smolstr!("$.{name}"),
             reason: error.to_smolstr(),
         })?;
-        // The strict codec is the arbiter: what it refuses here would have
-        // been refused at table-append time, when rows already streamed.
-        let primitive =
-            PrimitiveType::from_data_type(&data_type).map_err(|error| Error::InvalidRecord {
-                path: format_smolstr!("$.{name}"),
-                reason: error.to_smolstr(),
-            })?;
-        // `unknown` and the nanosecond timestamps exist only from Iceberg
-        // format v3, and the tables this crate creates are v2 - a column the
-        // created table cannot legally declare must fail here, not after the
-        // metadata is committed.
-        if matches!(
-            primitive,
-            PrimitiveType::Unknown | PrimitiveType::TimestampNs | PrimitiveType::TimestamptzNs
-        ) {
-            return Err(Error::InvalidRecord {
-                path: format_smolstr!("$.{name}"),
-                reason: crate::text::expected_got(
-                    "a constant column every Iceberg format version spells (microsecond \
-                     timestamps; no null constants)",
-                    format_smolstr!("{primitive}, which Iceberg adds in format v3"),
-                ),
-            });
+        iceberg_safe(name, &data_type)?;
+    }
+    build_schema(
+        &resolved_capture_types(pattern, captures, capture_types),
+        captures,
+        customs,
+    )
+}
+
+/// Resolve each capture column's datatype, in capture order.
+///
+/// A declaration wins; then the deterministic sub-pattern table; then `utf8`.
+fn resolved_capture_types(
+    pattern: &str,
+    captures: &[SmolStr],
+    declared: &[(SmolStr, DataType)],
+) -> Vec<DataType> {
+    let bodies = named_group_bodies(pattern);
+    captures
+        .iter()
+        .map(|capture| {
+            if let Some((_, data_type)) = declared.iter().find(|(name, _)| name == capture) {
+                return data_type.clone();
+            }
+            bodies
+                .iter()
+                .find(|(name, _)| name == capture)
+                .and_then(|(_, body)| inferred_capture_type(body))
+                .unwrap_or(DataType::Utf8)
+        })
+        .collect()
+}
+
+/// The deterministic sub-pattern table behind capture type inference.
+///
+/// A capture whose *whole* body is one of these exact spellings names a
+/// numeric column; every other body - however numeric it looks - stays text,
+/// because inference is a closed table, never a guess about what a regex
+/// might match. A declaration overrides in both directions.
+fn inferred_capture_type(body: &str) -> Option<DataType> {
+    match body {
+        r"\d+" | "[0-9]+" | r"-?\d+" | r"[+-]?\d+" => Some(DataType::Int64),
+        r"\d+\.\d+" | r"-?\d+\.\d+" | r"[+-]?\d+\.\d+" => Some(DataType::Float64),
+        _ => None,
+    }
+}
+
+/// The body text of each named group in an already-compiled pattern.
+///
+/// A byte scan, not a second regex grammar: it only pairs parentheses -
+/// skipping escapes and character classes, where a parenthesis is a literal -
+/// and remembers where a `(?<name>` or `(?P<name>` group's body spans. It
+/// runs only on patterns the engine has already compiled, and every index it
+/// slices at is an ASCII byte, which UTF-8 guarantees is a character
+/// boundary.
+fn named_group_bodies(pattern: &str) -> Vec<(SmolStr, SmolStr)> {
+    let bytes = pattern.as_bytes();
+    let mut bodies = Vec::new();
+    // One entry per open group: the name and body start when it is named.
+    let mut open: Vec<Option<(SmolStr, usize)>> = Vec::new();
+    let mut in_class = false;
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' => index += 2,
+            b'[' if !in_class => {
+                in_class = true;
+                index += 1;
+            }
+            b']' if in_class => {
+                in_class = false;
+                index += 1;
+            }
+            b'(' if !in_class => {
+                let rest = &pattern[index..];
+                let name_start = if rest.starts_with("(?P<") {
+                    Some(index + 4)
+                } else if rest.starts_with("(?<")
+                    && !rest.starts_with("(?<=")
+                    && !rest.starts_with("(?<!")
+                {
+                    Some(index + 3)
+                } else {
+                    None
+                };
+                if let Some(start) = name_start {
+                    if let Some(close) = pattern[start..].find('>') {
+                        open.push(Some((
+                            SmolStr::new(&pattern[start..start + close]),
+                            start + close + 1,
+                        )));
+                        index = start + close + 1;
+                        continue;
+                    }
+                }
+                open.push(None);
+                index += 1;
+            }
+            b')' if !in_class => {
+                if let Some(Some((name, body_start))) = open.pop() {
+                    bodies.push((name, SmolStr::new(&pattern[body_start..index])));
+                }
+                index += 1;
+            }
+            _ => index += 1,
         }
     }
-    build_schema(captures, customs)
+    bodies
 }
 
 /// Assemble the root Struct Field: base, capture, then custom columns.
-fn build_schema(captures: &[SmolStr], customs: &[(SmolStr, Value)]) -> Result<Field> {
+fn build_schema(
+    capture_data_types: &[DataType],
+    captures: &[SmolStr],
+    customs: &[(SmolStr, Value)],
+) -> Result<Field> {
     let mut fields = vec![
         DataType::Utf8.required_field("url"),
         DataType::Int64.required_field("rownum"),
@@ -389,8 +625,8 @@ fn build_schema(captures: &[SmolStr], customs: &[(SmolStr, Value)]) -> Result<Fi
         DataType::Int64.required_field("offset"),
         DataType::Int32.required_field("lines"),
     ];
-    for capture in captures {
-        fields.push(DataType::Utf8.nullable_field(capture.clone()));
+    for (capture, data_type) in captures.iter().zip(capture_data_types) {
+        fields.push(data_type.clone().nullable_field(capture.clone()));
     }
     for (name, value) in customs {
         let data_type = value.data_type()?;
@@ -403,6 +639,23 @@ fn build_schema(captures: &[SmolStr], customs: &[(SmolStr, Value)]) -> Result<Fi
         ));
     }
     Ok(DataType::from_fields(fields)?.required_field(ROOT_NAME))
+}
+
+/// Build the projection's root Struct Field straight from a header pattern.
+///
+/// The one-call spelling of [`LineRecordOptions::new`] followed by
+/// [`into_schema`](LineRecordOptions::into_schema): the schema a pattern
+/// emits - typed captures inferred from their sub-patterns - without a
+/// resource or a reader in sight. Mark its partition columns and hand it to
+/// an Iceberg catalog, and the table exists before the first log line does;
+/// the reader then emits exactly this shape.
+///
+/// # Errors
+///
+/// Returns an error when the pattern does not parse or a capture group name
+/// collides with a base column.
+pub fn schema_from_pattern(pattern: &str) -> Result<Field> {
+    Ok(LineRecordOptions::new(pattern)?.into_schema())
 }
 
 /// Project a borrowed handle's line records, per the trait method's contract.
@@ -559,6 +812,14 @@ struct ArrowLines {
     customs: Vec<ArrayRef>,
     batch_size: usize,
     schema: SchemaRef,
+    /// The emitted root; a batch is cast onto it when any capture is typed.
+    root: Field,
+    /// The all-text shape the builders produce: the same root with every
+    /// capture column as `utf8`.
+    raw_schema: SchemaRef,
+    /// Whether any capture column is typed, so an untyped read never pays
+    /// for a cast that would hand every array back unchanged.
+    typed: bool,
     /// Leaves not yet opened, in name-sorted order.
     pending: std::vec::IntoIter<Holder>,
     current: Option<LeafRecords>,
@@ -574,13 +835,31 @@ impl ArrowLines {
     ) -> Result<BatchReader> {
         let root = options.schema();
         let schema = schema_from_field(root)?;
+        let capture_count = options.captures.len();
         let mut customs = Vec::with_capacity(options.custom_fields.len());
         for (index, (_, value)) in options.custom_fields.iter().enumerate() {
             let field = root
-                .get_field(BASE_COLUMNS.len() + options.captures.len() + index)
+                .get_field(BASE_COLUMNS.len() + capture_count + index)
                 .ok_or_else(|| Error::from(crate::arrow::Error::internal("io::lines::customs")))?;
             customs.push(ArrowScalar::from_value(field.clone(), value.clone())?.into_array());
         }
+        // The builders always produce text captures; a typed capture is cast
+        // onto the declared root as each batch closes, through the one cast
+        // definition every schema-directed read uses.
+        let typed = (0..capture_count).any(|index| {
+            root.get_field(BASE_COLUMNS.len() + index)
+                .is_some_and(|field| field.data_type() != &DataType::Utf8)
+        });
+        let raw_schema = if typed {
+            let raw_root = build_schema(
+                &vec![DataType::Utf8; capture_count],
+                &options.captures,
+                &options.custom_fields,
+            )?;
+            schema_from_field(&raw_root)?
+        } else {
+            Arc::clone(&schema)
+        };
         Ok(Box::new(Self {
             pattern: options.pattern.clone(),
             captures: options.captures.clone(),
@@ -588,6 +867,9 @@ impl ArrowLines {
             customs,
             batch_size: options.effective_batch_size(),
             schema,
+            root: root.clone(),
+            raw_schema,
+            typed,
             pending: pending.into_iter(),
             current,
             done: false,
@@ -616,7 +898,17 @@ impl ArrowLines {
             let indices = UInt32Array::from(vec![0_u32; rows]);
             columns.push(arrow_select::take::take(constant.as_ref(), &indices, None)?);
         }
-        RecordBatch::try_new(Arc::clone(&self.schema), columns)
+        let batch = RecordBatch::try_new(Arc::clone(&self.raw_schema), columns)?;
+        if !self.typed {
+            return Ok(batch);
+        }
+        // Typed captures land through the one cast definition, strictly: a
+        // captured text the declared datatype cannot read is an error, never
+        // a silent null.
+        use crate::field::cast::ArrowCast;
+        self.root
+            .cast_arrow_batch(batch, false)
+            .map_err(|error| ArrowError::ExternalError(Box::new(error)))
     }
 }
 

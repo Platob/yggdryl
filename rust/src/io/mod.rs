@@ -58,7 +58,7 @@ pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
 #[cfg(feature = "arrow")]
-pub use lines::LineRecordOptions;
+pub use lines::{LineRecordOptions, schema_from_pattern};
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;

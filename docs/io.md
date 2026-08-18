@@ -558,10 +558,16 @@ table without a single widening:
 | `offset`  | `int64`      | byte offset of the record's first line in the *decoded* stream - the resume key a tailing reader seeks back to |
 | `lines`   | `int32`      | how many lines the record spans |
 
-Then one nullable `utf8` column per **named capture group** of the pattern, in group order - the
-primary custom-field mechanism - and then the constant `custom_fields` columns a caller stamps onto
-every row, typed from their values and validated against the Iceberg vocabulary before anything is
-read. The entry timestamp is parsed off the front of the matched header - `T`, `t`, or a space
+Then one nullable column per **named capture group** of the pattern, in group order - the primary
+custom-field mechanism. A capture whose whole sub-pattern is one of a closed table of exact
+spellings types itself - `(?<thread_id>\d+)` or `[0-9]+` is `int64`, `(?<qty>\d+\.\d+)` is
+`float64` - and every other capture is `utf8`, because inference is a deterministic table, never a
+guess about what a regex might match. `capture_types` declares a capture's datatype explicitly -
+`(?<price>[0-9.]+)` as `decimal(9, 2)`, or an inferred numeric back to `utf8` - and typed columns
+parse through the one cast definition as each batch closes, strictly: a captured text the datatype
+cannot read is an error, never a silent null. Then the constant `custom_fields` columns a caller
+stamps onto every row, typed from their values. Capture declarations and custom columns alike are
+validated against the Iceberg vocabulary before anything is read. The entry timestamp is parsed off the front of the matched header - `T`, `t`, or a space
 between date and clock, and a fraction whose digits may be grouped with `_`, so
 `10:00:00.000_000` reads exactly as `10:00:00.000000`; a malformed timestamp in a *matched* header
 is a typed error naming the row and byte position, never a silent null. A record the pattern did
@@ -655,6 +661,113 @@ capture columns and carries the whole record as `message`.
     assert.deepEqual([...table.getChild('level')], ['ee', 'ii'])
     assert.equal([...table.getChild('unix')][0], 1_706_781_600_000_000_000n)
     assert.deepEqual([...table.getChild('venue')], ['XNAS', 'XNAS'])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+The schema is answerable before any resource exists: `schema_from_pattern` builds the projection's
+root straight from the header pattern - the same builder the reader itself leverages - so a table
+can be created from it first and the parse appended after. Named captures arrive typed, by the
+deterministic sub-pattern table or by declaration:
+
+=== "Rust"
+
+    ```rust
+    use arrow_array::Array;
+    use yggdryl::io::{Buffer, IOBase, LineRecordOptions, schema_from_pattern};
+    use yggdryl::{DataType, Url};
+
+    let pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>[0-9.]+)";
+
+    // The standalone builder answers the emitted root without a reader:
+    // `thread_id` types itself off its own `\d+` sub-pattern.
+    let schema = schema_from_pattern(pattern)?;
+    assert_eq!(
+        schema.get_field_by_name("thread_id").unwrap().data_type(),
+        &DataType::Int64
+    );
+
+    let mut handle = Buffer::new()
+        .with_media_type(Url::from_str("file:///app.log")?.media_type());
+    handle.write_all_bytes(b"2024-02-01 10:00:00 [42] (info) qty=1.50 fill\n")?;
+
+    // A declaration types what inference cannot: `qty` lands as a decimal.
+    let options = LineRecordOptions::new(pattern)?
+        .try_with_capture_types([("qty", DataType::decimal(9, 2)?)])?;
+    let batch = handle.read_arrow_lines(&options)?.next().unwrap()?;
+    let threads = batch
+        .column_by_name("thread_id")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<arrow_array::Int64Array>()
+        .unwrap();
+    assert_eq!(threads.value(0), 42);
+    let quantities = batch
+        .column_by_name("qty")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<arrow_array::Decimal128Array>()
+        .unwrap();
+    assert_eq!(quantities.value(0), 150, "1.50 at scale 2");
+    ```
+
+=== "Python"
+
+    ```python
+    import decimal
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase, schema_from_pattern
+
+    pattern = (
+        r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
+        r" \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>[0-9.]+)"
+    )
+
+    # The standalone builder answers the emitted root without a reader.
+    schema = schema_from_pattern(pattern, capture_types={"qty": "decimal(9, 2)"})
+    assert str(schema.data_type["thread_id"].data_type) == "int64"
+
+    target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
+    target.write_text("2024-02-01 10:00:00 [42] (info) qty=1.50 fill\n")
+    table = (
+        IOBase(target)
+        .read_arrow_lines(pattern, capture_types={"qty": "decimal(9, 2)"})
+        .read_all()
+    )
+    assert table.schema.field("thread_id").type == pa.int64()
+    assert table.to_pydict()["thread_id"] == [42]
+    assert table.to_pydict()["qty"] == [decimal.Decimal("1.50")]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, schemaFromPattern } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const target = path.join(root, 'app.log')
+    fs.writeFileSync(target, '2024-02-01 10:00:00 [42] (info) qty=1.50 fill\n')
+
+    const pattern =
+      '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?<thread_id>\\d+)\\] \\((?<log_level>\\w+)\\) qty=(?<qty>[0-9.]+)'
+
+    // The standalone builder answers the emitted root without a reader.
+    const schema = schemaFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+    assert.equal(String(schema.dataType.get('thread_id').dataType), 'int64')
+
+    const table = new IOBase(target)
+      .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+      .toTable()
+    assert.deepEqual([...table.getChild('thread_id')], [42n])
+    assert.deepEqual([...table.getChild('log_level')], ['info'])
 
     fs.rmSync(root, { recursive: true, force: true })
     ```

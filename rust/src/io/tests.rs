@@ -1263,6 +1263,174 @@ mod arrow_lines {
     }
 
     #[test]
+    fn numeric_captures_infer_typed_columns_from_their_sub_patterns() {
+        // `[thread_id]` and `(log_level)` fields spelled by the pattern:
+        // the whole-body spellings `\d+` and `\d+\.\d+` type themselves,
+        // everything else stays text - a closed table, not a guess.
+        let options = LineRecordOptions::new(
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>\d+\.\d+)",
+        )
+        .unwrap();
+        let schema = options.schema();
+        assert_eq!(
+            schema.get_field_by_name("thread_id").unwrap().data_type(),
+            &crate::DataType::Int64
+        );
+        assert_eq!(
+            schema.get_field_by_name("log_level").unwrap().data_type(),
+            &crate::DataType::Utf8
+        );
+        assert_eq!(
+            schema.get_field_by_name("qty").unwrap().data_type(),
+            &crate::DataType::Float64
+        );
+
+        let handle = named(
+            "typed.log",
+            b"preamble\n2024-02-01 10:00:00 [42] (info) qty=1.50 filled\n",
+        );
+        let batch = &batches(handle.read_arrow_lines(&options).unwrap())[0];
+        assert_eq!(
+            int64(batch, 10),
+            [None, Some(42)],
+            "the preamble stays null"
+        );
+        let quantities: Vec<Option<f64>> = batch
+            .column(12)
+            .as_any()
+            .downcast_ref::<arrow_array::Float64Array>()
+            .unwrap()
+            .iter()
+            .collect();
+        assert_eq!(quantities, [None, Some(1.5)]);
+        assert_eq!(
+            strings(batch, 11),
+            [None, Some("info".into())],
+            "a \\w+ capture is text"
+        );
+    }
+
+    #[test]
+    fn declared_capture_types_override_in_both_directions() {
+        // A declaration types what inference cannot, and turns an inferred
+        // numeric back into text.
+        let options = LineRecordOptions::new(
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?<price>[0-9.]+) ref=(?<reference>\d+)",
+        )
+        .unwrap()
+        .try_with_capture_types([
+            ("price", crate::DataType::decimal(9, 2).unwrap()),
+            ("reference", crate::DataType::Utf8),
+        ])
+        .unwrap();
+        let schema = options.schema();
+        assert_eq!(
+            schema.get_field_by_name("price").unwrap().data_type(),
+            &crate::DataType::decimal(9, 2).unwrap()
+        );
+        assert_eq!(
+            schema.get_field_by_name("reference").unwrap().data_type(),
+            &crate::DataType::Utf8
+        );
+
+        let handle = named("prices.log", b"2024-02-01 10:00:00 187.23 ref=007\n");
+        let batch = &batches(handle.read_arrow_lines(&options).unwrap())[0];
+        let prices = batch
+            .column(10)
+            .as_any()
+            .downcast_ref::<arrow_array::Decimal128Array>()
+            .unwrap();
+        assert_eq!(prices.value(0), 18_723, "187.23 at scale 2");
+        assert_eq!(
+            strings(batch, 11),
+            [Some("007".into())],
+            "the declared text keeps its leading zeroes"
+        );
+    }
+
+    #[test]
+    fn a_capture_the_declared_type_cannot_read_is_an_error_not_a_null() {
+        let options =
+            LineRecordOptions::new(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\w+)\]")
+                .unwrap()
+                .try_with_capture_types([("thread_id", crate::DataType::Int64)])
+                .unwrap();
+        let handle = named("bad.log", b"2024-02-01 10:00:00 [main]\n");
+        let mut reader = handle.read_arrow_lines(&options).unwrap();
+        let message = reader.next().unwrap().unwrap_err().to_string();
+        assert!(message.contains("main"), "{message}");
+        assert!(reader.next().is_none(), "an error ends the stream");
+    }
+
+    #[test]
+    fn capture_type_declarations_are_validated_like_every_other_column() {
+        let options = || LineRecordOptions::new(r"^(?<level>\w+)").unwrap();
+
+        // A name the pattern does not capture.
+        let error = options()
+            .try_with_capture_types([("missing", crate::DataType::Int64)])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("named capture group"), "{error}");
+
+        // A datatype the strict Iceberg codec cannot spell.
+        let error = options()
+            .try_with_capture_types([("level", crate::DataType::UInt64)])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Iceberg can express"), "{error}");
+
+        // One declaration per capture.
+        let error = options()
+            .try_with_capture_types([
+                ("level", crate::DataType::Int64),
+                ("level", crate::DataType::Utf8),
+            ])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("declared twice"), "{error}");
+
+        // Failure leaves the options unchanged.
+        let mut kept = options();
+        assert!(
+            kept.set_capture_types(vec![("level".into(), crate::DataType::UInt64)])
+                .is_err()
+        );
+        assert!(kept.capture_types().is_empty());
+        assert_eq!(
+            kept.schema()
+                .get_field_by_name("level")
+                .unwrap()
+                .data_type(),
+            &crate::DataType::Utf8
+        );
+    }
+
+    #[test]
+    fn the_schema_builder_answers_without_a_reader_and_the_reader_emits_it() {
+        // The standalone builder is the reader's own schema, so a table
+        // created from one is exactly what the parse appends.
+        let pattern =
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] (?<log_level>\w+)";
+        let standalone = crate::io::schema_from_pattern(pattern).unwrap();
+        let options = LineRecordOptions::new(pattern).unwrap();
+        assert_eq!(&standalone, options.schema());
+        assert_eq!(standalone, options.clone().into_schema());
+
+        let handle = named("built.log", b"2024-02-01 10:00:00 [7] info ok\n");
+        let reader = handle.read_arrow_lines(&options).unwrap();
+        assert_eq!(
+            reader.schema(),
+            crate::arrow::schema_from_field(&standalone).unwrap()
+        );
+        // The typed schema maps to Iceberg unchanged, like every emitted one.
+        assert_eq!(
+            &standalone.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            &standalone
+        );
+    }
+
+    #[test]
     fn the_header_is_matched_within_the_opening_line_alone() {
         // `[^;]+` would happily cross a newline into the continuation line;
         // the header must not, because the grouping opened this record on its

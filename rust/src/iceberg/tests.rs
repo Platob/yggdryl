@@ -3166,6 +3166,61 @@ mod line_projection {
     }
 
     #[test]
+    fn typed_captures_land_in_the_table_with_real_bounds() {
+        let path = root("typed-captures");
+        let catalog = super::super::Catalog::new(Folder::new(path.join("warehouse")).unwrap());
+        let pattern =
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\)";
+
+        // The standalone builder is the table's schema: `thread_id` inferred
+        // `int64` off its own sub-pattern, before a reader or a resource
+        // exists.
+        let mut schema = crate::io::schema_from_pattern(pattern).unwrap();
+        schema.assign_parquet_field_ids(1).unwrap();
+        let thread_id = schema.get_field_by_name("thread_id").unwrap();
+        assert_eq!(thread_id.data_type(), &crate::DataType::Int64);
+        let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
+        catalog.create_table("logs.threads", schema).unwrap();
+
+        let options = crate::io::LineRecordOptions::new(pattern).unwrap();
+        let day = named(
+            "t.log",
+            b"2024-02-01 10:00:00 [7] (info) fill\n2024-02-01 10:00:01 [42] (warn) partial\n",
+        );
+        let table = catalog
+            .append("logs.threads", day.into_arrow_lines(&options).unwrap())
+            .unwrap();
+
+        // The typed capture column carries real long bounds in the manifest,
+        // which is what makes it prunable like any stored column.
+        let files = table.data_files().unwrap();
+        assert_eq!(files.len(), 1);
+        let file = &files[0].0;
+        let bound = |bounds: &[(i32, Vec<u8>)]| {
+            bounds
+                .iter()
+                .find(|(id, _)| *id == thread_field_id)
+                .map(|(_, bytes)| bytes.clone())
+        };
+        assert_eq!(
+            bound(&file.lower_bounds).as_deref(),
+            Some(7_i64.to_le_bytes().as_slice())
+        );
+        assert_eq!(
+            bound(&file.upper_bounds).as_deref(),
+            Some(42_i64.to_le_bytes().as_slice())
+        );
+        assert_eq!(
+            table.plan(&[("thread_id", "100")]).unwrap().tasks.len(),
+            0,
+            "a thread outside the bounds skips the file"
+        );
+        assert_eq!(table.plan(&[("thread_id", "42")]).unwrap().tasks.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
     fn parsed_lines_stream_into_a_partitioned_table_with_correct_metadata() {
         let path = root("line-projection");
         let logs = path.join("incoming");

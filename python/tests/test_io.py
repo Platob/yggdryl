@@ -410,6 +410,53 @@ class TestReadArrowLines:
         assert table.num_rows == 0
         assert table.column_names[:2] == ["url", "rownum"]
 
+    def test_named_captures_infer_and_declare_typed_columns(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import decimal
+
+        import pyarrow as pa
+
+        target = tmp_path / "typed.log"
+        target.write_text("2024-02-01 10:00:00 [42] (info) qty=1.50\n")
+        pattern = (
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
+            r" \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>[0-9.]+)"
+        )
+        # `thread_id` types itself off its `\d+` sub-pattern; `qty` is
+        # declared - a type expression, exactly as everywhere else.
+        table = (
+            IOBase(target)
+            .read_arrow_lines(pattern, capture_types={"qty": "decimal(9, 2)"})
+            .read_all()
+        )
+        assert table.schema.field("thread_id").type == pa.int64()
+        assert table.schema.field("log_level").type == pa.string()
+        assert table.schema.field("qty").type == pa.decimal128(9, 2)
+        rows = table.to_pydict()
+        assert rows["thread_id"] == [42]
+        assert rows["log_level"] == ["info"]
+        assert rows["qty"] == [decimal.Decimal("1.50")]
+
+    def test_the_schema_builder_answers_without_a_reader(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from yggdryl import schema_from_pattern
+
+        pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\]"
+        schema = schema_from_pattern(pattern, custom_fields={"venue": "XNAS"})
+        assert schema.name == "row"
+        assert str(schema.data_type["thread_id"].data_type) == "int64"
+        assert str(schema.data_type["venue"].data_type) == "utf8"
+
+        # The reader emits exactly the built schema, resource or none.
+        reader = IOBase(tmp_path / "missing.log").read_arrow_lines(
+            pattern, custom_fields={"venue": "XNAS"}
+        )
+        assert [field.name for field in reader.schema] == [
+            child.name for child in schema.data_type
+        ]
+
     def test_an_in_memory_handle_parses_like_a_file(self) -> None:
         from yggdryl import IOBase as Handle
 

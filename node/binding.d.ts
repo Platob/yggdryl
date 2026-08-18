@@ -1018,15 +1018,7 @@ declare module './index' {
      */
     readArrowLines(
       pattern: string,
-      options?: {
-        batchSize?: number | null
-        customFields?:
-          | ReadonlyMap<string, unknown>
-          | Iterable<readonly [string, unknown]>
-          | Record<string, unknown>
-          | null
-        timestampCapture?: string | null
-      } | null,
+      options?: LineRecordInput | null,
     ): BatchReader
     /** Replace or merge this resource's rows with every batch `batches` yields. */
     writeArrowBatchReader(
@@ -1195,3 +1187,32 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/** The options the line projection's reader and schema builder share. */
+export interface LineRecordInput {
+  batchSize?: number | null
+  customFields?:
+    | ReadonlyMap<string, unknown>
+    | Iterable<readonly [string, unknown]>
+    | Record<string, unknown>
+    | null
+  captureTypes?:
+    | ReadonlyMap<string, DataType | string>
+    | Iterable<readonly [string, DataType | string]>
+    | Record<string, DataType | string>
+    | null
+  timestampCapture?: string | null
+}
+
+/**
+ * Build the line projection's root Struct `Field` straight from a pattern.
+ *
+ * The schema `readArrowLines` emits, without a resource or a reader in
+ * sight: named captures become typed columns - `(?<threadId>\d+)` infers
+ * `int64`, a `captureTypes` entry declares - so a caller marks its partition
+ * columns and creates the Iceberg table before the first log line exists.
+ */
+export declare function schemaFromPattern(
+  pattern: string,
+  options?: Pick<LineRecordInput, 'customFields' | 'captureTypes'> | null,
+): Field
