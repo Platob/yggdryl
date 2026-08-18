@@ -904,6 +904,161 @@ fn compression_name(compression: parquet::basic::Compression) -> String {
     }
 }
 
+/// The record-option fields every record method also accepts as keywords,
+/// in the order they are applied.
+///
+/// `root_name` is applied before `schema` because coercing a schema names an
+/// unnamed root with the options' root name, so a call passing both means the
+/// schema under that name whichever order the keywords were typed in.
+const RECORD_KWARGS: [&str; 11] = [
+    "root_name",
+    "schema",
+    "safe",
+    "batch_size",
+    "level",
+    "merge_by_names",
+    "select_by_names",
+    "filter_partitions",
+    "compression",
+    "max_row_group_size",
+    "key_value_metadata",
+];
+
+/// Read `(key, value)` string pairs out of a mapping or an iterable of pairs.
+///
+/// These are the two shapes `IOBase.children_where` already accepts for the
+/// same vocabulary, so a filter is spelled the same everywhere.
+pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>> {
+    let items = if value.hasattr("items")? {
+        value.call_method0("items")?
+    } else {
+        value.clone()
+    };
+    let mut pairs = Vec::new();
+    for item in items.try_iter()? {
+        pairs.push(item?.extract::<(String, String)>()?);
+    }
+    Ok(pairs)
+}
+
+/// Set one record option field from the Python value a keyword carries.
+///
+/// This is the same coercion the [`PyRecordOptions`] setter of that name
+/// performs, shared so a keyword and an attribute assignment cannot drift.
+fn set_record_option(
+    options: &mut RecordOptions,
+    key: &str,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match key {
+        "root_name" => {
+            *options = options.clone().with_root_name(value.extract::<&str>()?);
+        }
+        "schema" => {
+            let field = core_root_field_from_value(value, options.root_name())?;
+            options.set_schema(field);
+        }
+        "safe" => options.set_safe(value.extract::<bool>()?),
+        "batch_size" => options.set_batch_size(value.extract::<Option<usize>>()?),
+        "level" => options.set_level(Level::new(value.extract::<u8>()?)),
+        "merge_by_names" => {
+            options.set_merge_by_names(crate::media::strings_from_iterable(
+                value,
+                "merge_by_names",
+            )?);
+        }
+        "select_by_names" => {
+            options.set_select_by_names(crate::media::strings_from_iterable(
+                value,
+                "select_by_names",
+            )?);
+        }
+        "filter_partitions" => {
+            options.set_filter_partitions(string_pairs_from_value(value)?);
+        }
+        "compression" => set_compression_option(options, value.extract::<&str>()?)?,
+        "max_row_group_size" => {
+            set_max_row_group_size_option(options, value.extract::<usize>()?)?;
+        }
+        "key_value_metadata" => set_key_value_metadata_option(options, value)?,
+        _ => unreachable!("apply_record_kwargs checks the key first"),
+    }
+    Ok(())
+}
+
+/// Apply the record-option keywords one method call carried, in field order.
+///
+/// This is the one resolver every record method routes `(options, kwargs)`
+/// through: the base options - resolved from the `options` argument or from
+/// the handle's media type - are updated field by field, so an explicit
+/// keyword always wins over the same field of a passed options object, and
+/// the caller's own options value is never touched.
+///
+/// # Errors
+///
+/// Raises a `TypeError` naming the argument for a keyword that is not a
+/// record option field, exactly as a plain Python signature would.
+pub(crate) fn apply_record_kwargs(
+    method: &str,
+    options: &mut RecordOptions,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    let Some(kwargs) = kwargs else {
+        return Ok(());
+    };
+    for (key, _) in kwargs.iter() {
+        let key = key.extract::<String>()?;
+        if !RECORD_KWARGS.contains(&key.as_str()) {
+            return Err(PyTypeError::new_err(format!(
+                "{method}() got an unexpected keyword argument {key:?}"
+            )));
+        }
+    }
+    for key in RECORD_KWARGS {
+        if let Some(value) = kwargs.get_item(key)? {
+            set_record_option(options, key, &value)?;
+        }
+    }
+    Ok(())
+}
+
+/// Set the Parquet page compression, or say these are not Parquet options.
+fn set_compression_option(options: &mut RecordOptions, compression: &str) -> PyResult<()> {
+    let RecordOptions::Parquet(parquet) = options else {
+        return Err(not_parquet(options, "set a page compression"));
+    };
+    // The target field names the type, so the parquet crate's own parser is
+    // what accepts `uncompressed`, `snappy`, `zstd(3)`, and the rest.
+    parquet.compression = compression.parse().map_err(value_error)?;
+    Ok(())
+}
+
+/// Set the Parquet row-group bound, or say these are not Parquet options.
+fn set_max_row_group_size_option(options: &mut RecordOptions, rows: usize) -> PyResult<()> {
+    match options {
+        RecordOptions::Parquet(parquet) => {
+            parquet.max_row_group_size = rows;
+            Ok(())
+        }
+        RecordOptions::Ipc(_) | RecordOptions::Avro(_) => {
+            Err(not_parquet(options, "set a row-group size"))
+        }
+    }
+}
+
+/// Set the Parquet footer metadata, or say these are not Parquet options.
+fn set_key_value_metadata_option(
+    options: &mut RecordOptions,
+    metadata: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let pairs = string_pairs_from_value(metadata)?;
+    let RecordOptions::Parquet(parquet) = options else {
+        return Err(not_parquet(options, "set footer metadata"));
+    };
+    parquet.key_value_metadata = pairs;
+    Ok(())
+}
+
 /// The settings one record read or write takes.
 #[pyclass(
     name = "RecordOptions",
@@ -1063,13 +1218,7 @@ impl PyRecordOptions {
 
     #[setter]
     fn set_compression(&mut self, compression: &str) -> PyResult<()> {
-        let RecordOptions::Parquet(options) = &mut self.inner else {
-            return Err(not_parquet(&self.inner, "set a page compression"));
-        };
-        // The target field names the type, so the parquet crate's own parser is
-        // what accepts `uncompressed`, `snappy`, `zstd(3)`, and the rest.
-        options.compression = compression.parse().map_err(value_error)?;
-        Ok(())
+        set_compression_option(&mut self.inner, compression)
     }
 
     /// The maximum rows per row group, for the encodings that have them.
@@ -1083,15 +1232,7 @@ impl PyRecordOptions {
 
     #[setter]
     fn set_max_row_group_size(&mut self, rows: usize) -> PyResult<()> {
-        match &mut self.inner {
-            RecordOptions::Parquet(options) => {
-                options.max_row_group_size = rows;
-                Ok(())
-            }
-            RecordOptions::Ipc(_) | RecordOptions::Avro(_) => {
-                Err(not_parquet(&self.inner, "set a row-group size"))
-            }
-        }
+        set_max_row_group_size_option(&mut self.inner, rows)
     }
 
     /// The file-level metadata written into a footer, for the encodings that
@@ -1110,20 +1251,7 @@ impl PyRecordOptions {
 
     #[setter]
     fn set_key_value_metadata(&mut self, metadata: &Bound<'_, PyAny>) -> PyResult<()> {
-        let RecordOptions::Parquet(options) = &mut self.inner else {
-            return Err(not_parquet(&self.inner, "set footer metadata"));
-        };
-        let items = if metadata.hasattr("items")? {
-            metadata.call_method0("items")?
-        } else {
-            metadata.clone()
-        };
-        let mut pairs = Vec::new();
-        for item in items.try_iter()? {
-            pairs.push(item?.extract::<(String, String)>()?);
-        }
-        options.key_value_metadata = pairs;
-        Ok(())
+        set_key_value_metadata_option(&mut self.inner, metadata)
     }
 
     fn __repr__(&self) -> String {

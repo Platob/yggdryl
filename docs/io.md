@@ -1526,9 +1526,9 @@ default, selects everything.
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "orders.arrows")
     handle.write_arrow(pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}))
 
-    options = handle.record_options()
-    options.select_by_names = ["symbol"]
-    narrowed = handle.read_arrow(options=options).read_all()
+    # A single setting is its own keyword; every record method takes each
+    # options field directly, and `options=` remains for reuse across calls.
+    narrowed = handle.read_arrow(select_by_names=["symbol"]).read_all()
     assert narrowed.column_names == ["symbol"]
     ```
 
