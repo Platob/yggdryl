@@ -1306,7 +1306,8 @@ the allocation - enough to tell two live buffers apart in a log, without pretend
 somewhere. The other implementations in the core are [local.md](local.md), the memory-mapped local
 tree, and [arrowfs.md](arrowfs.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
 one you wrote - behind the same trait. Anything else is a sibling module supplying the same three
-roles, never a change to this one.
+roles, never a change to this one. Two wrapping handles sit over any of them and are handles
+themselves: `Coded` below, and the page cache in [buffered.md](buffered.md).
 
 ## Coded
 
@@ -1342,6 +1343,28 @@ A content coding is not seekable, which forces two tradeoffs. The decoded value 
 and held until `close`, so positional reads and writes work at all over a compressed payload; and a
 write is published to the wrapped handle on `flush` or `close`, not on every `pwrite`. `into_handle`
 publishes and returns the wrapped handle. `Codec::Identity` makes the wrapper a pass-through.
+
+## Buffered
+
+!!! note "Rust only"
+    The Python and JavaScript packages do not expose the page cache.
+
+```rust
+use yggdryl::buffered::BufferedOptions;
+use yggdryl::io::{Buffer, IOBase};
+
+let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
+
+// The first read fetches the page holding the range; the second is memory.
+assert_eq!(handle.read_range(0, 8)?, [4_u8; 8]);
+assert_eq!(handle.read_range(2_000, 8)?, [4_u8; 8]);
+assert_eq!(handle.cached_pages(), 1);
+```
+
+`Buffered` is the other wrapping handle: it serves reads from fixed-size pages under a byte budget
+and a time to live, writes through, and pins the value's first and last pages so a footer-first
+container never re-reads either end. Everything else it mirrors. [buffered.md](buffered.md) is the
+page.
 
 ## Roles
 

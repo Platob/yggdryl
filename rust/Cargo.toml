@@ -150,6 +150,16 @@ required-features = ["iceberg"]
 name = "batch_cast"
 required-features = ["arrow"]
 
+# The recursive cast walk and the landing-page example both materialize Arrow
+# values, so neither compiles in a schema-only build.
+[[test]]
+name = "cast_coverage"
+required-features = ["arrow"]
+
+[[test]]
+name = "docs_index"
+required-features = ["arrow"]
+
 [[test]]
 name = "default_scalar"
 required-features = ["arrow"]

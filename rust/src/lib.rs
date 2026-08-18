@@ -17,6 +17,9 @@ pub mod arrow;
 // record surface its handles answer is inherited and already gated by `arrow`.
 pub mod arrowfs;
 pub mod avro;
+// The page cache over any handle. It is a wrapping handle like the codings,
+// so it lives beside them rather than inside `io`, and it needs no Arrow.
+pub mod buffered;
 mod datatype;
 pub mod enums;
 mod error;
