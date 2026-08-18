@@ -44,6 +44,13 @@
 //!   touching the inner handle, a short read at the true end is remembered as
 //!   short, and a handle with no bytes yet caches nothing - the laziness
 //!   contract in [`crate::io`] holds unchanged.
+//! - **A hit asks the handle for nothing.** Not for bytes, and not for the
+//!   size either: the size is remembered beside the pages, and re-asked only
+//!   when a read runs past what the cache knows - which is exactly where
+//!   absence and growth are decided. On a backend whose `size` is a metadata
+//!   round trip, asking per read would leave the cache paying the very cost
+//!   it exists to remove. `IOBase::size` itself still delegates, so a caller
+//!   asking the handle always gets the current answer.
 //! - **Both ends of the value are pinned.** The first page and the page
 //!   holding the last byte are exempt from eviction and from expiry, because
 //!   that is where discovery lives: magic bytes at the head, a Parquet footer
@@ -77,6 +84,43 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Over a compressed handle
+//!
+//! A content coding is not seekable, so [`Coded`](crate::io::Coded) answers a
+//! positional read by decoding the value, and *which* decode it pays depends
+//! on whether the handle is open. A handle nobody opened decodes the whole
+//! payload for every `pread`, because nothing may be cached as a side effect
+//! of an ordinary read. Wrapping it turns that into one decode per page miss:
+//!
+//! ```
+//! use yggdryl::buffered::BufferedOptions;
+//! use yggdryl::gzip::Gzip;
+//! use yggdryl::io::{Buffer, IOBase};
+//!
+//! # fn main() -> yggdryl::Result<()> {
+//! let payload = "symbol,price\nAAPL,1\n".repeat(512).into_bytes();
+//! let mut source = Gzip::new(Buffer::new());
+//! source.write_all_bytes(&payload)?;
+//! source.flush()?;
+//! let encoded = source.into_handle()?;
+//!
+//! // The cache wraps the *coding*, so what it holds is decoded bytes.
+//! let handle = Gzip::new(encoded).buffered(BufferedOptions::default());
+//! assert_eq!(handle.read_range(0, 6)?, b"symbol");
+//! assert_eq!(handle.read_range(13, 4)?, b"AAPL");
+//! assert_eq!(handle.cached_pages(), 1);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The order matters: `Buffered<Coded<_>>` caches the decoded bytes, which is
+//! what the reads want. `Coded<Buffered<_>>` would cache the *compressed*
+//! bytes and still decode on every read, which buys nothing. And a caller who
+//! knows they hold a compressed value should still
+//! [`open`](IOBase::open) it - that materializes the decoded value once and
+//! `close` releases it, which is cheaper again. The page cache is what makes
+//! an *unopened* coded handle behave; `docs/benchmarks.md` measures all three.
 //!
 //! # Wrapping is idempotent
 //!
@@ -211,50 +255,76 @@ impl<H: IOBase> Buffered<H> {
         if buffer.is_empty() {
             return Ok(0);
         }
-        let size = self.handle.size();
-        if offset >= size {
-            // Past the end is emptiness, and it is answered without reaching
-            // the inner handle at all.
-            return Ok(0);
-        }
         let page_size = self.options.page_size_u64();
-        let wanted = (buffer.len() as u64).min(size - offset);
-        let pinned = Pinned::for_size(size, page_size);
         let ttl = self.options.ttl();
 
         let mut table = self.table();
+        // The size the cache last learned. A read that the cache can serve
+        // whole never asks the handle for it again, which is what keeps a hit
+        // free on a backend whose `size` is a metadata round trip; a read that
+        // runs out re-asks below, so a value that grew is still seen.
+        let mut size = match table.known_size() {
+            Some(size) => size,
+            None => {
+                let size = self.handle.size();
+                table.set_size(size);
+                size
+            }
+        };
+        let mut refreshed = false;
         let mut filled: u64 = 0;
-        while filled < wanted {
-            let position = offset + filled;
-            let index = self.options.page_index(position);
-            let page_start = self.options.page_start(index);
-            let within = slot(position - page_start);
-            let take = slot(wanted - filled).min(self.options.page_size() - within);
 
-            // The copy happens inside the lookup so the borrow of the table
-            // ends before the miss path needs it again.
-            let hit = table
-                .get(index, now, ttl, pinned)
-                .map(|page| copy_out(page, within, take, &mut buffer[slot(filled)..]));
-            let copied = match hit {
-                Some(copied) => copied,
-                None => {
-                    let fetched = self.fetch(page_start)?;
-                    let copied = copy_out(&fetched, within, take, &mut buffer[slot(filled)..]);
-                    // An empty fetch is the end of the value; caching it would
-                    // record an absence the next write has to undo.
-                    if !fetched.is_empty() {
-                        table.insert(index, fetched, now, &self.options, pinned);
+        loop {
+            let wanted = (buffer.len() as u64).min(size.saturating_sub(offset));
+            let pinned = Pinned::for_size(size, page_size);
+            while filled < wanted {
+                let position = offset + filled;
+                let index = self.options.page_index(position);
+                let page_start = self.options.page_start(index);
+                let within = slot(position - page_start);
+                let take = slot(wanted - filled).min(self.options.page_size() - within);
+
+                // The copy happens inside the lookup so the borrow of the table
+                // ends before the miss path needs it again.
+                let hit = table
+                    .get(index, now, ttl, pinned)
+                    .map(|page| copy_out(page, within, take, &mut buffer[slot(filled)..]));
+                let copied = match hit {
+                    Some(copied) => copied,
+                    None => {
+                        let fetched = self.fetch(page_start)?;
+                        let copied = copy_out(&fetched, within, take, &mut buffer[slot(filled)..]);
+                        // An empty fetch is the end of the value; caching it
+                        // would record an absence the next write has to undo.
+                        if !fetched.is_empty() {
+                            table.insert(index, fetched, now, &self.options, pinned);
+                        }
+                        copied
                     }
-                    copied
+                };
+                filled += copied as u64;
+                if copied < take {
+                    // The page ended before the request did, which only happens
+                    // at the end of the value: a short read, exactly as `pread`
+                    // says.
+                    break;
                 }
-            };
-            filled += copied as u64;
-            if copied < take {
-                // The page ended before the request did, which only happens at
-                // the end of the value: a short read, exactly as `pread` says.
+            }
+
+            if slot(filled) == buffer.len() || refreshed {
                 break;
             }
+            // The request ran past what the cache believed the value holds.
+            // That is where absence and growth are decided, so the size is
+            // re-asked exactly here - once - and the read carries on if the
+            // value has since grown.
+            let fresh = self.handle.size();
+            table.set_size(fresh);
+            refreshed = true;
+            if fresh <= size {
+                break;
+            }
+            size = fresh;
         }
         Ok(slot(filled))
     }
@@ -332,20 +402,34 @@ impl<H: IOBase> IOBase for Buffered<H> {
     /// are patched like any other: a pin is about retention, never about
     /// staleness.
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        let previous = self.handle.size();
+        // The guard is taken from the field rather than through `self`, so the
+        // one lock this operation needs is held across the write itself.
+        let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = match table.known_size() {
+            Some(size) => size,
+            None => self.handle.size(),
+        };
         let written = self.handle.pwrite(offset, bytes)?;
         let landed = &bytes[..written.min(bytes.len())];
-        let options = self.options;
-        self.table().apply_write(offset, landed, previous, &options);
+        // What the value now holds, derived rather than re-asked: `pwrite`
+        // grows the value exactly when the write reaches past the end, and on
+        // a compressed handle asking would decode the whole payload again.
+        let current = previous.max(offset.saturating_add(landed.len() as u64));
+        table.apply_write(offset, landed, previous, current, &self.options);
+        table.set_size(current);
         Ok(written)
     }
 
     /// Resize the inner value and drop every page at or past the new size.
     fn truncate(&mut self, size: u64) -> Result<()> {
-        let previous = self.handle.size();
+        let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = match table.known_size() {
+            Some(known) => known,
+            None => self.handle.size(),
+        };
         self.handle.truncate(size)?;
-        let options = self.options;
-        self.table().retain_below(previous.min(size), &options);
+        table.retain_below(previous.min(size), &self.options);
+        table.set_size(size);
         Ok(())
     }
 

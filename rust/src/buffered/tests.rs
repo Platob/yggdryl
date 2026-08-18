@@ -22,6 +22,7 @@ pub(crate) struct Counting {
     handle: Buffer,
     reads: AtomicUsize,
     writes: AtomicUsize,
+    sizes: AtomicUsize,
 }
 
 impl Counting {
@@ -31,6 +32,7 @@ impl Counting {
             handle: Buffer::from_bytes(bytes),
             reads: AtomicUsize::new(0),
             writes: AtomicUsize::new(0),
+            sizes: AtomicUsize::new(0),
         }
     }
 
@@ -43,11 +45,27 @@ impl Counting {
     pub(crate) fn writes(&self) -> usize {
         self.writes.load(Ordering::Relaxed)
     }
+
+    /// Return how many `size` calls have reached the buffer.
+    ///
+    /// A `Buffer` answers this from a field, but the backends the cache
+    /// exists for do not: an `arrowfs` handle answers it with one metadata
+    /// call through the foreign filesystem's vtable, which over an object
+    /// store is a round trip. Counting it is how the tests keep a cache hit
+    /// from quietly costing one.
+    pub(crate) fn sizes(&self) -> usize {
+        self.sizes.load(Ordering::Relaxed)
+    }
 }
 
 impl IOBase for Counting {
-    crate::delegate_iobase!(handle: size, capacity, reserve, truncate, url,
+    crate::delegate_iobase!(handle: capacity, reserve, truncate, url,
         media_type, set_media_type, flush, parent, child_by, ls, kind);
+
+    fn size(&self) -> u64 {
+        self.sizes.fetch_add(1, Ordering::Relaxed);
+        self.handle.size()
+    }
 
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
         self.reads.fetch_add(1, Ordering::Relaxed);
@@ -93,6 +111,59 @@ fn a_second_read_of_the_same_range_reaches_nothing() {
     assert_eq!(handle.read_range(8, 40).unwrap(), expected(8, 40));
     assert_eq!(handle.handle().reads(), after_first);
     assert_eq!(handle.cached_pages(), 1);
+}
+
+#[test]
+fn a_hit_asks_the_handle_for_nothing_at_all() {
+    let handle = Buffered::new(counted(4 * PAGE), options(8));
+
+    // The first read learns the size and fetches its page.
+    assert_eq!(handle.read_range(0, 16).unwrap(), expected(0, 16));
+    let reads = handle.handle().reads();
+    let sizes = handle.handle().sizes();
+    assert!(
+        sizes > 0,
+        "the first read has to learn where the value ends"
+    );
+
+    // Every later read the cache can serve whole reaches the handle for
+    // nothing - not for bytes, and not for the size either. On a backend
+    // whose `size` is a metadata round trip that is the difference between a
+    // cache and a cache that still pays per read.
+    //
+    // The claim is about `pread`, the primitive: the derived helpers over it
+    // - `read_range`, `read_all` - call `size` themselves, once per call,
+    // exactly as they do over any other handle.
+    let mut target = [0_u8; 40];
+    for _ in 0..8 {
+        assert_eq!(handle.pread(0, &mut target[..16]).unwrap(), 16);
+        assert_eq!(handle.pread(8, &mut target).unwrap(), 40);
+    }
+    assert_eq!(&target[..8], expected(8, 8).as_slice());
+    assert_eq!(handle.handle().reads(), reads);
+    assert_eq!(handle.handle().sizes(), sizes);
+
+    // A read that runs past what the cache knows re-asks once, because that
+    // is where absence and growth are decided.
+    assert_eq!(handle.pread(4 * PAGE as u64, &mut target).unwrap(), 0);
+    assert_eq!(handle.handle().sizes(), sizes + 1);
+}
+
+#[test]
+fn a_value_that_grew_is_seen_when_a_read_reaches_the_end() {
+    let mut handle = Buffered::new(counted(PAGE), options(8));
+
+    // Warm the cache, so the size the cache knows is the old one.
+    assert_eq!(handle.read_all().unwrap().len(), PAGE);
+
+    // Growth through the wrapper is known immediately, without asking.
+    handle.pwrite(PAGE as u64, b"tail").unwrap();
+    assert_eq!(handle.read_all().unwrap().len(), PAGE + 4);
+    assert_eq!(
+        handle.read_range(PAGE as u64, 4).unwrap(),
+        b"tail",
+        "the write is visible through the cache"
+    );
 }
 
 #[test]
@@ -177,6 +248,23 @@ fn a_write_extending_the_value_replaces_the_page_that_ended_it() {
     assert!(!handle.has_cached_page(1));
     assert_eq!(handle.size(), PAGE as u64 + 14);
     assert_eq!(handle.read_range(PAGE as u64 + 10, 4).unwrap(), b"tail");
+}
+
+#[test]
+fn a_write_that_only_grows_the_value_invalidates_the_page_that_ended_it() {
+    let mut handle = Buffered::new(counted(10), options(4));
+    assert_eq!(handle.read_all().unwrap(), expected(0, 10));
+    assert!(handle.has_cached_page(0));
+
+    // A write of nothing past the end still grows the value and zero-fills
+    // the gap - `pwrite` says so - so the page that recorded where the value
+    // ended is no longer the truth, however few bytes were handed over.
+    handle.pwrite(20, b"").unwrap();
+    assert_eq!(handle.size(), 20);
+
+    let mut expected_bytes = expected(0, 10);
+    expected_bytes.extend_from_slice(&[0; 10]);
+    assert_eq!(handle.read_all().unwrap(), expected_bytes);
 }
 
 #[test]

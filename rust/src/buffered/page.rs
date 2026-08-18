@@ -111,6 +111,15 @@ pub(crate) struct PageTable {
     bytes: u64,
     /// Ticks once per access, so recency is a total order.
     clock: u64,
+    /// The value's size as of the last operation that learned it.
+    ///
+    /// A read needs the size twice - to know where the value ends and to know
+    /// which page is the pinned last one - and on a backend whose `size` is a
+    /// metadata round trip, asking per read would leave the cache paying the
+    /// very cost it exists to remove. So it is remembered here, refreshed
+    /// whenever a read reaches the end of what the cache knows, and dropped
+    /// with the pages.
+    size: Option<u64>,
 }
 
 impl PageTable {
@@ -181,14 +190,24 @@ impl PageTable {
         offset: u64,
         bytes: &[u8],
         previous_size: u64,
+        current_size: u64,
         options: &BufferedOptions,
     ) {
-        if bytes.is_empty() {
-            return;
-        }
         let page_size = options.page_size_u64();
         let start = offset.min(previous_size);
-        let end = offset.saturating_add(bytes.len() as u64);
+        // The changed range is bounded by where the value now ends, not only
+        // by what was handed over: a write of *nothing* past the end still
+        // grows the value and zero-fills the gap, which makes the page that
+        // recorded the old end wrong however few bytes arrived.
+        let written_end = offset.saturating_add(bytes.len() as u64);
+        let end = if current_size > previous_size {
+            written_end.max(current_size)
+        } else {
+            written_end
+        };
+        if start >= end {
+            return;
+        }
         let mut stale: Vec<u64> = Vec::new();
         for (index, page) in &mut self.pages {
             let page_start = options.page_start(*index);
@@ -208,9 +227,13 @@ impl PageTable {
                 page.bytes[slot(zero_from - page_start)..slot(zero_to - page_start)].fill(0);
             }
             let data_from = offset.max(page_start);
-            if change_end > data_from {
+            // Only the bytes actually handed over are copied; the rest of the
+            // changed range is growth, and a page reaching into that was
+            // dropped above rather than patched.
+            let data_to = change_end.min(written_end);
+            if data_to > data_from {
                 let from = slot(data_from - page_start);
-                let to = slot(change_end - page_start);
+                let to = slot(data_to - page_start);
                 let source = slot(data_from - offset);
                 page.bytes[from..to].copy_from_slice(&bytes[source..source + (to - from)]);
             }
@@ -247,6 +270,17 @@ impl PageTable {
     pub(crate) fn clear(&mut self) {
         self.pages.clear();
         self.bytes = 0;
+        self.size = None;
+    }
+
+    /// Return the size this cache last learned, if it has learned one.
+    pub(crate) const fn known_size(&self) -> Option<u64> {
+        self.size
+    }
+
+    /// Record the size an operation just learned or just produced.
+    pub(crate) const fn set_size(&mut self, size: u64) {
+        self.size = Some(size);
     }
 
     /// Return the bytes the cached pages occupy together.
