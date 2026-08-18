@@ -14,6 +14,13 @@ the whole thing onto every type that holds values — a row, a `TypedValue`, an
 array, a batch, a streaming `BatchReader` — or onto a `Field` alone, when the
 caller only wants the schema the result would have.
 
+It then becomes the filtering and selection vocabulary of the whole record
+surface — pushed down through reads (encoding projection, statistics pruning at
+every level that has statistics, Parquet row groups, one mask per batch) and
+through writes (filtered overwrites, deletes, computed columns, expression merge
+keys) — and it reaches Python's frames, where a pandas or polars object is
+inferred as one more carrier rather than given an engine of its own.
+
 Then make it the filtering and selection vocabulary the record surface already
 wanted: today a filter is a `(column, value)` text pair
 (`AGENTS.md:237`) — equality against a hard-coded string, nothing else — and a
@@ -614,9 +621,11 @@ Requirements that make this surface worth having rather than sugar:
   evaluation, the `Apply`/`ArrowApply` surface, edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
   `!!! note "Rust first"` until Phase 4/5 land).
-- **Phase 2 — the record surface** (`generic/options.rs`, `io/partition.rs`):
-  options take an expression; the pair vocabulary becomes sugar; the folder row
-  filter and directory pruning run on the engine.
+- **Phase 2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
+  `io/mod.rs`, `parquet/`): options take an expression; the pair vocabulary
+  becomes sugar; the folder row filter and directory pruning run on the engine;
+  the read ladder and the write rules of §3.1.1–§3.1.2 land, including Parquet
+  row-group pruning and the plan that reports every skip.
 - **Phase 3 — Iceberg**: `scan.rs` prunes manifests, files, and partition tuples
   through `evaluate_stats`; `Filter` is deleted; residuals come from `residual`.
 - **Phase 4 — Python binding.** **Phase 5 — JavaScript binding.**
@@ -658,6 +667,90 @@ route an undeclared column is an error (`AGENTS.md:245`). Those three behaviors
 are the pair sugar's, not the expression's: `Expr::bind` is strict and says so,
 and the sugar's constructor selects the tolerant binding mode. Both modes get
 tests naming which surface they belong to.
+
+### 3.1.1 What a read does with it, in order
+
+The point of binding once is that every layer below can then use the *same*
+plan. Spell the ladder out in `docs/io.md` and implement it in this order; each
+rung must be a number the tests assert, not a claim.
+
+1. **Bind at the top of the read, once.** Against the declared schema when the
+   options carry one — that is the schema the caller wrote the filter against —
+   otherwise against the schema the resource reports. `read_arrow_field` answers
+   under the selection through `apply_field` (§1.9), so a caller learns the
+   output schema without a file being opened.
+2. **Compute the column requirement set**: filter columns ∪ selection columns ∪
+   merge key columns ∪ the partition columns a path layout restores. *That* set
+   becomes the encoding's own projection — a Parquet `ProjectionMask`, an Arrow
+   IPC projection, an Avro field skip — through the existing
+   `projection_indices` path. Never project away a column the filter needs and
+   then re-read the file for it; never widen the projection to everything
+   because the filter mentions one extra column.
+3. **Prune before decoding, at every level that has statistics, through the one
+   `Bound::evaluate_stats`:**
+   - a table format's manifest list, manifest entries, and data-file bounds
+     (§3.3);
+   - a folder's `column=value` directories (§3.2);
+   - **Parquet row groups** — `parquet::metadata::{FileStatistics,
+     RowGroupStatistics, ColumnStatistics}` already exist and are already read
+     from the footer (`rust/src/parquet/metadata.rs`), so implementing
+     `StatsSource` over a row group and handing the builder
+     `with_row_groups(...)` is pruning this repository can have almost for free.
+     It is new capability, so it gets its own tests and its own benchmark leg.
+   - Parquet page-index and `RowFilter` late materialization are **optional and
+     only on evidence**: add them only behind a benchmark that shows the win,
+     and if they are not added, say so in the docs rather than letting a reader
+     assume they are there. No silent gaps.
+4. **Fold what the location already settled.** A leaf under `venue=XNAS/` has a
+   constant column: conjuncts naming it fold to `TRUE`/`FALSE` at plan time, so
+   the file is skipped whole or the conjunct never runs against a single row.
+   What reaches the batch is the residual and nothing more.
+5. **Per batch: mask once, filter once, then compute.** Build one `BooleanArray`
+   from all residual conjuncts, call `filter_record_batch` once, and only then
+   evaluate the selection's computed columns and the declared cast — so a
+   computed column is evaluated for surviving rows only.
+   **One exception, and it outranks the optimization**: when the filter was
+   bound against a declared schema whose cast changes what a comparison means (a
+   text column declared as a date, a float declared as a decimal), the predicate
+   must run *after* the cast. The binder decides which of the two orders is
+   provably equivalent, records the decision in the plan, and picks the safe
+   order whenever it cannot prove equivalence. *Never let an optimization change
+   what a caller observes* — that rule already governs the parallel scan
+   (`AGENTS.md:326`) and it governs this.
+6. **Report what happened.** `ScanPlan` already makes Iceberg pruning a testable
+   number; the general path gets the same courtesy — a `ReadPlan` (or
+   `Bound::explain`) naming, per stage, what was pushed into the encoding and
+   what each level skipped: files, row groups, batches, rows. Tests assert those
+   counts; docs show one worked example. A pushdown nobody can observe is a
+   pushdown nobody can trust.
+
+### 3.1.2 What a write does with it
+
+- **The selection narrows a write before any encoding or matching sees the
+  rows**, which `write_arrow_batch_reader` already does for names; it now does
+  it for expressions, so a computed column lands as a real column. A computed
+  column may be the one the layout partitions on — that is identity
+  partitioning on a column that exists by the time the row is routed, so it does
+  not touch the rule that a non-invertible transform refuses a write
+  (`AGENTS.md:264`).
+- **A filter on a write names the rows the write is about.** On an overwrite it
+  selects which incoming rows land and, on a resource that already holds rows,
+  which stored rows are replaced: rows the predicate cannot match are carried
+  forward untouched, and leaves or data files the predicate cannot touch are
+  never read. With an empty incoming reader that is exactly the delete
+  `docs/iceberg.md` already describes as "a filtered overwrite with nothing
+  incoming" — one shape, now spelled by an expression instead of a pair.
+- **Merge keys generalize the same way**: `merge_by_names` keeps its spelling
+  and becomes sugar over `merge_by`, a list of expressions whose values form the
+  match key, so a key can be computed (`lower(id)`) rather than only named. The
+  stored side is still read only where statistics say a file can hold an
+  incoming key — the same `evaluate_stats`, so merge pruning and read pruning
+  cannot disagree.
+- **A write is a claim, so it is strict**: a filter or selection naming a column
+  the incoming rows do not carry is an error naming the columns they do, matching
+  what a selection already does on the write path today.
+- Nothing on the write path may read a file the predicate excludes, and every
+  skip is reported through the same plan value as the read path.
 
 ### 3.2 Folders (`rust/src/io/partition.rs`)
 
@@ -783,6 +876,23 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   first batch and holds at most one batch; a batch whose schema disagrees errors
   naming the column, and a reader whose schema disagrees errors before the first
   batch; every carrier in the redirection table is exercised at least once.
+- **Pushdown equivalence** (§3.1.1) — the tests that make the optimization
+  safe: for a matrix of predicates over a Parquet file, an IPC file, an Avro
+  file, a partitioned folder, and an Iceberg table, the rows a pushed-down read
+  returns are **identical** to the rows a read with no pushdown returns and then
+  filters in memory; the plan's reported skips are asserted as numbers (files,
+  row groups, batches, rows), and a run that skips more than it should shows up
+  as a row difference rather than a faster time. Include the cases pushdown is
+  wrong for: a declared schema whose cast changes a comparison's meaning (text
+  declared as date, float declared as decimal) must produce the declared-schema
+  answer, and a column requirement set that the projection would have dropped
+  must not silently null the filter.
+- **Write path** (§3.1.2): a filtered overwrite replaces only matching rows and
+  leaves the rest byte-identical; an empty incoming reader with a filter is a
+  delete; a computed selection column lands as a real column and can be the
+  partition column; a merge key built from an expression matches the same rows
+  as the equivalent named key; a filter naming a column the incoming rows lack
+  is an error naming what they have.
 - **Integration**: `rust/src/io/tests.rs` — a folder-partitioned lake filtered
   by an expression prunes directories (assert nothing under the excluded prefix
   is listed, with a counting handle) and filters rows; `rust/src/iceberg/tests.rs`
@@ -815,7 +925,13 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
   unaccessored equivalents, so the grammar's convenience carries a known cost;
 - the apply surface: `apply_arrow_batch` from a `&str` subject (parse + bind per
   call) versus a hoisted `Bound` subject, which is what the docs tell readers to
-  do and must therefore be a number rather than advice.
+  do and must therefore be a number rather than advice;
+- **the read ladder** (§3.1.1) — the numbers that justify it: a filtered Parquet
+  read with row-group pruning against the same read without it and against a
+  read-everything-then-filter baseline, reporting materialized bytes as
+  throughput the way the existing pushdown benchmarks do; a filtered folder read
+  against an unfiltered one over the same tree; and a filtered write against an
+  unconditional overwrite of the same rows.
 
 Extend `rust/benchmarks/iceberg.rs` with a filtered-plan leg so the pruning
 change is visible where it matters.
@@ -890,6 +1006,66 @@ hand.
 
 ---
 
+### 6.1 pandas and polars — inferred carriers, one engine
+
+The Python package already reads and writes `pandas` and `polars` frames
+(`read_pandas`, `read_pandas_frame`, `read_polars`, `read_polars_frame`,
+`scan_polars`, and their write halves), and it imports those libraries only
+where a frame of that library actually appears. The expression surface joins
+them on the same terms.
+
+- **`Expr.apply(obj)` and `Selection.apply(obj)` infer the carrier**, extending
+  the §1.9 redirection table with `pandas.DataFrame`, `pandas.Series`,
+  `polars.DataFrame`, `polars.LazyFrame`, and `polars.Series` beside the PyArrow
+  carriers. Detection is the non-importing `declared_by(value, "pandas",
+  "DataFrame")` duck-typing pattern already in `python/src/record.rs:193` —
+  **neither library is imported at module load**, only when a frame of it
+  arrives, exactly as the frame readers behave today. A frame from a library
+  that is not installed cannot occur; a library that is missing when a frame
+  needs it raises the existing named `ImportError`, never an `AttributeError`
+  several frames deep inside PyArrow.
+- **Same type in, same type out.** pandas in → pandas out with the index handled
+  exactly as the existing frame readers handle it; polars in → polars out;
+  `LazyFrame` in → `LazyFrame` out, with the collection point stated plainly in
+  the docstring and the docs rather than hidden. A `Series` is treated as one
+  column and its name is the column the expression may reference.
+- **Conversion is Arrow in both directions** — polars through its zero-copy
+  `to_arrow`/`from_arrow`, pandas through PyArrow — never a row loop, never
+  JSON, never a second value model (`AGENTS.md:833`, interop goes through
+  Arrow). Say in the docs which of the two conversions copies and which does
+  not; do not claim zero-copy where a copy happens.
+- **The expression is deliberately not translated into `pl.Expr` or a pandas
+  mask.** Two implementations of the same comparison drift — on nulls, on
+  decimals, on case-insensitive names — and this whole change exists to have
+  one. The performance a translation would buy is bought where it actually
+  pays instead: **push the predicate into the read**, so the frame never
+  materializes the rows the filter drops. State that trade in one sentence in
+  the docs, and let §5's benchmark settle it rather than the prose.
+- **The frame readers and writers pick filter and selection up from the options
+  they already take**, so
+  `handle.read_pandas_frame(options.with_filter("venue = 'XNAS'"))` prunes
+  files, directories, and row groups before pandas exists in the process. No new
+  keyword arguments: a filter lives in exactly one place.
+- **`scan_polars` must not quietly answer a different question.** Its native
+  `scan_parquet` fast path knows nothing about the filter, so with a filter set
+  either apply it to the returned `LazyFrame` or decline the fast path — pick
+  one, make the rows identical either way, and say which in the docstring.
+- **Tests** (`python/tests/test_expressions.py`, house style): both frame
+  libraries, both directions, dtype and index fidelity, a `LazyFrame`, a filter
+  that empties a frame, the dtype of a computed column, and — per library — the
+  equality that matters: **the frame path selects exactly the rows the Arrow
+  path selects**, on data including nulls, decimals, and temporals.
+- **Benchmarks** (`python/benchmarks/expressions.py`, release build only):
+  `apply` on a pandas frame against `df[df.col > x]`, and on a polars frame
+  against `df.filter(pl.col("col") > x)` — the baselines those readers trust —
+  plus read-with-filter against read-then-filter for both libraries, which is
+  the number that justifies the previous bullet.
+- **JavaScript has no frame libraries**: the carrier table's frame rows are
+  Rust/Python only, marked with the docs' existing `!!! note` convention rather
+  than filled with an invented equivalent.
+
+---
+
 ## 7. Documentation
 
 - New page `docs/expressions.md`: one H1, exactly one opening sentence, then
@@ -910,8 +1086,11 @@ hand.
   `python scripts/check_docs_examples.py`. Check `.api-bindings.txt` before
   showing a language do anything.
 - Add the page to `mkdocs.yml` nav beside `field`/`datatype` (it is a core
-  value, not a storage concern); update `docs/io.md` §"Partition pruning and
-  filtering" (line 2134) and `docs/iceberg.md` (936–943, 1253–1318) so the "a
+  value, not a storage concern); give `docs/io.md` the read ladder of §3.1.1 as
+  a numbered list with one worked plan printout, and the write rules of §3.1.2
+  beside it; document the pandas/polars carriers on `docs/extensions/python.md`
+  with the not-translated trade stated in one sentence; update `docs/io.md`
+  §"Partition pruning and filtering" (line 2134) and `docs/iceberg.md` (936–943, 1253–1318) so the "a
   filter is a column name and a value as text" sentences become "a filter is an
   expression; the pair form is sugar for one equality"; update
   `docs/architecture.md`, the README layout table, and
@@ -970,6 +1149,10 @@ native binaries, caches, and `node_modules` after validation.
   `.api-bindings.txt` keep working with identical answers; new capability
   arrives as new names following the vocabulary (`AGENTS.md:397`), never as an
   alias with a different verb.
+- **Pushdown may never change an answer.** Every rung of the read ladder is
+  proven equivalent to the naive read by test, not by argument; where
+  equivalence cannot be proven (a declared cast that changes a comparison), the
+  safe order wins and the plan records that it did.
 - **Pruning may never lose a row.** `Maybe` is the safe answer everywhere; every
   `AlwaysFalse` rule has a test with adversarially coarse statistics; transform
   projection is inclusive by construction.
