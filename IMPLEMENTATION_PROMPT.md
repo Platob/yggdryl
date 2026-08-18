@@ -93,12 +93,13 @@ row must get right.
 | 1.13 | Rust ergonomics — traits, operators, prelude, typed narrowing | `==` structural vs `.eq()` building, and `From<&str>` vs `FromStr`, decided and tested |
 | 2 | phases A1–A7, B0–B9 | each phase is complete work on its own |
 | 3 | record options, the read ladder, writes, `apply_expression`, folders, Iceberg | pushdown never changes an answer |
+| 3.1.3 | `apply_expression`, its statements, and bound records and parameters | one source, streamed once; a parameter is a value, never spliced text |
 | 3.1.4 | cross-flavor SQL keyed by `Scheme` | one grammar plus a per-flavor table; a construct the engine cannot execute is refused at parse time |
 | 4 | tests, incl. the exhaustive datatype and nested matrix | the matrix enumerates the core's enums, so a new variant fails it |
 | 5 | benchmarks and the outside baselines | every performance claim carries a baseline the reader trusts |
 | 6 | Part A bindings, frames, language protocols | equality, ordering, and hashing agree across all three languages |
 | 7 | Part B — closing the 26 `Rust only` notes | a closed gap deletes its note and replaces it with tabs that run |
-| 8 | documentation and its 34 worked use cases | every example runs under `check_docs_examples.py` |
+| 8 | documentation and its 36 worked use cases | every example runs under `check_docs_examples.py` |
 | 9–10 | required checks; hard constraints | all green, twice, before handoff |
 
 Three rules that outrank everything else in this document, if they ever
@@ -1383,10 +1384,94 @@ by name, before anything is touched.
   what it does carry — a statement is a claim.
 - `UPDATE` may not assign to a column the schema does not have (that is
   `ADD COLUMN`), and `ADD COLUMN` may not shadow one that exists.
-- **Deliberately absent**, each with its one-line reason in the docs: `CREATE` /
-  `DROP TABLE` (the catalog owns existence), `MERGE INTO … USING <source>` (a
-  statement carries no second source; merge stays `merge_by` over the incoming
-  reader), joins, subqueries, aggregates, and transactions spanning statements.
+- **Deliberately absent**, each with its one-line reason in the docs:
+  `DROP TABLE` (the storage contract has no delete/move — the reason the repo
+  already gives for the absent Iceberg drop), joins on arbitrary predicates
+  (a bound source is selected from, merged on a key, or used as a key set —
+  never joined), subqueries, aggregates, and transactions spanning statements.
+  `CREATE TABLE` and `MERGE … USING` **are** supported — see §3.1.4 and the
+  bound-source rules above.
+
+#### Incoming records and parameters — a statement with a source
+
+A statement so far describes what to do with the rows a handle already holds.
+The other half of every real workload is rows arriving from somewhere else, and
+that is what the three record methods carry. Bind the two together with one
+concept: **a statement may reference bound inputs by name.**
+
+```rust
+/// Values and at most one record source, bound into a statement by name.
+pub struct Bindings { /* named `Value`s, and one optional `BatchReader` */ }
+
+fn apply_expression(&mut self, statement: &Statement, options: &RecordOptions)
+    -> Result<Applied>;
+
+/// The same, with parameters and/or incoming records bound.
+fn apply_expression_bound(
+    &mut self,
+    statement: &Statement,
+    bindings: Bindings,
+    options: &RecordOptions,
+) -> Result<Applied>;
+```
+
+Two kinds of binding, one spelling — the SQL parameter every flavor already
+has:
+
+- **Scalar parameters**: `:name` (or positional `?`) anywhere a literal may
+  appear. `WHERE venue = :venue AND ts >= :since`. They are typed at bind time
+  against the column they meet and folded exactly as a literal is (§1.4), so a
+  parameter costs nothing at run time — and a `Bound` can be **re-executed with
+  new parameter values without re-parsing or re-resolving anything**
+  (`Bound::rebind`), which is the whole point of parameters existing in a
+  compiled plan.
+- **One record source**: `:records`, usable wherever the grammar expects rows.
+  Its schema is known from the reader it is bound to, so column references into
+  it resolve at bind time and a mismatch names the column and both schemas.
+
+**A parameter is a value, never spliced text.** That is the sentence the docs
+carry beside the untrusted-input use case: you never build a predicate by
+concatenating strings here, because you never have to.
+
+What the source makes possible, each mapping onto a record method that already
+exists:
+
+| statement | does |
+| --- | --- |
+| `INSERT INTO . SELECT … FROM :records [WHERE …]` | appends the projected, filtered incoming rows — `append_arrow_batch_reader` |
+| `MERGE INTO . USING :records ON (k, …)` (plus its `ON CONFLICT` / `ON DUPLICATE KEY UPDATE` spellings, §3.1.4) | the upsert this repo already performs, with `merge_by` taken from the `ON` list |
+| `CREATE TABLE t AS SELECT … FROM :records` | create, then write, in one pass |
+| `UPDATE . SET c = :new WHERE k = :key` | scalar parameters, no source |
+| `DELETE WHERE (k, …) IN :records` | a key-set delete: the keys are drained from the source into a bounded set, then it is an ordinary `IN` predicate |
+
+Rules that keep this from quietly becoming a query engine:
+
+- **The source is consumed once and streamed.** One batch in flight, never a
+  full materialization — the same contract the write path already keeps. The
+  single exception is the key-set `DELETE`, where the keys must be held to be
+  compared against stored rows: that set is **explicitly bounded**, refuses past
+  the bound naming the limit and the count reached, and the comment says why it
+  is held (`AGENTS.md:212`). An unbounded in-memory key set is exactly the
+  failure this project refuses elsewhere.
+- **A source is not a join.** `:records` may be selected from, filtered, merged
+  on a key, and used as a key set — it may not be joined to the stored rows on
+  arbitrary predicates, and that refusal keeps its name and its one-line reason
+  (§3.1.4).
+- **At most one source per statement or chain**, because a reader is
+  single-pass; a chain binds it once, and the step that consumes it is named in
+  the plan so a second consumer is an error rather than an empty stream — the
+  same rule the JavaScript `BatchReader` already states (`AGENTS.md:1078`).
+- **Type-checked before anything runs**: the source's schema, the stored
+  schema, and the statement are reconciled at bind time, and a `MERGE` whose
+  `ON` list names a column either side lacks is refused naming both.
+
+**At the boundary, "records" means what it already means.** The bindings accept
+for `:records` anything their record surface accepts — a `BatchReader`, an
+Arrow `Table`/`RecordBatch`, IPC bytes, a pandas or polars frame (§6.1), a list
+of dicts in Python, an array of objects in JavaScript — through the one existing
+inference, never a new conversion path. Scalar parameters cross as the canonical
+`Value` spelling (§AGENTS.md:836), so a Python `date` and a JavaScript `Date`
+both arrive as the temporal the column expects.
 
 #### The boundary — any spelling, both languages
 
@@ -1485,8 +1570,10 @@ engine already has:
 
 #### What it refuses, by name, in every flavor
 
-Joins, subqueries, aggregates and `GROUP BY`/`HAVING`, window functions, CTEs,
-views, stored procedures, transactions, `TRUNCATE`, and `DROP TABLE`. Each
+Joins on arbitrary predicates, subqueries, aggregates and
+`GROUP BY`/`HAVING`, window functions, CTEs, views, stored procedures,
+transactions, `TRUNCATE`, and `DROP TABLE`. (`MERGE … USING :records` is
+supported — a bound source, not a join; §3.1.3.) Each
 refusal names the construct and says what to do instead in one line — and
 `DROP TABLE` cites the reason the repo already gives for the absent Iceberg
 drop: the storage contract has no delete/move, and this project names that limit
@@ -1781,6 +1868,28 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   methods exist, so a class added later cannot ship half-implemented), `Expr`'s
   documented comparison exception raises from `__bool__` naming `.equals()`,
   and Python slice syntax reaches the range accessor.
+- **Bound records and parameters** (§3.1.3):
+  - `INSERT INTO . SELECT … FROM :records WHERE …` appends exactly the projected
+    filtered rows, streaming — assert the source is consumed once and at most
+    one batch is ever held;
+  - `MERGE INTO . USING :records ON (k)` produces the same table as the
+    equivalent `merge_by` write, and its `ON CONFLICT` / `ON DUPLICATE KEY`
+    spellings produce the same again;
+  - `CREATE TABLE t AS SELECT … FROM :records` creates and writes in one pass;
+  - `DELETE WHERE (k) IN :records` removes exactly those keys, and a key set
+    past the bound is refused naming the limit and the count reached — not an
+    OOM;
+  - a second consumer of the same source is an error, not an empty stream; a
+    chain binds one source and the plan names the step that consumes it;
+  - scalar parameters are typed against the column they meet, folded once, and
+    `Bound::rebind` re-executes with new values **without re-parsing or
+    re-resolving** (assert by counting parse and bind work);
+  - a `MERGE` whose `ON` names a column either side lacks is refused naming
+    both schemas; a source schema that cannot cast to the stored one is refused
+    before a row is written;
+  - at the boundary: a `BatchReader`, an Arrow table, IPC bytes, a pandas frame,
+    a polars frame, a list of dicts, and an array of objects all bind as
+    `:records` and produce identical results.
 - **Cross-flavor SQL** (§3.1.4), in `rust/tests/expressions/sql.rs`:
   - every divergence row of that section, parsed in each flavor that spells it
     and rendered back into each flavor that can hold it, with the canonical form
@@ -1927,6 +2036,12 @@ that word — a skipped half can never read as a pass. Check both:
   mapping, pairs, or keywords. It returns a `BatchReader` for a statement that
   reads and the `StatementReport` as a plain object for one that changes
   something; `Statement.explain(handle)` answers the report without doing it.
+  Parameters and incoming records bind by keyword —
+  `handle.apply_expression("MERGE INTO . USING :records ON (id)",
+  records=frame, since=date(2024, 1, 1))` — where `records` accepts anything the
+  record surface already accepts (a `BatchReader`, a PyArrow table, IPC bytes, a
+  pandas or polars frame, a list of dicts) and scalars cross as canonical
+  `Value`s.
 - `python/yggdryl/_native.pyi` and `__init__.pyi` updated; `mypy --strict`
   green; tests in `python/tests/test_expressions.py` in house style (fixtures,
   plain-English test classes with docstrings), covering parse, operators,
@@ -1948,7 +2063,9 @@ schema; `handle.applyExpression(…)` takes statement text or a `Statement` buil
 by the same constructors and chained with `.then(next)` (or handed over as an
 array of statements), whose predicate argument accepts a string, an `Expr`,
 a plain object, a `Map`, or a pair array, and returns either a `BatchReader` or
-the report as a plain object with `bigint` counts; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
+the report as a plain object with `bigint` counts; bindings are passed as one
+object (`{ records: table, since: new Date(…) }`) where `records` takes anything
+`BatchReader.from` takes; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
 methods take the same argument in the same position as Python. Tests
 `node/tests/expressions.test.js` + `expressions.types.ts`; benchmark
 `node/benchmarks/expressions.js` wired as `npm run bench:expressions`.
@@ -2395,78 +2512,84 @@ cannot do one (the frame carriers in JavaScript), it carries the existing
 13. **`CREATE TABLE` and `CREATE TABLE AS SELECT`**, then an upsert written all
    three ways (`ON CONFLICT`, `ON DUPLICATE KEY UPDATE`, `MERGE`) landing the
    same rows.
-14. **What it refuses and why**: a join, a subquery, a `GROUP BY`, and a
+14. **Bring your own rows**: `INSERT INTO . SELECT … FROM :records` and
+   `MERGE INTO . USING :records ON (id)` with a pandas frame, an Arrow table,
+   and a list of dicts — the same statement, three sources, one result.
+15. **Parameters instead of string building**: `WHERE venue = :venue` bound and
+   re-executed with three different values off one compiled plan, beside the
+   sentence saying this is why you never concatenate a predicate.
+16. **What it refuses and why**: a join, a subquery, a `GROUP BY`, and a
    `DROP TABLE`, each showing the parse-time error naming the construct — so a
    reader learns the boundary in ten seconds rather than by trial.
-15. **The statement vocabulary and its lowering** (§3.1.3) as one table the
+17. **The statement vocabulary and its lowering** (§3.1.3) as one table the
    reader can hold in their head: every verb, and the selection + filter +
    write mode it becomes. Someone who understands this table can predict what
    any statement will cost.
-16. **What this deliberately does not do** — no subqueries, joins, aggregates,
+18. **What this deliberately does not do** — no subqueries, joins, aggregates,
    `bucket`, `CREATE`/`DROP TABLE`, no `MERGE … USING` — each with its one-line
    reason.
 
 **On `docs/io.md` — a handle**
 
-17. **Filter a file you already have**: `SELECT … WHERE` through
+19. **Filter a file you already have**: `SELECT … WHERE` through
     `apply_expression` on a Parquet leaf, with the read plan printed so the
     reader sees which row groups were skipped.
-18. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
+20. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
     asserting that the excluded directories were never listed.
-19. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
+21. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
     matches entirely — the report showing that the whole partition was unlinked
     without being decoded, which is the point — plus the three-valued footnote
     made concrete: rows whose value is null survive `DELETE WHERE price > 10`.
-20. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
+22. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
     else byte-identical, and the files no row matched never opened. Show the
     `CASE` it lowers to, so the reader learns the model rather than a spell.
-21. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
+23. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
     the statement-that-does-nothing case: `explain` first, apply second.
-22. **Apply to what you already hold** — the §1.9 carrier table as examples: a
+24. **Apply to what you already hold** — the §1.9 carrier table as examples: a
     `Value` row, an array with its `Field`, a `RecordBatch`, a streaming
     `BatchReader`, and a `Field` alone.
-23. **Write with an expression**: a filtered overwrite that replaces only the
+25. **Write with an expression**: a filtered overwrite that replaces only the
     matching rows, a computed column that becomes the partition column, and an
     expression merge key.
-24. **`INSERT … VALUES`** for the case every reader tries first: putting three
+26. **`INSERT … VALUES`** for the case every reader tries first: putting three
     rows somewhere without building an Arrow batch by hand.
 
 **On `docs/iceberg.md` — a table**
 
-25. **A filtered scan with its numbers**: manifests skipped, files skipped,
+27. **A filtered scan with its numbers**: manifests skipped, files skipped,
     rows filtered — the existing pruning example rewritten around an
     expression, with the counts asserted.
-26. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
+28. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
     the manifest without a byte being rewritten; the report proves it.
-27. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
+29. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
     rewrote a folder in use case 13 costs one document here, ids preserved —
     and a refused type change naming both sides.
-28. **A predicate on a source column pruning a transformed partition** (the
+30. **A predicate on a source column pruning a transformed partition** (the
     `day(ts)` case), and the honest counter-example: the same predicate against
     a `bucket` partition prunes nothing, and the docs say why in one sentence.
-29. **Time travel plus a filter** — `scan_at` under an expression, read with the
+31. **Time travel plus a filter** — `scan_at` under an expression, read with the
     schema that snapshot was written with.
 
 **On `docs/extensions/python.md` — the frames**
 
-30. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
-31. **Push the filter into the read instead**: `read_pandas_frame` /
+32. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
+33. **Push the filter into the read instead**: `read_pandas_frame` /
     `read_polars_frame` under options carrying the filter, with the benchmark
     number quoted from `docs/benchmarks.md` showing why this is the version to
     write.
-32. **Any spelling at the boundary** — statement text, a built `Statement`, a
+34. **Any spelling at the boundary** — statement text, a built `Statement`, a
     dict, a pair list, keywords — resolving to the same statement, and a bare
     predicate refused as a delete (§3.1.3).
 
 **On `docs/extensions/javascript.md`**
 
-33. The same boundary inference in JavaScript — statement text, `Statement`,
+35. The same boundary inference in JavaScript — statement text, `Statement`,
     `Expr`, plain object, `Map`, pair array — and `applyExpression` over a
     handle, including a `DELETE` and an `ALTER`.
 
 **Migration, once, where an existing reader will look for it**
 
-34. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
+36. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
     `with_filter_partitions([("venue", "XNAS")])` beside
     `with_filter("venue = 'XNAS'")`, saying plainly that the first still works,
     is exactly sugar for the second, and that the expression form is what adds
@@ -2537,6 +2660,10 @@ native binaries, caches, and `node_modules` after validation.
   variant including nested ones, or refuses by name with a message that says
   which datatype and which operation. The test matrix enumerates the core's own
   enums, so a datatype added later fails the tests rather than slipping through.
+- **One record source, streamed once, never joined.** A bound source is
+  consumed a single time with one batch in flight; the only held collection is
+  the key-set `DELETE`, which is explicitly bounded and says why it is held. A
+  parameter is a value, never spliced text.
 - **One grammar, one renderer, a table per flavor.** SQL dialects are data
   (§3.1.4) keyed by `Scheme` — never a second dialect enum, never a per-flavor
   parser or generator fork. SQL the engine cannot execute is refused at parse
