@@ -460,8 +460,12 @@ bytes at a time inside a 4 MiB hot region that fits the budget - the cache's own
 fetched once and evicted before it is wanted again - a pure miss workload. `footer` reads
 both ends, sweeps 12 MiB of the middle, and reads both ends again.
 
-From one containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, Rust 1.94.1,
-`--release` with thin LTO; Criterion, 100 samples, medians with 95% intervals):
+From one containerized x86_64 Linux run with the group run alone
+(`cargo bench --bench io --features "parquet" -- io_buffered`; Intel Xeon 2.10 GHz, 4 cores,
+Rust 1.94.1, `--release` with thin LTO; Criterion, 100 samples, medians with 95% intervals).
+This box's run-to-run spread is wide - a case can move 15% between runs, and more when the
+whole `io` target runs together - so only the multiples below are conclusions, never a
+percentage:
 
 ```text
 io_buffered/random/buffer         10.399 µs   46.955 GiB/s   [10.229 µs 10.591 µs]
@@ -480,7 +484,7 @@ them are already memory: a `Buffer` read is a `memcpy` out of a `Vec`, and a `Fi
 `memcpy` out of the mapping the kernel already keeps. A second cache in front of that can
 only add work.
 
-- **A hit costs about 56 ns more than a mapped read** (82.6 ns against 28.2 ns per 512-byte
+- **A hit costs about 55 ns more than a mapped read** (82.6 ns against 28.2 ns per 512-byte
   read, both dominated by everything except the copy). That is the clock read the time to
   live needs, the cache's own lock, the wrapped handle's `size`, and one map lookup. The
   lookup is the cheapest of the four: switching the page table off `SipHash` onto a
@@ -504,7 +508,7 @@ thing page by page.
 
 The conclusion to draw is not "the cache is slow" but "a cache in front of memory is
 pointless". The wrapper exists for handles whose fetch is not a `memcpy` - an object store, a
-compressed value, anything whose read is a round trip - where trading 56 ns of bookkeeping
+compressed value, anything whose read is a round trip - where trading 55 ns of bookkeeping
 for one avoided fetch is the whole point. That backend is not in the core yet, so it is not
 in this table, and nothing here should be read as a claim about one.
 
