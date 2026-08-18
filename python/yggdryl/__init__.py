@@ -19,6 +19,7 @@ from ._native import (
     Url,
     Urn,
     __version__,
+    combined,
     schema_from_pattern,
 )
 from . import fields, gzip, iceberg, json, toml, yaml, zlib, zstd
@@ -38,6 +39,7 @@ __all__ = [
     "Url",
     "Urn",
     "__version__",
+    "combined",
     "from_dict",
     "fields",
     "gzip",

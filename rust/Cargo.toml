@@ -147,6 +147,10 @@ harness = false
 required-features = ["iceberg"]
 
 [[test]]
+name = "combined"
+path = "tests/combined.rs"
+
+[[test]]
 name = "batch_cast"
 required-features = ["arrow"]
 

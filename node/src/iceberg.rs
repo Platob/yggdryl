@@ -89,7 +89,7 @@ fn numbered_schema(mut schema: CoreField) -> Result<CoreField> {
 }
 
 /// Read the field an input names, exactly as `Field.from` infers one.
-fn field_from_input(value: FieldInput<'_>) -> Result<CoreField> {
+pub(crate) fn field_from_input(value: FieldInput<'_>) -> Result<CoreField> {
     match value {
         Either::A(field) => Ok(field.inner.clone()),
         Either::B(text) => CoreField::from_str(&text).map_err(napi_error),

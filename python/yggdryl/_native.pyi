@@ -203,6 +203,13 @@ class MediaType:
     def __copy__(self) -> MediaType: ...
     def __deepcopy__(self, memo: Any) -> MediaType: ...
 
+def combined(
+    left: Any,
+    right: Any,
+    schema: Field | DataType | str | pyarrow.Schema | None = None,
+    *,
+    safe: bool = True,
+) -> pyarrow.RecordBatchReader: ...
 def schema_from_pattern(
     pattern: str,
     *,

@@ -876,6 +876,40 @@ pub(crate) fn batch_reader_to_pyarrow(
     reader.into_pyarrow(py)
 }
 
+/// Chain two readers onto the root their two schemas merge into.
+///
+/// The lazy crossing is preserved in both directions: the merge is derived
+/// from the two schemas alone, which a `RecordBatchReader` answers without
+/// pulling a batch, and the result is handed back over the C stream so PyArrow
+/// pulls one batch at a time.
+///
+/// Columns unite by name (ASCII case-insensitively), left's order first and
+/// right-only columns after; a column present in only one side becomes
+/// nullable because the other side's rows have no value for it; a shared
+/// column whose datatype or `PARQUET:field_id` disagrees is refused naming both
+/// sides rather than silently widened. Passing `schema` declares the root both
+/// sides cast onto instead of deriving one.
+#[pyfunction]
+#[pyo3(signature = (left, right, schema = None, *, safe = true))]
+pub(crate) fn combined<'py>(
+    py: Python<'py>,
+    left: &Bound<'_, PyAny>,
+    right: &Bound<'_, PyAny>,
+    schema: Option<&Bound<'_, PyAny>>,
+    safe: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let left = batch_reader_from_value(left)?;
+    let right = batch_reader_from_value(right)?;
+    let reader = match schema {
+        Some(schema) => {
+            let root = core_root_field_from_value(schema, "row")?;
+            yggdryl::arrow::combined_as(left, right, &root, safe).map_err(value_error)?
+        }
+        None => yggdryl::arrow::combined(left, right).map_err(value_error)?,
+    };
+    batch_reader_to_pyarrow(py, reader)
+}
+
 /// Report that a setting belongs to an encoding these options are not.
 fn not_parquet(options: &RecordOptions, setting: &str) -> PyErr {
     PyValueError::new_err(format!(
