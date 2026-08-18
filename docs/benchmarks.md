@@ -15,6 +15,7 @@ Criterion targets for the Rust core and boundary benchmarks for each binding.
     cargo bench --bench yaml
     cargo bench --bench avro
     cargo bench --bench io --features "parquet"
+    cargo bench --bench io --features "parquet" -- io_buffered
     cargo bench --bench io --features "parquet" -- lines_gzip   # ~12 min alone
     cargo bench --bench iceberg --features "parquet iceberg"
     ```
@@ -63,7 +64,7 @@ machine against release artifacts, and compare like-for-like toolchains.
 | `text` | Value construction, format inference, display and elision helpers |
 | `json`, `toml`, `yaml` | Whole-value and streaming encode and decode |
 | `avro` | Container decode and encode by type family, codec x block-size sweep, projection skips, resolution plans, the varint floor |
-| `io` | Record round-trips over handles, projection pushdown, the line-record Arrow projection and its hash, and (`lines_gzip`) a million-record rotated gzip log folder: content coding, folder shape, typed captures, and a scale sweep |
+| `io` | Record round-trips over handles, projection pushdown, the line-record Arrow projection and its hash, (`lines_gzip`) a million-record rotated gzip log folder: content coding, folder shape, typed captures, and a scale sweep, and (`io_buffered`) the page cache against the handles it wraps |
 | `log_lines_bulk` (Python) | The same rotated gzip corpus at the binding, plus peak RSS per corpus size - the residency claim Criterion cannot report |
 | `lines` (JavaScript) | The same corpus at the copied-IPC boundary, with median, best, and spread |
 | `iceberg` | Plan, metadata, manifests (full against the planning fast path, at scale), partitioning, compaction, merge, contended commits |
@@ -448,6 +449,64 @@ parsing, and the stack trace stays one row with `lines` of 3.
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
+
+## What a page cache costs over a handle that is already memory
+
+`io_buffered` runs three read workloads over one 16 MiB fixture and three handles: an
+in-memory `Buffer` as the floor, a memory-mapped `local::File`, and that same file wrapped in
+[`Buffered`](buffered.md) at its defaults (64 KiB pages, an 8 MiB budget). `random` reads 512
+bytes at a time inside a 4 MiB hot region that fits the budget - the cache's own hit path.
+`sequential` scans the whole fixture in 8 KiB steps, twice the budget, so every page is
+fetched once and evicted before it is wanted again - a pure miss workload. `footer` reads
+both ends, sweeps 12 MiB of the middle, and reads both ends again.
+
+From one containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, Rust 1.94.1,
+`--release` with thin LTO; Criterion, 100 samples, medians with 95% intervals):
+
+```text
+io_buffered/random/buffer         10.399 µs   46.955 GiB/s   [10.229 µs 10.591 µs]
+io_buffered/random/file           28.855 µs   16.922 GiB/s   [28.531 µs 29.181 µs]
+io_buffered/random/buffered       84.622 µs    5.770 GiB/s   [83.954 µs 85.323 µs]
+io_buffered/sequential/buffer    620.89  µs   25.166 GiB/s   [616.76 µs 625.50 µs]
+io_buffered/sequential/file      545.03  µs   28.668 GiB/s   [538.13 µs 553.03 µs]
+io_buffered/sequential/buffered    2.1040 ms   7.427 GiB/s   [2.0880 ms 2.1208 ms]
+io_buffered/footer/buffer        473.40  µs   24.819 GiB/s   [466.20 µs 481.67 µs]
+io_buffered/footer/file          406.99  µs   28.868 GiB/s   [398.64 µs 414.65 µs]
+io_buffered/footer/buffered      474.87  µs   24.742 GiB/s   [465.71 µs 484.94 µs]
+```
+
+**Over these two backends the cache is a cost, and the table is here to say so.** Both of
+them are already memory: a `Buffer` read is a `memcpy` out of a `Vec`, and a `File` read is a
+`memcpy` out of the mapping the kernel already keeps. A second cache in front of that can
+only add work.
+
+- **A hit costs about 56 ns more than a mapped read** (82.6 ns against 28.2 ns per 512-byte
+  read, both dominated by everything except the copy). That is the clock read the time to
+  live needs, the cache's own lock, the wrapped handle's `size`, and one map lookup. The
+  lookup is the cheapest of the four: switching the page table off `SipHash` onto a
+  multiply-and-rotate over the page index took 20% off this case, and turning the offset
+  arithmetic into shifts - what the power-of-two page size is for - took a few percent more.
+- **A pure miss costs about 4x** (2.10 ms against 545 µs for the same 16 MiB). A sequential
+  scan through a cache moves every byte twice - once into the page, once into the caller -
+  and allocates a page per miss, which is 256 allocations of 64 KiB per pass here. Nothing
+  about the scan is served by keeping the pages, since the budget evicts each one before it
+  comes round again.
+- **The `footer` rows are dominated by their own middle scan**, not by the ends, so read them
+  as another miss workload rather than as a measurement of pinning.
+
+**What pinning buys is a fetch that does not happen, which no timing over an in-core backend
+can show** - a re-read of the head is a `memcpy` either way. So the target asserts it as a
+count instead, before any timer starts, over a counting handle that records the reads
+reaching it: after a 12 MiB middle scan four times wider than the whole budget, re-reading
+the head and the tail costs **zero** inner fetches, while re-scanning the middle fetches at
+least a budget's worth of pages afresh. The unit tests in `yggdryl::buffered` assert the same
+thing page by page.
+
+The conclusion to draw is not "the cache is slow" but "a cache in front of memory is
+pointless". The wrapper exists for handles whose fetch is not a `memcpy` - an object store, a
+compressed value, anything whose read is a round trip - where trading 56 ns of bookkeeping
+for one avoided fetch is the whole point. That backend is not in the core yet, so it is not
+in this table, and nothing here should be read as a claim about one.
 
 ## Avro against fastavro and PyIceberg, on identical bytes
 

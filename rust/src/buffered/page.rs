@@ -7,9 +7,13 @@
 //! one allocation nobody has to keep in sync.
 
 use std::collections::HashMap;
+use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, Instant};
 
 use super::BufferedOptions;
+
+/// The map every cached page lives in.
+type Pages = HashMap<u64, Page, PageHash>;
 
 /// One cached page: the bytes it holds and when it was last touched.
 ///
@@ -59,10 +63,50 @@ impl Pinned {
     }
 }
 
+/// Hashing for dense page indexes.
+///
+/// The default hasher is `SipHash`, which exists to make a map holding
+/// attacker-chosen *keys* safe; the keys here are page indexes of a bounded
+/// table, where a collision costs one comparison and nothing else. A read is
+/// the hot path this whole module exists to shorten, so it hashes with one
+/// multiply and one rotation instead - measurably, in the `io_buffered`
+/// benchmark's hit case.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PageHash;
+
+impl BuildHasher for PageHash {
+    type Hasher = PageHasher;
+
+    fn build_hasher(&self) -> PageHasher {
+        PageHasher(0)
+    }
+}
+
+/// The state of one page-index hash.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PageHasher(u64);
+
+impl Hasher for PageHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // Unreached for a `u64` key, but a `Hasher` has to answer it.
+        for byte in bytes {
+            self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value.wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(31);
+    }
+}
+
 /// Every page currently cached, with its recency and its byte total.
 #[derive(Debug, Default)]
 pub(crate) struct PageTable {
-    pages: HashMap<u64, Page>,
+    pages: Pages,
     /// Bytes the cached pages occupy together, pinned ones included.
     bytes: u64,
     /// Ticks once per access, so recency is a total order.

@@ -53,6 +53,10 @@ const MAX_PAGE_SIZE: usize = 1024 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferedOptions {
     page_size: usize,
+    /// `page_size.trailing_zeros()`, kept so an offset turns into a page index
+    /// with a shift. This is what the power-of-two rule is *for*: a read that
+    /// hits does one shift rather than two divisions.
+    page_shift: u32,
     max_bytes: u64,
     ttl: Duration,
 }
@@ -63,6 +67,7 @@ impl BufferedOptions {
     pub const fn new() -> Self {
         Self {
             page_size: DEFAULT_PAGE_SIZE,
+            page_shift: DEFAULT_PAGE_SIZE.trailing_zeros(),
             max_bytes: DEFAULT_MAX_BYTES,
             ttl: DEFAULT_TTL,
         }
@@ -76,6 +81,7 @@ impl BufferedOptions {
     #[must_use]
     pub const fn with_page_size(mut self, page_size: usize) -> Self {
         self.page_size = normalize_page_size(page_size);
+        self.page_shift = self.page_size.trailing_zeros();
         self.max_bytes = normalize_max_bytes(self.max_bytes, self.page_size);
         self
     }
@@ -121,7 +127,7 @@ impl BufferedOptions {
     /// Return the index of the page holding `offset`.
     #[must_use]
     pub const fn page_index(&self, offset: u64) -> u64 {
-        offset / self.page_size_u64()
+        offset >> self.page_shift
     }
 
     /// Return the offset the page at `index` starts at.
@@ -130,7 +136,10 @@ impl BufferedOptions {
     /// which reads as "past the end" everywhere an offset is used.
     #[must_use]
     pub const fn page_start(&self, index: u64) -> u64 {
-        index.saturating_mul(self.page_size_u64())
+        if index > (u64::MAX >> self.page_shift) {
+            return u64::MAX;
+        }
+        index << self.page_shift
     }
 
     /// Return the page size as the width offsets are measured in.
