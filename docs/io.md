@@ -1163,8 +1163,10 @@ because the content's identity may change through it.
 
 A buffer is not stored anywhere, so `url` reports a synthetic `mem:` identity naming the process and
 the allocation - enough to tell two live buffers apart in a log, without pretending the bytes live
-somewhere. The other implementation in the core is [local.md](local.md); anything else - an object
-store, an Arrow filesystem - implements the same trait outside the core.
+somewhere. The other implementations in the core are [local.md](local.md), the memory-mapped local
+tree, and [arrowfs.md](arrowfs.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
+one you wrote - behind the same trait. Anything else is a sibling module supplying the same three
+roles, never a change to this one.
 
 ## Coded
 

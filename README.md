@@ -57,6 +57,7 @@ rust/                    The core crate
   src/io/                The IOBase storage trait, Buffer, and Coded
   src/generic/           Holder, Media, RecordOptions, and the shared Value
   src/local/             Local Path, Folder, and memory-mapped File
+  src/arrowfs/           Any Arrow filesystem (S3, GCS, Azure, your own) as a handle
   src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
   src/{ipc,parquet}/     Record encodings over any handle
   src/iceberg/           Apache Iceberg tables over one container handle

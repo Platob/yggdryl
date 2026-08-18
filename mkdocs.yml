@@ -128,6 +128,7 @@ nav:
       - io: io.md
       - generic: generic.md
       - local: local.md
+      - arrowfs: arrowfs.md
       - gzip: gzip.md
       - zlib: zlib.md
       - zstd: zstd.md

@@ -18,6 +18,7 @@ use crate::field::{PyField, PyFieldMetadataIterator, PyFieldPropertyIterator, Py
 use crate::media::{PyMediaType, PyMediaTypeIterator, PyMimeType};
 use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
+mod arrowfs;
 mod codec;
 mod codings;
 mod datatype;

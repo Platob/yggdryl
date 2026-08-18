@@ -21,11 +21,13 @@ Five decisions shape this codebase; everything else follows from them.
                           ▼
                        IOBase ◄──── one storage trait: positional and lazy
                           │
-     ┌────────────┬───────┴───────┬──────────────┐
-     ▼            ▼               ▼              ▼
-   Buffer       Coded         local::Path    (your backend)
-  (memory)   (gzip/zlib/      ├─ Folder      via IOPath/IOFile/IOFolder
-              zstd view)      └─ File
+     ┌────────────┬───────┴───────┬────────────────┬──────────────┐
+     ▼            ▼               ▼                ▼              ▼
+   Buffer       Coded         local::Path    arrowfs::Path   (your backend)
+  (memory)   (gzip/zlib/      ├─ Folder      ├─ Folder       via IOPath/
+              zstd view)      └─ File        └─ File         IOFile/IOFolder
+                                             over any Arrow
+                                             filesystem
 
    Holder │ Media │ Codec │ RecordOptions │ Value ──── generic/
 
@@ -57,6 +59,9 @@ Every storage backend has the same three roles, and the role traits pre-implemen
 each: a folder holds no bytes and refuses byte writes, a leaf contains nothing and lists nothing,
 and a [generic location](local.md) answers by looking. `local` is the reference
 implementation; a remote store is a sibling module supplying the same three roles.
+[`arrowfs`](arrowfs.md) is that module for every filesystem the Arrow project already
+implements - S3, GCS, Azure, or a caller's own - so reaching a bucket costs a handle, not a
+change to `io` or `local`.
 
 ## One enum per contract
 

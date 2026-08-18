@@ -44,6 +44,13 @@ pub enum Holder {
     Path(crate::local::Path),
     /// A memory-mapped local file.
     File(File),
+    /// A directory on a foreign Arrow filesystem.
+    ArrowFolder(crate::arrowfs::Folder),
+    /// A foreign-filesystem location that resolves to whatever it turns out
+    /// to be.
+    ArrowPath(crate::arrowfs::Path),
+    /// A staged whole-value file on a foreign Arrow filesystem.
+    ArrowFile(crate::arrowfs::File),
 }
 
 impl Holder {
@@ -98,6 +105,9 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
+            Self::ArrowFolder(inner) => inner,
+            Self::ArrowPath(inner) => inner,
+            Self::ArrowFile(inner) => inner,
         }
     }
 
@@ -108,6 +118,9 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
+            Self::ArrowFolder(inner) => inner,
+            Self::ArrowPath(inner) => inner,
+            Self::ArrowFile(inner) => inner,
         }
     }
 }
@@ -197,5 +210,23 @@ impl From<Folder> for Holder {
 impl From<File> for Holder {
     fn from(value: File) -> Self {
         Self::File(value)
+    }
+}
+
+impl From<crate::arrowfs::Folder> for Holder {
+    fn from(value: crate::arrowfs::Folder) -> Self {
+        Self::ArrowFolder(value)
+    }
+}
+
+impl From<crate::arrowfs::Path> for Holder {
+    fn from(value: crate::arrowfs::Path) -> Self {
+        Self::ArrowPath(value)
+    }
+}
+
+impl From<crate::arrowfs::File> for Holder {
+    fn from(value: crate::arrowfs::File) -> Self {
+        Self::ArrowFile(value)
     }
 }

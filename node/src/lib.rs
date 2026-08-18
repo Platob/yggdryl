@@ -10,6 +10,7 @@
 )]
 
 mod arrow;
+mod arrowfs;
 mod codec;
 pub mod codings;
 mod datatype;
@@ -32,6 +33,7 @@ use napi_derive::napi;
 use yggdryl::OwnedDifferences;
 
 pub use arrow::JsBatchReader;
+pub use arrowfs::ArrowFileInfo;
 pub use codec::{
     JsCodecValue, codec_infer_format, codec_loads_inferred_native, codec_normalize_format,
     json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
