@@ -1787,9 +1787,14 @@ impl JsCatalog {
     /// caller who only has rows and a name needs nothing else. Returns the
     /// table so the caller can keep going.
     #[napi]
-    pub fn append(&self, name: String, data: &mut JsBatchReader) -> Result<JsTable> {
+    pub fn append(
+        &self,
+        name: String,
+        data: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsTable> {
         self.inner
-            .append(&name, data.take()?)
+            .append_with(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1797,11 +1802,17 @@ impl JsCatalog {
     /// Replace the named table's rows with `data`, creating it on first write.
     ///
     /// An existing table keeps its previous snapshot readable; only the
-    /// current pointer moves. Returns the table so the caller can keep going.
+    /// current pointer moves. `options` configures this one write. Returns the
+    /// table so the caller can keep going.
     #[napi]
-    pub fn overwrite(&self, name: String, data: &mut JsBatchReader) -> Result<JsTable> {
+    pub fn overwrite(
+        &self,
+        name: String,
+        data: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsTable> {
         self.inner
-            .overwrite(&name, data.take()?)
+            .overwrite_with(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }

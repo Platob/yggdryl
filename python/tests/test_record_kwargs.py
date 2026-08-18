@@ -59,6 +59,40 @@ class TestKwargsOnlyCalls:
         assert table.column("name").to_pylist() == ["a", "b", "c!", "i"]
 
     @pytest.mark.parametrize("suffix", SUFFIXES)
+    def test_a_merge_key_keyword_upserts_on_append_too(
+        self, tmp_path: pathlib.Path, suffix: str
+    ) -> None:
+        """The key says which row an incoming row *is*, whichever verb carries it.
+
+        An append that took the key and stored the row anyway contradicted the
+        argument it was handed, and did it while returning successfully - the
+        duplicate only shows up on the next read.
+        """
+        resource = handle(tmp_path, suffix)
+        resource.write_arrow(ROWS)
+        resource.append_arrow(
+            pa.table({"id": [3, 9], "name": ["c!", "i"]}),
+            merge_by_names=["id"],
+        )
+        table = resource.read_arrow().read_all().sort_by("id")
+        assert table.column("id").to_pylist() == [1, 2, 3, 9]
+        assert table.column("name").to_pylist() == ["a", "b", "c!", "i"]
+
+        # A key naming no stored column is refused, as it already was on write.
+        with pytest.raises(ValueError, match="nosuchcolumn"):
+            resource.append_arrow(ROWS, merge_by_names=["nosuchcolumn"])
+
+    @pytest.mark.parametrize("suffix", SUFFIXES)
+    def test_an_append_naming_no_merge_key_still_stores_every_row(
+        self, tmp_path: pathlib.Path, suffix: str
+    ) -> None:
+        """Without a key nothing identifies a row, so a repeat is a second row."""
+        resource = handle(tmp_path, suffix)
+        resource.write_arrow(ROWS)
+        resource.append_arrow(pa.table({"id": [3], "name": ["c"]}))
+        assert resource.read_arrow().read_all().column("id").to_pylist() == [1, 2, 3, 3]
+
+    @pytest.mark.parametrize("suffix", SUFFIXES)
     def test_the_batch_reader_spellings_take_the_same_keywords(
         self, tmp_path: pathlib.Path, suffix: str
     ) -> None:

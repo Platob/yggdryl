@@ -64,14 +64,15 @@ export declare class Catalog {
    * caller who only has rows and a name needs nothing else. Returns the
    * table so the caller can keep going.
    */
-  append(name: string, data: BatchReader): Table
+  append(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * Replace the named table's rows with `data`, creating it on first write.
    *
    * An existing table keeps its previous snapshot readable; only the
-   * current pointer moves. Returns the table so the caller can keep going.
+   * current pointer moves. `options` configures this one write. Returns the
+   * table so the caller can keep going.
    */
-  overwrite(name: string, data: BatchReader): Table
+  overwrite(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * List the namespaces one level below `parent`, as sorted dotted names.
    *

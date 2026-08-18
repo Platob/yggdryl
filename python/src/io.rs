@@ -84,6 +84,19 @@ impl PyIOBase {
         }
     }
 
+    /// Whether this call carried any options of its own.
+    ///
+    /// The scanners hand a path to polars or pyarrow on their fast path, and
+    /// whatever that engine does with it cannot depend on options it was never
+    /// shown. Knowing the caller asked for nothing is what makes handing the
+    /// path over the same answer as reading it here.
+    fn asked_for_options(
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> bool {
+        options.is_some() || kwargs.is_some_and(|kwargs| !kwargs.is_empty())
+    }
+
     /// Resolve `(options, kwargs)` into the one options value a call runs
     /// under.
     ///
@@ -1078,9 +1091,15 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let asked = Self::asked_for_options(options, kwargs);
         let options = self.resolved_options("scan_polars", options, kwargs)?;
         let polars = py.import("polars")?;
-        if let Some((path, _)) = self.published_scan_target()? {
+        // The fast path hands the file to polars, which knows nothing about
+        // what this call was asked for - so it is only the same answer when
+        // the caller asked for nothing. Anything else reads through the
+        // native reader, which honours every field; a projection that arrives
+        // as a lazy scan of the whole file is not a projection.
+        if !asked && let Some((path, _)) = self.published_scan_target()? {
             return polars.call_method1("scan_parquet", (path,));
         }
         let reader = self
@@ -1103,9 +1122,13 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let asked = Self::asked_for_options(options, kwargs);
         let options = self.resolved_options("scan_arrow", options, kwargs)?;
         let dataset = py.import("pyarrow.dataset")?;
-        if let Some((path, _)) = self.published_scan_target()? {
+        // Same rule as `scan_polars`: the dataset scanner is handed the file
+        // and nothing else, so it can only stand in for this call when the
+        // call carried no options of its own.
+        if !asked && let Some((path, _)) = self.published_scan_target()? {
             let arguments = pyo3::types::PyDict::new(py);
             arguments.set_item("format", "parquet")?;
             let opened = dataset.call_method("dataset", (path,), Some(&arguments))?;

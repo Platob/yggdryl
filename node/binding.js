@@ -1717,8 +1717,8 @@ installRecords({
 const nativeScanAt = binding.Table.prototype.scanAt
 Object.defineProperty(binding.Table.prototype, 'scanAt', {
   configurable: true,
-  value(snapshotId, filters, schema) {
-    return nativeScanAt.call(this, snapshotId, partitionFilters(filters), schema)
+  value(snapshotId, filters, schema, options) {
+    return nativeScanAt.call(this, snapshotId, partitionFilters(filters), schema, options)
   },
 })
 
@@ -1787,8 +1787,8 @@ for (const name of ['append', 'overwrite']) {
   const native = binding.Catalog.prototype[name]
   Object.defineProperty(binding.Catalog.prototype, name, {
     configurable: true,
-    value(tableName, data) {
-      return native.call(this, tableName, BatchReader.from(data))
+    value(tableName, data, options) {
+      return native.call(this, tableName, BatchReader.from(data), options)
     },
   })
 }

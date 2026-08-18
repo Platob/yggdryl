@@ -719,6 +719,30 @@ test('every write that takes a per-call data format actually writes it', (t) => 
   }
 })
 
+test('the catalog write shorthands honour a per-call data format', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // `catalog.append(name, rows)` and `namespace.tables.append(name, rows)` are
+  // two spellings of one operation. One of them honoured the option and the
+  // other wrote PARQUET and returned a table, which is the divergence a caller
+  // has no way to see without opening the manifest.
+  const catalog = new iceberg.Catalog(root)
+  catalog.createTable('sales.orders', schema())
+  catalog.append('sales.orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
+
+  catalog.overwrite('sales.orders', rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
+
+  // The view spelling agrees, which is the whole point of there being two.
+  catalog.namespaces.get('sales').tables.append('orders', rows([3n], ['XLON']))
+  assert.deepEqual(
+    catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat).sort(),
+    ['AVRO', 'PARQUET'],
+  )
+})
+
 test('the filtered reads take the per-call options the plain scan does', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
