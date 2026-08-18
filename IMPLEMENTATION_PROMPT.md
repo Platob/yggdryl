@@ -21,6 +21,12 @@ through writes (filtered overwrites, deletes, computed columns, expression merge
 keys) — and it reaches Python's frames, where a pandas or polars object is
 inferred as one more carrier rather than given an engine of its own.
 
+Two derived handle methods put it in reach of a one-liner —
+`handle.filter_where(…)` reads the rows a predicate matches, and
+`handle.delete_where(…)` removes them, unlinking a partition that matches whole
+rather than decoding it — and both accept a predicate in whatever spelling the
+caller has: text, a built expression, a mapping, pairs, or Python keywords.
+
 Then make it the filtering and selection vocabulary the record surface already
 wanted: today a filter is a `(column, value)` text pair
 (`AGENTS.md:237`) — equality against a hard-coded string, nothing else — and a
@@ -606,9 +612,13 @@ Requirements that make this surface worth having rather than sugar:
 - **A schema disagreement is a typed error naming the differing column**, raised
   at bind time for a reader (before the first batch) and at apply time for a
   loose batch, never a silent mismatch or a null column.
-- **`IOBase` gets no `apply` method.** The record surface stays exactly the
-  three methods it has; an expression reaches a handle through `RecordOptions`
-  (§3.1) and nowhere else. `apply_*` operates on what a caller already holds.
+- **`IOBase` gets no `apply` method, and no fourth record method.** `apply_*`
+  operates on what a caller already holds; a handle takes an expression through
+  `RecordOptions` (§3.1) or through the two derived `_where` methods of §3.1.3,
+  which are themselves defined in terms of the three record methods. The rule
+  being protected is that an encoding is decoded and encoded in exactly one
+  place — not that the trait may never gain a derived convenience, which
+  `children_where` and `copy_into` already are.
 
 ---
 
@@ -625,7 +635,8 @@ Requirements that make this surface worth having rather than sugar:
   `io/mod.rs`, `parquet/`): options take an expression; the pair vocabulary
   becomes sugar; the folder row filter and directory pruning run on the engine;
   the read ladder and the write rules of §3.1.1–§3.1.2 land, including Parquet
-  row-group pruning and the plan that reports every skip.
+  row-group pruning and the plan that reports every skip; `filter_where` and
+  `delete_where` join the trait as derived methods (§3.1.3).
 - **Phase 3 — Iceberg**: `scan.rs` prunes manifests, files, and partition tuples
   through `evaluate_stats`; `Filter` is deleted; residuals come from `residual`.
 - **Phase 4 — Python binding.** **Phase 5 — JavaScript binding.**
@@ -751,6 +762,97 @@ rung must be a number the tests assert, not a claim.
   what a selection already does on the write path today.
 - Nothing on the write path may read a file the predicate excludes, and every
   skip is reported through the same plan value as the read path.
+
+### 3.1.3 `filter_where` and `delete_where` on `IOBase`
+
+The two operations every caller writes by hand today become two derived methods
+on the trait, with default implementations **composed from the three record
+methods** — so no encoding gains a fourth entry point and the rule that keeps
+decoding in one place is intact. `Table::overwrite_where` and
+`Table::merge_where` already establish the `_where` suffix; `children_where`
+already establishes it for listings.
+
+```rust
+/// Read the rows this resource holds that `predicate` matches.
+fn filter_where(&self, predicate: &Expr, options: &RecordOptions)
+    -> Result<crate::arrow::BatchReader>;
+
+/// Remove the rows `predicate` matches; report what that cost.
+fn delete_where(&mut self, predicate: &Expr, options: &RecordOptions)
+    -> Result<DeleteReport>;
+```
+
+- **They take `&Expr`, not `impl Into<Expr>`.** `IOBase` must stay object-safe:
+  `copy_into` takes `&mut dyn IOBase` and `Holder` delegates the whole contract.
+  A generic parameter would break both. String coercion happens at the call site
+  (`Expr::from_str`) and in the bindings, which is where coercion belongs
+  anyway (`AGENTS.md:843`).
+- **`filter_where` is a shorthand, not a second read path**: it is exactly
+  `read_arrow_batch_reader` with the predicate conjoined into the options'
+  filter, so every rung of §3.1.1 applies unchanged — projection, statistics
+  pruning, row-group pruning, one mask per batch. If it ever answers differently
+  from setting `with_filter` by hand, that is a bug with a test waiting for it.
+- **`delete_where` is shaped by `IOKind`**, never by a second existence check:
+  - **Unknown** — the resource does not exist: nothing is deleted, the report is
+    all zeros, and it is not an error (the laziness contract).
+  - **Leaf** — read, keep the complement, write back through the same three
+    methods. `IOBase` has no compare-and-swap, so say plainly what that means:
+    the rewrite is staged and published on success, so a failure leaves the
+    original bytes, but a concurrent writer can still lose an update. The repo
+    already states this honestly about commits; state it here too rather than
+    implying atomicity.
+  - **Container** — per leaf, decided by `Bound::evaluate_stats` over the leaf's
+    directory constants and its own footer statistics:
+    `AlwaysFalse` → untouched and never opened; `AlwaysTrue` → **unlinked whole,
+    never decoded** (deleting a partition costs a directory operation, not a
+    rewrite — this is the reason the method exists); `Maybe` → rewritten with
+    the surviving rows, unlinked if that leaves none, and an emptied
+    `column=value` directory removed when it is empty.
+  - **A container holding a table format** — one commit through the existing
+    retrying gate, routed into `overwrite_where` rather than a second commit
+    path: files that fully match are **dropped from the manifest with no data
+    rewritten**, partially matching files are rewritten, and every other file is
+    carried forward as an `existing` entry with its statistics and order intact.
+    That is copy-on-write delete, and the metadata-only case is the one worth
+    showing in the docs.
+- **`DeleteReport` is plain data** (like `Compaction`): rows deleted, files
+  deleted, files rewritten, files untouched, bytes rewritten. It is what makes
+  "deleting a partition read nothing" a testable number instead of a promise.
+- **An always-true predicate must be spelled out.** A predicate that binds to
+  `TRUE` — including an empty one — is refused unless the caller writes it
+  explicitly (`Expr::always_true()`), and the refusal names how many rows it
+  would have removed. A typo must never empty a table. A predicate naming a
+  column the resource does not carry is an error on delete, because a delete is
+  a claim, matching the write path.
+- **Deliberately not added**: `count_where`, `exists_where`, `update_where`. The
+  first two are `filter_where` plus a fold the caller can write; the third needs
+  a row-level update model this project does not have (a merge is how a row
+  changes). Name the omissions in the docs so nobody assumes they are missing by
+  oversight.
+
+**Boundary inference — any spelling of a predicate, in both languages.** The
+coercion happens once, at the boundary, through the core parser and
+constructors:
+
+| spelling | Python | JavaScript |
+| --- | --- | --- |
+| expression text | `"venue = 'XNAS'"` | `"venue = 'XNAS'"` |
+| built expression | `Expr` (operators: `col > 3`, `&`, `|`, `~`) | `Expr` (methods: `.gt(3).and(…)`) |
+| mapping of equalities | `{"venue": "XNAS", "year": 2024}` | `{ venue: 'XNAS' }` or a `Map` |
+| pair sequence | `[("venue", "XNAS")]` | `[['venue', 'XNAS']]` |
+| keywords | `delete_where(venue="XNAS")` | — (no kwargs; the object form covers it) |
+| absent | error naming the spellings | error naming the spellings |
+
+Values in the mapping and pair forms cross through the one canonical `Value`
+spelling — a `bigint`/`int` stays an integer, a `date`/`Date` stays a temporal —
+so `{"year": 2024}` compares as a number against a numeric column and the pair
+form's text keeps the partition-text meaning it has today.
+
+A `pyarrow.compute.Expression` and a `polars.Expr` are **declined by name**,
+with the reason in the error: neither exposes a stable public representation to
+read, only a debug rendering, and this project never parses a `Debug` rendering
+(`AGENTS.md:601`). The message tells the caller to pass the text or build an
+`Expr`; it does not silently `str()` a foreign object.
 
 ### 3.2 Folders (`rust/src/io/partition.rs`)
 
@@ -893,6 +995,23 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   partition column; a merge key built from an expression matches the same rows
   as the equivalent named key; a filter naming a column the incoming rows lack
   is an error naming what they have.
+- **`filter_where` / `delete_where`** (§3.1.3), in `rust/src/io/tests.rs`
+  alongside the shared conformance battery so every backend answers the same:
+  `filter_where` returns exactly what `with_filter` returns on the same
+  predicate; delete on a missing resource reports zeros and does not error;
+  delete on a leaf leaves the complement and, on failure, the original bytes;
+  delete on a folder unlinks a fully-matching leaf **without decoding it**
+  (proved with a counting handle), rewrites a partial one, never opens a
+  non-matching one, removes a directory it empties, and reports each count;
+  delete on an Iceberg table drops fully-matching files from the manifest with
+  no data rewritten and carries the rest as `existing` entries; an always-true
+  predicate is refused unless spelled explicitly, naming the row count it would
+  have removed; a predicate naming an absent column errors on delete.
+- **Boundary inference** (§3.1.3) in both bindings: text, built expression,
+  mapping, pair sequence, and (Python) keywords all resolve to the same
+  expression and the same rows; an absent predicate errors naming the spellings;
+  a `pyarrow.compute.Expression` and a `polars.Expr` are declined with the
+  reason, not stringified.
 - **Integration**: `rust/src/io/tests.rs` — a folder-partitioned lake filtered
   by an expression prunes directories (assert nothing under the excluded prefix
   is listed, with a counting handle) and filters rows; `rust/src/iceberg/tests.rs`
@@ -930,8 +1049,10 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
   read with row-group pruning against the same read without it and against a
   read-everything-then-filter baseline, reporting materialized bytes as
   throughput the way the existing pushdown benchmarks do; a filtered folder read
-  against an unfiltered one over the same tree; and a filtered write against an
-  unconditional overwrite of the same rows.
+  against an unfiltered one over the same tree; a filtered write against an
+  unconditional overwrite of the same rows; and **`delete_where` dropping a
+  whole partition against rewriting the same rows one by one**, which is the
+  number that says why the `AlwaysTrue` case exists.
 
 Extend `rust/benchmarks/iceberg.rs` with a filtered-plan leg so the pruning
 change is visible where it matters.
@@ -977,8 +1098,11 @@ that word — a skipped half can never read as a pass. Check both:
   (`AGENTS.md:843`); Python never inspects the expression to choose a path.
   `Expr.bind(field)` exposes the hoistable bound form, and `Expr.field(schema)`
   the result schema.
-- `Table.plan/scan/read`, `IOBase.children_where`, `IOBase.glob` accept an
-  expression wherever they accept the pairs today.
+- `Table.plan/scan/read`, `Table.overwrite_where/merge_where`,
+  `IOBase.children_where`, and `IOBase.glob` accept an expression wherever they
+  accept the pairs today, and `IOBase.filter_where` / `IOBase.delete_where`
+  arrive with the §3.1.3 inference — text, `Expr`, mapping, pair sequence, or
+  keywords. `delete_where` returns the `DeleteReport` as a plain object.
 - `python/yggdryl/_native.pyi` and `__init__.pyi` updated; `mypy --strict`
   green; tests in `python/tests/test_expressions.py` in house style (fixtures,
   plain-English test classes with docstrings), covering parse, operators,
@@ -996,7 +1120,9 @@ since JS has no operator overloading; `toString`, `toJSON`, `equals`,
 `Expr`; `expr.apply(target)` redirects over a `BatchReader`, an Arrow JS
 `Table`/`RecordBatch`, IPC bytes, a native `Field`, or a row object, and
 `expr.bind(field)` / `expr.field(schema)` expose the bound form and the result
-schema; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
+schema; `handle.filterWhere(…)` and `handle.deleteWhere(…)` take a string, an
+`Expr`, a plain object, a `Map`, or a pair array, and `deleteWhere` returns the
+report as a plain object with `bigint` counts; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
 methods take the same argument in the same position as Python. Tests
 `node/tests/expressions.test.js` + `expressions.types.ts`; benchmark
 `node/benchmarks/expressions.js` wired as `npm run bench:expressions`.
@@ -1105,6 +1231,102 @@ them on the same terms.
   than no contract.
 - `python -m mkdocs build --strict` stays green.
 
+### 7.1 The use cases the documentation must show
+
+A reference of operators teaches nobody what to do on Monday. Every item below
+is a **worked, runnable use case** — Rust → Python → JavaScript tabs in that
+order, each self-contained, each with at least one assertion, each passing
+`python scripts/check_docs_examples.py`, and each stating in one sentence what
+the reader gets that they did not have before. Where a language genuinely
+cannot do one (the frame carriers in JavaScript), it carries the existing
+`!!! note` convention rather than a fabricated tab.
+
+**On `docs/expressions.md` — the value itself**
+
+1. **Write a predicate three ways** — parsed from text, built with constructors,
+   built with the language's own operators (`col("price") > 10` in Python,
+   `.gt(10)` in JavaScript) — and show the three are equal.
+2. **Take a filter from untrusted text.** A bad predicate is a typed error with
+   a byte offset the caller can point at, and a filter is *data*, not executed
+   SQL: there is no injection surface because there is no engine to inject into.
+   Show the error, not just the happy path.
+3. **Name a column that needs quoting** — `"total amount"`, a dotted name, a
+   reserved word — in all three encapsulators, and show the one canonical
+   spelling that comes back out.
+4. **Reach inside a value** — struct child, map key, list index, negative index,
+   and a range — with the 0-based and half-open conventions asserted in the
+   example itself, beside a one-line `BETWEEN` counter-example so the two never
+   blur.
+5. **Bind once, evaluate many.** Show the folded literal (a text literal
+   becoming the column's own decimal), then the same `Bound` used over a row and
+   over a batch, with the results asserted equal.
+6. **Select and compute columns**, including a cast and an alias, and print the
+   root `Field` the selection produces — from `apply_field`, with nothing
+   opened.
+7. **Null semantics**, as a short truth table plus one example where a reader
+   would otherwise be surprised: `venue != 'XNAS'` does not select the rows
+   where `venue` is null, and `venue IS NULL` is how you ask.
+8. **What this deliberately does not do** — no subqueries, joins, aggregates,
+   `bucket`, `count_where`/`update_where` — each with its one-line reason.
+
+**On `docs/io.md` — a handle**
+
+9. **Filter a file you already have**: `filter_where` on a Parquet leaf, with
+   the read plan printed so the reader sees which row groups were skipped.
+10. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
+    asserting that the excluded directories were never listed.
+11. **Delete rows by predicate**: `delete_where` on a leaf, then on a folder
+    where one partition matches entirely — showing in the report that the whole
+    partition was unlinked without being decoded, which is the point.
+12. **Apply to what you already hold** — the §1.9 carrier table as examples: a
+    `Value` row, an array with its `Field`, a `RecordBatch`, a streaming
+    `BatchReader`, and a `Field` alone.
+13. **Write with an expression**: a filtered overwrite that replaces only the
+    matching rows, a computed column that becomes the partition column, and an
+    expression merge key.
+
+**On `docs/iceberg.md` — a table**
+
+14. **A filtered scan with its numbers**: manifests skipped, files skipped, rows
+    filtered — the existing pruning example rewritten around an expression, with
+    the counts asserted.
+15. **`DELETE FROM … WHERE`** as a metadata-only commit: files that fully match
+    leave the manifest without a byte being rewritten; the report proves it.
+16. **A predicate on a source column pruning a transformed partition** (the
+    `day(ts)` case), and the honest counter-example: the same predicate against
+    a `bucket` partition prunes nothing, and the docs say why in one sentence.
+17. **Time travel plus a filter** — `scan_at` under an expression, read with the
+    schema that snapshot was written with.
+
+**On `docs/extensions/python.md` — the frames**
+
+18. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
+19. **Push the filter into the read instead**: `read_pandas_frame` /
+    `read_polars_frame` under options carrying the filter, with the benchmark
+    number quoted from `docs/benchmarks.md` showing why this is the version to
+    write.
+20. **Any spelling of a predicate** at the boundary — text, `Expr`, dict, pair
+    list, keywords — resolving to the same expression (§3.1.3).
+
+**On `docs/extensions/javascript.md`**
+
+21. The same boundary inference in JavaScript — text, `Expr`, plain object,
+    `Map`, pair array — and `filterWhere` / `deleteWhere` over a handle.
+
+**Migration, once, where an existing reader will look for it**
+
+22. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
+    `with_filter_partitions([("venue", "XNAS")])` beside
+    `with_filter("venue = 'XNAS'")`, saying plainly that the first still works,
+    is exactly sugar for the second, and that the expression form is what adds
+    ranges, null tests, nested access, and computed columns. Nobody should have
+    to read a changelog to learn their code still compiles.
+
+Every one of these becomes a notebook cell through
+`python scripts/build_docs_notebooks.py` — write the blocks, never the
+notebooks.
+
+
 ---
 
 ## 8. Required checks (all must pass before handoff)
@@ -1135,8 +1357,10 @@ native binaries, caches, and `node_modules` after validation.
   calendar is `generic/iso.rs`, the casts are `field::cast`, the Iceberg
   single-value encoding stays in `iceberg::value`.
 - **The record surface stays exactly three methods.** `apply_*` is a surface
-  over values, batches, and readers a caller already holds; `IOBase` gains
-  nothing, and an expression reaches a handle only through `RecordOptions`.
+  over values, batches, and readers a caller already holds; `filter_where` and
+  `delete_where` are derived methods composed from the three, with default
+  implementations on the trait — no encoding gains an entry point, and no
+  backend implements them itself.
 - **One lexer, one accessor resolver.** Encapsulator stripping and accessor
   resolution exist once, in `expressions/parser.rs` and `expressions/bound.rs`;
   no call site, sugar constructor, or binding splits a dotted name, trims a
