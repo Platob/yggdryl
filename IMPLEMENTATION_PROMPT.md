@@ -90,6 +90,7 @@ row must get right.
 | 1.10 | chaining and recursion | a chain is one pass: one read, at most one write, nothing materialized between |
 | 1.11 | the plan graph and its optimizer | every rewrite is semantics-preserving under three-valued logic, or it declines |
 | 1.12 | what already exists and must be reused | no second cast, comparator, calendar, walker, or error family |
+| 1.13 | Rust ergonomics — traits, operators, prelude, typed narrowing | `==` structural vs `.eq()` building, and `From<&str>` vs `FromStr`, decided and tested |
 | 2 | phases A1–A7, B0–B9 | each phase is complete work on its own |
 | 3 | record options, the read ladder, writes, `apply_expression`, folders, Iceberg | pushdown never changes an answer |
 | 4 | tests, incl. the exhaustive datatype and nested matrix | the matrix enumerates the core's enums, so a new variant fails it |
@@ -999,6 +1000,106 @@ Two rules on top of the table:
   `field/cast/mod.rs`. Follow those, and keep the expansion readable — a macro
   that hides a rule is worse than the repetition it removed.
 
+### 1.13 Rust ergonomics — the core value read like Rust
+
+§6.2 does this for Python and JavaScript. The core comes first (`AGENTS.md:9`),
+and a Rust caller is the one who pays for a clumsy surface the longest, so the
+trait set is part of the design rather than a follow-up. Everything here follows
+*Native value behavior* (`AGENTS.md:592`) and the *exact method vocabulary*
+(`AGENTS.md:397`), and — like §6.2 — is emitted by **one generic helper per
+shape**, not hand-written per type.
+
+**The trait set every value in this module implements**
+
+- `Clone`, `Debug`, `Display`, `PartialEq`, `Eq`, `PartialOrd`, `Ord`, `Hash`,
+  `Serialize`, `Deserialize`, `Send`, `Sync` — for `Expr`, `Statement`,
+  `Selection`, and the reports. `Display` is canonical and round-trips through
+  `FromStr`; `Debug` is diagnostic and is never the serialization format.
+  Caches and arena bookkeeping are ignored by every one of them.
+- `FromStr` (parsing) and `TryFrom<&str>`; `From`/`TryFrom` alongside the
+  inherent `from_*` constructors, with the inherent ones as the stable API.
+- `IntoIterator` on the collection-shaped values (`Selection`'s items, a chain's
+  statements), plus `FromIterator` where collecting is natural, and borrowed
+  iterator methods (`conjuncts()`, `columns()`, `nodes()`) that **borrow rather
+  than allocate a `Vec`** — the collections rule at `AGENTS.md:604`.
+- `Index` **only** where panic-on-missing is normal, which in this module means
+  exactly one place: the plan arena, `Index<NodeId> for Plan`. Everywhere else a
+  lookup returns `Option`.
+- `Default` on `Selection` (empty selects everything) and deliberately **not**
+  on `Expr` — a defaulted predicate would be an always-true filter arriving by
+  accident, which §3.1.3 spends a guard preventing. Say that where the trait is
+  not implemented.
+- No `Deref`, no `DerefMut`, no `as_*_mut` that could swap a bound expression's
+  datatype behind its back — the same rule the typed field layer already lives
+  under (`AGENTS.md:701`).
+
+**Operators, because a predicate should read like one**
+
+Implement `BitAnd`, `BitOr`, `Not` for `Expr` (`a & b`, `a | b`, `!a`) and
+`Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg` for the arithmetic nodes, each for
+`Expr` and `&Expr` and for the literal types on either side, so
+`col("price") * 1.1` and `1 + col("n")` both compile. They build, never
+evaluate.
+
+**Two name collisions that must be decided, not discovered**
+
+1. **`==` is structural equality; `.eq(…)` builds a predicate.** `Expr: PartialEq`
+   compares two expressions for structural sameness — that is what `Eq + Hash`
+   and the optimizer's hash-consing need. The comparison *builders* are the
+   consuming `eq`, `ne`, `lt`, `le`, `gt`, `ge`, which shadow the `PartialEq` /
+   `PartialOrd` methods for owned receivers. That is a deliberate trade for
+   readable predicates (`col("a").eq(3)`), so: carry
+   `#[allow(clippy::should_implement_trait)]` with a comment naming the trade,
+   say in the doc comment which trait method is shadowed, and pin both behaviors
+   in doc-tests — `a == b` structural, `a.eq(3)` an expression. The crate has
+   this precedent already (`Transform::from_str`, `iceberg/partition.rs:77`).
+2. **`From<&str>` is a string literal; `FromStr` parses.** `Expr::from("a > 1")`
+   is the three-character string `a > 1` as a literal, matching
+   `Value::from("…")`; `"a > 1".parse::<Expr>()?` is the predicate. A column is
+   `Expr::column("a")` or the free `col("a")`. This is the most confusable pair
+   in the API — put it in the module docs with both spellings side by side and
+   test both.
+
+**Making a wrong call unrepresentable**
+
+Follow the typed-marker philosophy the crate already uses for fields
+(`TypedField<K>`): a `Bound` whose result type is boolean narrows once into
+`BoundPredicate`, and every API that needs a predicate — `mask`,
+`filter_batch`, `evaluate_stats`, `Statement::Delete` — takes that, not a bare
+`Bound`. `Bound::into_predicate()` is the one fallible narrowing, so "somebody
+passed a non-boolean expression as a filter" stops being a runtime error class.
+The same for `BoundSelection`, which is a projection by construction.
+
+**Small things that decide whether the crate is pleasant**
+
+- `#[must_use]` on every consuming builder and on every pure query; `#[inline]`
+  on the trivial accessors; `const fn` wherever the body allows it, as
+  `Value::kind` and `IOKind`'s predicates already are.
+- Generic entry points take `impl Into<Expr>` / `impl TryInto<Expr>` on **free
+  functions and inherent methods**, so `with_filter("a > 1")` and
+  `with_filter(expr)` are one call — never on the object-safe trait methods
+  (§3.1.3), which take `&Expr` / `&Statement`.
+- A small `expressions::prelude` re-exporting `Expr`, `Statement`, `Selection`,
+  the `Apply` / `ArrowApply` traits, and the free `col` / `lit` constructors:
+  the real ergonomic problem in Rust is that a trait must be in scope before its
+  method exists, and one `use` should fix that.
+- **No proc macro.** An `expr!` macro checking the grammar at compile time would
+  be nice and would cost the workspace a new member and a compile-time
+  dependency; `from_str` plus a test covers it. Name the absence and the reason
+  rather than leaving it as an obvious missing idea.
+- Never panic, unwrap, or use `unsafe` on caller-controlled input; every public
+  entry that can fail returns `Result`, and the arena's `Index` is the single
+  documented panic, on a `NodeId` from another plan.
+
+**Tested like the bindings are.** `rust/tests/expressions/ergonomics.rs`
+exercises the whole trait set on every value: the operators build what the
+equivalent constructors build, `==` stays structural while `.eq()` builds,
+`From<&str>` and `FromStr` differ as documented, iteration is deterministic and
+borrows, sorting is total, hashing agrees with equality, serde round-trips, the
+`Send + Sync` assertions compile, and `BoundPredicate` narrowing refuses a
+non-boolean expression by name. This is the Rust third of the cross-language
+protocol agreement in §6.2 — the same values, the same order, the same digest.
+
 ---
 
 ## 2. Order of work
@@ -1009,7 +1110,8 @@ Two rules on top of the table:
   included), `Bound`, row evaluation, statistics evaluation, `Selection`, Arrow
   evaluation, the `Apply`/`ArrowApply` surface, the plan graph and its optimizer (§1.11),
   chaining with its fusion and its recursion bounds (§1.10), the reuse audit of
-  §1.12, the exhaustive datatype and nested test matrix, edge-case tests, benchmarks,
+  §1.12, the Rust trait set and prelude of §1.13, the exhaustive datatype and
+  nested test matrix, edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
   `!!! note "Rust first"` until Phases A4/A5 land).
 - **Phase A2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
@@ -1545,7 +1647,14 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
     expression, a 10 000-step chain, an over-deep schema pattern, and an
     over-deep container descent each refused as typed errors naming the limit
     and the depth reached, with the process still standing.
-- **Protocol agreement across the three languages** (§6.2): the same set of
+- **Rust ergonomics** (§1.13), in `rust/tests/expressions/ergonomics.rs`: the
+  whole trait set on every value — operators building what the constructors
+  build; `==` structural while `.eq()` builds; `From<&str>` a literal while
+  `FromStr` parses; deterministic borrowing iteration; total ordering; hashing
+  agreeing with equality; serde round-trips; `Send + Sync` assertions;
+  `#[must_use]` honored; the arena `Index` panicking only on a foreign `NodeId`;
+  and `into_predicate` refusing a non-boolean expression by name.
+- **Protocol agreement across the three languages** (§1.13 + §6.2): the same set of
   values sorts into the same order, compares equal in the same pairs, and
   produces the same stable hash in Rust, Python, and JavaScript — the assertion
   that proves the generic protocol helpers delegate to the core instead of
@@ -1764,9 +1873,10 @@ them on the same terms.
   Rust/Python only, marked with the docs' existing `!!! note` convention rather
   than filled with an invented equivalent.
 
-### 6.2 Language-level ergonomics, from one generic helper each
+### 6.2 Binding ergonomics, from one generic helper each
 
-An expression value that a language cannot compare, hash, order, iterate, print,
+§1.13 does this for Rust; this is the same requirement for the two bindings. An
+expression value that a language cannot compare, hash, order, iterate, print,
 or copy the way that language expects is a foreign object wearing a class name.
 Both bindings therefore implement the **whole** protocol set for every value
 this work adds — `Expr`, `Statement`, `Selection`, `TypedValue`, the reports —
@@ -2263,6 +2373,10 @@ native binaries, caches, and `node_modules` after validation.
   taken from there, extended in place if it is almost right, and never
   paralleled. Repetition across datatypes or across bindings is a macro or a
   generic function written once, never forty hand-written arms.
+- **Idiomatic in all three languages, from one helper each.** The trait set of
+  §1.13 and the protocol helpers of §6.2 are generated once per shape, take
+  their behavior from the core, and agree across languages — same order, same
+  equality, same digest. A value that ships without its full set is unfinished.
 - **Total over the type system.** Every surface answers for every `DataType`
   variant including nested ones, or refuses by name with a message that says
   which datatype and which operation. The test matrix enumerates the core's own
