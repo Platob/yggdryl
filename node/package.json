@@ -37,6 +37,7 @@
     "apache-arrow": "^21.1.0"
   },
   "scripts": {
+    "bench:arrowfs": "node benchmarks/arrowfs.js",
     "bench:codec": "node benchmarks/codec.js",
     "bench:defaults": "node benchmarks/defaults.js",
     "bench:io": "node benchmarks/io.js",

@@ -9,8 +9,11 @@ it is shown in. This extracts each fenced block under ``docs/`` and executes it:
 * ``javascript`` blocks run under node, with ``yggdryl`` resolved to the
   package in this repository.
 
-A block that genuinely cannot stand alone is tagged ``ignore`` (for example
-``rust,ignore``), which is reported rather than hidden.
+A block that genuinely cannot stand alone is tagged ``ignore`` in the brace form
+pymdownx.superfences reads (for example ``{ .rust .ignore }``), which is reported
+rather than hidden. The comma form other tools accept is not one superfences
+highlights, so a fence written that way is reported as a formatting failure
+instead of shipping as an unhighlighted paragraph.
 
 The same blocks become the downloadable notebooks under ``docs/notebooks/``,
 which this regenerates and then checks for drift on every run, whatever
@@ -45,7 +48,15 @@ NODE_BINDING = (ROOT / "node" / "binding.js").as_posix()
 # cannot, because Node resolves from the script's own folder.
 NODE_ARROW = (ROOT / "node" / "node_modules" / "apache-arrow").as_posix()
 
-BLOCK = re.compile(r"```(?P<lang>[a-z]+)(?P<flags>[^\n]*)\n(?P<code>.*?)```", re.DOTALL)
+# A fence is written the way pymdownx.superfences reads it: a bare language, or
+# the brace form when a block also carries a flag for this script. Both spellings
+# are extracted here; `INFO` is what decides whether a fence renders at all.
+BLOCK = re.compile(
+    r"```(?:\{ *\.(?P<braced>[a-z]+)(?P<attributes>[^}\n]*)\}|(?P<lang>[a-z]+)(?P<flags>[^\n]*))\n"
+    r"(?P<code>.*?)```",
+    re.DOTALL,
+)
+INFO = re.compile(r"[a-z]+|\{ *\.[a-z]+[^}\n]*\}")
 HEADING = re.compile(r"^#{1,6} \S")
 LANGUAGES = ("rust", "python", "javascript")
 
@@ -88,9 +99,10 @@ def blocks(page: pathlib.Path):
     sections = headings(text)
     counters: dict[str, int] = {}
     for match in BLOCK.finditer(text):
-        language = match.group("lang")
+        language = match.group("braced") or match.group("lang")
         if language not in LANGUAGES:
             continue
+        flags = match.group("attributes") if match.group("braced") else match.group("flags")
         index = counters.get(language, 0)
         counters[language] = index + 1
         # A block inside a Material tab is indented four spaces; Python cares.
@@ -100,7 +112,36 @@ def blocks(page: pathlib.Path):
             if offset > match.start():
                 break
             section = title
-        yield Block(index, language, match.group("flags").strip(", "), code, section)
+        yield Block(index, language, flags.strip(" ,."), code, section)
+
+
+def unhighlighted(page: pathlib.Path) -> list[str]:
+    """Report fences on a page that pymdownx.superfences will not highlight.
+
+    Superfences reads a bare language or the brace form; anything else - notably
+    the ``lang,flag`` spelling other tools accept - falls through to plain
+    Markdown, and the page then ships the backticks and the code as prose. That
+    is invisible to a checker that only runs the code, so it is caught here.
+    """
+    problems: list[str] = []
+    fenced = False
+    for number, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1):
+        stripped = line.strip()
+        if not stripped.startswith("```"):
+            continue
+        # Only an opening fence carries an info string; a closing one is bare.
+        if fenced:
+            fenced = False
+            continue
+        fenced = True
+        info = stripped[3:].strip()
+        if info and not INFO.fullmatch(info):
+            problems.append(
+                f"{page.relative_to(ROOT)}:{number}: ```{info} is not a form "
+                "pymdownx.superfences highlights - write it as "
+                f"```{{ .{info.replace(',', ' .')} }}"
+            )
+    return problems
 
 
 def runnable(language: str, flags: str) -> bool:
@@ -241,6 +282,13 @@ def main() -> int:
 
     pages = sorted(DOCS.rglob("*.md"))
     status = 0
+
+    fences = [problem for page in pages for problem in unhighlighted(page)]
+    print(f"fences: {len(fences)} that would not highlight, from {len(pages)} pages")
+    for problem in fences:
+        print(f"  {problem}")
+    if fences:
+        status |= 1
 
     count, problems = run_notebooks(pages)
     print(f"notebooks: {count} generated from {len(pages)} pages, {len(problems)} unresolved")

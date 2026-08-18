@@ -304,6 +304,22 @@ impl<H: IOBase> Table<H> {
         self.options = Some(options);
     }
 
+    /// Borrow the explicit options override, when one is stored.
+    ///
+    /// This is only what [`Self::set_options`] stored - the property layer and
+    /// the defaults are not consulted - so a binding can save and restore the
+    /// override around a call that shadows it.
+    pub fn explicit_options(&self) -> Option<&IcebergOptions> {
+        self.options.as_ref()
+    }
+
+    /// Remove the explicit options override, returning what was stored.
+    ///
+    /// Every field then resolves property-then-default again.
+    pub fn clear_options(&mut self) -> Option<IcebergOptions> {
+        self.options.take()
+    }
+
     /// Resolve this table's effective options, field by field.
     ///
     /// Each field takes the nearest of three layers: the explicit override
@@ -745,7 +761,13 @@ impl<H: IOBase> Table<H> {
 
         let mut parts = Vec::new();
         for task in tasks {
-            let handle = self.child_at(&task.entry.data_file.file_path)?;
+            let mut handle = self.child_at(&task.entry.data_file.file_path)?;
+            // The manifest is the authority on a file's format, not its name:
+            // a table whose files mix formats - or name them without an
+            // extension - still decodes each file as the entry records it.
+            if let Some(base) = mime_of(task.entry.data_file.file_format) {
+                handle.set_media_type(crate::MediaType::new(base));
+            }
             parts.push(ScanPart {
                 handle,
                 size: task.entry.data_file.file_size_in_bytes,
@@ -1212,22 +1234,26 @@ impl<H: IOBase> Table<H> {
         let spec = self.metadata.default_spec()?.clone();
         spec.require_writable()?;
         let target = self.target_file_size()?;
+        // The format is resolved and checked against the build before the
+        // incoming reader is consumed, so a format this build cannot encode
+        // fails up front rather than after data files were written.
+        let format = IcebergOptions::write_format(self.options.as_ref(), &self.metadata)?;
+        require_encodable(format)?;
 
         let snapshot_id = snapshot_id();
         let partition = spec.partition_field(&schema)?;
         let sources = spec.source_names(&schema)?;
 
+        let write = FileWrite {
+            snapshot_id,
+            schema: &schema,
+            spec: &spec,
+            format,
+        };
         let mut written = Vec::new();
         for (values, group) in grouped_batches(batches, &schema, &spec, &sources, &partition)? {
             for file in rolled(group, target) {
-                written.push(self.write_data_file(
-                    written.len(),
-                    snapshot_id,
-                    &schema,
-                    &spec,
-                    &values,
-                    file,
-                )?);
+                written.push(self.write_data_file(&write, written.len(), &values, file)?);
             }
         }
         let files_written = written.len();
@@ -1405,18 +1431,35 @@ impl<H: IOBase> Table<H> {
         }
     }
 
-    /// Write one partition's rows as a Parquet data file and describe it.
+    /// Write one partition's rows as a data file in `format` and describe it.
+    ///
+    /// The file's name carries the format's own extension, so the handle's
+    /// media type - which is what selects the encoder - agrees with the
+    /// `file_format` the manifest will record. A Parquet file's statistics
+    /// are read back from the footer that was just written; any other format
+    /// has no footer this crate reads, so its statistics are measured from
+    /// the batches before they are encoded.
     fn write_data_file(
         &self,
+        write: &FileWrite<'_>,
         index: usize,
-        snapshot_id: i64,
-        schema: &Field,
-        spec: &PartitionSpec,
         values: &[Value],
         batches: Vec<RecordBatch>,
     ) -> Result<DataFile> {
+        let FileWrite {
+            snapshot_id,
+            schema,
+            spec,
+            format,
+        } = *write;
         let directory = spec.partition_path(values)?;
-        let name = format!("{index:05}-{snapshot_id}-{}.parquet", uuid());
+        let extension = match format {
+            FileFormat::Parquet => "parquet",
+            FileFormat::Avro => "avro",
+            // `require_encodable` refused everything else before any write.
+            other => return Err(not_encodable(other)),
+        };
+        let name = format!("{index:05}-{snapshot_id}-{}.{extension}", uuid());
         let relative = if directory.is_empty() {
             format!("{DATA_DIR}/{name}")
         } else {
@@ -1428,15 +1471,27 @@ impl<H: IOBase> Table<H> {
             .record_options()?
             .with_safe(false)
             .with_schema(schema.clone());
-        let arrow_schema = crate::arrow::schema_from_field(schema)?;
-        handle.write_arrow_batch_reader(
-            crate::arrow::batch_reader(arrow_schema, batches),
-            &options,
-        )?;
-        handle.flush()?;
-
-        let statistics = crate::parquet::read_statistics(&handle)?;
-        let mut file = super::statistics::data_file(schema, &statistics)?;
+        let mut file = if format == FileFormat::Parquet {
+            let arrow_schema = crate::arrow::schema_from_field(schema)?;
+            handle.write_arrow_batch_reader(
+                crate::arrow::batch_reader(arrow_schema, batches),
+                &options,
+            )?;
+            handle.flush()?;
+            let statistics = crate::parquet::read_statistics(&handle)?;
+            super::statistics::data_file(schema, &statistics)?
+        } else {
+            // The batches are measured before they are consumed by the write,
+            // because this format's file carries no footer to read them from.
+            let file = super::statistics::data_file_from_batches(schema, &batches)?;
+            let arrow_schema = crate::arrow::schema_from_field(schema)?;
+            handle.write_arrow_batch_reader(
+                crate::arrow::batch_reader(arrow_schema, batches),
+                &options,
+            )?;
+            handle.flush()?;
+            file
+        };
         file.file_path = SmolStr::new(self.location_of(DATA_DIR, &{
             if directory.is_empty() {
                 name.clone()
@@ -1444,7 +1499,7 @@ impl<H: IOBase> Table<H> {
                 format!("{directory}/{name}")
             }
         }));
-        file.file_format = FileFormat::Parquet;
+        file.file_format = format;
         file.file_size_in_bytes = i64::try_from(handle.size()).unwrap_or_default();
         file.partition = values.to_vec();
         Ok(file)
@@ -1746,6 +1801,19 @@ fn rolled(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
     files
 }
 
+/// What every data file of one commit is written with.
+#[derive(Clone, Copy)]
+struct FileWrite<'a> {
+    /// The snapshot the files belong to, which names them.
+    snapshot_id: i64,
+    /// The schema every batch was cast to.
+    schema: &'a Field,
+    /// The spec the partition tuples are written against.
+    spec: &'a PartitionSpec,
+    /// The resolved format the files are encoded in.
+    format: FileFormat,
+}
+
 /// What a commit keeps of the files the current snapshot already names.
 enum Retained {
     /// Every live file, left in the manifests that already list it.
@@ -1930,7 +1998,11 @@ impl KeyBound {
 /// The extreme is found by a bounded sort rather than a scan of decoded values:
 /// one index is all a bound needs, and asking Arrow for it keeps the work in the
 /// kernel instead of in a per-row conversion.
-fn extreme(column: &ArrayRef, field: &Field, descending: bool) -> Result<Option<Vec<u8>>> {
+pub(super) fn extreme(
+    column: &ArrayRef,
+    field: &Field,
+    descending: bool,
+) -> Result<Option<Vec<u8>>> {
     if column.null_count() == column.len() {
         return Ok(None);
     }
@@ -2161,6 +2233,40 @@ fn relative_location(base: &str, location: &str) -> Result<String> {
     Err(invalid(format_smolstr!(
         "expected a location inside the table at {normalized_base:?}, got {location:?}"
     )))
+}
+
+/// The MIME type one data file format's bytes decode as, when one does.
+///
+/// `None` leaves the handle's own inference in charge, which is what an
+/// unrecognized format has to fall back to.
+fn mime_of(format: FileFormat) -> Option<crate::MimeType> {
+    match format {
+        FileFormat::Parquet => Some(crate::MimeType::PARQUET),
+        FileFormat::Avro => Some(crate::MimeType::AVRO),
+        _ => None,
+    }
+}
+
+/// Refuse a data file format this build has no encoder for, by name.
+///
+/// The error is typed and names both the property key and the format, so a
+/// caller who asked for ORC - or for Parquet in a build without the feature -
+/// learns which setting to change rather than silently getting Parquet.
+fn require_encodable(format: FileFormat) -> Result<()> {
+    match format {
+        FileFormat::Parquet | FileFormat::Avro => Ok(()),
+        other => Err(not_encodable(other)),
+    }
+}
+
+/// The typed refusal [`require_encodable`] reports.
+fn not_encodable(format: FileFormat) -> Error {
+    Error::InvalidMetadataValue {
+        key: SmolStr::new_static(IcebergOptions::DATA_FORMAT_KEY),
+        reason: format_smolstr!(
+            "expected a data file format this build encodes (PARQUET, AVRO), got {format}"
+        ),
+    }
 }
 
 /// Produce a positive random snapshot identifier.

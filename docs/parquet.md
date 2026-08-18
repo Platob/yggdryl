@@ -212,14 +212,14 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
     handle.write_arrow_batch_reader(batch)
 
-    # Two of the four columns, declared as this read's schema.
-    options = handle.record_options()
-    options.schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("price", pa.float64(), nullable=False),
-    ])
-
-    projected = handle.read_arrow_batch_reader(options=options).read_all()
+    # Two of the four columns, declared as this read's schema - a single
+    # setting is its own keyword, no options object needed.
+    projected = handle.read_arrow_batch_reader(
+        schema=pa.schema([
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("price", pa.float64(), nullable=False),
+        ])
+    ).read_all()
     assert projected.column_names == ["id", "price"]
 
     # Less is read, and the bytes say so rather than the clock.

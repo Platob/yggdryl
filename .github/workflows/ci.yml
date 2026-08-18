@@ -96,6 +96,40 @@ jobs:
           python/tests/typing_bindings.py
           python/tests/typing_records.py
 
+  spark-interop:
+    # The Iceberg exchange with Apache Spark, the format's reference
+    # implementation. Spark is a JVM plus a few hundred megabytes of
+    # packages, so the suite is gated behind its own marker: the default
+    # pytest run above deselects it, this dedicated job provisions Spark with
+    # scripts/setup_spark_interop.py and runs exactly it.
+    name: Spark interop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Install build and test tools
+        run: python -m pip install "maturin>=1.9,<2" "pyarrow>=18" "pytest>=8"
+      - name: Build wheel
+        run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
+      - name: Install wheel
+        run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
+      - name: Provision Spark and the Iceberg runtime
+        run: python scripts/setup_spark_interop.py
+      # Collection imports every test module it sees, deselected or not, so
+      # the run is pointed at the one interop module rather than the whole
+      # tree - the other modules' imports (pandas, typing_extensions) are the
+      # default job's business, not this one's.
+      - name: Exchange tables with Spark
+        run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
+
   node:
     name: Node.js binding
     runs-on: ubuntu-latest

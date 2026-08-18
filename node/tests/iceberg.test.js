@@ -523,12 +523,563 @@ test('a namespace is the map-like half of the catalog', (t) => {
   analytics.set('trades', schema)
   analytics.set('trades', schema)
   assert.ok(analytics.has('trades'))
-  assert.deepEqual(analytics.tables(), ['trades'])
+  // `tables` is the collection itself, so the name list comes off the view.
+  assert.deepEqual(analytics.tables.names(), ['trades'])
 
   // Setting rows replaces the table's rows, creating a table the namespace
   // never had from the rows' own schema.
   analytics.set('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
   assert.equal(analytics.get('quotes').scan().toTable().numRows, 2)
-  assert.deepEqual(analytics.tables().sort(), ['quotes', 'trades'])
+  assert.deepEqual(analytics.tables.names().sort(), ['quotes', 'trades'])
   assert.deepEqual(catalog.listNamespaces(), ['analytics'])
+})
+
+// The options value is a recording of what a caller set, never a snapshot of
+// every field, so each test below asks both halves: what it named, and what it
+// left alone.
+test('an options value answers the fields it was given and defaults the rest', () => {
+  const untouched = new iceberg.IcebergOptions()
+  assert.equal(untouched.commitRetries, 4)
+  assert.equal(untouched.commitMinBackoffMs, 100)
+  assert.equal(untouched.commitMaxBackoffMs, 60_000)
+  assert.equal(untouched.targetFileSize, 512 * 1024 * 1024)
+  assert.equal(untouched.readParallelMinFiles, 16)
+  assert.equal(untouched.readParallelMinFileSize, 4 * 1024 * 1024)
+  assert.equal(untouched.dataFormat, 'PARQUET')
+  // Nothing compacts on its own until a cadence says so.
+  assert.equal(untouched.compactAfterCommits, null)
+  // Read parallelism defaults to what the host offers, kept inside 1..=8.
+  assert.ok(untouched.readParallelism >= 1 && untouched.readParallelism <= 8)
+
+  const given = new iceberg.IcebergOptions({
+    commitRetries: 9,
+    commitMinBackoffMs: 5,
+    commitMaxBackoffMs: 50,
+    targetFileSize: 4096,
+    readParallelism: 2,
+    readParallelMinFiles: 3,
+    readParallelMinFileSize: 1024,
+    compactAfterCommits: 7,
+    dataFormat: 'avro',
+  })
+  assert.equal(given.commitRetries, 9)
+  assert.equal(given.commitMinBackoffMs, 5)
+  assert.equal(given.commitMaxBackoffMs, 50)
+  assert.equal(given.targetFileSize, 4096)
+  assert.equal(given.readParallelism, 2)
+  assert.equal(given.readParallelMinFiles, 3)
+  assert.equal(given.readParallelMinFileSize, 1024)
+  assert.equal(given.compactAfterCommits, 7)
+  assert.equal(given.dataFormat, 'AVRO')
+
+  // Every field is a setter too, and one the object never named still answers
+  // its default rather than whatever a neighbouring field was set to.
+  const partial = new iceberg.IcebergOptions({ commitRetries: 1 })
+  assert.equal(partial.commitRetries, 1)
+  assert.equal(partial.targetFileSize, 512 * 1024 * 1024)
+  partial.targetFileSize = 8192
+  partial.compactAfterCommits = 2
+  assert.equal(partial.targetFileSize, 8192)
+  assert.equal(partial.compactAfterCommits, 2)
+  assert.equal(partial.commitMinBackoffMs, 100)
+})
+
+test('a data format is named in any case and refused when no writer has it', () => {
+  const options = new iceberg.IcebergOptions({ dataFormat: 'avro' })
+  assert.equal(options.dataFormat, 'AVRO')
+  options.dataFormat = 'PaRqUeT'
+  assert.equal(options.dataFormat, 'PARQUET')
+  assert.equal(new iceberg.IcebergOptions({ dataFormat: 'AVRO' }).dataFormat, 'AVRO')
+
+  assert.throws(
+    () => new iceberg.IcebergOptions({ dataFormat: 'csv' }),
+    /expected an Iceberg file format of PARQUET, AVRO, or ORC, got "CSV"/,
+  )
+  assert.throws(() => {
+    options.dataFormat = 'csv'
+  }, /got "CSV"/)
+  // A refused write leaves the field holding what it held.
+  assert.equal(options.dataFormat, 'PARQUET')
+})
+
+test('a zero file size and a zero read parallelism are refused by property name', () => {
+  // A target no file can meet would roll one file per batch forever, and a
+  // reader count of zero would read nothing, so both are refused where they
+  // are set rather than obeyed later.
+  assert.throws(
+    () => new iceberg.IcebergOptions({ targetFileSize: 0 }),
+    /write\.target-file-size-bytes.*expected a positive byte count, got 0/,
+  )
+  assert.throws(
+    () => new iceberg.IcebergOptions({ readParallelism: 0 }),
+    /read\.parallelism.*expected at least one reader thread, got 0/,
+  )
+
+  const options = new iceberg.IcebergOptions({ targetFileSize: 4096, readParallelism: 2 })
+  assert.throws(() => {
+    options.targetFileSize = 0
+  }, /expected a positive byte count, got 0/)
+  assert.throws(() => {
+    options.readParallelism = 0
+  }, /expected at least one reader thread, got 0/)
+  assert.equal(options.targetFileSize, 4096)
+  assert.equal(options.readParallelism, 2)
+})
+
+test('a per-call data format writes AVRO files beside the PARQUET ones', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  table.append(rows([3n], ['XASE']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+
+  // The format is the assertion. A wrapper that dropped the options argument
+  // would still commit, still return, and still scan - and write Parquet
+  // twice, which nothing but the manifest entry would reveal.
+  assert.deepEqual(
+    table.dataFiles().map((file) => file.fileFormat).sort(),
+    ['AVRO', 'PARQUET'],
+  )
+
+  // A scan decodes each file as the format its manifest entry records, so a
+  // table of two formats still reads as one shape.
+  const scanned = table.scan().toTable()
+  assert.equal(scanned.numRows, 3)
+  assert.deepEqual(
+    [...scanned.getChild('id')].sort((left, right) => Number(left - right)),
+    [1n, 2n, 3n],
+  )
+  // The call configured itself alone: nothing was stored on the handle.
+  assert.equal(table.options().dataFormat, 'PARQUET')
+})
+
+test('setOptions is what later calls resolve, and a per-call option outlives only its call', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  table.setOptions(new iceberg.IcebergOptions({ targetFileSize: 4096, dataFormat: 'avro' }))
+  assert.equal(table.options().dataFormat, 'AVRO')
+  // The override shadows the table property the getter would otherwise read.
+  assert.equal(table.targetFileSize, 4096)
+
+  table.append(rows([1n], ['XNAS']))
+  assert.deepEqual(table.dataFiles().map((file) => file.fileFormat), ['AVRO'])
+
+  table.append(rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataFormat: 'parquet' }))
+  assert.deepEqual(
+    table.dataFiles().map((file) => file.fileFormat).sort(),
+    ['AVRO', 'PARQUET'],
+  )
+
+  // The override is put back whatever the call did, and a field the per-call
+  // value never named was never in question.
+  assert.equal(table.options().dataFormat, 'AVRO')
+  assert.equal(table.options().targetFileSize, 4096)
+})
+
+// Testing the per-call option on `append` alone is what let three methods ship
+// accepting an options argument they never declared: the JS wrapper forwarded
+// it, napi discarded the extra, and every one of them committed, returned, and
+// scanned exactly as if it had worked. One case per write is the only shape of
+// this test that would have caught it.
+test('every write that takes a per-call data format actually writes it', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const avro = () => new iceberg.IcebergOptions({ dataFormat: 'avro' })
+  const formats = (table) => table.dataFiles().map((file) => file.fileFormat).sort()
+
+  const overwritten = iceberg.Table.create(path.join(root, 'ow'), schema(), ['venue'])
+  overwritten.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  overwritten.overwriteWhere({ venue: 'XNAS' }, rows([9n], ['XNAS']), avro())
+  // XNYS is carried forward as the PARQUET file it already was; only the
+  // partition this call rewrote is AVRO.
+  assert.deepEqual(formats(overwritten), ['AVRO', 'PARQUET'])
+
+  const merged = iceberg.Table.create(path.join(root, 'mg'), schema())
+  merged.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  merged.merge(rows([2n, 3n], ['XLON', 'XASE']), ['id'], true, avro())
+  assert.deepEqual(formats(merged), ['AVRO'])
+  assert.equal(merged.scan().toTable().numRows, 3)
+
+  const mergedWhere = iceberg.Table.create(path.join(root, 'mw'), schema(), ['venue'])
+  mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS']), ['id'], true, avro())
+  assert.deepEqual(formats(mergedWhere), ['AVRO', 'PARQUET'])
+
+  const replaced = iceberg.Table.create(path.join(root, 'ov'), schema())
+  replaced.append(rows([1n], ['XNAS']))
+  replaced.overwrite(rows([2n], ['XNYS']), avro())
+  assert.deepEqual(formats(replaced), ['AVRO'])
+
+  // None of them stored anything on the handle.
+  for (const table of [overwritten, merged, mergedWhere, replaced]) {
+    assert.equal(table.options().dataFormat, 'PARQUET')
+  }
+})
+
+test('the catalog write shorthands honour a per-call data format', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // `catalog.append(name, rows)` and `namespace.tables.append(name, rows)` are
+  // two spellings of one operation. One of them honoured the option and the
+  // other wrote PARQUET and returned a table, which is the divergence a caller
+  // has no way to see without opening the manifest.
+  const catalog = new iceberg.Catalog(root)
+  catalog.createTable('sales.orders', schema())
+  catalog.append('sales.orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
+
+  catalog.overwrite('sales.orders', rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
+
+  // The view spelling agrees, which is the whole point of there being two.
+  catalog.namespaces.get('sales').tables.append('orders', rows([3n], ['XLON']))
+  assert.deepEqual(
+    catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat).sort(),
+    ['AVRO', 'PARQUET'],
+  )
+})
+
+test('the filtered reads take the per-call options the plain scan does', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  table.createTag('release', table.currentSnapshot.snapshotId)
+
+  // The option has to reach the reader for the call to be honest about
+  // accepting one; the rows it returns are what says it arrived intact.
+  const before = table.options().readParallelism
+  const options = new iceberg.IcebergOptions({ readParallelism: before + 1 })
+  assert.equal(table.scanWhere({ venue: 'XNAS' }, null, options).toTable().numRows, 1)
+  assert.equal(table.scanRef('release', null, null, options).toTable().numRows, 2)
+  // Configuring one call configures only that call.
+  assert.equal(table.options().readParallelism, before)
+})
+
+test('a tag and a branch name a snapshot, and removing one reports what it held', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  const first = table.currentSnapshot.snapshotId
+  table.append(rows([3n], ['XASE']))
+  const second = table.currentSnapshot.snapshotId
+
+  table.createTag('nightly', first)
+  table.createBranch('audit', first)
+  assert.equal(table.snapshotByRef('nightly').snapshotId, first)
+
+  // A ref reads as an ordinary scan of the snapshot it points at, filters and
+  // projection included.
+  assert.equal(table.scanRef('audit').toTable().numRows, 2)
+  assert.equal(table.scanRef('audit', { venue: 'XNAS' }).toTable().numRows, 1)
+
+  const removed = table.removeRef('nightly')
+  assert.equal(removed.snapshotId, first)
+  assert.equal(removed.kind, 'tag')
+
+  // Dropping a ref that was never there is a typo far more often than it is a
+  // no-op, so it is refused naming the refs the table does have.
+  assert.throws(() => table.removeRef('nightly'), /got "nightly"; it has \[main, audit\]/)
+  assert.equal(table.snapshotByRef('audit').snapshotId, first)
+  assert.notEqual(first, second)
+})
+
+test('fastForward moves a branch onto a descendant and refuses to walk back', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  table.append(rows([1n], ['XNAS']))
+  const first = table.currentSnapshot.snapshotId
+  table.append(rows([2n], ['XNYS']))
+  const second = table.currentSnapshot.snapshotId
+
+  table.createBranch('audit', first)
+  assert.equal(table.scanRef('audit').toTable().numRows, 1)
+  table.fastForward('audit', second)
+  assert.equal(table.snapshotByRef('audit').snapshotId, second)
+  assert.equal(table.scanRef('audit').toTable().numRows, 2)
+
+  // Walking a branch backwards would drop the commits between, which is the
+  // one thing a fast-forward is defined not to do.
+  assert.throws(
+    () => table.fastForward('audit', first),
+    new RegExp(`expected ${first} to descend from ${second}`),
+  )
+})
+
+test('a plan counts what a scan would read without reading any of it', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
+  const first = table.currentSnapshot.snapshotId
+  table.append(rows([4n], ['XASE']))
+
+  const everything = table.plan()
+  assert.equal(everything.recordCount, 4)
+  assert.equal(everything.filesPlanned, table.dataFiles().length)
+  assert.equal(everything.filesSkipped, 0)
+  assert.equal(everything.manifestsRead, 2)
+  assert.equal(everything.manifestsSkipped, 0)
+
+  // Pruning is a number rather than a promise: one manifest was ruled out
+  // whole by the manifest list's summaries, one file inside the other by its
+  // partition tuple, and the rows left agree with what a scan yields.
+  const matching = table.plan({ venue: 'XNAS' })
+  assert.equal(matching.filesPlanned, 1)
+  assert.equal(matching.filesSkipped, 1)
+  assert.equal(matching.manifestsRead, 1)
+  assert.equal(matching.manifestsSkipped, 1)
+  assert.equal(matching.recordCount, table.scanWhere({ venue: 'XNAS' }).toTable().numRows)
+
+  // Time travel plans over the snapshot's own manifest list, so a filtered
+  // read of history skips what a filtered read of the present skips.
+  const past = table.planAt(first, { venue: 'XNAS' })
+  assert.equal(past.recordCount, 2)
+  assert.equal(past.filesPlanned, 1)
+  assert.equal(past.filesSkipped, 1)
+
+  // A partition value the table never held reaches no manifest at all: the
+  // cheapest of the three levels answered the whole question.
+  const absent = table.plan({ venue: 'XLON' })
+  assert.equal(absent.recordCount, 0)
+  assert.equal(absent.filesPlanned, 0)
+  assert.equal(absent.filesSkipped, 0)
+  assert.equal(absent.manifestsRead, 0)
+  assert.equal(absent.manifestsSkipped, 2)
+})
+
+test('manifestsAt answers for a retained snapshot what manifests answers for now', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  table.append(rows([1n], ['XNAS']))
+  const first = table.currentSnapshot.snapshotId
+  table.append(rows([2n], ['XNYS']))
+
+  assert.equal(table.manifests().length, 2)
+  const past = table.manifestsAt(first)
+  assert.equal(past.length, 1)
+  assert.equal(past[0].addedSnapshotId, first)
+  assert.equal(past[0].addedRowsCount, 1)
+
+  // An id the table does not retain is refused naming the ids it does.
+  assert.throws(() => table.manifestsAt(7), new RegExp(`got 7; the table retains \\[.*${first}`))
+})
+
+test('scanWhere reads only the partition it names and projects as scan does', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
+
+  const matched = table.scanWhere({ venue: 'XNAS' }).toTable()
+  assert.equal(matched.numRows, 2)
+  assert.deepEqual([...matched.getChild('venue')], ['XNAS', 'XNAS'])
+
+  // The projection sits after the filters, and keeps the columns it names.
+  const projected = table.scanWhere({ venue: 'XNAS' }, 'row: struct<id int64> not null').toTable()
+  assert.equal(projected.numCols, 1)
+  assert.deepEqual([...projected.getChild('id')], [1n, 3n])
+
+  // Filters also spell as the `{column, value}` entries a manifest reports.
+  assert.equal(
+    table.scanWhere([{ column: 'venue', value: 'XNYS' }]).toTable().numRows,
+    1,
+  )
+
+  // A value nothing was ever written under is no rows, with the shape intact.
+  const none = table.scanWhere({ venue: 'XLON' }).toTable()
+  assert.equal(none.numRows, 0)
+  assert.equal(none.numCols, 2)
+})
+
+test('overwriteWhere replaces one partition and carries the others as they were', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
+  const first = table.currentSnapshot.snapshotId
+  const kept = table
+    .dataFiles()
+    .filter((file) => file.partition[0].asJs() === 'XNYS')
+    .map((file) => [file.filePath, file.recordCount, file.fileSizeInBytes])
+  assert.equal(kept.length, 1)
+
+  table.overwriteWhere({ venue: 'XNAS' }, rows([9n], ['XNAS']))
+
+  // A file the filters exclude is carried into the new snapshot exactly as it
+  // was - same location, same statistics - rather than read and written again.
+  assert.deepEqual(
+    table
+      .dataFiles()
+      .filter((file) => file.partition[0].asJs() === 'XNYS')
+      .map((file) => [file.filePath, file.recordCount, file.fileSizeInBytes]),
+    kept,
+  )
+  assert.deepEqual(
+    [...table.scan().toTable().getChild('id')].sort((left, right) => Number(left - right)),
+    [2n, 9n],
+  )
+  // Only the current pointer moved: the snapshot before it is still whole.
+  assert.equal(table.scanAt(first).toTable().numRows, 3)
+})
+
+test('merge updates the rows whose key is stored and appends the rest', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  table.merge(rows([2n, 3n], ['XASE', 'XLON']), ['id'])
+
+  const scanned = table.scan().toTable()
+  const venues = new Map(
+    [...scanned.getChild('id')].map((id, index) => [id, scanned.getChild('venue').get(index)]),
+  )
+  assert.equal(venues.size, 3)
+  assert.equal(venues.get(1n), 'XNAS')
+  assert.equal(venues.get(2n), 'XASE')
+  assert.equal(venues.get(3n), 'XLON')
+
+  // Nothing identifies a row when no column is named, so an empty match key is
+  // an overwrite rather than an append that can never find anything.
+  table.merge(rows([7n], ['XPAR']), [])
+  assert.equal(table.scan().toTable().numRows, 1)
+  assert.deepEqual([...table.scan().toTable().getChild('venue')], ['XPAR'])
+})
+
+test('mergeWhere narrows a merge to the files its filters admit', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
+  const kept = table
+    .dataFiles()
+    .filter((file) => file.partition[0].asJs() === 'XNYS')
+    .map((file) => file.filePath)
+
+  table.mergeWhere({ venue: 'XNAS' }, rows([1n, 4n], ['XNAS', 'XNAS']), ['id'])
+
+  // The excluded partition was never a candidate, so its file is the same file.
+  assert.deepEqual(
+    table
+      .dataFiles()
+      .filter((file) => file.partition[0].asJs() === 'XNYS')
+      .map((file) => file.filePath),
+    kept,
+  )
+  assert.equal(table.scanWhere({ venue: 'XNAS' }).toTable().numRows, 3)
+  assert.equal(table.scan().toTable().numRows, 4)
+})
+
+test('expireSnapshots drops nothing when the cutoff is older than every snapshot', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  table.append(rows([1n], ['XNAS']))
+  const first = table.currentSnapshot.snapshotId
+  table.append(rows([2n], ['XNYS']))
+  assert.equal(table.snapshots.length, 2)
+
+  // One millisecond after the epoch is older than anything a table can hold,
+  // so the check runs on a copy and no version is spent.
+  const version = table.version
+  assert.deepEqual(table.expireSnapshots(1), [])
+  assert.equal(table.version, version)
+  assert.equal(table.snapshots.length, 2)
+
+  // A cutoff ahead of now drops the ancestors the branch no longer needs.
+  assert.deepEqual(table.expireSnapshots(Date.now() + 60_000), [first])
+  assert.equal(table.snapshots.length, 1)
+  assert.ok(table.version > version)
+  // Expiry drops history, never rows: what the current snapshot holds is what
+  // it held before the ancestors went away.
+  assert.equal(table.scan().toTable().numRows, 2)
+})
+
+test('the collection views do no I/O until a question is asked of them', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const catalog = new iceberg.Catalog(root)
+  const namespaces = catalog.namespaces
+  const orders = catalog.namespace('sales').tables
+
+  // A view describes a question, not an answer: both exist for a warehouse
+  // that holds nothing, and building them wrote nothing to it.
+  assert.deepEqual(fs.readdirSync(root), [])
+  assert.deepEqual(namespaces.names(), [])
+  assert.equal(namespaces.size(), 0)
+  assert.equal(namespaces.has('sales'), false)
+  assert.deepEqual(orders.names(), [])
+  assert.equal(orders.size(), 0)
+  assert.deepEqual(fs.readdirSync(root), [])
+
+  assert.throws(() => namespaces.get('sales'), /expected a namespace at "sales", got none/)
+
+  // Both views were built before the write and answer storage at call time, so
+  // both see it without being rebuilt.
+  catalog.append('sales.orders', rows([1n], ['XNAS']))
+  assert.deepEqual(namespaces.names(), ['sales'])
+  assert.equal(namespaces.size(), 1)
+  assert.deepEqual(orders.names(), ['orders'])
+  assert.equal(orders.size(), 1)
+  assert.equal(orders.has('orders'), true)
+  assert.throws(() => orders.get('ledger'), /expected a table at "sales\.ledger", got none/)
+
+  // One spelling chains from the catalog to the rows.
+  assert.equal(catalog.namespaces.get('sales').tables.get('orders').scan().toTable().numRows, 1)
+  // A namespace is a folder that is not a table, so a table answers false here
+  // rather than being reported as a namespace nobody can open.
+  assert.equal(catalog.namespaces.get('sales').namespaces.has('orders'), false)
+})
+
+test('the tables view creates on first write and takes the same per-call options', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const catalog = new iceberg.Catalog(root)
+  const tables = catalog.namespaces.openOrCreate('sales').tables
+
+  const created = tables.create('quotes', schema())
+  assert.deepEqual(tables.names(), ['quotes'])
+  assert.equal(tables.openOrCreate('quotes', schema()).tableUuid, created.tableUuid)
+  assert.throws(
+    () => tables.create('quotes', schema()),
+    /expected no table at "sales\.quotes", got one/,
+  )
+
+  // A write through the view creates the table from the rows' own schema, and
+  // forwards the trailing options the way the table's own writes do.
+  tables.append('orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  tables.append('orders', rows([2n], ['XNYS']))
+  assert.deepEqual(
+    tables.get('orders').dataFiles().map((file) => file.fileFormat).sort(),
+    ['AVRO', 'PARQUET'],
+  )
+
+  const replaced = tables.overwrite(
+    'orders',
+    rows([3n], ['XASE']),
+    new iceberg.IcebergOptions({ dataFormat: 'avro' }),
+  )
+  assert.deepEqual(replaced.dataFiles().map((file) => file.fileFormat), ['AVRO'])
+  assert.equal(replaced.scan().toTable().numRows, 1)
+  assert.deepEqual(tables.names(), ['orders', 'quotes'])
+  assert.equal(tables.size(), 2)
 })

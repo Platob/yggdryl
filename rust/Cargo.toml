@@ -128,6 +128,15 @@ path = "benchmarks/io.rs"
 harness = false
 required-features = ["parquet"]
 
+# Foreign Arrow filesystems behind IOBase: byte-level wrapper overhead against
+# the handle each backend wraps, record round trips, and listing. The vtable
+# adds no dependency, so this target compiles in a default build; the Parquet
+# leg of the record group is compiled in only when that feature is.
+[[bench]]
+name = "arrowfs"
+path = "benchmarks/arrowfs.rs"
+harness = false
+
 # The Iceberg table format: scan planning, metadata parsing, manifest
 # decoding, and the partition-text renderer. It needs the table format, which
 # implies Parquet, so it is not compiled in a default build.

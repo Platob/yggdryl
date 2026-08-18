@@ -1191,6 +1191,8 @@ pub trait IOBase: Send {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
+        use crate::generic::IORecordOptions;
+
         // The same narrowing a write applies: an append is a write that keeps.
         let batches = select_reader(batches, options)?;
         if self.is_container() {
@@ -1200,7 +1202,16 @@ pub trait IOBase: Send {
             }
             return partition::write_folder(self, batches, options, true);
         }
-        append_leaf(self, batches, options)
+        // A merge key means "update the row that already has this key" - the
+        // folder path above has always honoured it, so a leaf that ignored it
+        // made one option mean two things depending on what the handle
+        // happened to address, and stored a second row under a key the caller
+        // said identifies one. Merging already keeps every stored row the
+        // incoming keys do not name, which is what makes it the append.
+        if options.merge_by_names().is_empty() {
+            return append_leaf(self, batches, options);
+        }
+        merge_leaf(self, batches, options)
     }
 }
 

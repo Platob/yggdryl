@@ -384,11 +384,11 @@ lazily is never materialized.
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
     handle.write_arrow_batch_reader(batch)
 
-    # One of the three columns, declared as this read's schema.
-    options = handle.record_options()
-    options.schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-
-    projected = handle.read_arrow_batch_reader(options=options)
+    # One of the three columns, declared as this read's schema - a single
+    # setting is its own keyword, no options object needed.
+    projected = handle.read_arrow_batch_reader(
+        schema=pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    )
     assert projected.schema.names == ["id"]
     assert projected.read_all().num_columns == 1
 

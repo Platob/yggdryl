@@ -339,3 +339,21 @@ test('a field casts whatever Arrow JS holds, batch by batch', () => {
   // `cast` is the same call under the generic name.
   assert.equal(target.cast(source).numRows, 2)
 })
+
+test('a batch size of zero is refused rather than stored as a read of nothing', () => {
+  const options = RecordOptions.forMimeType(MimeType.PARQUET)
+
+  // Zero is not a small batch. The readers chunk by this number, so storing it
+  // turns a read of a hundred rows into a successful read of none; `null` is
+  // how "no bound" is already spelled.
+  assert.throws(() => {
+    options.batchSize = 0
+  }, /expected a positive row count for batchSize, got 0/)
+  assert.throws(() => options.withBatchSize(0), /got 0/)
+
+  assert.equal(options.batchSize, null)
+  options.batchSize = 32
+  assert.equal(options.batchSize, 32)
+  options.batchSize = null
+  assert.equal(options.batchSize, null)
+})

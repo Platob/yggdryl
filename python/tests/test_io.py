@@ -536,6 +536,45 @@ class TestScans:
         assert isinstance(native, pads.Scanner)
         assert native.to_table().num_rows == 3
 
+    def test_a_scan_that_was_told_something_answers_for_it(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The fast path hands a path to another engine, which was told nothing.
+
+        A local Parquet leaf is the one shape where a scan can be answered by
+        pyarrow or polars opening the file themselves, and that answer is only
+        the same answer when the call carried no options - otherwise the
+        projection, the filter, and the refusal of a column that is not there
+        all go missing while the scan still succeeds.
+        """
+        import pyarrow as pa
+
+        handle = IOBase(tmp_path / "trades.parquet")
+        handle.write_arrow(
+            pa.table(
+                {
+                    "venue": ["XNAS", "XPAR", "XNAS"],
+                    "id": pa.array([1, 2, 3], pa.int64()),
+                }
+            )
+        )
+
+        assert handle.scan_arrow(select_by_names=["id"]).to_table().schema.names == [
+            "id"
+        ]
+        assert (
+            handle.scan_arrow(filter_partitions={"venue": "XNAS"}).to_table().num_rows
+            == 2
+        )
+        # The same refusal the eager read gives, rather than every column.
+        with pytest.raises(ValueError, match="absent"):
+            handle.scan_arrow(select_by_names=["absent"]).to_table()
+
+        pl = pytest.importorskip("polars")
+        lazy = handle.scan_polars(select_by_names=["id"])
+        assert isinstance(lazy, pl.LazyFrame)
+        assert lazy.collect().columns == ["id"]
+
 
 class TestCursor:
     """One position over the same handle, advancing with reads and writes."""

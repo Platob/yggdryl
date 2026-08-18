@@ -12,6 +12,10 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
+// Foreign Arrow filesystems behind the one storage trait. The vtable adds no
+// dependency, so the module is unconditional like the Avro value codec; the
+// record surface its handles answer is inherited and already gated by `arrow`.
+pub mod arrowfs;
 pub mod avro;
 // The page cache over any handle. It is a wrapping handle like the codings,
 // so it lives beside them rather than inside `io`, and it needs no Arrow.

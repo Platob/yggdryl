@@ -103,7 +103,7 @@ use arrow_schema::{ArrowError, SchemaRef};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
 use super::{Buffer, IOBase, LineRecords};
-use crate::arrow::{BatchReader, schema_from_field};
+use crate::arrow::{BatchReader, scalar_array, schema_from_field};
 use crate::generic::{Holder, Value, iso};
 use crate::iceberg::PrimitiveType;
 use crate::{DataType, Error, Field, IOKind, Result, TimeUnit};
@@ -841,7 +841,7 @@ impl ArrowLines {
             let field = root
                 .get_field(BASE_COLUMNS.len() + capture_count + index)
                 .ok_or_else(|| Error::from(crate::arrow::Error::internal("io::lines::customs")))?;
-            customs.push(crate::arrow::scalar_array(field, value)?);
+            customs.push(scalar_array(field, value)?);
         }
         // The builders always produce text captures; a typed capture is cast
         // onto the declared root as each batch closes, through the one cast

@@ -73,6 +73,90 @@ pub(super) fn data_file(schema: &Field, statistics: &FileStatistics) -> Result<D
     Ok(file)
 }
 
+/// Measure one file's statistics from its batches, before they are encoded.
+///
+/// This is the projection [`data_file`] performs, taken from the rows
+/// themselves rather than from a Parquet footer, for the formats whose file
+/// carries no footer this crate reads back. The same portability rule guards
+/// the bounds, so a bound written here compares exactly as a Parquet one.
+/// Column byte sizes and split offsets are left unset: both belong to the
+/// encoded layout, which the batches do not know.
+///
+/// # Errors
+///
+/// Returns an error when a schema column carries no field identifier, or when
+/// a bound cannot be measured.
+pub(super) fn data_file_from_batches(
+    schema: &Field,
+    batches: &[arrow_array::RecordBatch],
+) -> Result<DataFile> {
+    use arrow_array::Array as _;
+
+    let columns = leaf_columns(schema)?;
+    let num_rows: i64 = batches
+        .iter()
+        .map(|batch| i64::try_from(batch.num_rows()).unwrap_or(i64::MAX))
+        .sum();
+
+    let mut file = DataFile {
+        record_count: num_rows,
+        ..DataFile::default()
+    };
+
+    for (name, id, data_type) in &columns {
+        let field = schema.get_field_by_name(name).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected the measured column {name:?} in the schema, got none"
+            ))
+        })?;
+        let mut nulls = 0_i64;
+        let mut lower: Option<Vec<u8>> = None;
+        let mut upper: Option<Vec<u8>> = None;
+        for batch in batches {
+            let Some(column) = batch.column_by_name(name) else {
+                continue;
+            };
+            nulls = nulls.saturating_add(i64::try_from(column.null_count()).unwrap_or(i64::MAX));
+            if !is_portable(data_type) {
+                continue;
+            }
+            if let Some(encoded) = super::table::extreme(column, field, false)? {
+                fold_encoded(&mut lower, &encoded, data_type, true);
+            }
+            if let Some(encoded) = super::table::extreme(column, field, true)? {
+                fold_encoded(&mut upper, &encoded, data_type, false);
+            }
+        }
+        file.value_counts.push((*id, num_rows));
+        file.null_value_counts.push((*id, nulls));
+        if let Some(bytes) = lower {
+            file.lower_bounds.push((*id, bytes));
+        }
+        if let Some(bytes) = upper {
+            file.upper_bounds.push((*id, bytes));
+        }
+    }
+    Ok(file)
+}
+
+/// Keep the smaller or larger of a running bound and one encoded candidate.
+fn fold_encoded(
+    current: &mut Option<Vec<u8>>,
+    candidate: &[u8],
+    data_type: &DataType,
+    minimum: bool,
+) {
+    match current {
+        None => *current = Some(candidate.to_vec()),
+        Some(held) => {
+            let ordering = compare_single(candidate, held, data_type);
+            if (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt()) {
+                *current = Some(candidate.to_vec());
+            }
+        }
+    }
+}
+
 /// Return the top-level primitive columns, with their ids and datatypes.
 ///
 /// Nested columns are skipped: a Parquet leaf below a struct has a dotted path
