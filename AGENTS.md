@@ -47,6 +47,14 @@ layer compiling annotations into native values.
 - Byte storage below `rust/src/io/`: the `IOBase` trait, in-memory `Buffer`,
   transparent-compression `Coded`. Shared record settings in
   `generic/options.rs` as `IORecordOptions` and `RecordSettings`.
+- The page cache below `rust/src/buffered/`: `Buffered<H>` wraps any handle and
+  serves reads from fixed-size pages under a byte budget and a time to live
+  counted from last access, writing through and invalidating what a write or a
+  resize touched. The value's first page and the page holding its last byte are
+  *pinned* - exempt from eviction and expiry - because both ends are where
+  discovery lives, and the pin follows the current end. Wrapping is idempotent:
+  `IOBase::buffered` is shadowed by inherent methods on `Buffered` and `Holder`,
+  so a cache is never stacked on a cache. No cache crate, no background thread.
 - One module per content coding - `rust/src/{gzip,zlib,zstd}/` - each with
   `load`/`dump`, `reader`/`writer`, and a transparent `IOBase` handle (`Gzip`,
   `Zlib`, `Zstd`). `Codec` in `enums/codec.rs` dispatches; never a fourth
@@ -350,8 +358,9 @@ meets all of these; a new media that cannot yet is not done:
   Several focused examples over one oversized one.
 - **One page per core module folder**: `docs/<module>.md` documents
   `yggdryl::<module>` and nothing else (`enums`, `datatype`, `field`,
-  `arrow`, `io`, `generic`, `local`, `gzip`, `zlib`, `zstd`, `ipc`,
-  `parquet`, `avro`, `iceberg`, `uri`, `text`, `json`, `yaml`, `toml`).
+  `arrow`, `io`, `buffered`, `generic`, `local`, `gzip`, `zlib`, `zstd`,
+  `ipc`, `parquet`, `avro`, `iceberg`, `uri`, `text`, `json`, `yaml`,
+  `toml`).
   `docs/extensions/{python,javascript}.md` document only their boundary.
 - Every page opens with one H1 and exactly one short sentence saying what the
   module is for.

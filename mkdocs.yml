@@ -126,6 +126,7 @@ nav:
       - arrow: arrow.md
   - Storage:
       - io: io.md
+      - buffered: buffered.md
       - generic: generic.md
       - local: local.md
       - gzip: gzip.md
