@@ -338,8 +338,8 @@ assert_eq!(text, "AAPL,1\n");
 
 `reader_at` and `writer_at` borrow the handle as a `Reader`/`Writer` implementing `std::io::Read` and
 `std::io::Write`. Each adapter advances its own offset, so a second reader started elsewhere is
-unaffected. `compress_into` and `decompress_into` move bytes between two handles through a coding in
-the same chunked way.
+unaffected. [Adding and removing a coding](#adding-and-removing-a-coding) moves bytes between two
+handles through a coding without going through these adapters, and is in all three languages.
 
 ## Cursors
 
@@ -1036,8 +1036,148 @@ assert_eq!(named.codec(), Codec::Gzip);
 
 `codec` reads the last coding out of the media type, which is how compression is never passed as a
 separate argument. `set_media_type` declares one explicitly, which is required for a format that
-content cannot identify. Both are Rust-only: a binding reads a handle's media type but does not
-redeclare it.
+content cannot identify. Both cross into the bindings - `codec` as a read-only property,
+`media_type` as a settable one - and the next section is what a caller does with the coding once it
+has been read.
+
+## Adding and removing a coding
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{Codec, Url};
+
+    let mut plain = Buffer::new().with_media_type(Url::from_str("file:///rows.json")?.media_type());
+    plain.write_all_bytes(br#"{"symbol":"AAPL"}"#)?;
+    // Nothing wraps these bytes, so there is nothing to undo.
+    assert_eq!(plain.codec(), Codec::Identity);
+
+    let mut encoded =
+        Buffer::new().with_media_type(Url::from_str("file:///rows.json.gz")?.media_type());
+    assert_eq!(encoded.codec(), Codec::Gzip);
+
+    // The coding is an argument here, and the target's name is one place to read it from.
+    let codec = encoded.codec();
+    plain.compress_into(&mut encoded, codec)?;
+    assert_eq!(&encoded.read_all()?[..2], b"\x1f\x8b");
+
+    let mut decoded = Buffer::new();
+    encoded.decompress_into(&mut decoded)?;
+    assert_eq!(decoded.read_all()?, plain.read_all()?);
+    assert_eq!(decoded.codec(), Codec::Identity);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    plain = IOBase(root / "rows.json")
+    plain.write_bytes(b'{"symbol":"AAPL"}')
+
+    # Nothing wraps these bytes, so there is nothing to undo.
+    assert plain.codec is None
+
+    encoded = IOBase(root / "rows.json.gz")
+    assert encoded.codec == "gzip"
+
+    # The target's name already said gzip, so nothing here repeats it.
+    assert plain.compress_into(encoded) == encoded.size
+    assert encoded.read_bytes()[:2] == b"\x1f\x8b"
+
+    decoded = IOBase(root / "roundtrip.json")
+    assert encoded.decompress_into(decoded) == 17
+    assert decoded.read_bytes() == plain.read_bytes()
+    assert decoded.codec is None
+
+    # A target declaring no coding is refused rather than copied unchanged.
+    reason = None
+    try:
+        plain.compress_into(IOBase(root / "copy.json"))
+    except ValueError as error:
+        reason = str(error)
+    assert "expected a target declaring a content coding" in reason
+    assert not (root / "copy.json").exists()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const plain = new IOBase(path.join(root, 'rows.json'))
+    plain.writeBytes(Buffer.from('{"symbol":"AAPL"}'))
+
+    // Nothing wraps these bytes, so there is nothing to undo.
+    assert.equal(plain.codec, null)
+
+    const encoded = new IOBase(path.join(root, 'rows.json.gz'))
+    assert.equal(encoded.codec, 'gzip')
+
+    // The target's name already said gzip, so nothing here repeats it.
+    assert.equal(plain.compressInto(encoded), encoded.size)
+    assert.deepEqual([...encoded.readBytes().subarray(0, 2)], [0x1f, 0x8b])
+
+    const decoded = new IOBase(path.join(root, 'roundtrip.json'))
+    assert.equal(encoded.decompressInto(decoded), 17)
+    assert.equal(decoded.readText(), '{"symbol":"AAPL"}')
+    assert.equal(decoded.codec, null)
+
+    // An in-memory target has no name to declare a coding, so this one is named.
+    const memory = IOBase.fromBytes()
+    assert.ok(plain.compressInto(memory, 'zstd') > 0)
+    assert.equal(memory.codec, 'zstd')
+
+    // A target declaring no coding is refused rather than copied unchanged.
+    assert.throws(
+      () => plain.compressInto(new IOBase(path.join(root, 'copy.json'))),
+      /expected a target declaring a content coding/,
+    )
+    assert.equal(fs.existsSync(path.join(root, 'copy.json')), false)
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+`codec` answers what coding the handle's *own name* declares - `rows.json.gz` is gzip - and an
+in-memory handle answers off the media type it was told to hold. Absence is spelled as absence:
+Python answers `None` and JavaScript `null`, never the string `"identity"`, because the question a
+caller is asking here is whether there is anything to undo, and a sentinel spelling of "no" is one
+more value every branch has to know about.
+
+`compress_into` and `decompress_into` - `compressInto` and `decompressInto` in JavaScript - move
+every byte from one handle into another and add or remove a coding on the way. The coding defaults
+to the one a name already declares: the target's for a compress, the source's for a decompress, so
+writing a `rows.json` into a `rows.json.gz` never spells gzip twice, and reading it back needs no
+argument at all. That works because the transfer records the coding in the target's media type,
+which is the same place a located handle reads it from. Naming a coding explicitly overrides the
+default - the escape hatch for an in-memory target, which has no name to declare anything, and for
+bytes whose name lies about what they hold. `level` is the shared 0-9 scale.
+
+Both bindings refuse a compress into a target that declares no coding rather than writing the bytes
+through unchanged, and the refusal names the media type the target does carry. A coding nobody named
+is a coding nobody can decode by name later, so a silent identity copy is a failure that surfaces one
+reader downstream instead of here. Rust asks for the coding outright, so the question never arises:
+there is no name to default from until a caller reads one, which is what the Rust example above does
+in the open.
+
+None of this sits on the reading path. A record encoding and a text codec already read *through* the
+codings a name declares - `trades.arrows.gz` writes gzipped and reads straight back as batches, and
+[text.md](text.md)'s `load` peels the same coding off a `quote.json.gz` - while `read_lines` peels
+them as streams rather than as values. These two methods are for moving bytes between
+representations: publishing a plain file as a compressed one, or handing an outside tool a form it
+can open. What coding sits on the bytes is not something a reader has to think about. The codings
+themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), and
+[zstd.md](zstd.md).
 
 ## Open and close
 

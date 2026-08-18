@@ -229,6 +229,8 @@ When the coding is chosen at runtime rather than written into the type, [`Codec:
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/zstd-rust.ipynb){ download }.
+[Rust](notebooks/zstd-rust.ipynb){ download },
+[Python](notebooks/zstd-python.ipynb){ download },
+[JavaScript](notebooks/zstd-javascript.ipynb){ download }.
 
 <!-- /notebooks -->

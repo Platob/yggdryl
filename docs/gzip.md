@@ -279,6 +279,8 @@ assert!(handle.read_all()?.is_empty());
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/gzip-rust.ipynb){ download }.
+[Rust](notebooks/gzip-rust.ipynb){ download },
+[Python](notebooks/gzip-python.ipynb){ download },
+[JavaScript](notebooks/gzip-javascript.ipynb){ download }.
 
 <!-- /notebooks -->
