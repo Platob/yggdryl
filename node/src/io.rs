@@ -477,10 +477,7 @@ impl JsIOBase {
         // The borrowed core projection: it reopens a located leaf itself -
         // keeping a declared media-type override - and snapshots an
         // in-memory handle, so `fromBytes` parses exactly as a file does.
-        let reader = self
-            .inner
-            .read_arrow_lines(&options)
-            .map_err(napi_error)?;
+        let reader = self.inner.read_arrow_lines(&options).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, "row"))
     }
 
@@ -735,7 +732,9 @@ fn line_record_options(
         for (name, data_type) in capture_names.into_iter().zip(capture_types) {
             declared.push((name, crate::datatype::data_type_from_input(data_type)?));
         }
-        options = options.try_with_capture_types(declared).map_err(napi_error)?;
+        options = options
+            .try_with_capture_types(declared)
+            .map_err(napi_error)?;
     }
     Ok(options)
 }
