@@ -80,12 +80,11 @@ pub fn partition_text(value: &crate::Value) -> Result<smol_str::SmolStr> {
     if value.is_null() {
         return Ok(smol_str::SmolStr::new_static(NULL_PARTITION));
     }
+    // The value is non-null here, so the typed pairing's own projection is the
+    // one-row array the formatter reads; a value the datatype cannot hold was
+    // already refused when the pairing was built.
     let typed = crate::TypedValue::from_value(value.clone())?;
-    let (data_type, value) = typed.into_parts();
-    // The field is nullable so a value the datatype cannot hold is refused by
-    // materialization rather than by nullability, which is not the question here.
-    let field = Field::new("partition", data_type, true);
-    let array = crate::arrow::ArrowScalar::from_value(field, value)?.into_array();
+    let array = typed.to_arrow_array()?;
     let formatter =
         ArrayFormatter::try_new(array.as_ref(), &partition_format()).map_err(Error::Arrow)?;
     Ok(smol_str::SmolStr::new(formatter.value(0).to_string()))

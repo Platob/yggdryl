@@ -88,7 +88,7 @@ use super::snapshot::{Snapshot, SnapshotRef};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
-use crate::generic::{Holder, IORecordOptions};
+use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::IOBase;
 use crate::{DataType, Error, Field, Result, Value};
 
@@ -105,7 +105,9 @@ const VERSION_HINT: &str = "version-hint.text";
 ///
 /// The handle is whatever [`IOBase`] implementation addresses the table's
 /// folder. Everything below - metadata documents, manifest lists, manifests,
-/// data files - is a child of it.
+/// data files - is a child of it. The relationship runs both ways: a `Table`
+/// is itself an [`IOBase`], so the generic record surface works on the value
+/// directly - see the trait implementation for what each method answers.
 #[derive(Debug)]
 pub struct Table<H: IOBase> {
     /// The folder the table lives in.
@@ -1606,6 +1608,92 @@ impl<H: IOBase> Table<H> {
     }
 }
 
+/// The table is itself a handle: the byte surface is the folder it lives in,
+/// and the record surface is answered from the parsed metadata this value
+/// already holds.
+///
+/// A plain container handle addressing the table's folder answers the same
+/// contract - the three record methods, one commit per write - by probing the
+/// location for a table on every call. Holding the [`Table`] skips the probe:
+/// no metadata document is re-read, [`IOBase::read_arrow_field`] is
+/// [`Table::schema`] with its field identifiers and protocol metadata rather
+/// than a shape lifted off decoded batches, and a
+/// [`filter_partitions`](IORecordOptions::filter_partitions) pair prunes data
+/// files through [`Table::plan`] instead of filtering rows after they were
+/// decoded. The in-memory metadata stays current across commits, so
+/// [`Table::current_snapshot`] and [`Table::version`] reflect a write made
+/// through this surface without reopening anything.
+///
+/// One deliberate difference from the folder route: a filter naming a column
+/// the schema does not declare is an error here, exactly as
+/// [`Table::scan_where`] reports it, where a folder of leaves ignores a column
+/// its batches do not carry. A table's schema is authoritative, so a filter it
+/// cannot answer is a mistake worth naming rather than a row set worth
+/// guessing.
+impl<H: IOBase> IOBase for Table<H> {
+    crate::delegate_iobase!(root);
+
+    /// The encoding of this table's data files, from metadata alone.
+    ///
+    /// A table that has never been written to holds no data file to read a
+    /// media type off, and its encoding is still not a guess: this module
+    /// writes Parquet, so that is what an Iceberg table's rows are.
+    fn record_options(&self) -> Result<RecordOptions> {
+        Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
+    }
+
+    /// The stored schema as the metadata declares it, no data file opened.
+    ///
+    /// A declared schema is returned as it stands, as on every handle.
+    /// Otherwise the answer is [`Table::schema`] renamed to the options' root
+    /// name - field identifiers and protocol metadata included - where the
+    /// base implementation would build a reader and take the shape off its
+    /// batches.
+    fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
+        if let Some(schema) = options.schema() {
+            return Ok(schema.clone());
+        }
+        Ok(self.schema()?.clone().with_name(options.root_name()))
+    }
+
+    /// Scan the current snapshot, the options' filters answered by the plan.
+    fn read_arrow_batch_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
+        let filters = options.filter_partitions();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        let reader = self.scan_where(&pairs, options.schema())?;
+        crate::io::select_reader(reader, options)
+    }
+
+    /// One commit: an overwrite without a match key, a merge with one, scoped
+    /// to the partitions the options' filters select.
+    fn write_arrow_batch_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let batches = crate::io::select_reader(batches, options)?;
+        let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        self.merge_where(&pairs, batches, options.merge_by_names(), options.safe())
+    }
+
+    /// One `append` snapshot, keeping every manifest the last one had.
+    fn append_arrow_batch_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let batches = crate::io::select_reader(batches, options)?;
+        self.append(batches)
+    }
+}
+
 /// What one [`Table::compact`] call did, in numbers a caller can assert on.
 ///
 /// A compaction with nothing to do reports zeros, because it commits nothing.
@@ -1930,8 +2018,7 @@ pub(super) fn extreme(
         return Ok(None);
     };
     let slice = column.slice(usize::try_from(row).unwrap_or_default(), 1);
-    let scalar = crate::arrow::ArrowScalar::from_parts(field.clone().with_nullable(true), slice)
-        .and_then(|scalar| scalar.to_value())
+    let scalar = crate::arrow::scalar_value(&field.clone().with_nullable(true), slice.as_ref())
         .map_err(|error| invalid(format_smolstr!("{error}")))?;
     Ok(single_value(&scalar, field.data_type()))
 }
@@ -2048,11 +2135,8 @@ fn tuple_at(
             ))
         })?;
         let slice = column.slice(row as usize, 1);
-        let scalar = crate::arrow::ArrowScalar::from_parts(field.clone(), slice)
-            .map_err(|error| invalid(format_smolstr!("{error}")))?;
         values.push(
-            scalar
-                .to_value()
+            crate::arrow::scalar_value(field, slice.as_ref())
                 .map_err(|error| invalid(format_smolstr!("{error}")))?,
         );
     }

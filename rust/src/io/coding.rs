@@ -165,6 +165,23 @@ impl<H: IOBase> IOBase for Coded<H> {
         Ok(super::Lines::over(stream))
     }
 
+    /// The borrowed projection reads a snapshot of the *decoded* value.
+    ///
+    /// The default reopens the handle's location, which for this decoding
+    /// view holds the encoded form - not the bytes these reads present - so
+    /// the projection snapshots the presented value instead, exactly what
+    /// this handle materializes to serve any read.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(
+        &self,
+        options: &super::LineRecordOptions,
+    ) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized,
+    {
+        super::lines::snapshot_arrow_lines(self, options)
+    }
+
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let plain = self.peek()?;
         let Ok(offset) = usize::try_from(offset) else {

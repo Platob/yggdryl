@@ -123,8 +123,12 @@ jobs:
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
       - name: Provision Spark and the Iceberg runtime
         run: python scripts/setup_spark_interop.py
+      # Collection imports every test module it sees, deselected or not, so
+      # the run is pointed at the one interop module rather than the whole
+      # tree - the other modules' imports (pandas, typing_extensions) are the
+      # default job's business, not this one's.
       - name: Exchange tables with Spark
-        run: python -m pytest python/tests -m spark_interop
+        run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
 
   node:
     name: Node.js binding

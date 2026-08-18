@@ -11,7 +11,6 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyString};
 use yggdryl::ArrowCast;
-use yggdryl::arrow::DefaultArrowScalar;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
 use crate::datatype::{
@@ -291,14 +290,14 @@ impl PyField {
 
     /// Returns the core-selected Field default as an exact `PyArrow` Scalar.
     fn default_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = self.inner.default_arrow_scalar().map_err(value_error)?;
-        default_arrow_scalar_to_pyarrow(py, scalar)
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        default_arrow_scalar_to_pyarrow(py, &self.inner, &array)
     }
 
     /// Returns the core-selected Field default in its cached Python type plan.
     fn default_pyvalue<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = self.inner.default_arrow_scalar().map_err(value_error)?;
-        let scalar = default_arrow_scalar_to_pyarrow(py, scalar)?;
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        let scalar = default_arrow_scalar_to_pyarrow(py, &self.inner, &array)?;
         let field = Py::new(py, self.clone())?;
         py.import("yggdryl.records._defaults")?
             .getattr("_default_pyvalue_from_field")?

@@ -44,6 +44,22 @@ impl DataType {
         crate::Field::new("row", self, false).into_arrow_schema()
     }
 
+    /// Materializes [`DataType::default_value`] as an exact one-row array.
+    ///
+    /// The bounded core default planner selects the value, so
+    /// [`DataType::Null`] and transparent logical wrappers with a null-only
+    /// canonical default materialize as logical null; every other datatype
+    /// materializes its present zero/empty default.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no physically valid default exists or Arrow
+    /// cannot materialize the datatype.
+    #[cfg(feature = "arrow")]
+    pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
+        crate::arrow::default_data_type_scalar_array(self)
+    }
+
     /// Imports an Arrow datatype and validates every nested invariant.
     pub fn from_arrow(value: &ArrowDataType) -> Result<Self> {
         Self::from_arrow_at_depth(value, 0)

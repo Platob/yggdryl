@@ -116,6 +116,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUriPathIterator>()?;
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<io::PyIOBase>()?;
+    module.add_function(wrap_pyfunction!(io::schema_from_pattern, module)?)?;
     module.add_class::<crate::io::PyIOCursor>()?;
     module.add_class::<io::PyLineIterator>()?;
     module.add_class::<io::PyIOBaseIterator>()?;

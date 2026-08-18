@@ -2,7 +2,6 @@
 
 use napi::bindgen_prelude::{ClassInstance, Either, Either3, Env, Error, Result, Unknown};
 use napi_derive::napi;
-use yggdryl::arrow::DefaultArrowScalar;
 use yggdryl::{
     DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
@@ -479,10 +478,9 @@ impl JsDataType {
     /// materialization.
     #[napi(js_name = "_defaultArrowScalarIpcNative", skip_typescript)]
     pub fn default_arrow_scalar_ipc_native(&self) -> Result<napi::bindgen_prelude::Buffer> {
-        self.inner
-            .default_arrow_scalar()
-            .map_err(napi_error)
-            .and_then(arrow_scalar_to_ipc)
+        let array = self.inner.default_arrow_array().map_err(napi_error)?;
+        let field = CoreField::new("value", self.inner.clone(), false);
+        arrow_scalar_to_ipc(&field, array)
     }
 
     /// Recursively normalize this datatype for one closed compatibility

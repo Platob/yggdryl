@@ -275,6 +275,97 @@ test('readLines with a pattern groups log entries', (t) => {
   ])
 })
 
+test('readArrowLines projects matched records into typed batches', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-arrowlines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'app.log')
+  fs.writeFileSync(
+    target,
+    'preamble carried from rotation\n' +
+      '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n' +
+      '2024-02-01 10:00:01.500 [ii] [beta] fine\n',
+  )
+  const pattern =
+    '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S* \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]'
+  const table = new IOBase(target)
+    .readArrowLines(pattern, { customFields: { venue: 'XNAS' } })
+    .toTable()
+  assert.equal(table.numRows, 3)
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    [
+      'url',
+      'rownum',
+      'date',
+      'time',
+      'unix',
+      'hash',
+      'header',
+      'message',
+      'offset',
+      'lines',
+      'level',
+      'logger',
+      'venue',
+    ],
+  )
+  const messages = [...table.getChild('message')]
+  assert.deepEqual(messages, [
+    'preamble carried from rotation',
+    'boom\n  at frame one',
+    'fine',
+  ])
+  // The preamble has no header: its level is null, its unix is null; the
+  // matched rows carry naive nanoseconds and the constant venue stamp.
+  assert.deepEqual([...table.getChild('level')], [null, 'ee', 'ii'])
+  const unix = [...table.getChild('unix')]
+  assert.equal(unix[0], null)
+  assert.equal(unix[1], 1_706_781_600_000_000_000n)
+  assert.deepEqual([...table.getChild('venue')], ['XNAS', 'XNAS', 'XNAS'])
+
+  // A gzip log reads the same rows through its streaming decode.
+  const zlib = require('node:zlib')
+  const coded = path.join(root, 'app2.log.gz')
+  fs.writeFileSync(coded, zlib.gzipSync('2024-02-01 10:00:00 [ii] [a] fine\n'))
+  assert.equal(new IOBase(coded).readArrowLines(pattern).toTable().numRows, 1)
+
+  // Absence reads as zero rows with the schema still answered.
+  const empty = new IOBase(path.join(root, 'missing.log')).readArrowLines(pattern)
+  assert.equal(empty.toTable().numRows, 0)
+
+  // An in-memory handle parses exactly as a file does.
+  const memory = IOBase.fromBytes(Buffer.from('2024-02-01 12:00:00 [ww] [m] held\n'))
+  assert.equal(memory.readArrowLines(pattern).toTable().numRows, 1)
+
+  // Inputs that would silently misparse are refused instead.
+  assert.throws(() => new IOBase(target).readArrowLines(pattern, { customFields: 'venue' }), TypeError)
+  assert.throws(() => new IOBase(target).readArrowLines(pattern, { batchSize: -1 }), TypeError)
+  assert.throws(() => new IOBase(target).readArrowLines(pattern, { batchSize: 1.5 }), TypeError)
+})
+
+test('named captures type themselves and declarations override', (t) => {
+  const { schemaFromPattern } = require('yggdryl')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-typedlines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'typed.log')
+  fs.writeFileSync(target, '2024-02-01 10:00:00 [42] (info) qty=1.50\n')
+  const pattern =
+    '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?<threadId>\\d+)\\] \\((?<logLevel>\\w+)\\) qty=(?<qty>[0-9.]+)'
+
+  // The standalone builder answers the emitted root without a reader:
+  // `threadId` typed off its own `\d+` sub-pattern, `qty` by declaration.
+  const schema = schemaFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+  assert.equal(schema.name, 'row')
+  assert.equal(String(schema.dataType.get('threadId').dataType), 'int64')
+  assert.equal(String(schema.dataType.get('qty').dataType), 'decimal128(9,2)')
+
+  const table = new IOBase(target)
+    .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+    .toTable()
+  assert.deepEqual([...table.getChild('threadId')], [42n])
+  assert.deepEqual([...table.getChild('logLevel')], ['info'])
+})
+
 test('a cursor shares the handle and owns its position', () => {
   const handle = IOBase.fromBytes()
   const cursor = handle.cursor()

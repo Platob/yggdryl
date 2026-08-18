@@ -141,6 +141,21 @@ impl<H: IOBase> Gzip<H> {
 impl<H: IOBase> IOBase for Gzip<H> {
     crate::delegate_iobase!(coded);
 
+    /// The borrowed projection reads a snapshot of the *decoded* value: this
+    /// view presents bytes its location does not hold, so the default's
+    /// reopen-the-location route would hand back the encoded form. See
+    /// [`crate::io::Coded`]'s override.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(
+        &self,
+        options: &crate::io::LineRecordOptions,
+    ) -> crate::Result<crate::arrow::BatchReader>
+    where
+        Self: Sized,
+    {
+        crate::io::lines::snapshot_arrow_lines(self, options)
+    }
+
     fn open(&mut self) -> crate::Result<()> {
         self.coded.open()
     }

@@ -1576,6 +1576,164 @@ mod handles {
             1
         );
     }
+
+    #[test]
+    fn the_table_value_is_itself_a_handle_answering_from_its_metadata() {
+        let path = root("handle-table-value");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+
+        // The byte surface is the folder the table lives in.
+        assert_eq!(table.kind(), crate::IOKind::Directory);
+        assert!(table.is_container());
+        assert_eq!(
+            IOBase::url(&table).unwrap().to_string(),
+            Folder::new(&path).unwrap().url().to_string()
+        );
+        assert!(table.child_by("metadata").is_ok());
+
+        // The record surface is answered before a single data file exists:
+        // the encoding from what this module writes, the schema from the
+        // metadata - field identifiers included - never off decoded batches.
+        let options = IOBase::record_options(&table).unwrap();
+        assert_eq!(options.mime_type(), crate::MimeType::PARQUET);
+        let field = table.read_arrow_field(&options).unwrap();
+        assert_eq!(field.name(), options.root_name());
+        assert_eq!(field.fields()[0].parquet_field_id().unwrap(), Some(1));
+        assert_eq!(field.fields()[2].parquet_field_id().unwrap(), Some(3));
+        let declared = options.clone().with_schema(trade_schema());
+        assert_eq!(table.read_arrow_field(&declared).unwrap(), trade_schema());
+
+        // Writing through the generic surface is one commit each, and the
+        // in-memory metadata follows without reopening anything.
+        let batch = trades(
+            &[1, 2],
+            &[Some("AAPL"), Some("MSFT")],
+            &[Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .append_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        let batch = trades(&[3], &[Some("VOD")], &[Some("XLON")]);
+        table
+            .append_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(table.metadata().snapshots.len(), 2);
+        assert_eq!(table.current_snapshot().unwrap().operation(), "append");
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()).len(),
+            3
+        );
+
+        // A partition filter is answered by the plan - the other partitions'
+        // files are never opened - and the rows match the folder route's.
+        let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&filtered).unwrap()),
+            vec![(2, Some("MSFT".to_owned()), Some("XNYS".to_owned()))]
+        );
+        let plan = table.plan(&[("venue", "XNYS")]).unwrap();
+        assert_eq!(plan.tasks.len(), 1);
+        assert!(plan.excluded.len() + plan.skipped.len() >= 1);
+
+        // A selection narrows the read to the named columns.
+        let selected = options.clone().with_select_by_names(["id"]);
+        let reader = table.read_arrow_batch_reader(&selected).unwrap();
+        let names: Vec<String> = reader
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect();
+        assert_eq!(names, ["id"]);
+
+        // A filter naming a column the schema does not declare is an error,
+        // exactly as `scan_where` reports it: the schema is authoritative.
+        let unanswerable = options.clone().with_filter_partitions([("desk", "42")]);
+        assert!(table.read_arrow_batch_reader(&unanswerable).is_err());
+
+        // The folder route reads the same rows through the same snapshot.
+        let folder = Folder::new(&path).unwrap();
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()),
+            collect(folder.read_arrow_batch_reader(&options).unwrap())
+        );
+    }
+
+    #[test]
+    fn a_write_through_the_table_value_is_one_commit_and_history_survives() {
+        let path = root("handle-table-write");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let options = IOBase::record_options(&table).unwrap();
+
+        let batch = trades(
+            &[1, 2],
+            &[Some("AAPL"), Some("MSFT")],
+            &[Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .append_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        let past = table.current_snapshot().unwrap().snapshot_id;
+        let version = table.version();
+
+        // No match key replaces every row; the snapshot it replaced is
+        // retained and still reads exactly as it was written.
+        let batch = trades(&[9], &[Some("BP")], &[Some("XLON")]);
+        table
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
+        assert_eq!(table.version(), version + 1);
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()),
+            vec![(9, Some("BP".to_owned()), Some("XLON".to_owned()))]
+        );
+        assert_eq!(collect(table.scan_at(past, &[], None).unwrap()).len(), 2);
+
+        // A match key merges: `9` is stored and updates, `10` appends.
+        let merging = options.clone().with_merge_by_names(["id"]);
+        let batch = trades(
+            &[9, 10],
+            &[Some("BP.L"), Some("SHEL")],
+            &[Some("XLON"), Some("XLON")],
+        );
+        table
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &merging,
+            )
+            .unwrap();
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()),
+            vec![
+                (9, Some("BP.L".to_owned()), Some("XLON".to_owned())),
+                (10, Some("SHEL".to_owned()), Some("XLON".to_owned())),
+            ]
+        );
+
+        // Reopening reads the same history this value already reports.
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.version(), table.version());
+        assert_eq!(reopened.metadata().snapshots.len(), 3);
+    }
 }
 
 #[test]
@@ -3032,6 +3190,393 @@ mod concurrency_and_compaction {
         assert!(table.data_files().unwrap().len() < 4);
         // And nothing was lost along the way.
         assert_eq!(collect(table.scan(None).unwrap()).len(), 4);
+    }
+}
+
+mod line_projection {
+    //! Parsed trading-log lines stream into a partitioned table, and every
+    //! metadata update - snapshots, manifests, partition tuples, statistics -
+    //! is correct exactly as the projection declared its schema.
+
+    use super::*;
+    use crate::Url;
+    use crate::io::{Buffer, LineRecordOptions};
+
+    const PATTERN: &str =
+        r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]";
+
+    /// 2024-02-01T10:00:00, as naive nanoseconds since the Unix epoch.
+    const T0: i64 = 1_706_781_600_000_000_000;
+    /// One hour of nanoseconds.
+    const HOUR: i64 = 3_600_000_000_000;
+    /// 2024-02-02T09:30:00, the second day's session open.
+    const DAY_TWO_OPEN: i64 = 1_706_866_200_000_000_000;
+
+    /// The projection options every append parses under: the header pattern,
+    /// its two capture columns, and one constant `venue` stamp.
+    fn options() -> LineRecordOptions {
+        LineRecordOptions::new(PATTERN)
+            .unwrap()
+            .try_with_custom_fields([("venue", Value::from("XNAS"))])
+            .unwrap()
+    }
+
+    /// The declared table schema: the projection's own root with `level`
+    /// marked as the identity partition column and field ids assigned before
+    /// the catalog sees it.
+    fn table_schema() -> Field {
+        let mut schema = options()
+            .schema()
+            .with_partition_fields(&["level"])
+            .unwrap();
+        schema.assign_parquet_field_ids(1).unwrap();
+        schema
+    }
+
+    /// A buffer whose media type carries the codings its name declares.
+    fn named(name: &str, bytes: &[u8]) -> Buffer {
+        let mut handle = Buffer::new().with_media_type(
+            Url::from_str(&format!("file:///{name}"))
+                .unwrap()
+                .media_type(),
+        );
+        handle.write_all_bytes(bytes).unwrap();
+        handle
+    }
+
+    /// Collect a scan as `(unix, level, logger, message)` rows, sorted.
+    #[allow(clippy::type_complexity)]
+    fn collect_lines(
+        reader: crate::arrow::BatchReader,
+    ) -> Vec<(Option<i64>, Option<String>, Option<String>, String)> {
+        let mut rows = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let text = |name: &str| {
+                batch
+                    .column_by_name(name)
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .clone()
+            };
+            let unix = batch
+                .column_by_name("unix")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .clone();
+            let (levels, loggers, messages, venues) = (
+                text("level"),
+                text("logger"),
+                text("message"),
+                text("venue"),
+            );
+            for row in 0..batch.num_rows() {
+                assert_eq!(
+                    venues.value(row),
+                    "XNAS",
+                    "the constant stamp lands on every row"
+                );
+                let held = |column: &StringArray| {
+                    (!column.is_null(row)).then(|| column.value(row).to_owned())
+                };
+                rows.push((
+                    (!unix.is_null(row)).then(|| unix.value(row)),
+                    held(&levels),
+                    held(&loggers),
+                    messages.value(row).to_owned(),
+                ));
+            }
+        }
+        rows.sort();
+        rows
+    }
+
+    /// The first trading day's rows, exactly as the two log files spell them.
+    #[allow(clippy::type_complexity)]
+    fn day_one() -> Vec<(Option<i64>, Option<String>, Option<String>, String)> {
+        let mut rows = vec![
+            (None, None, None, "restarted mid-entry".to_owned()),
+            (
+                Some(T0),
+                Some("ee".to_owned()),
+                Some("alpha".to_owned()),
+                "boom\n    at frame one".to_owned(),
+            ),
+            (
+                Some(T0 + 1_000_000_000),
+                Some("ii".to_owned()),
+                Some("beta".to_owned()),
+                "fill 100 @ 187.23".to_owned(),
+            ),
+            (
+                Some(T0 + HOUR),
+                Some("ii".to_owned()),
+                Some("gamma".to_owned()),
+                "fill 200 @ 188.01".to_owned(),
+            ),
+        ];
+        rows.sort();
+        rows
+    }
+
+    #[test]
+    fn typed_captures_land_in_the_table_with_real_bounds() {
+        let path = root("typed-captures");
+        let catalog = super::super::Catalog::new(Folder::new(path.join("warehouse")).unwrap());
+        let pattern =
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\)";
+
+        // The standalone builder is the table's schema: `thread_id` inferred
+        // `int64` off its own sub-pattern, before a reader or a resource
+        // exists.
+        let mut schema = crate::io::schema_from_pattern(pattern).unwrap();
+        schema.assign_parquet_field_ids(1).unwrap();
+        let thread_id = schema.get_field_by_name("thread_id").unwrap();
+        assert_eq!(thread_id.data_type(), &crate::DataType::Int64);
+        let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
+        catalog.create_table("logs.threads", schema).unwrap();
+
+        let options = crate::io::LineRecordOptions::new(pattern).unwrap();
+        let day = named(
+            "t.log",
+            b"2024-02-01 10:00:00 [7] (info) fill\n2024-02-01 10:00:01 [42] (warn) partial\n",
+        );
+        let table = catalog
+            .append("logs.threads", day.into_arrow_lines(&options).unwrap())
+            .unwrap();
+
+        // The typed capture column carries real long bounds in the manifest,
+        // which is what makes it prunable like any stored column.
+        let files = table.data_files().unwrap();
+        assert_eq!(files.len(), 1);
+        let file = &files[0].0;
+        let bound = |bounds: &[(i32, Vec<u8>)]| {
+            bounds
+                .iter()
+                .find(|(id, _)| *id == thread_field_id)
+                .map(|(_, bytes)| bytes.clone())
+        };
+        assert_eq!(
+            bound(&file.lower_bounds).as_deref(),
+            Some(7_i64.to_le_bytes().as_slice())
+        );
+        assert_eq!(
+            bound(&file.upper_bounds).as_deref(),
+            Some(42_i64.to_le_bytes().as_slice())
+        );
+        assert_eq!(
+            table.plan(&[("thread_id", "100")]).unwrap().tasks.len(),
+            0,
+            "a thread outside the bounds skips the file"
+        );
+        assert_eq!(table.plan(&[("thread_id", "42")]).unwrap().tasks.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn parsed_lines_stream_into_a_partitioned_table_with_correct_metadata() {
+        let path = root("line-projection");
+        let logs = path.join("incoming");
+        std::fs::create_dir_all(&logs).unwrap();
+        // Two leaves for the first append - one of them gzip-coded, decoded
+        // by its own media type on the way into the same commit.
+        std::fs::write(
+            logs.join("a.log"),
+            b"restarted mid-entry\n\
+              2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n    at frame one\n\
+              2024-02-01 10:00:01.000_000 [ii] [beta] fill 100 @ 187.23\n",
+        )
+        .unwrap();
+        std::fs::write(
+            logs.join("b.log.gz"),
+            crate::gzip::dump(b"2024-02-01 11:00:00.000_000 [ii] [gamma] fill 200 @ 188.01\n")
+                .unwrap(),
+        )
+        .unwrap();
+
+        let options = options();
+        let schema = table_schema();
+        let unix_id = schema
+            .get_field_by_name("unix")
+            .unwrap()
+            .parquet_field_id()
+            .unwrap()
+            .unwrap();
+        let logger_id = schema
+            .get_field_by_name("logger")
+            .unwrap()
+            .parquet_field_id()
+            .unwrap()
+            .unwrap();
+
+        let warehouse = path.join("warehouse");
+        let catalog = super::super::Catalog::new(Folder::new(&warehouse).unwrap());
+        let created = catalog.create_table("logs.app", schema).unwrap();
+        let spec = created.metadata().default_spec().unwrap();
+        assert_eq!(spec.fields.len(), 1);
+        assert_eq!(spec.fields[0].name, "level");
+        assert_eq!(spec.fields[0].transform, Transform::Identity);
+
+        // First append: the whole folder parsed as one lazy stream - the
+        // reader is the parse, never a collected vector of batches.
+        let folder = crate::local::Folder::new(&logs).unwrap();
+        let table = catalog
+            .append("logs.app", folder.into_arrow_lines(&options).unwrap())
+            .unwrap();
+
+        // One snapshot, its summary counting exactly the parsed rows.
+        let snapshot = table.current_snapshot().expect("a snapshot");
+        assert_eq!(snapshot.operation(), "append");
+        assert_eq!(snapshot.sequence_number, Some(1));
+        assert_eq!(snapshot.summary_value("added-records"), Some("4"));
+        assert_eq!(snapshot.summary_value("added-data-files"), Some("3"));
+        assert_eq!(snapshot.summary_value("total-records"), Some("4"));
+        let first_snapshot = snapshot.snapshot_id;
+
+        // One data file per distinct `level` value - the preamble's null
+        // included - each manifest tuple agreeing with its Hive path, with
+        // real bounds statistics on the columns the encodings agree on.
+        let files = table.data_files().unwrap();
+        assert_eq!(files.len(), 3);
+        for (file, _) in &files {
+            let url = crate::Url::from_str(&file.file_path).unwrap();
+            let partitions = url.hive_partitions();
+            assert_eq!(partitions[0].0, "level");
+            match &file.partition[0] {
+                Value::Null => assert_eq!(partitions[0].1, "null"),
+                held => assert_eq!(held, &Value::from(partitions[0].1.as_str())),
+            }
+        }
+        let by_level = |level: Value| {
+            files
+                .iter()
+                .find(|(file, _)| file.partition[0] == level)
+                .map(|(file, _)| file)
+                .expect("a file for the partition")
+        };
+        let bound = |bounds: &[(i32, Vec<u8>)], id: i32| {
+            bounds
+                .iter()
+                .find(|(field, _)| *field == id)
+                .map(|(_, bytes)| bytes.clone())
+        };
+
+        let errors = by_level(Value::from("ee"));
+        assert_eq!(errors.record_count, 1);
+        assert_eq!(
+            bound(&errors.lower_bounds, unix_id).as_deref(),
+            Some(T0.to_le_bytes().as_slice()),
+            "the long bound is the Iceberg single-value encoding"
+        );
+        assert_eq!(
+            bound(&errors.upper_bounds, unix_id),
+            bound(&errors.lower_bounds, unix_id)
+        );
+        assert_eq!(
+            bound(&errors.lower_bounds, logger_id).as_deref(),
+            Some(b"alpha".as_slice()),
+            "the string bound is the UTF-8 single-value encoding"
+        );
+
+        let fills = by_level(Value::from("ii"));
+        assert_eq!(
+            fills.record_count, 2,
+            "both leaves' fills grouped into one partition file"
+        );
+        assert_eq!(
+            bound(&fills.lower_bounds, unix_id).as_deref(),
+            Some((T0 + 1_000_000_000).to_le_bytes().as_slice())
+        );
+        assert_eq!(
+            bound(&fills.upper_bounds, unix_id).as_deref(),
+            Some((T0 + HOUR).to_le_bytes().as_slice())
+        );
+
+        let preamble = by_level(Value::Null);
+        assert_eq!(preamble.record_count, 1);
+        assert!(
+            bound(&preamble.lower_bounds, unix_id).is_none(),
+            "an all-null column carries no bound"
+        );
+        assert!(
+            preamble
+                .null_value_counts
+                .iter()
+                .any(|(id, count)| *id == unix_id && *count == 1),
+            "it counts its null instead"
+        );
+
+        // Second append, second day: the metadata accumulates - a new
+        // snapshot chained to the first, one more manifest, one more version.
+        let day_two = named(
+            "c.log",
+            b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n",
+        );
+        let table = catalog
+            .append("logs.app", day_two.into_arrow_lines(&options).unwrap())
+            .unwrap();
+        assert_eq!(table.metadata().snapshots.len(), 2);
+        let snapshot = table.current_snapshot().expect("a snapshot");
+        assert_eq!(snapshot.parent_snapshot_id, Some(first_snapshot));
+        assert_eq!(snapshot.sequence_number, Some(2));
+        assert_eq!(snapshot.summary_value("added-records"), Some("1"));
+        assert_eq!(snapshot.summary_value("total-records"), Some("5"));
+        assert_eq!(
+            table.manifests().unwrap().len(),
+            2,
+            "one manifest per append"
+        );
+        assert_eq!(table.version(), 3, "create, then one version per commit");
+
+        // The rows read back identical to what the logs spelled, from the
+        // live handle and from a table reopened off the published metadata.
+        let mut expected = day_one();
+        expected.push((
+            Some(DAY_TWO_OPEN),
+            Some("ee".to_owned()),
+            Some("delta".to_owned()),
+            "second day".to_owned(),
+        ));
+        expected.sort();
+        assert_eq!(collect_lines(table.scan(None).unwrap()), expected);
+        let reopened = Table::open(Folder::new(warehouse.join("logs/app")).unwrap()).unwrap();
+        assert_eq!(collect_lines(reopened.scan(None).unwrap()), expected);
+
+        // Partition pruning answers from the metadata just written: a level
+        // filter skips every other partition's files, and a value outside
+        // every manifest's bounds skips the manifests themselves.
+        let plan = table.plan(&[("level", "ee")]).unwrap();
+        assert_eq!(plan.tasks.len(), 2, "one ee file per append");
+        assert_eq!(
+            plan.files_skipped(),
+            2,
+            "the null and ii files are never opened"
+        );
+        let cold = table.plan(&[("level", "ww")]).unwrap();
+        assert_eq!(cold.tasks.len(), 0);
+        assert_eq!(
+            cold.manifests_skipped(),
+            2,
+            "excluded on summary bounds alone"
+        );
+        assert_eq!(
+            collect_lines(table.scan_where(&[("level", "ii")], None).unwrap()).len(),
+            2
+        );
+
+        // Every retained snapshot stays a complete table: the first one still
+        // reads exactly the first day.
+        assert_eq!(
+            collect_lines(table.scan_at(first_snapshot, &[], None).unwrap()),
+            day_one()
+        );
+
+        let _ = std::fs::remove_dir_all(&path);
     }
 }
 

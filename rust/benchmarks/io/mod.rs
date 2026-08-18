@@ -1,3 +1,4 @@
+pub(crate) mod lines;
 pub(crate) mod pushdown;
 pub(crate) mod record;
 

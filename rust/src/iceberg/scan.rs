@@ -147,8 +147,7 @@ impl Filter {
         let text_array: ArrayRef = Arc::new(StringArray::from(vec![text]));
         let scalar = arrow_cast::cast(&text_array, nullable.to_arrow()?.data_type())
             .map_err(Error::Arrow)?;
-        let value = crate::arrow::ArrowScalar::from_parts(nullable, Arc::clone(&scalar))
-            .and_then(|scalar| scalar.to_value())
+        let value = crate::arrow::scalar_value(&nullable, scalar.as_ref())
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
 
         Ok(Self {
@@ -920,9 +919,9 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Resu
         batch.schema().fields().iter().map(Arc::clone).collect();
     let mut columns = batch.columns().to_vec();
     for (field, value) in missing {
-        let scalar = crate::arrow::ArrowScalar::from_value(field.clone(), value.clone())
+        let scalar = crate::arrow::scalar_array(field, value)
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
-        columns.push(repeat(&scalar.to_array(), batch.num_rows())?);
+        columns.push(repeat(&scalar, batch.num_rows())?);
         fields.push(field.to_arrow_ref()?);
     }
     let schema =

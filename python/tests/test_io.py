@@ -312,6 +312,190 @@ class TestReadLines:
         ]
 
 
+LINE_PATTERN = (
+    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*"
+    r" \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]"
+)
+
+
+class TestReadArrowLines:
+    """Matched line records project into a lazy pyarrow.RecordBatchReader."""
+
+    LOG = (
+        "preamble carried from rotation\n"
+        "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
+        "  at frame one\n"
+        "2024-02-01 10:00:01.500 [ii] [beta] fill 100 @ 187.23\n"
+    )
+
+    def test_records_arrive_as_typed_rows(self, tmp_path: pathlib.Path) -> None:
+        import pyarrow as pa
+
+        target = tmp_path / "app.log"
+        target.write_text(self.LOG)
+        reader = IOBase(target).read_arrow_lines(LINE_PATTERN)
+        assert isinstance(reader, pa.RecordBatchReader)
+        table = reader.read_all()
+        assert table.column_names == [
+            "url",
+            "rownum",
+            "date",
+            "time",
+            "unix",
+            "hash",
+            "header",
+            "message",
+            "offset",
+            "lines",
+            "level",
+            "logger",
+        ]
+        rows = table.to_pydict()
+        assert rows["rownum"] == [1, 2, 3]
+        assert rows["message"] == [
+            "preamble carried from rotation",
+            "boom\n  at frame one",
+            "fill 100 @ 187.23",
+        ]
+        assert rows["level"] == [None, "ee", "ii"]
+        # The preamble has no header, so its timestamp columns are null; the
+        # matched rows carry naive nanoseconds since the epoch.
+        assert rows["unix"] == [None, 1_706_781_600_000_000_000, 1_706_781_601_500_000_000]
+        assert table.schema.field("unix").type == pa.int64()
+        assert table.schema.field("time").type == pa.time64("us")
+
+    def test_a_gzip_log_reads_identically(self, tmp_path: pathlib.Path) -> None:
+        import gzip as stdlib_gzip
+
+        plain = tmp_path / "app.log"
+        plain.write_text(self.LOG)
+        coded = tmp_path / "app.log.gz"
+        coded.write_bytes(stdlib_gzip.compress(self.LOG.encode()))
+
+        from_plain = IOBase(plain).read_arrow_lines(LINE_PATTERN).read_all()
+        from_coded = IOBase(coded).read_arrow_lines(LINE_PATTERN).read_all()
+        # Identical apart from the url column that names each resource.
+        assert from_coded.drop_columns(["url"]) == from_plain.drop_columns(["url"])
+
+    def test_a_folder_streams_leaves_with_custom_fields(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        logs = tmp_path / "logs"
+        logs.mkdir()
+        (logs / "a.log").write_text("2024-02-01 10:00:00 [ee] [a] one\n")
+        (logs / "b.log").write_text("2024-02-01 11:00:00 [ii] [b] two\n")
+
+        table = (
+            IOBase(logs)
+            .read_arrow_lines(
+                LINE_PATTERN,
+                batch_size=16,
+                custom_fields={"venue": "XNAS", "session": 7},
+            )
+            .read_all()
+        )
+        rows = table.to_pydict()
+        # Leaves read name-sorted, each restarting rownum at 1.
+        assert rows["rownum"] == [1, 1]
+        assert rows["message"] == ["one", "two"]
+        assert rows["venue"] == ["XNAS", "XNAS"]
+        assert rows["session"] == [7, 7]
+        assert [url.rsplit("/", 1)[-1] for url in rows["url"]] == ["a.log", "b.log"]
+
+    def test_absence_reads_as_zero_rows_with_the_schema(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        reader = IOBase(tmp_path / "missing.log").read_arrow_lines(LINE_PATTERN)
+        table = reader.read_all()
+        assert table.num_rows == 0
+        assert table.column_names[:2] == ["url", "rownum"]
+
+    def test_named_captures_infer_and_declare_typed_columns(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import decimal
+
+        import pyarrow as pa
+
+        target = tmp_path / "typed.log"
+        target.write_text("2024-02-01 10:00:00 [42] (info) qty=1.50\n")
+        pattern = (
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
+            r" \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>[0-9.]+)"
+        )
+        # `thread_id` types itself off its `\d+` sub-pattern; `qty` is
+        # declared - a type expression, exactly as everywhere else.
+        table = (
+            IOBase(target)
+            .read_arrow_lines(pattern, capture_types={"qty": "decimal(9, 2)"})
+            .read_all()
+        )
+        assert table.schema.field("thread_id").type == pa.int64()
+        assert table.schema.field("log_level").type == pa.string()
+        assert table.schema.field("qty").type == pa.decimal128(9, 2)
+        rows = table.to_pydict()
+        assert rows["thread_id"] == [42]
+        assert rows["log_level"] == ["info"]
+        assert rows["qty"] == [decimal.Decimal("1.50")]
+
+    def test_the_schema_builder_answers_without_a_reader(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from yggdryl import schema_from_pattern
+
+        pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\]"
+        schema = schema_from_pattern(pattern, custom_fields={"venue": "XNAS"})
+        assert schema.name == "row"
+        assert str(schema.data_type["thread_id"].data_type) == "int64"
+        assert str(schema.data_type["venue"].data_type) == "utf8"
+
+        # The reader emits exactly the built schema, resource or none.
+        reader = IOBase(tmp_path / "missing.log").read_arrow_lines(
+            pattern, custom_fields={"venue": "XNAS"}
+        )
+        assert [field.name for field in reader.schema] == [
+            child.name for child in schema.data_type
+        ]
+
+    def test_an_in_memory_handle_parses_like_a_file(self) -> None:
+        from yggdryl import IOBase as Handle
+
+        handle = Handle.from_bytes(self.LOG.encode())
+        table = handle.read_arrow_lines(LINE_PATTERN).read_all()
+        assert table.num_rows == 3
+        assert table.to_pydict()["level"] == [None, "ee", "ii"]
+
+    def test_any_mapping_shape_names_custom_columns(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import types
+
+        target = tmp_path / "app.log"
+        target.write_text("2024-02-01 10:00:00 [ee] [a] one\n")
+        table = (
+            IOBase(target)
+            .read_arrow_lines(
+                LINE_PATTERN,
+                custom_fields=types.MappingProxyType({"venue": "XNAS"}),
+            )
+            .read_all()
+        )
+        assert table.to_pydict()["venue"] == ["XNAS"]
+
+    def test_an_unspellable_custom_column_is_rejected_up_front(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import datetime
+
+        # A duration column has no Iceberg spelling, so the projection
+        # refuses it before any resource is read - never at append time.
+        with pytest.raises(ValueError, match="Iceberg can express"):
+            IOBase(tmp_path / "app.log").read_arrow_lines(
+                LINE_PATTERN,
+                custom_fields={"age": datetime.timedelta(seconds=1)},
+            )
+
+
 class TestScans:
     """Lazy scans over any holder: native pushdown when possible."""
 

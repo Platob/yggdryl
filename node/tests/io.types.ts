@@ -1,7 +1,11 @@
 import {
+  DataType,
   IOBase,
   MediaType,
   Url,
+  schemaFromPattern,
+  type BatchReader,
+  type Field,
   type LocationInput,
   type PartitionEntry,
   type PartitionFilters,
@@ -87,5 +91,27 @@ void head
 void patched
 void appended
 void copied
+const lineBatches: BatchReader = handle.readArrowLines('^\\d{4}')
+const lineBatchesTuned: BatchReader = handle.readArrowLines('^\\d{4}', {
+  batchSize: 512,
+  customFields: { venue: 'XNAS', session: 7 },
+  timestampCapture: null,
+})
+const lineBatchesFromMap: BatchReader = handle.readArrowLines('^\\d{4}', {
+  customFields: new Map([['venue', 'XNAS']]),
+})
+const lineBatchesTyped: BatchReader = handle.readArrowLines('^(?<qty>\\d+)', {
+  captureTypes: new Map([['qty', new DataType('int64')]]),
+})
+const lineSchema: Field = schemaFromPattern('^(?<qty>\\d+)', {
+  customFields: { venue: 'XNAS' },
+  captureTypes: { qty: 'decimal(9, 2)' },
+})
+
 void asPath
 void printed
+void lineBatches
+void lineBatchesTuned
+void lineBatchesFromMap
+void lineBatchesTyped
+void lineSchema

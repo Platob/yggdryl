@@ -203,6 +203,16 @@ class MediaType:
     def __copy__(self) -> MediaType: ...
     def __deepcopy__(self, memo: Any) -> MediaType: ...
 
+def schema_from_pattern(
+    pattern: str,
+    *,
+    custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+    capture_types: (
+        Mapping[str, DataType | str | Any]
+        | Iterable[tuple[str, DataType | str | Any]]
+        | None
+    ) = None,
+) -> Field: ...
 def _codec_infer(data: bytes | bytearray | memoryview) -> str: ...
 def _codec_infer_path(value: str) -> str: ...
 def _codec_infer_text(data: str) -> str: ...
@@ -946,6 +956,19 @@ class IOBase:
     def copy_into(self, target: IOBase) -> int: ...
     def record_options(self) -> RecordOptions: ...
     def read_lines(self, pattern: str | None = None) -> LineIterator: ...
+    def read_arrow_lines(
+        self,
+        pattern: str,
+        *,
+        batch_size: int | None = None,
+        custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        capture_types: (
+            Mapping[str, DataType | str | Any]
+            | Iterable[tuple[str, DataType | str | Any]]
+            | None
+        ) = None,
+        timestamp_capture: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
     def read_arrow_field(
         self,
         *,

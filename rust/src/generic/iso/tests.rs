@@ -59,6 +59,82 @@ fn times_print_the_fraction_at_the_unit_width() {
 }
 
 #[test]
+fn fraction_separators_group_digits_without_changing_the_count() {
+    // `_` groups digits; the count and the unit are exactly the ungrouped ones.
+    assert_eq!(
+        parse_time("10:00:00.000_000").unwrap(),
+        parse_time("10:00:00.000000").unwrap()
+    );
+    assert_eq!(
+        parse_time("10:00:00.000_001").unwrap(),
+        (36_000_000_001, TimeUnit::Microsecond)
+    );
+    assert_eq!(
+        parse_time("00:00:00.1_2_3").unwrap(),
+        (123, TimeUnit::Millisecond)
+    );
+    assert_eq!(
+        parse_time("00:00:00.123_456_789").unwrap(),
+        (123_456_789, TimeUnit::Nanosecond)
+    );
+    assert_eq!(
+        parse_datetime("2024-02-01 10:00:00.000_000").unwrap(),
+        parse_datetime("2024-02-01T10:00:00.000000").unwrap()
+    );
+    let (count, unit, zone) = parse_timestamp("2024-02-01T10:00:00.500_000Z").unwrap();
+    assert_eq!(
+        (count, unit),
+        (1_706_781_600_500_000, TimeUnit::Microsecond)
+    );
+    assert!(zone.is_utc());
+
+    // The grouped digits still count toward the 1-to-9 budget.
+    assert!(parse_time("00:00:00.000_000_000_1").is_err());
+}
+
+#[test]
+fn malformed_fraction_separators_are_rejected_with_their_byte_position() {
+    let position = |text: &str| match parse_time(text).unwrap_err() {
+        Error::Parse {
+            target, position, ..
+        } => {
+            assert_eq!(target, "time");
+            position
+        }
+        other => panic!("expected a parse error, got {other}"),
+    };
+
+    // Leading, trailing, doubled, and lone separators each name the byte of
+    // the `_` that breaks the digit-grouping rule.
+    assert_eq!(position("00:00:00._5"), 9);
+    assert_eq!(position("00:00:00.5_"), 10);
+    // In a doubled pair the first `_` is already not between digits.
+    assert_eq!(position("00:00:00.5__5"), 10);
+    assert_eq!(position("00:00:00._"), 9);
+    assert_eq!(position("00:00:00.1_2_"), 12);
+
+    // The same clock feeds the datetime and timestamp parsers.
+    assert!(parse_datetime("2024-02-01T10:00:00._5").is_err());
+    assert!(parse_timestamp("2024-02-01T10:00:00.5_Z").is_err());
+}
+
+#[cfg(feature = "arrow")]
+#[test]
+fn datetime_prefixes_report_where_the_reading_ends() {
+    let (count, unit, end) = parse_datetime_prefix("2024-02-01 10:00:00.000_000 [INFO]").unwrap();
+    assert_eq!(
+        (count, unit),
+        parse_datetime("2024-02-01T10:00:00.000000").unwrap()
+    );
+    assert_eq!(end, 27);
+    assert_eq!(unit, TimeUnit::Microsecond);
+
+    // The prefix parser is as strict as the whole-text one about the reading
+    // itself; only trailing text is its caller's business.
+    assert!(parse_datetime_prefix("2024-02-30 10:00:00 x").is_err());
+}
+
+#[test]
 fn naive_datetimes_split_the_epoch_count_exactly() {
     assert_eq!(
         format_datetime(1_700_000_000, TimeUnit::Second).as_deref(),
