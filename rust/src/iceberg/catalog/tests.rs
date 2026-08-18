@@ -338,3 +338,137 @@ fn listing_sees_what_was_created_and_a_stray_folder_is_a_namespace() {
         Vec::<String>::new()
     );
 }
+
+#[test]
+fn the_views_are_lazy_and_answer_from_storage_at_call_time() {
+    let (path, catalog) = warehouse("lazy-views");
+
+    // Constructing every view in the chain touches nothing at all.
+    let namespaces = catalog.namespaces();
+    assert!(!path.exists());
+    assert_eq!(namespaces.names().unwrap(), Vec::<String>::new());
+    assert_eq!(namespaces.len().unwrap(), 0);
+    assert!(namespaces.is_empty().unwrap());
+    assert!(!namespaces.contains("nyc").unwrap());
+    assert!(!path.exists());
+
+    // A view constructed before a write observes the write, because every
+    // answer comes from storage when the question is asked.
+    catalog.create_table("nyc.taxis", taxi_schema()).unwrap();
+    assert_eq!(namespaces.names().unwrap(), ["nyc"]);
+    assert!(namespaces.contains("nyc").unwrap());
+    let nyc = namespaces.get("nyc").unwrap();
+    assert_eq!(nyc.tables().names().unwrap(), ["taxis"]);
+
+    // Two views over the same catalog observe each other's writes.
+    let tables = nyc.tables();
+    let second = catalog.namespaces().get("nyc").unwrap().tables();
+    second.create("cabs", taxi_schema()).unwrap();
+    assert_eq!(tables.names().unwrap(), ["cabs", "taxis"]);
+    assert_eq!(tables.len().unwrap(), 2);
+    assert!(tables.contains("cabs").unwrap());
+}
+
+#[test]
+fn access_chains_through_the_views_and_a_missing_name_is_named() {
+    let (_path, catalog) = warehouse("chained-views");
+    catalog
+        .create_table("nyc.yellow.taxis", taxi_schema())
+        .unwrap();
+
+    // The cascade: a nested namespace is reached through its parent's view.
+    let nyc = catalog.namespaces().get("nyc").unwrap();
+    let yellow = nyc.namespaces().get("yellow").unwrap();
+    assert_eq!(yellow.name(), "nyc.yellow");
+    let table = yellow.tables().get("taxis").unwrap();
+    assert!(table.current_snapshot().is_none());
+
+    // A missing table is a typed error naming the table.
+    let message = yellow.tables().get("cabs").unwrap_err().to_string();
+    assert!(
+        message.contains("expected a table at \"nyc.yellow.cabs\""),
+        "{message}"
+    );
+
+    // A missing namespace is a typed error naming the namespace, and a
+    // table's name is not a namespace.
+    let message = catalog.namespaces().get("ops").unwrap_err().to_string();
+    assert!(
+        message.contains("expected a namespace at \"ops\""),
+        "{message}"
+    );
+    assert!(!nyc.namespaces().contains("taxis").unwrap());
+    let message = nyc
+        .namespaces()
+        .get("yellow.taxis")
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("namespace"), "{message}");
+}
+
+#[test]
+fn namespaces_create_and_open_or_create_make_the_folder() {
+    let (path, catalog) = warehouse("namespace-create");
+
+    let sales = catalog.namespaces().create("sales").unwrap();
+    assert_eq!(sales.name(), "sales");
+    assert!(path.join("sales").is_dir());
+    assert!(catalog.namespaces().contains("sales").unwrap());
+    assert_eq!(catalog.namespaces().names().unwrap(), ["sales"]);
+
+    // Creating what exists is refused by name; opening it is not.
+    let message = catalog
+        .namespaces()
+        .create("sales")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains("expected no namespace at \"sales\""),
+        "{message}"
+    );
+    let again = catalog.namespaces().open_or_create("sales").unwrap();
+    assert_eq!(again.name(), "sales");
+
+    // A table's name is refused as a namespace in both spellings.
+    catalog.create_table("sales.orders", taxi_schema()).unwrap();
+    let message = sales
+        .namespaces()
+        .open_or_create("orders")
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("got a table"), "{message}");
+}
+
+#[test]
+fn table_writes_through_the_views_create_on_first_write() {
+    let (_path, catalog) = warehouse("view-writes");
+
+    let sales = catalog.namespaces().open_or_create("sales").unwrap();
+    let batch = taxis(&[1, 2], &[Some("XNAS"), None]);
+    let table = sales
+        .tables()
+        .append(
+            "orders",
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+        )
+        .unwrap();
+    assert_eq!(collect(table.scan(None).unwrap()).len(), 2);
+
+    // The overwrite convenience replaces through the same view.
+    let batch = taxis(&[9], &[None]);
+    let table = sales
+        .tables()
+        .overwrite(
+            "orders",
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+        )
+        .unwrap();
+    assert_eq!(collect(table.scan(None).unwrap()), [(9, None)]);
+
+    // The flat dotted-name spelling is the same implementation, so both
+    // spellings observe the same table.
+    assert_eq!(
+        collect(catalog.table("sales.orders").unwrap().scan(None).unwrap()),
+        [(9, None)]
+    );
+}

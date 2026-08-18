@@ -340,3 +340,81 @@ iceberg_reread: Field = iceberg.schema_from_json("row", iceberg_document)
 
 assert iceberg_document
 assert iceberg_reread
+
+# The flattened record-option keywords type-check as real named parameters.
+record_handle.write_arrow(
+    pa.table({"id": [1]}),
+    merge_by_names=["id"],
+    select_by_names=["id"],
+    batch_size=1024,
+    safe=False,
+    root_name="record",
+)
+record_handle.append_arrow(pa.table({"id": [1]}), filter_partitions={"venue": "XNAS"})
+kwargs_reader: pa.RecordBatchReader = record_handle.read_arrow(
+    select_by_names=["id"], batch_size=1024
+)
+kwargs_root: Field = record_handle.read_arrow_field(root_name="record")
+record_handle.write_arrow_batch_reader(
+    pa.table({"id": [1]}),
+    options=record_options,
+    compression="zstd(3)",
+    max_row_group_size=1024,
+    key_value_metadata={"writer": "typing"},
+)
+
+assert kwargs_reader
+assert kwargs_root
+
+# Iceberg keeps its own options type, flattened the same way.
+iceberg_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
+    commit_retries=2, target_file_size=1024, data_format="avro"
+)
+iceberg_retries: int = iceberg_options.commit_retries
+iceberg_format: str = iceberg_options.data_format
+iceberg_options.data_format = "parquet"
+iceberg_table.append(pa.table({"id": [1]}), options=iceberg_options, commit_retries=1)
+iceberg_table.overwrite(pa.table({"id": [1]}), data_format="avro")
+iceberg_table.set_options(target_file_size=2048)
+iceberg_resolved: iceberg.IcebergOptions = iceberg_table.options()
+iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
+    options=iceberg_options, read_parallelism=2
+)
+
+assert iceberg_retries >= 0
+assert iceberg_format
+assert iceberg_resolved
+assert iceberg_options_scan
+
+# The catalog chains through its views: namespaces, then tables, then a table.
+catalog: iceberg.Catalog = iceberg.Catalog(Path("warehouse"))
+catalog_namespaces: iceberg.Namespaces = catalog.namespaces
+namespace: iceberg.Namespace = catalog_namespaces["sales"]
+namespace_names: list[str] = list(catalog_namespaces)
+namespace_count: int = len(catalog_namespaces)
+namespace_known: bool = "sales" in catalog_namespaces
+nested: iceberg.Namespace = namespace.namespaces.open_or_create("eu")
+namespace_tables: iceberg.Tables = namespace.tables
+chained_table: iceberg.Table = catalog.namespaces["sales"].tables["orders"]
+table_names: list[str] = list(namespace_tables)
+table_known: bool = "orders" in namespace_tables
+created_table: iceberg.Table = namespace_tables.create("fills", iceberg_schema)
+opened_table: iceberg.Table = namespace_tables.open_or_create(
+    "fills", iceberg_schema
+)
+appended_table: iceberg.Table = namespace_tables.append(
+    "orders", pa.table({"id": [1]}), data_format="avro"
+)
+overwritten_table: iceberg.Table = namespace_tables.overwrite(
+    "orders", pa.table({"id": [1]}), options=iceberg_options
+)
+
+assert namespace.name
+assert nested.name
+assert namespace_names == [] or namespace_names
+assert namespace_count >= 0
+assert namespace_known or not namespace_known
+assert chained_table
+assert table_names == [] or table_names
+assert table_known or not table_known
+assert created_table and opened_table and appended_table and overwritten_table

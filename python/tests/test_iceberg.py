@@ -11,6 +11,7 @@ from yggdryl import DataType, Field, IOBase
 from yggdryl.iceberg import (
     Catalog,
     Compaction,
+    IcebergOptions,
     PartitionSpec,
     Table,
     assign_field_ids,
@@ -352,17 +353,26 @@ class TestScans:
 class TestCatalog:
     """A catalog is a warehouse folder, and a dotted name is nested folders."""
 
-    def test_a_catalog_is_a_map_of_namespaces_of_tables(
+    def test_the_views_chain_a_catalog_to_namespaces_to_tables(
         self, tmp_path: pathlib.Path
     ) -> None:
         import pyarrow as pa
 
         catalog = Catalog(tmp_path / "warehouse")
-        analytics = catalog["analytics"]
-        assert analytics.name == "analytics"
 
-        # Assigning a schema gets or creates; assigning again is the same
-        # table, not a second one.
+        # The views are lazy: constructing them touches nothing, and an empty
+        # warehouse answers empty rather than failing.
+        assert len(catalog.namespaces) == 0
+        assert "analytics" not in catalog.namespaces
+        assert not (tmp_path / "warehouse").exists()
+
+        analytics = catalog.namespaces.open_or_create("analytics")
+        assert analytics.name == "analytics"
+        assert "analytics" in catalog.namespaces
+        assert list(catalog.namespaces) == ["analytics"]
+        assert len(catalog.namespaces) == 1
+
+        # open_or_create gets or creates; doing it again is the same table.
         schema = Field(
             "row",
             DataType.from_fields(
@@ -370,27 +380,49 @@ class TestCatalog:
             ),
             nullable=False,
         )
-        analytics["trades"] = schema
-        analytics["trades"] = schema
-        assert "trades" in analytics
-        assert list(analytics) == ["trades"]
-        assert len(analytics) == 1
+        first = analytics.tables.open_or_create("trades", schema)
+        same = analytics.tables.open_or_create("trades", schema)
+        assert same.table_uuid == first.table_uuid
+        assert "trades" in analytics.tables
+        assert list(analytics.tables) == ["trades"]
+        assert len(analytics.tables) == 1
 
         # Indexing opens the table; a missing one is a KeyError, as a map
-        # spells absence.
-        table = catalog["analytics"]["trades"]
+        # spells absence - the error names what is missing.
+        table = catalog.namespaces["analytics"].tables["trades"]
         table.append(pa.table({"id": [1, 2], "venue": ["XNAS", None]}))
-        assert catalog["analytics"]["trades"].scan().read_all().num_rows == 2
-        with pytest.raises(KeyError):
-            catalog["analytics"]["absent"]
+        chained = catalog.namespaces["analytics"].tables["trades"]
+        assert chained.scan().read_all().num_rows == 2
+        with pytest.raises(KeyError, match="absent"):
+            catalog.namespaces["analytics"].tables["absent"]
+        with pytest.raises(KeyError, match="missing"):
+            catalog.namespaces["missing"]
 
-        # Assigning rows replaces the table's rows - and creates a table the
-        # namespace never had, from the rows' own schema.
-        analytics["quotes"] = pa.table({"symbol": ["AAPL"], "price": [12.5]})
-        assert sorted(analytics) == ["quotes", "trades"]
-        assert "analytics" in catalog
-        assert [namespace.name for namespace in catalog] == ["analytics"]
-        assert len(catalog) == 1
+        # The write conveniences on the view create on first write, from the
+        # rows' own schema, and two views observe each other's writes.
+        tables = analytics.tables
+        tables.overwrite("quotes", pa.table({"symbol": ["AAPL"], "price": [12.5]}))
+        assert sorted(analytics.tables) == ["quotes", "trades"]
+        assert sorted(tables) == ["quotes", "trades"]
+
+    def test_namespaces_cascade_and_create_is_strict(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+
+        nyc = catalog.namespaces.create("nyc")
+        yellow = nyc.namespaces.create("yellow")
+        assert yellow.name == "nyc.yellow"
+        assert list(nyc.namespaces) == ["yellow"]
+
+        # Creating what exists is refused by name; a table is not a namespace.
+        with pytest.raises(ValueError, match="expected no namespace"):
+            catalog.namespaces.create("nyc")
+        yellow.tables.create("taxis", SCHEMA)
+        assert "taxis" not in yellow.namespaces
+        assert catalog.namespaces["nyc"].namespaces["yellow"].tables[
+            "taxis"
+        ].scan().read_all().num_rows == 0
 
     def test_a_pyarrow_append_creates_a_partitioned_table_on_first_write(
         self, tmp_path: pathlib.Path
@@ -775,3 +807,108 @@ class TestPromotions:
             can_promote("decimal128(10, 2)", "decimal128(10, 3)")
         with pytest.raises(ValueError, match="promotion"):
             can_promote(pa.int32(), pa.string())
+
+
+class TestIcebergOptions:
+    """Iceberg keeps its own options type, with the flattened-kwargs rule."""
+
+    def test_the_options_value_records_only_what_was_set(self) -> None:
+        options = IcebergOptions()
+        assert options.commit_retries == 4
+        assert options.target_file_size == 512 * 1024 * 1024
+        assert options.data_format == "PARQUET"
+
+        options = IcebergOptions(commit_retries=2, data_format="avro")
+        assert options.commit_retries == 2
+        assert options.data_format == "AVRO"
+        options.target_file_size = 1024
+        assert options.target_file_size == 1024
+        with pytest.raises(TypeError, match="commit_retres"):
+            IcebergOptions(commit_retres=2)
+
+    def test_append_takes_the_option_fields_as_keywords(
+        self, table: Table
+    ) -> None:
+        table.append(_rows(), target_file_size=1024, commit_retries=1)
+        assert table.scan().read_all().num_rows == 3
+
+    def test_a_keyword_overrides_the_same_field_on_the_options(
+        self, table: Table
+    ) -> None:
+        options = IcebergOptions(data_format="parquet")
+        table.append(_rows(), options=options, data_format="avro")
+        # The keyword won: the data files are Avro, and the manifest says so.
+        formats = {file.file_format for file, _ in table.data_files()}
+        assert formats == {"AVRO"}
+        # The caller's options object was never touched.
+        assert options.data_format == "PARQUET"
+
+    def test_an_avro_append_scans_back_and_mixes_with_parquet(
+        self, table: Table
+    ) -> None:
+        table.append(_rows(), data_format="avro")
+        table.append(_rows(10))
+        formats = {file.file_format for file, _ in table.data_files()}
+        assert formats == {"AVRO", "PARQUET"}
+        got = table.scan().read_all().sort_by("id")
+        assert got.column("id").to_pylist() == [1, 2, 3, 10, 11, 12]
+
+    def test_the_record_options_type_is_refused_by_name(
+        self, table: Table
+    ) -> None:
+        from yggdryl import RecordOptions
+
+        with pytest.raises(TypeError, match="expected IcebergOptions"):
+            table.append(_rows(), options=RecordOptions("application/vnd.apache.parquet"))
+
+    def test_an_unknown_keyword_is_a_typeerror_naming_it(
+        self, table: Table
+    ) -> None:
+        with pytest.raises(
+            TypeError, match=r"append\(\) got an unexpected keyword argument"
+        ):
+            table.append(_rows(), data_fromat="avro")
+        with pytest.raises(TypeError, match="parallelism"):
+            table.scan(parallelism=2)
+
+    def test_set_options_stores_a_handle_wide_override(
+        self, table: Table
+    ) -> None:
+        table.set_options(data_format="avro")
+        table.append(_rows())
+        formats = {file.file_format for file, _ in table.data_files()}
+        assert formats == {"AVRO"}
+        assert table.options().data_format == "AVRO"
+        # A per-call keyword still wins for its one call, without disturbing
+        # the stored override.
+        table.append(_rows(10), data_format="parquet")
+        assert sorted(
+            {file.file_format for file, _ in table.data_files()}
+        ) == ["AVRO", "PARQUET"]
+        assert table.options().data_format == "AVRO"
+
+    def test_the_property_layer_sets_the_format_per_table(
+        self, table: Table
+    ) -> None:
+        table.update_properties({"write.format.default": "avro"})
+        table.append(_rows())
+        formats = {file.file_format for file, _ in table.data_files()}
+        assert formats == {"AVRO"}
+        # An unencodable format is a typed error naming the key, up front.
+        table.update_properties({"write.format.default": "orc"})
+        with pytest.raises(ValueError, match="write.format.default"):
+            table.append(_rows(10))
+
+    def test_the_catalog_write_paths_take_the_same_keywords(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+        table = catalog.append("sales.orders", _rows(), data_format="avro")
+        formats = {file.file_format for file, _ in table.data_files()}
+        assert formats == {"AVRO"}
+
+        tables = catalog.namespaces["sales"].tables
+        table = tables.append("orders", _rows(10), target_file_size=1024)
+        assert table.scan().read_all().num_rows == 6
+        table = tables.overwrite("orders", _rows(), data_format="avro")
+        assert table.scan().read_all().num_rows == 3

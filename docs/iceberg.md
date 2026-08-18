@@ -1442,14 +1442,17 @@ delete or move primitive, and a catalog must not emulate either by leaving a hal
 behind; and no catalog *service* client, because the module holds no network code. A REST catalog
 is future work behind an HTTP storage backend.
 
-### The map-like spelling
+### The object model: namespaces of tables
 
-A catalog is namespaces of tables, so it also reads as the mapping it is. `namespace(name)` hands
-back a lazy view - it exists whether or not the folder does, exactly as a handle describes a
-location without proof - and in Python the brackets do the rest: `catalog["ns"]["table"]` opens a
-table, a missing one is a `KeyError`, and *assigning* gets-or-creates. A schema-like value opens
-the table, creating it with that schema when absent; anything rows-like replaces the table's rows,
-creating it from the rows' own schema on first write.
+A catalog is namespaces of tables, and each collection is its own type: `catalog.namespaces` is a
+lazy view of the namespaces, indexing it answers a `Namespace`, and `namespace.tables` is the same
+shape one level down, indexing to a `Table`. A nested namespace is reached through its parent's
+`namespaces` view, so access chains - `catalog.namespaces["sales"].tables["orders"]` - and every
+collection operation has exactly one home. The views are cheap handles, not caches: constructing
+one performs no I/O, membership and iteration consult storage at the moment they are asked, two
+views over the same catalog observe each other's writes, and a missing name is a `KeyError` naming
+it. The dotted-name conveniences on the catalog itself - `create_table("sales.orders", ...)` and
+friends - are one-line delegates over the same views.
 
 === "Rust"
 
@@ -1457,37 +1460,44 @@ creating it from the rows' own schema on first write.
     use yggdryl::iceberg::Catalog;
     use yggdryl::local::Folder;
 
-    let catalog = Catalog::new(Folder::new(std::env::temp_dir().join("warehouse"))?);
-    let analytics = catalog.namespace("analytics");
+    let root = std::env::temp_dir().join("yggdryl-doc-views");
+    let _ = std::fs::remove_dir_all(&root);
+    let catalog = Catalog::new(Folder::new(&root)?);
 
-    // The view resolves `analytics.trades` at the moment each call runs.
-    assert!(!analytics.has_table("trades")?);
-    assert_eq!(analytics.list_tables()?.len(), 0);
+    // Constructing the views touches nothing; every answer is storage's.
+    let namespaces = catalog.namespaces();
+    assert_eq!(namespaces.names()?.len(), 0);
+    let sales = namespaces.open_or_create("sales")?;
+    assert!(!sales.tables().contains("orders")?);
+    assert!(namespaces.contains("sales")?);
+
+    let _ = std::fs::remove_dir_all(&root);
     ```
 
 === "Python"
 
     ```python
+    import pathlib
+    import tempfile
+
     import pyarrow as pa
 
-    from yggdryl import DataType, Field
     from yggdryl.iceberg import Catalog
 
-    catalog = Catalog("warehouse")
-    analytics = catalog["analytics"]
+    catalog = Catalog(pathlib.Path(tempfile.mkdtemp()) / "warehouse")
 
-    # Assigning a schema gets or creates; assigning again is the same table.
-    analytics["trades"] = Field(
-        "row",
-        DataType.from_fields([Field("id", "int64", nullable=False)]),
-        nullable=False,
-    )
-    # Assigning rows replaces them, creating the table on first write.
-    analytics["quotes"] = pa.table({"symbol": ["AAPL"], "price": [12.5]})
+    # The views are lazy: an empty warehouse answers empty, touching nothing.
+    assert len(catalog.namespaces) == 0
+    sales = catalog.namespaces.open_or_create("sales")
 
-    assert "trades" in analytics
-    assert sorted(analytics) == ["quotes", "trades"]
-    table = catalog["analytics"]["trades"]
+    # The write conveniences create a table on first write, from the rows'
+    # own schema; indexing chains a catalog to a namespace to a table.
+    sales.tables.append("orders", pa.table({"id": [1, 2], "qty": [5.0, 2.5]}))
+    assert "orders" in sales.tables
+    assert list(sales.tables) == ["orders"]
+
+    table = catalog.namespaces["sales"].tables["orders"]
+    assert table.scan().read_all().num_rows == 2
     ```
 
 === "JavaScript"
@@ -1654,8 +1664,9 @@ the same way: an explicit option set on the handle, then the table property of t
 (falling back to the schema root's `iceberg:`-prefixed protocol property), then the documented
 default. The keys are Iceberg's own spellings - `commit.retry.num-retries`,
 `commit.retry.min-wait-ms`, `commit.retry.max-wait-ms`, `write.target-file-size-bytes`,
-`read.parallelism`, `read.parallel.min-files`, `read.parallel.min-file-size-bytes` - so a property
-another engine wrote configures this reader too:
+`write.format.default`, `read.parallelism`, `read.parallel.min-files`,
+`read.parallel.min-file-size-bytes` - so a property another engine wrote configures this reader
+too:
 
 === "Rust"
 
@@ -1703,6 +1714,98 @@ a silent default - and because an explicit option never reads the property it sh
 stored value can be shadowed first and repaired after, through the same handle. The resolvers are
 also scoped to what each operation consults: a commit resolves only the three `commit.retry.*`
 keys, so an unparseable `read.*` property cannot stop the metadata-only commit that fixes it.
+
+In Python, `IcebergOptions` is the same value, and every Iceberg method that takes it also takes
+each field as its own keyword - `table.append(rows, target_file_size=..., commit_retries=...)` -
+resolved by one rule: the `options=` argument (or the handle's stored override) is the base, an
+explicit keyword wins over the same field on it, the passed object is never mutated, and a
+misspelled keyword is a `TypeError` naming it. The generic `RecordOptions` is never accepted here:
+Iceberg is a table format over the record encodings, and its configuration is its own.
+
+## The data file format
+
+`write.format.default` - the spec's own property key - names the format new data files are written
+in: `parquet`, the default, or `avro`. Like every option it resolves per call, per handle, or per
+table, so one call can drop Avro files into a Parquet table; the manifest records the format each
+file was *actually* written in, and a scan decodes each file as its manifest entry says, so a
+table whose files mix formats still reads as one shape. A format the build cannot encode - `orc` -
+is a typed error naming the key and the format before anything is written, never a silent fall
+back to Parquet.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::iceberg::{FileFormat, FormatVersion, IcebergOptions, PartitionSpec, Table};
+    use yggdryl::local::Folder;
+    use yggdryl::DataType;
+
+    let root = std::env::temp_dir().join("yggdryl-doc-data-format");
+    let _ = std::fs::remove_dir_all(&root);
+
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let mut table = Table::create(
+        Folder::new(&root)?,
+        FormatVersion::V2,
+        schema.clone(),
+        PartitionSpec::unpartitioned(),
+    )?;
+
+    let batch = RecordBatch::try_new(
+        schema.to_arrow_schema()?,
+        vec![Arc::new(Int64Array::from(vec![1_i64]))],
+    )?;
+
+    // One Parquet append, then one Avro append via the explicit option.
+    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]))?;
+    table.set_options(IcebergOptions::new().with_data_format(FileFormat::Avro));
+    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+
+    // The manifest records what was written, and the mixed table scans whole.
+    let mut formats: Vec<FileFormat> = table
+        .data_files()?
+        .into_iter()
+        .map(|(file, _)| file.file_format)
+        .collect();
+    formats.sort();
+    assert_eq!(formats, [FileFormat::Parquet, FileFormat::Avro]);
+    assert_eq!(table.scan(None)?.count(), 2);
+
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import IcebergOptions, Table, assign_field_ids
+
+    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    table = Table.create(
+        IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"),
+        assign_field_ids(schema),
+    )
+
+    # One Parquet append, then one Avro append - the option is one keyword.
+    table.append(pa.table({"id": [1]}, schema=schema))
+    table.append(pa.table({"id": [2]}, schema=schema), data_format="avro")
+
+    formats = sorted(file.file_format for file, _ in table.data_files())
+    assert formats == ["AVRO", "PARQUET"]
+    assert table.scan().read_all().num_rows == 2
+
+    # Stored per table, the spec's own key configures every writer.
+    table.update_properties({"write.format.default": "avro"})
+    assert table.options().data_format == "AVRO"
+    ```
 
 ## Concurrent writers and commit retries
 
@@ -2795,6 +2898,32 @@ different metadata file names, different manifest field ordering, deflate-compre
 opened by `Table::open` and compared the same way. `cargo test --features "parquet iceberg" --test
 iceberg_interop` is the Rust half; run alone it says on stdout that it skipped the external table
 rather than passing quietly.
+
+Apache Spark, the format's reference implementation, gets the same treatment at a larger scale.
+`python scripts/setup_spark_interop.py` provisions `pyspark` and the `iceberg-spark-runtime` jar,
+and `pytest -m spark_interop` (in `python/tests/test_spark_interop.py`) then exchanges tables over
+one shared Hadoop warehouse in both directions: creation and field ids, the primitive and nested
+types with nulls, identity and transform partitioning, snapshots with time travel and refs, schema
+evolution, table properties, Parquet and Avro data files including mixed-format tables, compaction,
+the metadata tables, and the statistics renderings. The suite is deselected from the default test
+run and skips itself, naming what is missing, when Java or Spark is absent.
+
+Two behaviors here were arbitrated against the spec by that exchange and are deliberate:
+
+- **Column resolution is by field id.** A data file written before a rename stores the column
+  under its old name; the scan renames decoded columns to the current schema's names wherever the
+  file's recorded field id matches, and a projected read pushes the file's *own* name down so the
+  encoding still skips what it should. Names alone would silently null the column, which is what
+  the spec's id-based resolution exists to prevent.
+- **Transformed partition fields restore no column.** `days(at)` or `bucket(4, id)` store a
+  derived value under a name that is not a schema column; the source column rides in the data file
+  itself, exactly as Spark writes it, so only `identity` partition values are restored from the
+  manifest.
+
+Where Spark's SQL surface cannot express a spec type - `uuid`, `fixed`, `time` have no Spark DDL
+spelling - the exchange covers the direction that exists, and the declared `uuid` spelling is
+preserved through a metadata round trip rather than demoted to the physically identical
+`fixed[16]`.
 
 ## What is not here
 
