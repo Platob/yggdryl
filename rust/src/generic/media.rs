@@ -253,6 +253,14 @@ impl IOBase for Media {
         self.as_io_mut().close()
     }
 
+    fn clear(&mut self) -> crate::Result<()> {
+        self.as_io_mut().clear()
+    }
+
+    fn remove(&mut self, recursive: bool) -> crate::Result<()> {
+        self.as_io_mut().remove(recursive)
+    }
+
     fn parent(&self) -> Option<Holder> {
         self.as_io().parent()
     }

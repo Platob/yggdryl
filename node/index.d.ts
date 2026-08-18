@@ -752,8 +752,17 @@ export declare class IOBase {
    * An existing leaf keeps its bytes, as `touch` does.
    */
   touch(): void
-  /** Remove the bytes here, as `fs.unlinkSync` on a leaf. */
+  /**
+   * Delete the resource here, as `fs.unlinkSync` on a leaf.
+   *
+   * A thin spelling of `remove(false)`; unlike `fs.unlinkSync`, a resource
+   * that is not there is not an error.
+   */
   unlink(): void
+  /** Empty the contents, keeping the resource. */
+  clear(): void
+  /** Delete the resource completely; a directory needs `recursive`. */
+  remove(recursive?: boolean): void
   /** Cut this resource to `size` bytes, as `fs.truncateSync`. */
   truncate(size: number): void
   /** Flush anything buffered. */

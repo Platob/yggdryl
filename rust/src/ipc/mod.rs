@@ -362,7 +362,7 @@ impl<H: IOBase> Ipc<H> {
 /// [`IOBase::open`] additionally caches the stream's schema and
 /// [`IOBase::close`] releases it.
 impl<H: IOBase> IOBase for Ipc<H> {
-    crate::delegate_iobase!(handle);
+    crate::delegate_iobase!(handle, except_lifecycle);
 
     /// Materialize the handle and cache the stream's schema.
     ///
@@ -385,6 +385,25 @@ impl<H: IOBase> IOBase for Ipc<H> {
     fn close(&mut self) -> crate::Result<()> {
         self.cached_schema = None;
         self.handle.close()
+    }
+
+    /// Empty the encoded resource and drop the cached schema with it.
+    ///
+    /// Invalidation is part of the call, not deferred to the next `open`: a
+    /// cached schema describing bytes that are gone is a stale answer, and a
+    /// stale answer after an emptying is a bug.
+    fn clear(&mut self) -> crate::Result<()> {
+        self.cached_schema = None;
+        self.handle.clear()
+    }
+
+    /// Delete the encoded resource, and every cached schema it filled.
+    ///
+    /// A media handle removes what it wraps, not merely its own view: the
+    /// resource behind the handle goes, and the schema cache goes with it.
+    fn remove(&mut self, recursive: bool) -> crate::Result<()> {
+        self.cached_schema = None;
+        self.handle.remove(recursive)
     }
 }
 

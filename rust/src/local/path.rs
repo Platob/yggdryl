@@ -282,6 +282,40 @@ impl IOBase for Path {
         Ok(Holder::Path(Self::from_url(self.url.joinpath(name)?)?))
     }
 
+    /// Empty whichever of the two the resolved kind names.
+    ///
+    /// `Path`'s whole job is to report [`IOKind`] from what is actually there,
+    /// so routing on that kind is the one documented exception to the
+    /// no-pre-call rule - and it is the resolution `Path` already performs, not
+    /// a second probe added for the lifecycle pair. An undecided location has
+    /// nothing to empty.
+    fn clear(&mut self) -> Result<()> {
+        match self.kind() {
+            IOKind::Directory => self.as_directory()?.clear(),
+            IOKind::Unknown => Ok(()),
+            _ => self.as_file()?.clear(),
+        }
+    }
+
+    /// Delete whichever of the two the resolved kind names.
+    ///
+    /// Routed on the already-resolved kind, exactly as [`Self::clear`] is. The
+    /// resolved handle is dropped first so no mapping or staged write survives
+    /// the removal, and a later operation re-resolves from scratch.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        let kind = self.kind();
+        // Drop whatever was resolved before deleting: a retained `File` holds a
+        // mapping, and a mapping must not outlive the file it maps.
+        if let Ok(mut slot) = self.resolved.lock() {
+            *slot = None;
+        }
+        match kind {
+            IOKind::Directory => self.as_directory()?.remove(recursive),
+            IOKind::Unknown => Ok(()),
+            _ => self.as_file()?.remove(recursive),
+        }
+    }
+
     fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
         if !self.kind().is_container() {
             // A leaf contains nothing; that is not an error.

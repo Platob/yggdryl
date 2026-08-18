@@ -112,6 +112,19 @@ layer compiling annotations into native values.
 - `IOKind` (`Memory`, `File`, `Directory`, `Unknown`) is how a handle says
   what it addresses; `is_container` derives from it - never re-answer
   independently.
+- **`clear` empties, `remove(recursive)` deletes, and neither pre-calls.** A
+  leaf clears to zero bytes and still exists; a container clears to empty and
+  still exists; `remove` leaves nothing of the resource - a wrapping handle
+  removes what it *wraps*, plus the pending writes and caches it holds, so a
+  later flush cannot resurrect it. Absence is a no-op success on both, and it
+  is reached by issuing the delete and mapping the backend's own not-found
+  answer (`NotFound`, `NoSuchKey`, 404) to `Ok`: never by calling `kind`,
+  `size`, `ls`, or an exists check first, because on a remote backend every
+  probe is a round trip and a recursive delete becomes a flood of them. Only
+  not-found maps to success. A leaf ignores `recursive`; a non-empty container
+  without it is refused naming the location. The return is `Result<()>` - a
+  bool or a count would force exactly that probe. The one exception is a
+  generic `Path`, which routes on the `IOKind` it already resolves.
 - A wrapping handle mirrors the inner one via `delegate_iobase!`, overriding
   only what it changes (usually `open`/`close`) - so `Coded`, `Gzip`, `Ipc`,
   `Parquet`, `Media` expose raw bytes.

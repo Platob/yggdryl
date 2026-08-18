@@ -288,6 +288,28 @@ impl<H: IOBase> IOBase for Coded<H> {
     fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
         self.handle.ls(recursive, include_private)
     }
+
+    /// Empty the encoded resource, dropping the decoded value with it.
+    ///
+    /// The decoded buffer is discarded rather than published: a pending write
+    /// must never survive an emptying to reappear on a later flush.
+    fn clear(&mut self) -> Result<()> {
+        self.plain = None;
+        self.dirty = false;
+        self.handle.clear()
+    }
+
+    /// Delete the *encoded* resource, not merely this view of it.
+    ///
+    /// A coding handle wraps bytes that live somewhere; complete removal is
+    /// deleting those bytes, plus the decoded value held in `plain` and any
+    /// unflushed `dirty` write, so a later flush cannot resurrect what was
+    /// removed.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.plain = None;
+        self.dirty = false;
+        self.handle.remove(recursive)
+    }
 }
 
 #[cfg(test)]

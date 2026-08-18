@@ -669,9 +669,39 @@ impl PyIOBase {
         self.inner.write_all_bytes(b"").map_err(value_error)
     }
 
-    /// Remove the bytes here, as `Path.unlink` on a leaf.
+    /// Delete the resource here, as `Path.unlink` on a leaf.
+    ///
+    /// A thin spelling of `remove(recursive=False)` under the name `pathlib`
+    /// uses; unlike `pathlib`'s, a resource that is not there is not an error,
+    /// because absence is a no-op success everywhere on this handle.
     fn unlink(&mut self) -> PyResult<()> {
+        self.inner.remove(false).map_err(value_error)
+    }
+
+    /// Empty the contents, keeping the resource.
+    ///
+    /// A leaf keeps existing with `size` 0; a directory keeps existing and is
+    /// emptied of every child, recursively; a resource that is not there is
+    /// left alone. Nothing is created.
+    fn clear(&mut self) -> PyResult<()> {
         self.inner.clear().map_err(value_error)
+    }
+
+    /// Delete the resource completely.
+    ///
+    /// After this returns nothing of what the handle addressed remains - the
+    /// bytes, the tree below a directory, and any cached schema or footer. A
+    /// leaf ignores `recursive`. A directory needs `recursive=True` to delete
+    /// anything below it; without it, a directory that still has children
+    /// raises rather than silently succeeding or silently recursing. A
+    /// resource that is not there succeeds, having done nothing - absence and
+    /// successful removal are indistinguishable by design.
+    ///
+    /// The handle stays usable afterwards: writing through it recreates the
+    /// resource exactly as a fresh handle would.
+    #[pyo3(signature = (recursive = false))]
+    fn remove(&mut self, recursive: bool) -> PyResult<()> {
+        self.inner.remove(recursive).map_err(value_error)
     }
 
     /// Cut this resource to `size` bytes.

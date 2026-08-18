@@ -1272,6 +1272,121 @@ assert rows == 2
 assert IOBase(target).read_arrow_field() == field
 ```
 
+## Clearing and removing
+
+`clear` and `remove` are the lifecycle pair, and what they mean is stated by kind rather than
+implied by a byte operation. `clear` empties the contents and keeps the resource: a leaf keeps
+existing with size `0`, a container keeps existing and loses every child recursively. `remove`
+deletes the resource itself - completely, whatever "the resource" is for that handle. A wrapping
+handle removes what it *wraps*: `Gzip::remove` deletes the `.gz` resource rather than discarding a
+decoded buffer, and a media handle's cached schema or footer goes with it.
+
+Two rules hold on both, and they are the reason the pair exists at all:
+
+- **Absence is a no-op success.** Neither call is an error on a resource that is not there, and
+  neither creates one. `clear` is not a write.
+- **Absence is reached without a probe.** An implementation issues the delete and treats the
+  backend's own not-found answer as success. It never calls `kind`, `size`, an exists check, or
+  `ls` first to decide whether to proceed - on a remote backend each of those is a second round
+  trip, and a recursive delete would become a flood of them. Only not-found maps to success; a
+  permission, network, or busy failure stays the typed error it is.
+
+Because absence and successful removal are indistinguishable, `remove` returns nothing rather than
+a bool or a count - reporting "did something exist" would force exactly the probe this refuses.
+`recursive` is ignored on a leaf, and a container that still has children is refused by name rather
+than silently recursed into.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::local::Folder;
+
+    let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
+    let mut folder = Folder::new(&root)?;
+    folder.truncate(0)?;
+    folder.child_by("a.log")?.write_all_bytes(b"line\n")?;
+
+    // Clearing empties the container and keeps it.
+    folder.clear()?;
+    assert!(folder.ls(true, false)?.is_empty());
+    assert_eq!(folder.kind(), yggdryl::IOKind::Directory);
+
+    // Removing deletes it; a second call succeeds, having done nothing.
+    folder.remove(false)?;
+    folder.remove(false)?;
+    assert_eq!(folder.kind(), yggdryl::IOKind::Unknown);
+
+    // A wrapping handle removes what it wraps, cache included.
+    let mut coded = yggdryl::gzip::Gzip::new(Buffer::new());
+    coded.write_all_bytes(b"symbol,price\n")?;
+    coded.remove(false)?;
+    assert_eq!(coded.size(), 0);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp()) / "logs"
+    handle = IOBase(root)
+    handle.mkdir()
+    (handle / "a.log").write_text("line\n")
+
+    # Clearing empties the container and keeps it.
+    handle.clear()
+    assert list(handle.iterdir()) == []
+    assert handle.is_dir()
+
+    # Removing deletes it; a second call succeeds, having done nothing.
+    handle.remove()
+    handle.remove()
+    assert not handle.exists()
+
+    # A container that still has children is refused rather than recursed into.
+    handle.mkdir()
+    (handle / "a.log").write_text("line\n")
+    try:
+        handle.remove()
+    except Exception as error:
+        assert "children" in str(error)
+    handle.remove(recursive=True)
+    assert not handle.exists()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = path.join(os.tmpdir(), `yggdryl-docs-lifecycle-${process.pid}`)
+    const handle = new IOBase(root)
+    handle.mkdir()
+    handle.childBy('a.log').writeText('line\n')
+
+    // Clearing empties the container and keeps it.
+    handle.clear()
+    assert.equal(handle.ls(true, false).length, 0)
+
+    // Removing deletes it; a second call succeeds, having done nothing.
+    handle.remove()
+    handle.remove()
+    assert.equal(handle.exists(), false)
+    ```
+
+`Table` decides both deliberately rather than inheriting a folder's answers. `clear` commits one
+snapshot carrying no data files, so the table still exists with its schema, properties, and history
+and holds zero rows - deleting files behind the manifests would leave exactly the orphaned state a
+complete operation must not. `remove` deletes the table's whole location, metadata tree and data
+files together, because dropping a table is not emptying it.
+
 ## Buffer
 
 !!! note "Rust only"

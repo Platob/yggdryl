@@ -193,6 +193,34 @@ impl IOPath for Path {
 }
 
 impl IOBase for Path {
+    /// Empty whichever of the two the resolved kind names.
+    ///
+    /// Routing on the kind this handle already resolves is the one documented
+    /// exception to the no-pre-call rule; no second probe is added here.
+    fn clear(&mut self) -> Result<()> {
+        match self.kind() {
+            IOKind::Directory => self.as_directory().clear(),
+            IOKind::Unknown => Ok(()),
+            _ => self.as_file().clear(),
+        }
+    }
+
+    /// Delete whichever of the two the resolved kind names.
+    ///
+    /// The resolved handle is dropped first so no staged write survives the
+    /// removal; a later operation re-resolves from scratch.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        let kind = self.kind();
+        if let Ok(mut slot) = self.resolved.lock() {
+            *slot = None;
+        }
+        match kind {
+            IOKind::Directory => self.as_directory().remove(recursive),
+            IOKind::Unknown => Ok(()),
+            _ => self.as_file().remove(recursive),
+        }
+    }
+
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
     }

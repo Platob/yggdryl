@@ -76,6 +76,46 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// wants to override (typically [`IOBase::open`] and [`IOBase::close`], which
 /// usually also manage a cache) is simply written after the invocation.
 ///
+/// [`IOBase::clear`] and [`IOBase::remove`] are delegated too, so a wrapper
+/// empties and deletes the resource it wraps - not merely its own view of it -
+/// without thinking about it. A wrapper holding a cache of its own must
+/// invalidate it as part of those calls, and a macro-provided body cannot be
+/// overridden, so it invokes the second form and writes the pair itself:
+///
+/// ```
+/// use yggdryl::io::{Buffer, IOBase};
+///
+/// struct Cached {
+///     handle: Buffer,
+///     schema: Option<String>,
+/// }
+///
+/// impl IOBase for Cached {
+///     yggdryl::delegate_iobase!(handle, except_lifecycle);
+///
+///     fn clear(&mut self) -> yggdryl::Result<()> {
+///         self.schema = None;
+///         self.handle.clear()
+///     }
+///
+///     fn remove(&mut self, recursive: bool) -> yggdryl::Result<()> {
+///         self.schema = None;
+///         self.handle.remove(recursive)
+///     }
+/// }
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let mut cached = Cached {
+///     handle: Buffer::from_bytes(b"AAPL".to_vec()),
+///     schema: Some("row".to_owned()),
+/// };
+/// cached.remove(false)?;
+/// assert!(cached.schema.is_none());
+/// assert_eq!(cached.size(), 0);
+/// # Ok(())
+/// # }
+/// ```
+///
 /// ```
 /// use yggdryl::io::{Buffer, IOBase};
 ///
@@ -98,7 +138,25 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// ```
 #[macro_export]
 macro_rules! delegate_iobase {
+    // The whole contract, lifecycle included: the wrapper changes nothing.
     ($handle:ident) => {
+        $crate::delegate_iobase!(@bytes $handle);
+
+        fn clear(&mut self) -> $crate::Result<()> {
+            $crate::io::IOBase::clear(&mut self.$handle)
+        }
+
+        fn remove(&mut self, recursive: bool) -> $crate::Result<()> {
+            $crate::io::IOBase::remove(&mut self.$handle, recursive)
+        }
+    };
+    // Everything but [`IOBase::clear`] and [`IOBase::remove`], for a wrapper
+    // holding a cache of its own: it writes those two itself so the cache is
+    // invalidated as part of the call rather than left to go stale.
+    ($handle:ident, except_lifecycle) => {
+        $crate::delegate_iobase!(@bytes $handle);
+    };
+    (@bytes $handle:ident) => {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> $crate::Result<usize> {
             $crate::io::IOBase::pread(&self.$handle, offset, buffer)
         }
@@ -159,6 +217,53 @@ macro_rules! delegate_iobase {
             $crate::io::IOBase::kind(&self.$handle)
         }
     };
+}
+
+/// Treat a backend's own not-found answer as a completed removal.
+///
+/// This is the shape [`IOBase::clear`] and [`IOBase::remove`] require: issue the
+/// delete, and let the store say whether there was anything there. A backend
+/// with a different absence signal - a store's no-such-key, an HTTP 404 - maps
+/// its own answer the same way; everything else stays the typed failure it is,
+/// because a permission or network error is not an absence.
+///
+/// ```
+/// use yggdryl::io::skip_absent;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let absent = std::io::Error::from(std::io::ErrorKind::NotFound);
+/// skip_absent(Err::<(), _>(absent))?;
+///
+/// let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+/// assert!(skip_absent(Err::<(), _>(denied)).is_err());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns every failure that is not [`std::io::ErrorKind::NotFound`].
+pub fn skip_absent<T: Default>(result: std::io::Result<T>) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),
+        Err(error) => Err(Error::Io(error)),
+    }
+}
+
+/// Refuse to delete a container that still holds children.
+///
+/// `remove(false)` on a populated container is an error naming the location and
+/// the fact that it has children - never a silent success and never a silent
+/// recursion.
+pub fn not_empty(url: &Url) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::DirectoryNotEmpty,
+        format!(
+            "expected an empty container to remove, got {url}, which still has children; pass \
+             recursive to delete them too"
+        ),
+    ))
 }
 
 /// Resolve a chain of fixed names below `base`, without touching anything.
@@ -611,13 +716,133 @@ pub trait IOBase: Send {
         self.pwrite_all(0, bytes)
     }
 
-    /// Discard every byte, keeping the allocation.
+    /// Empty the resource's contents, keeping the resource itself.
+    ///
+    /// The meaning follows [`Self::kind`], and it is *stated* here rather than
+    /// implied by a byte operation:
+    ///
+    /// - A leaf ([`IOKind::File`], [`IOKind::Memory`]) discards every byte.
+    ///   The resource still exists afterwards, with [`Self::size`] `0`.
+    /// - A container ([`IOKind::Directory`]) removes every child, recursively.
+    ///   The container itself still exists afterwards, and is empty.
+    /// - A resource that does not exist succeeds, having done nothing. It is
+    ///   *not* created: clearing is not a write.
+    ///
+    /// Any cache [`Self::open`] filled - a schema, a footer, compiled options -
+    /// is invalidated as part of the call, so a later read cannot serve an
+    /// answer describing bytes that are gone.
+    ///
+    /// See [`Self::remove`] for the no-pre-call rule both lifecycle methods
+    /// follow.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
+    /// handle.clear()?;
+    ///
+    /// // Emptied, not deleted.
+    /// assert_eq!(handle.size(), 0);
+    /// assert!(handle.is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns the backing store's resize failure.
+    /// Returns the backing store's failure to empty the resource. Absence is
+    /// never one of them.
     fn clear(&mut self) -> Result<()> {
         self.truncate(0)
+    }
+
+    /// Delete the resource completely.
+    ///
+    /// `remove` is not "delete a file". It is the one *total* removal action
+    /// on this abstraction: after it returns, nothing of the resource this
+    /// handle addresses remains, whatever that resource is for this
+    /// implementation. The signature is generic and each implementation adapts
+    /// the mechanics, but no implementation removes only part of what it
+    /// addresses - a wrapping handle removes what it *wraps*, not merely its
+    /// own view of it, and any pending write, staged buffer, or live mapping is
+    /// dropped as part of the removal so a later flush cannot resurrect what
+    /// was deleted.
+    ///
+    /// - On a leaf, the resource is deleted. `recursive` is irrelevant and
+    ///   ignored.
+    /// - On a container with `recursive`, everything below it and the
+    ///   container itself are deleted.
+    /// - On a container without `recursive`, the container is deleted only if
+    ///   it is already empty; a non-empty one is an error naming the location
+    ///   and the fact that it has children. It never silently succeeds and
+    ///   never silently recurses.
+    /// - On a resource that does not exist, it succeeds, having done nothing.
+    ///
+    /// Afterwards the handle stays usable and lazy: writing through it
+    /// recreates the resource exactly as a never-touched handle would, and any
+    /// cache [`Self::open`] filled is gone rather than waiting to be refreshed.
+    ///
+    /// # Absence is a no-op success, reached without a probe
+    ///
+    /// This is the requirement that shapes every implementation. An
+    /// implementation **issues the delete and treats the backend's own
+    /// not-found answer as success**. It must not call [`Self::kind`],
+    /// [`Self::size`], an exists-style check, [`Self::ls`], or any other probe
+    /// first to decide whether to proceed: on a remote backend every such probe
+    /// is a second round trip on the hot path, and a recursive delete over a
+    /// large tree turns into a flood of them. Where a backend needs a different
+    /// call for a leaf than for a container, the handle's own static role
+    /// answers which - [`local::File`](crate::local::File) is a file,
+    /// [`local::Folder`](crate::local::Folder) is a directory - so the dispatch
+    /// is on the type, not on a probe. The one documented exception is a
+    /// generic path handle such as [`local::Path`](crate::local::Path), whose
+    /// whole job is to report [`IOKind`] from what is actually there: it routes
+    /// on the kind it *already* resolves, and adds no second probe for the
+    /// delete.
+    ///
+    /// Only the not-found failure maps to `Ok(())` -
+    /// [`std::io::ErrorKind::NotFound`] locally, and the backend equivalents (a
+    /// store's no-such-key, an HTTP 404) elsewhere. A permission, network, or
+    /// busy failure surfaces as the typed error it is; a blanket
+    /// `let _ = ...` is not an implementation of this rule.
+    ///
+    /// # Absence and successful removal are indistinguishable
+    ///
+    /// The return is `Result<()>`, never a bool or a count of what was deleted.
+    /// Reporting "did something exist" would force exactly the probe this
+    /// design refuses, so it is not reported. That is the contract, not an
+    /// omission.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
+    /// handle.remove(false)?;
+    /// assert_eq!(handle.size(), 0);
+    ///
+    /// // Removing again succeeds, having done nothing: absence is not an error.
+    /// handle.remove(false)?;
+    ///
+    /// // The handle stays usable and lazy - a write recreates the resource.
+    /// handle.write_all_bytes(b"MSFT,2")?;
+    /// assert_eq!(handle.read_all()?, b"MSFT,2");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure, or a refusal naming a
+    /// non-empty container when `recursive` is not set. Absence is never one of
+    /// them.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        // A handle owning nothing beyond its own bytes removes exactly those.
+        // Every implementation addressing an external resource overrides this;
+        // the trait cannot delete what it has no primitive for.
+        let _ = recursive;
+        self.clear()
     }
 
     /// Copy this value's bytes into `target`, replacing its contents.
@@ -1578,6 +1803,14 @@ impl Write for Writer<'_> {
 impl IOBase for Box<dyn IOBase> {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_ref().pread(offset, buffer)
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.as_mut().clear()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.as_mut().remove(recursive)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {

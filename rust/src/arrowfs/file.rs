@@ -128,6 +128,17 @@ impl File {
     /// The whole value is loaded so positional writes have something to land
     /// in; the shared size budget refuses a value the address space cannot
     /// hold rather than attempting the allocation.
+    /// Drop the staged value *without* publishing it.
+    ///
+    /// The lifecycle pair uses this rather than `close`: a pending write on its
+    /// way to being deleted must not be flushed, or the removal would race its
+    /// own resurrection.
+    fn discard(&self) -> Result<()> {
+        let mut stage = self.stage.lock().map_err(|_| poisoned())?;
+        *stage = None;
+        Ok(())
+    }
+
     fn materialize(&self) -> Result<MutexGuard<'_, Option<Stage>>> {
         let mut stage = self.stage.lock().map_err(|_| poisoned())?;
         if stage.is_none() {
@@ -190,6 +201,30 @@ impl IOFile for File {
         self.filesystem
             .file_info(&self.location)
             .is_ok_and(|info| info.kind == crate::IOKind::File)
+    }
+
+    /// Replace the object with an empty one, dropping any staged write.
+    ///
+    /// An Arrow filesystem replaces whole objects rather than resizing them, so
+    /// emptying one *is* writing zero bytes to it. Nothing is probed first: the
+    /// write either lands or reports the backend's own failure.
+    fn clear_file(&mut self) -> Result<()> {
+        self.discard()?;
+        self.filesystem.write_full(&self.location, &[])
+    }
+
+    /// Delete the object, dropping any staged write first.
+    ///
+    /// Discarding the stage is part of the removal: an unflushed write must not
+    /// survive to recreate the object on a later close. The delete is issued
+    /// unconditionally and the backend's own not-found answer is the success.
+    fn delete_file(&mut self) -> Result<()> {
+        self.discard()?;
+        crate::io::skip_absent(
+            self.filesystem
+                .delete_file(&self.location)
+                .map_err(std::io::Error::other),
+        )
     }
 }
 
@@ -345,6 +380,14 @@ impl IOBase for File {
             self.filesystem.clone(),
             parent,
         )))
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.clear_file()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.file_remove(recursive)
     }
 
     fn child_by(&self, name: &str) -> Result<Holder> {

@@ -56,6 +56,61 @@ pub trait IOFolder: IOBase {
     /// Returns the backing store's listing failure.
     fn list_folder(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>>;
 
+    /// Delete the container itself, leaving whatever is inside it alone.
+    ///
+    /// This is the one mechanic a backend supplies for the lifecycle pair; the
+    /// role assembles [`Self::folder_clear`] and [`Self::folder_remove`] from
+    /// it. Two rules bind the implementation, both from [`IOBase::remove`]:
+    ///
+    /// - **Absence is success.** Issue the delete and map the store's own
+    ///   not-found answer to `Ok(())` through [`skip_absent`](crate::io::skip_absent). Never probe
+    ///   first to decide whether to proceed.
+    /// - **A non-empty container is refused, not recursed.** Return the store's
+    ///   own "directory not empty" failure; the role turns it into an error
+    ///   naming the location.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure.
+    fn delete_folder(&mut self) -> Result<()>;
+
+    /// Remove every child, keeping the container - a container's `clear`.
+    ///
+    /// The listing here is the work, not a probe: a container that does not
+    /// exist lists nothing and the call becomes the no-op success the contract
+    /// promises without a separate existence check. A backend able to empty a
+    /// prefix in one call overrides this.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's listing or delete failure.
+    fn folder_clear(&mut self) -> Result<()> {
+        for mut child in self.list_folder(false, true)? {
+            child.remove(true)?;
+        }
+        Ok(())
+    }
+
+    /// Delete the container, per [`IOBase::remove`]'s contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure, or a refusal naming the
+    /// location when it still has children and `recursive` is not set.
+    fn folder_remove(&mut self, recursive: bool) -> Result<()> {
+        if recursive {
+            self.folder_clear()?;
+        }
+        match self.delete_folder() {
+            // Only the store's own "still has children" answer is translated;
+            // every other failure stays the typed error it is.
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+                Err(crate::io::not_empty(self.folder_url()))
+            }
+            other => other,
+        }
+    }
+
     /// List a container, expanding a glob location into what it names.
     ///
     /// A container's location can be a pattern - `lake/**/*.parquet` - because
@@ -146,6 +201,42 @@ pub trait IOFile: IOBase {
 
     /// Return whether the leaf exists yet.
     fn file_exists(&self) -> bool;
+
+    /// Discard every byte, without creating the leaf when it is absent.
+    ///
+    /// A separate mechanic from `truncate(0)` because a truncation *writes*,
+    /// and per [`IOBase::clear`] emptying a resource that does not exist must
+    /// do nothing rather than bring it into being. Map the store's own
+    /// not-found answer to `Ok(())` through [`skip_absent`](crate::io::skip_absent); never probe first.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's resize failure.
+    fn clear_file(&mut self) -> Result<()>;
+
+    /// Delete the leaf, per [`IOBase::remove`]'s contract.
+    ///
+    /// Complete removal for a leaf means the bytes *and* anything the handle
+    /// holds over them - a live mapping, a staged write - so an implementation
+    /// releases those first and a later flush cannot recreate what was deleted.
+    /// Map the store's own not-found answer to `Ok(())` through
+    /// [`skip_absent`](crate::io::skip_absent); never probe first.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure.
+    fn delete_file(&mut self) -> Result<()>;
+
+    /// Delete the leaf, ignoring `recursive` - a leaf contains nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure.
+    fn file_remove(&mut self, recursive: bool) -> Result<()> {
+        // A leaf has no children, so there is nothing for the flag to reach.
+        let _ = recursive;
+        self.delete_file()
+    }
 
     /// List nothing: a leaf contains no other resources.
     fn file_ls(&self) -> Result<Vec<Holder>> {
