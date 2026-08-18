@@ -31,6 +31,39 @@ pub(crate) struct PyIOBase {
     inner: Holder,
 }
 
+/// Rebuild a foreign-filesystem handle, keeping the filesystem it stands on.
+///
+/// `None` for anything else, so the local rebuild stays the default path.
+fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
+    match inner {
+        Holder::ArrowFolder(folder) => Some(Holder::ArrowFolder(folder.clone())),
+        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::arrowfs::File::new(
+            file.filesystem().clone(),
+            file.url().clone(),
+        ))),
+        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::arrowfs::Path::new(
+            path.filesystem().clone(),
+            path.url().clone(),
+        ))),
+        _ => None,
+    }
+}
+
+/// Address a foreign-filesystem handle's location as a container.
+fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
+    let folder = match inner {
+        Holder::ArrowFolder(folder) => folder.clone(),
+        Holder::ArrowFile(file) => {
+            yggdryl::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
+        }
+        Holder::ArrowPath(path) => {
+            yggdryl::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
+        }
+        _ => return None,
+    };
+    Some(Holder::ArrowFolder(folder))
+}
+
 impl PyIOBase {
     pub(crate) fn from_core(inner: Holder) -> Self {
         Self { inner }
@@ -50,9 +83,15 @@ impl PyIOBase {
 
     /// Build a second handle on the same location.
     ///
-    /// A handle owns backend state - a mapping, an open descriptor - so it is
-    /// not copied; the location it describes is what gets rebuilt.
+    /// A handle owns backend state - a mapping, an open descriptor, a staged
+    /// value - so it is not copied; the location it describes is what gets
+    /// rebuilt. A handle on a foreign Arrow filesystem rebuilds onto that
+    /// same filesystem, because its location alone would not say where it
+    /// lives.
     fn rebuilt(&self) -> PyResult<Self> {
+        if let Some(holder) = rebuilt_arrow_holder(&self.inner) {
+            return Ok(Self::from_core(holder));
+        }
         let url = self.inner.url().ok_or_else(|| {
             PyValueError::new_err("an in-memory resource has no location to rebuild from")
         })?;
@@ -63,13 +102,28 @@ impl PyIOBase {
     ///
     /// A table is a folder, so a caller who names one that does not exist yet
     /// still gets a handle that can resolve children; [`Holder::local`] would
-    /// have decided it was a file, because nothing is there to look at.
+    /// have decided it was a file, because nothing is there to look at. A
+    /// foreign filesystem's handle becomes a container on that filesystem, so
+    /// a table reached this way never learns which backend it stands on.
     pub(crate) fn folder_holder(&self) -> PyResult<Holder> {
+        if let Some(holder) = arrow_folder_holder(&self.inner) {
+            return Ok(holder);
+        }
         let url = self
             .inner
             .url()
             .ok_or_else(|| PyValueError::new_err("an in-memory resource is not a container"))?;
         Holder::folder(url.to_path().map_err(value_error)?).map_err(value_error)
+    }
+
+    /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
+    fn over_arrow_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let location = crate::uri::path_string_from_value(path)?;
+        let backend: std::sync::Arc<dyn yggdryl::arrowfs::ArrowFileSystem> =
+            std::sync::Arc::new(crate::arrowfs::PyArrowFileSystem::new(filesystem)?);
+        let url =
+            yggdryl::arrowfs::location_url(backend.as_ref(), &location).map_err(value_error)?;
+        Ok(Self::from_core(yggdryl::arrowfs::located(backend, url)))
     }
 
     /// Resolve the options a record call runs under.
@@ -170,8 +224,33 @@ impl PyIOBase {
     /// captures its *content*. An in-memory handle likewise captures content,
     /// media type included. For named locations nothing is opened, created,
     /// or read here, per the laziness contract.
+    ///
+    /// A `pyarrow.fs.FileSystem` as the first argument names the *backend*
+    /// rather than the location, so the second says where on it:
+    /// `IOBase(S3FileSystem(region=...), "bucket/key.parquet")`. Every
+    /// filesystem PyArrow ships is accepted, as is a custom one wrapped in
+    /// `PyFileSystem(FileSystemHandler)`, and what comes back is this same
+    /// class - nothing filesystem-specific leaks into the surface.
     #[new]
-    fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[pyo3(signature = (value, path = None))]
+    fn new(value: &Bound<'_, PyAny>, path: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        if crate::arrowfs::is_arrow_filesystem(value) {
+            let path = path.ok_or_else(|| {
+                PyValueError::new_err(
+                    "expected a path on the filesystem as the second argument, got none",
+                )
+            })?;
+            return Self::over_arrow_fs(value, path);
+        }
+        if let Some(path) = path {
+            return Err(PyValueError::new_err(format!(
+                "expected a pyarrow.fs.FileSystem to resolve {} against, got {}",
+                path.repr()
+                    .map(|text| text.to_string())
+                    .unwrap_or_else(|_| "a second argument".to_owned()),
+                value.get_type().name()?,
+            )));
+        }
         if let Ok(handle) = value.extract::<PyRef<'_, Self>>() {
             if handle.inner.kind() != yggdryl::IOKind::Memory {
                 return handle.rebuilt();
@@ -207,6 +286,44 @@ impl PyIOBase {
         }
         let url = core_url_from_value(value)?;
         Self::located(&url.to_path().map_err(value_error)?)
+    }
+
+    /// Describe a resource on any `pyarrow.fs.FileSystem`.
+    ///
+    /// This is the explicit spelling of what the constructor infers, and it
+    /// is the whole surface a foreign filesystem needs: `S3FileSystem`,
+    /// `GcsFileSystem`, `AzureFileSystem`, `LocalFileSystem`,
+    /// `SubTreeFileSystem`, and a custom filesystem wrapped in
+    /// `PyFileSystem(FileSystemHandler)` - which is also how `fsspec` arrives
+    /// - all reach the same seven-method contract, so none of them needs code
+    /// of its own here.
+    ///
+    /// ```python
+    /// handle = IOBase.from_arrow_fs(S3FileSystem(region="eu-west-1"), "bucket/key.parquet")
+    /// reader = handle.read_arrow_batch_reader()
+    /// ```
+    ///
+    /// The result is an ordinary handle: `iterdir`, `glob`, `/`, and `parent`
+    /// return handles that still carry the filesystem, and the three record
+    /// methods work exactly as they do on a local file. Per the laziness
+    /// contract nothing is opened, created, or read here.
+    ///
+    /// A write publishes when the handle closes, because an Arrow filesystem
+    /// replaces whole files rather than writing ranges - so a file another
+    /// reader will open is written inside a `with` block.
+    #[classmethod]
+    fn from_arrow_fs(
+        _cls: &Bound<'_, PyType>,
+        filesystem: &Bound<'_, PyAny>,
+        path: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        if !crate::arrowfs::is_arrow_filesystem(filesystem) {
+            return Err(PyValueError::new_err(format!(
+                "expected a pyarrow.fs.FileSystem, got {}",
+                filesystem.get_type().name()?,
+            )));
+        }
+        Self::over_arrow_fs(filesystem, path)
     }
 
     /// Describe an in-memory resource holding `data`.

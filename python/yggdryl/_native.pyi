@@ -889,8 +889,14 @@ class IOCursor:
 
 class IOBase:
     def __init__(
-        self, value: IOBase | Url | Uri | Urn | str | PathLike[str] | IO[Any]
+        self,
+        value: IOBase | Url | Uri | Urn | str | PathLike[str] | IO[Any] | Any,
+        path: str | PathLike[str] | None = None,
     ) -> None: ...
+    @classmethod
+    def from_arrow_fs(
+        cls, filesystem: Any, path: str | PathLike[str]
+    ) -> IOBase: ...
     @classmethod
     def from_bytes(
         cls, data: bytes | bytearray | memoryview | None = None
