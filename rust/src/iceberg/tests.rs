@@ -1576,6 +1576,164 @@ mod handles {
             1
         );
     }
+
+    #[test]
+    fn the_table_value_is_itself_a_handle_answering_from_its_metadata() {
+        let path = root("handle-table-value");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+
+        // The byte surface is the folder the table lives in.
+        assert_eq!(table.kind(), crate::IOKind::Directory);
+        assert!(table.is_container());
+        assert_eq!(
+            IOBase::url(&table).unwrap().to_string(),
+            Folder::new(&path).unwrap().url().to_string()
+        );
+        assert!(table.child_by("metadata").is_ok());
+
+        // The record surface is answered before a single data file exists:
+        // the encoding from what this module writes, the schema from the
+        // metadata - field identifiers included - never off decoded batches.
+        let options = IOBase::record_options(&table).unwrap();
+        assert_eq!(options.mime_type(), crate::MimeType::PARQUET);
+        let field = table.read_arrow_field(&options).unwrap();
+        assert_eq!(field.name(), options.root_name());
+        assert_eq!(field.fields()[0].parquet_field_id().unwrap(), Some(1));
+        assert_eq!(field.fields()[2].parquet_field_id().unwrap(), Some(3));
+        let declared = options.clone().with_schema(trade_schema());
+        assert_eq!(table.read_arrow_field(&declared).unwrap(), trade_schema());
+
+        // Writing through the generic surface is one commit each, and the
+        // in-memory metadata follows without reopening anything.
+        let batch = trades(
+            &[1, 2],
+            &[Some("AAPL"), Some("MSFT")],
+            &[Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .append_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        let batch = trades(&[3], &[Some("VOD")], &[Some("XLON")]);
+        table
+            .append_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(table.metadata().snapshots.len(), 2);
+        assert_eq!(table.current_snapshot().unwrap().operation(), "append");
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()).len(),
+            3
+        );
+
+        // A partition filter is answered by the plan - the other partitions'
+        // files are never opened - and the rows match the folder route's.
+        let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&filtered).unwrap()),
+            vec![(2, Some("MSFT".to_owned()), Some("XNYS".to_owned()))]
+        );
+        let plan = table.plan(&[("venue", "XNYS")]).unwrap();
+        assert_eq!(plan.tasks.len(), 1);
+        assert!(plan.excluded.len() + plan.skipped.len() >= 1);
+
+        // A selection narrows the read to the named columns.
+        let selected = options.clone().with_select_by_names(["id"]);
+        let reader = table.read_arrow_batch_reader(&selected).unwrap();
+        let names: Vec<String> = reader
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect();
+        assert_eq!(names, ["id"]);
+
+        // A filter naming a column the schema does not declare is an error,
+        // exactly as `scan_where` reports it: the schema is authoritative.
+        let unanswerable = options.clone().with_filter_partitions([("desk", "42")]);
+        assert!(table.read_arrow_batch_reader(&unanswerable).is_err());
+
+        // The folder route reads the same rows through the same snapshot.
+        let folder = Folder::new(&path).unwrap();
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()),
+            collect(folder.read_arrow_batch_reader(&options).unwrap())
+        );
+    }
+
+    #[test]
+    fn a_write_through_the_table_value_is_one_commit_and_history_survives() {
+        let path = root("handle-table-write");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let options = IOBase::record_options(&table).unwrap();
+
+        let batch = trades(
+            &[1, 2],
+            &[Some("AAPL"), Some("MSFT")],
+            &[Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .append_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        let past = table.current_snapshot().unwrap().snapshot_id;
+        let version = table.version();
+
+        // No match key replaces every row; the snapshot it replaced is
+        // retained and still reads exactly as it was written.
+        let batch = trades(&[9], &[Some("BP")], &[Some("XLON")]);
+        table
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
+        assert_eq!(table.version(), version + 1);
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()),
+            vec![(9, Some("BP".to_owned()), Some("XLON".to_owned()))]
+        );
+        assert_eq!(collect(table.scan_at(past, &[], None).unwrap()).len(), 2);
+
+        // A match key merges: `9` is stored and updates, `10` appends.
+        let merging = options.clone().with_merge_by_names(["id"]);
+        let batch = trades(
+            &[9, 10],
+            &[Some("BP.L"), Some("SHEL")],
+            &[Some("XLON"), Some("XLON")],
+        );
+        table
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &merging,
+            )
+            .unwrap();
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()),
+            vec![
+                (9, Some("BP.L".to_owned()), Some("XLON".to_owned())),
+                (10, Some("SHEL".to_owned()), Some("XLON".to_owned())),
+            ]
+        );
+
+        // Reopening reads the same history this value already reports.
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.version(), table.version());
+        assert_eq!(reopened.metadata().snapshots.len(), 3);
+    }
 }
 
 #[test]

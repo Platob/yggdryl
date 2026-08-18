@@ -1244,6 +1244,83 @@ methods keep their meanings, and each one is a single commit:
 - `append_arrow_batch_reader` writes new data files and keeps every manifest the
   last snapshot had, so nothing stored is read or rewritten.
 
+The relationship runs the other way too: a `Table` value is itself a handle, so
+the same three methods work on it directly. The folder route above probes the
+location for a table on every call; the `Table` implementation answers from the
+metadata the value already holds, and each answer is the better one.
+`record_options` names the data files' encoding before the first file exists,
+`read_arrow_field` is the stored schema with its field identifiers rather than a
+shape lifted off decoded batches, a `filter_partitions` pair prunes data files
+through the scan plan instead of filtering rows after they were decoded, and a
+write is one commit the value reports immediately - `current_snapshot` and
+`version` stay current without reopening anything. One deliberate difference: a
+filter naming a column the schema does not declare is an error, because a
+table's schema is authoritative, where a folder of leaves ignores a column its
+batches do not carry. (The Python and JavaScript tables keep their own scan and
+commit vocabulary; there, the folder handle above is the generic route.)
+
+```rust
+use yggdryl::generic::IORecordOptions;
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+use yggdryl::io::IOBase;
+use yggdryl::local::Folder;
+use yggdryl::{arrow, DataType, MimeType};
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use std::sync::Arc;
+
+let mut schema = DataType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::Utf8.nullable_field("venue"),
+])?
+.required_field("row");
+assign_field_ids(&mut schema, 1)?;
+
+let path = std::env::temp_dir().join("yggdryl-docs-iceberg-table-handle");
+let _ = std::fs::remove_dir_all(&path);
+let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+// The record surface answers before a single data file exists: the encoding
+// from the metadata, the schema with its field identifiers.
+let options = table.record_options()?;
+assert_eq!(options.mime_type(), MimeType::PARQUET);
+assert_eq!(
+    table.read_arrow_field(&options)?.fields()[0].parquet_field_id()?,
+    Some(1),
+);
+
+let arrow_schema = schema.to_arrow_schema()?;
+let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![
+            Arc::new(Int64Array::from(ids)),
+            Arc::new(StringArray::from(venues)),
+        ],
+    )
+    .expect("a batch matching the root");
+    arrow::batch_reader(batch.schema(), [batch])
+};
+
+// Each generic write is one commit, and the value's metadata follows it
+// without reopening anything.
+table.append_arrow_batch_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
+let merging = options.clone().with_merge_by_names(["id"]);
+table.write_arrow_batch_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
+assert_eq!(table.metadata().snapshots.len(), 2);
+assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
+
+// A partition filter is answered by the scan plan, so the other partitions'
+// files are never opened.
+let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
+let matching: usize = table
+    .read_arrow_batch_reader(&filtered)?
+    .map(|batch| batch.unwrap().num_rows())
+    .sum();
+assert_eq!(matching, 1);
+```
+
 A handle addressing one of the table's `column=value` directories addresses that
 partition of it, exactly as it would in a plain Hive lake - the difference is that
 the files come from the manifest rather than from a directory listing:

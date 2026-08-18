@@ -905,7 +905,7 @@ pub trait IOBase: Send {
         if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(self)? {
-                return Ok(table.record_options());
+                return table.record_options();
             }
             for child in self.children_where(&[], false)? {
                 if let Ok(options) = RecordOptions::for_media_type(child.media_type()) {
