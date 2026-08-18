@@ -22,9 +22,9 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
     let source = batch();
     let field = wide();
 
-    let mut names = vec!["bench.arrows"];
+    let mut names = vec!["bucket/bench.arrows"];
     if cfg!(feature = "parquet") {
-        names.push("bench.parquet");
+        names.push("bucket/bench.parquet");
     }
 
     for name in names {

@@ -29,23 +29,19 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
             ArrowFile::from_location(filesystem, "bench/read.bin").expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
-        bencher.iter(|| {
-            black_box(&handle)
-                .read_all()
-                .expect("a readable value")
-                .len()
-        });
+        // The whole value is black-boxed rather than its length: observing
+        // only the length lets the optimizer delete the allocation and the
+        // copy outright, which would time nothing and read as a win.
+        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
     });
 
     group.bench_function("read_all/buffer", |bencher| {
         let mut handle = buffer("read.bin");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
-        bencher.iter(|| {
-            black_box(&handle)
-                .read_all()
-                .expect("a readable value")
-                .len()
-        });
+        // The whole value is black-boxed rather than its length: observing
+        // only the length lets the optimizer delete the allocation and the
+        // copy outright, which would time nothing and read as a win.
+        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
     });
 
     // A ranged read, which is the shape a footer-first reader uses: the
@@ -106,12 +102,10 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
             ArrowFile::from_location(filesystem.clone(), &location).expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
-        bencher.iter(|| {
-            black_box(&handle)
-                .read_all()
-                .expect("a readable value")
-                .len()
-        });
+        // The whole value is black-boxed rather than its length: observing
+        // only the length lets the optimizer delete the allocation and the
+        // copy outright, which would time nothing and read as a win.
+        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
     });
 
     group.bench_function("read_all/local_file", |bencher| {
@@ -119,12 +113,10 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         let mut handle = yggdryl::local::File::create(&path).expect("a valid path");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.flush().expect("the fixture publishes");
-        bencher.iter(|| {
-            black_box(&handle)
-                .read_all()
-                .expect("a readable value")
-                .len()
-        });
+        // The whole value is black-boxed rather than its length: observing
+        // only the length lets the optimizer delete the allocation and the
+        // copy outright, which would time nothing and read as a win.
+        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
     });
 
     group.bench_function("write_all/arrowfs_local", |bencher| {
