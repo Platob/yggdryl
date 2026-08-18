@@ -43,10 +43,15 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
+| `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
 | `Record`, `record`, `from_dict`, `to_dict`, `schema_field`, `schema_fields` | this page |
 
-Compression handles are Rust-only today; the content coding a record encoding applies still comes
-from the handle's own name.
+The three coding modules carry the whole-buffer pair - `loads` and `dumps`, plus `loads_raw` and
+`dumps_raw` on `zlib` - under the standard library's own module names, so swapping `import gzip`
+for `from yggdryl import gzip` changes the engine and nothing else. Their streaming `reader`/
+`writer` and the transparent `Gzip<H>`-style handles stay Rust-only: both are built on Rust's
+`Read`/`Write`, which Python has no native spelling for. A handle still applies the coding its own
+name declares without being told, and `IOBase.codec` is what asks it which one that is.
 
 ## Inference at the boundary
 

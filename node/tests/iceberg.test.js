@@ -523,12 +523,13 @@ test('a namespace is the map-like half of the catalog', (t) => {
   analytics.set('trades', schema)
   analytics.set('trades', schema)
   assert.ok(analytics.has('trades'))
-  assert.deepEqual(analytics.tables(), ['trades'])
+  // `tables` is the collection itself, so the name list comes off the view.
+  assert.deepEqual(analytics.tables.names(), ['trades'])
 
   // Setting rows replaces the table's rows, creating a table the namespace
   // never had from the rows' own schema.
   analytics.set('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
   assert.equal(analytics.get('quotes').scan().toTable().numRows, 2)
-  assert.deepEqual(analytics.tables().sort(), ['quotes', 'trades'])
+  assert.deepEqual(analytics.tables.names().sort(), ['quotes', 'trades'])
   assert.deepEqual(catalog.listNamespaces(), ['analytics'])
 })

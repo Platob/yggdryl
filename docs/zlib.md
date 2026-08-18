@@ -2,19 +2,49 @@
 
 RFC 1950 zlib framing and raw RFC 1951 DEFLATE, as whole buffers, as streams, or as a handle that decodes on the way through.
 
-!!! note "Rust only"
-    The Python and JavaScript packages do not expose this module yet.
+!!! note "Streams and handles are Rust only"
+    Both whole-buffer pairs - framed and raw - cross to Python and JavaScript as
+    `loads`/`dumps` and `loads_raw`/`dumps_raw` (`loadsRaw`/`dumpsRaw` in JavaScript). The
+    streaming `reader`/`writer` and the transparent `Zlib<H>` handle are Rust only: both are
+    built on `Read`/`Write`, which neither binding has a native spelling for.
 
-```rust
-use yggdryl::zlib;
+=== "Rust"
 
-let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
-let plain = text.as_bytes();
+    ```rust
+    use yggdryl::zlib;
 
-let encoded = zlib::dump(plain)?;
-assert_eq!(zlib::load(&encoded)?, plain);
-assert!(encoded.len() < plain.len());
-```
+    let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
+    let plain = text.as_bytes();
+
+    let encoded = zlib::dump(plain)?;
+    assert_eq!(zlib::load(&encoded)?, plain);
+    assert!(encoded.len() < plain.len());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import zlib
+
+    plain = b"symbol,price\n" + b"AAPL,1\n" * 64
+
+    encoded = zlib.dumps(plain)
+    assert zlib.loads(encoded) == plain
+    assert len(encoded) < len(plain)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { zlib } = require('yggdryl')
+
+    const plain = Buffer.from('symbol,price\n' + 'AAPL,1\n'.repeat(64))
+
+    const encoded = zlib.dumps(plain)
+    assert.deepEqual(zlib.loads(encoded), plain)
+    assert.ok(encoded.length < plain.length)
+    ```
 
 `dump` and `load` handle a complete buffer. Everything else on this page is the
 same two operations under a different shape: a level, a stream, or a handle.
@@ -24,25 +54,83 @@ same two operations under a different shape: a level, a stream, or a handle.
 The `*_raw` pair encodes and decodes the DEFLATE stream alone, with no zlib
 header and no Adler-32 trailer.
 
-```rust
-use yggdryl::zlib;
+=== "Rust"
 
-let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
-let plain = text.as_bytes();
+    ```rust
+    use yggdryl::zlib;
 
-let framed = zlib::dump(plain)?;
-let raw = zlib::dump_raw(plain)?;
+    let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
+    let plain = text.as_bytes();
 
-assert_eq!(zlib::load(&framed)?, plain);
-assert_eq!(zlib::load_raw(&raw)?, plain);
+    let framed = zlib::dump(plain)?;
+    let raw = zlib::dump_raw(plain)?;
 
-// The framing is a two-byte header plus a four-byte Adler-32 trailer.
-assert_eq!(framed.len(), raw.len() + 6);
+    assert_eq!(zlib::load(&framed)?, plain);
+    assert_eq!(zlib::load_raw(&raw)?, plain);
 
-// Neither decoder accepts the other's bytes.
-assert!(zlib::load(&raw).is_err());
-assert!(zlib::load_raw(&framed).is_err());
-```
+    // The framing is a two-byte header plus a four-byte Adler-32 trailer.
+    assert_eq!(framed.len(), raw.len() + 6);
+
+    // Neither decoder accepts the other's bytes.
+    assert!(zlib::load(&raw).is_err());
+    assert!(zlib::load_raw(&framed).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import zlib as standard
+
+    import pytest
+
+    from yggdryl import zlib
+
+    plain = b"symbol,price\n" + b"AAPL,1\n" * 64
+
+    framed = zlib.dumps(plain)
+    raw = zlib.dumps_raw(plain)
+
+    assert zlib.loads(framed) == plain
+    assert zlib.loads_raw(raw) == plain
+
+    # The framing is a two-byte header plus a four-byte Adler-32 trailer.
+    assert len(framed) == len(raw) + 6
+
+    # Neither decoder accepts the other's bytes.
+    with pytest.raises(ValueError):
+        zlib.loads(raw)
+    with pytest.raises(ValueError):
+        zlib.loads_raw(framed)
+
+    # The raw pair is what the standard library spells with a negative window.
+    assert standard.decompress(raw, -standard.MAX_WBITS) == plain
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const standard = require('node:zlib')
+    const { zlib } = require('yggdryl')
+
+    const plain = Buffer.from('symbol,price\n' + 'AAPL,1\n'.repeat(64))
+
+    const framed = zlib.dumps(plain)
+    const raw = zlib.dumpsRaw(plain)
+
+    assert.deepEqual(zlib.loads(framed), plain)
+    assert.deepEqual(zlib.loadsRaw(raw), plain)
+
+    // The framing is a two-byte header plus a four-byte Adler-32 trailer.
+    assert.equal(framed.length, raw.length + 6)
+
+    // Neither decoder accepts the other's bytes.
+    assert.throws(() => zlib.loads(raw))
+    assert.throws(() => zlib.loadsRaw(framed))
+
+    // The raw pair is what node:zlib spells inflateRaw.
+    assert.deepEqual(standard.inflateRawSync(raw), plain)
+    ```
 
 The two forms are not interchangeable and nothing sniffs between them, because
 raw DEFLATE has no magic bytes to sniff. You have to know which one the payload
