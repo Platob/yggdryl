@@ -10,18 +10,8 @@
   pub type BatchReader = Box<dyn arrow_array::RecordBatchReader + Send>;
   pub fn batch_reader<I>(schema: SchemaRef, batches: I) -> BatchReader where I: IntoIterator<Item = arrow_array::RecordBatch>, I::IntoIter: Send + 'static,
   pub type Result<T> = std::result::Result<T, Error>;
-  pub struct ArrowScalar
-  pub fn from_parts(field: Field, array: ArrayRef) -> Result<Self>
-  pub fn from_value(field: Field, value: Value) -> Result<Self>
-  pub const fn field(&self) -> &Field
-  pub fn data_type(&self) -> &DataType
-  pub const fn array(&self) -> &ArrayRef
-  pub fn to_array(&self) -> ArrayRef
-  pub fn into_array(self) -> ArrayRef
-  pub fn to_value(&self) -> Result<Value>
-  pub fn into_value(self) -> Result<Value>
-  pub fn into_parts(self) -> (Field, ArrayRef)
-  pub trait DefaultArrowScalar
+  pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef>
+  pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Value>
   pub struct StructScalar
   pub fn from_parts(schema: Field, array: StructArray) -> Result<Self>
   pub const fn schema(&self) -> &Field
@@ -106,6 +96,7 @@
   pub fn to_arrow(&self) -> Result<ArrowDataType>
   pub fn to_arrow_ffi(&self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow(self) -> Result<ArrowDataType>
+  pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
 ### yggdryl::datatype::comparison  [rust\src\datatype\comparison.rs]
   pub fn equals(&self, other: &Self, with_metadata: bool) -> bool
@@ -200,6 +191,9 @@
   pub fn into_value(self) -> Value
   pub fn into_any(self) -> TypedValue
   pub fn try_into_typed<J: FieldType>(self) -> Result<TypedValue<J>>
+  pub fn to_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
+  pub fn try_from_arrow_array( data_type: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
+  pub fn from_arrow_array( data_type: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Value) -> Result<Self>
   pub type NullValue = TypedValue<scalar::Null>;  // one alias per datatype, through RunEndEncodedValue
 
@@ -494,6 +488,7 @@
   pub fn to_arrow_ffi(&self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow(self) -> Result<ArrowField>
   pub fn into_arrow_ref(self) -> Result<FieldRef>
+  pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
 ### yggdryl::field::cast  [rust\src\field\cast\mod.rs]
   pub trait ArrowFieldType: FieldType

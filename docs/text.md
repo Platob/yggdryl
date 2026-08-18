@@ -490,7 +490,9 @@ assert!(dynamic.try_into_typed::<yggdryl::field::binary::Utf8>().is_err());
 The marker is zero-sized, so `Int64Value` is the same two words `TypedValue` is; it narrows what the
 type system will accept, not what the value costs. `AnyType` is the marker that accepts every
 datatype, and it is what a bare `TypedValue` carries - which is why `from_parts` and `from_value`
-stay the dynamic spellings and the narrowed ones are `try_from_parts` and `try_from_value`.
+stay the dynamic spellings and the narrowed ones are `try_from_parts` and `try_from_value`. The same
+split names the Arrow projection behind the default `arrow` feature - `to_arrow_array`,
+`from_arrow_array`, and the narrowed `try_from_arrow_array` - documented in [arrow.md](arrow.md).
 
 ## Four formats, one surface
 

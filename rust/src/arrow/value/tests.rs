@@ -1,18 +1,16 @@
 //! What a value carries into an Arrow column, and what comes back out.
 
-use crate::arrow::ArrowScalar;
+use crate::arrow::{scalar_array, scalar_value};
 use crate::{DataType, Field, TimeUnit, Value};
 
 fn round_trip(data_type: DataType, value: Value) -> Value {
     let field = Field::new("column", data_type, true);
-    ArrowScalar::from_value(field, value)
-        .expect("the value materializes")
-        .to_value()
-        .expect("the column decodes")
+    let array = scalar_array(&field, &value).expect("the value materializes");
+    scalar_value(&field, array.as_ref()).expect("the column decodes")
 }
 
 mod widths {
-    use super::{ArrowScalar, DataType, Field, Value, round_trip};
+    use super::{DataType, Field, Value, round_trip, scalar_array};
 
     #[test]
     fn an_unsigned_integer_survives_its_whole_range() {
@@ -73,7 +71,7 @@ mod widths {
         // Reading through `as_bytes` alone turned every other kind into a
         // null, so a string written into a binary column simply vanished.
         let field = Field::new("payload", DataType::Binary, true);
-        let error = ArrowScalar::from_value(field, Value::from("AAPL")).unwrap_err();
+        let error = scalar_array(&field, &Value::from("AAPL")).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("binary"), "{message}");
         assert!(!message.is_empty());
@@ -81,7 +79,7 @@ mod widths {
 }
 
 mod restating {
-    use super::{ArrowScalar, DataType, Field, TimeUnit, Value, round_trip};
+    use super::{DataType, Field, TimeUnit, Value, round_trip, scalar_array};
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
@@ -101,7 +99,7 @@ mod restating {
         // A coefficient that cannot be restated without losing a digit is
         // refused rather than rounded.
         let field = Field::new("price", column, true);
-        assert!(ArrowScalar::from_value(field, Value::decimal(1_055, 3)).is_err());
+        assert!(scalar_array(&field, &Value::decimal(1_055, 3)).is_err());
     }
 
     #[test]
@@ -136,9 +134,9 @@ mod restating {
 
         // Coarsening that would drop a digit is refused, naming the kind.
         let seconds = Field::new("at", DataType::Timestamp(TimeUnit::Second, None), true);
-        let error = ArrowScalar::from_value(
-            seconds,
-            Value::timestamp(1_500, TimeUnit::Millisecond, None).unwrap(),
+        let error = scalar_array(
+            &seconds,
+            &Value::timestamp(1_500, TimeUnit::Millisecond, None).unwrap(),
         )
         .unwrap_err()
         .to_string();
