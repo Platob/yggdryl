@@ -1,38 +1,52 @@
 //! What a page cache buys over a handle, and what it costs.
 //!
-//! Three workloads over one 16 MiB fixture, each run over three handles so the
-//! comparison is like for like: an in-memory [`Buffer`] as the floor a cache
-//! can never beat, a bare memory-mapped [`File`](yggdryl::local::File), and
-//! that same file wrapped in [`Buffered`]. Every case reports the bytes it
-//! moves as its Criterion throughput, so the rows are comparable across
+//! Three workloads over one 16 MiB fixture, each run over every handle the
+//! core ships, so the comparison is like for like. Every case reports the
+//! bytes it moves as its Criterion throughput, so rows are comparable across
 //! workloads and not only within one.
+//!
+//! The handles fall into two families, and that is the whole argument:
+//!
+//! - **Already memory.** An in-memory [`Buffer`] is the floor a cache can
+//!   never beat, and a memory-mapped [`File`](yggdryl::local::File) is a
+//!   `memcpy` out of the page cache the *kernel* already keeps. Wrapping
+//!   either can only add a lock, a clock read, a map lookup, and a second
+//!   copy. These rows measure that overhead honestly.
+//! - **A fetch per read.** An [`ArrowFile`](yggdryl::arrowfs::File) answers
+//!   every `pread` with one `read_range` call through the foreign-filesystem
+//!   vtable. Over [`MemoryFileSystem`] that is a lock and a copy; over
+//!   [`LocalFileSystem`] it is an `open`, a `seek`, and a `read` **per call**,
+//!   which is the shape every real object store has - a round trip whose cost
+//!   dwarfs the bytes it carries. These are the rows the cache exists for.
+//!
+//! The workloads:
 //!
 //! - `random` reads 512 bytes at a time from a 4 MiB hot region, which fits
 //!   inside the 8 MiB default budget. After the first iteration every page is
-//!   held, so this is the cache's own hit path against the two uncached ones.
+//!   held, so this is the cache's own hit path against the uncached ones.
 //! - `sequential` scans the whole 16 MiB in 8 KiB steps. Twice the budget, so
 //!   every page is fetched exactly once and evicted before it is asked for
 //!   again: a pure miss workload, and therefore the price of the cache with
-//!   none of its benefit.
+//!   none of its benefit - except over a fetch-per-read backend, where it
+//!   still turns eight reads into one.
 //! - `footer` is the shape a footer-first container is opened with - read the
 //!   tail, read the head, scan a chunk of the middle, then read both ends
 //!   again - which is what the pinned header and footer pages are for. The
 //!   middle scan is sized to sweep the budget, so an unpinned cache would have
 //!   dropped both ends by the time they are asked for the second time.
 //!
-//! Read the numbers for what they are. A `pread` on a mapped file is already
-//! a `memcpy` out of the page cache the *kernel* keeps, so a user-space cache
-//! over one is a second copy plus a lock; what these rows measure is that
-//! overhead against the per-read work it removes, on the one backend the core
-//! ships. A handle whose fetch is a network round trip is the case the cache
-//! exists for, and it is not this table - nothing here should be read as a
-//! claim about one.
+//! Nothing here is a claim about a *network* filesystem; the local vtable is
+//! a syscall per read, not a round trip over a wire. It is the closest thing
+//! the core ships, it is inspectable, and it is the right shape.
 
 use std::hint::black_box;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use criterion::{Criterion, Throughput};
-use yggdryl::buffered::{Buffered, BufferedOptions};
+use yggdryl::arrowfs::{ArrowFileSystem, File as ArrowFile, LocalFileSystem, MemoryFileSystem};
+use yggdryl::buffered::BufferedOptions;
+use yggdryl::gzip::Gzip;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::local::File;
 
@@ -50,6 +64,18 @@ const DRAWS: usize = 1_024;
 const SWEEP: u64 = 12 * 1024 * 1024;
 /// Bytes each end of the footer workload reads.
 const ENDS: usize = 8 * 1024;
+/// Where the memory filesystem keeps the fixture.
+const MEMORY_LOCATION: &str = "bench/buffered.bin";
+/// The decoded size of the compressed fixture.
+///
+/// Far smaller than the main one, because the uncached coded case decodes the
+/// whole value once per read: at 16 MiB a single iteration would take longer
+/// than the whole rest of the target.
+const CODED: usize = 256 * 1024;
+/// Reads per iteration of the coded workload.
+const CODED_READS: usize = 64;
+/// One coded read.
+const CODED_STEP: usize = 4 * 1024;
 
 /// A handle that mirrors a [`Buffer`] and counts the reads reaching it.
 ///
@@ -144,51 +170,197 @@ pub(crate) fn buffered_benchmarks(criterion: &mut Criterion) {
          got {middle_refetched} fetches against {held_pages} pages of budget"
     );
 
-    let memory = Buffer::from_bytes(payload);
-    let file = File::new(&path).expect("a local fixture path");
-    let cached = File::new(&path)
-        .expect("a local fixture path")
-        .buffered(BufferedOptions::default());
+    let handles = handles(&path, payload);
     let offsets = draws();
 
     let mut group = criterion.benchmark_group("io_buffered");
 
     group.throughput(Throughput::Bytes((DRAWS * SMALL) as u64));
-    for (label, handle) in cases(&memory, &file, &cached) {
+    for (label, handle) in &handles {
         group.bench_function(format!("random/{label}"), |bencher| {
-            bencher.iter(|| random(black_box(handle), &offsets));
+            bencher.iter(|| random(black_box(handle.as_ref()), &offsets));
         });
     }
 
     group.throughput(Throughput::Bytes(FIXTURE));
-    for (label, handle) in cases(&memory, &file, &cached) {
+    for (label, handle) in &handles {
         group.bench_function(format!("sequential/{label}"), |bencher| {
-            bencher.iter(|| sequential(black_box(handle)));
+            bencher.iter(|| sequential(black_box(handle.as_ref())));
         });
     }
 
     // The pinning case: the two ends against a middle that sweeps the budget.
     group.throughput(Throughput::Bytes(SWEEP + 4 * ENDS as u64));
-    for (label, handle) in cases(&memory, &file, &cached) {
+    for (label, handle) in &handles {
         group.bench_function(format!("footer/{label}"), |bencher| {
-            bencher.iter(|| footer(black_box(handle)));
+            bencher.iter(|| footer(black_box(handle.as_ref())));
         });
     }
 
+    coded_cases(&mut group);
+
     group.finish();
 
-    drop(cached);
-    drop(file);
+    drop(handles);
     let _ = std::fs::remove_file(&path);
 }
 
-/// The three handles every workload runs over, in one order.
-fn cases<'handles>(
-    memory: &'handles Buffer,
-    file: &'handles File,
-    cached: &'handles Buffered<File>,
-) -> [(&'static str, &'handles dyn IOBase); 3] {
-    [("buffer", memory), ("file", file), ("buffered", cached)]
+/// What a page cache is worth over a *compressed* handle.
+///
+/// A content coding is not seekable, so [`Coded`](yggdryl::io::Coded) answers
+/// a positional read by decoding the value. Which decode you pay depends on
+/// whether the handle is open, and that is the whole table:
+///
+/// - `closed` is the trap: nothing may be cached as a side effect of an
+///   ordinary read, so a handle nobody opened decodes the **whole payload for
+///   every `pread`**. Sixty-four reads, sixty-four decodes.
+/// - `open` is the cure the coding already ships: `open` materializes the
+///   decoded value and `close` releases it, so each read is a range copy out
+///   of it. This is the path a caller who knows they are reading a compressed
+///   value should take.
+/// - `buffered` is what the page cache buys when the handle is *not* opened -
+///   the case a caller who does not know what they were handed is in. The
+///   cache turns one decode per read into one decode per page miss, and here
+///   the whole value is four pages, so after the first pass there are none.
+///
+/// The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the
+/// *decoded* bytes. The other way round would cache the compressed bytes and
+/// still decode on every read.
+fn coded_cases(group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>) {
+    let payload = coded_payload();
+    let encoded = encoded_fixture(&payload);
+
+    group.throughput(Throughput::Bytes((CODED_READS * CODED_STEP) as u64));
+
+    group.bench_function("coded/closed", |bencher| {
+        let handle = Gzip::new(Buffer::from_bytes(encoded.clone()));
+        assert_eq!(handle.size(), CODED as u64);
+        bencher.iter(|| coded_scan(black_box(&handle)));
+    });
+
+    group.bench_function("coded/open", |bencher| {
+        let mut handle = Gzip::new(Buffer::from_bytes(encoded.clone()));
+        handle.open().expect("a decodable fixture");
+        bencher.iter(|| coded_scan(black_box(&handle)));
+    });
+
+    group.bench_function("coded/buffered", |bencher| {
+        let handle =
+            Gzip::new(Buffer::from_bytes(encoded.clone())).buffered(BufferedOptions::default());
+        bencher.iter(|| coded_scan(black_box(&handle)));
+    });
+}
+
+/// A payload worth compressing: repetitive, like every log and every column.
+fn coded_payload() -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(CODED);
+    let mut row = 0_u64;
+    while bytes.len() < CODED {
+        bytes
+            .extend_from_slice(format!("{row:08},AAPL,{:.2},XNAS\n", row as f64 * 0.01).as_bytes());
+        row += 1;
+    }
+    bytes.truncate(CODED);
+    bytes
+}
+
+/// The gzip bytes of the coded fixture, encoded once outside every timer.
+fn encoded_fixture(payload: &[u8]) -> Vec<u8> {
+    let mut handle = Gzip::new(Buffer::new());
+    handle
+        .write_all_bytes(payload)
+        .expect("the fixture must write");
+    handle.flush().expect("the fixture must publish");
+    let stored = handle.into_handle().expect("a published fixture");
+    assert!(
+        stored.size() < CODED as u64,
+        "the coded fixture must actually compress"
+    );
+    stored.into_bytes()
+}
+
+/// Read the coded value in `CODED_STEP` steps, front to back.
+fn coded_scan(handle: &dyn IOBase) -> usize {
+    let mut target = vec![0_u8; CODED_STEP];
+    let mut read = 0;
+    for step in 0..CODED_READS {
+        read += handle
+            .pread((step * CODED_STEP) as u64, &mut target)
+            .expect("a readable fixture");
+    }
+    read
+}
+
+/// Every handle the workloads run over, in one order, each already holding
+/// the fixture.
+///
+/// They are boxed because the set spans four types and one battery runs over
+/// all of them; `IOBase` is implemented for the box, so the byte half of the
+/// contract forwards unchanged. The two `arrowfs` filesystems are what turn
+/// this from an overhead table into a comparison: over `LocalFileSystem`
+/// every `pread` is its own `open`/`seek`/`read`, so what the cache removes
+/// is a syscall rather than a copy.
+fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<dyn IOBase>)> {
+    // One shared memory filesystem, written once through the vtable, so both
+    // memory legs read the same object.
+    let in_memory: Arc<dyn ArrowFileSystem> = Arc::new(MemoryFileSystem::new());
+    in_memory
+        .write_full(MEMORY_LOCATION, &payload)
+        .expect("the fixture must be written");
+
+    // The local filesystem reads the very file the mapped legs read, so the
+    // two local rows differ in how they reach the bytes and in nothing else.
+    let on_disk: Arc<dyn ArrowFileSystem> = Arc::new(LocalFileSystem::new());
+    let location = path.to_string_lossy().replace('\\', "/");
+
+    vec![
+        (
+            "buffer",
+            Box::new(Buffer::from_bytes(payload)) as Box<dyn IOBase>,
+        ),
+        (
+            "file",
+            Box::new(File::new(path).expect("a local fixture path")),
+        ),
+        (
+            "buffered",
+            Box::new(
+                File::new(path)
+                    .expect("a local fixture path")
+                    .buffered(BufferedOptions::default()),
+            ),
+        ),
+        (
+            "arrowfs_memory",
+            Box::new(
+                ArrowFile::from_location(Arc::clone(&in_memory), MEMORY_LOCATION)
+                    .expect("a valid location"),
+            ),
+        ),
+        (
+            "arrowfs_memory_buffered",
+            Box::new(
+                ArrowFile::from_location(in_memory, MEMORY_LOCATION)
+                    .expect("a valid location")
+                    .buffered(BufferedOptions::default()),
+            ),
+        ),
+        (
+            "arrowfs_local",
+            Box::new(
+                ArrowFile::from_location(Arc::clone(&on_disk), &location)
+                    .expect("a valid location"),
+            ),
+        ),
+        (
+            "arrowfs_local_buffered",
+            Box::new(
+                ArrowFile::from_location(on_disk, &location)
+                    .expect("a valid location")
+                    .buffered(BufferedOptions::default()),
+            ),
+        ),
+    ]
 }
 
 /// The fixture's bytes, generated so the value is not one repeated page.
