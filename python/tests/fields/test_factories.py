@@ -95,7 +95,7 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     assert child.equals(item)
     assert child.dictionary_id == 42
     assert child.dictionary_is_ordered is True
-    assert child["logical"] == "status"
+    assert child.metadata["logical"] == "status"
     assert child.to_arrow().equals(projected_item, check_metadata=True)
     assert values.to_arrow().metadata == {b"owner": b"events"}
 

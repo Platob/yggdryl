@@ -470,8 +470,8 @@ def test_schema_cache_is_class_local_and_native_fields_are_frozen() -> None:
         child: Child
 
     assert schema_field(Child) is not schema_field(Base)
-    assert schema_field(Child)["python.kind"] == "dataclass"
-    assert schema_fields(Container)[0]["python.kind"] == "dataclass"
+    assert schema_field(Child).metadata["python.kind"] == "dataclass"
+    assert schema_fields(Container)[0].metadata["python.kind"] == "dataclass"
     assert tuple(field.name for field in schema_fields(Child)) == ("base", "child")
 
     root = schema_field(Child)
@@ -490,13 +490,13 @@ def test_adopting_an_inferred_dataclass_rebuilds_record_identity() -> None:
         value: int
 
     old_root = schema_field(Existing)
-    assert old_root["python.kind"] == "dataclass"
+    assert old_root.metadata["python.kind"] == "dataclass"
 
     adopted = record(Existing)
     new_root = schema_field(adopted)
     assert adopted is Existing
     assert new_root is not old_root
-    assert new_root["python.kind"] == "record"
+    assert new_root.metadata["python.kind"] == "record"
 
 
 @pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 requires Python 3.12")
@@ -816,7 +816,7 @@ def test_nested_schema_cache_keeps_only_reachable_classes() -> None:
 
     left, right, pair = factory()
     gc.collect()
-    assert schema_field(left)["python.class"] == "Left"
+    assert schema_field(left).metadata["python.class"] == "Left"
     assert right() is None
     assert pair() is None
 

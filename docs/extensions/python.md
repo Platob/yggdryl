@@ -212,23 +212,26 @@ record type reads that tuple back as the record.
 
 ## Field metadata is a mapping
 
-`Field` implements the mapping protocol over its metadata, so ordinary Python idioms work and the
-ordering is the native one.
+`field.metadata` implements the mapping protocol over the field's metadata, so ordinary Python
+idioms work and the ordering is the native one. It is a live view of the field, not a copy.
+
+Item access on the `Field` *itself* reaches a nested child, never a metadata key - the same thing
+`DataType` subscripting means - so a schema walk gets one answer from every node.
 
 ```python
 from yggdryl import Field
 
 field = Field("trade", "int64", nullable=False, metadata={"source": "book"})
-field["venue"] = "XPAR"
+field.metadata["venue"] = "XPAR"
 
-assert field["source"] == "book"
-assert "venue" in field
-assert len(field) == 2
-assert sorted(field.keys()) == ["source", "venue"]
-assert dict(field.items())["venue"] == "XPAR"
+assert field.metadata["source"] == "book"
+assert "venue" in field.metadata
+assert len(field.metadata) == 2
+assert sorted(field.metadata.keys()) == ["source", "venue"]
+assert dict(field.metadata.items())["venue"] == "XPAR"
 
-del field["venue"]
-assert "venue" not in field
+del field.metadata["venue"]
+assert "venue" not in field.metadata
 ```
 
 Typed identifiers and typed HTTP values (`parquet_field_id`, `alias`, `content_type`, `etag`, and
@@ -251,8 +254,8 @@ assert "doc" not in field.postgres
 
 # The bare name is all the view needs; the full key is what the field stores.
 assert field.iceberg.key("doc") == "iceberg:doc"
-assert field["iceberg:doc"] == "closing price"
-assert len(field) == 2
+assert field.metadata["iceberg:doc"] == "closing price"
+assert len(field.metadata) == 2
 
 del field.iceberg["doc"]
 assert not field.iceberg

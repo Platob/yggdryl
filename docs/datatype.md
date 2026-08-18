@@ -55,6 +55,13 @@ Scalar variants are inline and nested children sit behind shared allocations, so
 
 ## Children
 
+Subscripting a `DataType` reaches a nested child - by name or by position - which is exactly what
+subscripting a [`Field`](field.md#item-access-reaches-a-child-never-metadata) does, so one semantic
+covers every node in a schema graph. A `DataType` is immutable and hashable, so it is a *read-only*
+child collection: assignment and deletion belong on the `Field` that carries it, which owns the
+cache-aware mutation.
+
+
 === "Rust"
 
     ```rust

@@ -14,7 +14,7 @@ use yggdryl::ArrowCast;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
 use crate::datatype::{
-    PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow, arrow_scalar_to_pyarrow_type,
+    PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow, arrow_scalar_to_pyarrow_type,
     core_data_type_from_value, core_field_to_pyarrow, default_arrow_scalar_to_pyarrow,
 };
 use crate::media::{
@@ -1242,86 +1242,6 @@ impl PyField {
             .map_err(value_error)
     }
 
-    fn __len__(&self) -> usize {
-        self.inner.metadata_len()
-    }
-
-    fn __iter__(&self) -> PyFieldMetadataIterator {
-        PyFieldMetadataIterator::new(&self.inner, MetadataIteratorKind::Keys)
-    }
-
-    fn __contains__(&self, key: &Bound<'_, PyAny>) -> bool {
-        key.extract::<&str>()
-            .is_ok_and(|key| self.inner.has_metadata(key))
-    }
-
-    fn __getitem__(&self, key: &str) -> PyResult<String> {
-        self.inner
-            .get_metadata(key)
-            .map(str::to_owned)
-            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
-    }
-
-    fn __setitem__(&mut self, key: String, value: String) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .insert_metadata(key, value)
-            .map(|_| ())
-            .map_err(value_error)
-    }
-
-    fn __delitem__(&mut self, key: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .remove_metadata(key)
-            .map(|_| ())
-            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
-    }
-
-    #[pyo3(signature = (key, default=None, /))]
-    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> Py<PyAny> {
-        self.inner.get_metadata(key).map_or_else(
-            || default.unwrap_or_else(|| py.None()),
-            |value| PyString::new(py, value).into_any().unbind(),
-        )
-    }
-
-    fn keys(&self) -> PyFieldMetadataIterator {
-        PyFieldMetadataIterator::new(&self.inner, MetadataIteratorKind::Keys)
-    }
-
-    fn values(&self) -> PyFieldMetadataIterator {
-        PyFieldMetadataIterator::new(&self.inner, MetadataIteratorKind::Values)
-    }
-
-    fn items(&self) -> PyFieldMetadataIterator {
-        PyFieldMetadataIterator::new(&self.inner, MetadataIteratorKind::Items)
-    }
-
-    #[pyo3(signature = (values=None, /, **kwargs))]
-    fn update(
-        &mut self,
-        values: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<()> {
-        self.require_mutable()?;
-        let mut pairs = BTreeMap::new();
-        if let Some(values) = values {
-            extend_metadata_pairs(values, &mut pairs)?;
-        }
-        if let Some(kwargs) = kwargs {
-            for (key, value) in kwargs.iter() {
-                pairs.insert(key.extract()?, value.extract()?);
-            }
-        }
-        self.inner.update_metadata(pairs).map_err(value_error)
-    }
-
-    fn clear(&mut self) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.clear_metadata();
-        Ok(())
-    }
 
     /// Compare recursively, optionally ignoring metadata on every Field.
     #[pyo3(signature = (other, with_metadata=true))]
@@ -1353,6 +1273,78 @@ impl PyField {
     /// Makes a cached record schema value immutable at the Python boundary.
     fn _freeze(&mut self) {
         self.read_only = true;
+    }
+
+    /// A live mapping view of this field's metadata.
+    ///
+    /// Item access on a `Field` reaches a nested **child**, so this view is
+    /// where metadata is reached - `field.metadata["owner"]` - and it carries
+    /// the whole mapping protocol (`get`, `keys`, `values`, `items`, `update`,
+    /// `clear`). The view is live rather than a snapshot: it holds
+    /// this field and reads through it on every call, so a write on the field
+    /// is visible in the view and a write through the view is visible on the
+    /// field.
+    #[getter]
+    fn metadata(slf: Py<Self>) -> PyFieldMetadata {
+        PyFieldMetadata { field: slf }
+    }
+
+    /// Reach a nested child by name or by position.
+    ///
+    /// Item access on a schema node means a **child**, never metadata: a `str`
+    /// is a child name and raises `KeyError` when absent, an `int` is a
+    /// position counting from the end when negative and raising `IndexError`
+    /// when out of range, and anything else raises `TypeError`. `DataType`
+    /// carries exactly the same behavior, so a caller walking one object graph
+    /// gets a child from every node in it. Metadata is reached through
+    /// `field.metadata[...]` or `field.get_metadata(...)`.
+    ///
+    /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
+    /// path form.
+    fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
+        crate::child_of(self.inner.data_type(), key).map(Self::from_inner)
+    }
+
+    /// Replace a nested child, or append one under an unknown name.
+    ///
+    /// By name: an existing child is replaced in place, keeping its position;
+    /// an **unknown name appends** a new child, which is the natural way to
+    /// build a schema up. By position: replaces only - a position past the end
+    /// raises `IndexError` rather than growing the node silently.
+    ///
+    /// The assignment routes through the core's cache-aware child mutation, so
+    /// the child set is revalidated and any Arrow projection cache is
+    /// invalidated exactly once. No `&mut` child ever escapes to bypass it.
+    fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(value)?;
+        crate::set_child(&mut self.inner, key, child)
+    }
+
+    /// Remove a nested child by name or by position, closing the gap.
+    fn __delitem__(&mut self, key: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        crate::remove_child(&mut self.inner, key)
+    }
+
+    /// The number of nested children, as `DataType` reports it.
+    fn __len__(&self) -> usize {
+        self.inner.field_len()
+    }
+
+    /// Iterate the nested children, as `DataType` does.
+    fn __iter__(&self) -> PyDataTypeIterator {
+        PyDataTypeIterator::over(self.inner.data_type().clone())
+    }
+
+    /// Whether a child name, position, or field is among the children.
+    fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
+        crate::child_of(self.inner.data_type(), value).is_ok()
+            || value.extract::<PyRef<'_, Self>>().is_ok_and(|field| {
+                (0..self.inner.field_len())
+                    .filter_map(|index| self.inner.get_field(index))
+                    .any(|candidate| candidate == &field.inner)
+            })
     }
 
     fn __str__(&self) -> String {
@@ -1709,5 +1701,155 @@ impl PyFieldMetadataIterator {
 
     fn __length_hint__(&self) -> usize {
         self.remaining
+    }
+}
+
+
+/// A field's metadata, addressed by its keys.
+///
+/// This is where item syntax legitimately means "a key": every subscript on the
+/// view is a metadata key, while every subscript on the `Field` itself is a
+/// nested child. Reached as `field.metadata`.
+///
+/// The value is a live view rather than a snapshot: it holds the Python `Field`
+/// object and reaches the core through it on every call, so writes are visible
+/// in both directions. Mutation routes through the field's own cache-aware
+/// metadata methods.
+#[pyclass(name = "FieldMetadata", module = "yggdryl._native")]
+pub(crate) struct PyFieldMetadata {
+    field: Py<PyField>,
+}
+
+impl PyFieldMetadata {
+    /// Borrows the viewed field for reading.
+    fn borrow_field<'py>(&self, py: Python<'py>) -> PyResult<PyRef<'py, PyField>> {
+        Ok(self.field.bind(py).try_borrow()?)
+    }
+
+    /// Borrows the viewed field for writing, refusing a frozen one.
+    fn borrow_field_mut<'py>(&self, py: Python<'py>) -> PyResult<PyRefMut<'py, PyField>> {
+        let field = self.field.bind(py).try_borrow_mut()?;
+        field.require_mutable()?;
+        Ok(field)
+    }
+}
+
+#[pymethods]
+impl PyFieldMetadata {
+    // A live view of mutable metadata cannot promise a stable hash.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        Ok(self.borrow_field(py)?.inner.metadata_len())
+    }
+
+    fn __bool__(&self, py: Python<'_>) -> PyResult<bool> {
+        Ok(!self.borrow_field(py)?.inner.is_metadata_empty())
+    }
+
+    fn __iter__(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        self.keys(py)
+    }
+
+    fn __contains__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let Ok(key) = key.extract::<&str>() else {
+            return Ok(false);
+        };
+        Ok(self.borrow_field(py)?.inner.has_metadata(key))
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<String> {
+        self.borrow_field(py)?
+            .inner
+            .get_metadata(key)
+            .map(str::to_owned)
+            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
+    }
+
+    fn __setitem__(&self, py: Python<'_>, key: String, value: String) -> PyResult<()> {
+        self.borrow_field_mut(py)?
+            .inner
+            .insert_metadata(key, value)
+            .map(|_| ())
+            .map_err(value_error)
+    }
+
+    fn __delitem__(&self, py: Python<'_>, key: &str) -> PyResult<()> {
+        self.borrow_field_mut(py)?
+            .inner
+            .remove_metadata(key)
+            .map(|_| ())
+            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
+    }
+
+    #[pyo3(signature = (key, default=None, /))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.get_metadata(key).map_or_else(
+            || default.unwrap_or_else(|| py.None()),
+            |value| PyString::new(py, value).into_any().unbind(),
+        ))
+    }
+
+    fn keys(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldMetadataIterator::new(
+            &field.inner,
+            MetadataIteratorKind::Keys,
+        ))
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldMetadataIterator::new(
+            &field.inner,
+            MetadataIteratorKind::Values,
+        ))
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldMetadataIterator::new(
+            &field.inner,
+            MetadataIteratorKind::Items,
+        ))
+    }
+
+    #[pyo3(signature = (values=None, /, **kwargs))]
+    fn update(
+        &self,
+        py: Python<'_>,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        self.borrow_field_mut(py)?
+            .inner
+            .update_metadata(pairs)
+            .map_err(value_error)
+    }
+
+    fn clear(&self, py: Python<'_>) -> PyResult<()> {
+        self.borrow_field_mut(py)?.inner.clear_metadata();
+        Ok(())
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        let entries: Vec<String> = field
+            .inner
+            .metadata_iter()
+            .map(|(key, value)| format!("{key:?}: {value:?}"))
+            .collect();
+        Ok(format!("FieldMetadata({{{}}})", entries.join(", ")))
     }
 }

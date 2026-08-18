@@ -3329,7 +3329,7 @@ def _install_methods(
     if (
         isinstance(existing, _Schema)
         and existing.owner_id == id(cls)
-        and existing.root.get("python.kind") != "record"
+        and existing.root.metadata.get("python.kind") != "record"
     ):
         for name in ("__yggdryl_schema__", "__yggdryl_field__", "__yggdryl_fields__"):
             if name in cls.__dict__:

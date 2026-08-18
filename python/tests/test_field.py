@@ -122,7 +122,7 @@ def test_field_http_metadata_is_canonical_typed_and_https_compatible() -> None:
     assert field.media_type == MediaType.from_parts(
         MimeType.JSON, [MimeType.GZIP, MimeType.BROTLI]
     )
-    assert field.get("HTTPS:CONTENT-TYPE") == field.content_type
+    assert field.metadata.get("HTTPS:CONTENT-TYPE") == field.content_type
     assert field.get_property("https", "CONTENT-TYPE") == field.content_type
     assert dict(field.property_iter("https")) == {
         "content-encoding": " gzip,\tbr ",
@@ -130,7 +130,7 @@ def test_field_http_metadata_is_canonical_typed_and_https_compatible() -> None:
         "content-type": "Application/JSON; Charset=utf-8",
         "location": "../relative",
     }
-    assert list(field) == [
+    assert list(field.metadata) == [
         "http:content-encoding",
         "http:content-length",
         "http:content-type",
@@ -231,37 +231,45 @@ def test_field_string_json_order_hash_repr_and_pickle_protocols() -> None:
     assert field < other or other < field
 
 
-def test_field_implements_mutable_metadata_mapping_protocol() -> None:
+def test_field_metadata_view_implements_the_mapping_protocol() -> None:
     field = Field("price", "float64", nullable=False, metadata={"venue": "XPAR"})
     original_hash = hash(field)
     keyed = {field: "stable"}
 
-    assert len(field) == 1
-    assert list(field) == ["venue"]
-    assert "venue" in field
-    assert field["venue"] == "XPAR"
-    assert field.get("venue") == "XPAR"
+    # Item access on the field itself reaches a nested child; the metadata
+    # mapping lives on the view, which is where a key means a key.
+    assert len(field.metadata) == 1
+    assert list(field.metadata) == ["venue"]
+    assert "venue" in field.metadata
+    assert field.metadata["venue"] == "XPAR"
+    assert field.metadata.get("venue") == "XPAR"
     marker = object()
-    assert field.get("missing", marker) is marker
-    assert list(field.keys()) == ["venue"]
-    assert list(field.values()) == ["XPAR"]
-    assert list(field.items()) == [("venue", "XPAR")]
+    assert field.metadata.get("missing", marker) is marker
 
-    field["currency"] = "EUR"
+    # A scalar field has no children, so subscripting it is a KeyError even
+    # for a key its metadata carries.
+    assert len(field) == 0
+    with pytest.raises(KeyError):
+        field["venue"]
+    assert list(field.metadata.keys()) == ["venue"]
+    assert list(field.metadata.values()) == ["XPAR"]
+    assert list(field.metadata.items()) == [("venue", "XPAR")]
+
+    field.metadata["currency"] = "EUR"
     assert hash(field) == original_hash
     assert keyed[field] == "stable"
-    field.update({"source": "exchange"}, venue="XEUR")
-    assert dict(field.items()) == {
+    field.metadata.update({"source": "exchange"}, venue="XEUR")
+    assert dict(field.metadata.items()) == {
         "currency": "EUR",
         "source": "exchange",
         "venue": "XEUR",
     }
-    del field["source"]
-    assert "source" not in field
+    del field.metadata["source"]
+    assert "source" not in field.metadata
     with pytest.raises(KeyError):
-        del field["missing"]
-    field.clear()
-    assert len(field) == 0
+        del field.metadata["missing"]
+    field.metadata.clear()
+    assert len(field.metadata) == 0
 
 
 def test_metadata_bulk_paths_are_sorted_last_write_wins_and_scale_widely() -> None:
@@ -269,24 +277,24 @@ def test_metadata_bulk_paths_are_sorted_last_write_wins_and_scale_widely() -> No
     entries.extend((("duplicate", "first"), ("duplicate", "second")))
     field = Field("wide", "utf8", metadata=entries)
 
-    assert len(field) == 4097
-    assert field["duplicate"] == "second"
-    assert list(field) == sorted(field)
+    assert len(field.metadata) == 4097
+    assert field.metadata["duplicate"] == "second"
+    assert list(field.metadata) == sorted(field.metadata)
 
-    field.update(
+    field.metadata.update(
         (("duplicate", "iterable"), ("new_key", "iterable")),
         duplicate="keyword",
         new_key="keyword",
     )
-    assert field["duplicate"] == "keyword"
-    assert field["new_key"] == "keyword"
+    assert field.metadata["duplicate"] == "keyword"
+    assert field.metadata["new_key"] == "keyword"
 
-    before = dict(field.items())
+    before = dict(field.metadata.items())
     invalid = [(f"valid_{index:04d}", str(index)) for index in range(1024)]
     invalid.append(("", "rejected"))
     with pytest.raises(ValueError):
-        field.update(invalid)
-    assert dict(field.items()) == before
+        field.metadata.update(invalid)
+    assert dict(field.metadata.items()) == before
 
 
 def test_invalid_inputs_are_reported_without_partial_metadata_mutation() -> None:
@@ -297,8 +305,8 @@ def test_invalid_inputs_are_reported_without_partial_metadata_mutation() -> None
 
     field = Field("id", "int64", metadata={"valid": "value"})
     with pytest.raises((TypeError, ValueError)):
-        field.update([("also_valid", "value"), ("", "invalid")])
-    assert dict(field.items()) == {"valid": "value"}
+        field.metadata.update([("also_valid", "value"), ("", "invalid")])
+    assert dict(field.metadata.items()) == {"valid": "value"}
 
 
 def test_typed_names_location_and_protocol_properties_share_field_metadata() -> None:
@@ -315,7 +323,7 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
     assert field.schema_name == "market"
     assert field.table_name == "bars"
     assert field.location == Url("s3://warehouse/bars/day=2026-08-15/data.parquet")
-    assert field["location"] == str(field.location)
+    assert field.metadata["location"] == str(field.location)
 
     assert field.set_property("POSTGRES", "type", "numeric(18,6)") is None
     assert field.set_property("postgres", "column", "close") is None
@@ -329,7 +337,7 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
         ("column", "close"),
         ("type", "numeric(18,6)"),
     ]
-    assert field["postgres:type"] == "numeric(18,6)"
+    assert field.metadata["postgres:type"] == "numeric(18,6)"
 
     assert field.set_property("postgres", "type", "decimal") == "numeric(18,6)"
     assert field.remove_property("postgres", "type") == "decimal"
@@ -429,7 +437,7 @@ def test_protocol_view_implements_the_mapping_protocol_over_bare_names() -> None
     assert "snapshot" not in view
     view.clear()
     assert not view
-    assert dict(field.items()) == {"venue": "XPAR"}
+    assert dict(field.metadata.items()) == {"venue": "XPAR"}
 
 
 def test_protocol_view_is_a_live_window_on_the_field_it_came_from() -> None:
@@ -439,7 +447,7 @@ def test_protocol_view_is_a_live_window_on_the_field_it_came_from() -> None:
 
     view["doc"] = "closing price"
     assert field.get_property("iceberg", "doc") == "closing price"
-    assert field["iceberg:doc"] == "closing price"
+    assert field.metadata["iceberg:doc"] == "closing price"
     assert other["doc"] == "closing price"
     assert view == other
 
@@ -471,12 +479,12 @@ def test_protocol_view_named_accessors_cover_every_well_known_protocol() -> None
         assert view.key("doc") == f"{protocol}:doc"
         view["doc"] = protocol
 
-    assert [name.split(":", 1)[0] for name in field] == sorted(
+    assert [name.split(":", 1)[0] for name in field.metadata] == sorted(
         WELL_KNOWN_PROTOCOLS
     )
     for protocol in WELL_KNOWN_PROTOCOLS:
         assert field.get_property(protocol, "doc") == protocol
-        assert field[f"{protocol}:doc"] == protocol
+        assert field.metadata[f"{protocol}:doc"] == protocol
         assert field.protocol(protocol.upper())["doc"] == protocol
 
     with pytest.raises(ValueError):
@@ -502,7 +510,7 @@ def test_protocol_view_http_covers_https_and_ignores_header_case() -> None:
     assert http == https
 
     https["Content-Encoding"] = "gzip"
-    assert field["http:content-encoding"] == "gzip"
+    assert field.metadata["http:content-encoding"] == "gzip"
     assert http["content-encoding"] == "gzip"
     assert field.content_encoding == "gzip"
 
@@ -578,7 +586,7 @@ def test_partition_fields_are_marked_reported_and_split_on_a_struct_root() -> No
     assert not year.is_partition
     year.set_partition(True)
     assert year.is_partition
-    assert year["field:partition"] == "true"
+    assert year.metadata["field:partition"] == "true"
     assert year.field["partition"] == "true"
     year.set_partition(False)
     assert not year.is_partition
@@ -617,7 +625,7 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
         )
     )
     assert imported.parquet_field_id == 17
-    assert imported["PARQUET:field_id"] == "17"
+    assert imported.metadata["PARQUET:field_id"] == "17"
     assert imported.to_arrow().metadata[b"PARQUET:field_id"] == b"17"
 
     field = Field("value", "int64")
@@ -625,7 +633,7 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
     for value in (-(2**31), 2**31 - 1):
         field.set_parquet_field_id(value)
         assert field.parquet_field_id == value
-        assert field["PARQUET:field_id"] == str(value)
+        assert field.metadata["PARQUET:field_id"] == str(value)
     assert field.remove_parquet_field_id() == 2**31 - 1
     assert field.remove_parquet_field_id() is None
 
@@ -771,3 +779,243 @@ class TestGenericCast:
         cast = root.cast_arrow(frame)
         assert isinstance(cast, pd.DataFrame)
         assert list(cast.columns) == ["id", "symbol"]
+
+
+def test_item_access_on_a_schema_node_reaches_a_nested_child() -> None:
+    """Subscripting a `Field` or a `DataType` descends the schema.
+
+    One semantic across both classes: before, `field["level"]` was a metadata
+    lookup while `data_type["level"]` was a child, so a caller walking one
+    object graph got two unrelated things from identical syntax.
+    """
+    line = Field(
+        "line",
+        DataType.from_fields([Field("price", "float64"), Field("qty", "int64")]),
+        nullable=False,
+    )
+    order = Field(
+        "order",
+        DataType.from_fields([Field("id", "int64", nullable=False), line]),
+        nullable=False,
+    )
+
+    # By name, on both classes, with the same answer.
+    assert order["id"].data_type == DataType("int64")
+    assert order.data_type["id"].data_type == DataType("int64")
+
+    # By position, negatives counting from the end.
+    assert order[0].name == "id"
+    assert order[-1].name == "line"
+    assert order.data_type[-1].name == "line"
+
+    # Chained subscripts are the nesting story - no dotted path form.
+    assert order["line"]["price"].data_type == DataType("float64")
+    assert order["line"]["qty"].data_type == DataType("int64")
+
+    # `len`, `in`, and iteration speak children on both classes.
+    assert len(order) == 2
+    assert len(order.data_type) == 2
+    assert "line" in order
+    assert "line" in order.data_type
+    assert [child.name for child in order] == ["id", "line"]
+    assert [child.name for child in order.data_type] == ["id", "line"]
+
+    # Absence and the wrong key type report the same way on both.
+    for node in (order, order.data_type):
+        with pytest.raises(KeyError):
+            node["absent"]
+        with pytest.raises(IndexError):
+            node[5]
+        with pytest.raises(TypeError):
+            node[object()]
+
+
+def test_a_non_nested_datatype_subscripts_to_a_clear_error() -> None:
+    scalar = Field("price", "float64")
+
+    assert len(scalar) == 0
+    with pytest.raises(KeyError):
+        scalar["anything"]
+    with pytest.raises(IndexError):
+        scalar[0]
+    with pytest.raises(KeyError):
+        scalar.data_type["anything"]
+
+
+def test_child_assignment_replaces_by_position_and_appends_by_unknown_name() -> None:
+    row = Field(
+        "row",
+        DataType.from_fields([Field("id", "int64", nullable=False)]),
+        nullable=False,
+    )
+
+    # An unknown name appends - dict-like, and how a schema is built up.
+    row["venue"] = Field("venue", "utf8")
+    assert [child.name for child in row] == ["id", "venue"]
+
+    # A known name replaces in place, keeping its position.
+    row["id"] = Field("id", "utf8", nullable=False)
+    assert [child.name for child in row] == ["id", "venue"]
+    assert row["id"].data_type == DataType("utf8")
+
+    # A position replaces only, and never grows the node silently.
+    row[1] = Field("venue", "large_utf8")
+    assert row["venue"].data_type == DataType("large_utf8")
+    with pytest.raises(IndexError):
+        row[7] = Field("late", "int64")
+
+    # Deleting by either form closes the gap.
+    del row[0]
+    assert [child.name for child in row] == ["venue"]
+    row["extra"] = Field("extra", "int64")
+    del row["venue"]
+    assert [child.name for child in row] == ["extra"]
+    with pytest.raises(KeyError):
+        del row["gone"]
+
+
+def test_a_datatype_is_a_read_only_child_collection() -> None:
+    row = DataType.from_fields([Field("id", "int64", nullable=False)])
+
+    # Reading is shared with `Field`; writing belongs on `Field`, which owns
+    # the cache-aware mutation and stays hashable because a `DataType` does.
+    with pytest.raises(TypeError):
+        row["venue"] = Field("venue", "utf8")
+    with pytest.raises(TypeError):
+        del row["id"]
+
+
+def test_metadata_is_not_reachable_by_subscript_but_is_through_the_view() -> None:
+    row = Field(
+        "row",
+        DataType.from_fields([Field("id", "int64", nullable=False)]),
+        nullable=False,
+        metadata={"owner": "tests"},
+    )
+
+    # The old spelling reaches a child - or reports that there is none.
+    with pytest.raises(KeyError):
+        row["owner"]
+
+    # The view is where a key means a key, and it is live in both directions.
+    assert row.metadata["owner"] == "tests"
+    assert dict(row.metadata.items()) == {"owner": "tests"}
+    row.metadata["venue"] = "XPAR"
+    assert row.metadata["venue"] == "XPAR"
+    row.metadata.update({"owner": "core"})
+    assert row.metadata["owner"] == "core"
+    del row.metadata["venue"]
+    assert "venue" not in row.metadata
+
+
+def test_subscripting_a_schema_node_reaches_a_nested_child() -> None:
+    line = Field(
+        "line",
+        DataType.from_fields(
+            [Field("price", "float64", nullable=False), Field("qty", "int64")]
+        ),
+        nullable=False,
+    )
+    order = Field(
+        "order",
+        DataType.from_fields(
+            [Field("id", "int64", nullable=False), line, Field("tags", "list(tag: utf8)")]
+        ),
+        nullable=False,
+        metadata={"owner": "trading"},
+    )
+
+    # By name and by position, on the Field and on the DataType alike - one
+    # shared semantic, so a caller walking the graph never gets two answers.
+    assert order["id"].data_type == DataType("int64")
+    assert order[0].name == "id"
+    assert order[-1].name == "tags"
+    assert order.data_type["id"].data_type == DataType("int64")
+    assert order.data_type[1].name == "line"
+
+    # Chained descent, including through a List item.
+    assert order["line"]["price"].data_type == DataType("float64")
+    assert order["tags"][0].name == "tag"
+
+    # Children answer len, iteration, and membership on both classes.
+    assert len(order) == 3
+    assert len(order.data_type) == 3
+    assert [child.name for child in order] == ["id", "line", "tags"]
+    assert [child.name for child in order.data_type] == ["id", "line", "tags"]
+    assert "line" in order
+    assert "owner" not in order
+
+    # Metadata is not reachable by subscript any more, and is still reachable
+    # through its view and the named accessor.
+    with pytest.raises(KeyError):
+        order["owner"]
+    assert order.metadata["owner"] == "trading"
+    assert order.metadata.get("owner") == "trading"
+
+
+def test_child_access_raises_the_exact_types_on_both_classes() -> None:
+    row = Field(
+        "row",
+        DataType.from_fields([Field("id", "int64", nullable=False)]),
+        nullable=False,
+    )
+
+    for node in (row, row.data_type):
+        with pytest.raises(KeyError):
+            node["absent"]
+        with pytest.raises(IndexError):
+            node[3]
+        with pytest.raises(IndexError):
+            node[-2]
+        with pytest.raises(TypeError):
+            node[object()]
+
+    # A non-nested datatype subscripts to a clear error rather than a crash.
+    with pytest.raises(KeyError):
+        DataType("int64")["anything"]
+    with pytest.raises(IndexError):
+        DataType("int64")[0]
+
+
+def test_child_mutation_replaces_by_position_and_appends_by_unknown_name() -> None:
+    row = Field(
+        "row",
+        DataType.from_fields(
+            [Field("id", "int64", nullable=False), Field("venue", "utf8", nullable=False)]
+        ),
+        nullable=False,
+    )
+
+    # A known name replaces in place, keeping its position.
+    row["id"] = Field("id", "utf8", nullable=False)
+    assert len(row) == 2
+    assert row[0].name == "id"
+    assert row["id"].data_type == DataType("utf8")
+
+    # An unknown name appends - dict-like, and how a schema gets built up.
+    row["price"] = Field("price", "float64")
+    assert len(row) == 3
+    assert row[2].name == "price"
+
+    # A position replaces only; past the end is an IndexError, never a grow.
+    row[1] = Field("venue", "int32", nullable=False)
+    assert len(row) == 3
+    assert row["venue"].data_type == DataType("int32")
+    with pytest.raises(IndexError):
+        row[9] = Field("late", "int64")
+    assert len(row) == 3
+
+    # Deleting closes the gap, by either key form.
+    del row["id"]
+    assert row[0].name == "venue"
+    del row[0]
+    assert [child.name for child in row] == ["price"]
+    with pytest.raises(KeyError):
+        del row["absent"]
+
+    # A DataType is a read-only child collection: reading is shared, writing
+    # belongs on the Field that owns the cache-aware mutation.
+    with pytest.raises(TypeError):
+        row.data_type["price"] = Field("price", "int64")
+    with pytest.raises(TypeError):
+        del row.data_type["price"]

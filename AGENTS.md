@@ -893,8 +893,17 @@ Both extensions:
   selector: exact integer-likes and base-10 integer strings, reject bools
   and floats, no re-implemented width rules.
 - Idiomatic `__str__`, `__repr__`, rich comparison, `__hash__`, pickle,
-  JSON. `DataType` acts as a read-only child collection; `Field` metadata
-  uses mapping dunders plus `get`, `keys`, `values`, `items`, `update`.
+  JSON. **Item access on a `Field` or a `DataType` reaches a nested child and
+  nothing else** - `str` by name, `int` by position, with `len`/`iter`/`in`
+  speaking children on both, one shared semantic so a schema walk never gets a
+  child from one node and a metadata string from the next. `DataType` stays a
+  *read-only* child collection (it is hashable); child mutation lives on
+  `Field` through cache-aware `set_field`/`set_field_by_name`/`remove_field*`,
+  never an `IndexMut` or a handed-out `&mut` child, and assignment is
+  dict-like by name (unknown appends) and list-like by position (replaces
+  only). `Field` metadata is a live mapping *view* - `field.metadata` with
+  mapping dunders plus `get`, `keys`, `values`, `items`, `update`, `clear` -
+  because a view whose keys are keys is where item syntax means a key.
 - Conversion work stays in Rust over the C Data Interface; no duplicated
   parsing, validation, comparison, hashing.
 - Arrow scalars: exactly `DataType.arrow_scalar(value, *, safe=True)` and

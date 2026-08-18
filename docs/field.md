@@ -140,6 +140,107 @@ Rust reaches the children through the field - `fields`, `field_len`, `get_field`
 reach them through `data_type`, where the same children are a sequence: `len`, indexing by position
 or name, `in`, and iteration in Python; `length`, `at`, `getByName`, and `keys` in JavaScript.
 
+### Item access reaches a child, never metadata
+
+Subscripting a `Field` or a `DataType` means one thing: reach a nested child. A `str` is a child
+name, an `int` is a position, and `len`, iteration, and membership all speak children. Both classes
+answer identically, so a caller walking one object graph never gets a child from one node and a
+metadata string from the next. Metadata is reached through [its own view](#metadata-is-a-mapping) -
+`field.metadata[...]` in Python, `get_metadata` and friends in Rust - because a view whose keys *are*
+keys is where item syntax legitimately means "a key".
+
+Chained subscripts are the nesting story - `order["line"]["price"]` descends two levels, because each
+subscript answers a node that subscripts again. There is no dotted-string or tuple path form.
+
+Assignment is dict-like *by name* and list-like *by position*: a known name is replaced in place
+keeping its position, an **unknown name appends** a new child, and a position only ever replaces -
+past the end is an error, never a silent grow. `del` removes and closes the gap by either form. In
+Python this routes through the core's cache-aware child mutation, which is also why a `DataType` -
+immutable and hashable - refuses assignment and points at the `Field` that carries it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field};
+
+    let mut order = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::from_fields([DataType::Float64.required_field("price")])?
+            .required_field("line"),
+    ])?
+    .required_field("order");
+    order.insert_metadata("owner", "trading")?;
+
+    // A child by name, by position, and two levels down.
+    assert_eq!(order["id"].data_type(), &DataType::Int64);
+    assert_eq!(order[1].name(), "line");
+    assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+
+    // An unknown name appends; a position replaces.
+    order.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))?;
+    assert_eq!(order.field_len(), 3);
+    order.set_field(0, DataType::Utf8.required_field("id"))?;
+    assert_eq!(order["id"].data_type(), &DataType::Utf8);
+    assert_eq!(order.remove_field_by_name("venue")?.name(), "venue");
+
+    // Metadata keeps its own named surface.
+    assert_eq!(order.get_metadata("owner"), Some("trading"));
+    assert!(order.get_field_by_name("owner").is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    order = Field(
+        "order",
+        DataType.from_fields([
+            Field("id", "int64", nullable=False),
+            Field(
+                "line",
+                DataType.from_fields([Field("price", "float64", nullable=False)]),
+                nullable=False,
+            ),
+        ]),
+        nullable=False,
+        metadata={"owner": "trading"},
+    )
+
+    # A child by name, by position, negatively, and two levels down.
+    assert order["id"].data_type == DataType("int64")
+    assert order[-1].name == "line"
+    assert order["line"]["price"].data_type == DataType("float64")
+
+    # The DataType answers the same way, and children drive len/iter/in.
+    assert order.data_type["id"].name == "id"
+    assert len(order) == 2
+    assert [child.name for child in order] == ["id", "line"]
+    assert "line" in order
+
+    # An unknown name appends; a position replaces only.
+    order["venue"] = Field("venue", "utf8")
+    assert len(order) == 3
+    order[0] = Field("id", "utf8", nullable=False)
+    assert order["id"].data_type == DataType("utf8")
+    del order["venue"]
+    assert len(order) == 2
+
+    # Metadata is reached through its view, never by subscripting the node.
+    assert order.metadata["owner"] == "trading"
+    try:
+        order["owner"]
+    except KeyError:
+        pass
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The JavaScript binding reaches children through `dataType` with `at`, `getByName`, and
+        `keys`; the shared subscript vocabulary lands with the rest of the lifecycle surface.
+
+
 ## Metadata is a mapping
 
 === "Rust"
@@ -167,21 +268,23 @@ or name, `in`, and iteration in Python; `length`, `at`, `getByName`, and `keys` 
     from yggdryl import Field
 
     field = Field("price", "float64", nullable=False, metadata={"venue": "XPAR"})
-    field["currency"] = "EUR"
-    field.update(source="exchange")
+    # Metadata lives on `field.metadata`, a live mapping view. Subscripting the
+    # field itself reaches a nested *child*, not a metadata key.
+    field.metadata["currency"] = "EUR"
+    field.metadata.update(source="exchange")
 
-    assert len(field) == 3
-    assert "venue" in field
-    assert field["venue"] == "XPAR"
-    assert field.get("missing") is None
-    assert list(field.items()) == [
+    assert len(field.metadata) == 3
+    assert "venue" in field.metadata
+    assert field.metadata["venue"] == "XPAR"
+    assert field.metadata.get("missing") is None
+    assert list(field.metadata.items()) == [
         ("currency", "EUR"),
         ("source", "exchange"),
         ("venue", "XPAR"),
     ]
 
-    del field["venue"]
-    assert list(field.keys()) == ["currency", "source"]
+    del field.metadata["venue"]
+    assert list(field.metadata.keys()) == ["currency", "source"]
     ```
 
 === "JavaScript"
@@ -257,17 +360,17 @@ field stays findable in a `dict` across metadata edits.
     field = Field("payload", "binary", nullable=False)
 
     field.set_parquet_field_id(17)
-    field["field:init"] = "false"
+    field.metadata["field:init"] = "false"
     field.set_content_type("application/json; charset=utf-8")
     field.set_property("postgres", "type", "jsonb")
 
     assert field.parquet_field_id == 17
-    assert field["PARQUET:field_id"] == "17"
-    assert field["field:init"] == "false"
+    assert field.metadata["PARQUET:field_id"] == "17"
+    assert field.metadata["field:init"] == "false"
 
     assert field.mime_type == MimeType.JSON
     assert field.get_property("https", "Content-Type") == field.content_type
-    assert field["http:content-type"] == field.content_type
+    assert field.metadata["http:content-type"] == field.content_type
     assert list(field.property_iter("postgres")) == [("type", "jsonb")]
     ```
 
@@ -362,8 +465,8 @@ protocol view remembers the protocol instead, so the caller writes the bare name
     assert not field.mysql
 
     # It is a view of the one metadata mapping, not a copy of part of it.
-    assert field["iceberg:doc"] == "closing price"
-    assert len(field) == 4
+    assert field.metadata["iceberg:doc"] == "closing price"
+    assert len(field.metadata) == 4
     assert dict(field.iceberg.items())["field-id"] == "7"
 
     del field.iceberg["field-id"]
@@ -538,7 +641,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
 
     assert isinstance(id_field, Field)
     assert str(id_field.data_type) == "int64"
-    assert symbol["source"] == "feed"
+    assert symbol.metadata["source"] == "feed"
     assert str(at.data_type) == "timestamp(us)"
     ```
 

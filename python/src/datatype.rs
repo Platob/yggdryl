@@ -8,7 +8,7 @@ use arrow_data::ArrayData;
 use arrow_pyarrow::{FromPyArrow, PyArrowType, ToPyArrow};
 use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
-use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList};
 use yggdryl::ArrowCast;
@@ -18,7 +18,7 @@ use yggdryl::{
 };
 
 use crate::field::PyField;
-use crate::{PyDifferenceIterator, compare, normalize_index, value_error};
+use crate::{PyDifferenceIterator, child_of, compare, normalize_index, value_error};
 
 fn import_ffi_schema<'py>(
     py: Python<'py>,
@@ -804,27 +804,41 @@ impl PyDataType {
         }
     }
 
+    /// Reach a nested child by name or by position.
+    ///
+    /// Item access on a schema node means a **child**, never metadata: a `str`
+    /// is a child name and raises `KeyError` when absent, an `int` is a
+    /// position counting from the end when negative and raising `IndexError`
+    /// when out of range, and anything else raises `TypeError`. `Field` carries
+    /// exactly the same behavior, so a caller walking one object graph gets a
+    /// child from every node in it. Metadata is reached through
+    /// `Field.metadata[...]` or `Field.get_metadata(...)`.
+    ///
+    /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
+    /// path form.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<PyField> {
-        if let Ok(name) = key.extract::<&str>() {
-            return self
-                .inner
-                .get_field_by_name(name)
-                .cloned()
-                .map(PyField::from_inner)
-                .ok_or_else(|| PyKeyError::new_err(name.to_owned()));
-        }
-        if let Ok(index) = key.extract::<isize>() {
-            let normalized = normalize_index(index, self.inner.field_len())
-                .ok_or_else(|| PyIndexError::new_err(index))?;
-            return self
-                .inner
-                .get_field(normalized)
-                .cloned()
-                .map(PyField::from_inner)
-                .ok_or_else(|| PyIndexError::new_err(index));
-        }
+        child_of(&self.inner, key).map(PyField::from_inner)
+    }
+
+    /// Refuse child mutation: a `DataType` is a read-only child collection.
+    ///
+    /// Reading is shared with `Field` - `data_type["price"]` and
+    /// `field["price"]` both reach a nested child - but *writing* belongs on
+    /// `Field`, which owns the cache-aware mutation the core requires and the
+    /// metadata a datatype does not carry. A `DataType` is immutable and
+    /// hashable; letting a subscript rewrite one would break both.
+    fn __setitem__(&self, _key: &Bound<'_, PyAny>, _value: &Bound<'_, PyAny>) -> PyResult<()> {
         Err(PyTypeError::new_err(
-            "datatype child index must be int or str",
+            "a DataType is a read-only child collection; mutate children on the Field that \
+             carries it",
+        ))
+    }
+
+    /// Refuse child removal, for the reason `__setitem__` gives.
+    fn __delitem__(&self, _key: &Bound<'_, PyAny>) -> PyResult<()> {
+        Err(PyTypeError::new_err(
+            "a DataType is a read-only child collection; mutate children on the Field that \
+             carries it",
         ))
     }
 
@@ -885,6 +899,13 @@ impl PyDataType {
 pub(crate) struct PyDataTypeIterator {
     inner: CoreDataType,
     index: usize,
+}
+
+impl PyDataTypeIterator {
+    /// Iterate one node's children, from `Field` or from `DataType`.
+    pub(crate) const fn over(inner: CoreDataType) -> Self {
+        Self { inner, index: 0 }
+    }
 }
 
 #[pymethods]

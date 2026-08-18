@@ -124,7 +124,8 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     assert_eq!(handle.read_all()?, b"symbol,price\n");
 
     handle.close()?;
-    std::fs::remove_file(&path)?;
+    // Teardown through the abstraction: absence is a no-op success.
+    handle.remove(false)?;
     ```
 
 === "Python"
@@ -1332,8 +1333,8 @@ than silently recursed into.
 
     from yggdryl import IOBase
 
-    root = pathlib.Path(tempfile.mkdtemp()) / "logs"
-    handle = IOBase(root)
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "logs")
     handle.mkdir()
     (handle / "a.log").write_text("line\n")
 
@@ -1342,10 +1343,12 @@ than silently recursed into.
     assert list(handle.iterdir()) == []
     assert handle.is_dir()
 
-    # Removing deletes it; a second call succeeds, having done nothing.
+    # Removing deletes it; a second call succeeds, having done nothing. A
+    # handle asked for as a container keeps answering `is_dir`, because that
+    # is what it was asked for - the parent's listing is what shows it gone.
     handle.remove()
     handle.remove()
-    assert not handle.exists()
+    assert list(IOBase(root).iterdir()) == []
 
     # A container that still has children is refused rather than recursed into.
     handle.mkdir()
@@ -1355,7 +1358,15 @@ than silently recursed into.
     except Exception as error:
         assert "children" in str(error)
     handle.remove(recursive=True)
-    assert not handle.exists()
+    assert list(IOBase(root).iterdir()) == []
+
+    # The handle stays usable and lazy - a write recreates the resource.
+    leaf = IOBase(root / "trades.csv")
+    leaf.write_text("symbol,price\n")
+    leaf.remove()
+    assert not leaf.exists()
+    leaf.write_text("symbol,price\n")
+    assert leaf.read_text() == "symbol,price\n"
     ```
 
 === "JavaScript"
@@ -1367,7 +1378,7 @@ than silently recursed into.
     const { IOBase } = require('yggdryl')
 
     const root = path.join(os.tmpdir(), `yggdryl-docs-lifecycle-${process.pid}`)
-    const handle = new IOBase(root)
+    const handle = new IOBase(path.join(root, 'logs'))
     handle.mkdir()
     handle.childBy('a.log').writeText('line\n')
 
@@ -1378,7 +1389,16 @@ than silently recursed into.
     // Removing deletes it; a second call succeeds, having done nothing.
     handle.remove()
     handle.remove()
-    assert.equal(handle.exists(), false)
+    assert.equal(new IOBase(root).ls(false, false).length, 0)
+
+    // The handle stays usable and lazy - a write recreates the resource.
+    const leaf = new IOBase(path.join(root, 'trades.csv'))
+    leaf.writeText('symbol,price\n')
+    leaf.remove()
+    assert.equal(leaf.exists(), false)
+    leaf.writeText('symbol,price\n')
+    assert.equal(leaf.readText(), 'symbol,price\n')
+    new IOBase(root).remove(true)
     ```
 
 `Table` decides both deliberately rather than inheriting a folder's answers. `clear` commits one

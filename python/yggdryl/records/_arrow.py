@@ -426,7 +426,7 @@ def _adopt_record_schema(
     metadata = dict(
         schema_metadata
         if schema_metadata is not None
-        else imported_root.items() if preserve_root else ()
+        else imported_root.metadata.items() if preserve_root else ()
     )
     for key in _IDENTITY_KEYS:
         metadata.pop(key, None)
@@ -440,10 +440,12 @@ def _adopt_record_schema(
     )
     if preserve_root:
         root = copy.copy(imported_root)
+        # Item access on a schema node reaches a child; metadata goes through
+        # the view.
         for key in _IDENTITY_KEYS:
-            if key in root:
-                del root[key]
-        root.update(metadata)
+            if key in root.metadata:
+                del root.metadata[key]
+        root.metadata.update(metadata)
     else:
         root = SchemaField(
             class_name,
@@ -463,16 +465,16 @@ def _adopt_record_schema(
     public_metadata = dict(arrow_field.metadata or ())
     extension_metadata: dict[bytes, bytes] = {}
     for key in _EXTENSION_KEYS:
-        if key in root:
-            extension_metadata[key.encode()] = root[key].encode()
+        if key in root.metadata:
+            extension_metadata[key.encode()] = root.metadata[key].encode()
     public_metadata.update(extension_metadata)
     arrow_schema = pa.schema(schema_type, metadata=public_metadata or None)
     transport_root: SchemaField | None = None
     if storage_type is not None:
         transport_root = copy.copy(root)
         for key in _EXTENSION_KEYS:
-            if key in transport_root:
-                del transport_root[key]
+            if key in transport_root.metadata:
+                del transport_root.metadata[key]
     _adopt_materialized_schema(
         generated,
         root,
@@ -495,7 +497,7 @@ def record_from_arrow_field(
     if cls is not Record:
         raise TypeError("from_arrow_field must be called on Record")
     imported = SchemaField.from_arrow(value)
-    metadata = dict(imported.items())
+    metadata = dict(imported.metadata.items())
     selected_name, selected_module = _select_identity(
         metadata,
         class_name=class_name,
@@ -540,7 +542,7 @@ def record_from_arrow_schema(
     imported_root = SchemaField._record_root_from_arrow_schema(
         value, "ArrowRecord"
     )
-    metadata = dict(imported_root.items())
+    metadata = dict(imported_root.metadata.items())
     selected_name, selected_module = _select_identity(
         metadata,
         class_name=class_name,

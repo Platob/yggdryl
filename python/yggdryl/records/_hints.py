@@ -306,7 +306,7 @@ class _Inference:
                 data_type = imported.data_type
                 explicit_extension = any(
                     key.startswith(_EXTENSION_METADATA_PREFIX)
-                    for key in imported
+                    for key in imported.metadata
                 )
             else:
                 data_type = self.datatype(base, path=path, depth=depth + 1)
@@ -321,7 +321,7 @@ class _Inference:
 
         imported_metadata = dict(identity)
         if imported is not None:
-            imported_metadata.update(imported.items())
+            imported_metadata.update(imported.metadata.items())
         if options.id is not _MISSING:
             imported_metadata.pop(_PARQUET_FIELD_ID, None)
         if explicit_extension:
@@ -1217,7 +1217,7 @@ def _renamed_field(field: Field, name: str) -> Field:
         name,
         field.data_type,
         nullable=field.nullable,
-        metadata=dict(field.items()) or None,
+        metadata=dict(field.metadata.items()) or None,
     )
     if field.dictionary_id is not None and field.dictionary_is_ordered is not None:
         renamed.set_dictionary_options(

@@ -990,6 +990,172 @@ impl Field {
         Ok(self)
     }
 
+    /// Replaces the struct child at `index`, cache-aware.
+    ///
+    /// Replacement only: a position past the end is an error rather than a
+    /// silent append, because a position is not a name. The whole child set is
+    /// revalidated and a populated Arrow cache is invalidated exactly once,
+    /// through [`Self::set_data_type`] - which is why child mutation is a named
+    /// method here and not an `IndexMut`. Handing out a `&mut Field` would both
+    /// bypass that invalidation and force `Arc::make_mut` to clone the shared
+    /// child array on every subscript assignment.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?
+    ///     .required_field("row");
+    ///
+    /// row.set_field(0, DataType::Utf8.required_field("id"))?;
+    /// assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this field is not a struct, when `index` is past
+    /// the end, or when the resulting child set does not validate. Failure
+    /// leaves `self` unchanged.
+    pub fn set_field(&mut self, index: usize, child: Self) -> Result<()> {
+        let mut fields = self.struct_children()?;
+        if index >= fields.len() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{}[{index}]", self.name),
+                reason: crate::text::expected_got(
+                    format_smolstr!("a child position below {}", fields.len()),
+                    format_smolstr!("{index}"),
+                ),
+            });
+        }
+        fields[index] = child;
+        self.set_data_type(DataType::from_fields(fields)?)
+    }
+
+    /// Replaces the struct child named `name`, appending an unknown one.
+    ///
+    /// Dict-like on purpose, and the asymmetry with [`Self::set_field`] is
+    /// deliberate: a known name is replaced *in place*, keeping its position,
+    /// and an unknown name appends a new child - which is the natural way to
+    /// build a schema up. A position, by contrast, only ever replaces.
+    ///
+    /// The child is stored under `name` whatever it calls itself, so
+    /// `row.set_field_by_name("price", DataType::Float64.required_field("x"))`
+    /// stores a child named `price`.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?
+    ///     .required_field("row");
+    ///
+    /// // An unknown name appends.
+    /// row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))?;
+    /// assert_eq!(row.field_len(), 2);
+    ///
+    /// // A known one replaces, keeping its position.
+    /// row.set_field_by_name("id", DataType::Utf8.required_field("id"))?;
+    /// assert_eq!(row.field_len(), 2);
+    /// assert_eq!(row[0].name(), "id");
+    /// assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this field is not a struct or the resulting child
+    /// set does not validate. Failure leaves `self` unchanged.
+    pub fn set_field_by_name(&mut self, name: &str, child: Self) -> Result<()> {
+        let mut fields = self.struct_children()?;
+        let child = child.with_name(name);
+        match fields.iter().position(|held| held.name() == name) {
+            Some(index) => fields[index] = child,
+            None => fields.push(child),
+        }
+        self.set_data_type(DataType::from_fields(fields)?)
+    }
+
+    /// Removes the struct child at `index`, returning it and closing the gap.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this field is not a struct, when `index` is past
+    /// the end, or when the resulting child set does not validate. Failure
+    /// leaves `self` unchanged.
+    pub fn remove_field(&mut self, index: usize) -> Result<Self> {
+        let mut fields = self.struct_children()?;
+        if index >= fields.len() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{}[{index}]", self.name),
+                reason: crate::text::expected_got(
+                    format_smolstr!("a child position below {}", fields.len()),
+                    format_smolstr!("{index}"),
+                ),
+            });
+        }
+        let removed = fields.remove(index);
+        self.set_data_type(DataType::from_fields(fields)?)?;
+        Ok(removed)
+    }
+
+    /// Removes the struct child named `name`, returning it and closing the gap.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut row = DataType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::Utf8.required_field("venue"),
+    /// ])?
+    /// .required_field("row");
+    ///
+    /// let dropped = row.remove_field_by_name("id")?;
+    /// assert_eq!(dropped.name(), "id");
+    /// // Positions close up behind it.
+    /// assert_eq!(row[0].name(), "venue");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this field is not a struct, when no child carries
+    /// `name`, or when the resulting child set does not validate. Failure
+    /// leaves `self` unchanged.
+    pub fn remove_field_by_name(&mut self, name: &str) -> Result<Self> {
+        let index = self.index_of(name).ok_or_else(|| Error::InvalidRecord {
+            path: format_smolstr!("$.{name}"),
+            reason: crate::text::expected_got(
+                format_smolstr!("a child of the field {:?}", self.name),
+                format_smolstr!("{name:?}"),
+            ),
+        })?;
+        self.remove_field(index)
+    }
+
+    /// The struct children as an owned vector, or a refusal naming the reason.
+    ///
+    /// Cloning here is what keeps the shared child array shared everywhere
+    /// else: the copy exists only for the duration of one mutation and the
+    /// result is rebuilt through [`Self::set_data_type`], so read, clone, and
+    /// projection paths never pay for a caller's edit.
+    fn struct_children(&self) -> Result<Vec<Self>> {
+        match self.data_type.as_fields() {
+            Some(fields) => Ok(fields.to_vec()),
+            None => Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{}", self.name),
+                reason: crate::text::expected_got(
+                    "a struct field whose children can be replaced",
+                    format_smolstr!("{}", self.data_type),
+                ),
+            }),
+        }
+    }
+
     /// Changes nullability.
     pub fn set_nullable(&mut self, nullable: bool) {
         if self.nullable != nullable {
@@ -1908,12 +2074,88 @@ impl Hash for Field {
     }
 }
 
+/// Subscripting a schema node reaches a nested **child**, never metadata.
+///
+/// Item access on a [`Field`] or a [`DataType`] means one thing and only one
+/// thing: descend the schema. Metadata is reached through its own view -
+/// [`Field::metadata`] and [`Field::get_metadata`] - because a view whose keys
+/// *are* keys is where item syntax legitimately means "a key". Before this,
+/// `field["level"]` was a metadata lookup while `data_type["level"]` was a
+/// child, so a caller walking one object graph got two unrelated things from
+/// identical syntax.
+///
+/// Chained subscripts are the nesting story: `field["order"]["price"]` descends
+/// two levels, because each subscript returns a node that subscripts again.
+/// There is no dotted-string or tuple path form.
+///
+/// Panics when the name is not a child, as [`Index`] idiomatically does;
+/// [`Field::get_field_by_name`] is the non-panicking form.
+///
+/// ```
+/// use yggdryl::{DataType, Field};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let order = DataType::from_fields([
+///     DataType::Int64.required_field("id"),
+///     DataType::from_fields([DataType::Float64.required_field("price")])?
+///         .required_field("line"),
+/// ])?
+/// .required_field("order");
+///
+/// assert_eq!(order["id"].data_type(), &DataType::Int64);
+/// // Each subscript answers a node that subscripts again.
+/// assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this node has no child with that name.
 impl Index<&str> for Field {
-    type Output = str;
+    type Output = Self;
 
-    fn index(&self, key: &str) -> &Self::Output {
-        self.get_metadata(key)
-            .unwrap_or_else(|| panic!("metadata key {key:?} is not present"))
+    fn index(&self, name: &str) -> &Self::Output {
+        self.get_field_by_name(name)
+            .unwrap_or_else(|| panic!("{:?} is not a child of the field {:?}", name, self.name()))
+    }
+}
+
+/// Subscripting a schema node by position reaches that nested child.
+///
+/// The positional companion of [`Index<&str>`], matching how
+/// [`Fields`](crate::datatype::Fields) already indexes.
+///
+/// ```
+/// use yggdryl::DataType;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let order = DataType::from_fields([
+///     DataType::Int64.required_field("id"),
+///     DataType::Utf8.required_field("venue"),
+/// ])?
+/// .required_field("order");
+///
+/// assert_eq!(order[0].name(), "id");
+/// assert_eq!(order[1].name(), "venue");
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this node has no child at that position.
+impl Index<usize> for Field {
+    type Output = Self;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.get_field(index).unwrap_or_else(|| {
+            panic!(
+                "the field {:?} has {} children, so position {index} is out of range",
+                self.name(),
+                self.field_len()
+            )
+        })
     }
 }
 

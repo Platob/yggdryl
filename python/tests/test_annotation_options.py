@@ -33,7 +33,7 @@ def test_field_options_resolve_left_to_right_before_caller_metadata() -> None:
     assert field.to_arrow().type == pa.decimal128(9, 0)
     assert not field.nullable
     assert field.parquet_field_id == 7
-    assert dict(field.items()) == {
+    assert dict(field.metadata.items()) == {
         "PARQUET:field_id": "7",
         "nullable": "metadata-value",
         "python.class": "Decimal",
@@ -205,8 +205,8 @@ def test_only_final_structural_option_values_are_validated() -> None:
         ],
     )
     assert alias_overlay.parquet_field_id == 2
-    assert alias_overlay["layer"] == "outer"
-    assert alias_overlay["inner"] == "kept"
+    assert alias_overlay.metadata["layer"] == "outer"
+    assert alias_overlay.metadata["inner"] == "kept"
 
 
 class _AnnotationExtension(pa.ExtensionType):
@@ -256,7 +256,7 @@ def test_extension_override_preserves_identity_and_protects_metadata() -> None:
             ],
         )
         assert field.to_arrow().type == extension
-        assert field["owner"] == "test"
+        assert field.metadata["owner"] == "test"
 
         member = Annotated[
             int,
@@ -267,7 +267,7 @@ def test_extension_override_preserves_identity_and_protects_metadata() -> None:
         promoted = Field.from_pyhint("code", member | None)
         assert promoted.to_arrow().type == extension
         assert promoted.parquet_field_id == 17
-        assert promoted["member"] == "preserved"
+        assert promoted.metadata["member"] == "preserved"
 
         identical = Field.from_pyhint(
             "code",
@@ -544,7 +544,7 @@ def test_optional_collapse_promotes_sole_member_field_state() -> None:
     promoted = Field.from_pyhint("value", typing.Optional[member])
     assert not promoted.nullable
     assert promoted.parquet_field_id == 7
-    assert promoted["member"] == "preserved"
+    assert promoted.metadata["member"] == "preserved"
 
     identity_override = Field.from_pyhint(
         "value",
@@ -552,7 +552,7 @@ def test_optional_collapse_promotes_sole_member_field_state() -> None:
             Annotated[int, ("metadata", {"python.class": "custom"})]
         ],
     )
-    assert identity_override["python.class"] == "custom"
+    assert identity_override.metadata["python.class"] == "custom"
 
     outer = Field.from_pyhint(
         "value",
@@ -565,7 +565,7 @@ def test_optional_collapse_promotes_sole_member_field_state() -> None:
     )
     assert outer.nullable
     assert outer.parquet_field_id == 8
-    assert outer["member"] == "outer"
+    assert outer.metadata["member"] == "outer"
 
     constrained = typing.TypeVar(
         "constrained",
@@ -575,7 +575,7 @@ def test_optional_collapse_promotes_sole_member_field_state() -> None:
     promoted_constraint = Field.from_pyhint("value", constrained)
     assert not promoted_constraint.nullable
     assert promoted_constraint.parquet_field_id == 7
-    assert promoted_constraint["member"] == "preserved"
+    assert promoted_constraint.metadata["member"] == "preserved"
 
     bound = typing.TypeVar("bound", bound=typing.Optional[member])
     promoted_bound = Field.from_pyhint("value", bound)

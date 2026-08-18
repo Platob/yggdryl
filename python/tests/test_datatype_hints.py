@@ -128,7 +128,7 @@ def test_annotated_metadata_is_string_only_and_explicit_values_win() -> None:
     )
 
     assert field.nullable
-    assert dict(field.items()) == {
+    assert dict(field.metadata.items()) == {
         "role": "size",
         "source": "caller",
         "unit": "lots",
@@ -198,7 +198,7 @@ def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
     assert inferred.id == "struct"
     assert labels.id == "list"
     assert labels[0].nullable
-    assert labels[0]["unit"] == "ticks"
+    assert labels[0].metadata["unit"] == "ticks"
     assert dimensions.id == "map"
     assert [field.name for field in dimensions[0].data_type] == ["key", "value"]
 
@@ -213,7 +213,7 @@ def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
         current = leaf.data_type
     assert leaf is not None
     assert current.id == "int64"
-    assert leaf["depth"] == "leaf"
+    assert leaf.metadata["depth"] == "leaf"
 
 
 def test_items_view_and_union_inference_preserve_native_child_state() -> None:
@@ -225,10 +225,10 @@ def test_items_view_and_union_inference_preserve_native_child_state() -> None:
 
     assert items.id == "list"
     assert pair.id == "struct"
-    assert pair[0]["role"] == "key"
+    assert pair[0].metadata["role"] == "key"
     assert pair[1].nullable
     assert union.id == "union"
-    assert union[0]["source"] == "integer"
+    assert union[0].metadata["source"] == "integer"
     assert [field.dictionary_id for field in union] == [None, None]
     assert union.to_arrow().mode == "dense"
     assert tuple(union.to_arrow().type_codes) == (0, 1)
@@ -252,7 +252,7 @@ def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> N
     assert [member.data_type.id for member in outer] == ["map", "struct"]
     assert mapping_value.id == "union"
     assert tuple(mapping_value.to_arrow().type_codes) == (0, 1)
-    assert mapping_value[0]["branch"] == "count"
+    assert mapping_value[0].metadata["branch"] == "count"
 
 
 def test_counter_and_generic_mapping_subclasses_keep_parameters() -> None:
@@ -280,10 +280,10 @@ def test_struct_hints_are_deterministic_and_keep_class_identity() -> None:
     assert inherited_box[0].data_type.id == "int64"
 
     root = Field.from_pyhint("quote", Quote)
-    assert root["python.module"] == __name__
-    assert root["python.class"] == "Quote"
-    assert root["python.qualname"] == "Quote"
-    assert root["python.kind"] == "dataclass"
+    assert root.metadata["python.module"] == __name__
+    assert root.metadata["python.class"] == "Quote"
+    assert root.metadata["python.qualname"] == "Quote"
+    assert root.metadata["python.kind"] == "dataclass"
 
 
 def test_literal_enum_newtype_typevar_and_union_inference() -> None:
@@ -313,7 +313,7 @@ def test_typing_extensions_wrappers_match_stdlib_semantics() -> None:
 
     assert not Field.from_pyhint("required", required).nullable
     assert Field.from_pyhint("optional_key", optional_key).nullable
-    assert Field.from_pyhint("annotated", annotated)["unit"] == "ticks"
+    assert Field.from_pyhint("annotated", annotated).metadata["unit"] == "ticks"
 
 
 def test_internal_namespace_resolves_deep_local_struct_annotations() -> None:
@@ -347,7 +347,7 @@ def test_internal_namespace_resolves_deep_local_struct_annotations() -> None:
     )
     value = root.data_type["pair"].data_type["payload"].data_type["value"]
     assert value.data_type.id == "int64"
-    assert value["unit"] == "local"
+    assert value.metadata["unit"] == "local"
     shadow = _field_from_pyhint(
         "shadow",
         LocalShadow,
