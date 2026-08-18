@@ -228,6 +228,7 @@ fn write_all_bytes_replaces_the_whole_value() {
 /// Any handle reads and writes Arrow batches through exactly three methods:
 /// one read, one write, one append. The encoding comes from the handle's own
 /// media type, and every one of the three takes or returns a batch reader.
+#[cfg(feature = "arrow")]
 mod records {
     use std::sync::Arc;
 
@@ -787,6 +788,7 @@ mod read_lines_matching {
     }
 }
 
+#[cfg(feature = "arrow")]
 mod arrow_lines {
     //! The Arrow projection of matched line records: a text-line surface,
     //! never a fourth record method.
