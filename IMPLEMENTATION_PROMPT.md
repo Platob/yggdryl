@@ -27,6 +27,14 @@ as **one pass with one read and at most one write**, and a recursive path
 pattern (`**.price`) rewrites every matching leaf at any depth through the one
 walker this project already has.
 
+The engine that does this is one optimizer over one plan graph — an arena DAG
+with parents as well as children, so a rule can ask what else reads a node, find
+every comparison on a column, and see that a subexpression is already computed.
+That is what turns a pile of micro-instructions into something that pushes down:
+a long `OR` of equalities becomes one `IN` list, overlapping comparisons become
+one range, a cast wrapping a column moves to the literal where it does not
+destroy pruning, and each layer of the read gets exactly one predicate.
+
 One handle method puts all of it in reach of a one-liner:
 `handle.apply_expression("DELETE WHERE venue = 'XNAS'")` — and `UPDATE … SET`,
 `ALTER … ADD/DROP/RENAME COLUMN`, `SELECT`, `INSERT … VALUES` beside it, every
@@ -146,6 +154,8 @@ implementation and never an empty shell:
 | `select.rs` | `Selection` — the ordered projection of named expressions, and the root `Field` it produces |
 | `statement.rs` | `Statement` — the SQL-like verbs, their lowering to selection + filter + write mode (§3.1.3) |
 | `chain.rs` | composition and fusion: a chain of statements becoming one pass, and the recursion bounds (§1.10) |
+| `graph.rs` | the arena DAG `bind` produces: children and parents, hash-consing, the node index (§1.11) |
+| `optimize.rs` | the rewrite rules and their fixed-point driver, including layered pushdown extraction (§1.11) |
 | `arrow.rs` | vectorized evaluation over `RecordBatch` → `BooleanArray`, projection and filtering (`#[cfg(feature = "arrow")]`) |
 | `apply.rs` | the `Apply` / `ArrowApply` extension traits and their type redirections (§1.9) |
 | `tests.rs` | the module's edge cases |
@@ -212,8 +222,10 @@ Free of any schema, `Expr` answers:
   filter and the selection actually need.
 - `conjuncts()` — the top-level `AND` operands, flattened. Pruning is per
   conjunct, and a residual is the conjuncts a partition tuple did not settle.
-- `simplify()` — pure rewriting, no schema: constant folding of literal-only
-  subtrees; `AND`/`OR` absorption with `TRUE`/`FALSE`; `NOT` pushed through
+- `simplify()` — the schema-free entry to the optimizer of §1.11: it builds the
+  plan graph, runs the rules that need no schema, and returns an `Expr` again.
+  It is a view on one engine, not a second implementation. Without a schema that
+  means constant folding of literal-only subtrees; `AND`/`OR` absorption with `TRUE`/`FALSE`; `NOT` pushed through
   comparisons and De Morgan; `IN` of one element to `Eq`, of zero to `FALSE`;
   `BETWEEN` to two comparisons; `LIKE 'x%'` with no other wildcard to
   `StartsWith`; duplicate conjuncts dropped. Simplification is
@@ -404,8 +416,9 @@ typed value, and it happens once per read — never per batch, never per row
    error naming both, **except** through the tolerant constructors of §3.1,
    which fold it to a statically-`FALSE` predicate exactly as the folder route
    tolerates an unmatched filter today;
-4. runs `simplify()` before and after folding, so a bound plan is already
-   minimal;
+4. builds the plan graph and runs the optimizer of §1.11 before and after
+   folding — with the schema in hand, so the cast, range, and set rules can
+   fire — leaving a bound plan already minimal;
 5. orders conjuncts cheapest-first (column comparison before arithmetic before
    `LIKE` before `CAST`), which is legal because evaluation is side-effect free
    and three-valued `AND` is commutative here;
@@ -760,6 +773,130 @@ Bounds, stated once and enforced everywhere:
   `**` pattern over a 12-level schema, and a folder nested past the descent
   bound each fail as typed errors and leave the process standing.
 
+### 1.11 The plan graph, and the optimizer that reads it
+
+Everything above — binding, simplification, chain fusion, pushdown extraction —
+is one optimizer over one representation. Build that representation first,
+because a rewrite engine over a bare tree can only ever append micro-rules: it
+cannot ask *"is this node used anywhere else"*, *"where else is this column
+compared"*, or *"is this subtree already computed"*, and those three questions
+are where the real optimizations live.
+
+#### The representation: an arena DAG with parents
+
+`rust/src/expressions/graph.rs`:
+
+- **An arena, not `Arc` trees**: `Plan { nodes: Vec<Node>, … }` with a
+  `NodeId(u32)` index. A rewrite is index surgery — retarget a child pointer —
+  not a rebuild of every ancestor. `Expr` stays the immutable public value;
+  `Plan` is what `bind` produces and what every rewrite and evaluator reads.
+- **Children and parents both.** Each node holds its children in order and its
+  parent set. Parents are what make a rewrite decidable: a node with one parent
+  can be rewritten in place, a node with several must be cloned first, and a
+  node with **zero** parents is dead and is collected. Dead-code elimination
+  becomes a refcount check rather than a traversal.
+- **Structural hash-consing on insert**: two structurally identical subtrees get
+  the same `NodeId`, so `price * 1.1` written three times is one node, computed
+  once per batch, and deduplication of conjuncts becomes `NodeId` equality
+  rather than a deep compare. This is common-subexpression elimination for free,
+  at build time, and it is why the DAG is a DAG.
+- **An index by what rules search for**: `(kind, column)` → nodes. "Every
+  comparison against `venue`" is a lookup, not a walk — which is what lets range
+  and set coalescing be cheap enough to run to a fixed point.
+- **Cycles are impossible**: a child is always an already-inserted, lower id.
+  No `Rc<RefCell>`, no back-edges, no cycle checking at run time.
+- **Stable `Display`**: nodes in topological order with their ids, so a plan is
+  snapshot-testable and an optimizer regression shows up as a diff a reviewer
+  can read.
+- **A chain is one graph.** Every statement of a chain (§1.10) is inserted into
+  the same `Plan`, which is exactly what lets a filter from step three meet a
+  projection from step one.
+
+#### The rules
+
+`rust/src/expressions/optimize.rs`: each rule is
+`fn(&mut Plan, NodeId) -> Option<Rewrite>`, driven to a fixed point with an
+explicit iteration cap. Rules are grouped by what they buy:
+
+**Normalize — so later rules see one shape**
+
+- `NOT` pushed to the leaves (De Morgan), double negation dropped.
+- Comparisons oriented `column op literal`; `3 < price` becomes `price > 3`.
+- `BETWEEN` lowered to two comparisons; `IN` of one element to `=`; `IN` of none
+  to `FALSE`; `LIKE 'x%'` with no other wildcard to `StartsWith`.
+- **Bounded CNF**: conjunctive normal form is what lets each conjunct be pushed
+  independently, so convert — with an explicit node-count guard. Past the guard
+  the original shape is kept and only what is already extractable is pushed. Say
+  the guard's number and why it exists; a plan that explodes is worse than a
+  plan that pushes less.
+
+**Coalesce — many micro-instructions into one that pushes**
+
+- `a = 1 OR a = 2 OR a = 3` → `a IN (1, 2, 3)`; the list sorted and deduplicated,
+  which makes plan equality decidable and both the statistics evaluator and the
+  vectorized path faster.
+- `a IN (S₁) AND a IN (S₂)` → the intersection; `OR` → the union;
+  `a IN (S) AND a = x` → `a = x` when `x ∈ S`, else `FALSE`.
+- `a > 1 AND a > 3` → `a > 3`; `a >= 1 AND a <= 5` → one range node;
+  `a > 5 AND a < 3` → `FALSE`. Ranges are the shape `evaluate_stats` prunes
+  best, so producing them is the point.
+- Identical conjuncts and disjuncts removed (`NodeId` equality after
+  hash-consing); absorption — `p AND (p OR q)` → `p`, `p OR (p AND q)` → `p`.
+- `TRUE`/`FALSE` absorbed through `AND`/`OR`.
+
+**Casts — the rewrite that decides whether pushdown happens at all**
+
+- A cast to the type a node already has is dropped.
+- A cast of a literal is folded at bind time (§1.4), never at run time.
+- **A cast on the column side is moved to the literal side whenever that is
+  provably lossless**: `CAST(int32_col AS int64) > 5` becomes
+  `int32_col > 5i32` when `5` fits in `int32`, and stays put when it does not.
+  This is the highest-value rule in the set, because a cast wrapping a column
+  destroys statistics pruning and row-group pruning outright, while the same
+  comparison against a converted literal prunes perfectly. Prove it per type
+  pair — widening integer, decimal scale increase, date/timestamp unit widening
+  — and **decline everything unproven**.
+- Cast of a cast collapses to the outer one when the inner cannot lose
+  information.
+
+**Shape — what the chain and the read ladder consume**
+
+- Adjacent selections composed, adjacent filters conjoined, a filter moved ahead
+  of a projection when every column it reads passes through unchanged (§1.10).
+- Constant folding across the whole graph, not only literal-only leaves.
+- Conjuncts ordered cheapest-first for short-circuit evaluation.
+- **Layered pushdown extraction, once, at the end**: split the conjuncts into
+  the deepest layer that can answer each — partition constants, manifest and
+  file statistics, encoding-level (row group), vectorized mask, residual — and
+  hand each layer *one* predicate. This is what §3.1.1 consumes: the ladder
+  receives a clean predicate per rung, never a pile of fragments it has to
+  re-derive.
+
+**One trap, stated so nobody "simplifies" it**
+
+`a = a` is **not** `TRUE`, and `a != a` is not `FALSE`: both are unknown when
+`a` is null. Every rule is written under three-valued logic, and this pair gets
+an explicit test because it is the mistake every optimizer makes once.
+
+#### What the optimizer must guarantee
+
+- **Semantics-preserving under three-valued logic**, proven by the property
+  test: random plans over random data — nulls, decimals, temporals included —
+  optimized and unoptimized, identical results.
+- **Deterministic and idempotent**: same input, same plan; optimizing an
+  optimized plan changes nothing. Both are tests, and the second one catches
+  rule pairs that undo each other.
+- **Terminating**: the fixed-point driver has an iteration cap; hitting it is a
+  bug the test suite surfaces, not a hang in production.
+- **Never speculative**: a rule that cannot prove itself declines. A slower plan
+  is always acceptable; a different answer never is.
+- **Explainable**: `explain` lists the rules that fired, in order, with the node
+  they fired on — so an optimization is auditable and a regression is
+  diagnosable by a reader rather than a debugger.
+- **Measured**: the optimizer's own cost is a benchmark leg (§5). An optimizer
+  that costs more than it saves on a small predicate is switched off below a
+  size threshold, and that threshold is a number, not a guess.
+
 ---
 
 ## 2. Order of work
@@ -768,8 +905,8 @@ Bounds, stated once and enforced everywhere:
 
 - **Phase A1 — the module.** `Expr`, parser (encapsulators and accessors
   included), `Bound`, row evaluation, statistics evaluation, `Selection`, Arrow
-  evaluation, the `Apply`/`ArrowApply` surface, chaining with its fusion and its
-  recursion bounds (§1.10), edge-case tests, benchmarks,
+  evaluation, the `Apply`/`ArrowApply` surface, the plan graph and its optimizer (§1.11),
+  chaining with its fusion and its recursion bounds (§1.10), edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
   `!!! note "Rust first"` until Phases A4/A5 land).
 - **Phase A2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
@@ -848,7 +985,9 @@ rung must be a number the tests assert, not a claim.
    then re-read the file for it; never widen the projection to everything
    because the filter mentions one extra column.
 3. **Prune before decoding, at every level that has statistics, through the one
-   `Bound::evaluate_stats`:**
+   `Bound::evaluate_stats`** — each level receiving the single predicate the
+   optimizer's layered extraction (§1.11) assigned it, never a pile of
+   fragments to re-derive:
    - a table format's manifest list, manifest entries, and data-file bounds
      (§3.3);
    - a folder's `column=value` directories (§3.2);
@@ -1219,6 +1358,33 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   - the guards: a `WHERE` binding to `TRUE` refused unless spelled `WHERE TRUE`,
     a bare `DELETE` truncating, an unknown column listed against what exists,
     `UPDATE` on an absent column and `ADD COLUMN` on a present one both refused.
+- **The optimizer** (§1.11) — its own test file, because it is where a silent
+  wrong answer would come from:
+  - **semantics preservation**, the property test: random plans over random data
+    including nulls, decimals, and temporals give identical results optimized
+    and unoptimized;
+  - **idempotence and determinism**: optimizing an optimized plan changes
+    nothing, and the same input yields the same plan every run — snapshot the
+    `Display` of the graph;
+  - **termination**: the fixed-point cap is never reached by any test plan, and
+    a deliberately pathological one reports the cap rather than hanging;
+  - each rule individually, on the shape it fires on and on a neighbouring shape
+    it must *not* fire on: `a = 1 OR a = 2` becoming `a IN (1, 2)`, set
+    intersection and union, range coalescing and the contradictory range folding
+    to `FALSE`, dedup and absorption, cast-to-same dropped, cast-of-cast
+    collapsed, and the cast-on-column-to-literal move proven per type pair —
+    including the case where the literal does **not** fit and the rule must
+    decline;
+  - **`a = a` is not `TRUE`** and `a != a` is not `FALSE`, with nulls in the
+    data;
+  - **CSE**: a subexpression written three times is one node and is evaluated
+    once per batch (assert with a counting expression);
+  - **dead nodes**: a node no parent reads is collected, and the plan the
+    evaluator sees never contains it;
+  - **bounded CNF**: a plan past the guard keeps its original shape and still
+    pushes what is extractable, and the guard is reported rather than silent;
+  - **layered extraction**: each level of §3.1.1 receives exactly one predicate,
+    and their conjunction is equivalent to the original filter.
 - **Chaining and recursion** (§1.10):
   - **fusion equivalence**, the property that matters: for a matrix of chains
     over a matrix of data, the fused result equals running each step separately
@@ -1276,6 +1442,11 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
 - **chain fusion** (§1.10): a four-statement chain run fused against the same
   four run separately with a materialization between, on the same data — the
   number that says why fusion is in the engine and not in the caller's loop;
+- **the optimizer itself** (§1.11): its cost on a small predicate, a large
+  disjunction, and a deep chain — which is what sets the size threshold below
+  which it is skipped — and, separately, what it *buys*: the same read with the
+  cast-on-column rule enabled and disabled (pruning versus no pruning), and with
+  equality coalescing enabled and disabled over a 200-element `OR`;
 - the encapsulated-name and accessor-chain legs: parsing and evaluating
   `"total amount"`, `a.b[0]`, and `a[1:3]` beside their unencapsulated,
   unaccessored equivalents, so the grammar's convenience carries a known cost;
@@ -1735,78 +1906,82 @@ cannot do one (the frame carriers in JavaScript), it carries the existing
 8. **Chain four statements into one pass** — write them, `explain` them, see
    four steps become one, and read the assertion that the fused answer equals
    the step-by-step one.
-9. **Recursive paths**: `ALTER COLUMN **.price TYPE decimal(10,2)` over a schema
+9. **Watch the optimizer work**: a predicate written as a long `OR` of
+   equalities with a cast around the column, and the plan it becomes — one `IN`
+   list, the cast moved to the literals — with `explain` naming the rules that
+   fired and the pruning that became possible as a result.
+10. **Recursive paths**: `ALTER COLUMN **.price TYPE decimal(10,2)` over a schema
    nested several levels deep, showing every leaf it touched and every one it
    did not.
-10. **The statement vocabulary and its lowering** (§3.1.3) as one table the
+11. **The statement vocabulary and its lowering** (§3.1.3) as one table the
    reader can hold in their head: every verb, and the selection + filter +
    write mode it becomes. Someone who understands this table can predict what
    any statement will cost.
-11. **What this deliberately does not do** — no subqueries, joins, aggregates,
+12. **What this deliberately does not do** — no subqueries, joins, aggregates,
    `bucket`, `CREATE`/`DROP TABLE`, no `MERGE … USING` — each with its one-line
    reason.
 
 **On `docs/io.md` — a handle**
 
-12. **Filter a file you already have**: `SELECT … WHERE` through
+13. **Filter a file you already have**: `SELECT … WHERE` through
     `apply_expression` on a Parquet leaf, with the read plan printed so the
     reader sees which row groups were skipped.
-13. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
+14. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
     asserting that the excluded directories were never listed.
-14. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
+15. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
     matches entirely — the report showing that the whole partition was unlinked
     without being decoded, which is the point — plus the three-valued footnote
     made concrete: rows whose value is null survive `DELETE WHERE price > 10`.
-15. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
+16. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
     else byte-identical, and the files no row matched never opened. Show the
     `CASE` it lowers to, so the reader learns the model rather than a spell.
-16. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
+17. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
     the statement-that-does-nothing case: `explain` first, apply second.
-17. **Apply to what you already hold** — the §1.9 carrier table as examples: a
+18. **Apply to what you already hold** — the §1.9 carrier table as examples: a
     `Value` row, an array with its `Field`, a `RecordBatch`, a streaming
     `BatchReader`, and a `Field` alone.
-18. **Write with an expression**: a filtered overwrite that replaces only the
+19. **Write with an expression**: a filtered overwrite that replaces only the
     matching rows, a computed column that becomes the partition column, and an
     expression merge key.
-19. **`INSERT … VALUES`** for the case every reader tries first: putting three
+20. **`INSERT … VALUES`** for the case every reader tries first: putting three
     rows somewhere without building an Arrow batch by hand.
 
 **On `docs/iceberg.md` — a table**
 
-20. **A filtered scan with its numbers**: manifests skipped, files skipped,
+21. **A filtered scan with its numbers**: manifests skipped, files skipped,
     rows filtered — the existing pruning example rewritten around an
     expression, with the counts asserted.
-21. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
+22. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
     the manifest without a byte being rewritten; the report proves it.
-22. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
+23. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
     rewrote a folder in use case 13 costs one document here, ids preserved —
     and a refused type change naming both sides.
-23. **A predicate on a source column pruning a transformed partition** (the
+24. **A predicate on a source column pruning a transformed partition** (the
     `day(ts)` case), and the honest counter-example: the same predicate against
     a `bucket` partition prunes nothing, and the docs say why in one sentence.
-24. **Time travel plus a filter** — `scan_at` under an expression, read with the
+25. **Time travel plus a filter** — `scan_at` under an expression, read with the
     schema that snapshot was written with.
 
 **On `docs/extensions/python.md` — the frames**
 
-25. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
-26. **Push the filter into the read instead**: `read_pandas_frame` /
+26. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
+27. **Push the filter into the read instead**: `read_pandas_frame` /
     `read_polars_frame` under options carrying the filter, with the benchmark
     number quoted from `docs/benchmarks.md` showing why this is the version to
     write.
-27. **Any spelling at the boundary** — statement text, a built `Statement`, a
+28. **Any spelling at the boundary** — statement text, a built `Statement`, a
     dict, a pair list, keywords — resolving to the same statement, and a bare
     predicate refused as a delete (§3.1.3).
 
 **On `docs/extensions/javascript.md`**
 
-28. The same boundary inference in JavaScript — statement text, `Statement`,
+29. The same boundary inference in JavaScript — statement text, `Statement`,
     `Expr`, plain object, `Map`, pair array — and `applyExpression` over a
     handle, including a `DELETE` and an `ALTER`.
 
 **Migration, once, where an existing reader will look for it**
 
-29. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
+30. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
     `with_filter_partitions([("venue", "XNAS")])` beside
     `with_filter("venue = 'XNAS'")`, saying plainly that the first still works,
     is exactly sugar for the second, and that the expression form is what adds
@@ -1854,6 +2029,11 @@ native binaries, caches, and `node_modules` after validation.
   is one derived method composed from the three, with a default implementation
   on the trait — no encoding gains an entry point, no backend implements it
   itself, and every statement reaches the bytes through the same three calls.
+- **One optimizer over one graph.** Binding, simplification, chain fusion, and
+  pushdown extraction are rules in the same engine over the same plan — never a
+  second rewriter, never a rule applied ad hoc at a call site. Every rule is
+  semantics-preserving under three-valued logic, declines when it cannot prove
+  itself, and is listed by `explain` when it fires.
 - **A chain never materializes between steps**, and fusion never changes an
   answer: an unprovable rewrite is declined, not attempted. One read, at most
   one write, whatever the chain's length.
