@@ -68,13 +68,13 @@ use crate::generic::RecordOptions;
 /// Bytes copied per step when moving between two handles.
 const TRANSFER_CHUNK: usize = 64 * 1024;
 
-/// Implement every [`IOBase`] byte method by forwarding to an inner handle.
+/// Implement [`IOBase`] methods by forwarding them to an inner handle.
 ///
-/// A type that wraps a handle - a media reader, a test double - mirrors that
-/// handle's bytes rather than owning bytes of its own. The macro expands to the
-/// forwarding bodies inside an `impl IOBase for` block, so anything the wrapper
-/// wants to override (typically [`IOBase::open`] and [`IOBase::close`], which
-/// usually also manage a cache) is simply written after the invocation.
+/// A type that wraps a handle - a media reader, a page cache, a test double -
+/// mirrors that handle rather than owning bytes of its own. The macro expands
+/// to the forwarding bodies inside an `impl IOBase for` block, so anything the
+/// wrapper wants to override (typically [`IOBase::open`] and [`IOBase::close`],
+/// which usually also manage a cache) is simply written after the invocation.
 ///
 /// ```
 /// use yggdryl::io::{Buffer, IOBase};
@@ -96,57 +96,132 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// # Ok(())
 /// # }
 /// ```
+///
+/// A wrapper that *changes* one of the methods above names the ones it still
+/// mirrors instead, because a method cannot be both expanded here and written
+/// out below. The list form is that spelling - it is exactly the same bodies,
+/// only chosen - and what it leaves out is what the wrapper owns:
+///
+/// ```
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+///
+/// use yggdryl::io::{Buffer, IOBase};
+///
+/// /// A handle that counts the reads reaching the one it wraps.
+/// struct Counted {
+///     handle: Buffer,
+///     reads: AtomicUsize,
+/// }
+///
+/// impl IOBase for Counted {
+///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
+///         truncate, url, media_type, set_media_type, flush, parent, child_by,
+///         ls, kind);
+///
+///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
+///     // the trait is `Send`, and a double is held across threads like any
+///     // other handle.
+///     fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
+///         self.reads.fetch_add(1, Ordering::Relaxed);
+///         self.handle.pread(offset, buffer)
+///     }
+/// }
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let counted = Counted {
+///     handle: Buffer::from_bytes(b"AAPL".to_vec()),
+///     reads: AtomicUsize::new(0),
+/// };
+/// assert_eq!(counted.read_all()?, b"AAPL");
+/// assert!(counted.reads.load(Ordering::Relaxed) > 0);
+/// # Ok(())
+/// # }
+/// ```
 #[macro_export]
 macro_rules! delegate_iobase {
     ($handle:ident) => {
+        $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            ls, kind);
+    };
+
+    ($handle:ident: $($method:ident),+ $(,)?) => {
+        $($crate::delegate_iobase!(@method $handle, $method);)+
+    };
+
+    (@method $handle:ident, pread) => {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> $crate::Result<usize> {
             $crate::io::IOBase::pread(&self.$handle, offset, buffer)
         }
+    };
 
+    (@method $handle:ident, pwrite) => {
         fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> $crate::Result<usize> {
             $crate::io::IOBase::pwrite(&mut self.$handle, offset, bytes)
         }
+    };
 
+    (@method $handle:ident, size) => {
         fn size(&self) -> u64 {
             $crate::io::IOBase::size(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, capacity) => {
         fn capacity(&self) -> u64 {
             $crate::io::IOBase::capacity(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, reserve) => {
         fn reserve(&mut self, capacity: u64) -> $crate::Result<()> {
             $crate::io::IOBase::reserve(&mut self.$handle, capacity)
         }
+    };
 
+    (@method $handle:ident, truncate) => {
         fn truncate(&mut self, size: u64) -> $crate::Result<()> {
             $crate::io::IOBase::truncate(&mut self.$handle, size)
         }
+    };
 
+    (@method $handle:ident, url) => {
         fn url(&self) -> Option<&$crate::Url> {
             $crate::io::IOBase::url(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, media_type) => {
         fn media_type(&self) -> &$crate::MediaType {
             $crate::io::IOBase::media_type(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, set_media_type) => {
         fn set_media_type(&mut self, media_type: $crate::MediaType) {
             $crate::io::IOBase::set_media_type(&mut self.$handle, media_type);
         }
+    };
 
+    (@method $handle:ident, flush) => {
         fn flush(&mut self) -> $crate::Result<()> {
             $crate::io::IOBase::flush(&mut self.$handle)
         }
+    };
 
+    (@method $handle:ident, parent) => {
         fn parent(&self) -> Option<$crate::generic::Holder> {
             $crate::io::IOBase::parent(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, child_by) => {
         fn child_by(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
             $crate::io::IOBase::child_by(&self.$handle, name)
         }
+    };
 
+    (@method $handle:ident, ls) => {
         fn ls(
             &self,
             recursive: bool,
@@ -154,7 +229,9 @@ macro_rules! delegate_iobase {
         ) -> $crate::Result<Vec<$crate::generic::Holder>> {
             $crate::io::IOBase::ls(&self.$handle, recursive, include_private)
         }
+    };
 
+    (@method $handle:ident, kind) => {
         fn kind(&self) -> $crate::IOKind {
             $crate::io::IOBase::kind(&self.$handle)
         }
