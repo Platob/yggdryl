@@ -781,6 +781,12 @@ not exist reads as zero batches with the schema still answered, exactly as `read
 lines. The consuming `into_arrow_lines` is the same projection when the reader must own the
 handle - the shape the bindings hand across FFI.
 
+What that costs on a production-sized directory is measured rather than asserted: the
+[benchmarks](benchmarks.md#big-gzip-log-files-end-to-end) page reads a million records across
+eight rotated `.log.gz` leaves - 93.6 MiB of text from 16.8 MiB on disk - at ~182,000 rows/s,
+holding 8 MiB of memory to do it, and prices the content coding, the rotation, and the typed
+capture columns separately.
+
 ### Streaming a trading log into a partitioned Iceberg table
 
 The projection's schema is Iceberg-safe as declared, so the whole pipeline is three calls: mark
