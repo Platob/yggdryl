@@ -1853,6 +1853,89 @@ if (binding.LineIterator) {
   })
 }
 
+// The Arrow projection of matched line records. The native halves take the
+// constant columns and the capture declarations as parallel name and value
+// vectors; this coercion is where a plain object, a Map, or an iterable of
+// pairs becomes those, with each constant crossing through the one
+// JavaScript-to-core conversion and each declared type crossing as a native
+// `DataType` or a type-expression string.
+function lineColumnEntries(kind, source) {
+  if (source === undefined || source === null) {
+    return []
+  }
+  if (typeof source !== 'object') {
+    // A string is iterable and would silently become per-character columns;
+    // nothing non-object names columns.
+    throw new TypeError(
+      `${kind} must be a Map, an iterable of [name, value] pairs, or a plain object`,
+    )
+  }
+  return Symbol.iterator in source ? [...source] : Object.entries(source)
+}
+
+function lineColumnArguments(options) {
+  const { customFields, captureTypes } = options ?? {}
+  const customNames = []
+  const customValues = []
+  for (const [name, value] of lineColumnEntries('customFields', customFields)) {
+    customNames.push(name)
+    customValues.push(Value.fromJs(value))
+  }
+  const captureNames = []
+  const captureTypeInputs = []
+  for (const [name, type] of lineColumnEntries('captureTypes', captureTypes)) {
+    captureNames.push(name)
+    captureTypeInputs.push(type)
+  }
+  return { customNames, customValues, captureNames, captureTypeInputs }
+}
+
+{
+  const nativeReadArrowLines = IOBase.prototype._readArrowLinesNative
+  delete IOBase.prototype._readArrowLinesNative
+  Object.defineProperty(IOBase.prototype, 'readArrowLines', {
+    configurable: true,
+    value: function readArrowLines(pattern, options) {
+      const { batchSize, timestampCapture } = options ?? {}
+      if (
+        batchSize !== undefined &&
+        batchSize !== null &&
+        (!Number.isInteger(batchSize) || batchSize <= 0)
+      ) {
+        throw new TypeError(`batchSize must be a positive integer, got ${batchSize}`)
+      }
+      const parts = lineColumnArguments(options)
+      return nativeReadArrowLines.call(
+        this,
+        pattern,
+        batchSize ?? null,
+        parts.customNames,
+        parts.customValues,
+        parts.captureNames,
+        parts.captureTypeInputs,
+        timestampCapture ?? null,
+      )
+    },
+  })
+}
+
+// The standalone schema builder: the root Field the projection emits, off a
+// pattern alone, so a table can exist before the first log line does.
+{
+  const nativeSchemaFromPattern = binding._schemaFromPatternNative
+  delete binding._schemaFromPatternNative
+  binding.schemaFromPattern = function schemaFromPattern(pattern, options) {
+    const parts = lineColumnArguments(options)
+    return nativeSchemaFromPattern(
+      pattern,
+      parts.customNames,
+      parts.customValues,
+      parts.captureNames,
+      parts.captureTypeInputs,
+    )
+  }
+}
+
 // The three byte codings, grouped the way the documentation names them. The
 // native halves carry a leading underscore so only these namespaces are the
 // public spelling.

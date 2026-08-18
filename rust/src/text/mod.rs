@@ -14,6 +14,9 @@ pub(crate) mod wire;
 pub use crate::generic::TypedValue;
 pub use crate::generic::value::{Children, Float, Float32, Value};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
+#[cfg(feature = "arrow")]
+pub(crate) use display::ERROR_TEXT_LIMIT;
+pub use display::stable_hash_bytes;
 pub(crate) use display::{elide_display, elide_to, expected_got, stable_hash_display};
 pub use format::Format;
 pub use io::{

@@ -39,6 +39,7 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
+| `schema_from_pattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |

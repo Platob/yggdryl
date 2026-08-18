@@ -241,7 +241,14 @@ meets all of these; a new media that cannot yet is not done:
 - **A table answers the same three record methods as a folder**: read through
   the snapshot, write/append as one commit each; `merge_by_names` upserts a table
   exactly as a leaf; a handle on a `column=value` directory addresses that
-  partition. Merge reads only files whose key-column bounds overlap incoming
+  partition. `Table` itself implements `IOBase` - bytes delegated to its root
+  folder via `delegate_iobase!`, record surface overridden to answer from the
+  parsed metadata: `read_arrow_field` is the stored schema with its field ids
+  (no file opened), `filter_partitions` prunes files through the plan (and a
+  filter naming an undeclared column errors, unlike the tolerant folder route),
+  commits update the value in place. The folder route reaches the same answers
+  through the `located` probe; `Located::record_options` delegates to the
+  table's, so the encoding answer is defined once. Merge reads only files whose key-column bounds overlap incoming
   keys; every other file is carried as an `existing` entry (same location,
   statistics, order) - correct however coarse the statistics, since an unread
   file keeps every row. The incoming side is held, and the comment says why.

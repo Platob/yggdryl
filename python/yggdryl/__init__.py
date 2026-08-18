@@ -13,6 +13,7 @@ from ._native import (
     Url,
     Urn,
     __version__,
+    schema_from_pattern,
 )
 from . import fields, iceberg, json, toml, yaml
 from .records import Record, from_dict, record, schema_field, schema_fields, to_dict
@@ -38,6 +39,7 @@ __all__ = [
     "record",
     "schema_field",
     "schema_fields",
+    "schema_from_pattern",
     "toml",
     "to_dict",
     "yaml",
