@@ -15,6 +15,7 @@ Criterion targets for the Rust core and boundary benchmarks for each binding.
     cargo bench --bench yaml
     cargo bench --bench avro
     cargo bench --bench io --features "parquet"
+    cargo bench --bench io --features "parquet" -- lines_gzip   # ~12 min alone
     cargo bench --bench iceberg --features "parquet iceberg"
     ```
 
@@ -27,6 +28,7 @@ Criterion targets for the Rust core and boundary benchmarks for each binding.
     .venv/Scripts/python benchmarks/records_arrow.py --min-time 0.2 --repeat 7
     .venv/Scripts/python benchmarks/records_io.py --min-time 0.2 --repeat 7
     .venv/Scripts/python benchmarks/log_lines.py --min-time 0.2 --repeat 5
+    .venv/Scripts/python benchmarks/log_lines_bulk.py --measure-memory
     .venv/Scripts/python benchmarks/codecs.py --iterations 10000
     .venv/Scripts/python benchmarks/compression.py --min-time 0.2 --repeat 5
     .venv/Scripts/python benchmarks/iceberg.py --min-time 0.2 --repeat 5
@@ -43,6 +45,7 @@ Criterion targets for the Rust core and boundary benchmarks for each binding.
     npm run --prefix node bench:codec
     npm run --prefix node bench:defaults
     npm run --prefix node bench:io
+    npm run --prefix node bench:lines
     npm run --prefix node bench:records
     ```
 
@@ -60,7 +63,9 @@ machine against release artifacts, and compare like-for-like toolchains.
 | `text` | Value construction, format inference, display and elision helpers |
 | `json`, `toml`, `yaml` | Whole-value and streaming encode and decode |
 | `avro` | Container decode and encode by type family, codec x block-size sweep, projection skips, resolution plans, the varint floor |
-| `io` | Record round-trips over handles, projection pushdown, the line-record Arrow projection and its hash |
+| `io` | Record round-trips over handles, projection pushdown, the line-record Arrow projection and its hash, and (`lines_gzip`) a million-record rotated gzip log folder: content coding, folder shape, typed captures, and a scale sweep |
+| `log_lines_bulk` (Python) | The same rotated gzip corpus at the binding, plus peak RSS per corpus size - the residency claim Criterion cannot report |
+| `lines` (JavaScript) | The same corpus at the copied-IPC boundary, with median, best, and spread |
 | `iceberg` | Plan, metadata, manifests (full against the planning fast path, at scale), partitioning, compaction, merge, contended commits |
 | `compression` (Python) | The byte codings against the standard library's, same wire, same payload |
 
