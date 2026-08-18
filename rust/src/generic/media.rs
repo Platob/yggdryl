@@ -57,6 +57,8 @@ pub enum Media {
     /// An Apache Parquet file.
     #[cfg(feature = "parquet")]
     Parquet(crate::parquet::Parquet<Holder>),
+    /// An Apache Avro object container.
+    Avro(crate::avro::Avro<Holder>),
 }
 
 impl Media {
@@ -88,9 +90,12 @@ impl Media {
         if base == &MimeType::PARQUET {
             return Ok(Self::Parquet(crate::parquet::Parquet::new(handle)));
         }
+        if base == &MimeType::AVRO {
+            return Ok(Self::Avro(crate::avro::Avro::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}), got {base}",
+             (application/vnd.apache.arrow.stream{}, application/avro), got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -110,6 +115,11 @@ impl Media {
         Self::Parquet(crate::parquet::Parquet::new(handle))
     }
 
+    /// Hold an Avro object container over a handle.
+    pub fn avro(handle: Holder) -> Self {
+        Self::Avro(crate::avro::Avro::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_schema(self, schema: Field) -> Self {
@@ -117,6 +127,7 @@ impl Media {
             Self::Ipc(ipc) => Self::Ipc(ipc.with_schema(schema)),
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => Self::Parquet(parquet.with_schema(schema)),
+            Self::Avro(avro) => Self::Avro(avro.with_schema(schema)),
         }
     }
 
@@ -130,6 +141,7 @@ impl Media {
             Self::Ipc(ipc) => ipc.schema(),
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet.schema(),
+            Self::Avro(avro) => avro.schema(),
         }
     }
 
@@ -147,6 +159,7 @@ impl Media {
             Self::Ipc(ipc) => ipc.read_batch_reader(field),
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet.read_batch_reader(field),
+            Self::Avro(avro) => avro.read_batch_reader(field),
         }
     }
 
@@ -160,6 +173,7 @@ impl Media {
             Self::Ipc(ipc) => ipc.write_batch_reader(batches),
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet.write_batch_reader(batches),
+            Self::Avro(avro) => avro.write_batch_reader(batches),
         }
     }
 
@@ -169,6 +183,7 @@ impl Media {
             Self::Ipc(ipc) => ipc,
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet,
+            Self::Avro(avro) => avro,
         }
     }
 
@@ -178,6 +193,7 @@ impl Media {
             Self::Ipc(ipc) => ipc,
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet,
+            Self::Avro(avro) => avro,
         }
     }
 }
@@ -264,6 +280,12 @@ impl From<Ipc<Holder>> for Media {
 impl From<crate::parquet::Parquet<Holder>> for Media {
     fn from(value: crate::parquet::Parquet<Holder>) -> Self {
         Self::Parquet(value)
+    }
+}
+
+impl From<crate::avro::Avro<Holder>> for Media {
+    fn from(value: crate::avro::Avro<Holder>) -> Self {
+        Self::Avro(value)
     }
 }
 

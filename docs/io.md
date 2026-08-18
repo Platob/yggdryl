@@ -352,8 +352,7 @@ advance it, and two cursors over one resource advance independently.
     use yggdryl::io::{Buffer, IOBase, IOCursor};
 
     let mut cursor = Buffer::new().cursor();
-    cursor.write_next(b"symbol,price
-")?;
+    cursor.write_next(b"symbol,price\n")?;
     assert_eq!(cursor.tell(), 13);
 
     cursor.seek_to(7);
@@ -421,15 +420,12 @@ terminator, and a resource that does not exist yields no lines, exactly as it re
     use yggdryl::io::{Buffer, IOBase};
     use yggdryl::Url;
 
-    # fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut handle = Buffer::new()
         .with_media_type(Url::from_str("file:///trades.jsonl.gz")?.media_type());
     handle.write_all_bytes(&yggdryl::gzip::dump(b"{\"id\":1}\n{\"id\":2}\n")?)?;
 
     let lines: Vec<String> = handle.read_lines()?.collect::<yggdryl::Result<_>>()?;
     assert_eq!(lines, ["{\"id\":1}", "{\"id\":2}"]);
-    # Ok(())
-    # }
     ```
 
 === "Python"
@@ -476,8 +472,6 @@ record rather than being dropped.
     ```rust
     use yggdryl::io::{Buffer, IOBase};
     use yggdryl::Url;
-
-    # fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut handle = Buffer::new()
         .with_media_type(Url::from_str("file:///app.log")?.media_type());
     handle.write_all_bytes(
@@ -489,8 +483,6 @@ record rather than being dropped.
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0], "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one");
-    # Ok(())
-    # }
     ```
 
 === "Python"
@@ -1497,8 +1489,6 @@ default, selects everything.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
-
-    # fn main() -> Result<(), Box<dyn std::error::Error>> {
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),
@@ -1521,8 +1511,6 @@ default, selects everything.
     let first = handle.read_arrow_batch_reader(&selecting)?.next().unwrap()?;
     assert_eq!(first.num_columns(), 1);
     assert_eq!(first.schema().field(0).name(), "symbol");
-    # Ok(())
-    # }
     ```
 
 === "Python"

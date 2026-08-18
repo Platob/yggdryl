@@ -1065,6 +1065,7 @@ pub(crate) fn leaf_reader(
         RecordOptions::Parquet(parquet) => {
             crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
+        RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
@@ -1089,6 +1090,7 @@ fn leaf_writer(
         RecordOptions::Parquet(parquet) => {
             crate::parquet::write_batch_reader(handle, batches, parquet)?;
         }
+        RecordOptions::Avro(avro) => crate::avro::write_batch_reader(handle, batches, avro)?,
     }
     Ok(())
 }

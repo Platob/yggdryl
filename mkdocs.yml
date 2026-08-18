@@ -134,6 +134,7 @@ nav:
   - Records:
       - ipc: ipc.md
       - parquet: parquet.md
+      - avro: avro.md
       - iceberg: iceberg.md
   - Values:
       - uri: uri.md

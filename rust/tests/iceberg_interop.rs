@@ -288,3 +288,129 @@ fn a_table_written_by_pyiceberg_reads_here() {
         bounded.files_skipped()
     );
 }
+
+#[test]
+fn tables_of_the_other_format_versions_are_left_for_an_external_reader() {
+    for (version, name) in [
+        (FormatVersion::V1, "from-rust-v1"),
+        (FormatVersion::V3, "from-rust-v3"),
+    ] {
+        let path = interop_root().join(name);
+        let _ = std::fs::remove_dir_all(&path);
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a partition spec");
+        let mut table = Table::create(Folder::new(&path).expect("a folder"), version, schema, spec)
+            .expect("a created table");
+        let batch = rows();
+        table
+            .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .expect("an appended snapshot");
+        assert_eq!(collect(table.scan(None).expect("a scan")), appended());
+        println!("iceberg-interop: wrote {name}");
+    }
+}
+
+#[test]
+fn tables_written_by_pyiceberg_at_other_versions_read_here() {
+    // The driver knows which versions PyIceberg managed to write, so absence
+    // is reported per version rather than failing the standalone run.
+    for name in ["from-pyiceberg-v1", "from-pyiceberg-v3"] {
+        let path = interop_root().join(name);
+        if !path.join("metadata").is_dir() {
+            println!("iceberg-interop: absent {name}");
+            continue;
+        }
+        let table = Table::open(Folder::new(&path).expect("a folder")).expect("an external table");
+        // The rows come back through this crate's manifest reader, so the
+        // exchange covers the per-version manifest schemas both ways.
+        assert_eq!(collect(table.scan(None).expect("a scan")), appended());
+        let plan = table.plan(&[("venue", "XNAS")]).expect("a filtered plan");
+        assert_eq!(plan.tasks.len(), 1, "one venue, one file in {name}");
+        println!("iceberg-interop: read {name}");
+    }
+}
+
+/// Leave a wide deterministic manifest for the baseline readers.
+///
+/// `scripts/bench_avro_baseline.py` times fastavro and PyIceberg's manifest
+/// reader over this exact file, so the numbers in `docs/benchmarks.md`
+/// compare implementations on identical bytes.
+#[test]
+fn a_large_manifest_is_left_for_baseline_readers() {
+    use yggdryl::iceberg::{DataFile, ManifestEntry, write_manifest};
+
+    let dir = interop_root();
+    std::fs::create_dir_all(&dir).expect("the exchange directory");
+    let schema = schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a partition spec");
+    let entries: Vec<ManifestEntry> = (0..10_000)
+        .map(|index: i64| {
+            ManifestEntry::added(
+                7_001,
+                DataFile {
+                    file_path: format!("file:///bench/data/part-{index:05}.parquet").into(),
+                    partition: vec![yggdryl::Value::from(["XNAS", "XNYS"][index as usize % 2])],
+                    record_count: 100 + index,
+                    file_size_in_bytes: 4_096,
+                    column_sizes: vec![(1, 512), (2, 256), (3, 128)],
+                    value_counts: vec![(1, 100), (2, 90), (3, 80)],
+                    null_value_counts: vec![(1, 0), (2, 10), (3, 20)],
+                    nan_value_counts: vec![(1, 0)],
+                    lower_bounds: vec![(1, index.to_le_bytes().to_vec())],
+                    upper_bounds: vec![(1, (index + 100).to_le_bytes().to_vec())],
+                    split_offsets: vec![4],
+                    sort_order_id: Some(0),
+                    ..DataFile::default()
+                },
+            )
+        })
+        .collect();
+    let mut handle =
+        yggdryl::local::File::new(dir.join("manifest-10k.avro")).expect("a file handle");
+    write_manifest(&mut handle, FormatVersion::V2, &schema, &spec, &entries)
+        .expect("the baseline manifest writes");
+    println!("iceberg-interop: wrote manifest-10k.avro");
+}
+
+/// Time this crate's readers over the baseline manifest, for the comparison
+/// table in `docs/benchmarks.md`.
+///
+/// Gated behind `YGGDRYL_BASELINE_TIMING` because a timing only means
+/// something in a release build on a quiet machine; the baseline script sets
+/// the variable and runs this with `--release`.
+#[test]
+fn times_the_baseline_manifest_for_the_comparison_table() {
+    use yggdryl::iceberg::{read_manifest, read_manifest_for_plan};
+
+    if std::env::var_os("YGGDRYL_BASELINE_TIMING").is_none() {
+        return;
+    }
+    let path = interop_root().join("manifest-10k.avro");
+    assert!(path.exists(), "run a_large_manifest first");
+    let handle = yggdryl::local::File::new(&path).expect("a file handle");
+
+    let best = |action: &dyn Fn() -> usize| -> f64 {
+        let mut fastest = f64::INFINITY;
+        for _ in 0..7 {
+            let started = std::time::Instant::now();
+            assert_eq!(action(), 10_000);
+            fastest = fastest.min(started.elapsed().as_secs_f64());
+        }
+        fastest * 1e3
+    };
+    let full = best(&|| read_manifest(&handle).expect("the manifest reads").len());
+    let stats = best(&|| {
+        read_manifest_for_plan(&handle, true)
+            .expect("the plan path reads")
+            .len()
+    });
+    let identity = best(&|| {
+        read_manifest_for_plan(&handle, false)
+            .expect("the plan path reads")
+            .len()
+    });
+    println!(
+        "iceberg-interop: timed full={full:.1}ms plan_stats={stats:.1}ms \
+         plan_identity={identity:.1}ms"
+    );
+}

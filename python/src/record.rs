@@ -1057,7 +1057,7 @@ impl PyRecordOptions {
     fn compression(&self) -> Option<String> {
         match &self.inner {
             RecordOptions::Parquet(options) => Some(compression_name(options.compression)),
-            RecordOptions::Ipc(_) => None,
+            RecordOptions::Ipc(_) | RecordOptions::Avro(_) => None,
         }
     }
 
@@ -1077,7 +1077,7 @@ impl PyRecordOptions {
     fn max_row_group_size(&self) -> Option<usize> {
         match &self.inner {
             RecordOptions::Parquet(options) => Some(options.max_row_group_size),
-            RecordOptions::Ipc(_) => None,
+            RecordOptions::Ipc(_) | RecordOptions::Avro(_) => None,
         }
     }
 
@@ -1088,7 +1088,9 @@ impl PyRecordOptions {
                 options.max_row_group_size = rows;
                 Ok(())
             }
-            RecordOptions::Ipc(_) => Err(not_parquet(&self.inner, "set a row-group size")),
+            RecordOptions::Ipc(_) | RecordOptions::Avro(_) => {
+                Err(not_parquet(&self.inner, "set a row-group size"))
+            }
         }
     }
 

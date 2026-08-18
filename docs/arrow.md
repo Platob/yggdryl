@@ -140,9 +140,10 @@ implementation is the one that can return a logical null.
     );
 
     let row = schema.default_arrow_scalar()?.to_value()?;
-    assert_eq!(row.len(), 2);
-    assert_eq!(row.get(0).and_then(Value::as_i128), Some(0));
-    assert_eq!(row.get(1), Some(&Value::Null));
+    let (_, values) = row.as_record().ok_or("a struct row is a typed record")?;
+    assert_eq!(values.len(), 2);
+    assert_eq!(values[0].as_i128(), Some(0));
+    assert_eq!(values[1], Value::Null);
     ```
 
 === "Python"
