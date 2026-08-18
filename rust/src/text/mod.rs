@@ -9,6 +9,7 @@ mod format;
 mod formatting;
 mod io;
 mod limits;
+pub mod line;
 pub(crate) mod position;
 pub(crate) mod wire;
 
@@ -17,8 +18,8 @@ pub use crate::generic::value::{Children, Float, Float32, Value};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 #[cfg(feature = "arrow")]
 pub(crate) use display::ERROR_TEXT_LIMIT;
-pub use display::stable_hash_bytes;
 pub(crate) use display::{elide_display, elide_to, expected_got, stable_hash_display};
+pub use display::{stable_hash_bytes, stable_hash_chunks};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
 pub use io::{
@@ -26,6 +27,10 @@ pub use io::{
     load_all_with_limits, load_with_limits,
 };
 pub use limits::Limits;
+pub use line::{
+    LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines,
+    schema_from_pattern,
+};
 
 use crate::{Error, Result, json, toml, yaml};
 

@@ -147,22 +147,11 @@ impl<H: IOBase> IOBase for Coded<H> {
     /// codings the decoded media type still carries, so a compressed resource
     /// pays one buffer instead of its decompressed size. A pending write has
     /// the decoded value in memory already, so it takes the default path.
-    fn read_lines(&self) -> Result<super::Lines<Box<dyn std::io::Read + '_>>>
+    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn std::io::Read + '_>>>
     where
         Self: Sized,
     {
-        if self.dirty {
-            let mut stream: Box<dyn std::io::Read + '_> = Box::new(self.reader_at(0));
-            for coding in self.media_type().encodings().iter().rev() {
-                stream = crate::Codec::from_mime_type(coding).reader(stream);
-            }
-            return Ok(super::Lines::over(stream));
-        }
-        let mut stream: Box<dyn std::io::Read + '_> = self.codec.reader(self.handle.reader_at(0));
-        for coding in self.media_type().encodings().iter().rev() {
-            stream = crate::Codec::from_mime_type(coding).reader(stream);
-        }
-        Ok(super::Lines::over(stream))
+        crate::text::line::coded_lines(self, &self.handle, self.codec, self.dirty)
     }
 
     /// The borrowed projection reads a snapshot of the *decoded* value.
@@ -174,12 +163,12 @@ impl<H: IOBase> IOBase for Coded<H> {
     #[cfg(feature = "arrow")]
     fn read_arrow_lines(
         &self,
-        options: &super::LineRecordOptions,
+        options: &crate::text::TextLineOptions,
     ) -> Result<crate::arrow::BatchReader>
     where
         Self: Sized,
     {
-        super::lines::snapshot_arrow_lines(self, options)
+        crate::text::line::arrow::snapshot_arrow_lines(self, options)
     }
 
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {

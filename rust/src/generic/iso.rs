@@ -316,8 +316,10 @@ fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit,
 ///
 /// This is the shape a log parser needs: an entry's header starts with its
 /// timestamp and continues with the entry, so the datetime is read off the
-/// front and whatever follows stays the caller's business.
-#[cfg(feature = "arrow")]
+/// front and whatever follows stays the caller's business. It is also what
+/// makes timestamp-anchored record detection exact where a regex is
+/// approximate - a successful parse *is* the opener, and it yields the header's
+/// span for free.
 pub(crate) fn parse_datetime_prefix(text: &str) -> Result<(i64, TimeUnit, usize)> {
     parse_datetime_at(text, "datetime")
 }

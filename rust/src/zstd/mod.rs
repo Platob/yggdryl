@@ -184,12 +184,12 @@ impl<H: IOBase> IOBase for Zstd<H> {
     #[cfg(feature = "arrow")]
     fn read_arrow_lines(
         &self,
-        options: &crate::io::LineRecordOptions,
+        options: &crate::text::TextLineOptions,
     ) -> crate::Result<crate::arrow::BatchReader>
     where
         Self: Sized,
     {
-        crate::io::lines::snapshot_arrow_lines(self, options)
+        crate::text::line::arrow::snapshot_arrow_lines(self, options)
     }
 
     fn open(&mut self) -> crate::Result<()> {

@@ -783,11 +783,11 @@ mod wrappers {
             .unwrap();
         let handle = File::from_location(filesystem, "bucket/app.log.gz").unwrap();
 
-        let lines: Vec<String> = handle
-            .read_lines()
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
+        let mut reader = handle.read_lines().unwrap();
+        let mut lines: Vec<String> = Vec::new();
+        while let Some(line) = reader.next() {
+            lines.push(line.unwrap().text().unwrap().to_owned());
+        }
         assert_eq!(lines, ["alpha", "beta", "gamma"]);
     }
 }

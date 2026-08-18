@@ -42,10 +42,6 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 mod buffer;
 mod coding;
 mod cursor;
-// The Arrow projection of matched line records - a text-line surface beside
-// `read_lines`, never a fourth record method.
-#[cfg(feature = "arrow")]
-pub mod lines;
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
@@ -57,8 +53,6 @@ mod roles;
 pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
-#[cfg(feature = "arrow")]
-pub use lines::{LineRecordOptions, schema_from_pattern};
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -976,60 +970,121 @@ pub trait IOBase: Send {
         }
     }
 
-    /// Iterate the resource's decoded text lines, one line in memory at a time.
+    /// Wrap this handle in the text-line handler.
     ///
-    /// Bytes stream through a fixed-size buffer from [`Self::pread`], any
-    /// content codings the resource's media type declares are peeled as
-    /// streaming decoders - a `trades.jsonl.gz` reads its lines without ever
-    /// holding the decompressed value - and each call to the iterator yields
-    /// one line. A resource that does not exist yields no lines, exactly as it
-    /// reads zero bytes. Lines must be UTF-8; the first invalid byte sequence
-    /// ends the iteration with an error.
+    /// The entry point to [`text::line`](crate::text::line): every line read and
+    /// write goes through the handler this returns.
+    /// [`Text::new`](crate::text::Text::new) is lazy exactly as
+    /// [`Coded::new`](Coded) is - the resource is not opened, listed, or probed
+    /// here.
     ///
-    /// # Errors
+    /// **Idempotent.** A handle that is already a [`Text`](crate::text::Text)
+    /// returns itself unchanged, because `Text` carries an inherent
+    /// `into_text` and inherent methods win method resolution over trait ones.
+    /// So `handle.into_text().into_text()` is `handle.into_text()`, and a
+    /// caller who does not know whether they hold a raw handle or an
+    /// already-wrapped one can call it unconditionally.
     ///
-    /// Construction itself cannot fail; each yielded item carries the read,
-    /// decode, or encoding failure of its line.
-    fn read_lines(&self) -> Result<Lines<Box<dyn Read + '_>>>
+    /// One edge that resolution rule leaves open: an explicit
+    /// `IOBase::into_text(text_handle)` still wraps, producing a
+    /// `Text<Text<H>>`. That composition behaves correctly through delegation -
+    /// it is wasteful, not broken - so call the method normally.
+    ///
+    /// It composes with the coding handles: `gzip_handle.into_text()` is a
+    /// `Text<Gzip<_>>`, and the codings are peeled as streams underneath.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new().into_text();
+    /// handle.write_lines(["one", "two"])?;
+    ///
+    /// // A constructor and one method call: no format strings, no mode flags.
+    /// let mut lines = handle.read_lines()?;
+    /// assert_eq!(lines.next().transpose()?.map(|line| line.bytes()), Some(&b"one"[..]));
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn into_text(self) -> crate::text::Text<Self>
     where
         Self: Sized,
     {
-        let encodings = self.media_type().encodings().to_vec();
-        let mut stream: Box<dyn Read + '_> = Box::new(self.reader_at(0));
-        for coding in encodings.iter().rev() {
-            stream = Codec::from_mime_type(coding).reader(stream);
-        }
-        Ok(Lines::over(stream))
+        crate::text::Text::new(self)
     }
 
-    /// Group the decoded lines into records opened by a pattern match.
+    /// [`Self::into_text`] with an extractor already in hand.
     ///
-    /// A record starts at a line `pattern` matches and carries every
-    /// following line until the next match, which is how a log whose entries
-    /// open with a timestamp reads whole: an entry, its stack trace, and its
-    /// wrapped lines arrive as one string. Lines before the first match form
-    /// the first record. The stream costs what [`Self::read_lines`] costs -
-    /// one record in memory at a time, codings peeled as streams.
+    /// The one-call form, for a caller who built the options elsewhere - a
+    /// configuration document, a shared constant.
+    fn into_text_with(self, options: crate::text::TextLineOptions) -> crate::text::Text<Self>
+    where
+        Self: Sized,
+    {
+        crate::text::Text::with_options(self, options)
+    }
+
+    /// Iterate the resource's text records, one in memory at a time.
+    ///
+    /// A thin shim over [`Self::into_text`], so there is exactly one
+    /// implementation of line splitting in the tree. Bytes stream through a
+    /// bounded window and any content codings the media type declares are
+    /// peeled as streaming decoders - a `trades.jsonl.gz` reads its records
+    /// without ever holding the decompressed value. A resource that does not
+    /// exist yields no records, exactly as it reads zero bytes.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read or
+    /// decode failure of its record.
+    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn Read + '_>>>
+    where
+        Self: Sized,
+    {
+        Ok(crate::text::line::borrowed_lines(
+            self,
+            std::sync::Arc::new(crate::text::TextLineOptions::new()),
+        ))
+    }
+
+    /// Group the resource's records by a pattern, one in memory at a time.
+    ///
+    /// A thin shim over [`Self::into_text`] with a record-opening pattern. A
+    /// record starts at a line `pattern` matches and carries every following
+    /// line until the next match, which is how a log whose entries open with a
+    /// timestamp reads whole: an entry, its stack trace, and its wrapped lines
+    /// arrive as one record. Lines before the first match form the first
+    /// record.
     ///
     /// # Errors
     ///
     /// Returns an error when the pattern does not parse; each yielded item
-    /// carries the read or decode failure of its lines.
-    fn read_lines_matching(&self, pattern: &str) -> Result<LineRecords<Box<dyn Read + '_>>>
+    /// carries the read or decode failure of its record.
+    fn read_lines_matching(
+        &self,
+        pattern: &str,
+    ) -> Result<crate::text::TextLines<Box<dyn Read + '_>>>
     where
         Self: Sized,
     {
-        let pattern = regex_lite::Regex::new(pattern).map_err(|error| Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::format_smolstr!("expected a valid line pattern: {error}"),
-        })?;
-        Ok(LineRecords {
-            lines: self.read_lines()?,
-            pattern,
-            pending: None,
-            pending_offset: 0,
-            done: false,
-        })
+        let options = crate::text::TextLineOptions::with_pattern(pattern)?;
+        Ok(crate::text::line::borrowed_lines(
+            self,
+            std::sync::Arc::new(options),
+        ))
+    }
+
+    /// [`Self::read_lines`], consuming the handle so the records own it.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read or
+    /// decode failure of its record.
+    fn into_read_lines(self) -> Result<crate::text::TextLines<Box<dyn Read + Send + 'static>>>
+    where
+        Self: Sized + 'static,
+    {
+        self.into_text().into_read_lines()
     }
 
     /// [`Self::read_lines_matching`], consuming the handle so the records own it.
@@ -1040,88 +1095,37 @@ pub trait IOBase: Send {
     fn into_read_lines_matching(
         self,
         pattern: &str,
-    ) -> Result<LineRecords<Box<dyn Read + Send + 'static>>>
+    ) -> Result<crate::text::TextLines<Box<dyn Read + Send + 'static>>>
     where
         Self: Sized + 'static,
     {
-        let pattern = regex_lite::Regex::new(pattern).map_err(|error| Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::format_smolstr!("expected a valid line pattern: {error}"),
-        })?;
-        Ok(LineRecords {
-            lines: self.into_read_lines()?,
-            pattern,
-            pending: None,
-            pending_offset: 0,
-            done: false,
-        })
+        let options = crate::text::TextLineOptions::with_pattern(pattern)?;
+        self.into_text_with(options).into_read_lines()
     }
 
-    /// [`Self::read_lines`], consuming the handle so the lines own it.
+    /// Project the resource's text records into Arrow batches.
     ///
-    /// This is the shape a caller needs when the iterator must outlive the
-    /// scope that built the handle - handing lines across an FFI boundary, or
-    /// returning them from a function that constructed the handle itself.
-    ///
-    /// # Errors
-    ///
-    /// Construction itself cannot fail; each yielded item carries the read,
-    /// decode, or encoding failure of its line.
-    fn into_read_lines(self) -> Result<Lines<Box<dyn Read + Send + 'static>>>
-    where
-        Self: Sized + 'static,
-    {
-        let encodings = self.media_type().encodings().to_vec();
-        Ok(Lines::over(decoded_stream(Cursor::new(self), &encodings)))
-    }
-
-    // (decoded_stream peels the codings for the owned variant; the borrowed
-    // one inlines the same walk because its boxes carry no Send.)
-
-    /// Project the matched line records of this resource into Arrow batches.
-    ///
-    /// This is a text-line projection like [`Self::read_lines`], **not a
-    /// fourth record method**: the record surface stays exactly
-    /// [`Self::read_arrow_batch_reader`], [`Self::write_arrow_batch_reader`],
-    /// and [`Self::append_arrow_batch_reader`], and this method never touches
-    /// how a record encoding decodes rows. What it reads is text - the same
-    /// decoded lines [`Self::read_lines_matching`] yields, grouped into
-    /// records by the options' header pattern - and what it returns is those
-    /// records as one streaming [`BatchReader`](crate::arrow::BatchReader),
-    /// one batch in memory at a time. The columns are described on
-    /// [`LineRecordOptions`].
-    ///
-    /// [`IOKind`] decides the shape, never a second existence check:
-    ///
-    /// - A leaf ([`IOKind::File`], [`IOKind::Memory`]) parses that one
-    ///   resource's lines. This borrowed variant needs an owned view of the
-    ///   resource behind the reader it returns, so it reopens the same
-    ///   location through [`Self::parent`] and [`Self::child_by`]; a handle
-    ///   with no parent - an in-memory buffer - contributes a snapshot of its
-    ///   still-encoded bytes instead, which those handles already hold in
-    ///   memory. [`Self::into_arrow_lines`] avoids both by consuming the
-    ///   handle.
-    /// - A container ([`IOKind::Directory`]) streams across the leaf files
-    ///   beneath it in deterministic name-sorted order, each leaf opened
-    ///   lazily when the reader reaches it, each contributing its own `url`
-    ///   and restarting `rownum` at 1, and each decoded by its *own* media
-    ///   type - a folder mixing `a.log` and `b.log.gz` reads uniformly. A
-    ///   batch never spans two leaves.
-    /// - [`IOKind::Unknown`] - the resource does not exist - reads as an
-    ///   **empty** reader: zero batches, schema still answered, exactly as
-    ///   [`Self::read_lines`] yields no lines and [`Self::pread`] reads zero
-    ///   bytes. Absence is never an error on the read path.
+    /// A thin shim over [`Self::into_text`]. This is a *text-line* projection
+    /// like [`Self::read_lines`], **not a fourth record method**: the record
+    /// surface stays exactly [`Self::read_arrow_batch_reader`],
+    /// [`Self::write_arrow_batch_reader`], and
+    /// [`Self::append_arrow_batch_reader`], and this never touches how a record
+    /// encoding decodes rows. The columns are described on
+    /// [`TextLineOptions`](crate::text::TextLineOptions).
     ///
     /// # Errors
     ///
     /// Returns a listing or reopen failure; each yielded batch carries the
     /// read, decode, or parse failure of its rows.
     #[cfg(feature = "arrow")]
-    fn read_arrow_lines(&self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    fn read_arrow_lines(
+        &self,
+        options: &crate::text::TextLineOptions,
+    ) -> Result<crate::arrow::BatchReader>
     where
         Self: Sized,
     {
-        lines::read_arrow_lines(self, options)
+        crate::text::line::arrow::read_arrow_lines(self, options)
     }
 
     /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
@@ -1131,14 +1135,17 @@ pub trait IOBase: Send {
     ///
     /// # Errors
     ///
-    /// Returns a listing failure; each yielded batch carries the read,
-    /// decode, or parse failure of its rows.
+    /// Returns a listing failure; each yielded batch carries the read, decode,
+    /// or parse failure of its rows.
     #[cfg(feature = "arrow")]
-    fn into_arrow_lines(self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    fn into_arrow_lines(
+        self,
+        options: &crate::text::TextLineOptions,
+    ) -> Result<crate::arrow::BatchReader>
     where
         Self: Sized + 'static,
     {
-        lines::into_arrow_lines(self, options)
+        crate::text::line::arrow::into_arrow_lines(self, options)
     }
 
     /// Return the record options this resource's encoding names.
@@ -1594,189 +1601,6 @@ impl Read for Reader<'_> {
         self.offset += read as u64;
         Ok(read)
     }
-}
-
-/// An iterator over the decoded text lines of one resource.
-///
-/// Built by [`IOBase::read_lines`] and [`IOBase::into_read_lines`]. Bytes are
-/// pulled through a fixed-size buffer and any content codings the resource
-/// declares are peeled as streams, so one line is in memory at a time whether
-/// the resource is plain or compressed. A line is what `\n` ends, a trailing
-/// `\r` is part of the terminator, and the last line needs no terminator. A
-/// UTF-8 byte-order mark opening the resource is an encoding signature rather
-/// than content, so it is stripped from the first line.
-pub struct Lines<R> {
-    reader: std::io::BufReader<R>,
-    buffer: Vec<u8>,
-    /// Byte offset in the decoded stream where the last yielded line starts.
-    ///
-    /// Tracked so a consumer that groups lines into records - the Arrow line
-    /// projection - can report where a record begins, which is the resume key
-    /// a tailing reader seeks back to.
-    start: u64,
-    /// Decoded bytes consumed so far, line terminators included.
-    consumed: u64,
-    done: bool,
-}
-
-impl<R: Read> Lines<R> {
-    /// Wrap a decoded byte stream in line iteration.
-    fn over(source: R) -> Self {
-        Self {
-            reader: std::io::BufReader::with_capacity(TRANSFER_CHUNK, source),
-            buffer: Vec::new(),
-            start: 0,
-            consumed: 0,
-            done: false,
-        }
-    }
-}
-
-impl<R: Read> Iterator for Lines<R> {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        use std::io::BufRead;
-
-        if self.done {
-            return None;
-        }
-        self.buffer.clear();
-        match self.reader.read_until(b'\n', &mut self.buffer) {
-            Ok(0) => {
-                self.done = true;
-                None
-            }
-            Ok(read) => {
-                self.start = self.consumed;
-                self.consumed += read as u64;
-                if self.buffer.last() == Some(&b'\n') {
-                    self.buffer.pop();
-                    if self.buffer.last() == Some(&b'\r') {
-                        self.buffer.pop();
-                    }
-                }
-                match std::str::from_utf8(&self.buffer) {
-                    Ok(line) => {
-                        // A byte-order mark is an encoding signature, not
-                        // content: stripped off the first line so an anchored
-                        // pattern still opens the file's first record. The
-                        // byte offsets keep counting it, so seeks stay exact.
-                        let line = if self.start == 0 {
-                            line.strip_prefix('\u{feff}').unwrap_or(line)
-                        } else {
-                            line
-                        };
-                        Some(Ok(line.to_owned()))
-                    }
-                    Err(error) => {
-                        self.done = true;
-                        Some(Err(Error::Io(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            error,
-                        ))))
-                    }
-                }
-            }
-            Err(error) => {
-                self.done = true;
-                Some(Err(Error::Io(error)))
-            }
-        }
-    }
-}
-
-/// An iterator over multi-line records, split where a pattern matches.
-///
-/// Built by [`IOBase::read_lines_matching`]. A record starts at a line the
-/// pattern matches and carries every following line until the next match -
-/// the shape of a log whose entries open with a timestamp and continue with
-/// stack traces and wrapped output. Lines before the first match form the
-/// first record rather than being dropped, because a rotated file often opens
-/// mid-entry and the bytes are still the caller's data.
-pub struct LineRecords<R> {
-    lines: Lines<R>,
-    pattern: regex_lite::Regex,
-    pending: Option<String>,
-    /// Where, in the decoded stream, the pending record's first line starts.
-    pending_offset: u64,
-    done: bool,
-}
-
-impl<R: Read> LineRecords<R> {
-    /// The next record with the byte offset its first line starts at.
-    ///
-    /// The offset counts decoded bytes - the stream after every content
-    /// coding is peeled - so it is the position a reader of the decoded value
-    /// seeks back to, and it is exact whatever the line terminators were.
-    /// This is the one grouping implementation; [`Iterator::next`] merely
-    /// drops the offset.
-    pub(crate) fn next_with_offset(&mut self) -> Option<Result<(u64, String)>> {
-        if self.done {
-            return None;
-        }
-        loop {
-            match self.lines.next() {
-                Some(Ok(line)) => {
-                    let start = self.lines.start;
-                    if self.pattern.is_match(&line) {
-                        // A match opens the next record; whatever accumulated
-                        // is the finished one.
-                        let finished = self.pending.replace(line);
-                        let opened_at = std::mem::replace(&mut self.pending_offset, start);
-                        if let Some(record) = finished {
-                            return Some(Ok((opened_at, record)));
-                        }
-                    } else {
-                        match &mut self.pending {
-                            Some(pending) => {
-                                pending.push('\n');
-                                pending.push_str(&line);
-                            }
-                            None => {
-                                self.pending = Some(line);
-                                self.pending_offset = start;
-                            }
-                        }
-                    }
-                }
-                Some(Err(error)) => {
-                    self.done = true;
-                    return Some(Err(error));
-                }
-                None => {
-                    self.done = true;
-                    let offset = self.pending_offset;
-                    return self.pending.take().map(|record| Ok((offset, record)));
-                }
-            }
-        }
-    }
-}
-
-impl<R: Read> Iterator for LineRecords<R> {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.next_with_offset()?.map(|(_, record)| record))
-    }
-}
-
-/// Peel `encodings` off a raw byte stream, outermost coding first.
-///
-/// The list is the order the codings were applied, so decoding walks it
-/// backwards; every layer is a streaming decoder, so nothing is buffered
-/// whole. This is what makes [`IOBase::read_lines`] cost one buffer over a
-/// compressed resource instead of the decompressed size.
-fn decoded_stream<'source>(
-    raw: impl Read + Send + 'source,
-    encodings: &[MimeType],
-) -> Box<dyn Read + Send + 'source> {
-    let mut stream: Box<dyn Read + Send + 'source> = Box::new(raw);
-    for coding in encodings.iter().rev() {
-        stream = Codec::from_mime_type(coding).reader_send(stream);
-    }
-    stream
 }
 
 /// A streaming writer over an [`IOBase`], advancing its own offset.

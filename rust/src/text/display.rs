@@ -41,6 +41,32 @@ pub const fn stable_hash_bytes(bytes: &[u8]) -> u64 {
     fnv1a_fold(FNV_OFFSET_BASIS, bytes)
 }
 
+/// Hash a sequence of byte chunks as one value, with the same contract.
+///
+/// The fold is associative over the chunk boundary, so the chunks of a value
+/// and the contiguous value hash **identically**. That is what lets a message
+/// spliced from two spans - the record with the header removed from the middle
+/// of a line - hash the same as the equivalent joined string, without ever
+/// building the join. A hash that depended on where the header sat in the line
+/// would be a silent correctness bug.
+///
+/// ```
+/// use yggdryl::text::{stable_hash_bytes, stable_hash_chunks};
+///
+/// assert_eq!(
+///     stable_hash_chunks([b"fill ".as_slice(), b"100".as_slice()]),
+///     stable_hash_bytes(b"fill 100"),
+/// );
+/// // An empty chunk contributes nothing, wherever it sits.
+/// assert_eq!(
+///     stable_hash_chunks([b"".as_slice(), b"fill 100".as_slice(), b"".as_slice()]),
+///     stable_hash_bytes(b"fill 100"),
+/// );
+/// ```
+pub fn stable_hash_chunks<'chunk>(chunks: impl IntoIterator<Item = &'chunk [u8]>) -> u64 {
+    chunks.into_iter().fold(FNV_OFFSET_BASIS, fnv1a_fold)
+}
+
 /// Hash canonical display output with the stable Yggdryl FNV-1a contract.
 pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
     struct StableHasher(u64);
