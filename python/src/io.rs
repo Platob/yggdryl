@@ -585,13 +585,19 @@ impl PyIOBase {
     /// A text-line surface beside `read_lines`, never a record method: lines
     /// group into records where `pattern` matches, and each record becomes
     /// one row - `url`, `rownum`, `date`, `time`, `unix`, `hash`, `header`,
-    /// `message`, `offset`, `lines`, one nullable string column per named
-    /// capture group, then the constant `custom_fields` columns. Every
-    /// column's datatype is one Iceberg accepts as declared. The reader stays
-    /// lazy across the boundary: `PyArrow` pulls one batch at a time through
-    /// the C stream, content codings decoded as streams, a folder read leaf
-    /// by leaf - so a season of compressed logs is readable from Python
-    /// exactly as it is from Rust.
+    /// `message`, `offset`, `lines`, one nullable column per named capture
+    /// group, then the constant `custom_fields` columns. A capture whose
+    /// whole sub-pattern is one of the closed inference table's exact
+    /// spellings types itself - `(?<thread_id>\d+)` is `int64` - and
+    /// `capture_types` declares the rest (`{"price": "decimal(9, 2)"}`,
+    /// values as anything naming a datatype), parsed strictly: a captured
+    /// text the datatype cannot read is an error, never a silent null.
+    /// Every column's datatype is one Iceberg accepts as declared;
+    /// `schema_from_pattern` answers the same schema without a reader. The
+    /// reader stays lazy across the boundary: `PyArrow` pulls one batch at a
+    /// time through the C stream, content codings decoded as streams, a
+    /// folder read leaf by leaf - so a season of compressed logs is readable
+    /// from Python exactly as it is from Rust.
     #[pyo3(signature = (pattern, *, batch_size = None, custom_fields = None, capture_types = None, timestamp_capture = None))]
     fn read_arrow_lines<'py>(
         &self,
@@ -612,10 +618,7 @@ impl PyIOBase {
         // The borrowed core projection: it reopens a located leaf itself -
         // keeping a declared media-type override - and snapshots an
         // in-memory handle, so `from_bytes` parses exactly as a file does.
-        let reader = self
-            .inner
-            .read_arrow_lines(&options)
-            .map_err(value_error)?;
+        let reader = self.inner.read_arrow_lines(&options).map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 
@@ -1049,12 +1052,6 @@ impl PyIOBaseIterator {
     }
 }
 
-/// Coerce the `custom_fields` argument into the core's ordered pairs.
-///
-/// A mapping keeps its insertion order - a Python `dict` is ordered - and
-/// anything else is consumed as an iterable of `(name, value)` pairs. Values
-/// convert through the one Python-to-core conversion, so a `str`, `int`,
-/// `date`, or `Decimal` lands as the typed constant it already is.
 /// Build the line projection's root Struct Field straight from a pattern.
 ///
 /// The schema the reader emits, without a resource or a reader in sight:
@@ -1097,9 +1094,7 @@ fn line_record_options(
 /// The same shapes `custom_fields` takes - a mapping or an iterable of
 /// pairs - with each value coerced through the one datatype inference, so a
 /// `str` expression, a native `DataType`, or a `PyArrow` type all declare.
-fn line_capture_types(
-    types: &Bound<'_, PyAny>,
-) -> PyResult<Vec<(String, yggdryl::DataType)>> {
+fn line_capture_types(types: &Bound<'_, PyAny>) -> PyResult<Vec<(String, yggdryl::DataType)>> {
     let entries = if types.hasattr("items")? {
         types.call_method0("items")?
     } else {
@@ -1114,10 +1109,14 @@ fn line_capture_types(
         .collect()
 }
 
+/// Coerce the `custom_fields` argument into the core's ordered pairs.
+///
+/// Anything mapping-shaped - a dict, a `MappingProxyType`, a `ChainMap` -
+/// answers `items()`, which keeps its own order; everything else is consumed
+/// as an iterable of `(name, value)` pairs. Values convert through the one
+/// Python-to-core conversion, so a `str`, `int`, `date`, or `Decimal` lands
+/// as the typed constant it already is.
 fn line_custom_fields(fields: &Bound<'_, PyAny>) -> PyResult<Vec<(String, yggdryl::Value)>> {
-    // Anything mapping-shaped - a dict, a MappingProxyType, a ChainMap -
-    // answers `items()`, which keeps its own order; everything else is
-    // consumed as an iterable of pairs.
     let entries = if fields.hasattr("items")? {
         fields.call_method0("items")?
     } else {

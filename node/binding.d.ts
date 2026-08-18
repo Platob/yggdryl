@@ -1012,9 +1012,15 @@ declare module './index' {
      *
      * A text-line surface beside `readLines`, never a record method: lines
      * group into records where `pattern` matches and each record becomes one
-     * typed row, with one nullable string column per named capture group and
-     * the constant `customFields` columns after them. The boundary is the
-     * standard copied IPC one, never zero-copy.
+     * typed row, with one nullable column per named capture group and the
+     * constant `customFields` columns after them. A capture whose whole
+     * sub-pattern is one of the closed inference table's exact spellings
+     * types itself - `(?<threadId>\d+)` is `int64` - and `captureTypes`
+     * declares the rest (a native `DataType` or a type-expression string),
+     * parsed strictly: a captured text the datatype cannot read is an
+     * error, never a silent null. `schemaFromPattern` answers the same
+     * schema without a reader. The boundary is the standard copied IPC one,
+     * never zero-copy.
      */
     readArrowLines(
       pattern: string,
