@@ -732,7 +732,7 @@ touching the destination, so a rejected value never emits a byte.
 ## Placeholders
 
 `loads` resolves Jinja-*style* `{{ NAME }}` placeholders when a caller asks it to - the grammar and
-the security notes are on the [structured text](text.md#jinja-style--placeholders) page. TOML
+the security notes are on the [structured text](text.md#jinja-style-placeholders) page. TOML
 requires typed values, so a placeholder already has to sit inside a quoted string; it reaches table
 values and table keys alike, and a scalar that is exactly one placeholder adopts the resolved
 value's own type rather than staying text:

@@ -710,7 +710,7 @@ decompress it first or go through the Rust handle.
 
 `loads` resolves Jinja-*style* `{{ NAME }}` placeholders when a caller asks it to. The grammar,
 the two typing rules, and the reason the process environment is a second switch are all on the
-[structured text](text.md#jinja-style--placeholders) page; JSON's own note is short, because JSON
+[structured text](text.md#jinja-style-placeholders) page; JSON's own note is short, because JSON
 requires typed values, so a placeholder already has to sit inside a string:
 
 === "Rust"

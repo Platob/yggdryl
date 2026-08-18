@@ -916,7 +916,7 @@ directly, and derive the format from the path suffix or the content - which mean
 write plain text and leave content coding to the caller. `TextCodec::load` and `TextCodec::dump`
 are the per-format form of the same two functions, using that format instead of the handle's.
 
-## Jinja-style `{{ }}` placeholders
+## Jinja-style placeholders
 
 A configuration document wants to carry `{{ LOG_ROOT }}` and resolve it at load time. `Loading`
 carries that: the read-side options value, beside [`Formatting`](#laying-out-a-dump) on the write

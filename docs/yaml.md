@@ -439,7 +439,7 @@ The same [`Value`](text.md) is what [JSON](json.md) and [TOML](toml.md) read and
 ## Placeholders, and the quoting that YAML requires
 
 `loads` resolves Jinja-*style* `{{ NAME }}` placeholders when a caller asks it to - the grammar and
-the security notes are on the [structured text](text.md#jinja-style--placeholders) page. YAML has
+the security notes are on the [structured text](text.md#jinja-style-placeholders) page. YAML has
 one rule of its own, and it is the single most common way people get this wrong:
 
 **A bare `{{ PORT }}` is not a placeholder to YAML.** It is a flow mapping whose only key is
