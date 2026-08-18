@@ -97,6 +97,39 @@ mod mapped {
     }
 
     #[test]
+    fn a_complete_write_publishes_its_length_to_another_handle() {
+        let path = path("published");
+
+        let mut writer = File::new(&path).unwrap();
+        writer.write_all_bytes(b"one\ntwo\n").unwrap();
+
+        // The geometric growth is this handle's working state, not the value:
+        // a second handle - or another process - must see the logical length,
+        // or it would read the mapping's zero padding as content.
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 8);
+        let second = File::new(&path).unwrap();
+        assert_eq!(second.size(), 8);
+        assert_eq!(second.read_all().unwrap(), b"one\ntwo\n");
+
+        // Records read back through a fresh handle are exactly what was
+        // written: no trailing record made of padding.
+        let mut lines = second.read_lines().unwrap();
+        let mut seen = Vec::new();
+        while let Some(record) = lines.next() {
+            seen.push(record.unwrap().text().unwrap().to_owned());
+        }
+        assert_eq!(seen, ["one", "two"]);
+
+        drop(writer);
+        drop(lines);
+        // Teardown through the abstraction: absence is a no-op success.
+        File::new(&path)
+            .expect("a local leaf")
+            .remove(false)
+            .expect("a removable leaf");
+    }
+
+    #[test]
     fn a_mapped_file_zero_fills_a_write_gap() {
         let path = path("gap");
         let mut mapped = File::create(&path).unwrap();

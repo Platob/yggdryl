@@ -353,6 +353,12 @@ impl<H: IOBase> Text<H> {
     ///
     /// Streams exactly as [`Self::write_lines`] does.
     ///
+    /// The last chunk is followed by a flush, because appending records is a
+    /// *complete* operation: a handle that over-allocates - the memory-mapped
+    /// [`local::File`](crate::local::File) grows geometrically - would
+    /// otherwise leave its slack on disk, and a second handle opened on the
+    /// same location would read the padding as one more record.
+    ///
     /// # Errors
     ///
     /// Returns the resource's write failure.
@@ -378,7 +384,7 @@ impl<H: IOBase> Text<H> {
         if !pending.is_empty() {
             self.handle.pwrite_all(offset, &pending)?;
         }
-        Ok(())
+        self.handle.flush()
     }
 }
 

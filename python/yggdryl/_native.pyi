@@ -210,15 +210,22 @@ def combined(
     *,
     safe: bool = True,
 ) -> pyarrow.RecordBatchReader: ...
+# The whole extractor as one mapping - what a YAML or TOML document parses
+# into - so a reader is specifiable from configuration alone.
+TextLineOptionsLike = Mapping[str, Any]
+
 def schema_from_pattern(
-    pattern: str,
+    pattern: str | None = None,
     *,
+    options: TextLineOptionsLike | None = None,
+    header: str | None = None,
     custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
     capture_types: (
         Mapping[str, DataType | str | Any]
         | Iterable[tuple[str, DataType | str | Any]]
         | None
     ) = None,
+    logs: bool = False,
 ) -> Field: ...
 def _codec_infer(data: bytes | bytearray | memoryview) -> str: ...
 def _codec_infer_path(value: str) -> str: ...
@@ -1048,20 +1055,56 @@ class IOBase:
     ) -> int: ...
     def decompress_into(self, target: IOBase, codec: str | None = None) -> int: ...
     def record_options(self) -> RecordOptions: ...
-    def read_lines(self, pattern: str | None = None) -> LineIterator: ...
+    # The text-line surface, beside the record methods and never one of them.
+    # `options` takes the whole extractor at once; the keywords refine it.
+    # `linesep` unset means the flexible default on read - `\n`, `\r\n`, and a
+    # lone `\r`, mixed - and the platform-neutral `\n` on write.
+    def read_lines(
+        self,
+        pattern: str | None = None,
+        *,
+        options: TextLineOptionsLike | None = None,
+        header: str | None = None,
+        linesep: str | None = None,
+        lstrip: str | None = None,
+        rstrip: str | None = None,
+        logs: bool = False,
+    ) -> LineIterator: ...
     def read_arrow_lines(
         self,
-        pattern: str,
+        pattern: str | None = None,
         *,
+        options: TextLineOptionsLike | None = None,
+        header: str | None = None,
+        linesep: str | None = None,
+        lstrip: str | None = None,
+        rstrip: str | None = None,
+        byte_size: int | None = None,
         batch_size: int | None = None,
+        timestamp_capture: str | None = None,
+        timezone: str | None = None,
         custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
         capture_types: (
             Mapping[str, DataType | str | Any]
             | Iterable[tuple[str, DataType | str | Any]]
             | None
         ) = None,
-        timestamp_capture: str | None = None,
+        logs: bool = False,
     ) -> pyarrow.RecordBatchReader: ...
+    def write_lines(
+        self,
+        lines: Iterable[str | bytes],
+        *,
+        options: TextLineOptionsLike | None = None,
+        linesep: str | None = None,
+    ) -> None: ...
+    def append_lines(
+        self,
+        lines: Iterable[str | bytes],
+        *,
+        options: TextLineOptionsLike | None = None,
+        linesep: str | None = None,
+    ) -> None: ...
     def read_arrow_field(
         self,
         *,

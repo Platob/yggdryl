@@ -1062,3 +1062,289 @@ impl FromStr for TextLineOptions {
         Self::with_pattern(value)
     }
 }
+
+// ---------------------------------------------------------------------------
+// The declarative round trip.
+//
+// A JSON, YAML, or TOML document already readable by this crate fully defines
+// a reader. That is the point of the whole options value: a caller configures
+// an optimized Arrow reader with *configuration only* - no Rust, no Python
+// callbacks, no per-row code in any language.
+// ---------------------------------------------------------------------------
+
+impl TextLineOptions {
+    /// Project these options onto the shared structural [`Value`].
+    ///
+    /// Only what is actually set is emitted, so a default extractor is an empty
+    /// mapping and a document round-trips without accumulating noise. The keys
+    /// are the option names, in a fixed order.
+    ///
+    /// ```
+    /// use yggdryl::generic::Value;
+    /// use yggdryl::text::TextLineOptions;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let options = TextLineOptions::with_pattern(r"^\[(?<level>[A-Z]+)\]")?
+    ///     .with_byte_size(1 << 20);
+    /// let value = options.to_value();
+    ///
+    /// assert_eq!(
+    ///     value.get_key_str("pattern").and_then(Value::as_str),
+    ///     Some(r"^\[(?<level>[A-Z]+)\]"),
+    /// );
+    /// assert_eq!(TextLineOptions::from_value(value)?.byte_size(), Some(1 << 20));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        let key = |name: &str| Value::String(SmolStr::new(name));
+        let mut entries: Vec<(Value, Value)> = Vec::new();
+        match &self.opening {
+            Opening::EveryLine => {}
+            Opening::Timestamp => entries.push((key("opening"), key("timestamp"))),
+            Opening::Pattern(pattern) => {
+                entries.push((key("pattern"), Value::String(SmolStr::new(pattern.as_str()))));
+            }
+        }
+        if let Some(header) = &self.header {
+            entries.push((key("header"), Value::String(SmolStr::new(header.as_str()))));
+        }
+        if let Some(linesep) = &self.linesep {
+            entries.push((key("linesep"), Value::String(escaped(linesep.as_bytes()))));
+        }
+        if !matches!(self.lstrip, Strip::Whitespace) {
+            entries.push((key("lstrip"), Value::String(self.lstrip.to_smolstr())));
+        }
+        if !matches!(self.rstrip, Strip::Whitespace) {
+            entries.push((key("rstrip"), Value::String(self.rstrip.to_smolstr())));
+        }
+        if let Some(byte_size) = self.byte_size {
+            entries.push((key("byte_size"), Value::U64(byte_size as u64)));
+        }
+        if let Some(batch_size) = self.batch_size {
+            entries.push((key("batch_size"), Value::U64(batch_size as u64)));
+        }
+        if let Some(capture) = &self.timestamp_capture {
+            entries.push((key("timestamp_capture"), Value::String(capture.clone())));
+        }
+        if let Some(timezone) = &self.timezone {
+            entries.push((
+                key("timezone"),
+                Value::String(SmolStr::new(timezone.as_str())),
+            ));
+        }
+        if !self.capture_types.is_empty() {
+            entries.push((
+                key("capture_types"),
+                Value::from_mapping(self.capture_types.iter().map(|(name, data_type)| {
+                    (key(name), Value::String(data_type.to_smolstr()))
+                }))
+                .unwrap_or(Value::Null),
+            ));
+        }
+        if !self.custom_fields.is_empty() {
+            entries.push((
+                key("custom_fields"),
+                Value::from_mapping(
+                    self.custom_fields
+                        .iter()
+                        .map(|(name, value)| (key(name), value.clone())),
+                )
+                .unwrap_or(Value::Null),
+            ));
+        }
+        Value::from_mapping(entries).unwrap_or(Value::Null)
+    }
+
+    /// Read options back from the shared structural [`Value`].
+    ///
+    /// This is what makes a reader **fully specifiable from a document**: parse
+    /// a config file with [`text::from_str`](crate::text::from_str), hand the
+    /// value here, and the reader is built - pattern, header, terminator,
+    /// batch bounds, typed captures, constant columns, timestamp capture, and
+    /// zone. Every value is validated exactly as the setters validate it, so a
+    /// bad document fails here rather than at the first row.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the key and the expectation when the value is
+    /// not a mapping, a key is unknown, or a setting does not validate.
+    pub fn from_value(value: Value) -> Result<Self> {
+        let entries = value.as_mapping().ok_or_else(|| {
+            Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: crate::text::expected_got("an options mapping", value.kind()),
+            }
+        })?;
+        let mut options = Self::new();
+        // A pattern and an explicit opening are the same setting spelled two
+        // ways, so whichever the document carries is applied once.
+        let mut opening: Option<Opening> = None;
+        let mut header: Option<&str> = None;
+        // The capture-dependent settings are held aside rather than written
+        // into the options: installing the expressions *retains* only the
+        // declarations whose captures still exist, which is right when a
+        // caller changes a pattern and wrong here - a document naming a
+        // capture that does not exist must be refused, not quietly dropped.
+        let mut capture_types: Vec<(SmolStr, DataType)> = Vec::new();
+        let mut custom_fields: Vec<(SmolStr, Value)> = Vec::new();
+        let mut timestamp_capture: Option<SmolStr> = None;
+
+        for (name, held) in entries {
+            let name = name.as_str().ok_or_else(|| {
+                Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: crate::text::expected_got("string option names", name.kind()),
+                }
+            })?;
+            match name {
+                "pattern" => opening = Some(Opening::Pattern(compiled(text(held, name)?, name)?)),
+                "opening" => {
+                    opening = Some(match text(held, name)? {
+                        "every_line" => Opening::EveryLine,
+                        "timestamp" => Opening::Timestamp,
+                        other => {
+                            return Err(unexpected(
+                                name,
+                                "\"every_line\" or \"timestamp\"",
+                                format_smolstr!("{other:?}"),
+                            ));
+                        }
+                    });
+                }
+                "header" => header = Some(text(held, name)?),
+                "linesep" => options.set_linesep(Some(text(held, name)?.parse()?)),
+                "lstrip" => options.set_lstrip(text(held, name)?.parse()?),
+                "rstrip" => options.set_rstrip(text(held, name)?.parse()?),
+                "byte_size" => options.set_byte_size(Some(count(held, name)?)),
+                "batch_size" => options.set_batch_size(Some(count(held, name)?)),
+                "timestamp_capture" => timestamp_capture = Some(SmolStr::new(text(held, name)?)),
+                "timezone" => options.set_timezone(Some(text(held, name)?.parse()?))?,
+                "capture_types" => {
+                    let pairs = held.as_mapping().ok_or_else(|| {
+                        unexpected(name, "a mapping of capture names to datatypes", held.kind())
+                    })?;
+                    let mut declared = Vec::with_capacity(pairs.len());
+                    for (capture, data_type) in pairs {
+                        let capture = capture.as_str().ok_or_else(|| {
+                            unexpected(name, "string capture names", capture.kind())
+                        })?;
+                        let spelled = data_type.as_str().ok_or_else(|| {
+                            unexpected(name, "datatype expressions", data_type.kind())
+                        })?;
+                        declared.push((SmolStr::new(capture), DataType::from_str(spelled)?));
+                    }
+                    capture_types = declared;
+                }
+                "custom_fields" => {
+                    let pairs = held.as_mapping().ok_or_else(|| {
+                        unexpected(name, "a mapping of column names to constants", held.kind())
+                    })?;
+                    let mut customs = Vec::with_capacity(pairs.len());
+                    for (column, constant) in pairs {
+                        let column = column.as_str().ok_or_else(|| {
+                            unexpected(name, "string column names", column.kind())
+                        })?;
+                        customs.push((SmolStr::new(column), constant.clone()));
+                    }
+                    custom_fields = customs;
+                }
+                other => {
+                    return Err(unexpected(
+                        other,
+                        "a known option (pattern, opening, header, linesep, lstrip, rstrip, \
+                         byte_size, batch_size, timestamp_capture, timezone, capture_types, \
+                         custom_fields)",
+                        format_smolstr!("{other:?}"),
+                    ));
+                }
+            }
+        }
+
+        // The expressions settle together, because the capture columns are
+        // their union and a collision has to be caught once.
+        let compiled_header = match header {
+            Some(header) => Some(compiled(header, "header")?),
+            None => None,
+        };
+        options.replace_expressions(opening.unwrap_or(Opening::EveryLine), compiled_header)?;
+        // Applied against the settled captures, through the same setters a
+        // Rust caller uses - so a document is validated exactly as code is.
+        options.set_capture_types(capture_types)?;
+        options.set_custom_fields(custom_fields)?;
+        if timestamp_capture.is_some() {
+            options.set_timestamp_capture(timestamp_capture)?;
+        }
+        Ok(options)
+    }
+}
+
+impl From<&TextLineOptions> for Value {
+    fn from(value: &TextLineOptions) -> Self {
+        value.to_value()
+    }
+}
+
+impl TryFrom<Value> for TextLineOptions {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        Self::from_value(value)
+    }
+}
+
+/// Read a string option, or report what it was.
+fn text<'value>(held: &'value Value, name: &str) -> Result<&'value str> {
+    held.as_str()
+        .ok_or_else(|| unexpected(name, "a string", held.kind()))
+}
+
+/// Read a count option, accepting every width a document may carry it in.
+fn count(held: &Value, name: &str) -> Result<usize> {
+    let value = match held {
+        Value::U8(value) => u64::from(*value),
+        Value::U16(value) => u64::from(*value),
+        Value::U32(value) => u64::from(*value),
+        Value::U64(value) => *value,
+        Value::I8(value) => nonnegative(i64::from(*value), name)?,
+        Value::I16(value) => nonnegative(i64::from(*value), name)?,
+        Value::I32(value) => nonnegative(i64::from(*value), name)?,
+        Value::I64(value) => nonnegative(*value, name)?,
+        other => return Err(unexpected(name, "a count", other.kind())),
+    };
+    usize::try_from(value).map_err(|_| unexpected(name, "a count this process can hold", "a larger one"))
+}
+
+/// Refuse a negative count, naming the option.
+fn nonnegative(value: i64, name: &str) -> Result<u64> {
+    u64::try_from(value).map_err(|_| unexpected(name, "a non-negative count", format_smolstr!("{value}")))
+}
+
+/// A typed refusal naming the option, the expectation, and the actual.
+fn unexpected(name: &str, expected: impl std::fmt::Display, actual: impl std::fmt::Display) -> Error {
+    Error::InvalidRecord {
+        path: format_smolstr!("$.{name}"),
+        reason: crate::text::expected_got(expected.to_string(), actual.to_string()),
+    }
+}
+
+/// A terminator's bytes as the escaped text `LineSep::from_str` reads back.
+fn escaped(bytes: &[u8]) -> SmolStr {
+    let mut spelled = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        match byte {
+            b'\n' => spelled.push_str(r"\n"),
+            b'\r' => spelled.push_str(r"\r"),
+            b'\t' => spelled.push_str(r"\t"),
+            0 => spelled.push_str(r"\0"),
+            b'\\' => spelled.push_str(r"\\"),
+            byte if byte.is_ascii_graphic() || *byte == b' ' => spelled.push(*byte as char),
+            byte => {
+                use std::fmt::Write as _;
+                let _ = write!(spelled, "\\x{byte:02x}");
+            }
+        }
+    }
+    SmolStr::new(spelled)
+}

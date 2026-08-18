@@ -68,7 +68,9 @@ impl std::fmt::Display for Strip {
             Self::None => formatter.write_str("none"),
             Self::Whitespace => formatter.write_str("whitespace"),
             Self::Ascii => formatter.write_str("ascii"),
-            Self::Characters(set) => write!(formatter, "{set:?}"),
+            // Prefixed rather than quoted, so the spelling round-trips
+            // through `from_str` and cannot be mistaken for a mode name.
+            Self::Characters(set) => write!(formatter, "chars:{set}"),
         }
     }
 }
@@ -78,14 +80,43 @@ impl std::str::FromStr for Strip {
 
     /// Read a strip mode, or the exact character set to strip.
     ///
-    /// `none`, `whitespace`, and `ascii` name the modes; anything else is the
-    /// literal set of characters to strip, so `" \t"` means those two.
+    /// `none`, `whitespace`, and `ascii` name the modes; `chars:` followed by
+    /// the literal set names exactly those characters, so `chars: \t` strips a
+    /// space and a tab. The prefix is what keeps a set of characters from being
+    /// mistaken for a mode name, and it is what makes the spelling round-trip
+    /// through [`fmt::Display`](std::fmt::Display).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the accepted spellings for anything else, and
+    /// for an empty character set - which would strip nothing and is better
+    /// spelled `none`.
     fn from_str(value: &str) -> crate::Result<Self> {
         Ok(match value {
             "none" => Self::None,
             "whitespace" => Self::Whitespace,
             "ascii" => Self::Ascii,
-            other => Self::Characters(smol_str::SmolStr::new(other)),
+            other => {
+                let set = other.strip_prefix("chars:").ok_or_else(|| {
+                    crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.strip"),
+                        reason: crate::text::expected_got(
+                            "\"none\", \"whitespace\", \"ascii\", or \"chars:\" and the set to strip",
+                            smol_str::format_smolstr!("{other:?}"),
+                        ),
+                    }
+                })?;
+                if set.is_empty() {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.strip"),
+                        reason: crate::text::expected_got(
+                            "a non-empty character set, or \"none\" to strip nothing",
+                            "an empty one",
+                        ),
+                    });
+                }
+                Self::Characters(smol_str::SmolStr::new(set))
+            }
         })
     }
 }

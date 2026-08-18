@@ -702,12 +702,22 @@ pub trait IOBase: Send {
 
     /// Replace the complete value with `bytes`.
     ///
+    /// A whole-value write is a *complete* operation, so it ends with
+    /// [`Self::flush`]: a handle that over-allocates - the memory-mapped
+    /// [`local::File`](crate::local::File) grows geometrically so appending
+    /// does not remap on every write - must not leave that slack visible to a
+    /// second handle on the same location, which would read the padding as
+    /// content. Positional [`Self::pwrite`] deliberately does not publish;
+    /// it is the primitive a larger operation is built from, and the operation
+    /// publishes when it finishes.
+    ///
     /// # Errors
     ///
     /// Returns the backing store's resize or write failure.
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
         self.truncate(0)?;
-        self.pwrite_all(0, bytes)
+        self.pwrite_all(0, bytes)?;
+        self.flush()
     }
 
     /// Empty the resource's contents, keeping the resource itself.

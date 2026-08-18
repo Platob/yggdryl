@@ -1895,3 +1895,158 @@ mod parity {
         }
     }
 }
+
+mod configuration {
+    //! A reader is fully specifiable from a document: no code anywhere.
+
+    use super::*;
+    use crate::generic::Value;
+
+    #[test]
+    fn a_yaml_document_defines_a_whole_reader() {
+        // Everything the extractor needs, and not a line of code.
+        let document = r#"
+pattern: '^(?<stamp>\S+) \[(?<level>[A-Z]+)\]'
+linesep: '\r\n'
+lstrip: none
+rstrip: ascii
+byte_size: 1048576
+batch_size: 4096
+timestamp_capture: stamp
+timezone: 'Europe/Paris'
+capture_types:
+  level: utf8
+custom_fields:
+  source: gateway
+"#;
+        let value = crate::yaml::from_str(document).unwrap();
+        let options = TextLineOptions::from_value(value).unwrap();
+
+        assert_eq!(options.linesep(), Some(&LineSep::CRLF));
+        assert!(matches!(options.lstrip(), Strip::None));
+        assert!(matches!(options.rstrip(), Strip::Ascii));
+        assert_eq!(options.byte_size(), Some(1_048_576));
+        assert_eq!(options.batch_size(), Some(4_096));
+        assert_eq!(options.timestamp_capture(), Some("stamp"));
+        assert_eq!(options.timezone().map(crate::Timezone::as_str), Some("Europe/Paris"));
+        assert_eq!(
+            options.capture_names().collect::<Vec<_>>(),
+            ["stamp", "level"]
+        );
+        // The schema follows, with no resource in sight.
+        assert_eq!(options.schema()["source"].data_type(), &crate::DataType::Utf8);
+    }
+
+    #[test]
+    fn the_same_document_reads_the_same_way_in_all_three_formats() {
+        let options = TextLineOptions::with_pattern(r"^\[(?<level>[A-Z]+)\]")
+            .unwrap()
+            .with_byte_size(1 << 20)
+            .with_lstrip(Strip::None);
+        let value = options.to_value();
+
+        for format in [
+            crate::text::Format::Json,
+            crate::text::Format::Yaml,
+            crate::text::Format::Toml,
+        ] {
+            let bytes = crate::text::to_vec(&value, format).unwrap();
+            let read = crate::text::from_slice(&bytes, format).unwrap();
+            let restored = TextLineOptions::from_value(read).unwrap();
+            assert_eq!(restored.pattern(), options.pattern(), "{format:?}");
+            assert_eq!(restored.byte_size(), options.byte_size(), "{format:?}");
+            assert_eq!(restored.schema(), options.schema(), "{format:?}");
+        }
+    }
+
+    #[test]
+    fn only_what_is_set_is_emitted_so_a_default_round_trips_clean() {
+        let value = TextLineOptions::new().to_value();
+        assert_eq!(value.as_mapping().map(<[_]>::len), Some(0));
+        let restored = TextLineOptions::from_value(value).unwrap();
+        assert_eq!(restored.schema(), TextLineOptions::new().schema());
+    }
+
+    #[test]
+    fn every_setting_survives_the_round_trip() {
+        let options = TextLineOptions::with_pattern(r"^(?<stamp>\S+) (?<qty>\d+)")
+            .unwrap()
+            .try_with_header(r"^(?<stamp2>\S+)")
+            .unwrap()
+            .with_linesep(LineSep::new("<END>").unwrap())
+            .with_lstrip(Strip::Characters(" \t".into()))
+            .with_rstrip(Strip::None)
+            .with_byte_size(4_096)
+            .with_batch_size(128)
+            .try_with_timestamp_capture("stamp")
+            .unwrap()
+            .try_with_timezone("+05:30".parse().unwrap())
+            .unwrap()
+            .try_with_capture_types([("qty", crate::DataType::Int64)])
+            .unwrap()
+            .try_with_custom_fields([("venue", Value::String("XPAR".into()))])
+            .unwrap();
+
+        let restored = TextLineOptions::from_value(options.to_value()).unwrap();
+        assert_eq!(restored.pattern(), options.pattern());
+        assert_eq!(restored.header(), options.header());
+        assert_eq!(restored.linesep(), options.linesep());
+        assert_eq!(restored.byte_size(), options.byte_size());
+        assert_eq!(restored.batch_size(), options.batch_size());
+        assert_eq!(restored.timestamp_capture(), options.timestamp_capture());
+        assert_eq!(restored.timezone(), options.timezone());
+        assert_eq!(restored.capture_types(), options.capture_types());
+        assert_eq!(restored.custom_fields(), options.custom_fields());
+        assert_eq!(restored.schema(), options.schema());
+        // And dumping again is byte-identical.
+        assert_eq!(restored.to_value(), options.to_value());
+    }
+
+    #[test]
+    fn log_mode_round_trips_as_an_explicit_opening() {
+        let value = TextLineOptions::for_logs().to_value();
+        assert_eq!(
+            value.get_key_str("opening").and_then(Value::as_str),
+            Some("timestamp")
+        );
+        assert!(TextLineOptions::from_value(value).unwrap().is_log_mode());
+    }
+
+    #[test]
+    fn an_unknown_key_and_a_bad_value_are_refused_naming_the_option() {
+        let unknown = Value::from_mapping([(
+            Value::String("batch-size".into()),
+            Value::U64(10),
+        )])
+        .unwrap();
+        let refused = TextLineOptions::from_value(unknown).unwrap_err().to_string();
+        assert!(refused.contains("batch-size"), "{refused}");
+        assert!(refused.contains("a known option"), "{refused}");
+
+        let wrong = Value::from_mapping([(
+            Value::String("byte_size".into()),
+            Value::String("lots".into()),
+        )])
+        .unwrap();
+        let refused = TextLineOptions::from_value(wrong).unwrap_err().to_string();
+        assert!(refused.contains("byte_size"), "{refused}");
+        assert!(refused.contains("a count"), "{refused}");
+
+        let bad_capture = Value::from_mapping([
+            (Value::String("pattern".into()), Value::String(r"^\[".into())),
+            (
+                Value::String("capture_types".into()),
+                Value::from_mapping([(
+                    Value::String("absent".into()),
+                    Value::String("int64".into()),
+                )])
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+        let refused = TextLineOptions::from_value(bad_capture)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("absent"), "{refused}");
+    }
+}
