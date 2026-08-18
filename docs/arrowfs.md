@@ -109,7 +109,7 @@ The real thing looks like this, and needs credentials and a network, so it is sh
 
 === "Python"
 
-    ```python,ignore
+    ```{ .python .ignore }
     from pyarrow.fs import S3FileSystem
     from yggdryl import IOBase, iceberg
 
@@ -434,6 +434,10 @@ document reads through its snapshots - both are the container behavior every bac
 Nothing about a foreign filesystem is special to the wrappers, because they only ever see an
 `IOBase`. A content coding round trips over a bucket exactly as it does over a file:
 
+!!! note "Rust only"
+    The Python and JavaScript packages do not expose the compression wrappers.
+    The Iceberg composition below carries its own tabs.
+
 === "Rust"
 
     ```rust
@@ -524,6 +528,11 @@ on. `LocalFileSystem` is a thin `std::fs` mapping whose writes publish through a
 a rename, so a reader never observes a half-written value; it exists to prove the contract against
 a real operating-system filesystem and to measure the wrapper against a native handle. **Neither
 replaces [`local`](local.md)**, whose memory-mapped `File` remains the local backend.
+
+!!! note "Rust only"
+    Both are Rust types. A binding reaches a filesystem through the one its own
+    ecosystem already has - `pyarrow.fs` in Python, a handler object in
+    JavaScript.
 
 === "Rust"
 
@@ -617,7 +626,7 @@ also how an `fsspec` filesystem arrives, so this one shape covers both:
 
 === "Python"
 
-    ```python,ignore
+    ```{ .python .ignore }
     import pyarrow.fs as pafs
     from yggdryl import IOBase
 
