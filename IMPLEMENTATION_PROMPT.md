@@ -1,4 +1,4 @@
-# Prompt: `expressions` — one generic expression engine for select, filter, cast, and transform
+# Prompt: `expressions` — one generic expression engine, and the bindings that reach it
 
 Implement `rust/src/expressions/`: a **self-contained, dependency-free expression
 value** for the whole workspace — an `Expr` tree over the project's own
@@ -44,10 +44,21 @@ implementation, and documented with running examples.
 Work on branch `claude/generic-expression-filtering-fm76gl`; commit and push
 there. Do not open a pull request.
 
-> A companion prompt, `BINDING_PARITY_PROMPT.md`, closes the binding gaps that
-> predate this work — the modules and surfaces the documentation still marks
-> `Rust only`. The two are independent; whichever lands second rebases where
-> they touch the same file.
+**And while the bindings are open, close the gap behind them.** `AGENTS.md:832`
+says every reachable core module should be reachable from both languages, and
+that a Rust-only module is a gap until closed; the documentation carries **26
+`Rust only` notes plus one `Rust first`** today. Part B of this prompt (§7)
+audits every one of them, corrects the several that are simply untrue, keeps the
+ones that are decisions with their reason written down, and closes the rest —
+content codings, Avro as a value codec, `TypedValue`, Parquet footer statistics,
+the Iceberg scan planner and options, file-object and stream views, and the
+small `Uri`/`Field` leftovers — each with implementation, tests, typed
+declarations, running documentation tabs, and a benchmark of the boundary it
+crosses.
+
+The two halves are independent enough to land separately, and share one set of
+checks, constraints, and documentation rules — which is why they are one
+prompt.
 
 ---
 
@@ -90,6 +101,22 @@ there. Do not open a pull request.
 9. `docs/io.md` §"Partition pruning and filtering" (line 2134) and
    `docs/iceberg.md` (lines 936–943, 1253–1318) — the documentation register to
    match and to update.
+
+For Part B (§7) additionally:
+
+10. `.api-bindings.txt` and `.api-inventory.txt` — the generated inventories,
+    the ground truth for what each language exposes. Regenerate them with their
+    generator; never edit them by hand.
+11. `python/src/*.rs` and `node/src/*.rs` — what each binding already does, and
+    the house patterns: `declared_by` duck typing (`python/src/record.rs:193`),
+    the loader-side conveniences in `node/index.js`, `node/values.js`,
+    `node/records.js`.
+12. `docs/extensions/python.md` and `docs/extensions/javascript.md` — the two
+    pages that document a boundary and nothing else.
+13. Every page carrying a `!!! note "Rust only"`: `avro.md`, `generic.md`,
+    `gzip.md`, `local.md`, `zlib.md`, `zstd.md`, `io.md` (5), `ipc.md` (2),
+    `parquet.md` (2), `iceberg.md` (7 plus the one "Rust first"), `text.md` (2),
+    `uri.md`, `field.md`.
 
 ---
 
@@ -634,25 +661,33 @@ Requirements that make this surface worth having rather than sugar:
 
 `AGENTS.md:9` — Rust first, fully. Each phase is complete work on its own.
 
-- **Phase 1 — the module.** `Expr`, parser (encapsulators and accessors
+- **Phase A1 — the module.** `Expr`, parser (encapsulators and accessors
   included), `Bound`, row evaluation, statistics evaluation, `Selection`, Arrow
   evaluation, the `Apply`/`ArrowApply` surface, edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
-  `!!! note "Rust first"` until Phase 4/5 land).
-- **Phase 2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
+  `!!! note "Rust first"` until Phases A4/A5 land).
+- **Phase A2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
   `io/mod.rs`, `parquet/`): options take an expression; the pair vocabulary
   becomes sugar; the folder row filter and directory pruning run on the engine;
   the read ladder and the write rules of §3.1.1–§3.1.2 land, including Parquet
   row-group pruning and the plan that reports every skip; `Statement`, its
   lowering, and `apply_expression` join the trait as one derived method
   (§3.1.3).
-- **Phase 3 — Iceberg**: `scan.rs` prunes manifests, files, and partition tuples
+- **Phase A3 — Iceberg**: `scan.rs` prunes manifests, files, and partition tuples
   through `evaluate_stats`; `Filter` is deleted; residuals come from `residual`.
-- **Phase 4 — Python binding.** **Phase 5 — JavaScript binding.**
-- **Phase 6 — docs, notebooks, benchmark tables, interop check.**
-- **Phase 7 — required checks.**
+- **Phase A4 — Python binding.** **Phase A5 — JavaScript binding.**
+- **Phase A6 — docs, notebooks, benchmark tables, interop check.**
+- **Phase A7 — required checks** for Part A.
 
-Commit at each phase boundary (and inside Phase 1 per file group) with
+Part B (§7) then runs as its own sequence, and Phase B0 is not optional
+paperwork — it is what stops the rest of the work from being wrong:
+
+- **Phase B0 — the audit** (§7.1), including the corrections it finds.
+- **Phases B1–B8 — one gap per phase** (§7.2), each a commit shipping a whole
+  surface (§7.3).
+- **Phase B9 — inventories regenerated, notes deleted or rewritten, checks.**
+
+Commit at each phase boundary (and inside Phase A1 per file group) with
 descriptive messages.
 
 ---
@@ -1140,7 +1175,7 @@ that word — a skipped half can never read as a pass. Check both:
 
 ---
 
-## 6. Bindings
+## 6. Part A bindings — the expression surface
 
 **Python** — `python/src/expression.rs` (mirroring core domains,
 `AGENTS.md:96`), exported as `yggdryl.Expr` and `yggdryl.Selection`:
@@ -1264,7 +1299,219 @@ them on the same terms.
 
 ---
 
-## 7. Documentation
+## 7. Part B — closing the Rust-only gap
+
+Part B is a *bindings* task: the Rust core it exposes is already proven. If a
+binding needs something the core does not have, the core gets it first —
+implementation, edge-case tests, docs — and only then the binding
+(`AGENTS.md:9`). A binding never reimplements a core rule.
+
+### 7.1 The audit comes first
+
+Before a line of binding code: walk every `Rust only` / `Rust first` note and
+classify it into exactly one of three buckets. Write the result as a table in
+the pull-request-less commit message and as a short section in
+`docs/extensions/python.md` / `javascript.md` (the reader deserves to know what
+is deliberate).
+
+- **Stale** — the note is simply no longer true. Fix it *in the same commit as
+  the audit*, before any new code: a wrong note costs a reader more than a
+  missing feature, because they stop looking. Candidates found while writing
+  this prompt, each to be verified rather than trusted:
+  - `docs/local.md:5` says the packages "do not expose this module yet", but a
+    local file is reached today through `IOBase` with a path or URL. The honest
+    note names the constructor instead of claiming absence.
+  - `docs/io.md:1278` says neither binding can add a backend — but
+    `IOBase.from_arrow_fs` / `IOBase.fromArrowFs` is exactly how one is added.
+  - `docs/io.md:321` says the bindings expose no adapters over positional reads,
+    while Python already registers a cursor class (`PyIOCursor`).
+  - `docs/gzip.md:5`, `zlib.md:5`, `zstd.md:5` say the module is not exposed,
+    while Python already ships `gzip_loads`/`gzip_dumps` and the rest
+    (`python/src/codings.rs`). The note should say what is missing — streams and
+    the transparent handle — not that everything is.
+- **Gap** — real, closable, and closed by this task (§2).
+- **Decision** — stays Rust-only, and the note is rewritten to say *why* rather
+  than "not yet", so nobody re-opens it:
+  - the role traits (`IOPath`/`IOFolder`/`IOFile`) and the generic dispatch
+    enums (`Holder`, `Media`, `RecordOptions` as enums) — the bindings hold one
+    handle class and one settings value, which is the better surface, not a
+    lesser one;
+  - `Buffer` as a class — `IOBase.from_bytes` is the binding spelling;
+  - the Iceberg type-mapping tables (`iceberg.md:2683`, `2793`) — internal
+    tables whose *result* is the schema a table already reports;
+  - implementing a new backend in the binding language itself (as opposed to
+    wrapping a foreign filesystem) — that is a Rust trait impl.
+
+The audit's deliverable is a checklist. Everything below is scoped by it: if the
+audit finds a note this prompt calls a gap is actually a decision, say so and
+skip it, naming the reason. Do not implement something the audit disproves.
+
+---
+
+### 7.2 The gaps, one phase each
+
+Each phase is a commit and is complete on its own: Python surface, JavaScript
+surface, tests in both, typed declarations, docs tabs replacing the note, one
+benchmark. Argument names, order, and meanings are identical across languages;
+only the case convention differs (`AGENTS.md:849`).
+
+#### Phase B1 — content codings, fully (`docs/gzip.md`, `zlib.md`, `zstd.md`, `io.md:1173`)
+
+What exists: whole-buffer `loads`/`dumps` in Python. What is missing: the level
+argument, streaming, the `Codec` vocabulary itself, and the transparent handle.
+
+- **Python**: `yggdryl.gzip` / `zlib` / `zstd` as thin facades beside
+  `yggdryl.json` — `load(source)`, `dump(value, dest, level=...)`,
+  `reader(fileobj)` and `writer(fileobj)` returning objects implementing the
+  standard `io` protocols (`read`, `readinto`, `write`, `close`, context
+  manager), so they compose with anything that takes a file object. Plus
+  `yggdryl.Codec` with the core's `from_str` / `from_mime_type` /
+  `from_media_type` / `from_url` and `Level` as a plain 0–9 int.
+- **Transparent handles** are a *method on the one handle class*, not new
+  classes: `handle.coded(codec="gzip", level=6)` returns an `IOBase` whose bytes
+  are the decoded ones — the binding shape for `Coded`, `Gzip`, `Zlib`, `Zstd`.
+  Say in the docs that reading a `.json.gz` handle needs none of this, because
+  the media type already decodes it; this is for the case where the caller names
+  the coding themselves.
+- **JavaScript**: `gzip`/`zlib`/`zstd` namespaces with `load`/`dump` over
+  `Buffer`, `Codec` parsing, and `handle.coded({ codec, level })`. Node's own
+  `zlib` streams already exist, so do not ship a second stream implementation —
+  say that in the JS tab and point at `handle.coded` for the composing case.
+- Errors surface unchanged; a level outside 0–9 is the core's typed refusal.
+
+#### Phase B2 — Avro as a value codec (`docs/avro.md`)
+
+The record path already reads and writes `.avro` through the three record
+methods. What is missing is the **`Value`-level codec** and schema resolution.
+
+- **Python**: `yggdryl.avro` mirroring the `json`/`yaml`/`toml` facades exactly
+  — `load`, `loads`, `load_all`, `dump`, `dumps`, `dump_all`, byte-first
+  (`Buffer`/`Readable`/`Writable` sources and destinations), plus
+  `avro.schema_from_field(field)` and `avro.field_from_schema(schema)` for the
+  schema half, and the resolution entry point the core exposes.
+- **JavaScript**: the same namespace, byte-first over `Buffer`, values crossing
+  through the existing native `Value` conversion — exact `bigint`, bytes,
+  `Date`, `Map`, `Set` semantics, never a JSON bridge (`AGENTS.md:1104`).
+- Round-trip tests against the **outside implementation** the repo already
+  drives: extend `scripts/check_avro_interop.py` so the binding halves are
+  covered, keeping the `SKIPPED`-never-reads-as-a-pass rule.
+
+#### Phase B3 — `TypedValue` and the typed markers (`docs/text.md:421,458`, `docs/generic.md`)
+
+A value paired with the datatype it belongs to is a core value both languages
+should hold.
+
+- **Python**: `yggdryl.TypedValue(value, dtype)` / `TypedValue.from_value(v)`,
+  with `.data_type`, `.value`, `.as_py()`, `.to_arrow()` →
+  `pyarrow.Array`/`Scalar` through the existing C Data Interface path,
+  `TypedValue.from_arrow(...)`, rich comparison, `__hash__`, `__repr__`,
+  pickle, JSON. The typed markers already have field factories in
+  `yggdryl.fields`; the value side narrows through the same names.
+- **JavaScript**: `TypedValue` with `dataType`, `value`, `asJs()`, `toArrow()`
+  (the copied IPC boundary), `fromJs`, `toString`, `toJSON`, `equals`,
+  `stableHash`.
+- No second value model on either side: conversion is the core's, always.
+
+#### Phase B4 — Parquet footer statistics (`docs/parquet.md:793`)
+
+Newly worth having: the read path now prunes row groups by these numbers, so a
+caller who cannot see them cannot explain their own read.
+
+- **Python**: `handle.read_statistics(options=None)` → a plain object with row
+  count, uncompressed and compressed sizes, split offsets, and per-row-group,
+  per-column `null_count` / `min` / `max` — bounds crossing as canonical
+  `Value`s (a date is a `datetime.date`, a decimal a `Decimal`), never raw
+  bytes.
+- **JavaScript**: `handle.readStatistics()`, 64-bit counts as `bigint`.
+- Documented next to the read plan, because together they answer "why was this
+  read fast".
+
+#### Phase B5 — Iceberg leveling (`docs/iceberg.md:295,357,558,867,1744,2847`)
+
+- **The scan planner** (867): `table.plan(filter)` / `table.plan_at(snapshot_id,
+  filter)` returning a plain object — files read, files skipped, manifests
+  skipped, records, and per-task partition tuple and location. This is the value
+  that makes pruning visible in both languages, and it is exactly what the
+  expression work makes worth showing.
+- **`IcebergOptions`** (1744): one settings value with the same keys in Iceberg's
+  own spellings, `table.set_options(...)` / `table.setOptions(...)`, resolved
+  explicit → table property → default by the core. No key parsing in the
+  binding.
+- **`PartitionSpec` transforms and path rendering** (558): expose the transform
+  vocabulary as its canonical strings and the path a partition tuple renders to,
+  reading both off the core — no second renderer, and the write-side refusal of
+  a non-invertible transform keeps its message.
+- **The metadata document** (295, 357): `table.metadata()` as a read-only plain
+  object (or its JSON), so a caller can inspect format version, properties,
+  schemas, specs, sort orders, and snapshots without a Rust program. Updates
+  stay through the existing typed vocabulary — never a writable dict.
+- **Writer settings** (2847): folded into `IcebergOptions`; nothing separate.
+- JavaScript keeps its namespace rule (`AGENTS.md:1092`): everything above lives
+  under `iceberg`, `bigint` for 64-bit ids, same argument order as Python.
+
+#### Phase B6 — handle surface leveling (`docs/io.md:321`, `local.md`)
+
+- **Python**: whatever the audit shows missing from the pathlib-shaped surface,
+  plus a file-object view — `handle.open_binary()` returning an object
+  implementing `io.RawIOBase` (`readinto`, `write`, `seek`, `tell`, `close`,
+  context manager) over the positional core, so a yggdryl handle can be passed
+  to any library that takes a file object. This is the *idiomatic* answer to the
+  `std::io` adapters, not a port of them.
+- **JavaScript**: `handle.createReadStream()` / `createWriteStream()` returning
+  Node `Readable` / `Writable` backed by the same positional calls, bounded and
+  lazy. Same reasoning.
+- `docs/local.md` gains real Python/JS tabs showing the local backend reached
+  through `IOBase`, replacing the note that says it cannot be.
+
+#### Phase B7 — the small leftovers (`docs/uri.md:656`, `docs/field.md:311`)
+
+`Uri`/`Url`: `default_port`, `is_local`, `join_path`, `local_mime_type`.
+`Field`: `set_init` / `is_init` / `with_init`. Mechanical, both languages, with
+tests and the notes deleted.
+
+#### Phase B8 — cross-language symmetry
+
+Diff the two inventories in `.api-bindings.txt` column against column. **Every
+asymmetry is either closed or recorded with its reason** in the extension docs —
+including the ones this prompt did not predict. Known starting point: the
+content-coding functions exist in Python and not in JavaScript (Phase B1 closes
+that); the Iceberg `Namespace`, `Snapshot`, `ManifestFile`, `PartitionField`,
+and `Compaction` classes exist in Python and not in JavaScript. Python-only by
+design — and stated as such — are the annotation-driven `records` helpers, which
+are a Python language feature, not a core surface.
+
+---
+
+### 7.3 What every one of those phases ships
+
+- **Implementation** in `python/src/<domain>.rs` / `node/src/<domain>.rs`
+  mirroring core domains; each `lib.rs` stays boundary helpers, exports, and
+  registration only.
+- **Tests in that extension**: `python/tests/test_<domain>.py` in house style
+  (fixtures, plain-English test classes with docstrings) and
+  `node/tests/<domain>.test.js` + `<domain>.types.ts` (node:test +
+  `tsc --noEmit` pair). Cover the happy path, every error message crossing
+  unchanged, and the boundary's own edge cases (empty input, huge input against
+  the shared limits, a value the other language cannot hold).
+- **Typed declarations**: `python/yggdryl/_native.pyi` and `__init__.pyi` kept
+  exact, `mypy --strict` green; `node/index.d.ts` / `binding.d.ts` kept exact,
+  `tsc --noEmit` green.
+- **Documentation**: the `!!! note "Rust only"` is **deleted and replaced by
+  real Python and JavaScript tabs** on the same examples — same operation, each
+  idiomatic, each self-contained with at least one assertion, all passing
+  `python scripts/check_docs_examples.py`. A note that stays is rewritten to
+  give its reason. Notebooks regenerated with
+  `python scripts/build_docs_notebooks.py`.
+- **A benchmark of the boundary crossed**, release build only
+  (`maturin build --release`, `napi build --release`), against a baseline the
+  reader trusts — the stdlib codecs for Phase B1, PyArrow for Phases B3–B4,
+  PyIceberg for Phase B5, `node:fs` for Phase B6 — with numbers regenerated into
+  `docs/benchmarks.md`, never edited (`AGENTS.md:376`).
+- **Inventories regenerated** by their generator.
+
+---
+
+## 8. Documentation
 
 - New page `docs/expressions.md`: one H1, exactly one opening sentence, then
   example-first sections — write a predicate; parse one from SQL text; bind it to
@@ -1302,9 +1549,13 @@ them on the same terms.
   ("A filter is a `(column, value)` text pair") is rewritten to describe the
   expression and its sugar. A contract that no longer matches the code is worse
   than no contract.
+- **A closed gap deletes its note.** Every `!!! note "Rust only"` Part B closes
+  is removed and replaced by real Python and JavaScript tabs on the same
+  examples; every note that stays is rewritten to give its reason instead of
+  "not yet". Regenerate both inventories with their generator.
 - `python -m mkdocs build --strict` stays green.
 
-### 7.1 The use cases the documentation must show
+### 8.1 The use cases the documentation must show
 
 A reference of operators teaches nobody what to do on Monday. Every item below
 is a **worked, runnable use case** — Rust → Python → JavaScript tabs in that
@@ -1421,7 +1672,7 @@ notebooks.
 
 ---
 
-## 8. Required checks (all must pass before handoff)
+## 9. Required checks (all must pass before handoff)
 
 Per `AGENTS.md:1116`: `cargo fmt --check`; warning-free
 `cargo clippy --locked --workspace --all-targets -- -D warnings` **twice**
@@ -1431,14 +1682,16 @@ check (default features and `--no-default-features --lib` — the whole expressi
 value, parser, binder, row evaluator and statistics evaluator must compile and
 be tested without `arrow`); `cargo bench --benches --no-run`; `maturin develop` +
 `pytest` + `mypy --strict`; `npm run test:package` + `npm test`;
+`npm run test:package` + `npm test` + `tsc --noEmit`;
 `python scripts/check_docs_examples.py`; `python scripts/check_expression_interop.py`;
+`python scripts/check_avro_interop.py`;
 `python scripts/check_iceberg_interop.py` (unchanged answers);
 `python -m mkdocs build --strict`. Clean generated targets, `site/`, venvs,
 native binaries, caches, and `node_modules` after validation.
 
 ---
 
-## 9. Hard constraints, restated
+## 10. Hard constraints, restated
 
 - **One engine.** Row, vectorized, and statistics evaluation read the same
   `Bound`. No second comparison implementation survives this change:
@@ -1483,6 +1736,23 @@ native binaries, caches, and `node_modules` after validation.
   maps or schemas.
 - Anything held in memory carries a comment saying why.
 
+For Part B specifically:
+
+- **Rust first, always.** A binding that needs a core capability gets the core
+  change first, with its own tests and docs, in its own commit. A binding never
+  computes what the core can compute, never parses what the core parses, never
+  validates what the core validates.
+- **One value model, one schema model, one error family** across both packages:
+  no binding-side cache, no second parser, no parallel value tree; native error
+  messages cross unchanged, mapped to idiomatic exception types.
+- **No fabricated documentation tab.** If a language genuinely cannot do
+  something, the note stays and says why; never show a language doing something
+  `.api-bindings.txt` does not list.
+- **No new runtime dependency** in either package; pandas, polars, pyarrow and
+  friends stay imported only where a value of theirs actually appears.
+- Nothing in `rust/src/` changes in Part B except a core addition a binding
+  provably needs — and that addition arrives Rust-first, complete.
+
 **Definition of done**: a caller writes
 `options.with_filter(r#""trading venue" = 'XNAS' AND payload['ts'] >= TIMESTAMP '2024-01-01T00:00:00Z'"#)?`
 and the same one sentence skips Iceberg manifests, skips data files, skips
@@ -1495,3 +1765,10 @@ those rows by unlinking the partition that holds them rather than decoding it,
 while `ALTER … ADD COLUMN` on the same table costs one metadata document — in
 Rust, Python, and JavaScript, with one implementation of the comparison, one
 lowering, and one set of three record methods behind all of it.
+
+And for Part B: `grep -rn 'Rust only' docs/` returns only notes that explain a
+deliberate decision, every one of them accurate; both inventories list the same
+capabilities under each language's own spelling; and a Python or JavaScript user
+can read an Avro container, compress a stream, hold a typed value, see why a
+Parquet read was fast, and plan an Iceberg scan without being told to write
+Rust.
