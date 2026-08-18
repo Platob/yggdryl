@@ -41,7 +41,7 @@ ARCHITECTURE IN BRIEF:
 - \`yggdryl::ipc\` and \`yggdryl::parquet\` (non-default \`parquet\` feature) read and write ARROW
   BATCHES over any handle. Reading returns \`yggdryl::arrow::BatchReader\`, which STREAMS; writing
   takes any IntoIterator of batches. There is NO row-level read_records/write_records anywhere.
-- \`yggdryl::arrow\` holds scalars (ArrowScalar, StructScalar, DefaultArrowScalar), schema projection
+- \`yggdryl::arrow\` holds scalars (scalar_array / scalar_value, StructScalar, the default_arrow_array methods), schema projection
   (schema_from_field, record_schema_from_arrow, record_schema_to_arrow), and BatchReader.
 - \`yggdryl::field::cast\` holds the ArrowCast trait and the typed per-datatype casts
   (Int64Field::cast_arrow_array -> Int64Array via ArrowFieldType). Batch casting IS array casting.
@@ -121,7 +121,7 @@ const CORE_PAGES = [
     cover: 'A field is a name, datatype, nullability, and metadata - and a non-null struct field is the schema. Cover construction, metadata as a mapping (including the reserved field:init and PARQUET:field_id keys and the http:* protocol properties), the typed field aliases, validating and canonicalizing a Value against a struct root, comparison through show_diff/show_diffs, and the casting surface (ArrowCast plus the typed per-datatype casts). This is the most important page on the site.' },
   { module: 'arrow', title: 'Arrow interoperability', bindings: true,
     read: 'rust/src/arrow/, rust/tests/default_scalar.rs, rust/tests/value_bounds.rs, rust/tests/batch_cast.rs, plus the arrow_scalar methods in python/src and node/src',
-    cover: 'ArrowScalar and StructScalar, DefaultArrowScalar, schema_from_field, record_schema_from_arrow / record_schema_to_arrow, and the streaming BatchReader. Say plainly that the row-to-Arrow conversion layer was removed: Arrow speaks batches and scalars. Cover the materialization budgets that reject an oversized allocation before making it. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
+    cover: 'scalar_array / scalar_value and StructScalar, the DataType/Field default_arrow_array methods and the TypedValue Arrow projection, schema_from_field, record_schema_from_arrow / record_schema_to_arrow, and the streaming BatchReader. Say plainly that the row-to-Arrow conversion layer was removed: Arrow speaks batches and scalars. Cover the materialization budgets that reject an oversized allocation before making it. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
   { module: 'ipc', title: 'Arrow IPC', bindings: false,
     read: 'rust/src/ipc/ (mod.rs, tests.rs)',
     cover: 'Reading and writing Arrow IPC over any handle: the free functions (read_field, read_batches, write_batches), the stateful Ipc type with its options and cached schema, streamed reading through BatchReader, writing from any iterator, and the automatic content coding.' },

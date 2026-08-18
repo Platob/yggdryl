@@ -499,167 +499,91 @@ pub(crate) fn projection_indices(field: &Field, stored: &Schema) -> Option<Vec<u
 /// The result type returned by Arrow record interoperability.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// One exact, schema-bound value stored in a one-row Arrow array.
+/// Materialize one validated native value as an exact one-row Arrow array.
 ///
-/// The Arrow allocation is immutable and shallow-cloneable. The owning
-/// [`Field`] retains name, nullability, dictionary options, metadata, and
-/// extension identity that an array datatype alone cannot carry.
-#[derive(Clone, Debug)]
-pub struct ArrowScalar {
-    field: Field,
-    array: ArrayRef,
+/// The array boundary for a single scalar: the value is validated through the
+/// same schema-directed walk every row value takes - the exact Field is the
+/// authority on nullability, dictionary options, and extension identity - and
+/// then materialized under the shared physical budgets. A caller holding a
+/// [`crate::TypedValue`] with no Field around it uses
+/// [`crate::TypedValue::to_arrow_array`] instead.
+///
+/// # Errors
+///
+/// Returns an error when the value violates the Field or the physical Arrow
+/// layout cannot represent it.
+pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef> {
+    let value = validate_scalar_value(field, value.clone())?;
+    value::array_from_values(field, &[&value])
 }
 
-impl ArrowScalar {
-    /// Validates one external Arrow array value against an exact Field.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless `array` has length one, has the Field's exact
-    /// physical datatype, and decodes to a value satisfying all recursive
-    /// Field nullability and datatype constraints. A non-nullable Field may
-    /// contain a logical null only when the decoded value is exactly its
-    /// datatype's canonical intrinsic default. This narrow exception keeps
-    /// datatype defaults such as null-only dictionaries, unions, and run-end
-    /// encodings closed under [`Self::into_parts`] followed by this
-    /// constructor without admitting arbitrary selected-null values.
-    pub fn from_parts(field: Field, array: ArrayRef) -> Result<Self> {
-        if array.len() != 1 {
-            return Err(Error::IncompatibleSchema(format!(
-                "Arrow scalar must contain exactly one value, got {}",
-                array.len()
-            )));
+/// Validate one external one-row Arrow array and decode its canonical value.
+///
+/// # Errors
+///
+/// Returns an error unless `array` has length one, has the Field's exact
+/// physical datatype, and decodes to a value satisfying all recursive Field
+/// nullability and datatype constraints. A non-nullable Field may contain a
+/// logical null only when the decoded value is exactly its datatype's
+/// canonical intrinsic default. This narrow exception keeps datatype defaults
+/// such as null-only dictionaries, unions, and run-end encodings closed under
+/// [`scalar_array`] followed by this function without admitting arbitrary
+/// selected-null values.
+pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Value> {
+    if array.len() != 1 {
+        return Err(Error::IncompatibleSchema(format!(
+            "Arrow scalar must contain exactly one value, got {}",
+            array.len()
+        )));
+    }
+    // Caller-built public DataType variants can be arbitrarily deep.
+    // Bound the shape before Arrow's recursive datatype projection so a
+    // malformed foreign scalar reports a normal schema error rather than
+    // exhausting the native stack.
+    field.data_type().validate_bounded()?;
+    let expected = field.to_arrow_ref()?.data_type().clone();
+    if array.data_type() != &expected {
+        return Err(Error::IncompatibleSchema(format!(
+            "Arrow scalar datatype {:?} differs from expected {expected:?}",
+            array.data_type()
+        )));
+    }
+    let decoded = value::value_from_array(field.data_type(), array, 0)?;
+    if let Err(error) = validate_scalar_value(field, decoded.clone()) {
+        if !field.data_type().is_default_value(&decoded)? {
+            return Err(error);
         }
-        // Caller-built public DataType variants can be arbitrarily deep.
-        // Bound the shape before Arrow's recursive datatype projection so a
-        // malformed foreign scalar reports a normal schema error rather than
-        // exhausting the native stack.
-        field.data_type().validate_bounded()?;
-        let expected = field.to_arrow_ref()?.data_type().clone();
-        if array.data_type() != &expected {
-            return Err(Error::IncompatibleSchema(format!(
-                "Arrow scalar datatype {:?} differs from expected {expected:?}",
-                array.data_type()
-            )));
-        }
-        let decoded = value::value_from_array(field.data_type(), array.as_ref(), 0)?;
-        if let Err(error) = validate_scalar_value(&field, decoded.clone()) {
-            if !field.data_type().is_default_value(&decoded)? {
-                return Err(error);
-            }
-        }
-        Ok(Self { field, array })
     }
-
-    /// Materializes one validated native value as an exact Arrow scalar.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the value violates the Field or the physical
-    /// Arrow layout cannot represent it.
-    pub fn from_value(field: Field, value: Value) -> Result<Self> {
-        let value = validate_scalar_value(&field, value)?;
-        let array = value::array_from_values(&field, &[&value])?;
-        Ok(Self { field, array })
-    }
-
-    /// Returns the exact owning Field.
-    pub const fn field(&self) -> &Field {
-        &self.field
-    }
-
-    /// Returns the canonical logical datatype.
-    pub fn data_type(&self) -> &DataType {
-        self.field.data_type()
-    }
-
-    /// Borrows the one-row Arrow array reference.
-    pub const fn array(&self) -> &ArrayRef {
-        &self.array
-    }
-
-    /// Shallow-clones the one-row Arrow array.
-    pub fn to_array(&self) -> ArrayRef {
-        Arc::clone(&self.array)
-    }
-
-    /// Consumes the wrapper into its one-row Arrow array.
-    pub fn into_array(self) -> ArrayRef {
-        self.array
-    }
-
-    /// Decodes the scalar to its canonical native value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the Arrow array can no longer be decoded according
-    /// to its exact Field. Arrow arrays are immutable, so this principally
-    /// reports unsupported future physical layouts.
-    pub fn to_value(&self) -> Result<Value> {
-        value::value_from_array(self.field.data_type(), self.array.as_ref(), 0)
-    }
-
-    /// Consumes the wrapper and decodes its canonical native value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for an unsupported future physical layout.
-    pub fn into_value(self) -> Result<Value> {
-        value::value_from_array(self.field.data_type(), self.array.as_ref(), 0)
-    }
-
-    /// Consumes this scalar into its exact Field and one-row Arrow array.
-    pub fn into_parts(self) -> (Field, ArrayRef) {
-        (self.field, self.array)
-    }
+    Ok(decoded)
 }
 
-/// Extension trait for constructing the canonical default Arrow scalar.
-pub trait DefaultArrowScalar {
-    /// Materializes the bounded native default into an exact one-row array.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when no physically valid default exists or Arrow
-    /// cannot materialize the datatype.
-    fn default_arrow_scalar(&self) -> Result<ArrowScalar>;
+/// Materialize a bare datatype's canonical default as a one-row array.
+///
+/// The datatype planner is the authority, so [`DataType::Null`] and
+/// transparent logical wrappers with a null-only canonical default may be
+/// logically null even though the array projects through a synthetic
+/// non-nullable Field. [`Field::default_value`] remains the sole nullability
+/// authority for a caller-owned Field, reached through
+/// [`default_scalar_array`].
+pub(crate) fn default_data_type_scalar_array(data_type: &DataType) -> Result<ArrayRef> {
+    let field = Field::new("value", data_type.clone(), false);
+    let value = data_type.default_value()?;
+    value::array_from_values(&field, &[&value])
 }
 
-impl DefaultArrowScalar for DataType {
-    fn default_arrow_scalar(&self) -> Result<ArrowScalar> {
-        let field = Field::new("value", self.clone(), false);
-        let value = self.default_value()?;
-        // Null and transparent logical wrappers with a null-only canonical
-        // default may be logically null even though a bare datatype projects
-        // through a synthetic non-nullable Field. Field::default_value remains
-        // the sole nullability authority for a caller-owned Field.
-        let array = value::array_from_values(&field, &[&value])?;
-        Ok(ArrowScalar { field, array })
-    }
-}
-
-impl DefaultArrowScalar for Field {
-    fn default_arrow_scalar(&self) -> Result<ArrowScalar> {
-        let value = self.default_value()?;
-        // The core planner has already bounded and recursively validated this
-        // exact Field/value pair. Keep public `from_value` defensive for
-        // caller input without paying for a second Value validation here.
-        let array = value::array_from_values(self, &[&value])?;
-        Ok(ArrowScalar {
-            field: self.clone(),
-            array,
-        })
-    }
+/// Materialize a Field's canonical default as a one-row array.
+pub(crate) fn default_scalar_array(field: &Field) -> Result<ArrayRef> {
+    let value = field.default_value()?;
+    // The core planner has already bounded and recursively validated this
+    // exact Field/value pair. Keep public [`scalar_array`] defensive for
+    // caller input without paying for a second Value validation here.
+    value::array_from_values(field, &[&value])
 }
 
 pub(crate) fn validate_scalar_value(field: &Field, value: Value) -> Result<Value> {
     // Wrap the single value in a one-column row so it goes through exactly the
     // same schema-directed validator every other value does.
-    let root = Field::new(
-        "ArrowScalar",
-        DataType::from_fields([field.clone()])?,
-        false,
-    );
+    let root = Field::new("scalar", DataType::from_fields([field.clone()])?, false);
     let row = root.canonicalize_value(Value::from_sequence([value]))?;
     root.validate_value(&row)?;
     row.as_sequence()

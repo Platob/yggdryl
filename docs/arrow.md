@@ -5,17 +5,16 @@
 === "Rust"
 
     ```rust
-    use yggdryl::arrow::DefaultArrowScalar;
+    use arrow_array::Array;
+    use yggdryl::arrow::scalar_value;
     use yggdryl::{DataType, Field};
 
     let field = Field::new("symbol", DataType::Utf8, false);
-    let scalar = field.default_arrow_scalar()?;
+    let array = field.default_arrow_array()?;
 
-    // A scalar is one Arrow row plus the exact Field that owns it.
-    assert_eq!(scalar.field(), &field);
-    assert_eq!(scalar.data_type(), &DataType::Utf8);
-    assert_eq!(scalar.array().len(), 1);
-    assert_eq!(scalar.to_value()?.as_str(), Some(""));
+    // A scalar is one Arrow row; the exact Field beside it says what it means.
+    assert_eq!(array.len(), 1);
+    assert_eq!(scalar_value(&field, array.as_ref())?.as_str(), Some(""));
     ```
 
 === "Python"
@@ -42,40 +41,42 @@
     assert.equal(field.defaultArrowScalar(), '')
     ```
 
-`DefaultArrowScalar` is implemented for both `DataType` and `Field`, and it is how a canonical
+`default_arrow_array` is implemented on both `DataType` and `Field`, and it is how a canonical
 default becomes a physical array. The result is a one-row array, not a row object: this crate hands
-Arrow exactly two units, a `RecordBatch` and a one-row scalar. The row-to-Arrow conversion layer
+Arrow exactly two units, a `RecordBatch` and a one-row array. The row-to-Arrow conversion layer
 that used to sit between them is gone - there is no record type, no row iterator, and no
 `read_records`/`write_records` anywhere. Anything wider than one value is a batch, and batches are
 read and written through [io.md](io.md), [ipc.md](ipc.md), and [parquet.md](parquet.md).
 
-The three runtimes hand the scalar back in their own Arrow vocabulary. Rust keeps it wrapped in
-`ArrowScalar`. Python returns a `pyarrow.Scalar`, imported through the Arrow C Data Interface with
-the complete Field, so a registered `ExtensionType` rehydrates rather than collapsing to its
-storage type. JavaScript materializes the one-row IPC message with Apache Arrow JS and returns the
-value itself, which is why an `int64` arrives as a `BigInt`.
+The three runtimes hand the scalar back in their own Arrow vocabulary. Rust hands back the bare
+one-row `ArrayRef`, with `scalar_value` beside it to decode the row under its exact Field. Python
+returns a `pyarrow.Scalar`, imported through the Arrow C Data Interface with the complete Field, so
+a registered `ExtensionType` rehydrates rather than collapsing to its storage type. JavaScript
+materializes the one-row IPC message with Apache Arrow JS and returns the value itself, which is
+why an `int64` arrives as a `BigInt`.
 
 ## Nullability picks the default
 
 === "Rust"
 
     ```rust
-    use yggdryl::arrow::DefaultArrowScalar;
+    use arrow_array::Array;
+    use yggdryl::arrow::scalar_value;
     use yggdryl::{DataType, Field, Value};
 
-    // A bare DataType has no name of its own, so it borrows a required one.
-    let scalar = DataType::Int64.default_arrow_scalar()?;
-    assert_eq!(scalar.field().name(), "value");
-    assert!(!scalar.field().is_nullable());
-    assert_eq!(scalar.to_value()?.as_i128(), Some(0));
+    // A bare DataType projects through its own datatype default planner.
+    let array = DataType::Int64.default_arrow_array()?;
+    let value = Field::new("value", DataType::Int64, false);
+    assert_eq!(scalar_value(&value, array.as_ref())?.as_i128(), Some(0));
 
-    // A nullable Field defaults to a logical null and keeps its own identity.
-    let optional = Field::new("symbol", DataType::Utf8, true).default_arrow_scalar()?;
-    assert!(optional.array().is_null(0));
-    assert_eq!(optional.to_value()?, Value::Null);
+    // A nullable Field defaults to a logical null under its own identity.
+    let optional = Field::new("symbol", DataType::Utf8, true);
+    let array = optional.default_arrow_array()?;
+    assert!(array.is_null(0));
+    assert_eq!(scalar_value(&optional, array.as_ref())?, Value::Null);
 
     // A required Null column has no value it could ever hold.
-    let refused = Field::new("never", DataType::Null, false).default_arrow_scalar();
+    let refused = Field::new("never", DataType::Null, false).default_arrow_array();
     assert!(refused.is_err());
     ```
 
@@ -116,18 +117,18 @@ value itself, which is why an `int64` arrives as a `BigInt`.
     )
     ```
 
-The two implementations differ in what they are allowed to assume. `DataType` has no name,
-nullability, or metadata, so it projects through a synthetic required Field called `value`.
-`Field` keeps everything an array datatype cannot carry - the name, the nullability, the
-dictionary options, the metadata, and the extension identity - which is why the Field
-implementation is the one that can return a logical null.
+The two methods differ in what they are allowed to assume. `DataType` has no name, nullability, or
+metadata, so its default is the datatype's own present value, materialized through a synthetic
+required Field. `Field` keeps everything an array datatype cannot carry - the name, the
+nullability, the dictionary options, the metadata, and the extension identity - which is why the
+Field method is the one that can return a logical null.
 
 ## A struct root is one row
 
 === "Rust"
 
     ```rust
-    use yggdryl::arrow::DefaultArrowScalar;
+    use yggdryl::arrow::scalar_value;
     use yggdryl::{DataType, Field, Value};
 
     let schema = Field::new(
@@ -139,7 +140,7 @@ implementation is the one that can return a logical null.
         false,
     );
 
-    let row = schema.default_arrow_scalar()?.to_value()?;
+    let row = scalar_value(&schema, schema.default_arrow_array()?.as_ref())?;
     let (_, values) = row.as_record().ok_or("a struct row is a typed record")?;
     assert_eq!(values.len(), 2);
     assert_eq!(values[0].as_i128(), Some(0));
@@ -203,44 +204,76 @@ The JavaScript package exposes `defaultArrowScalar` and nothing else from this m
 `DataType.fromArrow` and `Field.fromArrow` constructors belong to [datatype.md](datatype.md) and
 [field.md](field.md) ([../extensions/javascript.md](extensions/javascript.md)).
 
-## ArrowScalar
+## One scalar across the array boundary
 
 ```rust
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Int64Array};
-use yggdryl::arrow::ArrowScalar;
+use arrow_array::{Array, ArrayRef, Int64Array};
+use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{DataType, Field, Value};
 
 let field = Field::new("id", DataType::Int64, false);
-let scalar = ArrowScalar::from_value(field.clone(), Value::from(7_i64))?;
-assert_eq!(scalar.data_type(), &DataType::Int64);
-assert_eq!(scalar.to_value()?.as_i128(), Some(7));
+let array = scalar_array(&field, &Value::from(7_i64))?;
+assert_eq!(array.len(), 1);
 
-// The parts come apart and go back together unchanged.
-let (field, array) = scalar.into_parts();
-let rebuilt = ArrowScalar::from_parts(field, array)?;
-assert_eq!(rebuilt.into_value()?.as_i128(), Some(7));
+// The exact Field decodes the same one-row array back, unchanged.
+assert_eq!(scalar_value(&field, array.as_ref())?.as_i128(), Some(7));
 
 // A foreign array has to be one row of the Field's exact physical datatype.
 let two: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
-assert!(ArrowScalar::from_parts(Field::new("id", DataType::Int64, false), two).is_err());
+assert!(scalar_value(&field, two.as_ref()).is_err());
 
 // And the value has to satisfy the Field, recursively.
-assert!(ArrowScalar::from_value(Field::new("id", DataType::Int64, false), Value::Null).is_err());
+assert!(scalar_array(&field, &Value::Null).is_err());
 ```
 
-`ArrowScalar` pairs an immutable, shallow-cloneable `ArrayRef` of length one with the exact `Field`
-that owns it. `from_value` materializes a validated native value; `from_parts` adopts an array that
-came from somewhere else and validates it. `array` borrows, `to_array` shallow-clones, and
-`into_array` and `into_parts` consume - so exporting to Arrow never copies buffers.
+`scalar_array` and `scalar_value` are the two directions of one boundary: a validated native value
+becomes an immutable one-row `ArrayRef`, and a one-row array that came from somewhere else decodes
+back to its canonical `Value`. The exact `Field` beside them is the authority an array datatype
+alone cannot be - it carries the name, the nullability, the dictionary options, the metadata, and
+the extension identity - so both directions validate through the same schema-directed walk every
+row value takes. The array is a plain `ArrayRef`, so exporting to Arrow never copies buffers.
 
-`from_parts` is the defensive door. It checks the length, then bounds the Field's datatype depth
+`scalar_value` is the defensive door. It checks the length, then bounds the Field's datatype depth
 *before* handing it to Arrow's recursive projection, so a malformed foreign scalar reports a schema
 error instead of exhausting the native stack. A non-nullable Field may still hold a logical null,
 but only when the decoded value is exactly its datatype's canonical intrinsic default; that narrow
 exception is what keeps null-only dictionaries, unions, and run-end encodings closed under
-`into_parts` followed by `from_parts`, without admitting an arbitrary selected null.
+`scalar_array` followed by `scalar_value`, without admitting an arbitrary selected null.
+
+## TypedValue is the scalar without a Field
+
+```rust
+use arrow_array::Array;
+use yggdryl::generic::Int64Value;
+use yggdryl::{DataType, TypedValue, Value};
+
+let price = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?;
+let array = price.to_arrow_array()?;
+assert_eq!(array.len(), 1);
+assert_eq!(TypedValue::from_arrow_array(DataType::Int64, array.as_ref())?, price);
+
+// The marker-narrowed decode checks the datatype at compile time too.
+let typed = Int64Value::try_from_arrow_array(DataType::Int64, array.as_ref())?;
+assert_eq!(typed.value(), &Value::I64(7));
+
+// A null projects only when the datatype's own default spells it...
+let nothing = TypedValue::from_parts(DataType::Null, Value::Null)?;
+assert_eq!(nothing.to_arrow_array()?.logical_null_count(), 1);
+
+// ...an int64 null belongs to a nullable Field, so the pairing refuses it.
+let absent = TypedValue::from_parts(DataType::Int64, Value::Null)?;
+assert!(absent.to_arrow_array().is_err());
+```
+
+A caller holding a [`TypedValue`](generic.md) - one value and one datatype, with no Field around
+them - projects the same boundary directly: `to_arrow_array` materializes one row, and
+`from_arrow_array` (or the marker-narrowed `try_from_arrow_array`) decodes row zero of a one-row
+array into a validated pairing. The projection runs through a synthetic non-nullable Field over the
+pairing's datatype, with the same canonical-default exception the foreign-array door makes, so
+null-only datatypes stay closed under the round trip while a plain null remains the business of the
+nullable Field that would hold it.
 
 ## StructScalar
 
@@ -402,7 +435,7 @@ materialized first.
 ## Materialization budgets
 
 ```rust
-use yggdryl::arrow::ArrowScalar;
+use yggdryl::arrow::scalar_array;
 use yggdryl::{DataType, Field, Value};
 
 // One logical null, one million and one mandatory physical child slots.
@@ -411,7 +444,7 @@ let items = Field::new(
     DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 1_000_001)?,
     true,
 );
-let message = ArrowScalar::from_value(items, Value::Null).unwrap_err().to_string();
+let message = scalar_array(&items, &Value::Null).unwrap_err().to_string();
 assert!(message.contains("expanded slots"), "{message}");
 assert!(message.contains("expected at most 1000000"), "{message}");
 assert!(message.contains("got 1000001"), "{message}");
@@ -421,7 +454,7 @@ let wide = DataType::from_fields([
     Field::new("left", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
     Field::new("right", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
 ])?;
-let message = ArrowScalar::from_value(Field::new("wide", wide, true), Value::Null)
+let message = scalar_array(&Field::new("wide", wide, true), &Value::Null)
     .unwrap_err()
     .to_string();
 assert!(message.contains("fixed bytes"), "{message}");
@@ -441,7 +474,7 @@ type-id and offset buffers, and the values a dictionary or run-end wrapper hides
 A sparse union pays for every child at once, because sparse children are all full length.
 
 ```rust
-use yggdryl::arrow::ArrowScalar;
+use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{DataType, Field, UnionMode, Value};
 
 // The inactive branch is far past the byte budget, and is never visited.
@@ -460,9 +493,10 @@ let dense = DataType::union(
     UnionMode::Dense,
 )?;
 
+let choice = Field::new("choice", dense, false);
 let chosen = Value::from_sequence([Value::from(0_i8), Value::from(11_i32)]);
-let scalar = ArrowScalar::from_value(Field::new("choice", dense, false), chosen.clone())?;
-assert_eq!(scalar.to_value()?, chosen);
+let array = scalar_array(&choice, &chosen)?;
+assert_eq!(scalar_value(&choice, array.as_ref())?, chosen);
 ```
 
 The budget is charged for what is actually built. A dense union allocates only the selected member,

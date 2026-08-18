@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
-use yggdryl::arrow::{ArrowScalar, DefaultArrowScalar};
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode, Value};
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::{DataType, Field, TimeUnit, Timezone, TypedValue, UnionMode, Value};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -64,33 +64,41 @@ fn representative_types() -> Vec<DataType> {
 }
 
 #[test]
-fn datatype_defaults_round_trip_through_the_public_parts_constructor() {
+fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
     for data_type in representative_types() {
         let expected = data_type.default_value().unwrap();
-        let scalar = data_type
-            .default_arrow_scalar()
+        let array = data_type
+            .default_arrow_array()
             .unwrap_or_else(|error| panic!("{} Arrow default failed: {error}", data_type.kind()));
-        assert_eq!(scalar.field().name(), "value");
-        assert!(!scalar.field().is_nullable());
-        assert_eq!(scalar.data_type(), &data_type);
-        assert_eq!(scalar.array().len(), 1);
+        assert_eq!(array.len(), 1);
+        // The default projects through a synthetic non-nullable Field, which is
+        // exactly what the foreign-array importer's canonical-default exception
+        // exists to accept back.
+        let field = Field::new("value", data_type.clone(), false);
         // The Arrow reading spells temporals and decimals with their unit,
         // zone, or scale; the canonical default recognizes both spellings.
-        let read = scalar.to_value().unwrap();
+        let read = scalar_value(&field, array.as_ref()).unwrap();
         assert!(
             data_type.is_default_value(&read).unwrap(),
             "{} read {read:?} is not the default {expected:?}",
             data_type.kind()
         );
 
-        let (field, array) = scalar.into_parts();
-        let rebuilt = ArrowScalar::from_parts(field, array).unwrap();
-        let read = rebuilt.into_value().unwrap();
+        // The same array decodes as a typed pairing, which re-projects to an
+        // equal one-row array: the default is closed under both directions.
+        let typed = TypedValue::from_arrow_array(data_type.clone(), array.as_ref())
+            .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", data_type.kind()));
+        assert_eq!(typed.data_type(), &data_type);
         assert!(
-            data_type.is_default_value(&read).unwrap(),
-            "{} rebuilt {read:?} is not the default {expected:?}",
-            data_type.kind()
+            data_type.is_default_value(typed.value()).unwrap(),
+            "{} typed {:?} is not the default {expected:?}",
+            data_type.kind(),
+            typed.value()
         );
+        let reprojected = typed
+            .to_arrow_array()
+            .unwrap_or_else(|error| panic!("{} reprojection failed: {error}", data_type.kind()));
+        assert_eq!(reprojected.as_ref(), array.as_ref());
     }
 }
 
@@ -103,50 +111,41 @@ fn field_defaults_preserve_exact_identity_and_nullability() {
         [("ARROW:extension:name", "example.price")],
     )
     .unwrap();
-    let scalar = field.default_arrow_scalar().unwrap();
-    assert_eq!(scalar.field(), &field);
-    assert!(scalar.array().is_null(0));
-    let cloned = scalar.to_array();
-    assert!(Arc::ptr_eq(scalar.array(), &cloned));
+    let array = field.default_arrow_array().unwrap();
+    assert_eq!(array.len(), 1);
+    assert!(array.is_null(0));
+    assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), Value::Null);
 
     assert!(
         Field::new("never", DataType::Null, false)
-            .default_arrow_scalar()
+            .default_arrow_array()
             .is_err()
     );
 }
 
 #[test]
-fn external_parts_reject_wrong_lengths_types_and_recursive_nullability() {
-    let scalar = DataType::Int32.default_arrow_scalar().unwrap();
+fn foreign_arrays_reject_wrong_lengths_types_and_recursive_nullability() {
+    let array = DataType::Int32.default_arrow_array().unwrap();
+    assert!(scalar_value(&Field::new("value", DataType::Int64, false), array.as_ref()).is_err());
     assert!(
-        ArrowScalar::from_parts(
-            Field::new("value", DataType::Int64, false),
-            scalar.to_array(),
-        )
-        .is_err()
-    );
-    assert!(
-        ArrowScalar::from_parts(
-            Field::new("value", DataType::Int32, false),
-            scalar.array().slice(0, 0),
+        scalar_value(
+            &Field::new("value", DataType::Int32, false),
+            array.slice(0, 0).as_ref(),
         )
         .is_err()
     );
 
     let nullable_child = Field::new("child", DataType::Int32, true)
-        .default_arrow_scalar()
+        .default_arrow_array()
         .unwrap();
     assert!(
-        ArrowScalar::from_parts(
-            Field::new("child", DataType::Int32, false),
-            nullable_child.into_array(),
+        scalar_value(
+            &Field::new("child", DataType::Int32, false),
+            nullable_child.as_ref(),
         )
         .is_err()
     );
-    assert!(
-        ArrowScalar::from_value(Field::new("child", DataType::Int32, false), Value::Null,).is_err()
-    );
+    assert!(scalar_array(&Field::new("child", DataType::Int32, false), &Value::Null).is_err());
 }
 
 #[test]
@@ -166,10 +165,15 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
     ];
     for data_type in intrinsic_defaults {
         let expected = data_type.default_value().unwrap();
-        let scalar = data_type.default_arrow_scalar().unwrap();
-        let (field, array) = scalar.into_parts();
-        let rebuilt = ArrowScalar::from_parts(field, array).unwrap();
-        assert_eq!(rebuilt.into_value().unwrap(), expected);
+        let array = data_type.default_arrow_array().unwrap();
+        // The canonical-default exception admits the logical-null default back
+        // through a non-nullable Field...
+        let field = Field::new("value", data_type.clone(), false);
+        assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), expected);
+        // ...and the typed pairing projects the same null-only default out
+        // through its synthetic non-nullable Field.
+        let typed = TypedValue::from_parts(data_type, expected).unwrap();
+        assert_eq!(typed.to_arrow_array().unwrap().as_ref(), array.as_ref());
     }
 
     let union = DataType::union(
@@ -180,20 +184,13 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
         UnionMode::Dense,
     )
     .unwrap();
-    let selected_null = Field::new("choice", union.clone(), true)
-        .default_arrow_scalar()
-        .unwrap();
+    let nullable = Field::new("choice", union.clone(), true);
+    let selected_null = nullable.default_arrow_array().unwrap();
     assert_ne!(
-        selected_null.to_value().unwrap(),
+        scalar_value(&nullable, selected_null.as_ref()).unwrap(),
         union.default_value().unwrap()
     );
-    assert!(
-        ArrowScalar::from_parts(
-            Field::new("choice", union, false),
-            selected_null.into_array(),
-        )
-        .is_err()
-    );
+    assert!(scalar_value(&Field::new("choice", union, false), selected_null.as_ref(),).is_err());
 }
 
 #[test]
@@ -206,23 +203,24 @@ fn nullable_dictionary_null_keys_decode_as_native_null() {
         )
         .unwrap(),
     );
-    let scalar = ArrowScalar::from_parts(Field::new("encoded", data_type, true), array).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), Value::Null);
+    assert_eq!(
+        scalar_value(&Field::new("encoded", data_type, true), array.as_ref()).unwrap(),
+        Value::Null
+    );
 }
 
 #[test]
-fn external_parts_preflight_deep_caller_built_schemas_before_arrow_projection() {
+fn foreign_arrays_preflight_deep_caller_built_schemas_before_arrow_projection() {
     let mut maximum = DataType::Int32;
     for _ in 0..DataType::PARSE_RECURSION_LIMIT - 1 {
         maximum = DataType::list(Field::new("item", maximum, false));
     }
-    let scalar = maximum.default_arrow_scalar().unwrap();
-    let (field, array) = scalar.into_parts();
-    ArrowScalar::from_parts(field, array).unwrap();
+    let array = maximum.default_arrow_array().unwrap();
+    scalar_value(&Field::new("value", maximum.clone(), false), array.as_ref()).unwrap();
 
     let overdeep = DataType::list(Field::new("item", maximum, false));
     let unrelated: ArrayRef = Arc::new(Int32Array::from(vec![0]));
-    let error = ArrowScalar::from_parts(Field::new("value", overdeep, false), unrelated)
+    let error = scalar_value(&Field::new("value", overdeep, false), unrelated.as_ref())
         .unwrap_err()
         .to_string();
     assert!(error.contains("hard limit"), "{error}");

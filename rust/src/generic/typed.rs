@@ -197,6 +197,115 @@ impl TypedValue {
     }
 }
 
+#[cfg(feature = "arrow")]
+impl<K: FieldType> TypedValue<K> {
+    /// Materialize this pairing as an exact one-row Arrow array.
+    ///
+    /// The value projects through a synthetic non-nullable Field over
+    /// [`Self::data_type`], so a null materializes only when it is the
+    /// datatype's own canonical default - [`crate::DataType::Null`] and
+    /// transparent logical wrappers with a null-only default. A null under any
+    /// other datatype is a property of the column beside it, which is what
+    /// [`crate::arrow::scalar_array`] with a nullable [`crate::Field`] spells.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, TypedValue, Value};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let typed = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?;
+    /// let array = typed.to_arrow_array()?;
+    /// assert_eq!(array.len(), 1);
+    /// assert_eq!(array.data_type(), &arrow_schema::DataType::Int64);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the physical Arrow layout cannot represent the
+    /// value, or when the value is a null the datatype's canonical default
+    /// does not spell.
+    pub fn to_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
+        let field = crate::Field::new("value", self.data_type.clone(), false);
+        match crate::arrow::validate_scalar_value(&field, self.value.clone()) {
+            Ok(value) => crate::arrow::value::array_from_values(&field, &[&value]),
+            Err(error) => {
+                // The same narrow exception the foreign-array import makes:
+                // a datatype whose canonical default is logically null - Null
+                // itself, null-only dictionaries, unions, run-end encodings -
+                // stays projectable even though the synthetic Field is
+                // non-nullable.
+                if self.data_type.is_default_value(&self.value)? {
+                    crate::arrow::value::array_from_values(&field, &[&self.value])
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    /// Decode row 0 of a one-row Arrow array, checking the marker too.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype is not this marker's variant, when
+    /// the array does not hold exactly one row of the datatype's exact
+    /// physical layout, or when the decoded value is not one the datatype
+    /// accepts.
+    pub fn try_from_arrow_array(
+        data_type: DataType,
+        array: &dyn arrow_array::Array,
+    ) -> crate::arrow::Result<Self> {
+        ensure_marker::<K>(&data_type)?;
+        Self::decoded_from_arrow_array(data_type, array)
+    }
+
+    /// Decode a validated one-row array without re-checking the marker.
+    fn decoded_from_arrow_array(
+        data_type: DataType,
+        array: &dyn arrow_array::Array,
+    ) -> crate::arrow::Result<Self> {
+        // A null is accepted by every datatype here, so the synthetic Field is
+        // nullable; the exact-datatype, length, and bounded-shape checks still
+        // run inside the shared scalar decoder.
+        let field = crate::Field::new("value", data_type.clone(), true);
+        let value = crate::arrow::scalar_value(&field, array)?;
+        // The Arrow reading may spell a value physically - a float16 reads
+        // back as its narrow float - so canonicalize through the same walk a
+        // column value takes before the pairing holds it.
+        let value = crate::arrow::validate_scalar_value(&field, value)?;
+        Self::from_checked_parts(data_type, value).map_err(crate::arrow::Error::from)
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl TypedValue {
+    /// Decode row 0 of a one-row Arrow array as a dynamic pairing.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, TypedValue, Value};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let array = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?.to_arrow_array()?;
+    /// let typed = TypedValue::from_arrow_array(DataType::Int64, array.as_ref())?;
+    /// assert_eq!(typed.value(), &Value::I64(7));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the array does not hold exactly one row of the
+    /// datatype's exact physical layout, or when the decoded value is not one
+    /// the datatype accepts.
+    pub fn from_arrow_array(
+        data_type: DataType,
+        array: &dyn arrow_array::Array,
+    ) -> crate::arrow::Result<Self> {
+        Self::decoded_from_arrow_array(data_type, array)
+    }
+}
+
 /// Report a datatype that is not the marker's variant.
 fn ensure_marker<K: FieldType>(data_type: &DataType) -> Result<()> {
     if K::matches(data_type) {

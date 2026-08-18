@@ -25,7 +25,7 @@ use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef, SortOpt
 use arrow_select::{concat::concat, take::take, zip::zip};
 
 use crate::arrow::value::MaterializationBudget;
-use crate::arrow::{DefaultArrowScalar, Error, Result};
+use crate::arrow::{Error, Result};
 
 /// Arrow array and record-batch casting owned by a canonical Yggdryl schema.
 ///
@@ -674,11 +674,11 @@ impl ArrayCastPlan {
             };
         if remaining_nulls != 0 {
             let default = if matches!(self.null_policy, NullPolicy::DataType) {
-                self.field.data_type().default_arrow_scalar()?
+                self.field.data_type().default_arrow_array()?
             } else {
-                self.field.default_arrow_scalar()?
+                self.field.default_arrow_array()?
             };
-            if !is_logically_null(default.array().as_ref(), 0) {
+            if !is_logically_null(default.as_ref(), 0) {
                 return Err(Error::IncompatibleSchema(format!(
                     "required field {:?} still contains {remaining_nulls} logical null values after default filling",
                     self.field.name(),
@@ -3012,11 +3012,11 @@ fn fill_nulls(
 
     let source_for_retention = Arc::clone(&array);
     let default = if data_type_semantics {
-        field.data_type().default_arrow_scalar()?
+        field.data_type().default_arrow_array()?
     } else {
-        field.default_arrow_scalar()?
+        field.default_arrow_array()?
     };
-    if is_logically_null(default.array().as_ref(), 0) {
+    if is_logically_null(default.as_ref(), 0) {
         budget.restore(phase);
         return Ok(array);
     }
@@ -3027,7 +3027,6 @@ fn fill_nulls(
         }),
     };
     let mask = BooleanArray::new(mask, None);
-    let default = default.into_array();
     let (array, default) = if contains_dictionary(field.data_type()) {
         budget.add_bitmap(array.len())?;
         let live = BooleanBuffer::collect_bool(array.len(), |index| {
@@ -3123,8 +3122,8 @@ where
     if has_derived_logical_nulls(value_type) {
         budget.add_bitmap(1)?;
     }
-    let default = value_type.default_arrow_scalar()?;
-    if is_logically_null(default.array().as_ref(), 0) {
+    let default = value_type.default_arrow_array()?;
+    if is_logically_null(default.as_ref(), 0) {
         budget.restore(phase);
         return Ok(array);
     }
@@ -3179,7 +3178,7 @@ where
     // vocabulary. Searching the raw vocabulary here would make a one-row
     // dictionary over a very long run-end encoded value array take work
     // proportional to the hidden logical length.
-    let compare_default = make_yggdryl_comparator(value_type, values, default.array(), budget)?;
+    let compare_default = make_yggdryl_comparator(value_type, values, &default, budget)?;
     let mut default_index = representatives
         .iter()
         .position(|index| compare_default(*index, 0) == Ordering::Equal);
@@ -3225,9 +3224,9 @@ where
     };
     let output_values = if appended_default {
         match compact {
-            None => default.to_array(),
+            None => Arc::clone(&default),
             Some(compact) => {
-                let default_array = default.to_array();
+                let default_array = Arc::clone(&default);
                 let (compact, default_array) = if contains_dictionary(value_type) {
                     let value_field = Field::new("dictionary", value_type.clone(), true);
                     align_nested_dictionaries(
@@ -4950,14 +4949,14 @@ fn default_array(
             if len != 1 {
                 budget.add_array(&DataType::UInt32, len)?;
             }
-            let default = field.default_arrow_scalar()?.into_array();
+            let default = field.default_arrow_array()?;
             repeat_scalar(&default, len)?
         }
         _ => {
             let exposure = exposure.ok_or_else(|| {
                 Error::IncompatibleSchema("mixed missing-field exposure requires a mask".to_owned())
             })?;
-            let default = field.default_arrow_scalar()?.into_array();
+            let default = field.default_arrow_array()?;
             let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
             let placeholder = crate::arrow::value::array_from_values(field, &[&placeholder])?;
             let mask = BooleanArray::new(exposure.clone(), None);
@@ -5032,7 +5031,7 @@ where
     let zero = K::Native::try_from(0).map_err(|_| {
         Error::IncompatibleSchema("dictionary key cannot represent zero".to_owned())
     })?;
-    let values = dictionary.value().default_arrow_scalar()?.into_array();
+    let values = dictionary.value().default_arrow_array()?;
     let mut keys = arrow_array::builder::PrimitiveBuilder::<K>::with_capacity(exposure.len());
     for index in 0..exposure.len() {
         if exposure.value(index) {

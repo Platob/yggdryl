@@ -7,7 +7,6 @@ use napi::bindgen_prelude::{
     Unknown,
 };
 use napi_derive::napi;
-use yggdryl::arrow::DefaultArrowScalar;
 use yggdryl::{Field as CoreField, ProtocolMetadata as CoreProtocolMetadata, Scheme as CoreScheme};
 
 use crate::{
@@ -1187,10 +1186,8 @@ impl JsField {
     /// materialization.
     #[napi(js_name = "_defaultArrowScalarIpcNative", skip_typescript)]
     pub fn default_arrow_scalar_ipc_native(&self) -> Result<napi::bindgen_prelude::Buffer> {
-        self.inner
-            .default_arrow_scalar()
-            .map_err(napi_error)
-            .and_then(arrow_scalar_to_ipc)
+        let array = self.inner.default_arrow_array().map_err(napi_error)?;
+        arrow_scalar_to_ipc(&self.inner, array)
     }
 
     /// Recursively normalize this exact Field for one closed compatibility

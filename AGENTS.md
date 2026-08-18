@@ -541,7 +541,11 @@ Keep exact; no alternate aliases:
   construction, sharing Field's marker family - `TypedValue<K: FieldType>`,
   one alias per datatype (`Int64Value`, `Utf8Value`, ...), `AnyType` default.
   Narrowed: `try_from_parts`, `try_from_value`; dynamic: `from_parts`,
-  `from_value`; static datatypes add `new`. Never a second marker family.
+  `from_value`; static datatypes add `new`. Behind the `arrow` feature it is
+  the one scalar Arrow projection: `to_arrow_array`, `from_arrow_array`,
+  narrowed `try_from_arrow_array`; callers holding Field context use
+  `arrow::scalar_array` / `arrow::scalar_value` instead. Never a second
+  marker family, never a Field-owning scalar wrapper.
 - Codec values: `Value::from_sequence`, `Value::from_mapping`; `Float` has
   `as_f64`/`into_f64`. No application-tag carrier: a name over an untyped
   payload is not a type. Never reintroduce `Tag`, `TaggedValue`, or
@@ -731,11 +735,17 @@ actual, where.
   batch and IPC readers validate the stream schema once, decode lazily,
   retain at most one batch, stop at the first failing row; conversion is
   exhaustive and schema-directed - never JSON as an Arrow bridge.
-- `ArrowScalar` owns an exact Field and one immutable one-row `ArrayRef`;
-  `from_parts` validates foreign arrays, `from_value` caller values.
-  `DefaultArrowScalar` (on `DataType` and `Field`) uses the bounded core
-  default planner - no binding-side placeholder table or redundant
-  validation.
+- One scalar crosses the Arrow array boundary as `arrow::scalar_array`
+  (validated caller value in, exact one-row `ArrayRef` out) and
+  `arrow::scalar_value` (validated foreign one-row array in, canonical
+  `Value` out); the exact `Field` beside them is the authority on
+  nullability, dictionary options, and extension identity. `TypedValue`
+  projects the same boundary without a Field (`to_arrow_array`,
+  `from_arrow_array`, marker-narrowed `try_from_arrow_array`) through a
+  synthetic non-nullable Field with the canonical-default null exception.
+  Defaults are `DataType::default_arrow_array` / `Field::default_arrow_array`
+  over the bounded core default planner - no Field-owning scalar wrapper
+  struct, no binding-side placeholder table or redundant validation.
 - Casting: `ArrowCast` owns schema-directed array and RecordBatch casts;
   typed fields cast to their own array type
   (`Int64Field::cast_arrow_array -> Int64Array`) via `field::ArrowFieldType`.

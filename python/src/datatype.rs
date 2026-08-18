@@ -12,7 +12,6 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, P
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList};
 use yggdryl::ArrowCast;
-use yggdryl::arrow::{ArrowScalar, DefaultArrowScalar};
 use yggdryl::{
     DataType as CoreDataType, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
@@ -52,11 +51,11 @@ pub(crate) fn core_field_to_pyarrow<'py>(
 /// The Field C Schema is intentional: importing only the array datatype would
 /// discard extension metadata and prevent `PyArrow` from rehydrating a
 /// registered `ExtensionType`.
-pub(crate) fn default_arrow_scalar_to_pyarrow(
-    py: Python<'_>,
-    scalar: ArrowScalar,
-) -> PyResult<Bound<'_, PyAny>> {
-    let (field, array) = scalar.into_parts();
+pub(crate) fn default_arrow_scalar_to_pyarrow<'py>(
+    py: Python<'py>,
+    field: &yggdryl::Field,
+    array: &ArrayRef,
+) -> PyResult<Bound<'py, PyAny>> {
     let data = array.to_data();
     let (ffi_array, _data_type_schema) = to_ffi(&data).map_err(value_error)?;
     let ffi_field = field.to_arrow_ffi().map_err(value_error)?;
@@ -606,14 +605,16 @@ impl PyDataType {
 
     /// Returns the native canonical default as an exact `PyArrow` Scalar.
     fn default_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = self.inner.default_arrow_scalar().map_err(value_error)?;
-        default_arrow_scalar_to_pyarrow(py, scalar)
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        let field = yggdryl::Field::new("value", self.inner.clone(), false);
+        default_arrow_scalar_to_pyarrow(py, &field, &array)
     }
 
     /// Returns the native canonical default in its cached Python type plan.
     fn default_pyvalue<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = self.inner.default_arrow_scalar().map_err(value_error)?;
-        let scalar = default_arrow_scalar_to_pyarrow(py, scalar)?;
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        let field = yggdryl::Field::new("value", self.inner.clone(), false);
+        let scalar = default_arrow_scalar_to_pyarrow(py, &field, &array)?;
         let data_type = Py::new(py, self.clone())?;
         py.import("yggdryl.records._defaults")?
             .getattr("_default_pyvalue_from_datatype")?

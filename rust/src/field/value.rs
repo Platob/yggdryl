@@ -316,6 +316,20 @@ fn canonical_sequence(
 }
 
 fn canonical_struct(fields: &Fields, value: &Value) -> Result<(Value, bool)> {
+    // A struct value reads back from Arrow as its typed record; both
+    // spellings carry one value per field, so a record canonicalizes as the
+    // plain sequence it wraps - the same two spellings the materializer and
+    // the default planner already recognize.
+    if let Some((_, values)) = value.as_record() {
+        if values.len() != fields.len() {
+            return canonicalization_failure(&DataType::Struct(fields.clone()));
+        }
+        let canonical = canonicalize_slice(values, |index, value| {
+            canonicalize_field_value(&fields[index], value)
+        })?
+        .unwrap_or_else(|| values.to_vec());
+        return Ok((Value::from_sequence(canonical), true));
+    }
     let Some(values) = value.as_sequence() else {
         return canonicalization_failure(&DataType::Struct(fields.clone()));
     };

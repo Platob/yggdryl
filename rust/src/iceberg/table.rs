@@ -1858,8 +1858,7 @@ fn extreme(column: &ArrayRef, field: &Field, descending: bool) -> Result<Option<
         return Ok(None);
     };
     let slice = column.slice(usize::try_from(row).unwrap_or_default(), 1);
-    let scalar = crate::arrow::ArrowScalar::from_parts(field.clone().with_nullable(true), slice)
-        .and_then(|scalar| scalar.to_value())
+    let scalar = crate::arrow::scalar_value(&field.clone().with_nullable(true), slice.as_ref())
         .map_err(|error| invalid(format_smolstr!("{error}")))?;
     Ok(single_value(&scalar, field.data_type()))
 }
@@ -1976,11 +1975,8 @@ fn tuple_at(
             ))
         })?;
         let slice = column.slice(row as usize, 1);
-        let scalar = crate::arrow::ArrowScalar::from_parts(field.clone(), slice)
-            .map_err(|error| invalid(format_smolstr!("{error}")))?;
         values.push(
-            scalar
-                .to_value()
+            crate::arrow::scalar_value(field, slice.as_ref())
                 .map_err(|error| invalid(format_smolstr!("{error}")))?,
         );
     }
