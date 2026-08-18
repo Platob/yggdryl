@@ -127,9 +127,9 @@ impl PageTable {
         ttl: Duration,
         pinned: Pinned,
     ) -> Option<&[u8]> {
-        let lapsed = match self.pages.get(&index) {
-            Some(page) => !pinned.holds(index) && now.saturating_duration_since(page.touched) > ttl,
-            None => return None,
+        let lapsed = {
+            let page = self.pages.get(&index)?;
+            !pinned.holds(index) && now.saturating_duration_since(page.touched) > ttl
         };
         if lapsed {
             self.remove(index);
