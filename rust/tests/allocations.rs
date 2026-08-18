@@ -77,6 +77,25 @@ fn counted<T>(work: impl FnOnce() -> T) -> (usize, T) {
     (counted, answer)
 }
 
+/// Refuse a count that scales with the record count.
+///
+/// The bound is deliberately loose - the window refills a few more times for a
+/// bigger corpus, and that *is* proportional to the bytes - while still being
+/// two orders of magnitude below what one allocation per record would produce.
+/// It is the shape being pinned, not a golden number that churns.
+fn flat(what: &str, small: usize, small_rows: usize, large: usize, large_rows: usize) {
+    assert!(
+        large * 100 < large_rows,
+        "{what} must not allocate per record: {large} allocations over \
+         {large_rows} records is more than one per hundred",
+    );
+    assert!(
+        large < small * 4 + 32,
+        "{what} allocations grew with the corpus: {small} over {small_rows} \
+         records against {large} over {large_rows}",
+    );
+}
+
 /// A corpus of `count` log records, built *before* anything is counted.
 fn corpus(count: usize) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -120,17 +139,13 @@ fn reading_records_allocates_the_same_for_a_thousand_and_for_ten_thousand() {
     assert_eq!(small_rows, 1_000);
     assert_eq!(large_rows, 10_000);
     // Ten times the records, and the count barely moves: a record is a view
-    // into the window, so nothing per record is allocated. A per-record
-    // allocation would put roughly ten thousand here.
-    assert!(
-        large_allocations <= small_allocations + 8,
-        "ten times the records must not cost allocations per record \
-         ({small_allocations} against {large_allocations})",
-    );
-    // And the whole drain is a handful of buffers, not a per-record floor.
-    assert!(
-        large_allocations < 32,
-        "the whole drain should cost a window and its decoders, got {large_allocations}",
+    // into the window, so nothing per record is allocated.
+    flat(
+        "reading",
+        small_allocations,
+        small_rows,
+        large_allocations,
+        large_rows,
     );
 }
 
@@ -160,23 +175,16 @@ fn matched_captures_and_a_pattern_add_no_per_record_allocation() {
     let (large_allocations, large_levels) = counted(|| matched(&large));
 
     assert_eq!((small_levels, large_levels), (1_000, 10_000));
-    // This is the one place the surface does *not* meet the claim yet, and the
-    // number is here so it cannot be forgotten: a matched record costs exactly
-    // two allocations - `regex-lite` builds a fresh `Captures` per call, and
-    // the span vector is built per record - where an unmatched one costs none.
-    // Removing them means hoisting a `CaptureLocations` and the span vector
-    // onto the reader and lending them to the view; until then this pins the
-    // cost at two rather than letting it grow.
-    let per_record = |allocations: usize, records: usize| allocations / records;
-    assert_eq!(
-        per_record(small_allocations, 1_000),
-        2,
-        "{small_allocations}"
-    );
-    assert_eq!(
-        per_record(large_allocations, 10_000),
-        2,
-        "{large_allocations}"
+    // Matching allocates nothing per record either. `regex-lite` would build a
+    // fresh `Captures` for every call and the span vector would be one per
+    // match; both belong to the *reader* instead, which holds one of each and
+    // rewrites them as records go by.
+    flat(
+        "matching",
+        small_allocations,
+        1_000,
+        large_allocations,
+        10_000,
     );
 }
 
@@ -196,14 +204,12 @@ fn writing_records_allocates_one_reused_buffer_however_many_there_are() {
     let (small_allocations, ()) = counted(|| small.write_lines(&thousand).expect("a write"));
     let (large_allocations, ()) = counted(|| large.write_lines(&ten_thousand).expect("a write"));
 
-    assert!(
-        large_allocations <= small_allocations + 4,
-        "records accumulate in one reused buffer and flush in chunks, so ten \
-         times the records must not cost allocations per record \
-         ({small_allocations} against {large_allocations})",
-    );
-    assert!(
-        large_allocations < 16,
-        "a ten-thousand-record write should cost one buffer, got {large_allocations}",
+    // Records accumulate in one reused buffer and flush in chunks.
+    flat(
+        "writing",
+        small_allocations,
+        1_000,
+        large_allocations,
+        10_000,
     );
 }

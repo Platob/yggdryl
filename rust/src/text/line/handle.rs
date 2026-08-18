@@ -483,16 +483,20 @@ pub struct TextLines<R> {
     options: Arc<TextLineOptions>,
     url: Arc<str>,
     rownum: i64,
+    /// The capture buffers every record borrows instead of allocating.
+    scratch: super::view::Scratch,
 }
 
 impl<R: Read> TextLines<R> {
     /// Wrap a decoded byte stream in record iteration.
     fn over(source: R, options: Arc<TextLineOptions>, url: Arc<str>) -> Self {
+        let scratch = super::view::Scratch::for_options(&options);
         Self {
             window: Window::new(source),
             options,
             url,
             rownum: 0,
+            scratch,
         }
     }
 
@@ -519,6 +523,7 @@ impl<R: Read> TextLines<R> {
             options,
             url,
             rownum,
+            scratch,
         } = self;
         let linesep = options.linesep();
         let mut opens = super::opener(options);
@@ -535,6 +540,7 @@ impl<R: Read> TextLines<R> {
             *rownum,
             record.offset,
             record.lines,
+            scratch,
         )))
     }
 }

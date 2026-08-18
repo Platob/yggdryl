@@ -283,58 +283,101 @@ From one containerized x86_64 Linux run, each target run alone (`cargo bench --b
 --features "parquet iceberg" -- lines_gzip`; Criterion, 10 samples, medians with 95% intervals):
 
 ```text
-lines_gzip/folder/gzip    5.4928 s   17.045 MiB/s   [5.4374 s 5.5504 s]
-lines_gzip/folder/plain   5.3714 s   17.430 MiB/s   [5.3328 s 5.4104 s]
-lines_gzip/single/gzip    5.4684 s   17.121 MiB/s   [5.4099 s 5.5341 s]
-lines_gzip/casts/typed    5.4964 s   17.034 MiB/s   [5.4164 s 5.5767 s]
-lines_gzip/casts/text     5.3721 s   17.428 MiB/s   [5.3386 s 5.4045 s]
-lines_gzip/scale/125k   699.47 ms    16.731 MiB/s
-lines_gzip/scale/250k     1.4050 s   16.659 MiB/s
-lines_gzip/scale/500k     2.7508 s   17.017 MiB/s
-lines_gzip/scale/1m       5.5704 s   16.807 MiB/s
+lines_gzip/folder/gzip    7.3296 s   12.773 MiB/s   [7.3010 s 7.3577 s]
+lines_gzip/folder/plain   7.2334 s   12.943 MiB/s   [7.2015 s 7.2765 s]
+lines_gzip/single/gzip    8.0862 s   11.578 MiB/s   [8.0155 s 8.1522 s]
+lines_gzip/casts/typed    7.3877 s   12.673 MiB/s   [7.3146 s 7.4974 s]
+lines_gzip/casts/text     7.1908 s   13.020 MiB/s   [7.1627 s 7.2229 s]
+lines_gzip/scale/125k   917.96 ms    12.749 MiB/s
+lines_gzip/scale/250k     1.8404 s   12.718 MiB/s
+lines_gzip/scale/500k     3.9324 s   11.904 MiB/s
+lines_gzip/scale/1m       8.0716 s   11.599 MiB/s
 ```
 
-**The headline is 93.6 MiB of compressed log text parsed into typed Arrow batches in 5.49 s -
-182,057 rows/s.** What the other rows are for:
+**The headline is 93.6 MiB of compressed log text parsed into typed Arrow batches in 7.33 s -
+136,433 rows/s.**
 
-- **Nothing is quadratic.** The sweep holds 16.66-17.02 MiB/s while the corpus grows eight-fold,
-  and the times double cleanly: 699 ms, 1.405 s, 2.751 s, 5.570 s (2.01x, 1.96x, 2.02x). Flat
+**Read the structural deltas in that table as nothing.** `scale/1m` re-reads the *same corpus
+with the same options* as `folder/gzip`, at the end of the run instead of the start, and lands
+10% slower (8.0716 s against 7.3296 s) - so this container's own drift across a fourteen-minute
+run is larger than every structural difference the group is trying to isolate. The coding, the
+rotation, and the cast are all sub-5% effects; none of them is separable here, and quoting one
+would be reading a number that says nothing. Two rows that survive the drift because they are
+not sub-5%:
+
+- **Nothing is quadratic.** The sweep holds 11.90-12.75 MiB/s while the corpus grows eight-fold,
+  and the times double cleanly: 918 ms, 1.840 s, 3.932 s, 8.072 s (2.00x, 2.14x, 2.05x). Flat
   per-byte throughput is evidence about *shape*, not about residency - a reader that buffered
   the whole decoded corpus before emitting a batch would look just as flat - which is why the
   memory claim is measured separately, below.
-- **Storing the logs gzip-coded costs about 2%** (5.4928 s against 5.3714 s; the intervals just
-  clear each other). Read that as the *net* trade, not as the inflate in isolation: the coded
-  leaves move a fifth of the bytes off storage and then inflate them, and the two effects pull
-  in opposite directions. For inflate alone, both sides must move identical source bytes, which
-  is what the older `lines_arrow/parse/{plain,gzip}` pair does with in-memory handles (~1%).
-  Two percent of wall clock for 5.6x less storage is the trade a production reader is making.
-- **The rotation is free.** Eight leaves against one (5.4928 s against 5.4684 s) is within the
-  intervals: per-leaf open, media-type inference, and the batch boundary forced at every leaf
-  cost nothing measurable. A folder of a thousand daily logs reads like one file.
-- **Typed captures cost about 2%.** `casts/typed` against `casts/text` (5.4964 s against
-  5.3721 s) is the strict native cast on two captures for every record - 2,000,000 values -
-  which works out near 62 ns a value. Both rows only count rows, so nothing but the cast
-  differs. That is the price of `latency_us` arriving as `int64` instead of text.
+- **Inflate itself is free**, which the coded-against-plain rows cannot show through the drift:
+  `lines_arrow/parse/{plain,gzip}` moves identical source bytes through in-memory handles and
+  reports 594.70 ms against 595.82 ms - indistinguishable. The coded leaves also move a fifth of
+  the bytes off storage, so the folder rows measure a net trade rather than the inflate.
+
+**Against the implementation this surface replaced**, on this same container and the same corpus,
+the pre-refactor line reader measures 7.0888 s where this one measures 7.3296 s - about 3% - and
+the stages localize it: `lines_arrow/group/plain` (splitting records, no projection) is
+identical at 231.78 ms against 237.87 ms, and `lines_arrow/hash/corpus` is identical at 3.34 ms.
+The difference is in the Arrow projection, where the old code ran one match and read everything
+straight out of it while a `TextLine` resolves the same fields through lazily cached accessors -
+which is what buys the borrowed view, the write side, log mode, zones, and trimming. Removing
+the per-record allocations recovered 4% of it; the rest is that indirection, and it is stated
+here rather than left for a reader to discover.
+
+### What the record shape costs
+
+The `lines_shape` group prices the extractor's own options against one corpus whose record sizes
+swing by two orders of magnitude - a ~4 KB stack trace next to ~40-byte neighbours - so the batch
+bounds have something to disagree about:
+
+```text
+lines_shape/batching/rows       122.34 ms   29.213 MiB/s   20 batches, rows 544..=1024
+lines_shape/batching/bytes      123.67 ms   28.899 MiB/s    4 batches, rows 3220..=5594
+lines_shape/detect/timestamp     33.33 ms  107.22 MiB/s
+lines_shape/detect/regex         74.84 ms   47.751 MiB/s
+lines_shape/zone/naive          125.70 ms   28.432 MiB/s
+lines_shape/zone/fixed          125.20 ms   28.544 MiB/s
+lines_shape/zone/named          123.05 ms   29.044 MiB/s
+lines_shape/strip/whitespace    123.72 ms   28.887 MiB/s
+lines_shape/strip/none          122.94 ms   29.070 MiB/s
+```
+
+- **Timestamp detection is 2.2x faster than the equivalent pattern** (33.33 ms against 74.84 ms).
+  Log mode opens a record where `parse_datetime_prefix` succeeds at the line's start, behind a
+  cheap first-byte guard, and never runs a regex per line; `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*`
+  over the same corpus is the row beneath it. Both find the same record boundaries. Non-ISO
+  timestamp shapes still need a pattern - detection is not a general date parser - but for the
+  shapes it accepts, it is the faster default as well as the one needing no configuration.
+- **The two batch bounds are the same work, split differently.** Row-bounded closes 20 batches of
+  544-1024 rows; byte-bounded closes 4 of 3220-5594. The wall clock is within a percent either
+  way, so choosing between them is about the batch *shape* a downstream consumer wants, not about
+  throughput - which is the point of both defaulting and the first to trip winning.
+- **A zone is free, and so is trimming.** `zone/named` resolves a DST-observing zone through the
+  registry and lands inside the naive row's interval, because the offset is cached rather than
+  resolved per row - a sorted log resolves it once or twice per file. `strip/none` against the
+  default `whitespace` is likewise indistinguishable: trimming moves the record's own start and
+  end rather than copying anything, so the option that does nothing saves nothing.
 
 ### The binding boundaries, on the same corpus
 
 `log_lines_bulk.py --measure-memory` (release wheel, Python 3.11.15, PyArrow 25.0.1):
 
 ```text
-read folder gzip            5476.949 ms   182,583 rows/s   17.1 MiB/s decoded
-read folder plain           5519.981 ms   181,160 rows/s   17.0 MiB/s decoded
-read single gzip            5538.659 ms   180,549 rows/s   16.9 MiB/s decoded
-read folder utf8            5539.805 ms   180,512 rows/s   16.9 MiB/s decoded
-typed accessors             6067.945 ms   164,800 rows/s   15.4 MiB/s decoded
-text captures + py cast     5694.085 ms   175,621 rows/s   16.4 MiB/s decoded
+read folder gzip            7659.096 ms   130,564 rows/s   12.2 MiB/s decoded
+read folder plain           7615.238 ms   131,316 rows/s   12.3 MiB/s decoded
+read single gzip            7602.393 ms   131,538 rows/s   12.3 MiB/s decoded
+read folder utf8            7523.360 ms   132,919 rows/s   12.4 MiB/s decoded
+typed accessors             7694.314 ms   129,966 rows/s   12.2 MiB/s decoded
+text captures + py cast     7674.664 ms   130,299 rows/s   12.2 MiB/s decoded
 ```
 
-**The Python binding is free.** 182,583 rows/s against the Rust core's 182,057 is the same
-number twice: the reader crosses as an Arrow C Stream, pulled one batch at a time with no copy,
-so a Python caller pays for the parse and nothing else. Note also what this target *cannot*
-settle: its own run-to-run spread is a percent or two, so the coding, rotation, and cast deltas
-- all around 2% - flip sign between runs here. They are quoted from Criterion's intervals above
-and nowhere else.
+**The Python binding is free.** 130,564 rows/s against the Rust core's 136,433 is the same
+number twice once the container's own drift is allowed for: the reader crosses as an Arrow C
+Stream, pulled one batch at a time with no copy, so a Python caller pays for the parse and
+nothing else. Note what this target *cannot* settle either - its rows sit inside a 2% band, and
+the coding, rotation, and cast effects are all smaller than that, so none of them is a result
+here.
 
 The memory table is what Criterion cannot report, and it is the reason the projection is a
 reader rather than a function returning a table. Each size is measured in its own process
@@ -342,33 +385,41 @@ reader rather than a function returning a table. Each size is measured in its ow
 
 ```text
 probe                   records   decoded MiB   peak RSS MiB   over floor MiB
-floor (no corpus)             0           0.0           68.5             0.0
-scale 1/8               125,000          11.7           74.9             6.4
-scale 1/4               250,000          23.4           75.1             6.6
-scale 1/2               500,000          46.8           75.7             7.2
-scale 1/1             1,000,000          93.6           76.5             8.0
+floor (no corpus)             0           0.0           68.6             0.0
+scale 1/8               125,000          11.7           85.1            16.5
+scale 1/4               250,000          23.4           96.3            27.7
+scale 1/2               500,000          46.8          120.7            52.1
+scale 1/1             1,000,000          93.6          122.9            54.3
 ```
 
-**Eight times the corpus costs 1.25x the memory.** Reading 93.6 MiB of decoded text needs 8.0
-MiB above the bare interpreter - one batch at a time, content codings decoded as streams, the
-whole file never resident. That is the streaming contract as a measurement rather than a
-promise, and it is what lets a log directory larger than memory parse at all.
+**Residency is bounded by the batch, not by the corpus.** Doubling from 500,000 records to
+1,000,000 - and from 46.8 MiB of text to 93.6 MiB - moves the peak by 2.2 MiB, because what is
+resident is one batch and its builders, never the file. That is the streaming contract as a
+measurement rather than a promise, and it is what lets a log directory larger than memory parse
+at all.
+
+**The level it settles at is a default, and it is a choice.** 54 MiB above the bare interpreter
+is what `batch_size` 65,536 and `byte_size` 8 MiB cost on this record shape - roughly eight
+times the input bytes a batch holds, in offsets, validity, and builder headroom across a dozen
+columns. Batches that size are what a vectorized consumer wants; a caller who would rather have
+the footprint sets `batch_size` and gets it back proportionally. The row bound is the one that
+trips first here, at about 6.4 MiB of input per batch.
 
 `npm run --prefix node bench:lines` (release addon, **250,000 records** - a quarter of the Rust
 and Python corpus, because the boundary is dearer):
 
 ```text
-readArrowLines folder gzip    1476.144 ms   169,360 rows/s   15.9 MiB/s    7.4% spread
-readArrowLines folder plain   1460.570 ms   171,166 rows/s   16.0 MiB/s    5.2% spread
-readArrowLines single gzip    1440.573 ms   173,542 rows/s   16.2 MiB/s    4.4% spread
-readArrowLines folder utf8    1420.733 ms   175,965 rows/s   16.5 MiB/s    6.0% spread
-typed accessors               1564.626 ms   159,783 rows/s   15.0 MiB/s   17.3% spread
-text captures + js cast       1564.922 ms   159,752 rows/s   15.0 MiB/s    9.1% spread
+readArrowLines folder gzip    2023.843 ms   123,527 rows/s   11.6 MiB/s    6.3% spread
+readArrowLines folder plain   2174.462 ms   114,971 rows/s   10.8 MiB/s   16.2% spread
+readArrowLines single gzip    2206.057 ms   113,324 rows/s   10.6 MiB/s    7.1% spread
+readArrowLines folder utf8    2147.227 ms   116,429 rows/s   10.9 MiB/s    2.3% spread
+typed accessors               2078.320 ms   120,289 rows/s   11.3 MiB/s    7.6% spread
+text captures + js cast       2036.664 ms   122,750 rows/s   11.5 MiB/s    1.0% spread
 ```
 
 Arrow JS has no Arrow C Data consumer, so this binding hands every batch across as its own
 copied Arrow IPC stream - encoded natively, decoded again in JavaScript - which the other two
-never pay. **It costs about 7%** (169,360 rows/s against the core's 182,057): the parse is
+never pay. **It costs under 10%** (123,527 rows/s against the core's 136,433): the parse is
 expensive enough that a per-batch copy barely shows. Every structural delta in that table is
 smaller than the spread printed beside it, so none of them is a result; the target prints the
 spread precisely so nobody reads one.

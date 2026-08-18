@@ -1127,9 +1127,9 @@ handle - the shape the bindings hand across FFI.
 
 What that costs on a production-sized directory is measured rather than asserted: the
 [benchmarks](benchmarks.md#big-gzip-log-files-end-to-end) page reads a million records across
-eight rotated `.log.gz` leaves - 93.6 MiB of text from 16.8 MiB on disk - at ~182,000 rows/s,
-holding 8 MiB of memory to do it, and prices the content coding, the rotation, and the typed
-capture columns separately.
+eight rotated `.log.gz` leaves - 93.6 MiB of text from 16.8 MiB on disk - at ~136,000 rows/s,
+with residency bounded by one batch rather than by the corpus, and says plainly which of the
+structural deltas its container is too noisy to report.
 
 ### Streaming a trading log into a partitioned Iceberg table
 

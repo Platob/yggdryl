@@ -18,12 +18,14 @@
 //!   window grows to hold it, so the copy is amortized rather than per record.
 //! - **[`TextLine::into_owned`]** copies, because a caller asked it to.
 
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::ops::Range;
 
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Result};
+
+use regex_lite::CaptureLocations;
 
 use super::options::TextLineOptions;
 
@@ -60,6 +62,8 @@ pub struct TextLine<'window> {
     hash: OnceCell<i64>,
     /// The header match, run once and reused by every derived field.
     matched: OnceCell<Option<Matched>>,
+    /// The reader's capture buffers, borrowed rather than allocated per record.
+    scratch: &'window Scratch,
 }
 
 /// Everything one header match yields, resolved once.
@@ -73,9 +77,41 @@ pub(crate) struct Matched {
     /// are appended in order wherever the message is consumed, so nothing has
     /// to be joined into a fresh `String` first.
     pub(crate) message: (Range<usize>, Range<usize>),
+}
+
+/// The buffers a matched record borrows instead of allocating.
+///
+/// Both would otherwise be one allocation per *record*: `regex-lite` builds a
+/// fresh `Captures` for every `captures` call, and the span vector is one per
+/// match. A record is a view, so neither belongs to it - they belong to the
+/// reader, which holds exactly one of each and rewrites them as records go by.
+///
+/// That is sound because exactly one record is alive at a time:
+/// [`TextLines::next`](super::TextLines::next) borrows the reader for the
+/// record it returns, so the next call cannot run until that record is gone.
+/// The interior mutability is what lets the accessors keep taking `&self`.
+#[derive(Debug, Default)]
+pub(crate) struct Scratch {
+    /// Filled by `captures_read` rather than allocated per call. `None` when
+    /// the extractor has no header expression to fill it from.
+    locations: RefCell<Option<CaptureLocations>>,
     /// Each named capture's span, in group order; `None` when it did not
-    /// participate in the match.
-    pub(crate) captures: Vec<Option<Range<usize>>>,
+    /// participate in the match. Cleared and refilled per record.
+    spans: RefCell<Vec<Option<Range<usize>>>>,
+}
+
+impl Scratch {
+    /// The buffers `options` needs, sized once for the whole read.
+    pub(crate) fn for_options(options: &TextLineOptions) -> Self {
+        Self {
+            locations: RefCell::new(
+                options
+                    .header_expression()
+                    .map(regex_lite::Regex::capture_locations),
+            ),
+            spans: RefCell::new(Vec::with_capacity(options.capture_names().count())),
+        }
+    }
 }
 
 impl<'window> TextLine<'window> {
@@ -87,6 +123,7 @@ impl<'window> TextLine<'window> {
         rownum: i64,
         offset: u64,
         lines: i32,
+        scratch: &'window Scratch,
     ) -> Self {
         Self {
             bytes,
@@ -98,6 +135,7 @@ impl<'window> TextLine<'window> {
             text: OnceCell::new(),
             hash: OnceCell::new(),
             matched: OnceCell::new(),
+            scratch,
         }
     }
 
@@ -123,32 +161,34 @@ impl<'window> TextLine<'window> {
         let resolved = self.matched.get_or_init(|| {
             let text = self.text().ok()?;
             let opening = &text[..text.find('\n').unwrap_or(text.len())];
-            let (header, spans) = match self.options.header_expression() {
+            let mut spans = self.scratch.spans.borrow_mut();
+            spans.clear();
+            let header = match self.options.header_expression() {
                 Some(expression) => {
-                    let captures = expression.captures(opening)?;
-                    let whole = captures.get(0)?;
-                    let spans = self
-                        .options
-                        .capture_names()
-                        .map(|name| captures.name(name).map(|found| found.start()..found.end()))
-                        .collect();
-                    (whole.start()..whole.end(), spans)
+                    let mut held = self.scratch.locations.borrow_mut();
+                    let locations = held.as_mut()?;
+                    expression.captures_read(locations, opening)?;
+                    let whole = locations.get(0)?;
+                    // Group order, resolved through the expression's own index
+                    // so a name the pattern does not have stays `None`.
+                    spans.extend(self.options.capture_names().map(|name| {
+                        expression
+                            .capture_names()
+                            .position(|held| held == Some(name))
+                            .and_then(|index| locations.get(index))
+                            .map(|(start, end)| start..end)
+                    }));
+                    whole.0..whole.1
                 }
                 // Log mode has no header expression: the timestamp parse that
                 // opened the record yields the span, and the closed token table
                 // extends it over the conventional prefix tokens.
-                None if self.options.is_log_mode() => {
-                    let extent = super::log::header_extent(opening)?;
-                    (0..extent, Vec::new())
-                }
+                None if self.options.is_log_mode() => 0..super::log::header_extent(opening)?,
                 None => return None,
             };
+            drop(spans);
             let message = self.message_spans(text, &header);
-            Some(Matched {
-                header,
-                message,
-                captures: spans,
-            })
+            Some(Matched { header, message })
         });
         // A record whose text is not UTF-8 has no header, but the failure is
         // the text's and is reported where the text is asked for.
@@ -279,14 +319,13 @@ impl<'window> TextLine<'window> {
     /// Returns the record's UTF-8 failure.
     pub fn capture_at(&self, index: usize) -> Result<Option<&'window str>> {
         let text = self.text()?;
-        let Some(matched) = self.matched()? else {
+        if self.matched()?.is_none() {
             return Ok(None);
-        };
-        Ok(matched
-            .captures
-            .get(index)
-            .and_then(|span| span.clone())
-            .map(|span| &text[span]))
+        }
+        // Copied out of the scratch before the text is indexed, so the borrow
+        // ends here and a caller holding the answer holds a plain `&str`.
+        let span = self.scratch.spans.borrow().get(index).cloned().flatten();
+        Ok(span.map(|span| &text[span]))
     }
 
     /// Every named capture's text, in column order.
