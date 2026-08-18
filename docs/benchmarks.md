@@ -159,7 +159,7 @@ CPython's `re` is a C engine and wins on raw regex throughput; the projection's 
 entirely in the pinned dependency-free `regex-lite` engine, not in hashing or Arrow assembly. The
 Rust `io` target's `lines_arrow` group splits that claim into numbers on the same corpus and
 machine: the whole parse runs at ~15.7 MiB/s (`parse/plain` 509.6 ms) with gzip adding ~1%
-(`parse/gzip` 515.8 ms), the grouping stage alone (`group/plain`, `read_lines_matching` with no
+(`parse/gzip` 515.8 ms), the grouping stage alone (`group/plain`, `read_lines` with a pattern and no
 Arrow projection) is 237.7 ms of that, and hashing every message (`hash/corpus`) is 3.45 ms -
 0.7% of the whole read - with the FNV-1a micro-benchmarks (`lines_hash/fnv1a/*`) folding 100-byte
 to 2-KiB messages at 780-1000 MiB/s. Those numbers are why the stable FNV-1a contract stays and no
@@ -384,8 +384,9 @@ parsing, and the stack trace stays one row with `lines` of 3.
 
     ```rust
     use arrow_array::{Array, Int32Array, Int64Array, StringArray};
-    use yggdryl::io::{IOBase, LineRecordOptions};
+    use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
+    use yggdryl::text::TextLineOptions;
 
     let pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\] \[(?<thread_id>\d+)\] took=(?<latency_us>\d+)";
 
@@ -415,7 +416,7 @@ parsing, and the stack trace stays one row with `lines` of 3.
     }
 
     let folder = Folder::new(&root)?;
-    let options = LineRecordOptions::new(pattern)?;
+    let options = TextLineOptions::with_pattern(pattern)?;
     let (mut rows, mut errors, mut latency, mut traced) = (0_usize, 0_usize, 0_i64, 0_usize);
 
     // One batch in memory at a time, each leaf decoded as a stream.

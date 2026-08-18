@@ -940,7 +940,7 @@ impl PyIOBase {
     ///
     /// `options` takes the whole extractor at once, so a YAML or TOML document
     /// describes the reader and **no Python runs per row**. The reader stays
-    /// lazy across the boundary: PyArrow pulls one batch at a time through the
+    /// lazy across the boundary: `PyArrow` pulls one batch at a time through the
     /// C stream, content codings decoded as streams, a folder read leaf by
     /// leaf - so a season of compressed logs is readable from Python exactly as
     /// it is from Rust.

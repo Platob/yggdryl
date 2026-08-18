@@ -648,7 +648,7 @@ impl PyField {
         format!("{:#}", self.inner)
     }
 
-    /// The readable rendering, for IPython and notebook cells.
+    /// The readable rendering, for `IPython` and notebook cells.
     fn _repr_pretty_(&self, printer: &Bound<'_, PyAny>, _cycle: bool) -> PyResult<()> {
         printer.call_method1("text", (self.pretty(),))?;
         Ok(())

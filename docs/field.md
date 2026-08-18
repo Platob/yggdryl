@@ -807,11 +807,12 @@ The output is stable across runs; nothing in it iterates a hash map.
     assert_eq!(format!("{order:#}"), order.pretty().to_string());
     assert_eq!(
         format!("{order:#}"),
-        "\
-order: struct[2], required
-  id: int64, required
-  line: struct[1], nullable
-    price: float64, required",
+        concat!(
+            "order: struct[2], required\n",
+            "  id: int64, required\n",
+            "  line: struct[1], nullable\n",
+            "    price: float64, required",
+        ),
     );
     ```
 

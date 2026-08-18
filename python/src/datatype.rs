@@ -797,7 +797,7 @@ impl PyDataType {
         format!("{:#}", self.inner)
     }
 
-    /// The readable rendering, for IPython and notebook cells.
+    /// The readable rendering, for `IPython` and notebook cells.
     fn _repr_pretty_(&self, printer: &Bound<'_, PyAny>, _cycle: bool) -> PyResult<()> {
         printer.call_method1("text", (self.pretty(),))?;
         Ok(())
@@ -930,6 +930,7 @@ impl PyDataType {
     /// `Field`, which owns the cache-aware mutation the core requires and the
     /// metadata a datatype does not carry. A `DataType` is immutable and
     /// hashable; letting a subscript rewrite one would break both.
+    #[allow(clippy::unused_self, reason = "the dunder is a method by protocol")]
     fn __setitem__(&self, _key: &Bound<'_, PyAny>, _value: &Bound<'_, PyAny>) -> PyResult<()> {
         Err(PyTypeError::new_err(
             "a DataType is a read-only child collection; mutate children on the Field that \
@@ -938,6 +939,7 @@ impl PyDataType {
     }
 
     /// Refuse child removal, for the reason `__setitem__` gives.
+    #[allow(clippy::unused_self, reason = "the dunder is a method by protocol")]
     fn __delitem__(&self, _key: &Bound<'_, PyAny>) -> PyResult<()> {
         Err(PyTypeError::new_err(
             "a DataType is a read-only child collection; mutate children on the Field that \

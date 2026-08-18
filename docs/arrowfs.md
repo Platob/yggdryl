@@ -118,12 +118,12 @@ The real thing looks like this, and needs credentials and a network, so it is sh
     rows = table.scan().read_all()
     ```
 
-## A write publishes when the handle closes
+## A positional write publishes when the handle closes
 
 An Arrow filesystem replaces whole files. It has no random write - an object store cannot patch
 five bytes in the middle of an object - while `IOBase::pwrite` is positional. So a leaf stages its
-mutations in memory and publishes them as exactly one whole-value replacement on `flush` or
-`close`. Until then the stored value is untouched:
+*positional* mutations in memory and publishes them as exactly one whole-value replacement on
+`flush` or `close`. Until then the stored value is untouched:
 
 === "Rust"
 
@@ -137,7 +137,10 @@ mutations in memory and publishes them as exactly one whole-value replacement on
     filesystem.write_full("bucket/trades.bin", b"stored")?;
     let mut handle = File::from_location(filesystem.clone(), "bucket/trades.bin")?;
 
-    handle.write_all_bytes(b"pending")?;
+    // Positional writes are pieces of a value, so they stage.
+    handle.truncate(0)?;
+    handle.pwrite(0, b"pend")?;
+    handle.pwrite(4, b"ing")?;
 
     // The handle presents the pending value; the filesystem still has the old one.
     assert_eq!(handle.read_all()?, b"pending");
@@ -157,7 +160,8 @@ mutations in memory and publishes them as exactly one whole-value replacement on
     root = pathlib.Path(tempfile.mkdtemp())
     handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "staged.bin").as_posix())
 
-    handle.write_bytes(b"pending")
+    handle.pwrite(0, b"pend")
+    handle.pwrite(4, b"ing")
     assert not (root / "staged.bin").exists()
 
     handle.close()
@@ -186,7 +190,8 @@ mutations in memory and publishes them as exactly one whole-value replacement on
     }
 
     const handle = IOBase.fromArrowFs(handler, 'bucket/staged.bin')
-    handle.writeText('pending')
+    handle.pwrite(0, Buffer.from('pend'))
+    handle.pwrite(4, Buffer.from('ing'))
 
     // The handle presents the pending value; the filesystem has not been
     // asked to store anything yet.
@@ -199,6 +204,11 @@ mutations in memory and publishes them as exactly one whole-value replacement on
 
 That is why a file another reader will open is written inside a scope - `with` in Python, `using`
 in JavaScript - which binds to exactly `open` and `close`.
+
+A *whole-value* write needs none of that. `write_all_bytes`, `write_lines`, and `append_lines` each
+describe one complete value, which is one store operation, so they publish when they finish. The
+staging exists to fold many positional writes into one replacement; it is not a mode a caller has
+to remember to leave.
 
 Reads need none of it. A `pread` maps straight onto one ranged fetch, so asking for eight bytes of
 a large object transfers eight bytes rather than the object. What a record encoding does with that

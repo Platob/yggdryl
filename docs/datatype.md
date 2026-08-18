@@ -668,10 +668,7 @@ The output is stable across runs; nothing in it iterates a hash map.
     assert_eq!(format!("{rows:#}"), rows.pretty().to_string());
     assert_eq!(
         format!("{rows:#}"),
-        "\
-list
-  item: struct[1], nullable
-    venue: utf8, nullable",
+        "list\n  item: struct[1], nullable\n    venue: utf8, nullable",
     );
     ```
 

@@ -1104,7 +1104,10 @@ impl TextLineOptions {
             Opening::EveryLine => {}
             Opening::Timestamp => entries.push((key("opening"), key("timestamp"))),
             Opening::Pattern(pattern) => {
-                entries.push((key("pattern"), Value::String(SmolStr::new(pattern.as_str()))));
+                entries.push((
+                    key("pattern"),
+                    Value::String(SmolStr::new(pattern.as_str())),
+                ));
             }
         }
         if let Some(header) = &self.header {
@@ -1137,9 +1140,11 @@ impl TextLineOptions {
         if !self.capture_types.is_empty() {
             entries.push((
                 key("capture_types"),
-                Value::from_mapping(self.capture_types.iter().map(|(name, data_type)| {
-                    (key(name), Value::String(data_type.to_smolstr()))
-                }))
+                Value::from_mapping(
+                    self.capture_types.iter().map(|(name, data_type)| {
+                        (key(name), Value::String(data_type.to_smolstr()))
+                    }),
+                )
                 .unwrap_or(Value::Null),
             ));
         }
@@ -1171,11 +1176,9 @@ impl TextLineOptions {
     /// Returns an error naming the key and the expectation when the value is
     /// not a mapping, a key is unknown, or a setting does not validate.
     pub fn from_value(value: Value) -> Result<Self> {
-        let entries = value.as_mapping().ok_or_else(|| {
-            Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: crate::text::expected_got("an options mapping", value.kind()),
-            }
+        let entries = value.as_mapping().ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got("an options mapping", value.kind()),
         })?;
         let mut options = Self::new();
         // A pattern and an explicit opening are the same setting spelled two
@@ -1192,11 +1195,9 @@ impl TextLineOptions {
         let mut timestamp_capture: Option<SmolStr> = None;
 
         for (name, held) in entries {
-            let name = name.as_str().ok_or_else(|| {
-                Error::InvalidRecord {
-                    path: SmolStr::new_static("$"),
-                    reason: crate::text::expected_got("string option names", name.kind()),
-                }
+            let name = name.as_str().ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: crate::text::expected_got("string option names", name.kind()),
             })?;
             match name {
                 "pattern" => opening = Some(Opening::Pattern(compiled(text(held, name)?, name)?)),
@@ -1313,16 +1314,22 @@ fn count(held: &Value, name: &str) -> Result<usize> {
         Value::I64(value) => nonnegative(*value, name)?,
         other => return Err(unexpected(name, "a count", other.kind())),
     };
-    usize::try_from(value).map_err(|_| unexpected(name, "a count this process can hold", "a larger one"))
+    usize::try_from(value)
+        .map_err(|_| unexpected(name, "a count this process can hold", "a larger one"))
 }
 
 /// Refuse a negative count, naming the option.
 fn nonnegative(value: i64, name: &str) -> Result<u64> {
-    u64::try_from(value).map_err(|_| unexpected(name, "a non-negative count", format_smolstr!("{value}")))
+    u64::try_from(value)
+        .map_err(|_| unexpected(name, "a non-negative count", format_smolstr!("{value}")))
 }
 
 /// A typed refusal naming the option, the expectation, and the actual.
-fn unexpected(name: &str, expected: impl std::fmt::Display, actual: impl std::fmt::Display) -> Error {
+fn unexpected(
+    name: &str,
+    expected: impl std::fmt::Display,
+    actual: impl std::fmt::Display,
+) -> Error {
     Error::InvalidRecord {
         path: format_smolstr!("$.{name}"),
         reason: crate::text::expected_got(expected.to_string(), actual.to_string()),

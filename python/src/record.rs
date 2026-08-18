@@ -880,7 +880,7 @@ pub(crate) fn batch_reader_to_pyarrow(
 ///
 /// The lazy crossing is preserved in both directions: the merge is derived
 /// from the two schemas alone, which a `RecordBatchReader` answers without
-/// pulling a batch, and the result is handed back over the C stream so PyArrow
+/// pulling a batch, and the result is handed back over the C stream so `PyArrow`
 /// pulls one batch at a time.
 ///
 /// Columns unite by name (ASCII case-insensitively), left's order first and

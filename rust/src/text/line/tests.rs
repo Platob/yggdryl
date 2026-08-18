@@ -1928,13 +1928,19 @@ custom_fields:
         assert_eq!(options.byte_size(), Some(1_048_576));
         assert_eq!(options.batch_size(), Some(4_096));
         assert_eq!(options.timestamp_capture(), Some("stamp"));
-        assert_eq!(options.timezone().map(crate::Timezone::as_str), Some("Europe/Paris"));
+        assert_eq!(
+            options.timezone().map(crate::Timezone::as_str),
+            Some("Europe/Paris")
+        );
         assert_eq!(
             options.capture_names().collect::<Vec<_>>(),
             ["stamp", "level"]
         );
         // The schema follows, with no resource in sight.
-        assert_eq!(options.schema()["source"].data_type(), &crate::DataType::Utf8);
+        assert_eq!(
+            options.schema()["source"].data_type(),
+            &crate::DataType::Utf8
+        );
     }
 
     #[test]
@@ -2014,12 +2020,11 @@ custom_fields:
 
     #[test]
     fn an_unknown_key_and_a_bad_value_are_refused_naming_the_option() {
-        let unknown = Value::from_mapping([(
-            Value::String("batch-size".into()),
-            Value::U64(10),
-        )])
-        .unwrap();
-        let refused = TextLineOptions::from_value(unknown).unwrap_err().to_string();
+        let unknown =
+            Value::from_mapping([(Value::String("batch-size".into()), Value::U64(10))]).unwrap();
+        let refused = TextLineOptions::from_value(unknown)
+            .unwrap_err()
+            .to_string();
         assert!(refused.contains("batch-size"), "{refused}");
         assert!(refused.contains("a known option"), "{refused}");
 
@@ -2033,7 +2038,10 @@ custom_fields:
         assert!(refused.contains("a count"), "{refused}");
 
         let bad_capture = Value::from_mapping([
-            (Value::String("pattern".into()), Value::String(r"^\[".into())),
+            (
+                Value::String("pattern".into()),
+                Value::String(r"^\[".into()),
+            ),
             (
                 Value::String("capture_types".into()),
                 Value::from_mapping([(
