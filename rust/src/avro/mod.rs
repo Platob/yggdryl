@@ -29,10 +29,10 @@
 mod arrow;
 #[cfg(feature = "arrow")]
 mod batch;
-mod container;
-mod datum;
-mod resolve;
-mod schema;
+pub(crate) mod container;
+pub(crate) mod datum;
+pub(crate) mod resolve;
+pub(crate) mod schema;
 mod single;
 
 #[cfg(feature = "arrow")]

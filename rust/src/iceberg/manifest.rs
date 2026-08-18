@@ -1077,3 +1077,196 @@ fn invalid(reason: SmolStr) -> Error {
         reason,
     }
 }
+
+/// The compiled planning resolutions, keyed by the writer schema's raw bytes.
+///
+/// A scan reads many manifests written by one writer, so the JSON parse, the
+/// schema parse, and the resolution build happen once per writer schema
+/// rather than once per manifest. The map is small by construction - a table
+/// rarely sees more than a handful of writer schemas - and cleared outright
+/// if it ever grows past its cap, which is simpler than an eviction order
+/// nothing would exercise.
+type PlanningPlans =
+    std::collections::HashMap<(u64, bool), std::sync::Arc<crate::avro::Resolution>>;
+static PLANNING_PLANS: std::sync::Mutex<Option<PlanningPlans>> = std::sync::Mutex::new(None);
+
+/// How many compiled planning resolutions are retained.
+const PLANNING_PLAN_CAP: usize = 64;
+
+/// Read the entries a read-only scan plan needs, skipping the rest.
+///
+/// The reader schema is the writer's own schema projected down to the
+/// planning columns - status, the sequence numbers, and the data file's
+/// identity, partition tuple, and sizes - so decoding runs through a compiled
+/// resolution plan whose skip steps jump every statistics map the plan will
+/// never consult. When `with_stats` is set, which is a *filtered* plan, the
+/// value counts, null counts, and bounds survive, because file pruning reads
+/// them. This path serves reads only: a rewrite carries entries into new
+/// manifests and must decode them whole with [`read_manifest`].
+///
+/// # Errors
+///
+/// Returns an error when the bytes are not an Avro manifest or a row does not
+/// decode.
+pub(super) fn read_manifest_for_plan<H: IOBase + ?Sized>(
+    handle: &H,
+    with_stats: bool,
+) -> Result<Vec<ManifestEntry>> {
+    use crate::avro::container;
+    use crate::avro::datum::Cursor;
+
+    let limits = crate::Limits::default();
+    let bytes = handle.read_all()?;
+    let mut cursor = Cursor::new(&bytes);
+    container::check_magic(cursor.take(container::MAGIC.len())?)?;
+    let (header, sync) = container::parse_header_entries(&mut cursor, limits)?;
+    let schema_bytes =
+        container::header_entry(&header, container::SCHEMA_KEY).ok_or_else(|| {
+            invalid(SmolStr::new_static(
+                "expected an Avro header carrying \"avro.schema\"",
+            ))
+        })?;
+    let coding = match container::header_entry(&header, container::CODEC_KEY) {
+        Some(value) => {
+            crate::avro::container::BlockCoding::from_name(&String::from_utf8_lossy(value))?
+        }
+        None => crate::avro::container::BlockCoding::Shared(crate::Codec::Identity),
+    };
+    let plan = planning_plan(schema_bytes, with_stats, limits)?;
+
+    let mut entries = Vec::new();
+    // DESIGN: one decompression buffer for every block of every manifest this
+    // call reads; its capacity carries across blocks so a wide manifest costs
+    // one allocation, not one per block.
+    let mut scratch = Vec::new();
+    while !cursor.is_exhausted() {
+        let count = cursor.long()?;
+        let count = u64::try_from(count).map_err(|_| {
+            invalid(format_smolstr!(
+                "expected a non-negative Avro block count, got {count}"
+            ))
+        })?;
+        let payload = cursor.bytes()?;
+        let marker = cursor.take(16)?;
+        if marker != sync {
+            return Err(invalid(SmolStr::new_static(
+                "expected the header's synchronization marker after an Avro block",
+            )));
+        }
+        if count as usize > limits.max_nodes() {
+            return Err(invalid(format_smolstr!(
+                "expected at most {} rows in a block",
+                limits.max_nodes()
+            )));
+        }
+        coding.load_into(payload, limits, &mut scratch)?;
+        let mut block = Cursor::new(&scratch);
+        for _ in 0..count {
+            let mut budget = limits.max_nodes();
+            let row = plan.decode(&mut block, limits, &mut budget)?;
+            entries.push(entry_from_value(&row)?);
+        }
+    }
+    Ok(entries)
+}
+
+/// Compile or fetch the planning resolution for one writer schema.
+fn planning_plan(
+    schema_bytes: &[u8],
+    with_stats: bool,
+    limits: crate::Limits,
+) -> Result<std::sync::Arc<crate::avro::Resolution>> {
+    let key = (crate::avro::schema::rabin(schema_bytes), with_stats);
+    if let Ok(mut guard) = PLANNING_PLANS.lock() {
+        if let Some(plan) = guard.as_ref().and_then(|plans| plans.get(&key)) {
+            return Ok(plan.clone());
+        }
+        let plans = guard.get_or_insert_with(std::collections::HashMap::new);
+        if plans.len() >= PLANNING_PLAN_CAP {
+            plans.clear();
+        }
+    }
+    let writer_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
+    let writer = crate::avro::Schema::from_json_with_limits(&writer_json, limits)?;
+    let reader_json = planning_schema(&writer_json, with_stats);
+    let reader = crate::avro::Schema::from_json_with_limits(&reader_json, limits)?;
+    let plan = std::sync::Arc::new(crate::avro::Resolution::from_schemas(&writer, &reader)?);
+    if let Ok(mut guard) = PLANNING_PLANS.lock() {
+        guard
+            .get_or_insert_with(std::collections::HashMap::new)
+            .insert(key, plan.clone());
+    }
+    Ok(plan)
+}
+
+/// Project a manifest-entry schema down to what a plan reads.
+///
+/// A schema whose shape is not the expected entry record is returned whole,
+/// so an unusual writer degrades to a full decode rather than an error.
+fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
+    const ENTRY_KEEP: [&str; 4] = [
+        "status",
+        "snapshot_id",
+        "sequence_number",
+        "file_sequence_number",
+    ];
+    const FILE_KEEP: [&str; 6] = [
+        "content",
+        "file_path",
+        "file_format",
+        "partition",
+        "record_count",
+        "file_size_in_bytes",
+    ];
+    const FILE_STATS: [&str; 4] = [
+        "value_counts",
+        "null_value_counts",
+        "lower_bounds",
+        "upper_bounds",
+    ];
+
+    let whole = || writer_json.clone();
+    let Some(fields) = writer_json
+        .get_key_str("fields")
+        .and_then(Value::as_sequence)
+    else {
+        return whole();
+    };
+    let mut kept = Vec::new();
+    for field in fields {
+        let Some(name) = field.get_key_str("name").and_then(Value::as_str) else {
+            return whole();
+        };
+        if name == "data_file" {
+            let Some(declared) = field.get_key_str("type") else {
+                return whole();
+            };
+            let Some(filtered) = filter_record_fields(declared, &|child| {
+                FILE_KEEP.contains(&child) || (with_stats && FILE_STATS.contains(&child))
+            }) else {
+                return whole();
+            };
+            let Ok(rebuilt) = field.with_key("type", filtered) else {
+                return whole();
+            };
+            kept.push(rebuilt);
+        } else if ENTRY_KEEP.contains(&name) {
+            kept.push(field.clone());
+        }
+    }
+    writer_json
+        .with_key("fields", Value::from_sequence(kept))
+        .unwrap_or_else(|_| whole())
+}
+
+/// Rebuild a record schema JSON keeping only the fields `keep` accepts.
+fn filter_record_fields(record: &Value, keep: &dyn Fn(&str) -> bool) -> Option<Value> {
+    let fields = record.get_key_str("fields")?.as_sequence()?;
+    let mut kept = Vec::new();
+    for field in fields {
+        if keep(field.get_key_str("name")?.as_str()?) {
+            kept.push(field.clone());
+        }
+    }
+    record.with_key("fields", Value::from_sequence(kept)).ok()
+}

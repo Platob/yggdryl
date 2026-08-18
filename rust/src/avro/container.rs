@@ -79,15 +79,34 @@ impl BlockCoding {
 
     /// Decode one block payload, bounded by the limits.
     pub(crate) fn load(self, payload: &[u8], limits: Limits) -> Result<Vec<u8>> {
+        let mut decoded = Vec::new();
+        self.load_into(payload, limits, &mut decoded)?;
+        Ok(decoded)
+    }
+
+    /// Decode one block payload into a reused buffer, bounded by the limits.
+    ///
+    /// The buffer is cleared but keeps its capacity, so a reader iterating
+    /// many blocks - a scan over many manifests - pays one allocation rather
+    /// than one per block.
+    pub(crate) fn load_into(
+        self,
+        payload: &[u8],
+        limits: Limits,
+        decoded: &mut Vec<u8>,
+    ) -> Result<()> {
+        decoded.clear();
         let bound = limits.max_input_bytes();
         match self {
-            Self::Shared(Codec::Identity) => Ok(payload.to_vec()),
+            Self::Shared(Codec::Identity) => {
+                decoded.extend_from_slice(payload);
+                Ok(())
+            }
             Self::Shared(shared) => {
                 // Stream through the codec with a hard ceiling, so a small
                 // compressed block cannot decompress the process to death.
-                let mut decoded = Vec::new();
                 let mut reader = shared.reader(payload).take(bound as u64 + 1);
-                reader.read_to_end(&mut decoded).map_err(|error| {
+                reader.read_to_end(decoded).map_err(|error| {
                     invalid(format_smolstr!(
                         "expected a valid {} block, got {error}",
                         self.name()
@@ -98,7 +117,7 @@ impl BlockCoding {
                         "expected a block of at most {bound} decoded bytes"
                     )));
                 }
-                Ok(decoded)
+                Ok(())
             }
             #[cfg(feature = "parquet")]
             Self::Snappy => {
@@ -120,23 +139,23 @@ impl BlockCoding {
                         "expected a block of at most {bound} decoded bytes, got {length}"
                     )));
                 }
-                let mut decoded = vec![0; length];
+                decoded.resize(length, 0);
                 snap::raw::Decoder::new()
-                    .decompress(body, &mut decoded)
+                    .decompress(body, decoded)
                     .map_err(|error| {
                         invalid(format_smolstr!(
                             "expected a valid snappy block, got {error}"
                         ))
                     })?;
                 let mut crc = flate2::Crc::new();
-                crc.update(&decoded);
+                crc.update(decoded);
                 if crc.sum() != declared {
                     return Err(invalid(format_smolstr!(
                         "expected a snappy CRC-32 of {:08x}, got {declared:08x}",
                         crc.sum()
                     )));
                 }
-                Ok(decoded)
+                Ok(())
             }
         }
     }
@@ -194,8 +213,14 @@ pub(crate) struct Header {
     pub(crate) sync: [u8; SYNC_LEN],
 }
 
-/// Parse the header entries after the magic.
-pub(crate) fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<Header> {
+/// The raw header entries, still as bytes.
+pub(crate) type HeaderEntries = Vec<(SmolStr, Vec<u8>)>;
+
+/// Parse the raw header entries and the sync marker after the magic.
+pub(crate) fn parse_header_entries(
+    cursor: &mut Cursor<'_>,
+    limits: Limits,
+) -> Result<(HeaderEntries, [u8; SYNC_LEN])> {
     let mut entries = Vec::new();
     loop {
         let (count, _) = block_count(cursor)?;
@@ -225,20 +250,30 @@ pub(crate) fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<He
             SmolStr::new_static("expected a sixteen-byte Avro synchronization marker"),
         )
     })?;
+    Ok((entries, sync))
+}
 
-    let lookup = |key: &str| -> Option<&[u8]> {
-        entries
-            .iter()
-            .find_map(|(name, value)| (name == key).then_some(value.as_slice()))
-    };
-    let schema_bytes = lookup(SCHEMA_KEY).ok_or_else(|| {
+/// Return one raw header entry by key.
+pub(crate) fn header_entry<'entries>(
+    entries: &'entries [(SmolStr, Vec<u8>)],
+    key: &str,
+) -> Option<&'entries [u8]> {
+    entries
+        .iter()
+        .find_map(|(name, value)| (name == key).then_some(value.as_slice()))
+}
+
+/// Parse the header entries after the magic.
+pub(crate) fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<Header> {
+    let (entries, sync) = parse_header_entries(cursor, limits)?;
+    let schema_bytes = header_entry(&entries, SCHEMA_KEY).ok_or_else(|| {
         invalid(format_smolstr!(
             "expected an Avro header carrying {SCHEMA_KEY:?}"
         ))
     })?;
     let schema_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
     let schema = Schema::from_json_with_limits(&schema_json, limits)?;
-    let coding = match lookup(CODEC_KEY) {
+    let coding = match header_entry(&entries, CODEC_KEY) {
         Some(value) => BlockCoding::from_name(&String::from_utf8_lossy(value))?,
         None => BlockCoding::Shared(Codec::Identity),
     };
@@ -418,7 +453,6 @@ pub fn write_container<H: IOBase + ?Sized>(
 ) -> Result<()> {
     let schema = Schema::from_json(schema_json)?;
     let encoded_schema = crate::json::to_vec(schema_json)?;
-    let sync = sync_marker();
     let datum = DatumCodec {
         names: &schema.names,
         limits: Limits::default(),
@@ -428,6 +462,11 @@ pub fn write_container<H: IOBase + ?Sized>(
     for row in rows {
         datum.encode(&schema.node, row, &mut payload, 0)?;
     }
+    // The marker is derived from the content rather than drawn at random:
+    // uniqueness within the file is all the format needs, and a writer whose
+    // output is a pure function of its input is what lets a conformance
+    // check diff bytes instead of only semantics.
+    let sync = derived_sync(&encoded_schema, &payload);
     let coding = BlockCoding::Shared(Codec::Deflate);
     let compressed = coding.dump(&payload, Level::DEFAULT)?;
 
@@ -452,6 +491,26 @@ pub fn write_container<H: IOBase + ?Sized>(
     }
 
     handle.write_all_bytes(&output)
+}
+
+/// Derive a synchronization marker from the container's own content.
+///
+/// The marker only has to be constant within one file and improbable in its
+/// data, and a fingerprint of the schema and the encoded rows is exactly
+/// that - while making the whole container a pure function of its input, so
+/// two writers given the same rows produce the same bytes.
+pub(crate) fn derived_sync(schema_bytes: &[u8], payload: &[u8]) -> [u8; SYNC_LEN] {
+    let mut marker = [0_u8; SYNC_LEN];
+    let head = super::schema::rabin(schema_bytes);
+    // Salting the payload fingerprint with the schema's keeps the two halves
+    // independent even when the payload is empty.
+    let mut salted = Vec::with_capacity(payload.len() + 8);
+    salted.extend_from_slice(&head.to_le_bytes());
+    salted.extend_from_slice(payload);
+    let tail = super::schema::rabin(&salted);
+    marker[..8].copy_from_slice(&head.to_le_bytes());
+    marker[8..].copy_from_slice(&tail.to_le_bytes());
+    marker
 }
 
 /// Produce a synchronization marker unlikely to occur inside a block.
