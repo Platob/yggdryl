@@ -54,27 +54,47 @@ Add an Arrow projection of matched line records:
   columns appended to every row (how a caller stamps `source`, `session`,
   `venue` onto a file's rows).
 
-### 2. Schema — a non-null Struct `Field` (a struct Field *is* the schema)
+### 2. Schema — a non-null Struct `Field`, safe for Iceberg as declared
+
+A struct Field *is* the schema, and every base column must be a datatype the
+strict Iceberg codec accepts **unchanged**: `iceberg::PrimitiveType::from_data_type`
+(`rust/src/iceberg/types.rs:128`) has no unsigned integers, spells `time`
+only at microsecond, and knows nothing of dictionary encodings — so the
+schema below is chosen to pass it as-is, not merely after
+`to_scheme_compat(&Scheme::ICEBERG)` widening.
 
 Base columns, in this order:
 
-| column    | datatype                 | meaning |
-| --------- | ------------------------ | ------- |
-| `url`     | `utf8` (dictionary-encode if cheap — it is one value per resource) | the handle's canonical `Url` display |
-| `rownum`  | `int64`                  | 1-based record index within the resource |
-| `date`    | `date32`                 | the entry's civil date |
-| `time`    | `time64(nanosecond)`     | the entry's clock reading |
-| `unix`    | `int64`                  | total nanoseconds since the Unix epoch (naive; document that no zone is applied) |
-| `hash`    | `uint64`                 | stable hash of `message` only |
-| `header`  | `utf8`                   | the exact text the pattern matched |
-| `message` | `utf8`                   | the record with the header match removed, then trimmed |
+| column    | datatype                 | Iceberg     | meaning |
+| --------- | ------------------------ | ----------- | ------- |
+| `url`     | `utf8` (plain — no dictionary wrapper; it would not survive the strict codec) | `string` | the handle's canonical `Url` display |
+| `rownum`  | `int64`                  | `long`      | 1-based record index within the resource |
+| `date`    | `date32`                 | `date`      | the entry's civil date |
+| `time`    | `time64(microsecond)`    | `time`      | the entry's clock reading, truncated to micros (Iceberg's `time` has no nanosecond form; full precision lives in `unix`) |
+| `unix`    | `int64`                  | `long`      | total nanoseconds since the Unix epoch (naive; document that no zone is applied) |
+| `hash`    | `int64`                  | `long`      | stable hash of `message` only — the u64 FNV-1a state reinterpreted as two's-complement i64 (`u64 as i64`, bit pattern preserved, documented), because Iceberg has no unsigned types |
+| `header`  | `utf8`                   | `string`    | the exact text the pattern matched |
+| `message` | `utf8`                   | `string`    | the record with the header match removed, then trimmed |
 
 Then one nullable `utf8` column per **named capture group** in the pattern,
 in group order (`level`, `logger` above) — this is the primary "custom
 fields" mechanism and what makes it a good trading-log parser. Then the
-constant `custom_fields` columns, typed from their `Value`. Reject a name
+constant `custom_fields` columns, typed from their `Value` — validate each
+custom column's datatype through `PrimitiveType::from_data_type` at option
+construction and reject one Iceberg cannot spell (an unsigned integer, a
+non-microsecond time) with the codec's own error, so a caller finds out
+before the first batch rather than at table-append time. Reject a name
 collision between base, capture, and custom columns with the project's
 `expected X, got Y` error shape and a column path.
+
+**Iceberg compatibility is a tested property, not an intention.** Add tests
+asserting (a) `Field::to_scheme_compat(&Scheme::ICEBERG)` maps the full
+emitted schema (base + capture + custom columns) without error or change,
+and (b) — behind the `iceberg` feature, beside the existing iceberg tests —
+an end-to-end round trip: assign field IDs with `assign_parquet_field_ids`,
+create a table from the schema via `iceberg::Catalog`, `append` the parsed
+`BatchReader`, and read the snapshot back row-identical, with the columns
+whose types the encodings agree on carrying real bounds statistics.
 
 A record whose opening line the pattern did not match (the preamble record a
 rotated file starts with) gets null `date`/`time`/`unix`/`header` and
@@ -93,7 +113,9 @@ Extend the existing parser rather than writing a second one:
   mapping. Add the same acceptance to `parse_time`/`parse_timestamp` since
   they share `parse_clock_at`.
 - The Arrow projection normalizes whatever unit the fraction implies to
-  nanoseconds for `time` and `unix`.
+  nanoseconds for `unix` and truncates to microseconds for `time` (the
+  Iceberg-safe `time64(microsecond)` — truncation, never rounding, and the
+  docs say a sub-micro reading is only fully recoverable from `unix`).
 - New adversarial tests in `rust/src/generic/iso/tests.rs`: `_` variants
   round-tripping to the same counts, and every malformed underscore
   placement rejected with byte position.
@@ -163,8 +185,12 @@ Mirror the existing test layout (`rust/src/io/tests.rs` for unit-level,
   stream — the resume/seek key a tailing trading pipeline wants.
 - `lines` (int32): line count of the record, a free flag for exceptions.
 - A `timezone` option: when set, `unix` is interpreted in that zone and
-  becomes a `timestamp(nanosecond, tz)` column instead of naive int64
-  nanos (route through the existing `Timezone`/`parse_timestamp` machinery).
+  becomes a zoned timestamp column instead of naive int64 nanos (route
+  through the existing `Timezone`/`parse_timestamp` machinery). Default the
+  zoned column to `timestamp(microsecond, tz)` — Iceberg's `timestamptz`,
+  safe in every format version — and offer `timestamp(nanosecond, tz)`
+  (`timestamptz_ns`) only as an explicit opt-in, documented as requiring
+  Iceberg format version 3.
 - A lenient mode flag: unparseable timestamps in matched headers become
   nulls with a counter surfaced somewhere inspectable, for dirty archives —
   strict stays the default.
