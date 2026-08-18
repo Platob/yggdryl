@@ -103,7 +103,7 @@ use arrow_schema::{ArrowError, SchemaRef};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
 use super::{Buffer, IOBase, LineRecords};
-use crate::arrow::{BatchReader, schema_from_field, scalar_array};
+use crate::arrow::{BatchReader, scalar_array, schema_from_field};
 use crate::generic::{Holder, Value, iso};
 use crate::iceberg::PrimitiveType;
 use crate::{DataType, Error, Field, IOKind, Result, TimeUnit};
