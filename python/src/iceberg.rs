@@ -11,15 +11,15 @@
 //! ask what a commit produced without opening the Avro files by hand; none of
 //! them can be constructed from Python, because only a commit writes one.
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple, PyType};
 
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
-    Catalog, Compaction, DataFile, FormatVersion, ManifestContent, ManifestFile, PartitionField,
-    PartitionSpec, SchemaUpdate, Snapshot, Table, assign_field_ids, can_promote, last_field_id,
-    schema_from_json, schema_to_json,
+    Catalog, Compaction, DataFile, FileFormat, FormatVersion, IcebergOptions, ManifestContent,
+    ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
+    assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
 };
 use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Value};
@@ -225,6 +225,18 @@ fn filter_pairs_from_value(value: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<(St
     }
 }
 
+/// Borrow owned filter pairs as the slice of string pairs the core takes.
+///
+/// The owned pairs outlive the call because a filter is read at the boundary
+/// and the core is entered afterwards, so the borrow is taken here rather than
+/// where the pairs are built.
+fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
+    pairs
+        .iter()
+        .map(|(column, value)| (column.as_str(), value.as_str()))
+        .collect()
+}
+
 /// Read a warehouse folder out of what Python names one with.
 ///
 /// A handle is taken as the folder it addresses - the same inference
@@ -237,6 +249,318 @@ fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Holder> {
     }
     let url = core_url_from_value(value)?;
     Holder::folder(url.to_path().map_err(value_error)?).map_err(value_error)
+}
+
+/// The Iceberg option fields every Iceberg call also accepts as keywords.
+const ICEBERG_KWARGS: [&str; 9] = [
+    "commit_retries",
+    "commit_min_backoff_ms",
+    "commit_max_backoff_ms",
+    "target_file_size",
+    "read_parallelism",
+    "read_parallel_min_files",
+    "read_parallel_min_file_size",
+    "compact_after_commits",
+    "data_format",
+];
+
+/// Read a data file format out of the name Python spells it with.
+fn file_format_from_value(value: &Bound<'_, PyAny>) -> PyResult<FileFormat> {
+    let name = value.extract::<&str>().map_err(|_| {
+        PyTypeError::new_err("expected a data format name such as \"parquet\" or \"avro\"")
+    })?;
+    name.parse::<FileFormat>().map_err(value_error)
+}
+
+/// Set one Iceberg option field from the Python value a keyword carries.
+fn set_iceberg_option(
+    options: &mut IcebergOptions,
+    key: &str,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    match key {
+        "commit_retries" => options.set_commit_retries(value.extract::<u32>()?),
+        "commit_min_backoff_ms" => options.set_commit_min_backoff_ms(value.extract::<u64>()?),
+        "commit_max_backoff_ms" => options.set_commit_max_backoff_ms(value.extract::<u64>()?),
+        "target_file_size" => options
+            .set_target_file_size_bytes(value.extract::<u64>()?)
+            .map_err(value_error)?,
+        "read_parallelism" => options
+            .set_read_parallelism(value.extract::<usize>()?)
+            .map_err(value_error)?,
+        "read_parallel_min_files" => {
+            options.set_read_parallel_min_files(value.extract::<usize>()?);
+        }
+        "read_parallel_min_file_size" => {
+            options.set_read_parallel_min_file_size_bytes(value.extract::<u64>()?);
+        }
+        "compact_after_commits" => options.set_compact_after_commits(value.extract::<u32>()?),
+        "data_format" => options.set_data_format(file_format_from_value(value)?),
+        _ => unreachable!("apply_iceberg_kwargs checks the key first"),
+    }
+    Ok(())
+}
+
+/// Apply the Iceberg option keywords one call carried, in field order.
+///
+/// The same resolver every Iceberg method routes `(options, kwargs)` through:
+/// an explicit keyword always wins over the same field of a passed options
+/// object, and an unknown keyword is a `TypeError` naming the argument,
+/// exactly as a plain Python signature would raise one.
+fn apply_iceberg_kwargs(
+    method: &str,
+    options: &mut IcebergOptions,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    let Some(kwargs) = kwargs else {
+        return Ok(());
+    };
+    for (key, _) in kwargs.iter() {
+        let key = key.extract::<String>()?;
+        if !ICEBERG_KWARGS.contains(&key.as_str()) {
+            return Err(PyTypeError::new_err(format!(
+                "{method}() got an unexpected keyword argument {key:?}"
+            )));
+        }
+    }
+    for key in ICEBERG_KWARGS {
+        if let Some(value) = kwargs.get_item(key)? {
+            set_iceberg_option(options, key, &value)?;
+        }
+    }
+    Ok(())
+}
+
+/// Read the Iceberg options one `options` argument names, strictly.
+///
+/// Iceberg configuration is [`IcebergOptions`] and never the generic record
+/// options, so a `RecordOptions` here is refused by name rather than bridged.
+fn core_iceberg_options_from_value(value: &Bound<'_, PyAny>) -> PyResult<IcebergOptions> {
+    if let Ok(options) = value.extract::<PyRef<'_, PyIcebergOptions>>() {
+        return Ok(options.inner.clone());
+    }
+    if value
+        .extract::<PyRef<'_, crate::record::PyRecordOptions>>()
+        .is_ok()
+    {
+        return Err(PyTypeError::new_err(
+            "expected IcebergOptions, got RecordOptions; Iceberg is configured by IcebergOptions \
+             alone - the record options belong to the plain record surface",
+        ));
+    }
+    Err(PyTypeError::new_err(format!(
+        "expected IcebergOptions, got {}",
+        value.get_type().fully_qualified_name().map_or_else(
+            |_| "an unnameable value".to_owned(),
+            |name| name.to_string()
+        ),
+    )))
+}
+
+/// Resolve `(options, kwargs)` into the per-call options a method runs under.
+///
+/// `None` means neither was given, so the call runs exactly as the handle is
+/// configured. The base is the `options` argument when one was passed and the
+/// handle's stored explicit override otherwise; each keyword then lands on
+/// top, so a keyword always wins over the same field of the options object.
+fn iceberg_call_options(
+    method: &str,
+    stored: Option<&IcebergOptions>,
+    options: Option<&Bound<'_, PyAny>>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Option<IcebergOptions>> {
+    let empty = kwargs.is_none_or(pyo3::types::PyDictMethods::is_empty);
+    if options.is_none() && empty {
+        return Ok(None);
+    }
+    let mut resolved = match options {
+        Some(value) => core_iceberg_options_from_value(value)?,
+        None => stored.cloned().unwrap_or_default(),
+    };
+    apply_iceberg_kwargs(method, &mut resolved, kwargs)?;
+    Ok(Some(resolved))
+}
+
+/// Run one table operation under per-call options, restoring the handle after.
+///
+/// The override is shadowed for exactly the length of the call, so per-call
+/// options never leak into the handle's own configuration.
+fn with_call_options<R>(
+    table: &mut Table<Holder>,
+    options: Option<IcebergOptions>,
+    operation: impl FnOnce(&mut Table<Holder>) -> PyResult<R>,
+) -> PyResult<R> {
+    let Some(options) = options else {
+        return operation(table);
+    };
+    let saved = table.clear_options();
+    table.set_options(options);
+    let result = operation(table);
+    match saved {
+        Some(saved) => table.set_options(saved),
+        None => {
+            table.clear_options();
+        }
+    }
+    result
+}
+
+/// Configuration for one table's commits, writes, and reads.
+///
+/// A Python view of the core [`IcebergOptions`]: the value records only what
+/// was set on it, every getter answers the field's documented default when
+/// nothing was, and a table resolves each field as explicit option, then
+/// table property, then that default.
+#[pyclass(
+    name = "IcebergOptions",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
+#[derive(Clone, Default)]
+pub(crate) struct PyIcebergOptions {
+    pub(crate) inner: IcebergOptions,
+}
+
+#[pymethods]
+impl PyIcebergOptions {
+    /// Build an options value with nothing set, each keyword setting a field.
+    #[new]
+    #[pyo3(signature = (**kwargs))]
+    fn new(kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
+        let mut inner = IcebergOptions::new();
+        apply_iceberg_kwargs("IcebergOptions", &mut inner, kwargs)?;
+        Ok(Self { inner })
+    }
+
+    /// How many beaten commit attempts are retried. Default: 4.
+    #[getter]
+    fn commit_retries(&self) -> u32 {
+        self.inner.commit_retries()
+    }
+
+    #[setter]
+    fn set_commit_retries(&mut self, retries: u32) {
+        self.inner.set_commit_retries(retries);
+    }
+
+    /// The first commit retry wait in milliseconds. Default: 100.
+    #[getter]
+    fn commit_min_backoff_ms(&self) -> u64 {
+        self.inner.commit_min_backoff_ms()
+    }
+
+    #[setter]
+    fn set_commit_min_backoff_ms(&mut self, wait_ms: u64) {
+        self.inner.set_commit_min_backoff_ms(wait_ms);
+    }
+
+    /// The largest commit retry wait in milliseconds. Default: 60000.
+    #[getter]
+    fn commit_max_backoff_ms(&self) -> u64 {
+        self.inner.commit_max_backoff_ms()
+    }
+
+    #[setter]
+    fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) {
+        self.inner.set_commit_max_backoff_ms(wait_ms);
+    }
+
+    /// The size a data file aims for, in bytes. Default: 512 MiB.
+    #[getter]
+    fn target_file_size(&self) -> u64 {
+        self.inner.target_file_size_bytes()
+    }
+
+    #[setter]
+    fn set_target_file_size(&mut self, bytes: u64) -> PyResult<()> {
+        self.inner
+            .set_target_file_size_bytes(bytes)
+            .map_err(value_error)
+    }
+
+    /// How many data files a scan decodes at once. Default: the host's own
+    /// parallelism, kept in 1..=8.
+    #[getter]
+    fn read_parallelism(&self) -> usize {
+        self.inner.read_parallelism()
+    }
+
+    #[setter]
+    fn set_read_parallelism(&mut self, threads: usize) -> PyResult<()> {
+        self.inner
+            .set_read_parallelism(threads)
+            .map_err(value_error)
+    }
+
+    /// How many large-enough files justify a parallel scan. Default: 16.
+    #[getter]
+    fn read_parallel_min_files(&self) -> usize {
+        self.inner.read_parallel_min_files()
+    }
+
+    #[setter]
+    fn set_read_parallel_min_files(&mut self, files: usize) {
+        self.inner.set_read_parallel_min_files(files);
+    }
+
+    /// The recorded size below which a file does not count toward justifying
+    /// a parallel scan, in bytes. Default: 4 MiB.
+    #[getter]
+    fn read_parallel_min_file_size(&self) -> u64 {
+        self.inner.read_parallel_min_file_size_bytes()
+    }
+
+    #[setter]
+    fn set_read_parallel_min_file_size(&mut self, bytes: u64) {
+        self.inner.set_read_parallel_min_file_size_bytes(bytes);
+    }
+
+    /// After how many data commits an automatic compaction runs; `None` - the
+    /// default - never compacts on its own, and 0 reads as off.
+    #[getter]
+    fn compact_after_commits(&self) -> Option<u32> {
+        self.inner.compact_after_commits()
+    }
+
+    #[setter]
+    fn set_compact_after_commits(&mut self, commits: u32) {
+        self.inner.set_compact_after_commits(commits);
+    }
+
+    /// The format new data files are written in, as the spec spells it.
+    /// Default: `PARQUET`.
+    ///
+    /// Only what a write produces is decided here: a scan decodes each data
+    /// file as the format its manifest entry records, so one table can mix
+    /// formats and still read as one shape. The table property is the spec's
+    /// own `write.format.default`.
+    #[getter]
+    fn data_format(&self) -> String {
+        self.inner.data_format().to_string()
+    }
+
+    #[setter]
+    fn set_data_format(&mut self, format: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner.set_data_format(file_format_from_value(format)?);
+        Ok(())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "IcebergOptions(commit_retries={}, target_file_size={}, data_format={:?})",
+            self.inner.commit_retries(),
+            self.inner.target_file_size_bytes(),
+            self.inner.data_format().to_string(),
+        )
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
 }
 
 /// A warehouse folder of namespaces of Iceberg tables.
@@ -323,11 +647,20 @@ impl PyCatalog {
     /// A table that is not there yet takes its schema from the rows: partition
     /// marks riding the Arrow fields' metadata become the spec, so a marked
     /// schema lays its files out partitioned from the very first append.
-    /// Returns the table so the caller can keep going.
-    fn append(&self, name: &str, data: &Bound<'_, PyAny>) -> PyResult<PyTable> {
+    /// `options` and the [`IcebergOptions`] keywords configure this one
+    /// write. Returns the table so the caller can keep going.
+    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    fn append(
+        &self,
+        name: &str,
+        data: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyTable> {
+        let resolved = iceberg_call_options("append", None, options, kwargs)?;
         let data = batch_reader_from_value(data)?;
         self.inner
-            .append(name, data)
+            .append_with(name, data, resolved)
             .map(PyTable::from_core)
             .map_err(value_error)
     }
@@ -335,12 +668,21 @@ impl PyCatalog {
     /// Replace the named table's rows with `data`, creating it on first write.
     ///
     /// An existing table keeps its previous snapshot readable, which is what
-    /// makes the overwrite reversible. Returns the table so the caller can
+    /// makes the overwrite reversible. `options` and the [`IcebergOptions`]
+    /// keywords configure this one write. Returns the table so the caller can
     /// keep going.
-    fn overwrite(&self, name: &str, data: &Bound<'_, PyAny>) -> PyResult<PyTable> {
+    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    fn overwrite(
+        &self,
+        name: &str,
+        data: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyTable> {
+        let resolved = iceberg_call_options("overwrite", None, options, kwargs)?;
         let data = batch_reader_from_value(data)?;
         self.inner
-            .overwrite(name, data)
+            .overwrite_with(name, data, resolved)
             .map(PyTable::from_core)
             .map_err(value_error)
     }
@@ -359,52 +701,18 @@ impl PyCatalog {
         self.inner.list_tables(namespace).map_err(value_error)
     }
 
-    /// One namespace as a view: `catalog["analytics"]`.
+    /// The catalog's namespaces, as a lazy map-oriented view.
     ///
-    /// The view exists whether or not the folder does, exactly as a handle
-    /// describes a location without proof, so indexing never fails.
-    fn namespace(slf: &Bound<'_, Self>, name: &str) -> PyNamespace {
-        PyNamespace {
+    /// Constructing the view performs no I/O: membership, iteration, and
+    /// length consult storage when asked, and indexing answers a
+    /// [`Namespace`][PyNamespace]. This is the one collection spelling -
+    /// `catalog.namespaces["sales"].tables["orders"]` chains to a table.
+    #[getter]
+    fn namespaces(slf: &Bound<'_, Self>) -> PyNamespaces {
+        PyNamespaces {
             catalog: slf.clone().unbind(),
-            name: name.to_owned(),
+            parent: None,
         }
-    }
-
-    /// `catalog["analytics"]` is [`namespace`](Self::namespace).
-    fn __getitem__(slf: &Bound<'_, Self>, name: &str) -> PyNamespace {
-        Self::namespace(slf, name)
-    }
-
-    /// `"analytics" in catalog` asks whether the namespace is listed.
-    fn __contains__(&self, name: &str) -> PyResult<bool> {
-        Ok(self
-            .inner
-            .list_namespaces(None)
-            .map_err(value_error)?
-            .iter()
-            .any(|namespace| namespace == name))
-    }
-
-    /// Iterating a catalog yields its top-level namespace views.
-    fn __iter__(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
-        let names = slf
-            .borrow()
-            .inner
-            .list_namespaces(None)
-            .map_err(value_error)?;
-        let namespaces: Vec<PyNamespace> = names
-            .into_iter()
-            .map(|name| PyNamespace {
-                catalog: slf.clone().unbind(),
-                name,
-            })
-            .collect();
-        let list = pyo3::types::PyList::new(slf.py(), namespaces)?;
-        Ok(list.as_any().try_iter()?.unbind().into_any())
-    }
-
-    fn __len__(&self) -> PyResult<usize> {
-        Ok(self.inner.list_namespaces(None).map_err(value_error)?.len())
     }
 
     fn __repr__(&self) -> String {
@@ -634,6 +942,36 @@ impl PyTable {
             .collect())
     }
 
+    /// Every manifest one retained snapshot points at.
+    ///
+    /// The snapshot is named by identifier rather than passed as a value,
+    /// because the table is the authority on which snapshots it still retains
+    /// - a `Snapshot` a caller kept from before an expiry describes a
+    /// manifest list that may be gone. An identifier the table no longer
+    /// retains is a `ValueError` naming it and the ones it does, the same
+    /// failure [`scan_at`](Self::scan_at) reports for the same reason.
+    fn manifests_at(&self, snapshot_id: i64) -> PyResult<Vec<PyManifestFile>> {
+        let metadata = self.inner.metadata();
+        let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
+            let retained: Vec<String> = metadata
+                .snapshots
+                .iter()
+                .map(|snapshot| snapshot.snapshot_id.to_string())
+                .collect();
+            PyValueError::new_err(format!(
+                "expected a retained snapshot id, got {snapshot_id}; the table retains [{}]",
+                retained.join(", ")
+            ))
+        })?;
+        Ok(self
+            .inner
+            .manifests_at(snapshot)
+            .map_err(value_error)?
+            .into_iter()
+            .map(PyManifestFile::from_core)
+            .collect())
+    }
+
     /// Every live data file of the current snapshot, with the spec it was
     /// written under.
     fn data_files(&self) -> PyResult<Vec<(PyDataFile, PyPartitionSpec)>> {
@@ -658,29 +996,259 @@ impl PyTable {
     /// as one shape.
     /// That cast is what makes a table whose schema evolved readable as one
     /// shape: a file written before a column existed contributes null for it.
-    #[pyo3(signature = (field = None))]
+    /// `options` and the [`IcebergOptions`] keywords configure this one scan.
+    #[pyo3(signature = (field = None, *, options = None, **kwargs))]
     fn scan<'py>(
-        &self,
+        &mut self,
         py: Python<'py>,
         field: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let resolved =
+            iceberg_call_options("scan", self.inner.explicit_options(), options, kwargs)?;
         let field = field
             .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
             .transpose()?;
-        let reader = self.inner.scan(field.as_ref()).map_err(value_error)?;
+        let reader = with_call_options(&mut self.inner, resolved, |table| {
+            table.scan(field.as_ref()).map_err(value_error)
+        })?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Read the rows matching `filters` as a `pyarrow.RecordBatchReader`.
+    ///
+    /// `filters` is a mapping or a sequence of `(column, value)` pairs - the
+    /// vocabulary `IOBase.children_where` uses. A filter on a partition column
+    /// is answered by the plan alone, because every row of a file whose
+    /// partition tuple matches holds that value; a filter on any other column
+    /// is applied to the rows the surviving files hold, because statistics
+    /// bound a file rather than select a row. Either way the rows that come
+    /// back are the rows that match. `field` and the options mean exactly what
+    /// they mean on [`scan`](Self::scan).
+    #[pyo3(signature = (filters = None, field = None, *, options = None, **kwargs))]
+    fn scan_where<'py>(
+        &mut self,
+        py: Python<'py>,
+        filters: Option<&Bound<'_, PyAny>>,
+        field: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let resolved =
+            iceberg_call_options("scan_where", self.inner.explicit_options(), options, kwargs)?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let field = field
+            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .transpose()?;
+        let reader = with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .scan_where(&borrowed_pairs(&pairs), field.as_ref())
+                .map_err(value_error)
+        })?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Read the rows a branch or tag names, as a `pyarrow.RecordBatchReader`.
+    ///
+    /// This is [`snapshot_by_ref`](Self::snapshot_by_ref) followed by
+    /// [`scan_at`](Self::scan_at), so a ref is read as the schema its snapshot
+    /// was written under and `filters` and `field` mean what they mean there.
+    /// A name the table does not carry is an error naming the refs it does.
+    #[pyo3(signature = (name, filters = None, field = None, *, options = None, **kwargs))]
+    fn scan_ref<'py>(
+        &mut self,
+        py: Python<'py>,
+        name: &str,
+        filters: Option<&Bound<'_, PyAny>>,
+        field: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let resolved =
+            iceberg_call_options("scan_ref", self.inner.explicit_options(), options, kwargs)?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let field = field
+            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .transpose()?;
+        let reader = with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .scan_ref(name, &borrowed_pairs(&pairs), field.as_ref())
+                .map_err(value_error)
+        })?;
         batch_reader_to_pyarrow(py, reader)
     }
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
-    fn append(&mut self, batches: &Bound<'_, PyAny>) -> PyResult<()> {
+    ///
+    /// `options` and the [`IcebergOptions`] keywords - `target_file_size`,
+    /// `commit_retries`, `data_format`, and the rest - configure this one
+    /// write; an explicit keyword wins over the same field of a passed
+    /// options object, and the handle's own configuration is untouched.
+    #[pyo3(signature = (batches, *, options = None, **kwargs))]
+    fn append(
+        &mut self,
+        batches: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved =
+            iceberg_call_options("append", self.inner.explicit_options(), options, kwargs)?;
         let batches = batch_reader_from_value(batches)?;
-        self.inner.append(batches).map_err(value_error)
+        with_call_options(&mut self.inner, resolved, |table| {
+            table.append(batches).map_err(value_error)
+        })
     }
 
     /// Replace every row with `batches` as a new snapshot.
-    fn overwrite(&mut self, batches: &Bound<'_, PyAny>) -> PyResult<()> {
+    ///
+    /// `options` and the [`IcebergOptions`] keywords configure this one
+    /// write, exactly as they configure [`append`](Self::append).
+    #[pyo3(signature = (batches, *, options = None, **kwargs))]
+    fn overwrite(
+        &mut self,
+        batches: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved =
+            iceberg_call_options("overwrite", self.inner.explicit_options(), options, kwargs)?;
         let batches = batch_reader_from_value(batches)?;
-        self.inner.overwrite(batches).map_err(value_error)
+        with_call_options(&mut self.inner, resolved, |table| {
+            table.overwrite(batches).map_err(value_error)
+        })
+    }
+
+    /// Replace only the rows `filters` selects with `batches`, keeping every
+    /// other file.
+    ///
+    /// A file the filters exclude is carried into the new snapshot exactly as
+    /// it is - same location, same statistics, same commit order - so
+    /// overwriting one partition of a thousand rewrites one partition. Unlike
+    /// [`append`](Self::append), an overwrite beaten by a concurrent commit
+    /// cannot rebase: what it keeps was planned against a snapshot the winner
+    /// may have replaced, and the incoming rows are already consumed, so it
+    /// raises rather than risk losing the winner's rows. The caller re-reads
+    /// and retries with fresh input.
+    #[pyo3(signature = (filters, batches, *, options = None, **kwargs))]
+    fn overwrite_where(
+        &mut self,
+        filters: Option<&Bound<'_, PyAny>>,
+        batches: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved = iceberg_call_options(
+            "overwrite_where",
+            self.inner.explicit_options(),
+            options,
+            kwargs,
+        )?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let batches = batch_reader_from_value(batches)?;
+        with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .overwrite_where(&borrowed_pairs(&pairs), batches)
+                .map_err(value_error)
+        })
+    }
+
+    /// Merge `batches` into the stored rows, matching on `merge_by_names`.
+    ///
+    /// An incoming row replaces the stored row whose match-key columns equal
+    /// its own and is inserted when there is none, so this is the upsert. Only
+    /// the files whose recorded bounds can hold an incoming key are read and
+    /// rewritten - a file that is not read keeps every row it had, however
+    /// coarse the statistics are - so the write costs the files it can
+    /// actually change rather than the whole table. Matching on no column at
+    /// all is a plain overwrite, because every row would then match every row.
+    ///
+    /// `safe` is the cast strictness the incoming batches are held to: the
+    /// default refuses a value the table's column cannot hold rather than
+    /// storing a silently wrapped one.
+    #[pyo3(signature = (batches, merge_by_names, *, safe = true, options = None, **kwargs))]
+    fn merge(
+        &mut self,
+        batches: &Bound<'_, PyAny>,
+        merge_by_names: &Bound<'_, PyAny>,
+        safe: bool,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved =
+            iceberg_call_options("merge", self.inner.explicit_options(), options, kwargs)?;
+        let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let batches = batch_reader_from_value(batches)?;
+        with_call_options(&mut self.inner, resolved, |table| {
+            table.merge(batches, &names, safe).map_err(value_error)
+        })
+    }
+
+    /// Merge `batches` into the rows `filters` selects, matching on
+    /// `merge_by_names`.
+    ///
+    /// The filters narrow which stored files the merge may touch at all, and
+    /// the key bounds narrow that further, so an upsert into one partition
+    /// reads one partition. Everything else - the match rule, `safe`, the
+    /// refusal to rebase after a lost commit - is exactly
+    /// [`merge`](Self::merge).
+    #[pyo3(signature = (filters, batches, merge_by_names, *, safe = true, options = None, **kwargs))]
+    fn merge_where(
+        &mut self,
+        filters: Option<&Bound<'_, PyAny>>,
+        batches: &Bound<'_, PyAny>,
+        merge_by_names: &Bound<'_, PyAny>,
+        safe: bool,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let resolved = iceberg_call_options(
+            "merge_where",
+            self.inner.explicit_options(),
+            options,
+            kwargs,
+        )?;
+        let pairs = filter_pairs_from_value(filters)?;
+        let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let batches = batch_reader_from_value(batches)?;
+        with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .merge_where(&borrowed_pairs(&pairs), batches, &names, safe)
+                .map_err(value_error)
+        })
+    }
+
+    /// Store an explicit options override every later call resolves first.
+    ///
+    /// A field the override sets shadows the table property of the same name,
+    /// and a field it leaves unset still resolves property-then-default. The
+    /// override lives on this handle alone - it is never written to the
+    /// table; [`update_properties`](Self::update_properties) is what stores a
+    /// setting on the table itself. Keywords work exactly as they do on the
+    /// per-call methods, so `table.set_options(data_format="avro")` is the
+    /// handle-wide spelling of the per-call keyword.
+    #[pyo3(signature = (options = None, **kwargs))]
+    fn set_options(
+        &mut self,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let mut resolved = match options {
+            Some(value) => core_iceberg_options_from_value(value)?,
+            None => IcebergOptions::new(),
+        };
+        apply_iceberg_kwargs("set_options", &mut resolved, kwargs)?;
+        self.inner.set_options(resolved);
+        Ok(())
+    }
+
+    /// Resolve this table's effective options, field by field: the explicit
+    /// override, then the table property of the same name, then the default.
+    fn options(&self) -> PyResult<PyIcebergOptions> {
+        self.inner
+            .options()
+            .map(|inner| PyIcebergOptions { inner })
+            .map_err(value_error)
     }
 
     /// Add a schema, make it current, and write a new metadata document.
@@ -696,27 +1264,118 @@ impl PyTable {
     /// pairs - the vocabulary `IOBase.children_where` uses - answered by the
     /// plan for a partition column and row by row for every other; `schema`
     /// keeps the columns it names, exactly as `scan` does.
-    #[pyo3(signature = (snapshot_id, filters = None, schema = None))]
+    #[pyo3(signature = (snapshot_id, filters = None, schema = None, *, options = None, **kwargs))]
     fn scan_at<'py>(
-        &self,
+        &mut self,
         py: Python<'py>,
         snapshot_id: i64,
         filters: Option<&Bound<'_, PyAny>>,
         schema: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let resolved =
+            iceberg_call_options("scan_at", self.inner.explicit_options(), options, kwargs)?;
         let pairs = filter_pairs_from_value(filters)?;
-        let borrowed: Vec<(&str, &str)> = pairs
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
         let field = schema
             .map(|schema| core_root_field_from_value(schema, SCHEMA_ROOT_NAME))
             .transpose()?;
-        let reader = self
-            .inner
-            .scan_at(snapshot_id, &borrowed, field.as_ref())
-            .map_err(value_error)?;
+        let reader = with_call_options(&mut self.inner, resolved, |table| {
+            table
+                .scan_at(snapshot_id, &borrowed_pairs(&pairs), field.as_ref())
+                .map_err(value_error)
+        })?;
         batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Plan the current snapshot's scan without reading a single row.
+    ///
+    /// The plan is what the metadata alone decided: which data files a scan
+    /// would open, and how many files and manifests the partition tuples and
+    /// column statistics let it leave closed. `filters` is the mapping or
+    /// sequence of `(column, value)` pairs [`scan_where`](Self::scan_where)
+    /// takes, so a caller can assert on the pruning before paying for the
+    /// read.
+    #[pyo3(signature = (filters = None))]
+    fn plan(&self, filters: Option<&Bound<'_, PyAny>>) -> PyResult<PyScanPlan> {
+        let pairs = filter_pairs_from_value(filters)?;
+        self.inner
+            .plan(&borrowed_pairs(&pairs))
+            .map(|plan| PyScanPlan::from_core(&plan))
+            .map_err(value_error)
+    }
+
+    /// Plan one retained snapshot's scan: the planning half of time travel.
+    ///
+    /// The filters are resolved against the schema that was current when the
+    /// snapshot was written, and the same three-level pruning a
+    /// [`plan`](Self::plan) of the present runs applies, so history reports
+    /// the numbers the present reports.
+    #[pyo3(signature = (snapshot_id, filters = None))]
+    fn plan_at(
+        &self,
+        snapshot_id: i64,
+        filters: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyScanPlan> {
+        let pairs = filter_pairs_from_value(filters)?;
+        self.inner
+            .plan_at(snapshot_id, &borrowed_pairs(&pairs))
+            .map(|plan| PyScanPlan::from_core(&plan))
+            .map_err(value_error)
+    }
+
+    /// Create a branch at one retained snapshot, as one metadata commit.
+    ///
+    /// Writing *to* a branch other than `main` remains future work - a
+    /// commit's parent is always the current snapshot - so a branch is read
+    /// with [`scan_ref`](Self::scan_ref) and moved with
+    /// [`fast_forward`](Self::fast_forward).
+    fn create_branch(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
+        self.inner
+            .create_branch(name, snapshot_id)
+            .map_err(value_error)
+    }
+
+    /// Create a tag at one retained snapshot, as one metadata commit.
+    fn create_tag(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
+        self.inner
+            .create_tag(name, snapshot_id)
+            .map_err(value_error)
+    }
+
+    /// Remove one branch or tag, as one metadata commit.
+    ///
+    /// A name the table does not have is an error rather than an empty
+    /// commit.
+    fn remove_ref(&mut self, name: &str) -> PyResult<()> {
+        self.inner.remove_ref(name).map(|_| ()).map_err(value_error)
+    }
+
+    /// Move a branch forward to a descendant snapshot, as one metadata commit.
+    ///
+    /// The target must be retained and must reach the branch's head by walking
+    /// parent identifiers, so a fast-forward can never lose history: it is the
+    /// one way a branch other than `main` moves, since a commit's parent is
+    /// always the current snapshot.
+    fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
+        self.inner
+            .fast_forward(name, snapshot_id)
+            .map_err(value_error)
+    }
+
+    /// Expire the snapshots retention no longer keeps, returning their ids.
+    ///
+    /// `older_than_ms` is the default age cutoff, in milliseconds since the
+    /// Unix epoch; every branch's and tag's own retention settings are honored
+    /// first, so a tagged snapshot survives a cutoff that would otherwise
+    /// reach it. A table with nothing old commits nothing at all - the check
+    /// runs on a copy first - so an empty expiry costs no version. The
+    /// metadata stops naming the expired snapshots; their files are left
+    /// where they are.
+    fn expire_snapshots(&mut self, older_than_ms: i64) -> PyResult<Vec<i64>> {
+        self.inner
+            .expire_snapshots(older_than_ms)
+            .map_err(value_error)
     }
 
     /// Return the retained snapshot a branch or tag names.
@@ -1091,6 +1750,91 @@ impl PySchemaUpdate {
             "SchemaUpdate(ops={}, committed={})",
             self.ops.len(),
             if self.consumed { "True" } else { "False" },
+        )
+    }
+}
+
+/// What a scan decided to read, before a single row was read.
+///
+/// The core plan holds the data files themselves, because a write needs them;
+/// this view keeps only the counts, because a caller asking what the metadata
+/// pruned is asking a question about numbers - "did partitioning work" - and
+/// the file list is the scan's own business. The counts are the whole answer:
+/// `files_planned` plus `files_skipped` is every live file a read manifest
+/// listed, and `manifests_read` plus `manifests_skipped` is every manifest the
+/// snapshot points at.
+#[pyclass(
+    name = "ScanPlan",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyScanPlan {
+    /// The rows the planned files hold, as the manifests counted them.
+    record_count: i64,
+    /// The data files the scan will open.
+    files_planned: usize,
+    /// Live files a read manifest listed that the filters excluded.
+    files_skipped: usize,
+    /// Manifests that had to be opened because their summaries allowed a match.
+    manifests_read: usize,
+    /// Manifests excluded on their summary alone, never opened.
+    manifests_skipped: usize,
+}
+
+impl PyScanPlan {
+    fn from_core(plan: &ScanPlan) -> Self {
+        Self {
+            record_count: plan.record_count(),
+            files_planned: plan.tasks.len(),
+            files_skipped: plan.files_skipped(),
+            manifests_read: plan.manifests_read,
+            manifests_skipped: plan.manifests_skipped(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyScanPlan {
+    /// The rows the planned files hold, as the manifests counted them.
+    ///
+    /// This is the count a scan would yield only when every filter is on a
+    /// partition column: a file survives on its statistics, and a filter on
+    /// any other column then selects rows within it.
+    #[getter]
+    fn record_count(&self) -> i64 {
+        self.record_count
+    }
+
+    /// How many data files the scan will open.
+    #[getter]
+    fn files_planned(&self) -> usize {
+        self.files_planned
+    }
+
+    /// How many live data files the metadata let the scan leave closed.
+    #[getter]
+    fn files_skipped(&self) -> usize {
+        self.files_skipped
+    }
+
+    /// How many manifests had to be opened to plan the scan.
+    #[getter]
+    fn manifests_read(&self) -> usize {
+        self.manifests_read
+    }
+
+    /// How many manifests the manifest-list summaries alone ruled out.
+    #[getter]
+    fn manifests_skipped(&self) -> usize {
+        self.manifests_skipped
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ScanPlan(record_count={}, files_planned={}, files_skipped={})",
+            self.record_count, self.files_planned, self.files_skipped,
         )
     }
 }
@@ -1561,13 +2305,13 @@ impl PyDataFile {
     }
 }
 
-/// One namespace of a catalog: the first half of `catalog[ns][table]`.
+/// One namespace of a catalog: identity, plus its two collection views.
 ///
-/// Indexing reads - `namespace["trades"]` opens the table or raises
-/// `KeyError` - and assigning gets-or-creates: a schema-like value opens the
-/// table, creating it with that schema when absent, and a rows-like value
-/// replaces the table's rows, creating it from the rows' own schema on first
-/// write.
+/// The namespace holds only its dotted name. Its tables are
+/// [`tables`][Self::tables] and its child namespaces are
+/// [`namespaces`][Self::namespaces], so access chains -
+/// `catalog.namespaces["sales"].tables["orders"]` - and every collection
+/// operation has exactly one home.
 #[pyclass(name = "Namespace", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyNamespace {
     catalog: Py<PyCatalog>,
@@ -1582,117 +2326,261 @@ impl PyNamespace {
         &self.name
     }
 
-    /// Open the named table.
-    fn table(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
+    /// This namespace's tables, as a lazy map-oriented view.
+    #[getter]
+    fn tables(&self, py: Python<'_>) -> PyTables {
+        PyTables {
+            catalog: self.catalog.clone_ref(py),
+            namespace: self.name.clone(),
+        }
+    }
+
+    /// The namespaces one level below this one, as the same view shape the
+    /// catalog itself answers - the cascade that reaches a nested namespace.
+    #[getter]
+    fn namespaces(&self, py: Python<'_>) -> PyNamespaces {
+        PyNamespaces {
+            catalog: self.catalog.clone_ref(py),
+            parent: Some(self.name.clone()),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Namespace({:?})", self.name)
+    }
+}
+
+/// The namespaces one level below a catalog or a namespace, as a lazy view.
+///
+/// The view materializes nothing up front: membership, iteration, and length
+/// consult storage when asked, and indexing answers a
+/// [`Namespace`][PyNamespace] - a missing name is a `KeyError` naming the
+/// namespace. Two views over the same catalog observe each other's writes,
+/// and a view stays valid across creation and deletion because every answer
+/// comes from storage at call time.
+#[pyclass(name = "Namespaces", module = "yggdryl._native", skip_from_py_object)]
+pub(crate) struct PyNamespaces {
+    catalog: Py<PyCatalog>,
+    /// The parent namespace's dotted name; `None` is the warehouse root.
+    parent: Option<String>,
+}
+
+impl PyNamespaces {
+    /// Run one operation over the core view this value describes.
+    fn with_core<R>(
+        &self,
+        py: Python<'_>,
+        operation: impl FnOnce(yggdryl::iceberg::Namespaces<'_, Holder>) -> R,
+    ) -> R {
         let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespace(&self.name)
-            .table(name)
+        let view = match &self.parent {
+            Some(parent) => catalog.inner.namespace(parent).namespaces(),
+            None => catalog.inner.namespaces(),
+        };
+        operation(view)
+    }
+
+    /// Wrap one namespace name as the view of it.
+    fn namespace(&self, py: Python<'_>, name: &str) -> PyNamespace {
+        let dotted = match &self.parent {
+            Some(parent) => format!("{parent}.{name}"),
+            None => name.to_owned(),
+        };
+        PyNamespace {
+            catalog: self.catalog.clone_ref(py),
+            name: dotted,
+        }
+    }
+}
+
+#[pymethods]
+impl PyNamespaces {
+    /// `namespaces["sales"]` answers the namespace; a missing one is a
+    /// `KeyError` naming it.
+    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
+        let exists = self
+            .with_core(py, |view| view.contains(name))
+            .map_err(value_error)?;
+        if !exists {
+            return Err(PyKeyError::new_err(format!(
+                "no namespace named {name:?} under {}",
+                self.parent.as_deref().unwrap_or("the warehouse root"),
+            )));
+        }
+        Ok(self.namespace(py, name))
+    }
+
+    /// `"sales" in namespaces` asks storage whether the namespace exists.
+    fn __contains__(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
+        self.with_core(py, |view| view.contains(name))
+            .map_err(value_error)
+    }
+
+    /// Iterating the view yields the bare namespace names, sorted.
+    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let names = self
+            .with_core(py, |view| view.names())
+            .map_err(value_error)?;
+        let list = pyo3::types::PyList::new(py, names)?;
+        Ok(list.as_any().try_iter()?.unbind().into_any())
+    }
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        self.with_core(py, |view| view.len()).map_err(value_error)
+    }
+
+    /// Create the named namespace; one already there is an error.
+    fn create(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
+        self.with_core(py, |view| view.create(name).map(|_| ()))
+            .map_err(value_error)?;
+        Ok(self.namespace(py, name))
+    }
+
+    /// Open the named namespace, creating its folder when absent.
+    fn open_or_create(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
+        self.with_core(py, |view| view.open_or_create(name).map(|_| ()))
+            .map_err(value_error)?;
+        Ok(self.namespace(py, name))
+    }
+
+    fn __repr__(&self) -> String {
+        match &self.parent {
+            Some(parent) => format!("Namespaces({parent:?})"),
+            None => "Namespaces()".to_owned(),
+        }
+    }
+}
+
+/// The tables of one namespace, as a lazy map-oriented view.
+///
+/// The same shape as [`Namespaces`][PyNamespaces], one level down: indexing
+/// opens a [`Table`][PyTable] - a missing name is a `KeyError` naming the
+/// table - and the write conveniences that take a name create the table on
+/// first write, from the incoming rows' own schema. Every answer comes from
+/// storage at call time, so the view is never stale.
+#[pyclass(name = "Tables", module = "yggdryl._native", skip_from_py_object)]
+pub(crate) struct PyTables {
+    catalog: Py<PyCatalog>,
+    /// The owning namespace's dotted name.
+    namespace: String,
+}
+
+impl PyTables {
+    /// Run one operation over the core view this value describes.
+    fn with_core<R>(
+        &self,
+        py: Python<'_>,
+        operation: impl FnOnce(yggdryl::iceberg::Tables<'_, Holder>) -> R,
+    ) -> R {
+        let catalog = self.catalog.borrow(py);
+        let view = catalog.inner.namespace(&self.namespace).tables();
+        operation(view)
+    }
+}
+
+#[pymethods]
+impl PyTables {
+    /// `tables["orders"]` opens the table; a missing one is a `KeyError`
+    /// naming it.
+    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
+        let exists = self
+            .with_core(py, |view| view.contains(name))
+            .map_err(value_error)?;
+        if !exists {
+            return Err(PyKeyError::new_err(format!(
+                "no table named {name:?} in namespace {:?}",
+                self.namespace
+            )));
+        }
+        self.with_core(py, |view| view.get(name))
             .map(PyTable::from_core)
             .map_err(value_error)
     }
 
-    /// Return whether the named table exists here.
-    fn has_table(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespace(&self.name)
-            .has_table(name)
+    /// `"orders" in tables` asks storage whether the table exists.
+    fn __contains__(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
+        self.with_core(py, |view| view.contains(name))
+            .map_err(value_error)
+    }
+
+    /// Iterating the view yields the bare table names, sorted.
+    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let names = self
+            .with_core(py, |view| view.names())
+            .map_err(value_error)?;
+        let list = pyo3::types::PyList::new(py, names)?;
+        Ok(list.as_any().try_iter()?.unbind().into_any())
+    }
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        self.with_core(py, |view| view.len()).map_err(value_error)
+    }
+
+    /// Create the named table, writing its first metadata document.
+    ///
+    /// Unnumbered schema fields are numbered, and the partition spec is
+    /// derived from the columns the schema itself marks.
+    fn create(&self, py: Python<'_>, name: &str, schema: &Bound<'_, PyAny>) -> PyResult<PyTable> {
+        let schema = catalog_schema_from_value(schema)?;
+        self.with_core(py, |view| view.create(name, schema))
+            .map(PyTable::from_core)
             .map_err(value_error)
     }
 
     /// Open the named table, creating it with `schema` when absent.
-    fn open_or_create_table(
+    fn open_or_create(
         &self,
         py: Python<'_>,
         name: &str,
         schema: &Bound<'_, PyAny>,
     ) -> PyResult<PyTable> {
         let schema = catalog_schema_from_value(schema)?;
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespace(&self.name)
-            .open_or_create_table(name, schema)
+        self.with_core(py, |view| view.open_or_create(name, schema))
             .map(PyTable::from_core)
             .map_err(value_error)
     }
 
-    /// This namespace's tables, as bare names.
-    fn list_tables(&self, py: Python<'_>) -> PyResult<Vec<String>> {
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespace(&self.name)
-            .list_tables()
-            .map_err(value_error)
-    }
-
-    /// The namespaces one level below this one, as bare names.
-    fn list_namespaces(&self, py: Python<'_>) -> PyResult<Vec<String>> {
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespace(&self.name)
-            .list_namespaces()
-            .map_err(value_error)
-    }
-
-    /// `namespace["trades"]` opens the table; a missing one is a `KeyError`.
-    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
-        if !self.has_table(py, name)? {
-            return Err(pyo3::exceptions::PyKeyError::new_err(format!(
-                "no table named {name:?} in namespace {:?}",
-                self.name
-            )));
-        }
-        self.table(py, name)
-    }
-
-    /// Assigning gets or creates.
+    /// Append `data` to the named table, creating it on first write.
     ///
-    /// A schema-like value - a `Field`, `DataType`, `pyarrow` schema, or
-    /// datatype string - opens the table, creating it with that schema when
-    /// absent. Anything rows-like replaces the table's rows, creating the
-    /// table from the rows' own schema on first write.
-    fn __setitem__(&self, py: Python<'_>, name: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        if let Ok(schema) = catalog_schema_from_value(value) {
-            let catalog = self.catalog.borrow(py);
-            catalog
-                .inner
-                .namespace(&self.name)
-                .open_or_create_table(name, schema)
-                .map_err(value_error)?;
-            return Ok(());
-        }
-        let data = batch_reader_from_value(value)?;
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespace(&self.name)
-            .overwrite(name, data)
-            .map_err(value_error)?;
-        Ok(())
+    /// `options` and the [`IcebergOptions`] keywords configure this one
+    /// write. Returns the table so the caller can keep going.
+    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    fn append(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        data: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyTable> {
+        let resolved = iceberg_call_options("append", None, options, kwargs)?;
+        let data = batch_reader_from_value(data)?;
+        self.with_core(py, |view| view.append_with(name, data, resolved))
+            .map(PyTable::from_core)
+            .map_err(value_error)
     }
 
-    /// `"trades" in namespace` asks whether the table exists.
-    fn __contains__(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
-        self.has_table(py, name)
-    }
-
-    /// Iterating a namespace yields its bare table names.
-    fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let list = pyo3::types::PyList::new(py, self.list_tables(py)?)?;
-        Ok(list.as_any().try_iter()?.unbind().into_any())
-    }
-
-    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
-        Ok(self.list_tables(py)?.len())
+    /// Replace the named table's rows with `data`, creating it on first write.
+    ///
+    /// `options` and the [`IcebergOptions`] keywords configure this one
+    /// write. Returns the table so the caller can keep going.
+    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    fn overwrite(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        data: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyTable> {
+        let resolved = iceberg_call_options("overwrite", None, options, kwargs)?;
+        let data = batch_reader_from_value(data)?;
+        self.with_core(py, |view| view.overwrite_with(name, data, resolved))
+            .map(PyTable::from_core)
+            .map_err(value_error)
     }
 
     fn __repr__(&self) -> String {
-        format!("Namespace({:?})", self.name)
+        format!("Tables({:?})", self.namespace)
     }
 }

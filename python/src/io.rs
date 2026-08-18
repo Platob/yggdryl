@@ -10,15 +10,16 @@
 
 use pyo3::exceptions::{PyIsADirectoryError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::generic::{Holder, RecordOptions};
 use yggdryl::io::IOBase as _;
 use yggdryl::io::LineRecordOptions;
+use yggdryl::{Codec, Level};
 
 use crate::field::PyField;
 use crate::record::{
-    Frames, PyRecordOptions, batch_reader_from_any, batch_reader_from_value,
+    Frames, PyRecordOptions, apply_record_kwargs, batch_reader_from_any, batch_reader_from_value,
     batch_reader_to_pyarrow, core_record_options_from_value, frame_batch_reader, frame_from_reader,
     frames_batch_reader, frames_from_reader,
 };
@@ -137,6 +138,38 @@ impl PyIOBase {
         }
     }
 
+    /// Whether this call carried any options of its own.
+    ///
+    /// The scanners hand a path to polars or pyarrow on their fast path, and
+    /// whatever that engine does with it cannot depend on options it was never
+    /// shown. Knowing the caller asked for nothing is what makes handing the
+    /// path over the same answer as reading it here.
+    fn asked_for_options(
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> bool {
+        options.is_some() || kwargs.is_some_and(|kwargs| !kwargs.is_empty())
+    }
+
+    /// Resolve `(options, kwargs)` into the one options value a call runs
+    /// under.
+    ///
+    /// The base comes from `options` when one was passed and from the handle's
+    /// media type otherwise; each record-option keyword is then applied on
+    /// top, so an explicit keyword always wins over the same field of a passed
+    /// options object, and a caller's options value is never mutated. An
+    /// unknown keyword is a `TypeError` naming `method` and the argument.
+    fn resolved_options(
+        &self,
+        method: &str,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<RecordOptions> {
+        let mut resolved = self.resolve_options(options)?;
+        apply_record_kwargs(method, &mut resolved, kwargs)?;
+        Ok(resolved)
+    }
+
     /// Name the path and base type a native scanner can open directly,
     /// with the bytes published at their exact length first.
     ///
@@ -175,11 +208,10 @@ impl PyIOBase {
     /// chained back in front, so the iterable is pulled exactly once. `None`
     /// means there was nothing to write and no class to write it with.
     fn records_reader<'py>(
-        &self,
         py: Python<'py>,
         rows: &Bound<'py, PyAny>,
         cls: Option<&Bound<'py, PyAny>>,
-        options: Option<&Bound<'py, PyAny>>,
+        options: &RecordOptions,
         safe: bool,
     ) -> PyResult<Option<Bound<'py, PyAny>>> {
         use pyo3::types::PyList;
@@ -203,12 +235,47 @@ impl PyIOBase {
         kwargs.set_item("safe", safe)?;
         if let Some(batch_size) = {
             use yggdryl::generic::IORecordOptions;
-            self.resolve_options(options)?.batch_size()
+            options.batch_size()
         } {
             kwargs.set_item("batch_size", batch_size)?;
         }
         cls.call_method("into_arrow_record_batch_reader", (chained,), Some(&kwargs))
             .map(Some)
+    }
+
+    /// Read this resource with options that are already resolved.
+    fn read_reader<'py>(
+        &self,
+        py: Python<'py>,
+        options: &RecordOptions,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self
+            .inner
+            .read_arrow_batch_reader(options)
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Write one core reader with options that are already resolved.
+    fn write_reader(
+        &mut self,
+        batches: yggdryl::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> PyResult<()> {
+        self.inner
+            .write_arrow_batch_reader(batches, options)
+            .map_err(value_error)
+    }
+
+    /// Append one core reader with options that are already resolved.
+    fn append_reader(
+        &mut self,
+        batches: yggdryl::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> PyResult<()> {
+        self.inner
+            .append_arrow_batch_reader(batches, options)
+            .map_err(value_error)
     }
 }
 
@@ -365,6 +432,21 @@ impl PyIOBase {
         self.inner
             .set_media_type(crate::media::core_media_type_from_value(media_type)?);
         Ok(())
+    }
+
+    /// The content coding the media type declares, or `None` for none.
+    ///
+    /// This is what a name says the bytes are wrapped in - `data.json.gz`
+    /// reads as `"gzip"` - and it is what [`decompress_into`][Self::decompress_into]
+    /// decodes with when the caller names no coding. Identity is spelled
+    /// `None` rather than `"identity"`, because "these bytes carry no coding"
+    /// is the question a caller is actually asking.
+    #[getter]
+    fn codec(&self) -> Option<&'static str> {
+        match self.inner.codec() {
+            Codec::Identity => None,
+            codec => Some(codec.as_str()),
+        }
     }
 
     /// The number of bytes here, as `Path.stat().st_size`.
@@ -652,6 +734,66 @@ impl PyIOBase {
         self.inner.copy_into(&mut target.inner).map_err(value_error)
     }
 
+    /// Encode every byte here into `target`, returning the bytes written.
+    ///
+    /// `codec` names the coding - `"gzip"`, `"zlib"`, `"deflate"`, `"zstd"`,
+    /// `"identity"` - and defaults to the one `target`'s own name declares, so
+    /// `handle.compress_into(root / "rows.json.gz")` needs no second spelling
+    /// of "gzip". A target that declares none is refused rather than silently
+    /// copied, because a coding nobody named is a coding nobody can decode by
+    /// name later. `level` is the shared 0-9 scale.
+    ///
+    /// The target's media type records the added coding, which is what lets
+    /// [`decompress_into`][Self::decompress_into] undo this with no argument.
+    #[pyo3(signature = (target, codec = None, level = None))]
+    fn compress_into(
+        &self,
+        target: &mut Self,
+        codec: Option<&str>,
+        level: Option<u8>,
+    ) -> PyResult<u64> {
+        let codec = match codec {
+            Some(name) => name.parse::<Codec>().map_err(value_error)?,
+            None => match target.inner.codec() {
+                Codec::Identity => {
+                    return Err(PyValueError::new_err(format!(
+                        "expected a target declaring a content coding, got {}; pass codec= to say \
+                         which coding to write",
+                        target.inner.media_type(),
+                    )));
+                }
+                codec => codec,
+            },
+        };
+        let level = level.map_or(Level::DEFAULT, Level::new);
+        self.inner
+            .compress_into_with_level(&mut target.inner, codec, level)
+            .map_err(value_error)
+    }
+
+    /// Decode every byte here into `target`, returning the bytes written.
+    ///
+    /// `codec` defaults to [`self.codec`][Self::codec] - the coding this
+    /// handle's own name declares - so a `.gz` file decodes into a plain one
+    /// without the caller repeating what the name already said; naming a
+    /// coding overrides that, for bytes whose name does not admit what they
+    /// are. The target's media type loses the coding this removed.
+    #[pyo3(signature = (target, codec = None))]
+    fn decompress_into(&self, target: &mut Self, codec: Option<&str>) -> PyResult<u64> {
+        match codec {
+            Some(name) => {
+                let codec = name.parse::<Codec>().map_err(value_error)?;
+                self.inner
+                    .decompress_into_with(&mut target.inner, codec)
+                    .map_err(value_error)
+            }
+            None => self
+                .inner
+                .decompress_into(&mut target.inner)
+                .map_err(value_error),
+        }
+    }
+
     /// A positioned view over this resource, as Python files position them.
     ///
     /// The cursor shares this handle - a write through the cursor is a write
@@ -746,9 +888,13 @@ impl PyIOBase {
     }
 
     /// Read the canonical non-null struct root `Field` of this resource.
-    #[pyo3(signature = (*, options = None))]
-    fn read_arrow_field(&self, options: Option<&Bound<'_, PyAny>>) -> PyResult<PyField> {
-        let options = self.resolve_options(options)?;
+    #[pyo3(signature = (*, options = None, **kwargs))]
+    fn read_arrow_field(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyField> {
+        let options = self.resolved_options("read_arrow_field", options, kwargs)?;
         self.inner
             .read_arrow_field(&options)
             .map(PyField::from_inner)
@@ -762,18 +908,15 @@ impl PyIOBase {
     /// rather than read and discarded, and what comes back is the shape it
     /// declares. A handle addressing a folder reads across the partitions
     /// beneath it, so a caller never has to know which they addressed.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn read_arrow_batch_reader<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
-        let reader = self
-            .inner
-            .read_arrow_batch_reader(&options)
-            .map_err(value_error)?;
-        batch_reader_to_pyarrow(py, reader)
+        let options = self.resolved_options("read_arrow_batch_reader", options, kwargs)?;
+        self.read_reader(py, &options)
     }
 
     /// Replace or merge this resource's rows with every batch `batches` yields.
@@ -783,31 +926,29 @@ impl PyIOBase {
     /// on the way in. An empty `merge_by_names` overwrites; a non-empty one names the
     /// columns a row is matched on, so a matching row is updated and a
     /// non-matching one appended.
-    #[pyo3(signature = (batches, *, options = None))]
+    #[pyo3(signature = (batches, *, options = None, **kwargs))]
     fn write_arrow_batch_reader(
         &mut self,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("write_arrow_batch_reader", options, kwargs)?;
         let batches = batch_reader_from_value(batches)?;
-        self.inner
-            .write_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.write_reader(batches, &options)
     }
 
     /// Add every batch `batches` yields after the rows this resource holds.
-    #[pyo3(signature = (batches, *, options = None))]
+    #[pyo3(signature = (batches, *, options = None, **kwargs))]
     fn append_arrow_batch_reader(
         &mut self,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("append_arrow_batch_reader", options, kwargs)?;
         let batches = batch_reader_from_value(batches)?;
-        self.inner
-            .append_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.append_reader(batches, &options)
     }
 
     /// Read this resource's rows, as `read_arrow_batch_reader` does.
@@ -815,13 +956,15 @@ impl PyIOBase {
     /// This is the short name for the same call: the reader is the record shape
     /// in Python, so the generic read has nothing to infer and nothing to
     /// choose between.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn read_arrow<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        self.read_arrow_batch_reader(py, options)
+        let options = self.resolved_options("read_arrow", options, kwargs)?;
+        self.read_reader(py, &options)
     }
 
     /// Read this resource's rows as instances of a record class.
@@ -834,7 +977,7 @@ impl PyIOBase {
     /// convert, missing columns default - and `safe`/`errors` say how a value
     /// that will not convert is handled. A resource that does not exist reads
     /// as empty, so probing a location yields no rows rather than an error.
-    #[pyo3(signature = (cls = None, *, options = None, safe = true, errors = "raise"))]
+    #[pyo3(signature = (cls = None, *, options = None, safe = true, errors = "raise", **kwargs))]
     fn read_records<'py>(
         &self,
         py: Python<'py>,
@@ -842,8 +985,10 @@ impl PyIOBase {
         options: Option<&Bound<'py, PyAny>>,
         safe: bool,
         errors: &str,
+        kwargs: Option<&Bound<'py, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.read_arrow_batch_reader(py, options)?;
+        let resolved = self.resolved_options("read_records", options, kwargs)?;
+        let reader = self.read_reader(py, &resolved)?;
         let cls = if let Some(cls) = cls {
             cls.clone()
         } else {
@@ -866,7 +1011,7 @@ impl PyIOBase {
     /// class when the iterable could be empty or mixed; omitted, the first
     /// row's class is the schema. An empty iterable with no class writes
     /// nothing at all, so a conditional write needs no emptiness check.
-    #[pyo3(signature = (rows, *, cls = None, options = None, safe = true))]
+    #[pyo3(signature = (rows, *, cls = None, options = None, safe = true, **kwargs))]
     fn write_records(
         &mut self,
         py: Python<'_>,
@@ -874,15 +1019,20 @@ impl PyIOBase {
         cls: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
         safe: bool,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        match self.records_reader(py, rows, cls, options, safe)? {
-            Some(reader) => self.write_arrow_batch_reader(&reader, options),
+        let options = self.resolved_options("write_records", options, kwargs)?;
+        match Self::records_reader(py, rows, cls, &options, safe)? {
+            Some(reader) => {
+                let batches = batch_reader_from_value(&reader)?;
+                self.write_reader(batches, &options)
+            }
             None => Ok(()),
         }
     }
 
     /// Add record instances after the rows this resource holds.
-    #[pyo3(signature = (rows, *, cls = None, options = None, safe = true))]
+    #[pyo3(signature = (rows, *, cls = None, options = None, safe = true, **kwargs))]
     fn append_records(
         &mut self,
         py: Python<'_>,
@@ -890,9 +1040,14 @@ impl PyIOBase {
         cls: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
         safe: bool,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        match self.records_reader(py, rows, cls, options, safe)? {
-            Some(reader) => self.append_arrow_batch_reader(&reader, options),
+        let options = self.resolved_options("append_records", options, kwargs)?;
+        match Self::records_reader(py, rows, cls, &options, safe)? {
+            Some(reader) => {
+                let batches = batch_reader_from_value(&reader)?;
+                self.append_reader(batches, &options)
+            }
             None => Ok(()),
         }
     }
@@ -912,34 +1067,32 @@ impl PyIOBase {
     /// a reader would. Rows arriving as mappings are grouped into batches and
     /// typed by the schema on the options, or by the first batch when no schema
     /// was declared.
-    #[pyo3(signature = (data, *, options = None))]
+    #[pyo3(signature = (data, *, options = None, **kwargs))]
     fn write_arrow(
         &mut self,
         data: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("write_arrow", options, kwargs)?;
         let batches = batch_reader_from_any(data, &options)?;
-        self.inner
-            .write_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.write_reader(batches, &options)
     }
 
     /// Add whatever `data` holds after the rows this resource holds.
     ///
     /// The argument is inferred exactly as [`write_arrow`](Self::write_arrow)
     /// infers it.
-    #[pyo3(signature = (data, *, options = None))]
+    #[pyo3(signature = (data, *, options = None, **kwargs))]
     fn append_arrow(
         &mut self,
         data: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("append_arrow", options, kwargs)?;
         let batches = batch_reader_from_any(data, &options)?;
-        self.inner
-            .append_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.append_reader(batches, &options)
     }
 
     /// Read this resource's rows as a lazy iterator of `pandas` frames.
@@ -950,13 +1103,14 @@ impl PyIOBase {
     ///
     /// `pandas` is imported here and nowhere else in this package, so a caller
     /// who does not use it never pays for it.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn read_pandas<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("read_pandas", options, kwargs)?;
         let reader = self
             .inner
             .read_arrow_batch_reader(&options)
@@ -965,13 +1119,14 @@ impl PyIOBase {
     }
 
     /// Read every row of this resource as one `pandas` frame.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn read_pandas_frame<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("read_pandas_frame", options, kwargs)?;
         let reader = self
             .inner
             .read_arrow_batch_reader(&options)
@@ -984,44 +1139,43 @@ impl PyIOBase {
     /// `frames` is one frame or any iterable of them, and an iterable is
     /// consumed one frame at a time. Anything that is not a `pandas` frame is
     /// refused by name, because `write_arrow` already accepts everything else.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **kwargs))]
     fn write_pandas(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("write_pandas", options, kwargs)?;
         let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
-        self.inner
-            .write_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.write_reader(batches, &options)
     }
 
     /// Replace or merge this resource's rows with exactly one `pandas` frame.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **kwargs))]
     fn write_pandas_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("write_pandas_frame", options, kwargs)?;
         let batches = frame_batch_reader(frame, Frames::Pandas)?;
-        self.inner
-            .write_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.write_reader(batches, &options)
     }
 
     /// Read this resource's rows as a lazy iterator of `polars` frames.
     ///
     /// One frame per batch, exactly as `read_pandas` yields one pandas frame
     /// per batch. `polars` is imported here and nowhere else.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn read_polars<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("read_polars", options, kwargs)?;
         let reader = self
             .inner
             .read_arrow_batch_reader(&options)
@@ -1030,13 +1184,14 @@ impl PyIOBase {
     }
 
     /// Read every row of this resource as one `polars` frame.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn read_polars_frame<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("read_polars_frame", options, kwargs)?;
         let reader = self
             .inner
             .read_arrow_batch_reader(&options)
@@ -1052,17 +1207,29 @@ impl PyIOBase {
     /// Anything polars cannot scan natively - an in-memory buffer, a
     /// compressed name - reads through the native reader and turns lazy, so
     /// the call answers for every holder.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn scan_polars<'py>(
         &mut self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let asked = Self::asked_for_options(options, kwargs);
+        let options = self.resolved_options("scan_polars", options, kwargs)?;
         let polars = py.import("polars")?;
-        if let Some((path, _)) = self.published_scan_target()? {
+        // The fast path hands the file to polars, which knows nothing about
+        // what this call was asked for - so it is only the same answer when
+        // the caller asked for nothing. Anything else reads through the
+        // native reader, which honours every field; a projection that arrives
+        // as a lazy scan of the whole file is not a projection.
+        if !asked && let Some((path, _)) = self.published_scan_target()? {
             return polars.call_method1("scan_parquet", (path,));
         }
-        self.read_polars_frame(py, options)?.call_method0("lazy")
+        let reader = self
+            .inner
+            .read_arrow_batch_reader(&options)
+            .map_err(value_error)?;
+        frame_from_reader(py, reader, Frames::Polars)?.call_method0("lazy")
     }
 
     /// Scan this resource as a `pyarrow.dataset.Scanner`.
@@ -1071,22 +1238,28 @@ impl PyIOBase {
     /// column projection and predicate pushdown belong to the scanner - and
     /// anything else streams through the native reader, so the call answers
     /// for every holder.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **kwargs))]
     fn scan_arrow<'py>(
         &mut self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let asked = Self::asked_for_options(options, kwargs);
+        let options = self.resolved_options("scan_arrow", options, kwargs)?;
         let dataset = py.import("pyarrow.dataset")?;
-        if let Some((path, _)) = self.published_scan_target()? {
-            let kwargs = pyo3::types::PyDict::new(py);
-            kwargs.set_item("format", "parquet")?;
-            let opened = dataset.call_method("dataset", (path,), Some(&kwargs))?;
+        // Same rule as `scan_polars`: the dataset scanner is handed the file
+        // and nothing else, so it can only stand in for this call when the
+        // call carried no options of its own.
+        if !asked && let Some((path, _)) = self.published_scan_target()? {
+            let arguments = pyo3::types::PyDict::new(py);
+            arguments.set_item("format", "parquet")?;
+            let opened = dataset.call_method("dataset", (path,), Some(&arguments))?;
             return opened.call_method0("scanner");
         }
         // A RecordBatchReader carries its own schema, and the scanner takes
         // it as it stands.
-        let reader = self.read_arrow_batch_reader(py, options)?;
+        let reader = self.read_reader(py, &options)?;
         dataset
             .getattr("Scanner")?
             .call_method1("from_batches", (reader,))
@@ -1096,31 +1269,29 @@ impl PyIOBase {
     ///
     /// A `polars.LazyFrame` is accepted and collected, because polars offers no
     /// way to hand its rows over a batch at a time.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **kwargs))]
     fn write_polars(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("write_polars", options, kwargs)?;
         let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
-        self.inner
-            .write_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.write_reader(batches, &options)
     }
 
     /// Replace or merge this resource's rows with exactly one `polars` frame.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **kwargs))]
     fn write_polars_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolved_options("write_polars_frame", options, kwargs)?;
         let batches = frame_batch_reader(frame, Frames::Polars)?;
-        self.inner
-            .write_arrow_batch_reader(batches, &options)
-            .map_err(value_error)
+        self.write_reader(batches, &options)
     }
 
     /// The location as text, so `str(handle)` names it.

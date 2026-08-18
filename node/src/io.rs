@@ -572,6 +572,78 @@ impl JsIOBase {
         Ok(i64::try_from(copied).unwrap_or(i64::MAX))
     }
 
+    /// The content coding this resource's name declares, or `null` for none.
+    ///
+    /// A located resource reads its coding off its own compound name -
+    /// `trades.json.gz` is `"gzip"` - and an in-memory one off the media type
+    /// it was told to hold. Bytes that carry no coding answer `null` rather
+    /// than `"identity"`, because the question a caller asks here is whether
+    /// there is anything to undo.
+    #[napi(getter)]
+    pub fn codec(&self) -> Option<String> {
+        let codec = self.inner.codec();
+        (!codec.is_identity()).then(|| codec.as_str().to_owned())
+    }
+
+    /// Encode every byte here into `target`, returning the bytes written.
+    ///
+    /// `codec` defaults to the coding `target`'s own name declares, so writing
+    /// into `trades.json.gz` gzips without anyone naming gzip twice; passing one
+    /// explicitly is how an in-memory target, which has no name to declare
+    /// anything, picks a coding. A target that declares none is refused rather
+    /// than silently copied, because a coding nobody named is a coding nobody
+    /// can decode by name later. `level` is the shared 0-9 scale the
+    /// whole-buffer codecs use. The target's media type records the added
+    /// coding, so [`decompressInto`](Self::decompress_into) later needs no
+    /// argument.
+    #[napi]
+    pub fn compress_into(
+        &self,
+        target: &mut JsIOBase,
+        codec: Option<String>,
+        level: Option<u8>,
+    ) -> Result<i64> {
+        let codec = match codec {
+            Some(name) => yggdryl::Codec::from_str(&name).map_err(napi_error)?,
+            None => match target.inner.codec() {
+                found if found.is_identity() => {
+                    return Err(napi::Error::from_reason(format!(
+                        "expected a target declaring a content coding, got {}; pass a codec to \
+                         say which coding to write",
+                        target.inner.media_type(),
+                    )));
+                }
+                found => found,
+            },
+        };
+        let level = level.map_or(yggdryl::Level::DEFAULT, yggdryl::Level::new);
+        let written = self
+            .inner
+            .compress_into_with_level(&mut target.inner, codec, level)
+            .map_err(napi_error)?;
+        Ok(i64::try_from(written).unwrap_or(i64::MAX))
+    }
+
+    /// Decode every byte here into `target`, returning the bytes written.
+    ///
+    /// `codec` defaults to the coding this resource's own name declares, which
+    /// is what makes `handle.decompressInto(plain)` the whole of reading a
+    /// `.gz` back. An explicit one overrides that reading - the escape hatch for
+    /// bytes whose name lies, or for raw DEFLATE, which no name can declare.
+    /// The target's media type comes back with the coding removed.
+    #[napi]
+    pub fn decompress_into(&self, target: &mut JsIOBase, codec: Option<String>) -> Result<i64> {
+        let codec = match codec {
+            Some(name) => yggdryl::Codec::from_str(&name).map_err(napi_error)?,
+            None => self.inner.codec(),
+        };
+        let written = self
+            .inner
+            .decompress_into_with(&mut target.inner, codec)
+            .map_err(napi_error)?;
+        Ok(i64::try_from(written).unwrap_or(i64::MAX))
+    }
+
     /// Iterate the resource's decoded text lines, one line at a time.
     ///
     /// Any content codings the resource's name declares - `trades.jsonl.gz`,

@@ -64,14 +64,15 @@ export declare class Catalog {
    * caller who only has rows and a name needs nothing else. Returns the
    * table so the caller can keep going.
    */
-  append(name: string, data: BatchReader): Table
+  append(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * Replace the named table's rows with `data`, creating it on first write.
    *
    * An existing table keeps its previous snapshot readable; only the
-   * current pointer moves. Returns the table so the caller can keep going.
+   * current pointer moves. `options` configures this one write. Returns the
+   * table so the caller can keep going.
    */
-  overwrite(name: string, data: BatchReader): Table
+  overwrite(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * List the namespaces one level below `parent`, as sorted dotted names.
    *
@@ -92,6 +93,17 @@ export declare class Catalog {
    * describes a location without proof, so asking for one never fails.
    */
   namespace(name: string): JsNamespace
+  /**
+   * The catalog's namespaces, as a lazy map-like view.
+   *
+   * Building the view performs no I/O: `get`, `has`, `names`, and `size`
+   * each consult storage at the moment they are asked, which is why two
+   * views over one catalog observe each other's writes and why a view stays
+   * valid across a creation or a deletion. This is the one collection
+   * spelling - `catalog.namespaces.get('sales').tables.get('orders')`
+   * chains all the way to a table.
+   */
+  get namespaces(): JsNamespaces
 }
 export type JsCatalog = Catalog
 
@@ -496,6 +508,118 @@ export declare class Field {
 }
 export type JsField = Field
 
+/**
+ * Configuration for one table's commits, writes, and reads.
+ *
+ * The value records only what was set on it: every getter answers the field's
+ * documented default when nothing was, and a table resolves each field as
+ * explicit option, then table property, then that default. That three-layer
+ * resolution is why an unset field is not the same as a field set to the
+ * default - only the second one shadows the table's own property.
+ */
+export declare class IcebergOptions {
+  /**
+   * Build an options value from the fields an object names, or an empty one.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error for a value it refuses, naming it.
+   */
+  constructor(options?: IcebergOptionsInput | undefined | null)
+  /** How many beaten commit attempts are retried. Default: 4. */
+  get commitRetries(): number
+  /** Set how many beaten commit attempts are retried. */
+  set commitRetries(retries: number)
+  /** The first commit retry wait, in milliseconds. Default: 100. */
+  get commitMinBackoffMs(): number
+  /**
+   * Set the first commit retry wait, in milliseconds.
+   *
+   * # Errors
+   *
+   * Throws when the wait is not a whole non-negative number of at most 2^53.
+   */
+  set commitMinBackoffMs(waitMs: number)
+  /** The largest commit retry wait, in milliseconds. Default: 60000. */
+  get commitMaxBackoffMs(): number
+  /**
+   * Set the largest commit retry wait, in milliseconds.
+   *
+   * # Errors
+   *
+   * Throws when the wait is not a whole non-negative number of at most 2^53.
+   */
+  set commitMaxBackoffMs(waitMs: number)
+  /** The size a data file aims for, in bytes. Default: 512 MiB. */
+  get targetFileSize(): number
+  /**
+   * Set the size a data file aims for, in bytes.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the value when the size is zero: a
+   * target no file can meet would roll one file per batch forever, so it is
+   * refused here rather than obeyed later.
+   */
+  set targetFileSize(bytes: number)
+  /**
+   * How many data files a scan decodes at once. Default: the host's own
+   * parallelism, kept in 1..=8.
+   */
+  get readParallelism(): number
+  /**
+   * Set how many data files a scan decodes at once.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the value when the count is zero,
+   * which would read nothing at all.
+   */
+  set readParallelism(threads: number)
+  /** How many large-enough files justify a parallel scan. Default: 16. */
+  get readParallelMinFiles(): number
+  /** Set how many large-enough files justify a parallel scan. */
+  set readParallelMinFiles(files: number)
+  /**
+   * The recorded size below which a file does not count toward justifying a
+   * parallel scan, in bytes. Default: 4 MiB.
+   */
+  get readParallelMinFileSize(): number
+  /**
+   * Set the size below which a file does not count toward justifying a
+   * parallel scan, in bytes.
+   *
+   * # Errors
+   *
+   * Throws when the size is not a whole non-negative number of at most 2^53.
+   */
+  set readParallelMinFileSize(bytes: number)
+  /**
+   * After how many data commits an automatic compaction runs; `null` - the
+   * default - never compacts on its own, and 0 reads as off.
+   */
+  get compactAfterCommits(): number | null
+  /** Set after how many data commits an automatic compaction runs. */
+  set compactAfterCommits(commits: number)
+  /**
+   * The format new data files are written in. Default: `PARQUET`.
+   *
+   * Only what a write produces is decided here: a scan decodes each data
+   * file as the format its manifest entry records, so one table can mix
+   * formats and still read as one shape.
+   */
+  get dataFormat(): string
+  /**
+   * Set the format new data files are written in, named in any case.
+   *
+   * # Errors
+   *
+   * Throws the core message naming the accepted formats and the input.
+   */
+  set dataFormat(format: string)
+}
+export type JsIcebergOptions = IcebergOptions
+
 /** A random-access resource: a local file, a directory, or a memory buffer. */
 export declare class IOBase {
   /**
@@ -658,6 +782,40 @@ export declare class IOBase {
   close(): void
   /** Copy every byte here into `target`, returning the count. */
   copyInto(target: IOBase): number
+  /**
+   * The content coding this resource's name declares, or `null` for none.
+   *
+   * A located resource reads its coding off its own compound name -
+   * `trades.json.gz` is `"gzip"` - and an in-memory one off the media type
+   * it was told to hold. Bytes that carry no coding answer `null` rather
+   * than `"identity"`, because the question a caller asks here is whether
+   * there is anything to undo.
+   */
+  get codec(): string | null
+  /**
+   * Encode every byte here into `target`, returning the bytes written.
+   *
+   * `codec` defaults to the coding `target`'s own name declares, so writing
+   * into `trades.json.gz` gzips without anyone naming gzip twice; passing one
+   * explicitly is how an in-memory target, which has no name to declare
+   * anything, picks a coding. A target that declares none is refused rather
+   * than silently copied, because a coding nobody named is a coding nobody
+   * can decode by name later. `level` is the shared 0-9 scale the
+   * whole-buffer codecs use. The target's media type records the added
+   * coding, so [`decompressInto`](Self::decompress_into) later needs no
+   * argument.
+   */
+  compressInto(target: IOBase, codec?: string | undefined | null, level?: number | undefined | null): number
+  /**
+   * Decode every byte here into `target`, returning the bytes written.
+   *
+   * `codec` defaults to the coding this resource's own name declares, which
+   * is what makes `handle.decompressInto(plain)` the whole of reading a
+   * `.gz` back. An explicit one overrides that reading - the escape hatch for
+   * bytes whose name lies, or for raw DEFLATE, which no name can declare.
+   * The target's media type comes back with the coding removed.
+   */
+  decompressInto(target: IOBase, codec?: string | undefined | null): number
   /**
    * Iterate the resource's decoded text lines, one line at a time.
    *
@@ -935,16 +1093,26 @@ export declare class MimeType {
 export type JsMimeType = MimeType
 
 /**
- * One namespace of a catalog: the first half of `catalog[ns][table]`.
+ * One namespace of a catalog: identity, plus its two collection views.
  *
- * `get` opens a table, `set` gets-or-creates - a schema opens the table,
- * creating it when absent, and rows replace the table's rows, creating it
- * from their own schema on first write - and `has`, `tables`, and
- * `namespaces` answer the map questions.
+ * The namespace holds only its dotted name. Its tables are
+ * [`tables`](Self::tables) and its child namespaces are
+ * [`namespaces`](Self::namespaces), so access chains -
+ * `catalog.namespaces.get('sales').tables.get('orders')` - and every
+ * collection question has exactly one home. The table methods here are the
+ * short spelling of the same view, kept so a caller who has a namespace need
+ * not reach for one.
  */
 export declare class Namespace {
   /** The namespace's dotted name. */
   get name(): string
+  /** This namespace's tables, as a lazy map-like view. */
+  get tables(): JsTables
+  /**
+   * The namespaces one level below this one, as the same view shape the
+   * catalog itself answers - the cascade that reaches a nested namespace.
+   */
+  get namespaces(): JsNamespaces
   /** Open the named table. */
   table(name: string): Table
   /** Open the named table, as a map reads one. */
@@ -953,12 +1121,53 @@ export declare class Namespace {
   has(name: string): boolean
   /** Open the named table, creating it with `schema` when absent. */
   openOrCreateTable(name: string, schema: Field): Table
-  /** This namespace's tables, as bare names. */
-  tables(): Array<string>
-  /** The namespaces one level below this one, as bare names. */
-  namespaces(): Array<string>
 }
 export type JsNamespace = Namespace
+
+/**
+ * The namespaces one level below a catalog or a namespace, as a lazy view.
+ *
+ * JavaScript has no indexing hook a native class can answer, so the map
+ * questions are spelled out: `get` and `has` for membership, `names` and
+ * `size` for the whole collection, `create` and `openOrCreate` to add one.
+ * None of it is cached - every answer is storage's, asked when the question
+ * is - so a view built before a namespace existed finds it afterwards.
+ */
+export declare class Namespaces {
+  /**
+   * Open the named namespace.
+   *
+   * # Errors
+   *
+   * Throws naming the namespace when nothing is there, or when the name
+   * addresses a table instead - the two ways a chained lookup goes wrong,
+   * told apart rather than collapsed into "not found".
+   */
+  get(name: string): Namespace
+  /**
+   * Return whether the named namespace exists, asked of storage now.
+   *
+   * A namespace is a folder that is not a table, so a table's name answers
+   * `false` here, and so does a location nothing occupies yet.
+   */
+  has(name: string): boolean
+  /** The namespaces one level down, as sorted bare names. */
+  names(): Array<string>
+  /** How many namespaces are one level down, right now. */
+  size(): number
+  /**
+   * Create the named namespace, as the folder it is.
+   *
+   * # Errors
+   *
+   * Throws naming the namespace when one - or a table - is already there;
+   * [`openOrCreate`](Self::open_or_create) is the spelling that tolerates it.
+   */
+  create(name: string): Namespace
+  /** Open the named namespace, creating its folder when absent. */
+  openOrCreate(name: string): Namespace
+}
+export type JsNamespaces = Namespaces
 
 /** How a table turns column values into the directories it writes. */
 export declare class PartitionSpec {
@@ -1049,7 +1258,13 @@ export declare class RecordOptions {
   set safe(safe: boolean)
   /** The rows-per-batch bound, when one is set. */
   get batchSize(): number | null
-  /** Set the rows-per-batch bound. */
+  /**
+   * Set the rows-per-batch bound.
+   *
+   * A bound of zero is refused rather than stored: the readers chunk by this
+   * number, so it turns a read of a hundred rows into a successful read of
+   * none. `null` is how "no bound" is spelled.
+   */
   set batchSize(batchSize: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
@@ -1115,6 +1330,38 @@ export declare class RecordOptions {
   toString(): string
 }
 export type JsRecordOptions = RecordOptions
+
+/**
+ * What planning a scan decided, before a single data file is opened.
+ *
+ * The plan is the answer to "how much of this table does that filter touch",
+ * and it is read-only because only [`Table.plan`](JsTable::plan) produces one.
+ * The counts are what make pruning checkable rather than claimed: a filtered
+ * read that skips nothing reports zero skipped, and a caller can assert on it.
+ */
+export declare class ScanPlan {
+  /**
+   * The rows the planned files hold, as their manifest entries record them.
+   *
+   * This is metadata arithmetic and never a read, so it answers for a table
+   * of any size in the time it takes to walk the manifests.
+   */
+  get recordCount(): number
+  /** How many data files the read would open. */
+  get filesPlanned(): number
+  /** How many data files the partition tuples and statistics excluded. */
+  get filesSkipped(): number
+  /** How many manifests had to be decoded to decide all of that. */
+  get manifestsRead(): number
+  /**
+   * How many manifests the manifest list's own summaries ruled out whole.
+   *
+   * A manifest skipped here is one that was never even read, which is the
+   * coarsest of the three levels of pruning and the cheapest.
+   */
+  get manifestsSkipped(): number
+}
+export type JsScanPlan = ScanPlan
 
 /**
  * A recording of column operations against a table's current schema.
@@ -1207,6 +1454,14 @@ export declare class Table {
   get snapshots(): Array<SnapshotView>
   /** Every manifest the current snapshot points at. */
   manifests(): Array<ManifestFileView>
+  /**
+   * Every manifest one retained snapshot points at.
+   *
+   * The manifest half of time travel: what
+   * [`manifests`](Self::manifests) answers for the present, this answers
+   * for any snapshot the table still retains.
+   */
+  manifestsAt(snapshotId: SnapshotIdInput): Array<ManifestFileView>
   /** Every live data file of the current snapshot. */
   dataFiles(): Array<DataFile>
   /**
@@ -1214,17 +1469,104 @@ export declare class Table {
    *
    * Unlike a plain handle read, a scan *casts* each file to the root it is
    * given after pushing the columns down, which is what makes a table whose
-   * schema evolved readable as one shape.
+   * schema evolved readable as one shape. `options` configures this one
+   * call and is put back afterwards, so the handle's own override survives.
    */
-  scan(field?: Field | undefined | null): BatchReader
-  /** Append `batches` as a new snapshot, keeping everything already stored. */
-  append(batches: BatchReader): void
+  scan(field?: Field | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  /**
+   * Read the rows matching `filters`, keeping the columns `field` names.
+   *
+   * A filter on a partition column is answered by [`plan`](Self::plan)
+   * alone - every row of a file whose tuple matches holds that value - and a
+   * filter on any other column is applied to the rows the surviving files
+   * hold, because statistics bound a file rather than select a row. Either
+   * way the result is the same rows; what differs is how many files were
+   * opened to find them.
+   */
+  scanWhere(filters: ScanFilters, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  /**
+   * Read the rows a branch or tag names, as of the snapshot it points at.
+   *
+   * This is [`snapshotByRef`](Self::snapshot_by_ref) and
+   * [`scanAt`](Self::scan_at) in one call, with the same `filters` and
+   * `field` meanings. A name the table does not have is refused naming the
+   * refs it does.
+   */
+  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  /**
+   * Decide which data files `filters` would have a read open, and no more.
+   *
+   * Nothing here lists a directory and nothing opens a data file: the
+   * snapshot names a manifest list, whose summaries rule out whole
+   * manifests, whose entries carry the partition tuples and statistics that
+   * rule out single files. The returned [`ScanPlan`](JsScanPlan) reports
+   * what it skipped, so how much a filter actually saves is a number rather
+   * than a promise.
+   */
+  plan(filters?: ScanFilters | undefined | null): ScanPlan
+  /**
+   * Plan a scan of one retained snapshot rather than the current one.
+   *
+   * The planning half of time travel: the same three levels of pruning are
+   * walked over the snapshot's own manifest list, so a filtered read of
+   * history skips exactly what a filtered read of the present skips.
+   */
+  planAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null): ScanPlan
+  /**
+   * Append `batches` as a new snapshot, keeping everything already stored.
+   *
+   * `options` configures this one write - `targetFileSize`,
+   * `commitRetries`, `dataFormat`, and the rest - and the handle's own
+   * configuration is untouched.
+   */
+  append(batches: BatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Replace every row with `batches` as a new snapshot.
    *
    * The previous snapshot stays readable; only the current pointer moves.
+   * `options` configures this one write, exactly as on
+   * [`append`](Self::append).
    */
-  overwrite(batches: BatchReader): void
+  overwrite(batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  /**
+   * Replace only the rows `filters` selects, keeping every other file.
+   *
+   * A file the filters exclude is carried into the new snapshot exactly as
+   * it is - same location, same statistics, same commit order - so
+   * overwriting one partition of a thousand rewrites one partition.
+   *
+   * An overwrite beaten by a concurrent commit does not rebase: what it
+   * keeps was planned against a snapshot the winner may have replaced, and
+   * `batches` is already consumed, so it throws a commit conflict naming
+   * both versions rather than risk losing rows.
+   *
+   * `options` configures this one write, exactly as on
+   * [`append`](Self::append).
+   */
+  overwriteWhere(filters: ScanFilters, batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  /**
+   * Merge `batches` into the stored rows, matching on `mergeByNames`.
+   *
+   * A row whose key is already stored updates it and a row whose key is not
+   * appends. Only the files whose recorded bounds could hold an incoming key
+   * are read and rewritten - the rest are carried into the new snapshot
+   * untouched - so an upsert costs the files it can actually change. An
+   * empty `mergeByNames` is an overwrite, because nothing identifies a row.
+   *
+   * `safe` decides what a cast that cannot convert a value does: the
+   * default nulls it, and `false` throws instead. `options` configures this
+   * one write, exactly as on [`append`](Self::append).
+   */
+  merge(batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  /**
+   * Merge `batches` into the rows `filters` selects, on `mergeByNames`.
+   *
+   * [`merge`](Self::merge) narrowed to a part of the table first: the
+   * filters decide which files are candidates at all, and the match-key
+   * statistics then decide which of those are actually read. `options`
+   * configures this one write, exactly as on [`append`](Self::append).
+   */
+  mergeWhere(filters: ScanFilters, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: Field): number
   /**
@@ -1236,13 +1578,74 @@ export declare class Table {
    * names, exactly as on [`scan`](Self::scan). The rows are read as the
    * schema the snapshot was written under.
    */
-  scanAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null, schema?: FieldInput | undefined | null): BatchReader
+  scanAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null, schema?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
   /**
    * Return the retained snapshot a branch or tag names.
    *
    * A name the table does not have is refused naming the refs it does.
    */
   snapshotByRef(name: string): SnapshotView
+  /**
+   * Create a branch at one retained snapshot, as one metadata commit.
+   *
+   * Writing *to* a branch other than `main` remains future work; a branch is
+   * read with [`scanRef`](Self::scan_ref) and moved with
+   * [`fastForward`](Self::fast_forward).
+   */
+  createBranch(name: string, snapshotId: SnapshotIdInput): void
+  /**
+   * Create a tag at one retained snapshot, as one metadata commit.
+   *
+   * A tag never moves, so it is what pins a snapshot against expiration.
+   */
+  createTag(name: string, snapshotId: SnapshotIdInput): void
+  /**
+   * Remove one branch or tag, returning what it pointed at.
+   *
+   * A name the table does not have is refused naming the refs it does,
+   * rather than committing nothing: dropping a ref that was never there is
+   * far more often a typo than a no-op.
+   */
+  removeRef(name: string): SnapshotRefView
+  /**
+   * Move a branch forward to a descendant snapshot, as one metadata commit.
+   *
+   * The target must be retained and must reach the branch's head by walking
+   * parent ids, which is what makes a fast-forward unable to lose history.
+   */
+  fastForward(name: string, snapshotId: SnapshotIdInput): void
+  /**
+   * Expire the snapshots retention no longer keeps, returning their ids.
+   *
+   * `olderThanMs` is the default age cutoff; every ref's own retention
+   * fields are honored first, so a tagged snapshot outlives the cutoff. A
+   * table with nothing old commits nothing at all - the check runs on a copy
+   * first, so an empty expiry costs no version.
+   */
+  expireSnapshots(olderThanMs: number): Array<bigint>
+  /**
+   * Store an explicit options override every later call resolves first.
+   *
+   * A field the override sets shadows the table property of the same name,
+   * and a field it leaves unset still resolves property-then-default. The
+   * override lives on this handle alone - it is never written to the table;
+   * [`updateProperties`](Self::update_properties) is what stores a setting
+   * on the table itself.
+   */
+  setOptions(options: IcebergOptions): void
+  /**
+   * Resolve this table's effective options, field by field.
+   *
+   * Each field takes the nearest of three layers: the explicit override,
+   * then the table property of the same name, then the documented default.
+   *
+   * # Errors
+   *
+   * Throws naming the key and the value when a property no override shadows
+   * is present but does not parse - a configured setting is never silently
+   * replaced by the default.
+   */
+  options(): IcebergOptions
   /**
    * The size a data file aims for, in bytes.
    *
@@ -1293,6 +1696,72 @@ export declare class Table {
   toString(): string
 }
 export type JsTable = Table
+
+/**
+ * The tables of one namespace, as a lazy map-like view.
+ *
+ * The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
+ * a [`Table`](JsTable) and the write conveniences that take a name create the
+ * table on first write, from the incoming rows' own schema. Every answer comes
+ * from storage at call time, so the view is never stale.
+ */
+export declare class Tables {
+  /**
+   * Open the named table.
+   *
+   * # Errors
+   *
+   * Throws naming the table when no table is there, and the metadata
+   * failure when its current document cannot be read.
+   */
+  get(name: string): Table
+  /** Return whether the named table exists, asked of storage now. */
+  has(name: string): boolean
+  /** This namespace's tables, as sorted bare names. */
+  names(): Array<string>
+  /** How many tables the namespace holds, right now. */
+  size(): number
+  /**
+   * Create the named table, writing its first metadata document.
+   *
+   * `schema` is a root `Field`, a field expression, or an array of child
+   * `Field`s assembled under a root named `row`. Unnumbered columns are
+   * numbered, and the partition spec is derived from the columns the schema
+   * itself marks - a schema that marks none produces an unpartitioned table.
+   *
+   * # Errors
+   *
+   * Throws naming the table when one is already there.
+   */
+  create(name: string, schema: TableSchemaInput): Table
+  /**
+   * Open the named table if it exists, creating it otherwise.
+   *
+   * An existing table is opened as it is - `schema` describes only the table
+   * this call would create.
+   */
+  openOrCreate(name: string, schema: TableSchemaInput): Table
+  /**
+   * Append `batches` to the named table, creating it on first write.
+   *
+   * A table that is not there yet takes its schema from the rows: partition
+   * marks riding the Arrow fields' metadata become the spec, so a marked
+   * schema lays its files out partitioned from the very first append.
+   * `options` configures this one write. Returns the table so the caller can
+   * keep going.
+   */
+  append(name: string, batches: BatchReader, options?: IcebergOptions | undefined | null): Table
+  /**
+   * Replace the named table's rows with `batches`, creating it on first
+   * write.
+   *
+   * An existing table keeps its previous snapshot readable, which is what
+   * makes the overwrite reversible. `options` configures this one write.
+   * Returns the table so the caller can keep going.
+   */
+  overwrite(name: string, batches: BatchReader, options?: IcebergOptions | undefined | null): Table
+}
+export type JsTables = Tables
 
 /** A canonical IANA time zone, with the offset rules this build knows. */
 export declare class Timezone {
@@ -1766,6 +2235,38 @@ export interface FieldCount {
   count: number
 }
 
+/**
+ * The Iceberg option fields, as one JavaScript options object.
+ *
+ * Every field is optional because an options value records only what was set
+ * on it: a field left out is not "the default" but unresolved, and a table
+ * still answers it from its own properties. The names are the ones the
+ * getters carry, so the object and the setters spell the same nine things.
+ */
+export interface IcebergOptionsInput {
+  /** How many beaten commit attempts are retried. */
+  commitRetries?: number
+  /** The first commit retry wait, in milliseconds. */
+  commitMinBackoffMs?: number
+  /** The largest commit retry wait, in milliseconds. */
+  commitMaxBackoffMs?: number
+  /** The size a data file aims for, in bytes. */
+  targetFileSize?: number
+  /** How many data files a scan decodes at once. */
+  readParallelism?: number
+  /** How many large-enough files justify a parallel scan. */
+  readParallelMinFiles?: number
+  /**
+   * The recorded size below which a file does not count toward that
+   * justification, in bytes.
+   */
+  readParallelMinFileSize?: number
+  /** After how many data commits an automatic compaction runs. */
+  compactAfterCommits?: number
+  /** The format new data files are written in, as `PARQUET` or `AVRO`. */
+  dataFormat?: string
+}
+
 /** One manifest of the current snapshot. */
 export interface ManifestFileView {
   /** The manifest's location, as a URI. */
@@ -1822,6 +2323,29 @@ export interface PartitionFieldView {
   name: string
   /** The transform applied to the source column. */
   transform: string
+}
+
+/**
+ * One branch or tag, as the metadata records it.
+ *
+ * A branch moves as commits land on it and a tag does not, which is the whole
+ * of the difference: both are a name pointing at one retained snapshot, and
+ * the retention fields are what expiration consults before dropping it.
+ */
+export interface SnapshotRefView {
+  /** The snapshot this reference names. */
+  snapshotId: bigint
+  /** Either `branch` or `tag`. */
+  kind: string
+  /** Fewest snapshots expiration keeps on this branch, head included. */
+  minSnapshotsToKeep?: number
+  /** Oldest ancestor age expiration keeps on this branch, in milliseconds. */
+  maxSnapshotAgeMs?: number
+  /**
+   * Age at which the reference itself expires, in milliseconds from its
+   * snapshot's commit time.
+   */
+  maxRefAgeMs?: number
 }
 
 /** One committed version of a table's contents. */

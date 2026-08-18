@@ -115,3 +115,17 @@ void lineBatchesTuned
 void lineBatchesFromMap
 void lineBatchesTyped
 void lineSchema
+
+const coding: string | null = handle.codec
+const encoded: number = handle.compressInto(memory)
+const encodedAs: number = handle.compressInto(memory, 'gzip')
+const encodedAtLevel: number = handle.compressInto(memory, 'gzip', 9)
+const decoded: number = memory.decompressInto(handle)
+const decodedAs: number = memory.decompressInto(handle, 'zstd')
+
+void coding
+void encoded
+void encodedAs
+void encodedAtLevel
+void decoded
+void decodedAs

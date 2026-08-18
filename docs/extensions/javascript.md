@@ -45,10 +45,13 @@ declarations are checked against the tests that use them.
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `codec`, `json`, `toml`, `yaml`, `Value` | [text](../text.md) and the format pages |
+| `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
 
-The compression codings are Rust-only today; a handle applies the one its name declares without
-being told, so [gzip](../gzip.md), [zlib](../zlib.md), and [zstd](../zstd.md) are
-reachable through `IOBase` even though their modules are not.
+Each coding namespace carries the whole-buffer pair - `loads` and `dumps`, plus `loadsRaw` and
+`dumpsRaw` on `zlib` - over `Buffer`, reading and writing exactly what `node:zlib` does. Their
+streaming `reader`/`writer` and the transparent handle wrappers stay Rust-only: both are built on
+Rust's `Read`/`Write`, which has no JavaScript spelling here. A handle still applies the coding its
+name declares without being told, and `IOBase.codec` is what asks it which one that is.
 
 ## A filesystem is whatever answers six calls
 

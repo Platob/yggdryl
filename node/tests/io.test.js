@@ -386,3 +386,64 @@ test('a cursor shares the handle and owns its position', () => {
   assert.equal(ahead.read(5).toString(), 'price')
   assert.equal(cursor.tell(), 13)
 })
+
+test('a handle reports the content coding its own name declares', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // The question a caller asks here is whether there is anything to undo, so
+  // bytes carrying no coding answer null rather than the identity the core
+  // spells internally.
+  assert.equal(new IOBase(path.join(root, 'trades.json')).codec, null)
+  assert.equal(new IOBase(path.join(root, 'trades.json.gz')).codec, 'gzip')
+  assert.equal(new IOBase(path.join(root, 'trades.jsonl.zst')).codec, 'zstd')
+  // A resource that does not exist still has a name, and a buffer has none.
+  assert.equal(new IOBase(path.join(root, 'absent.txt.gz')).codec, 'gzip')
+  assert.equal(IOBase.fromBytes(Buffer.from('AAPL')).codec, null)
+})
+
+test('compressInto and decompressInto round-trip through a real .gz', (t) => {
+  const zlib = require('node:zlib')
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const plain = new IOBase(path.join(root, 'trades.json'))
+  plain.writeText('{"id":1}')
+
+  // The target's own name declares the coding, so gzip is never named twice.
+  const coded = new IOBase(path.join(root, 'trades.json.gz'))
+  const written = plain.compressInto(coded)
+  assert.equal(written, coded.size)
+  assert.deepEqual(zlib.gunzipSync(coded.readBytes()), Buffer.from('{"id":1}'))
+
+  const back = new IOBase(path.join(root, 'back.json'))
+  assert.equal(coded.decompressInto(back), 8)
+  assert.equal(back.readText(), '{"id":1}')
+
+  // A buffer has no name to declare anything, so it is told - and what it was
+  // told is recorded on its media type, so reading it back needs no argument.
+  const memory = IOBase.fromBytes()
+  assert.equal(plain.compressInto(memory, 'gzip', 9), memory.size)
+  assert.equal(memory.codec, 'gzip')
+  assert.equal(memory.decompressInto(IOBase.fromBytes()), 8)
+
+  // A target whose name declares nothing is refused rather than copied
+  // uncompressed, because a coding nobody named is a coding nobody can decode
+  // by name later; a coding no codec answers to is refused naming the ones
+  // that exist.
+  const flat = new IOBase(path.join(root, 'copy.json'))
+  assert.throws(
+    () => plain.compressInto(flat),
+    /expected a target declaring a content coding, got application\/json; pass a codec/,
+  )
+  assert.equal(fs.existsSync(path.join(root, 'copy.json')), false)
+  assert.throws(
+    () => plain.compressInto(flat, 'nonsense'),
+    /expected one of identity, gzip, zlib, deflate, zstd, got "nonsense"/,
+  )
+
+  // A name that lies is caught by the decoder rather than believed.
+  const lying = new IOBase(path.join(root, 'lying.json.gz'))
+  lying.writeText('not gzip at all')
+  assert.throws(() => lying.decompressInto(IOBase.fromBytes()), /invalid gzip header/)
+})

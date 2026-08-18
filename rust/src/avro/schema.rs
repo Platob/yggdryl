@@ -132,6 +132,12 @@ pub(crate) struct FieldType {
     pub(crate) aliases: Vec<SmolStr>,
     /// The field's schema.
     pub(crate) schema: Node,
+    /// The Iceberg `field-id` attribute, when the schema carries one.
+    ///
+    /// Iceberg resolves a column by identifier rather than by name, so the
+    /// attribute is surfaced onto the decoded field's metadata rather than
+    /// merely surviving as an unmodeled attribute.
+    pub(crate) field_id: Option<i32>,
     /// The declared default, as the JSON it was written with.
     ///
     /// Kept raw because the specification only consults a default during
@@ -528,6 +534,10 @@ impl Parser {
                 name: SmolStr::new(field_name),
                 aliases: field_aliases,
                 schema: self.parse(field_type, &child_namespace, depth + 1)?,
+                field_id: entry
+                    .get_key_str("field-id")
+                    .and_then(Value::as_i64)
+                    .and_then(|id| i32::try_from(id).ok()),
                 default: entry.get_key_str("default").cloned(),
             });
         }

@@ -27,3 +27,6 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# The Spark interop suite's provisioned iceberg-spark-runtime jar
+python/.spark-interop/

@@ -482,3 +482,62 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
     assert!(error.contains("absent"), "unexpected error: {error}");
     assert!(error.contains("id"), "unexpected error: {error}");
 }
+
+#[test]
+fn an_append_whose_options_name_a_match_key_updates_rather_than_duplicates() {
+    let mut handle = handle("append-merge.arrows");
+    let options = merging(&handle);
+    handle
+        .write_arrow_batch_reader(
+            reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
+            &options,
+        )
+        .unwrap();
+
+    // The key says which row an incoming row *is*. Appending without consulting
+    // it stored id 2 twice, so the resource contradicted the option it was
+    // handed - and the folder path had always merged, which made one option
+    // mean two things depending on what the handle addressed.
+    handle
+        .append_arrow_batch_reader(
+            reader(vec![rows(vec![2, 3], vec![Some("MSFT.O"), Some("NVDA")])]),
+            &options,
+        )
+        .unwrap();
+
+    assert_eq!(
+        stored(&handle, &options),
+        vec![
+            (1, Some("AAPL".to_owned())),
+            (2, Some("MSFT.O".to_owned())),
+            (3, Some("NVDA".to_owned())),
+        ]
+    );
+}
+
+#[test]
+fn an_append_naming_no_match_key_still_appends_every_row() {
+    let mut handle = handle("append-plain.arrows");
+    let options = merging(&handle).with_merge_by_names(Vec::<String>::new());
+    handle
+        .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .unwrap();
+
+    // Without a key nothing identifies a row, so a repeat is a second row -
+    // the behaviour the merge branch must not have taken over.
+    handle
+        .append_arrow_batch_reader(
+            reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
+            &options,
+        )
+        .unwrap();
+
+    assert_eq!(
+        stored(&handle, &options),
+        vec![
+            (1, Some("AAPL".to_owned())),
+            (1, Some("AAPL".to_owned())),
+            (2, Some("MSFT".to_owned())),
+        ]
+    );
+}

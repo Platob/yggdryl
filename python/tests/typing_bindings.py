@@ -21,10 +21,13 @@ from yggdryl import (
     Url,
     Urn,
     fields,
+    gzip,
     iceberg,
     json,
     toml,
     yaml,
+    zlib,
+    zstd,
 )
 from yggdryl.fields import (
     FixedSizeListField,
@@ -347,3 +350,171 @@ iceberg_reread: Field = iceberg.schema_from_json("row", iceberg_document)
 
 assert iceberg_document
 assert iceberg_reread
+
+# The flattened record-option keywords type-check as real named parameters.
+record_handle.write_arrow(
+    pa.table({"id": [1]}),
+    merge_by_names=["id"],
+    select_by_names=["id"],
+    batch_size=1024,
+    safe=False,
+    root_name="record",
+)
+record_handle.append_arrow(pa.table({"id": [1]}), filter_partitions={"venue": "XNAS"})
+kwargs_reader: pa.RecordBatchReader = record_handle.read_arrow(
+    select_by_names=["id"], batch_size=1024
+)
+kwargs_root: Field = record_handle.read_arrow_field(root_name="record")
+record_handle.write_arrow_batch_reader(
+    pa.table({"id": [1]}),
+    options=record_options,
+    compression="zstd(3)",
+    max_row_group_size=1024,
+    key_value_metadata={"writer": "typing"},
+)
+
+assert kwargs_reader
+assert kwargs_root
+
+# Iceberg keeps its own options type, flattened the same way.
+iceberg_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
+    commit_retries=2, target_file_size=1024, data_format="avro"
+)
+iceberg_retries: int = iceberg_options.commit_retries
+iceberg_format: str = iceberg_options.data_format
+iceberg_options.data_format = "parquet"
+iceberg_table.append(pa.table({"id": [1]}), options=iceberg_options, commit_retries=1)
+iceberg_table.overwrite(pa.table({"id": [1]}), data_format="avro")
+iceberg_table.set_options(target_file_size=2048)
+iceberg_resolved: iceberg.IcebergOptions = iceberg_table.options()
+iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
+    options=iceberg_options, read_parallelism=2
+)
+
+assert iceberg_retries >= 0
+assert iceberg_format
+assert iceberg_resolved
+assert iceberg_options_scan
+
+# The catalog chains through its views: namespaces, then tables, then a table.
+catalog: iceberg.Catalog = iceberg.Catalog(Path("warehouse"))
+catalog_namespaces: iceberg.Namespaces = catalog.namespaces
+namespace: iceberg.Namespace = catalog_namespaces["sales"]
+namespace_names: list[str] = list(catalog_namespaces)
+namespace_count: int = len(catalog_namespaces)
+namespace_known: bool = "sales" in catalog_namespaces
+nested: iceberg.Namespace = namespace.namespaces.open_or_create("eu")
+namespace_tables: iceberg.Tables = namespace.tables
+chained_table: iceberg.Table = catalog.namespaces["sales"].tables["orders"]
+table_names: list[str] = list(namespace_tables)
+table_known: bool = "orders" in namespace_tables
+created_table: iceberg.Table = namespace_tables.create("fills", iceberg_schema)
+opened_table: iceberg.Table = namespace_tables.open_or_create(
+    "fills", iceberg_schema
+)
+appended_table: iceberg.Table = namespace_tables.append(
+    "orders", pa.table({"id": [1]}), data_format="avro"
+)
+overwritten_table: iceberg.Table = namespace_tables.overwrite(
+    "orders", pa.table({"id": [1]}), options=iceberg_options
+)
+
+assert namespace.name
+assert nested.name
+assert namespace_names == [] or namespace_names
+assert namespace_count >= 0
+assert namespace_known or not namespace_known
+assert chained_table
+assert table_names == [] or table_names
+assert table_known or not table_known
+assert created_table and opened_table and appended_table and overwritten_table
+
+# A filter is a mapping or a sequence of pairs, and it rides beside the same
+# projection and options every other scan takes.
+filtered_scan: pa.RecordBatchReader = iceberg_table.scan_where({"venue": "XNAS"})
+paired_scan: pa.RecordBatchReader = iceberg_table.scan_where(
+    [("venue", "XNAS")], iceberg_schema, options=iceberg_options, read_parallelism=2
+)
+unfiltered_scan: pa.RecordBatchReader = iceberg_table.scan_where()
+branch_scan: pa.RecordBatchReader = iceberg_table.scan_ref("nightly")
+branch_projection: pa.RecordBatchReader = iceberg_table.scan_ref(
+    "nightly", {"venue": "XNAS"}, iceberg_schema, data_format="avro"
+)
+
+# A plan answers in counts, so every getter is an `int` rather than a view.
+scan_plan: iceberg.ScanPlan = iceberg_table.plan()
+filtered_plan: iceberg.ScanPlan = iceberg_table.plan([("venue", "XNAS")])
+historic_plan: iceberg.ScanPlan = iceberg_table.plan_at(1, {"venue": "XNAS"})
+planned_records: int = scan_plan.record_count
+planned_files: int = scan_plan.files_planned
+skipped_files: int = scan_plan.files_skipped
+read_manifests: int = scan_plan.manifests_read
+skipped_manifests: int = scan_plan.manifests_skipped
+
+assert filtered_scan and paired_scan and unfiltered_scan
+assert branch_scan and branch_projection
+assert filtered_plan and historic_plan
+assert planned_records >= 0
+assert planned_files >= skipped_files or skipped_files >= planned_files
+assert read_manifests >= 0
+assert skipped_manifests >= 0
+
+# The scoped writes take the filters first and the same flattened keywords.
+iceberg_table.overwrite_where(
+    {"venue": "XNAS"}, pa.table({"id": [1]}), data_format="avro"
+)
+iceberg_table.overwrite_where(None, pa.table({"id": [1]}))
+iceberg_table.merge(pa.table({"id": [1]}), ["id"])
+iceberg_table.merge(pa.table({"id": [1]}), ["id"], safe=False, commit_retries=1)
+iceberg_table.merge_where(
+    [("venue", "XNAS")],
+    pa.table({"id": [1]}),
+    ["id"],
+    safe=True,
+    options=iceberg_options,
+    target_file_size=1024,
+)
+
+# Maintenance answers with the identifiers it acted on, or with nothing.
+expired_snapshots: list[int] = iceberg_table.expire_snapshots(0)
+iceberg_table.fast_forward("nightly", 1)
+snapshot_manifests: list[iceberg.ManifestFile] = iceberg_table.manifests_at(1)
+
+assert expired_snapshots == [] or expired_snapshots
+assert snapshot_manifests == [] or snapshot_manifests
+
+# More deliberate negative checks: a filter is not one string, a plan getter is
+# not a view, and a snapshot is named by identifier rather than by value.
+one_string_is_not_a_filter = iceberg_table.plan("venue")  # type: ignore[arg-type]
+a_plan_getter_is_a_count: str = (
+    iceberg_table.plan().files_planned  # type: ignore[assignment]
+)
+a_snapshot_is_named_by_identifier = iceberg_table.manifests_at(
+    iceberg_snapshot  # type: ignore[arg-type]
+)
+
+# The three codings hold bytes in and bytes out, raw DEFLATE included.
+gzip_bytes: bytes = gzip.dumps(b'{"id": 1}')
+gzip_plain: bytes = gzip.loads(gzip_bytes)
+zlib_bytes: bytes = zlib.dumps(b'{"id": 1}', level=9)
+zlib_plain: bytes = zlib.loads(zlib_bytes)
+zlib_raw: bytes = zlib.dumps_raw(b'{"id": 1}', 1)
+zlib_raw_plain: bytes = zlib.loads_raw(zlib_raw)
+zstd_bytes: bytes = zstd.dumps(b'{"id": 1}')
+zstd_plain: bytes = zstd.loads(zstd_bytes)
+
+assert gzip_plain == zlib_plain == zlib_raw_plain == zstd_plain
+
+# A handle's declared coding is optional, and the transfers answer in bytes.
+declared_codec: str | None = record_handle.codec
+coded_handle: IOBase = IOBase(Path("trades.arrows.gz"))
+bytes_written: int = record_handle.compress_into(coded_handle)
+bytes_levelled: int = record_handle.compress_into(coded_handle, "zstd", 9)
+bytes_read: int = coded_handle.decompress_into(record_handle)
+bytes_decoded: int = coded_handle.decompress_into(record_handle, codec="gzip")
+
+assert declared_codec is None or declared_codec
+assert bytes_written >= 0
+assert bytes_levelled >= 0
+assert bytes_read >= 0
+assert bytes_decoded >= 0

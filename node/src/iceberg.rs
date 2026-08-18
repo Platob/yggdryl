@@ -8,13 +8,17 @@
 
 use std::collections::HashMap;
 
-use napi::bindgen_prelude::{BigInt, Buffer, ClassInstance, Either, Either3, Reference, Result};
+use napi::bindgen_prelude::{
+    BigInt, Buffer, ClassInstance, Either, Either3, Env, Reference, Result,
+};
 use napi_derive::napi;
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
-    Catalog as CoreCatalog, DataFile, FormatVersion, ManifestContent, ManifestFile,
-    PartitionSpec as CorePartitionSpec, SchemaUpdate as CoreSchemaUpdate, Snapshot,
-    Table as CoreTable, assign_field_ids, can_promote, last_field_id, schema_from_json,
+    Catalog as CoreCatalog, DataFile, FileFormat, FormatVersion,
+    IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile,
+    Namespaces as CoreNamespaces, PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan,
+    SchemaUpdate as CoreSchemaUpdate, Snapshot, SnapshotRef, Table as CoreTable,
+    Tables as CoreTables, assign_field_ids, can_promote, last_field_id, schema_from_json,
     schema_to_json,
 };
 use yggdryl::{DataType as CoreDataType, Field as CoreField};
@@ -118,6 +122,324 @@ fn filter_pairs(filters: Option<ScanFilters>) -> Vec<(String, String)> {
     }
 }
 
+/// Borrow owned filter pairs as the `(column, value)` slices the core takes.
+fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
+    pairs
+        .iter()
+        .map(|(column, value)| (column.as_str(), value.as_str()))
+        .collect()
+}
+
+/// Read the data file format a name spells, in any case.
+///
+/// # Errors
+///
+/// Throws the core message naming the accepted vocabulary and the input.
+fn file_format_from_name(name: &str) -> Result<FileFormat> {
+    name.parse::<FileFormat>().map_err(napi_error)
+}
+
+/// The Iceberg option fields, as one JavaScript options object.
+///
+/// Every field is optional because an options value records only what was set
+/// on it: a field left out is not "the default" but unresolved, and a table
+/// still answers it from its own properties. The names are the ones the
+/// getters carry, so the object and the setters spell the same nine things.
+#[napi(object)]
+pub struct IcebergOptionsInput {
+    /// How many beaten commit attempts are retried.
+    pub commit_retries: Option<u32>,
+    /// The first commit retry wait, in milliseconds.
+    pub commit_min_backoff_ms: Option<f64>,
+    /// The largest commit retry wait, in milliseconds.
+    pub commit_max_backoff_ms: Option<f64>,
+    /// The size a data file aims for, in bytes.
+    pub target_file_size: Option<f64>,
+    /// How many data files a scan decodes at once.
+    pub read_parallelism: Option<u32>,
+    /// How many large-enough files justify a parallel scan.
+    pub read_parallel_min_files: Option<u32>,
+    /// The recorded size below which a file does not count toward that
+    /// justification, in bytes.
+    pub read_parallel_min_file_size: Option<f64>,
+    /// After how many data commits an automatic compaction runs.
+    pub compact_after_commits: Option<u32>,
+    /// The format new data files are written in, as `PARQUET` or `AVRO`.
+    pub data_format: Option<String>,
+}
+
+/// Apply every field one options object carried, in field order.
+///
+/// A field the object omits is left exactly as it was, so this is equally the
+/// constructor's whole body and a partial update of a value already built.
+///
+/// # Errors
+///
+/// Throws the core's typed error for a value it refuses - a zero target size,
+/// a zero parallelism, an unknown data format - naming the offending value.
+fn apply_options_input(options: &mut CoreIcebergOptions, input: IcebergOptionsInput) -> Result<()> {
+    if let Some(retries) = input.commit_retries {
+        options.set_commit_retries(retries);
+    }
+    if let Some(wait_ms) = input.commit_min_backoff_ms {
+        options.set_commit_min_backoff_ms(crate::exact_u64(wait_ms, "commitMinBackoffMs")?);
+    }
+    if let Some(wait_ms) = input.commit_max_backoff_ms {
+        options.set_commit_max_backoff_ms(crate::exact_u64(wait_ms, "commitMaxBackoffMs")?);
+    }
+    if let Some(bytes) = input.target_file_size {
+        options
+            .set_target_file_size_bytes(crate::exact_u64(bytes, "targetFileSize")?)
+            .map_err(napi_error)?;
+    }
+    if let Some(threads) = input.read_parallelism {
+        options
+            .set_read_parallelism(threads as usize)
+            .map_err(napi_error)?;
+    }
+    if let Some(files) = input.read_parallel_min_files {
+        options.set_read_parallel_min_files(files as usize);
+    }
+    if let Some(bytes) = input.read_parallel_min_file_size {
+        options.set_read_parallel_min_file_size_bytes(crate::exact_u64(
+            bytes,
+            "readParallelMinFileSize",
+        )?);
+    }
+    if let Some(commits) = input.compact_after_commits {
+        options.set_compact_after_commits(commits);
+    }
+    if let Some(format) = input.data_format {
+        options.set_data_format(file_format_from_name(&format)?);
+    }
+    Ok(())
+}
+
+/// Configuration for one table's commits, writes, and reads.
+///
+/// The value records only what was set on it: every getter answers the field's
+/// documented default when nothing was, and a table resolves each field as
+/// explicit option, then table property, then that default. That three-layer
+/// resolution is why an unset field is not the same as a field set to the
+/// default - only the second one shadows the table's own property.
+#[napi(js_name = "IcebergOptions")]
+#[derive(Clone, Default)]
+pub struct JsIcebergOptions {
+    pub(crate) inner: CoreIcebergOptions,
+}
+
+// Byte counts and thread counts cross as JavaScript numbers, exact to 2^53 -
+// the same contract `IOBase.size` already publishes - so the casts here are
+// the boundary, not a loss.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_lossless
+)]
+#[napi]
+impl JsIcebergOptions {
+    /// Build an options value from the fields an object names, or an empty one.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error for a value it refuses, naming it.
+    #[napi(constructor)]
+    pub fn new(options: Option<IcebergOptionsInput>) -> Result<Self> {
+        let mut inner = CoreIcebergOptions::new();
+        if let Some(input) = options {
+            apply_options_input(&mut inner, input)?;
+        }
+        Ok(Self { inner })
+    }
+
+    /// How many beaten commit attempts are retried. Default: 4.
+    #[napi(getter)]
+    pub fn commit_retries(&self) -> u32 {
+        self.inner.commit_retries()
+    }
+
+    /// Set how many beaten commit attempts are retried.
+    #[napi(setter)]
+    pub fn set_commit_retries(&mut self, retries: u32) {
+        self.inner.set_commit_retries(retries);
+    }
+
+    /// The first commit retry wait, in milliseconds. Default: 100.
+    #[napi(getter)]
+    pub fn commit_min_backoff_ms(&self) -> f64 {
+        self.inner.commit_min_backoff_ms() as f64
+    }
+
+    /// Set the first commit retry wait, in milliseconds.
+    ///
+    /// # Errors
+    ///
+    /// Throws when the wait is not a whole non-negative number of at most 2^53.
+    #[napi(setter)]
+    pub fn set_commit_min_backoff_ms(&mut self, wait_ms: f64) -> Result<()> {
+        self.inner
+            .set_commit_min_backoff_ms(crate::exact_u64(wait_ms, "commitMinBackoffMs")?);
+        Ok(())
+    }
+
+    /// The largest commit retry wait, in milliseconds. Default: 60000.
+    #[napi(getter)]
+    pub fn commit_max_backoff_ms(&self) -> f64 {
+        self.inner.commit_max_backoff_ms() as f64
+    }
+
+    /// Set the largest commit retry wait, in milliseconds.
+    ///
+    /// # Errors
+    ///
+    /// Throws when the wait is not a whole non-negative number of at most 2^53.
+    #[napi(setter)]
+    pub fn set_commit_max_backoff_ms(&mut self, wait_ms: f64) -> Result<()> {
+        self.inner
+            .set_commit_max_backoff_ms(crate::exact_u64(wait_ms, "commitMaxBackoffMs")?);
+        Ok(())
+    }
+
+    /// The size a data file aims for, in bytes. Default: 512 MiB.
+    #[napi(getter)]
+    pub fn target_file_size(&self) -> f64 {
+        self.inner.target_file_size_bytes() as f64
+    }
+
+    /// Set the size a data file aims for, in bytes.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error naming the value when the size is zero: a
+    /// target no file can meet would roll one file per batch forever, so it is
+    /// refused here rather than obeyed later.
+    #[napi(setter)]
+    pub fn set_target_file_size(&mut self, bytes: f64) -> Result<()> {
+        self.inner
+            .set_target_file_size_bytes(crate::exact_u64(bytes, "targetFileSize")?)
+            .map_err(napi_error)
+    }
+
+    /// How many data files a scan decodes at once. Default: the host's own
+    /// parallelism, kept in 1..=8.
+    #[napi(getter)]
+    pub fn read_parallelism(&self) -> u32 {
+        u32::try_from(self.inner.read_parallelism()).unwrap_or(u32::MAX)
+    }
+
+    /// Set how many data files a scan decodes at once.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error naming the value when the count is zero,
+    /// which would read nothing at all.
+    #[napi(setter)]
+    pub fn set_read_parallelism(&mut self, threads: u32) -> Result<()> {
+        self.inner
+            .set_read_parallelism(threads as usize)
+            .map_err(napi_error)
+    }
+
+    /// How many large-enough files justify a parallel scan. Default: 16.
+    #[napi(getter)]
+    pub fn read_parallel_min_files(&self) -> u32 {
+        u32::try_from(self.inner.read_parallel_min_files()).unwrap_or(u32::MAX)
+    }
+
+    /// Set how many large-enough files justify a parallel scan.
+    #[napi(setter)]
+    pub fn set_read_parallel_min_files(&mut self, files: u32) {
+        self.inner.set_read_parallel_min_files(files as usize);
+    }
+
+    /// The recorded size below which a file does not count toward justifying a
+    /// parallel scan, in bytes. Default: 4 MiB.
+    #[napi(getter)]
+    pub fn read_parallel_min_file_size(&self) -> f64 {
+        self.inner.read_parallel_min_file_size_bytes() as f64
+    }
+
+    /// Set the size below which a file does not count toward justifying a
+    /// parallel scan, in bytes.
+    ///
+    /// # Errors
+    ///
+    /// Throws when the size is not a whole non-negative number of at most 2^53.
+    #[napi(setter)]
+    pub fn set_read_parallel_min_file_size(&mut self, bytes: f64) -> Result<()> {
+        self.inner
+            .set_read_parallel_min_file_size_bytes(crate::exact_u64(
+                bytes,
+                "readParallelMinFileSize",
+            )?);
+        Ok(())
+    }
+
+    /// After how many data commits an automatic compaction runs; `null` - the
+    /// default - never compacts on its own, and 0 reads as off.
+    #[napi(getter)]
+    pub fn compact_after_commits(&self) -> Option<u32> {
+        self.inner.compact_after_commits()
+    }
+
+    /// Set after how many data commits an automatic compaction runs.
+    #[napi(setter)]
+    pub fn set_compact_after_commits(&mut self, commits: u32) {
+        self.inner.set_compact_after_commits(commits);
+    }
+
+    /// The format new data files are written in. Default: `PARQUET`.
+    ///
+    /// Only what a write produces is decided here: a scan decodes each data
+    /// file as the format its manifest entry records, so one table can mix
+    /// formats and still read as one shape.
+    #[napi(getter)]
+    pub fn data_format(&self) -> String {
+        self.inner.data_format().to_string()
+    }
+
+    /// Set the format new data files are written in, named in any case.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core message naming the accepted formats and the input.
+    #[napi(setter)]
+    pub fn set_data_format(&mut self, format: String) -> Result<()> {
+        self.inner.set_data_format(file_format_from_name(&format)?);
+        Ok(())
+    }
+}
+
+/// Run one table operation under per-call options, restoring the handle after.
+///
+/// The override is shadowed for exactly the length of the call - saved before,
+/// put back after, whatever the operation did - so per-call options never leak
+/// into the handle's own configuration.
+fn with_call_options<R>(
+    table: &mut CoreTable<Holder>,
+    options: Option<CoreIcebergOptions>,
+    operation: impl FnOnce(&mut CoreTable<Holder>) -> Result<R>,
+) -> Result<R> {
+    let Some(options) = options else {
+        return operation(table);
+    };
+    let saved = table.clear_options();
+    table.set_options(options);
+    let result = operation(table);
+    match saved {
+        Some(saved) => table.set_options(saved),
+        None => {
+            table.clear_options();
+        }
+    }
+    result
+}
+
+/// Read the per-call options an optional argument carried.
+fn call_options(options: Option<&JsIcebergOptions>) -> Option<CoreIcebergOptions> {
+    options.map(|options| options.inner.clone())
+}
+
 /// Read the format version a number names, defaulting to v2.
 fn format_version(value: Option<u32>) -> Result<FormatVersion> {
     match value {
@@ -196,6 +518,26 @@ pub struct SnapshotView {
     pub schema_id: Option<i32>,
 }
 
+/// One branch or tag, as the metadata records it.
+///
+/// A branch moves as commits land on it and a tag does not, which is the whole
+/// of the difference: both are a name pointing at one retained snapshot, and
+/// the retention fields are what expiration consults before dropping it.
+#[napi(object)]
+pub struct SnapshotRefView {
+    /// The snapshot this reference names.
+    pub snapshot_id: BigInt,
+    /// Either `branch` or `tag`.
+    pub kind: String,
+    /// Fewest snapshots expiration keeps on this branch, head included.
+    pub min_snapshots_to_keep: Option<i32>,
+    /// Oldest ancestor age expiration keeps on this branch, in milliseconds.
+    pub max_snapshot_age_ms: Option<i64>,
+    /// Age at which the reference itself expires, in milliseconds from its
+    /// snapshot's commit time.
+    pub max_ref_age_ms: Option<i64>,
+}
+
 /// One manifest of the current snapshot.
 #[napi(object)]
 pub struct ManifestFileView {
@@ -225,6 +567,66 @@ pub struct ManifestFileView {
     pub existing_rows_count: i64,
     /// Rows in the deleted files.
     pub deleted_rows_count: i64,
+}
+
+/// What planning a scan decided, before a single data file is opened.
+///
+/// The plan is the answer to "how much of this table does that filter touch",
+/// and it is read-only because only [`Table.plan`](JsTable::plan) produces one.
+/// The counts are what make pruning checkable rather than claimed: a filtered
+/// read that skips nothing reports zero skipped, and a caller can assert on it.
+#[napi(js_name = "ScanPlan")]
+pub struct JsScanPlan {
+    /// The core plan, kept whole so every count is one view of one decision.
+    inner: CoreScanPlan,
+}
+
+impl JsScanPlan {
+    const fn from_core(inner: CoreScanPlan) -> Self {
+        Self { inner }
+    }
+}
+
+// Counts cross as JavaScript numbers, exact to 2^53 - the same contract
+// `IOBase.size` already publishes.
+#[allow(clippy::cast_precision_loss)]
+#[napi]
+impl JsScanPlan {
+    /// The rows the planned files hold, as their manifest entries record them.
+    ///
+    /// This is metadata arithmetic and never a read, so it answers for a table
+    /// of any size in the time it takes to walk the manifests.
+    #[napi(getter)]
+    pub fn record_count(&self) -> i64 {
+        self.inner.record_count()
+    }
+
+    /// How many data files the read would open.
+    #[napi(getter)]
+    pub fn files_planned(&self) -> f64 {
+        self.inner.tasks.len() as f64
+    }
+
+    /// How many data files the partition tuples and statistics excluded.
+    #[napi(getter)]
+    pub fn files_skipped(&self) -> f64 {
+        self.inner.files_skipped() as f64
+    }
+
+    /// How many manifests had to be decoded to decide all of that.
+    #[napi(getter)]
+    pub fn manifests_read(&self) -> f64 {
+        self.inner.manifests_read as f64
+    }
+
+    /// How many manifests the manifest list's own summaries ruled out whole.
+    ///
+    /// A manifest skipped here is one that was never even read, which is the
+    /// coarsest of the three levels of pruning and the cheapest.
+    #[napi(getter)]
+    pub fn manifests_skipped(&self) -> f64 {
+        self.inner.manifests_skipped() as f64
+    }
 }
 
 /// One live data file of the current snapshot, with the spec that placed it.
@@ -354,6 +756,16 @@ fn bounds(values: &[(i32, Vec<u8>)]) -> Vec<FieldBound> {
             value: value.clone().into(),
         })
         .collect()
+}
+
+fn snapshot_ref_view(reference: SnapshotRef) -> SnapshotRefView {
+    SnapshotRefView {
+        snapshot_id: BigInt::from(reference.snapshot_id),
+        kind: reference.kind.to_string(),
+        min_snapshots_to_keep: reference.min_snapshots_to_keep,
+        max_snapshot_age_ms: reference.max_snapshot_age_ms,
+        max_ref_age_ms: reference.max_ref_age_ms,
+    }
 }
 
 fn snapshot_view(snapshot: &Snapshot) -> SnapshotView {
@@ -668,6 +1080,35 @@ impl JsTable {
             .collect())
     }
 
+    /// Every manifest one retained snapshot points at.
+    ///
+    /// The manifest half of time travel: what
+    /// [`manifests`](Self::manifests) answers for the present, this answers
+    /// for any snapshot the table still retains.
+    #[napi]
+    pub fn manifests_at(&self, snapshot_id: SnapshotIdInput) -> Result<Vec<ManifestFileView>> {
+        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        let metadata = self.inner.metadata();
+        let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
+            let retained: Vec<String> = metadata
+                .snapshots
+                .iter()
+                .map(|snapshot| snapshot.snapshot_id.to_string())
+                .collect();
+            napi_error(format!(
+                "expected a retained snapshot id, got {snapshot_id}; the table retains [{}]",
+                retained.join(", ")
+            ))
+        })?;
+        Ok(self
+            .inner
+            .manifests_at(snapshot)
+            .map_err(napi_error)?
+            .iter()
+            .map(manifest_view)
+            .collect())
+    }
+
     /// Every live data file of the current snapshot.
     #[napi]
     pub fn data_files(&self) -> Result<Vec<JsDataFile>> {
@@ -684,29 +1125,226 @@ impl JsTable {
     ///
     /// Unlike a plain handle read, a scan *casts* each file to the root it is
     /// given after pushing the columns down, which is what makes a table whose
-    /// schema evolved readable as one shape.
+    /// schema evolved readable as one shape. `options` configures this one
+    /// call and is put back afterwards, so the handle's own override survives.
     #[napi]
-    pub fn scan(&self, field: Option<&JsField>) -> Result<JsBatchReader> {
+    pub fn scan(
+        &mut self,
+        field: Option<&JsField>,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
-        let reader = self
-            .inner
-            .scan(field.map(|field| &field.inner))
-            .map_err(napi_error)?;
+        let field = field.map(|field| field.inner.clone());
+        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
+            table.scan(field.as_ref()).map_err(napi_error)
+        })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
-    /// Append `batches` as a new snapshot, keeping everything already stored.
+    /// Read the rows matching `filters`, keeping the columns `field` names.
+    ///
+    /// A filter on a partition column is answered by [`plan`](Self::plan)
+    /// alone - every row of a file whose tuple matches holds that value - and a
+    /// filter on any other column is applied to the rows the surviving files
+    /// hold, because statistics bound a file rather than select a row. Either
+    /// way the result is the same rows; what differs is how many files were
+    /// opened to find them.
     #[napi]
-    pub fn append(&mut self, batches: &mut JsBatchReader) -> Result<()> {
-        self.inner.append(batches.take()?).map_err(napi_error)
+    pub fn scan_where(
+        &mut self,
+        filters: ScanFilters,
+        field: Option<FieldInput<'_>>,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsBatchReader> {
+        let root_name = self.root_name()?;
+        let pairs = filter_pairs(Some(filters));
+        let field = field.map(field_from_input).transpose()?;
+        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .scan_where(&borrowed_pairs(&pairs), field.as_ref())
+                .map_err(napi_error)
+        })?;
+        Ok(JsBatchReader::from_core(reader, &root_name))
+    }
+
+    /// Read the rows a branch or tag names, as of the snapshot it points at.
+    ///
+    /// This is [`snapshotByRef`](Self::snapshot_by_ref) and
+    /// [`scanAt`](Self::scan_at) in one call, with the same `filters` and
+    /// `field` meanings. A name the table does not have is refused naming the
+    /// refs it does.
+    #[napi]
+    pub fn scan_ref(
+        &mut self,
+        name: String,
+        filters: Option<ScanFilters>,
+        field: Option<FieldInput<'_>>,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsBatchReader> {
+        let root_name = self.root_name()?;
+        let pairs = filter_pairs(filters);
+        let field = field.map(field_from_input).transpose()?;
+        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .scan_ref(&name, &borrowed_pairs(&pairs), field.as_ref())
+                .map_err(napi_error)
+        })?;
+        Ok(JsBatchReader::from_core(reader, &root_name))
+    }
+
+    /// Decide which data files `filters` would have a read open, and no more.
+    ///
+    /// Nothing here lists a directory and nothing opens a data file: the
+    /// snapshot names a manifest list, whose summaries rule out whole
+    /// manifests, whose entries carry the partition tuples and statistics that
+    /// rule out single files. The returned [`ScanPlan`](JsScanPlan) reports
+    /// what it skipped, so how much a filter actually saves is a number rather
+    /// than a promise.
+    #[napi]
+    pub fn plan(&self, filters: Option<ScanFilters>) -> Result<JsScanPlan> {
+        let pairs = filter_pairs(filters);
+        self.inner
+            .plan(&borrowed_pairs(&pairs))
+            .map(JsScanPlan::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Plan a scan of one retained snapshot rather than the current one.
+    ///
+    /// The planning half of time travel: the same three levels of pruning are
+    /// walked over the snapshot's own manifest list, so a filtered read of
+    /// history skips exactly what a filtered read of the present skips.
+    #[napi]
+    pub fn plan_at(
+        &self,
+        snapshot_id: SnapshotIdInput,
+        filters: Option<ScanFilters>,
+    ) -> Result<JsScanPlan> {
+        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        let pairs = filter_pairs(filters);
+        self.inner
+            .plan_at(snapshot_id, &borrowed_pairs(&pairs))
+            .map(JsScanPlan::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Append `batches` as a new snapshot, keeping everything already stored.
+    ///
+    /// `options` configures this one write - `targetFileSize`,
+    /// `commitRetries`, `dataFormat`, and the rest - and the handle's own
+    /// configuration is untouched.
+    #[napi]
+    pub fn append(
+        &mut self,
+        batches: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<()> {
+        let batches = batches.take()?;
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table.append(batches).map_err(napi_error)
+        })
     }
 
     /// Replace every row with `batches` as a new snapshot.
     ///
     /// The previous snapshot stays readable; only the current pointer moves.
+    /// `options` configures this one write, exactly as on
+    /// [`append`](Self::append).
     #[napi]
-    pub fn overwrite(&mut self, batches: &mut JsBatchReader) -> Result<()> {
-        self.inner.overwrite(batches.take()?).map_err(napi_error)
+    pub fn overwrite(
+        &mut self,
+        batches: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<()> {
+        let batches = batches.take()?;
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table.overwrite(batches).map_err(napi_error)
+        })
+    }
+
+    /// Replace only the rows `filters` selects, keeping every other file.
+    ///
+    /// A file the filters exclude is carried into the new snapshot exactly as
+    /// it is - same location, same statistics, same commit order - so
+    /// overwriting one partition of a thousand rewrites one partition.
+    ///
+    /// An overwrite beaten by a concurrent commit does not rebase: what it
+    /// keeps was planned against a snapshot the winner may have replaced, and
+    /// `batches` is already consumed, so it throws a commit conflict naming
+    /// both versions rather than risk losing rows.
+    ///
+    /// `options` configures this one write, exactly as on
+    /// [`append`](Self::append).
+    #[napi]
+    pub fn overwrite_where(
+        &mut self,
+        filters: ScanFilters,
+        batches: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<()> {
+        let pairs = filter_pairs(Some(filters));
+        let batches = batches.take()?;
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .overwrite_where(&borrowed_pairs(&pairs), batches)
+                .map_err(napi_error)
+        })
+    }
+
+    /// Merge `batches` into the stored rows, matching on `mergeByNames`.
+    ///
+    /// A row whose key is already stored updates it and a row whose key is not
+    /// appends. Only the files whose recorded bounds could hold an incoming key
+    /// are read and rewritten - the rest are carried into the new snapshot
+    /// untouched - so an upsert costs the files it can actually change. An
+    /// empty `mergeByNames` is an overwrite, because nothing identifies a row.
+    ///
+    /// `safe` decides what a cast that cannot convert a value does: the
+    /// default nulls it, and `false` throws instead. `options` configures this
+    /// one write, exactly as on [`append`](Self::append).
+    #[napi]
+    pub fn merge(
+        &mut self,
+        batches: &mut JsBatchReader,
+        merge_by_names: Vec<String>,
+        safe: Option<bool>,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<()> {
+        let batches = batches.take()?;
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .merge(batches, &merge_by_names, safe.unwrap_or(true))
+                .map_err(napi_error)
+        })
+    }
+
+    /// Merge `batches` into the rows `filters` selects, on `mergeByNames`.
+    ///
+    /// [`merge`](Self::merge) narrowed to a part of the table first: the
+    /// filters decide which files are candidates at all, and the match-key
+    /// statistics then decide which of those are actually read. `options`
+    /// configures this one write, exactly as on [`append`](Self::append).
+    #[napi]
+    pub fn merge_where(
+        &mut self,
+        filters: ScanFilters,
+        batches: &mut JsBatchReader,
+        merge_by_names: Vec<String>,
+        safe: Option<bool>,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<()> {
+        let pairs = filter_pairs(Some(filters));
+        let batches = batches.take()?;
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .merge_where(
+                    &borrowed_pairs(&pairs),
+                    batches,
+                    &merge_by_names,
+                    safe.unwrap_or(true),
+                )
+                .map_err(napi_error)
+        })
     }
 
     /// Add a schema, make it current, and write a new metadata document.
@@ -726,23 +1364,21 @@ impl JsTable {
     /// schema the snapshot was written under.
     #[napi]
     pub fn scan_at(
-        &self,
+        &mut self,
         snapshot_id: SnapshotIdInput,
         filters: Option<ScanFilters>,
         schema: Option<FieldInput<'_>>,
+        options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
         let snapshot_id = snapshot_id_from_input(snapshot_id)?;
         let pairs = filter_pairs(filters);
-        let borrowed: Vec<(&str, &str)> = pairs
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
         let schema = schema.map(field_from_input).transpose()?;
-        let reader = self
-            .inner
-            .scan_at(snapshot_id, &borrowed, schema.as_ref())
-            .map_err(napi_error)?;
+        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .scan_at(snapshot_id, &borrowed_pairs(&pairs), schema.as_ref())
+                .map_err(napi_error)
+        })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -754,6 +1390,103 @@ impl JsTable {
         self.inner
             .snapshot_by_ref(&name)
             .map(snapshot_view)
+            .map_err(napi_error)
+    }
+
+    /// Create a branch at one retained snapshot, as one metadata commit.
+    ///
+    /// Writing *to* a branch other than `main` remains future work; a branch is
+    /// read with [`scanRef`](Self::scan_ref) and moved with
+    /// [`fastForward`](Self::fast_forward).
+    #[napi]
+    pub fn create_branch(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
+        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        self.inner
+            .create_branch(&name, snapshot_id)
+            .map_err(napi_error)
+    }
+
+    /// Create a tag at one retained snapshot, as one metadata commit.
+    ///
+    /// A tag never moves, so it is what pins a snapshot against expiration.
+    #[napi]
+    pub fn create_tag(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
+        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        self.inner
+            .create_tag(&name, snapshot_id)
+            .map_err(napi_error)
+    }
+
+    /// Remove one branch or tag, returning what it pointed at.
+    ///
+    /// A name the table does not have is refused naming the refs it does,
+    /// rather than committing nothing: dropping a ref that was never there is
+    /// far more often a typo than a no-op.
+    #[napi]
+    pub fn remove_ref(&mut self, name: String) -> Result<SnapshotRefView> {
+        self.inner
+            .remove_ref(&name)
+            .map(snapshot_ref_view)
+            .map_err(napi_error)
+    }
+
+    /// Move a branch forward to a descendant snapshot, as one metadata commit.
+    ///
+    /// The target must be retained and must reach the branch's head by walking
+    /// parent ids, which is what makes a fast-forward unable to lose history.
+    #[napi]
+    pub fn fast_forward(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
+        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        self.inner
+            .fast_forward(&name, snapshot_id)
+            .map_err(napi_error)
+    }
+
+    /// Expire the snapshots retention no longer keeps, returning their ids.
+    ///
+    /// `olderThanMs` is the default age cutoff; every ref's own retention
+    /// fields are honored first, so a tagged snapshot outlives the cutoff. A
+    /// table with nothing old commits nothing at all - the check runs on a copy
+    /// first, so an empty expiry costs no version.
+    #[napi]
+    pub fn expire_snapshots(&mut self, older_than_ms: f64) -> Result<Vec<BigInt>> {
+        let older_than_ms = crate::exact_i64(older_than_ms, "olderThanMs")?;
+        Ok(self
+            .inner
+            .expire_snapshots(older_than_ms)
+            .map_err(napi_error)?
+            .into_iter()
+            .map(BigInt::from)
+            .collect())
+    }
+
+    /// Store an explicit options override every later call resolves first.
+    ///
+    /// A field the override sets shadows the table property of the same name,
+    /// and a field it leaves unset still resolves property-then-default. The
+    /// override lives on this handle alone - it is never written to the table;
+    /// [`updateProperties`](Self::update_properties) is what stores a setting
+    /// on the table itself.
+    #[napi]
+    pub fn set_options(&mut self, options: &JsIcebergOptions) {
+        self.inner.set_options(options.inner.clone());
+    }
+
+    /// Resolve this table's effective options, field by field.
+    ///
+    /// Each field takes the nearest of three layers: the explicit override,
+    /// then the table property of the same name, then the documented default.
+    ///
+    /// # Errors
+    ///
+    /// Throws naming the key and the value when a property no override shadows
+    /// is present but does not parse - a configured setting is never silently
+    /// replaced by the default.
+    #[napi]
+    pub fn options(&self) -> Result<JsIcebergOptions> {
+        self.inner
+            .options()
+            .map(|inner| JsIcebergOptions { inner })
             .map_err(napi_error)
     }
 
@@ -1062,9 +1795,14 @@ impl JsCatalog {
     /// caller who only has rows and a name needs nothing else. Returns the
     /// table so the caller can keep going.
     #[napi]
-    pub fn append(&self, name: String, data: &mut JsBatchReader) -> Result<JsTable> {
+    pub fn append(
+        &self,
+        name: String,
+        data: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsTable> {
         self.inner
-            .append(&name, data.take()?)
+            .append_with(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1072,11 +1810,17 @@ impl JsCatalog {
     /// Replace the named table's rows with `data`, creating it on first write.
     ///
     /// An existing table keeps its previous snapshot readable; only the
-    /// current pointer moves. Returns the table so the caller can keep going.
+    /// current pointer moves. `options` configures this one write. Returns the
+    /// table so the caller can keep going.
     #[napi]
-    pub fn overwrite(&self, name: String, data: &mut JsBatchReader) -> Result<JsTable> {
+    pub fn overwrite(
+        &self,
+        name: String,
+        data: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsTable> {
         self.inner
-            .overwrite(&name, data.take()?)
+            .overwrite_with(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1111,18 +1855,44 @@ impl JsCatalog {
             name,
         }
     }
+
+    /// The catalog's namespaces, as a lazy map-like view.
+    ///
+    /// Building the view performs no I/O: `get`, `has`, `names`, and `size`
+    /// each consult storage at the moment they are asked, which is why two
+    /// views over one catalog observe each other's writes and why a view stays
+    /// valid across a creation or a deletion. This is the one collection
+    /// spelling - `catalog.namespaces.get('sales').tables.get('orders')`
+    /// chains all the way to a table.
+    #[napi(getter)]
+    pub fn namespaces(&self, reference: Reference<JsCatalog>) -> JsNamespaces {
+        JsNamespaces {
+            catalog: reference,
+            parent: None,
+        }
+    }
 }
 
-/// One namespace of a catalog: the first half of `catalog[ns][table]`.
+/// One namespace of a catalog: identity, plus its two collection views.
 ///
-/// `get` opens a table, `set` gets-or-creates - a schema opens the table,
-/// creating it when absent, and rows replace the table's rows, creating it
-/// from their own schema on first write - and `has`, `tables`, and
-/// `namespaces` answer the map questions.
+/// The namespace holds only its dotted name. Its tables are
+/// [`tables`](Self::tables) and its child namespaces are
+/// [`namespaces`](Self::namespaces), so access chains -
+/// `catalog.namespaces.get('sales').tables.get('orders')` - and every
+/// collection question has exactly one home. The table methods here are the
+/// short spelling of the same view, kept so a caller who has a namespace need
+/// not reach for one.
 #[napi(js_name = "Namespace")]
 pub struct JsNamespace {
     catalog: Reference<JsCatalog>,
     name: String,
+}
+
+impl JsNamespace {
+    /// The core view this namespace's tables are asked of.
+    fn table_view(&self) -> CoreTables<'_, Holder> {
+        self.catalog.inner.namespace(&self.name).tables()
+    }
 }
 
 #[napi]
@@ -1133,13 +1903,30 @@ impl JsNamespace {
         self.name.clone()
     }
 
+    /// This namespace's tables, as a lazy map-like view.
+    #[napi(getter)]
+    pub fn tables(&self, env: Env) -> Result<JsTables> {
+        Ok(JsTables {
+            catalog: self.catalog.clone(env)?,
+            namespace: self.name.clone(),
+        })
+    }
+
+    /// The namespaces one level below this one, as the same view shape the
+    /// catalog itself answers - the cascade that reaches a nested namespace.
+    #[napi(getter)]
+    pub fn namespaces(&self, env: Env) -> Result<JsNamespaces> {
+        Ok(JsNamespaces {
+            catalog: self.catalog.clone(env)?,
+            parent: Some(self.name.clone()),
+        })
+    }
+
     /// Open the named table.
     #[napi]
     pub fn table(&self, name: String) -> Result<JsTable> {
-        self.catalog
-            .inner
-            .namespace(&self.name)
-            .table(&name)
+        self.table_view()
+            .get(&name)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1153,20 +1940,14 @@ impl JsNamespace {
     /// Return whether the named table exists here.
     #[napi]
     pub fn has(&self, name: String) -> Result<bool> {
-        self.catalog
-            .inner
-            .namespace(&self.name)
-            .has_table(&name)
-            .map_err(napi_error)
+        self.table_view().contains(&name).map_err(napi_error)
     }
 
     /// Open the named table, creating it with `schema` when absent.
     #[napi]
     pub fn open_or_create_table(&self, name: String, schema: &JsField) -> Result<JsTable> {
-        self.catalog
-            .inner
-            .namespace(&self.name)
-            .open_or_create_table(&name, schema.inner.clone())
+        self.table_view()
+            .open_or_create(&name, schema.inner.clone())
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1179,31 +1960,242 @@ impl JsNamespace {
     #[napi(js_name = "_setIpc", skip_typescript)]
     pub fn set_ipc(&self, name: String, rows: Buffer) -> Result<JsTable> {
         let reader = crate::arrow::JsBatchReader::decoded(rows.as_ref(), "row")?.take()?;
-        self.catalog
-            .inner
-            .namespace(&self.name)
+        self.table_view()
             .overwrite(&name, reader)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
+}
 
-    /// This namespace's tables, as bare names.
+/// The namespaces one level below a catalog or a namespace, as a lazy view.
+///
+/// JavaScript has no indexing hook a native class can answer, so the map
+/// questions are spelled out: `get` and `has` for membership, `names` and
+/// `size` for the whole collection, `create` and `openOrCreate` to add one.
+/// None of it is cached - every answer is storage's, asked when the question
+/// is - so a view built before a namespace existed finds it afterwards.
+#[napi(js_name = "Namespaces")]
+pub struct JsNamespaces {
+    catalog: Reference<JsCatalog>,
+    /// The parent namespace's dotted name; `null` is the warehouse root.
+    parent: Option<String>,
+}
+
+impl JsNamespaces {
+    /// The core view every question here is asked of.
+    fn view(&self) -> CoreNamespaces<'_, Holder> {
+        match &self.parent {
+            Some(parent) => self.catalog.inner.namespace(parent).namespaces(),
+            None => self.catalog.inner.namespaces(),
+        }
+    }
+
+    /// Wrap one child namespace's dotted name as the view of it.
+    fn wrap(&self, env: Env, dotted: String) -> Result<JsNamespace> {
+        Ok(JsNamespace {
+            catalog: self.catalog.clone(env)?,
+            name: dotted,
+        })
+    }
+}
+
+// Counts cross as JavaScript numbers, exact to 2^53 - the same contract
+// `IOBase.size` already publishes.
+#[allow(clippy::cast_precision_loss)]
+#[napi]
+impl JsNamespaces {
+    /// Open the named namespace.
+    ///
+    /// # Errors
+    ///
+    /// Throws naming the namespace when nothing is there, or when the name
+    /// addresses a table instead - the two ways a chained lookup goes wrong,
+    /// told apart rather than collapsed into "not found".
     #[napi]
-    pub fn tables(&self) -> Result<Vec<String>> {
-        self.catalog
-            .inner
-            .namespace(&self.name)
-            .list_tables()
+    pub fn get(&self, env: Env, name: String) -> Result<JsNamespace> {
+        let dotted = self
+            .view()
+            .get(&name)
+            .map_err(napi_error)?
+            .name()
+            .to_owned();
+        self.wrap(env, dotted)
+    }
+
+    /// Return whether the named namespace exists, asked of storage now.
+    ///
+    /// A namespace is a folder that is not a table, so a table's name answers
+    /// `false` here, and so does a location nothing occupies yet.
+    #[napi]
+    pub fn has(&self, name: String) -> Result<bool> {
+        self.view().contains(&name).map_err(napi_error)
+    }
+
+    /// The namespaces one level down, as sorted bare names.
+    #[napi]
+    pub fn names(&self) -> Result<Vec<String>> {
+        self.view().names().map_err(napi_error)
+    }
+
+    /// How many namespaces are one level down, right now.
+    #[napi]
+    pub fn size(&self) -> Result<f64> {
+        Ok(self.view().len().map_err(napi_error)? as f64)
+    }
+
+    /// Create the named namespace, as the folder it is.
+    ///
+    /// # Errors
+    ///
+    /// Throws naming the namespace when one - or a table - is already there;
+    /// [`openOrCreate`](Self::open_or_create) is the spelling that tolerates it.
+    #[napi]
+    pub fn create(&self, env: Env, name: String) -> Result<JsNamespace> {
+        let dotted = self
+            .view()
+            .create(&name)
+            .map_err(napi_error)?
+            .name()
+            .to_owned();
+        self.wrap(env, dotted)
+    }
+
+    /// Open the named namespace, creating its folder when absent.
+    #[napi]
+    pub fn open_or_create(&self, env: Env, name: String) -> Result<JsNamespace> {
+        let dotted = self
+            .view()
+            .open_or_create(&name)
+            .map_err(napi_error)?
+            .name()
+            .to_owned();
+        self.wrap(env, dotted)
+    }
+}
+
+/// The tables of one namespace, as a lazy map-like view.
+///
+/// The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
+/// a [`Table`](JsTable) and the write conveniences that take a name create the
+/// table on first write, from the incoming rows' own schema. Every answer comes
+/// from storage at call time, so the view is never stale.
+#[napi(js_name = "Tables")]
+pub struct JsTables {
+    catalog: Reference<JsCatalog>,
+    /// The owning namespace's dotted name.
+    namespace: String,
+}
+
+impl JsTables {
+    /// The core view every question here is asked of.
+    fn view(&self) -> CoreTables<'_, Holder> {
+        self.catalog.inner.namespace(&self.namespace).tables()
+    }
+}
+
+// Counts cross as JavaScript numbers, exact to 2^53 - the same contract
+// `IOBase.size` already publishes.
+#[allow(clippy::cast_precision_loss)]
+#[napi]
+impl JsTables {
+    /// Open the named table.
+    ///
+    /// # Errors
+    ///
+    /// Throws naming the table when no table is there, and the metadata
+    /// failure when its current document cannot be read.
+    #[napi]
+    pub fn get(&self, name: String) -> Result<JsTable> {
+        self.view()
+            .get(&name)
+            .map(JsTable::from_core)
             .map_err(napi_error)
     }
 
-    /// The namespaces one level below this one, as bare names.
+    /// Return whether the named table exists, asked of storage now.
     #[napi]
-    pub fn namespaces(&self) -> Result<Vec<String>> {
-        self.catalog
-            .inner
-            .namespace(&self.name)
-            .list_namespaces()
+    pub fn has(&self, name: String) -> Result<bool> {
+        self.view().contains(&name).map_err(napi_error)
+    }
+
+    /// This namespace's tables, as sorted bare names.
+    #[napi]
+    pub fn names(&self) -> Result<Vec<String>> {
+        self.view().names().map_err(napi_error)
+    }
+
+    /// How many tables the namespace holds, right now.
+    #[napi]
+    pub fn size(&self) -> Result<f64> {
+        Ok(self.view().len().map_err(napi_error)? as f64)
+    }
+
+    /// Create the named table, writing its first metadata document.
+    ///
+    /// `schema` is a root `Field`, a field expression, or an array of child
+    /// `Field`s assembled under a root named `row`. Unnumbered columns are
+    /// numbered, and the partition spec is derived from the columns the schema
+    /// itself marks - a schema that marks none produces an unpartitioned table.
+    ///
+    /// # Errors
+    ///
+    /// Throws naming the table when one is already there.
+    #[napi]
+    pub fn create(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
+        self.view()
+            .create(&name, schema_from_input(schema)?)
+            .map(JsTable::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Open the named table if it exists, creating it otherwise.
+    ///
+    /// An existing table is opened as it is - `schema` describes only the table
+    /// this call would create.
+    #[napi]
+    pub fn open_or_create(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
+        self.view()
+            .open_or_create(&name, schema_from_input(schema)?)
+            .map(JsTable::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Append `batches` to the named table, creating it on first write.
+    ///
+    /// A table that is not there yet takes its schema from the rows: partition
+    /// marks riding the Arrow fields' metadata become the spec, so a marked
+    /// schema lays its files out partitioned from the very first append.
+    /// `options` configures this one write. Returns the table so the caller can
+    /// keep going.
+    #[napi]
+    pub fn append(
+        &self,
+        name: String,
+        batches: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsTable> {
+        self.view()
+            .append_with(&name, batches.take()?, call_options(options))
+            .map(JsTable::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Replace the named table's rows with `batches`, creating it on first
+    /// write.
+    ///
+    /// An existing table keeps its previous snapshot readable, which is what
+    /// makes the overwrite reversible. `options` configures this one write.
+    /// Returns the table so the caller can keep going.
+    #[napi]
+    pub fn overwrite(
+        &self,
+        name: String,
+        batches: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
+    ) -> Result<JsTable> {
+        self.view()
+            .overwrite_with(&name, batches.take()?, call_options(options))
+            .map(JsTable::from_core)
             .map_err(napi_error)
     }
 }

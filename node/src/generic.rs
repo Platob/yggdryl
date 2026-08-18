@@ -162,10 +162,20 @@ impl JsRecordOptions {
     }
 
     /// Set the rows-per-batch bound.
+    ///
+    /// A bound of zero is refused rather than stored: the readers chunk by this
+    /// number, so it turns a read of a hundred rows into a successful read of
+    /// none. `null` is how "no bound" is spelled.
     #[napi(setter)]
-    pub fn set_batch_size(&mut self, batch_size: Option<u32>) {
+    pub fn set_batch_size(&mut self, batch_size: Option<u32>) -> Result<()> {
+        if batch_size == Some(0) {
+            return Err(napi::Error::from_reason(
+                "expected a positive row count for batchSize, got 0; pass null for no bound",
+            ));
+        }
         self.inner
             .set_batch_size(batch_size.map(|size| size as usize));
+        Ok(())
     }
 
     /// The compression level on the shared 0-to-9 scale.
@@ -326,10 +336,10 @@ impl JsRecordOptions {
 
     /// Return these options with a rows-per-batch bound.
     #[napi]
-    pub fn with_batch_size(&self, batch_size: u32) -> Self {
+    pub fn with_batch_size(&self, batch_size: u32) -> Result<Self> {
         let mut options = self.clone();
-        options.set_batch_size(Some(batch_size));
-        options
+        options.set_batch_size(Some(batch_size))?;
+        Ok(options)
     }
 
     /// Return these options with a different compression level.

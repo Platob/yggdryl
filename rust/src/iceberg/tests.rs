@@ -1270,8 +1270,16 @@ mod planning {
     fn a_filter_naming_a_column_the_schema_does_not_have_lists_the_ones_it_does() {
         let (_path, table) = venues("plan-unknown");
         let message = table.plan(&[("exchange", "XNAS")]).unwrap_err().to_string();
-        assert!(message.contains("exchange"), "{message}");
-        assert!(message.contains("id, symbol, venue"), "{message}");
+        // The whole clause, not just the two names in it: asserting only that
+        // the column list appears somewhere let a stray ", got" sit between
+        // "it has" and the list, which is what a reader would actually see.
+        assert!(
+            message.contains(
+                "expected a filter column the table schema declares, got \"exchange\"; it has id, \
+                 symbol, venue"
+            ),
+            "{message}"
+        );
     }
 
     #[test]
@@ -3726,4 +3734,350 @@ mod manifest_planning {
         let pruned = read_manifest_for_plan(&handle, false).unwrap();
         assert!(pruned[0].data_file.value_counts.is_empty());
     }
+}
+
+/// The data file format: per-call option, table property, default, and mixing.
+mod data_format {
+    use super::*;
+    use crate::iceberg::{FileFormat, IcebergOptions};
+
+    /// The manifests' `(file_format, path)` pairs of the current snapshot.
+    fn formats(table: &Table<Folder>) -> Vec<(FileFormat, String)> {
+        table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| (file.file_format, file.file_path.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn the_default_format_is_parquet_and_the_option_layers_resolve() {
+        let path = root("format-layers");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        // Nothing configured: the default is the spec's own, Parquet.
+        assert_eq!(table.options().unwrap().data_format(), FileFormat::Parquet);
+
+        // The table property layer, under the spec's own key, in the spec's
+        // own lowercase spelling.
+        table
+            .commit_changes(|metadata| {
+                metadata
+                    .set_property("write.format.default", "avro")
+                    .map(|_| ())
+            })
+            .unwrap();
+        assert_eq!(table.options().unwrap().data_format(), FileFormat::Avro);
+
+        // The explicit option shadows the property.
+        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Parquet));
+        assert_eq!(table.options().unwrap().data_format(), FileFormat::Parquet);
+    }
+
+    #[test]
+    fn an_unparseable_format_property_is_a_typed_error_naming_the_key() {
+        let path = root("format-unparseable");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_changes(|metadata| {
+                metadata
+                    .set_property("write.format.default", "csv")
+                    .map(|_| ())
+            })
+            .unwrap();
+
+        let message = table.options().unwrap_err().to_string();
+        assert!(message.contains("write.format.default"), "{message}");
+        assert!(message.contains("csv"), "{message}");
+
+        // The write path resolves the same layer, so it fails the same way -
+        // and an explicit option shadows the broken property, which is what
+        // lets a caller repair it.
+        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        let message = table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch.clone()]))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("write.format.default"), "{message}");
+        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Parquet));
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+    }
+
+    #[test]
+    fn an_orc_format_is_refused_up_front_naming_the_format() {
+        let path = root("format-orc");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Orc));
+
+        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        let message = table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("ORC"), "{message}");
+        assert!(message.contains("PARQUET, AVRO"), "{message}");
+        // The refusal happened before anything was written.
+        assert!(table.current_snapshot().is_none());
+        assert!(!path.join("data").exists());
+    }
+
+    #[test]
+    fn a_table_whose_files_mix_formats_writes_and_scans_as_one_shape() {
+        let path = root("format-mixed");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+
+        // One Parquet append, then one Avro append via the explicit option.
+        let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        table
+            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .unwrap();
+        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Avro));
+        let second = trades(&[2], &[None], &[None]);
+        table
+            .append(crate::arrow::batch_reader(second.schema(), [second]))
+            .unwrap();
+
+        // The manifests record what was actually written, and each file's
+        // name carries its own format's extension.
+        let mut recorded = formats(&table);
+        recorded.sort();
+        assert_eq!(recorded.len(), 2);
+        assert!(matches!(recorded[0], (FileFormat::Parquet, _)));
+        assert!(matches!(recorded[1], (FileFormat::Avro, _)));
+        assert!(recorded[0].1.ends_with(".parquet"), "{}", recorded[0].1);
+        assert!(recorded[1].1.ends_with(".avro"), "{}", recorded[1].1);
+
+        // The mixed table scans as one shape.
+        assert_eq!(
+            collect(table.scan(None).unwrap()),
+            [
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (2, None, None),
+            ]
+        );
+
+        // An Avro-written file still carries manifest statistics measured
+        // from its rows, so a filtered plan can skip it.
+        let avro_file = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| file)
+            .find(|file| file.file_format == FileFormat::Avro)
+            .unwrap();
+        assert_eq!(avro_file.record_count, 1);
+        assert!(!avro_file.value_counts.is_empty());
+        assert!(!avro_file.null_value_counts.is_empty());
+        assert!(!avro_file.lower_bounds.is_empty());
+    }
+
+    #[test]
+    fn an_avro_format_table_property_writes_avro_files_and_reads_back() {
+        let path = root("format-avro-property");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_changes(|metadata| {
+                metadata
+                    .set_property("write.format.default", "avro")
+                    .map(|_| ())
+            })
+            .unwrap();
+
+        let batch = trades(&[1, 2], &[Some("AAPL"), None], &[Some("XNAS"), None]);
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+
+        let recorded = formats(&table);
+        assert!(
+            recorded
+                .iter()
+                .all(|(format, _)| *format == FileFormat::Avro),
+            "{recorded:?}"
+        );
+        // A fresh open reads the mixed chain from storage alone.
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
+    }
+}
+
+/// Regressions the Spark interop exchange surfaced, pinned here.
+mod interop_regressions {
+    use super::*;
+    use crate::iceberg::{PartitionField, SchemaUpdate};
+
+    /// A file written before a rename reads under the new name: Iceberg
+    /// resolves a column by field id, not by name, so the old file's
+    /// `symbol` column is the schema's `ticker` column.
+    #[test]
+    fn a_scan_resolves_renamed_columns_by_field_id() {
+        let path = root("rename-by-id");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+
+        table
+            .commit_changes(|metadata| {
+                let mut update = SchemaUpdate::for_metadata(metadata)?;
+                update.rename_column("symbol", "ticker");
+                let evolved = update.apply()?;
+                let schema_id = metadata.add_schema(evolved)?;
+                metadata.set_current_schema(schema_id)
+            })
+            .unwrap();
+
+        // The pre-rename data file stores the column as `symbol`; the scan
+        // must answer it under `ticker` rather than inventing a null column.
+        let rows: Vec<(i64, Option<String>)> = table
+            .scan(None)
+            .unwrap()
+            .map(|batch| {
+                let batch = batch.unwrap();
+                let ids = batch
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .clone();
+                let tickers = batch
+                    .column_by_name("ticker")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .clone();
+                (ids.value(0), Some(tickers.value(0).to_owned()))
+            })
+            .collect();
+        assert_eq!(rows, [(1, Some("AAPL".to_owned()))]);
+
+        // A projected scan pushes the file's own name down and still answers
+        // under the schema's.
+        let projection = table
+            .schema()
+            .unwrap()
+            .clone()
+            .without_fields(&["venue"])
+            .unwrap();
+        let projected = table.scan(Some(&projection)).unwrap();
+        let mut names = Vec::new();
+        let mut values = Vec::new();
+        for batch in projected {
+            let batch = batch.unwrap();
+            names = batch
+                .schema()
+                .fields()
+                .iter()
+                .map(|field| field.name().clone())
+                .collect();
+            values.push(
+                batch
+                    .column_by_name("ticker")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .value(0)
+                    .to_owned(),
+            );
+        }
+        assert_eq!(names, ["id", "ticker"]);
+        assert_eq!(values, ["AAPL"]);
+    }
+
+    /// A transformed partition field restores no column: `at_day` is not a
+    /// schema column, and the source column rides in the data file itself.
+    #[test]
+    fn transformed_partition_fields_restore_no_column() {
+        let schema = trade_schema();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![
+                PartitionField {
+                    source_id: 2,
+                    field_id: 1000,
+                    name: "symbol".into(),
+                    transform: crate::iceberg::Transform::Identity,
+                },
+                PartitionField {
+                    source_id: 1,
+                    field_id: 1001,
+                    name: "id_bucket".into(),
+                    transform: crate::iceberg::Transform::Bucket(4),
+                },
+            ],
+        };
+        let file = super::super::manifest::DataFile {
+            partition: vec![Value::from("AAPL"), Value::from(3_i64)],
+            ..Default::default()
+        };
+
+        let restored = super::super::scan::partition_columns(&spec, &schema, &file).unwrap();
+        // Only the identity field restores; the bucket value stays in the
+        // manifest where it belongs.
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].0.name(), "symbol");
+        assert_eq!(restored[0].1, Value::from("AAPL"));
+    }
+}
+
+#[test]
+fn a_uuid_column_keeps_its_declared_type_through_a_round_trip() {
+    // `uuid` and `fixed[16]` share one physical type; the declared spelling
+    // must survive, or rewriting another writer's metadata demotes the
+    // column. Surfaced by the Spark interop exchange.
+    let document = crate::json::from_slice(
+        br#"{"type":"struct","schema-id":0,"fields":[
+            {"id":1,"name":"id","required":true,"type":"long"},
+            {"id":2,"name":"u","required":false,"type":"uuid"},
+            {"id":3,"name":"f","required":false,"type":"fixed[16]"}]}"#,
+    )
+    .unwrap();
+    let root = schema_from_json("row", &document).unwrap();
+    let emitted = schema_to_json(&root).unwrap();
+    let rendered = String::from_utf8(crate::json::to_vec(&emitted).unwrap()).unwrap();
+    assert!(rendered.contains(r#""type":"uuid""#), "{rendered}");
+    assert!(rendered.contains(r#""type":"fixed[16]""#), "{rendered}");
 }

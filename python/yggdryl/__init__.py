@@ -1,4 +1,10 @@
-"""Allocation-conscious schema, record, and resource identifier values."""
+"""Allocation-conscious schema, record, and resource identifier values.
+
+The ``gzip``, ``zlib``, and ``zstd`` submodules carry the standard library's
+names on purpose: they hold the same wire formats behind the same
+``loads``/``dumps`` spelling, so ``from yggdryl import gzip`` changes the engine
+underneath and nothing else.
+"""
 
 from ._native import (
     DataType,
@@ -15,7 +21,7 @@ from ._native import (
     __version__,
     schema_from_pattern,
 )
-from . import fields, iceberg, json, toml, yaml
+from . import fields, gzip, iceberg, json, toml, yaml, zlib, zstd
 from .records import Record, from_dict, record, schema_field, schema_fields, to_dict
 
 __all__ = [
@@ -34,6 +40,7 @@ __all__ = [
     "__version__",
     "from_dict",
     "fields",
+    "gzip",
     "iceberg",
     "json",
     "record",
@@ -43,4 +50,6 @@ __all__ = [
     "toml",
     "to_dict",
     "yaml",
+    "zlib",
+    "zstd",
 ]

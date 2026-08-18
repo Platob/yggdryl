@@ -61,7 +61,14 @@ fn struct_of(
     let mut fields = Vec::with_capacity(record.fields.len());
     for field in &record.fields {
         let (data_type, nullable) = data_type_from(&field.schema, schema, visiting)?;
-        fields.push(Field::new(field.name.clone(), data_type, nullable));
+        let mut built = Field::new(field.name.clone(), data_type, nullable);
+        // The Iceberg `field-id` rides into the same metadata slot the
+        // Parquet path uses, so id-based column resolution works over both
+        // data file formats.
+        if let Some(id) = field.field_id {
+            built.set_parquet_field_id(id);
+        }
+        fields.push(built);
     }
     visiting.pop();
     Ok((DataType::from_fields(fields)?, false))

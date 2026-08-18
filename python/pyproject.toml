@@ -41,5 +41,12 @@ python-source = "."
 strip = true
 
 [tool.pytest.ini_options]
-addopts = ["--import-mode=importlib"]
+# The Spark interop suite is opt-in: it needs a JVM, pyspark, and the
+# iceberg-spark-runtime jar (scripts/setup_spark_interop.py provisions them),
+# so the default run deselects it. `pytest -m spark_interop` runs it, because
+# a -m given on the command line overrides the one added here.
+addopts = ["--import-mode=importlib", "-m", "not spark_interop"]
+markers = [
+  "spark_interop: exchanges Iceberg tables with Apache Spark; provisioned by scripts/setup_spark_interop.py",
+]
 testpaths = ["tests"]
