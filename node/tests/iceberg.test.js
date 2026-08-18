@@ -679,6 +679,64 @@ test('setOptions is what later calls resolve, and a per-call option outlives onl
   assert.equal(table.options().targetFileSize, 4096)
 })
 
+// Testing the per-call option on `append` alone is what let three methods ship
+// accepting an options argument they never declared: the JS wrapper forwarded
+// it, napi discarded the extra, and every one of them committed, returned, and
+// scanned exactly as if it had worked. One case per write is the only shape of
+// this test that would have caught it.
+test('every write that takes a per-call data format actually writes it', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const avro = () => new iceberg.IcebergOptions({ dataFormat: 'avro' })
+  const formats = (table) => table.dataFiles().map((file) => file.fileFormat).sort()
+
+  const overwritten = iceberg.Table.create(path.join(root, 'ow'), schema(), ['venue'])
+  overwritten.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  overwritten.overwriteWhere({ venue: 'XNAS' }, rows([9n], ['XNAS']), avro())
+  // XNYS is carried forward as the PARQUET file it already was; only the
+  // partition this call rewrote is AVRO.
+  assert.deepEqual(formats(overwritten), ['AVRO', 'PARQUET'])
+
+  const merged = iceberg.Table.create(path.join(root, 'mg'), schema())
+  merged.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  merged.merge(rows([2n, 3n], ['XLON', 'XASE']), ['id'], true, avro())
+  assert.deepEqual(formats(merged), ['AVRO'])
+  assert.equal(merged.scan().toTable().numRows, 3)
+
+  const mergedWhere = iceberg.Table.create(path.join(root, 'mw'), schema(), ['venue'])
+  mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS']), ['id'], true, avro())
+  assert.deepEqual(formats(mergedWhere), ['AVRO', 'PARQUET'])
+
+  const replaced = iceberg.Table.create(path.join(root, 'ov'), schema())
+  replaced.append(rows([1n], ['XNAS']))
+  replaced.overwrite(rows([2n], ['XNYS']), avro())
+  assert.deepEqual(formats(replaced), ['AVRO'])
+
+  // None of them stored anything on the handle.
+  for (const table of [overwritten, merged, mergedWhere, replaced]) {
+    assert.equal(table.options().dataFormat, 'PARQUET')
+  }
+})
+
+test('the filtered reads take the per-call options the plain scan does', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+  table.createTag('release', table.currentSnapshot.snapshotId)
+
+  // The option has to reach the reader for the call to be honest about
+  // accepting one; the rows it returns are what says it arrived intact.
+  const before = table.options().readParallelism
+  const options = new iceberg.IcebergOptions({ readParallelism: before + 1 })
+  assert.equal(table.scanWhere({ venue: 'XNAS' }, null, options).toTable().numRows, 1)
+  assert.equal(table.scanRef('release', null, null, options).toTable().numRows, 2)
+  // Configuring one call configures only that call.
+  assert.equal(table.options().readParallelism, before)
+})
+
 test('a tag and a branch name a snapshot, and removing one reports what it held', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

@@ -1411,7 +1411,7 @@ export declare class Table {
    * way the result is the same rows; what differs is how many files were
    * opened to find them.
    */
-  scanWhere(filters: ScanFilters, field?: FieldInput | undefined | null): BatchReader
+  scanWhere(filters: ScanFilters, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
   /**
    * Read the rows a branch or tag names, as of the snapshot it points at.
    *
@@ -1420,7 +1420,7 @@ export declare class Table {
    * `field` meanings. A name the table does not have is refused naming the
    * refs it does.
    */
-  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null): BatchReader
+  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
   /**
    * Decide which data files `filters` would have a read open, and no more.
    *
@@ -1467,8 +1467,11 @@ export declare class Table {
    * keeps was planned against a snapshot the winner may have replaced, and
    * `batches` is already consumed, so it throws a commit conflict naming
    * both versions rather than risk losing rows.
+   *
+   * `options` configures this one write, exactly as on
+   * [`append`](Self::append).
    */
-  overwriteWhere(filters: ScanFilters, batches: BatchReader): void
+  overwriteWhere(filters: ScanFilters, batches: BatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Merge `batches` into the stored rows, matching on `mergeByNames`.
    *
@@ -1479,17 +1482,19 @@ export declare class Table {
    * empty `mergeByNames` is an overwrite, because nothing identifies a row.
    *
    * `safe` decides what a cast that cannot convert a value does: the
-   * default nulls it, and `false` throws instead.
+   * default nulls it, and `false` throws instead. `options` configures this
+   * one write, exactly as on [`append`](Self::append).
    */
-  merge(batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null): void
+  merge(batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /**
    * Merge `batches` into the rows `filters` selects, on `mergeByNames`.
    *
    * [`merge`](Self::merge) narrowed to a part of the table first: the
    * filters decide which files are candidates at all, and the match-key
-   * statistics then decide which of those are actually read.
+   * statistics then decide which of those are actually read. `options`
+   * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null): void
+  mergeWhere(filters: ScanFilters, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: Field): number
   /**

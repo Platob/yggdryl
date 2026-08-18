@@ -1143,17 +1143,19 @@ impl JsTable {
     /// opened to find them.
     #[napi]
     pub fn scan_where(
-        &self,
+        &mut self,
         filters: ScanFilters,
         field: Option<FieldInput<'_>>,
+        options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
         let pairs = filter_pairs(Some(filters));
         let field = field.map(field_from_input).transpose()?;
-        let reader = self
-            .inner
-            .scan_where(&borrowed_pairs(&pairs), field.as_ref())
-            .map_err(napi_error)?;
+        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .scan_where(&borrowed_pairs(&pairs), field.as_ref())
+                .map_err(napi_error)
+        })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -1165,18 +1167,20 @@ impl JsTable {
     /// refs it does.
     #[napi]
     pub fn scan_ref(
-        &self,
+        &mut self,
         name: String,
         filters: Option<ScanFilters>,
         field: Option<FieldInput<'_>>,
+        options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
         let pairs = filter_pairs(filters);
         let field = field.map(field_from_input).transpose()?;
-        let reader = self
-            .inner
-            .scan_ref(&name, &borrowed_pairs(&pairs), field.as_ref())
-            .map_err(napi_error)?;
+        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .scan_ref(&name, &borrowed_pairs(&pairs), field.as_ref())
+                .map_err(napi_error)
+        })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -1260,17 +1264,23 @@ impl JsTable {
     /// keeps was planned against a snapshot the winner may have replaced, and
     /// `batches` is already consumed, so it throws a commit conflict naming
     /// both versions rather than risk losing rows.
+    ///
+    /// `options` configures this one write, exactly as on
+    /// [`append`](Self::append).
     #[napi]
     pub fn overwrite_where(
         &mut self,
         filters: ScanFilters,
         batches: &mut JsBatchReader,
+        options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let pairs = filter_pairs(Some(filters));
         let batches = batches.take()?;
-        self.inner
-            .overwrite_where(&borrowed_pairs(&pairs), batches)
-            .map_err(napi_error)
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .overwrite_where(&borrowed_pairs(&pairs), batches)
+                .map_err(napi_error)
+        })
     }
 
     /// Merge `batches` into the stored rows, matching on `mergeByNames`.
@@ -1282,25 +1292,30 @@ impl JsTable {
     /// empty `mergeByNames` is an overwrite, because nothing identifies a row.
     ///
     /// `safe` decides what a cast that cannot convert a value does: the
-    /// default nulls it, and `false` throws instead.
+    /// default nulls it, and `false` throws instead. `options` configures this
+    /// one write, exactly as on [`append`](Self::append).
     #[napi]
     pub fn merge(
         &mut self,
         batches: &mut JsBatchReader,
         merge_by_names: Vec<String>,
         safe: Option<bool>,
+        options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let batches = batches.take()?;
-        self.inner
-            .merge(batches, &merge_by_names, safe.unwrap_or(true))
-            .map_err(napi_error)
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .merge(batches, &merge_by_names, safe.unwrap_or(true))
+                .map_err(napi_error)
+        })
     }
 
     /// Merge `batches` into the rows `filters` selects, on `mergeByNames`.
     ///
     /// [`merge`](Self::merge) narrowed to a part of the table first: the
     /// filters decide which files are candidates at all, and the match-key
-    /// statistics then decide which of those are actually read.
+    /// statistics then decide which of those are actually read. `options`
+    /// configures this one write, exactly as on [`append`](Self::append).
     #[napi]
     pub fn merge_where(
         &mut self,
@@ -1308,17 +1323,20 @@ impl JsTable {
         batches: &mut JsBatchReader,
         merge_by_names: Vec<String>,
         safe: Option<bool>,
+        options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let pairs = filter_pairs(Some(filters));
         let batches = batches.take()?;
-        self.inner
-            .merge_where(
-                &borrowed_pairs(&pairs),
-                batches,
-                &merge_by_names,
-                safe.unwrap_or(true),
-            )
-            .map_err(napi_error)
+        with_call_options(&mut self.inner, call_options(options), |table| {
+            table
+                .merge_where(
+                    &borrowed_pairs(&pairs),
+                    batches,
+                    &merge_by_names,
+                    safe.unwrap_or(true),
+                )
+                .map_err(napi_error)
+        })
     }
 
     /// Add a schema, make it current, and write a new metadata document.

@@ -220,6 +220,16 @@ created.merge(BatchReader.from(arrowTable), ['id'])
 created.merge(BatchReader.from(arrowTable), ['id'], false)
 created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), ['id'], true)
 
+// The same five with a trailing per-call options value. Declaring the argument
+// is the half a type checker can see: these three shipped accepting one at
+// runtime that the generated types never mentioned, and nothing here called
+// them that way, so `tsc` had no reason to object.
+const filteredWithOptions: BatchReader = created.scanWhere({ venue: 'XNAS' }, numbered, options)
+const onRefWithOptions: BatchReader = created.scanRef('nightly', { venue: 'XNAS' }, numbered, options)
+created.overwriteWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), options)
+created.merge(BatchReader.from(arrowTable), ['id'], false, options)
+created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), ['id'], true, options)
+
 const expired: bigint[] = created.expireSnapshots(1)
 const pastManifests: ManifestFileView[] = created.manifestsAt(1n)
 created.createBranch('audit', 1n)
