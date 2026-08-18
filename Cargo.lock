@@ -1577,6 +1577,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol_str",
+ "snap",
  "toml",
  "zstd",
 ]

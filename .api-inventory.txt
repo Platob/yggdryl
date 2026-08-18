@@ -35,11 +35,47 @@
   pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field>
   pub fn record_schema_to_arrow(schema: &Field) -> Result<Schema>
 
-### yggdryl::avro  [rust\src\avro\container.rs]
+### yggdryl::avro::schema  [rust\src\avro\schema.rs]
+  pub const MAX_SCHEMA_DEPTH: usize = 384;
+  pub struct Schema
+  pub fn from_json(document: &Value) -> Result<Self>
+  pub fn from_json_with_limits(document: &Value, limits: Limits) -> Result<Self>
+  pub fn from_str(input: &str) -> Result<Self>
+  pub fn from_slice(input: &[u8]) -> Result<Self>
+  pub fn to_json(&self) -> Value
+  pub fn kind(&self) -> &'static str
+  pub fn to_canonical_form(&self) -> String
+  pub fn fingerprint(&self) -> u64
+
+### yggdryl::avro::container  [rust\src\avro\container.rs]
   pub struct Container
   pub fn get(&self, key: &str) -> Option<&str>
   pub fn read_container<H: IOBase + ?Sized>(handle: &H) -> Result<Container>
+  pub fn read_container_with_limits<H: IOBase + ?Sized>(handle: &H, limits: Limits) -> Result<Container>
+  pub fn read_container_resolved<H: IOBase + ?Sized>(handle: &H, reader: &Schema) -> Result<Container>
+  pub fn read_container_resolved_with_limits<H: IOBase + ?Sized>( handle: &H, reader: &Schema, limits: Limits, ) -> Result<Container>
   pub fn write_container<H: IOBase + ?Sized>( handle: &mut H, schema_json: &Value, metadata: &[(&str, &str)], rows: &[Value], ) -> Result<()>
+  pub struct Blocks<'handle, H: IOBase + ?Sized>
+  pub fn read_blocks<H: IOBase + ?Sized>(handle: &H) -> Result<Blocks<'_, H>>
+  pub fn read_blocks_with_limits<H: IOBase + ?Sized>(handle: &H, limits: Limits) -> Result<Blocks<'_, H>>
+  pub fn schema(&self) -> &Schema
+  pub fn metadata(&self) -> &[(SmolStr, SmolStr)]
+  pub fn get(&self, key: &str) -> Option<&str>
+  pub fn next_block(&mut self) -> Result<Option<Block>>
+  pub struct Block
+  pub const fn count(&self) -> u64
+  pub fn size(&self) -> usize
+  pub fn rows(&self) -> Result<Vec<Value>>
+  pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Value>>
+
+### yggdryl::avro::resolve  [rust\src\avro\resolve.rs]
+  pub struct Resolution
+  pub fn from_schemas(writer: &Schema, reader: &Schema) -> Result<Self>
+
+### yggdryl::avro::single  [rust\src\avro\single.rs]
+  pub fn to_single_object_vec(schema: &Schema, value: &Value) -> Result<Vec<u8>>
+  pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Value>
+  pub fn from_single_object_slice_with_limits( input: &[u8], writer: &Schema, limits: Limits, ) -> Result<Value>
 
 ### yggdryl::datatype::arrow  [rust\src\datatype\arrow.rs]
   pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
