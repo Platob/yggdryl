@@ -7,7 +7,12 @@ value** for the whole workspace — an `Expr` tree over the project's own
 simplified, cheap-to-evaluate plan, then evaluated three ways from that one
 plan: row-at-a-time over `Value`, vectorized over an Arrow `RecordBatch`, and
 **three-valued over column statistics** so a file, a manifest, or a partition
-directory is skipped without being read.
+directory is skipped without being read. The grammar isolates real names behind
+encapsulators (`"total amount"`) and reaches inside values by child, key, index,
+and range (`payload['id']`, `tags[0]`, `path[1:3]`), and one `apply` verb carries
+the whole thing onto every type that holds values — a row, a `TypedValue`, an
+array, a batch, a streaming `BatchReader` — or onto a `Field` alone, when the
+caller only wants the schema the result would have.
 
 Then make it the filtering and selection vocabulary the record surface already
 wanted: today a filter is a `(column, value)` text pair
@@ -87,6 +92,7 @@ implementation and never an empty shell:
 | `stats.rs` | `ColumnStats`, `Certainty`, bounds evaluation and residual computation (unconditional) |
 | `select.rs` | `Selection` — the ordered projection of named expressions, and the root `Field` it produces |
 | `arrow.rs` | vectorized evaluation over `RecordBatch` → `BooleanArray`, projection and filtering (`#[cfg(feature = "arrow")]`) |
+| `apply.rs` | the `Apply` / `ArrowApply` extension traits and their type redirections (§1.9) |
 | `tests.rs` | the module's edge cases |
 
 Re-export exactly `Expr` and `Selection` from `lib.rs` beside `Value` (they
@@ -103,10 +109,12 @@ does not copy it, and an empty child list carries no allocation.
 
 The vocabulary, and nothing beyond it without a written reason:
 
-- **`Column`** — a name path: a root column, `a.b` into a struct, `a[0]` into a
-  list, `m['k']` into a map. Names keep case and Unicode; matching is ASCII
-  case-insensitive, the way every cast and selection in this project already
-  resolves names.
+- **`Column`** — a name path: a root column plus a chain of accessors — `a.b`
+  into a struct, `a[0]` into a list, `m['k']` into a map, `a[1:3]` a range of
+  either. Names keep case and Unicode, are isolated by encapsulators when they
+  carry whitespace or punctuation (§1.3.1), and the chain is spelled by
+  §1.3.2. Matching is ASCII case-insensitive, the way every cast and selection
+  in this project already resolves names.
 - **`Literal`** — a `Value`. `NULL` is `Value::Null`.
 - **`Cast { expr, data_type, safe }`** — the schema-directed cast this project
   already owns; `safe` matches `IORecordOptions::safe` (a value the target
@@ -187,6 +195,133 @@ One recursive-descent parser in `parser.rs`, following the parser contract
   tests build; adversarial inputs (deep nesting, unbalanced quotes, `IN ()`,
   `BETWEEN` with a missing `AND`, a 10 000-element `IN` list) are refused
   without panic (`AGENTS.md:636`).
+
+### 1.3.1 Encapsulators — isolating a real name
+
+A column called `total amount`, `order.id`, `select`, or `prix (€)` must be
+addressable, and the only thing that can make it addressable is a delimiter pair
+around it. The parser therefore has a **lexical layer that isolates a token
+before the grammar ever sees it**, and the rules are the parser contract
+(`AGENTS.md:614`) applied to names:
+
+- **Identifier encapsulators, all three accepted**: `"double quoted"` (SQL
+  standard), `` `backticked` `` (Hive/Spark/MySQL), `[bracketed]` (T-SQL,
+  Databricks). Inside one, *everything* is part of the name: whitespace, `.`,
+  `(`, `-`, `*`, operators, keywords, digits, leading digits, and Unicode. The
+  closing delimiter is doubled to embed itself — `"say ""hi"" now"`,
+  `` `back``tick` ``, `[bra]]cket]` — which is each dialect's own escape and
+  keeps the token self-delimiting.
+- **A double-quoted token is always an identifier, never a string.** That is the
+  SQL rule and it removes the one real ambiguity in this grammar:
+  `WHERE "venue" = 'XNAS'` compares a column to a string, `WHERE 'venue' =
+  'XNAS'` compares two strings and folds to `FALSE`. Say it in the docs; test
+  both.
+- **String literals** are single-quoted with `''` doubling. A backslash is *not*
+  an escape inside a string (SQL, not C) — the only place `\` is special is
+  `LIKE … ESCAPE '\'`, where the escape character is whatever the clause names.
+- **Whitespace is data inside an encapsulator and a separator outside it.** A
+  quoted name is never trimmed: `"  a  "` names a column with two leading and
+  two trailing spaces, and it must survive `Display` → `from_str` → `Display`
+  unchanged. Outside, any run of Unicode whitespace separates tokens, and
+  whitespace is never required between a token and a delimiter (`a=1`,
+  `a IN(1,2)`, `f (x)` all parse).
+- **Never strip an unmatched or interior delimiter heuristically.** An
+  unterminated `"`, `` ` ``, `[`, or `'` is `Error::Parse` naming the byte
+  offset **of the opener** plus what would close it — the position a caller can
+  actually fix — not the offset of end-of-input. An interior delimiter that is
+  not doubled ends the token; whatever follows is judged by the grammar.
+- **`[…]` is two things, and position decides which** — this is the one real
+  collision in the grammar, so decide it in the lexer and say so: a bracket in
+  *primary* position (the start of an expression, or immediately after a `.`) is
+  a **quoted identifier**; a bracket immediately following a completed primary
+  is a **subscript** (§1.3.2), whose contents are literals and ranges only,
+  never a bare name. `[my col] = 1` reads a column; `a[0]` reads an element;
+  `a [0]` is the same subscript, because whitespace never changes what a token
+  is. A bare identifier inside a subscript (`a[b]`) is a byte-positioned error
+  naming both readings, never a guess.
+- **Dotted paths encapsulate per segment**: `"my schema"."my column"`,
+  `` `db`.`table`.`col` ``, `a."b.c"` — a `.` *inside* an encapsulator is part
+  of the name, a `.` between two segments is the path separator. There is no
+  splitting pass over the raw text; the path is built by the same postfix loop
+  that reads accessors (§1.3.2).
+- **Comments** — `-- to end of line` and `/* … */` — are skipped by the lexer,
+  and neither can start inside an encapsulator.
+- **Canonical `Display` re-quotes minimally and re-parses identically**: a name
+  is emitted bare when it matches `[A-Za-z_][A-Za-z0-9_]*` and is not a reserved
+  word, and in double quotes with doubling otherwise. The backtick and bracket
+  forms are input spellings only — accepted, never emitted, which is how a
+  grammar has three dialects on the way in and one canonical form on the way
+  out.
+- **Quoting isolates characters; it does not change matching.** An encapsulated
+  identifier still resolves ASCII case-insensitively, because that is how every
+  cast, selection, and struct reconciliation in this project resolves a name,
+  and a second rule here would make `select "A"` and `select A` disagree. Two
+  columns that fold together are an **ambiguity error naming both**, exactly as
+  struct reconciliation already refuses an ambiguous fold — never a silent
+  first-wins.
+- The pair sugar of §3.1 builds its expression through the same quoter, so
+  `filter_partitions([("total amount", "3")])` yields `"total amount" = '3'` and
+  round-trips; a partition column with a space cannot become an unparseable
+  filter.
+
+### 1.3.2 Accessors — key, index, and range
+
+One postfix chain, left-associative, binding tighter than everything else
+including `::` (so `a.b[0]::int` casts the element). Written once in the
+grammar, resolved once at bind time, applied by all three evaluators.
+
+| spelling | means | on |
+| --- | --- | --- |
+| `a.b` | child by name | `Struct` (and a `Map` with string keys, as sugar for `a['b']`) |
+| `a['b']` | item by key | `Map`; a `Struct` child when the key is a string literal |
+| `a[0]`, `a[-1]` | item by position | `List`, `LargeList`, `ListView`, `FixedSizeList`, `Utf8*`, `Binary*` |
+| `a[1:3]`, `a[1:]`, `a[:3]`, `a[:]` | a range of items | the same list, string, and binary types |
+
+Inside brackets a double-quoted token is a **string literal key**, not an
+identifier — the one place the §1.3.1 rule is relaxed, because there is no
+column position inside a subscript. Say so where it is implemented, and test it.
+
+Semantics, chosen to match what this repository already does rather than any one
+SQL dialect, and documented as such:
+
+- **Indices are 0-based**, matching `Value::get(index)` and Arrow/Spark `[]`. A
+  negative index counts from the end (`a[-1]` is the last element). Spell that
+  out beside the table; a reader expecting 1-based must be told once, clearly.
+- **Ranges are half-open** — `a[1:3]` is elements 1 and 2 — matching Rust and
+  Python, said next to the 0-based note. An omitted bound is the start or the
+  end; a negative bound counts from the end; an inverted or empty range yields
+  an empty list or string, never an error.
+- **Out of range is null, not an error**: `a[99]` on a three-element list is
+  null, `a[1:99]` clamps. Absence is not a failure on the read path anywhere
+  else in this project, and a predicate over a ragged list must not abort a
+  scan. A *range* clamps; an *index* nulls.
+- **A range over text slices Unicode scalar values; over binary it slices
+  bytes**, and never splits a character — the one place the two families differ.
+  State it in the docs and test it with multi-byte input.
+- **Resolution happens at bind time, from the datatype.** The chain resolves
+  against the container's `DataType` — `Struct` to a child ordinal, `Map` to a
+  key lookup with the key cast to the map's key type once, list to index
+  arithmetic — so what `Bound` carries is a fixed slot chain and evaluation
+  costs offset arithmetic with no name lookup. An accessor the datatype cannot
+  answer (`a[0]` on a `Struct`, `a.b` on an `Int64`, a key the map's key type
+  cannot hold) is a bind error naming the datatype, the accessor, and the path
+  to it (`AGENTS.md:566`).
+- **Arrow evaluation stays columnar where the layout allows it**: a struct child
+  is a zero-copy column slice, a `FixedSizeList` index is a strided slice, a
+  variable-length list index or range is offsets arithmetic plus
+  `arrow_select::take`. A case that cannot be expressed with the crates the
+  `arrow` feature already links falls back to the row path for that node only,
+  with a comment naming the cost (§1.6).
+- **Pruning through an accessor is conservative.** A `Struct` child usually has
+  its own leaf statistics (Parquet and Iceberg both key bounds per leaf), so
+  `a.b > 3` can prune; a list element, a map key, and every range answer
+  `Maybe`, because no statistic bounds them. Getting this wrong loses rows, so
+  the rule sits in `stats.rs` beside the code and is tested with a deliberately
+  misleading list column.
+- `Display` re-emits the chain canonically (`a.b[0]['k'][1:3]`) and round-trips.
+- **A range is not `BETWEEN`.** `a[1:3]` selects items; `a BETWEEN 1 AND 3` is a
+  predicate. Both exist, neither parses as the other, and the docs put them side
+  by side once so no reader conflates them.
 
 ### 1.4 `Bound` — where the optimization lives
 
@@ -358,12 +493,125 @@ encoding's own projection of the columns they read, never instead of it.
 
 ---
 
+### 1.9 `Apply` and `ArrowApply` — one verb over every carrier
+
+An expression is only useful where the values are, and the values are in a
+dozen different shapes: a `Value` row, a `TypedValue`, an `ArrayRef` beside its
+`Field`, a `RecordBatch`, a `StructArray`, a streaming `BatchReader` — and
+sometimes there are no values at all and the caller only wants the `Field` or
+the `DataType` the result *would* have. `rust/src/expressions/apply.rs` gives
+all of that one verb, modeled directly on the precedent this repository already
+has for exactly this problem: `ArrowCast` (`rust/src/field/cast/plan.rs:35`),
+one trait implemented for `DataType` and `Field`, with a method per carrier.
+
+Two traits, split on the feature boundary:
+
+```rust
+/// Applying an expression to whatever carries values. Unconditional.
+pub trait Apply {
+    /// Resolve against the schema the carrier will be read under, once.
+    fn bind_to(&self, schema: &Field) -> Result<Bound>;
+
+    /// The Field the result has - schema only, no data, nothing opened.
+    fn apply_field(&self, schema: &Field) -> Result<Field>;
+    /// The DataType the result has, for a carrier that is one value.
+    fn apply_data_type(&self, data_type: &DataType) -> Result<DataType>;
+
+    fn apply_value(&self, schema: &Field, row: &Value) -> Result<Value>;
+    fn apply_values<'a, I>(&self, schema: &Field, rows: I) -> Result<ValueApply<'a>>
+    where I: IntoIterator<Item = Value> + 'a;      // lazy, one row held
+    fn apply_typed_value(&self, value: &TypedValue) -> Result<TypedValue>;
+
+    /// The type-directed entry: whatever `target` is, do that carrier's thing.
+    fn apply<T: Applicable>(&self, target: T) -> Result<T::Output>;
+}
+
+/// The Arrow carriers. Behind the default `arrow` feature.
+#[cfg(feature = "arrow")]
+pub trait ArrowApply: Apply {
+    fn apply_arrow_array(&self, field: &Field, array: ArrayRef) -> crate::arrow::Result<ArrayRef>;
+    fn apply_arrow_scalar(&self, field: &Field, array: ArrayRef) -> crate::arrow::Result<Scalar<ArrayRef>>;
+    fn apply_arrow_batch(&self, batch: RecordBatch) -> crate::arrow::Result<RecordBatch>;
+    fn apply_arrow_batch_reader(&self, batches: BatchReader) -> crate::arrow::Result<BatchReader>;
+    fn apply_arrow<T: ArrowApplicable>(&self, target: T) -> crate::arrow::Result<T::Output>;
+}
+```
+
+**Redirection on the subject side.** Both traits are implemented for every value
+that *is* or *names* an expression, so the caller never converts by hand:
+`Expr`, `Bound`, `Selection`, `BoundSelection`, `&str` / `String` (parsed by the
+core parser, never by the caller — `AGENTS.md:843`, infer at the boundary and
+compute in core), and `&[(&str, &str)]` (the partition-pair sugar of §3.1). A
+subject that is already `Bound` skips binding; a `&str` subject parses and binds
+per call, which the docs tell the reader to hoist out of a loop and the
+benchmark of §5 puts a number on.
+
+**Redirection on the carrier side.** `Applicable` / `ArrowApplicable` are small
+traits with one associated `Output`, implemented once per carrier:
+
+| carrier | `Output` | note |
+| --- | --- | --- |
+| `&Value` | `Value` | one row; `Value::Record`, `Sequence`, or `Mapping` |
+| `&TypedValue` | `TypedValue` | value and datatype together |
+| `&Field` | `Field` | the result schema, no data |
+| `&DataType` | `DataType` | the result type of one value |
+| `(&Field, ArrayRef)` | `ArrayRef` | one column with the field that describes it |
+| `Scalar<ArrayRef>` | `Scalar<ArrayRef>` | the one-row pinned form |
+| `RecordBatch` | `RecordBatch` | consumed, like `cast_arrow_batch` |
+| `StructArray` | `StructArray` | rows as one struct column |
+| `BatchReader` | `BatchReader` | consumed, streaming, lazy |
+
+**What "apply" means is decided by the bound result type, defined once and
+documented once:**
+
+- a **boolean** expression *filters* a collection carrier (batch, reader, row
+  iterator) and *evaluates* a single-value carrier (a row yields `Value::Bool`);
+- a **non-boolean** expression *computes* one column, named by its alias or by
+  its canonical `Display` when it has none;
+- a **`Selection`** *projects* to its root `Field`.
+
+`apply_*` dispatches to the explicit operations already on `Bound` and
+`BoundSelection` (§1.5–1.8: `matches`, `mask`, `filter_batch`, `evaluate`,
+`project_batch`) — it adds one verb, not a second implementation, and no
+existing verb gains an alias (`AGENTS.md:397`).
+
+Requirements that make this surface worth having rather than sugar:
+
+- **`apply_field` opens nothing and allocates no data.** It is how
+  `read_arrow_field` answers under a selection without touching a file, how a
+  binding shows a user the output schema before a read, and how a write
+  validates a projection up front. Its answer must equal the schema of the batch
+  `apply_arrow_batch` produces from the same input — that equality is a test,
+  not a comment.
+- **`apply_arrow_batch_reader` is lazy and streaming**: it binds once against
+  the reader's schema, and the returned reader answers `schema()` with the
+  *result* schema immediately, before the first batch is pulled; it holds at
+  most one batch, propagates a per-batch failure through the existing
+  `arrow::Error` channel, and never materializes a vector. `filtered_reader` and
+  `select_reader` in `rust/src/io/partition.rs` become one call to it each.
+- **Binding happens once per apply, never per batch or per row.** A carrier that
+  is a stream binds when the stream is built. This is the whole optimization
+  claim of §1.4 and the benchmark of §5 is where it is settled.
+- **The generic entries are zero-cost**: `apply` / `apply_arrow` monomorphize to
+  the same call the explicit method makes — no `dyn`, no boxing on the value
+  path, and the only trait object anywhere is the `BatchReader` this project
+  already boxes.
+- **A schema disagreement is a typed error naming the differing column**, raised
+  at bind time for a reader (before the first batch) and at apply time for a
+  loose batch, never a silent mismatch or a null column.
+- **`IOBase` gets no `apply` method.** The record surface stays exactly the
+  three methods it has; an expression reaches a handle through `RecordOptions`
+  (§3.1) and nowhere else. `apply_*` operates on what a caller already holds.
+
+---
+
 ## 2. Order of work
 
 `AGENTS.md:9` — Rust first, fully. Each phase is complete work on its own.
 
-- **Phase 1 — the module.** `Expr`, parser, `Bound`, row evaluation, statistics
-  evaluation, `Selection`, Arrow evaluation, edge-case tests, benchmarks,
+- **Phase 1 — the module.** `Expr`, parser (encapsulators and accessors
+  included), `Bound`, row evaluation, statistics evaluation, `Selection`, Arrow
+  evaluation, the `Apply`/`ArrowApply` surface, edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
   `!!! note "Rust first"` until Phase 4/5 land).
 - **Phase 2 — the record surface** (`generic/options.rs`, `io/partition.rs`):
@@ -480,11 +728,30 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
 
 - **Parser**: every operator and precedence pairing; `Display`↔`FromStr` round
   trips including nested `CAST` to a nested datatype; typed temporal literals in
-  every unit and zone; decimal literals keeping their written scale; quoted and
-  Unicode identifiers; dotted/indexed/keyed paths; adversarial refusals with the
-  right byte position (unterminated string, unbalanced parens, trailing token,
+  every unit and zone; decimal literals keeping their written scale; adversarial
+  refusals with the right byte position (unbalanced parens, trailing token,
   `IN ()`, missing `AND` in `BETWEEN`, unknown function, bad datatype,
   over-limit nesting).
+- **Encapsulators** (§1.3.1): a name with spaces, a dot, a `(`, an operator, a
+  reserved word, a leading digit, and non-ASCII text, each through all three
+  encapsulators and each round-tripping to the one canonical double-quoted
+  spelling; doubled closers (`""`, ` `` `, `]]`) embedding the delimiter;
+  `"  a  "` keeping its padding byte for byte; `"x" = 'x'` parsing as
+  column-versus-string while `'x' = 'x'` folds to `TRUE`; an unterminated
+  delimiter of each kind reporting the **opener's** byte offset; a `.` inside a
+  quoted segment staying part of the name; comments skipped outside and inert
+  inside a quoted name; a case-insensitive fold that hits two columns refused as
+  ambiguous naming both; the §3.1 pair sugar round-tripping a column named
+  `total amount`.
+- **Accessors** (§1.3.2): struct child, map key, list index, negative index, and
+  every range spelling, on every container type in the table, including chains
+  (`a.b[0]['k'][1:3]`); 0-based and half-open semantics asserted explicitly;
+  out-of-range index yielding null and out-of-range range clamping; an inverted
+  range yielding empty; a text range never splitting a multi-byte character
+  while a binary range slices bytes; a double-quoted subscript read as a key,
+  not an identifier; every bind-time refusal (`a[0]` on a struct, `a.b` on a
+  scalar, a key the map's key type cannot hold) naming datatype, accessor, and
+  path; accessor results identical between the row path and the Arrow path.
 - **Bind**: name resolution case-insensitively; unknown column names the columns
   that exist; literal folded once into the column type (assert the bound literal
   is the column's datatype); incompatible comparison refused naming both types;
@@ -507,6 +774,15 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
 - **Selection**: alias defaulting; bare-column selection produces byte-identical
   results and the identical root `Field` to today's `select_by_names`; computed
   columns after projection pushdown; a name the rows lack is an error, as today.
+- **Apply surface** (§1.9): the same expression through `apply_value`,
+  `apply_arrow_batch`, and `apply_arrow_batch_reader` selects the same rows and
+  produces the same columns; `apply_field` equals the schema of the batch
+  `apply_arrow_batch` produces, with no data allocated and no file opened; a
+  `&str` subject, an `Expr` subject, a `Bound` subject, and a pair-slice subject
+  give identical answers; the streamed reader answers `schema()` before its
+  first batch and holds at most one batch; a batch whose schema disagrees errors
+  naming the column, and a reader whose schema disagrees errors before the first
+  batch; every carrier in the redirection table is exercised at least once.
 - **Integration**: `rust/src/io/tests.rs` — a folder-partitioned lake filtered
   by an expression prunes directories (assert nothing under the excluded prefix
   is listed, with a counting handle) and filters rows; `rust/src/iceberg/tests.rs`
@@ -533,7 +809,13 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
   comparison it compiles to and (b) **the current `filter_rows` string
   comparison it replaces**, on the same batches. That second baseline is the
   claim this change makes; report it.
-- statistics pruning: files skipped per second over a synthetic manifest.
+- statistics pruning: files skipped per second over a synthetic manifest;
+- the encapsulated-name and accessor-chain legs: parsing and evaluating
+  `"total amount"`, `a.b[0]`, and `a[1:3]` beside their unencapsulated,
+  unaccessored equivalents, so the grammar's convenience carries a known cost;
+- the apply surface: `apply_arrow_batch` from a `&str` subject (parse + bind per
+  call) versus a hoisted `Bound` subject, which is what the docs tell readers to
+  do and must therefore be a number rather than advice.
 
 Extend `rust/benchmarks/iceberg.rs` with a filtered-plan leg so the pruning
 change is visible where it matters.
@@ -572,6 +854,13 @@ that word — a skipped half can never read as a pass. Check both:
 - `RecordOptions` gains `filter` and `selection` properties plus
   `with_filter` / `with_selection`, accepting `str` or `Expr`;
   `filter_partitions` and `select_by_names` keep working unchanged.
+- **`Expr.apply(target)` and `Selection.apply(target)`** — the §1.9 redirection
+  at the boundary: a `pyarrow.RecordBatch`, `Table`, `RecordBatchReader`, or
+  `Array` (with a `Field`), a `yggdryl.Field` (schema only), a `dict` or
+  `Record` row. The dispatch happens in Rust after one coercion at the boundary
+  (`AGENTS.md:843`); Python never inspects the expression to choose a path.
+  `Expr.bind(field)` exposes the hoistable bound form, and `Expr.field(schema)`
+  the result schema.
 - `Table.plan/scan/read`, `IOBase.children_where`, `IOBase.glob` accept an
   expression wherever they accept the pairs today.
 - `python/yggdryl/_native.pyi` and `__init__.pyi` updated; `mypy --strict`
@@ -588,7 +877,10 @@ that word — a skipped half can never read as a pass. Check both:
 (`eq`, `lt`, `and`, `or`, `not`, `isNull`, `isIn`, `like`, `cast`, `alias`)
 since JS has no operator overloading; `toString`, `toJSON`, `equals`,
 `stableHash`. `RecordOptions.withFilter` / `withSelection` accept a string or an
-`Expr`; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
+`Expr`; `expr.apply(target)` redirects over a `BatchReader`, an Arrow JS
+`Table`/`RecordBatch`, IPC bytes, a native `Field`, or a row object, and
+`expr.bind(field)` / `expr.field(schema)` expose the bound form and the result
+schema; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
 methods take the same argument in the same position as Python. Tests
 `node/tests/expressions.test.js` + `expressions.types.ts`; benchmark
 `node/benchmarks/expressions.js` wired as `npm run bench:expressions`.
@@ -604,10 +896,15 @@ hand.
   example-first sections — write a predicate; parse one from SQL text; bind it to
   a schema and see the folded literal; filter rows; filter a batch; select and
   compute columns; prune a partitioned folder; prune an Iceberg table; the
-  three-valued null rules stated plainly in a short table; what the grammar
-  accepts (a compact operator/precedence table and the literal forms); what it
-  deliberately does not (no subqueries, no joins, no aggregates, no `bucket` —
-  each with its one-line reason).
+  three-valued null rules stated plainly in a short table; **naming things that
+  need quoting** (the three encapsulators in, one canonical spelling out, and
+  the whitespace-is-data rule); **reaching inside a value** (child, key, index,
+  range — with the 0-based and half-open conventions stated once, loudly, beside
+  a `BETWEEN` counter-example); **applying an expression to what you already
+  hold** (the §1.9 carrier table as runnable examples: a row, a batch, a
+  reader, a field); what the grammar accepts (a compact operator/precedence
+  table and the literal forms); what it deliberately does not (no subqueries, no
+  joins, no aggregates, no `bucket` — each with its one-line reason).
 - Every example in **Rust → Python → JavaScript tabs, in that order**, each
   idiomatic and self-contained with at least one assertion, all passing
   `python scripts/check_docs_examples.py`. Check `.api-bindings.txt` before
@@ -658,6 +955,13 @@ native binaries, caches, and `node_modules` after validation.
   date crate, no expression crate. The type grammar is `DataType::from_str`, the
   calendar is `generic/iso.rs`, the casts are `field::cast`, the Iceberg
   single-value encoding stays in `iceberg::value`.
+- **The record surface stays exactly three methods.** `apply_*` is a surface
+  over values, batches, and readers a caller already holds; `IOBase` gains
+  nothing, and an expression reaches a handle only through `RecordOptions`.
+- **One lexer, one accessor resolver.** Encapsulator stripping and accessor
+  resolution exist once, in `expressions/parser.rs` and `expressions/bound.rs`;
+  no call site, sugar constructor, or binding splits a dotted name, trims a
+  quote, or parses a subscript on its own.
 - **The core module knows nothing about storage or table formats.**
   `expressions/` may not mention Iceberg, partitions, manifests, or `IOBase`;
   those modules implement `StatsSource` and call in. Dependencies point one way.
@@ -681,8 +985,10 @@ native binaries, caches, and `node_modules` after validation.
 - Anything held in memory carries a comment saying why.
 
 **Definition of done**: a caller writes
-`options.with_filter("venue = 'XNAS' AND ts >= TIMESTAMP '2024-01-01T00:00:00Z'")?`
+`options.with_filter(r#""trading venue" = 'XNAS' AND payload['ts'] >= TIMESTAMP '2024-01-01T00:00:00Z'"#)?`
 and the same one sentence skips Iceberg manifests, skips data files, skips
-`venue=XNYS/` directories without listing them, and filters the rows that
-survive — in Rust, Python, and JavaScript, with one implementation of the
-comparison behind all of it.
+`trading venue=XNYS/` directories without listing them, and filters the rows
+that survive; the same expression hands to `apply_arrow_batch` a batch already
+in hand, to `apply_arrow_batch_reader` a stream, and to `apply_field` the
+schema its result would have without opening anything — in Rust, Python, and
+JavaScript, with one implementation of the comparison behind all of it.
