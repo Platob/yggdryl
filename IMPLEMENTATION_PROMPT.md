@@ -93,11 +93,12 @@ row must get right.
 | 1.13 | Rust ergonomics — traits, operators, prelude, typed narrowing | `==` structural vs `.eq()` building, and `From<&str>` vs `FromStr`, decided and tested |
 | 2 | phases A1–A7, B0–B9 | each phase is complete work on its own |
 | 3 | record options, the read ladder, writes, `apply_expression`, folders, Iceberg | pushdown never changes an answer |
+| 3.1.4 | cross-flavor SQL keyed by `Scheme` | one grammar plus a per-flavor table; a construct the engine cannot execute is refused at parse time |
 | 4 | tests, incl. the exhaustive datatype and nested matrix | the matrix enumerates the core's enums, so a new variant fails it |
 | 5 | benchmarks and the outside baselines | every performance claim carries a baseline the reader trusts |
 | 6 | Part A bindings, frames, language protocols | equality, ordering, and hashing agree across all three languages |
 | 7 | Part B — closing the 26 `Rust only` notes | a closed gap deletes its note and replaces it with tabs that run |
-| 8 | documentation and its 30 worked use cases | every example runs under `check_docs_examples.py` |
+| 8 | documentation and its 34 worked use cases | every example runs under `check_docs_examples.py` |
 | 9–10 | required checks; hard constraints | all green, twice, before handoff |
 
 Three rules that outrank everything else in this document, if they ever
@@ -146,6 +147,12 @@ itself declines** rather than guessing.
 9. `docs/io.md` §"Partition pruning and filtering" (line 2134) and
    `docs/iceberg.md` (lines 936–943, 1253–1318) — the documentation register to
    match and to update.
+
+For §3.1.4 additionally: `rust/src/enums/scheme.rs` — `Scheme`'s constants,
+`COMPATIBILITY_TARGETS`, `is_compatibility_target`, and how
+`DataType::to_scheme_compat` runs one generic walker over a per-target table.
+That mechanism is the model for the SQL flavor table; copy its shape, not its
+code.
 
 For Part B (§7) additionally:
 
@@ -1306,6 +1313,10 @@ Serde) — one parser, one set of encapsulator and accessor rules.
 | `ALTER … DROP COLUMN c` | remove a column |
 | `ALTER … RENAME COLUMN a TO b` | rename, keeping field ids |
 | `ALTER … ALTER COLUMN c TYPE <type>` | change a column's type |
+| `SELECT … [ORDER BY …] LIMIT n [OFFSET m]` | bounded top-N; `ORDER BY` only with a `LIMIT` (§3.1.4) |
+| `CREATE TABLE t (col type, …) [PARTITIONED BY (…)]` | a root struct `Field` built from the column list (§3.1.4) |
+| `CREATE TABLE t AS SELECT …` | the read of §3.1.1 into the write of §3.1.2, one pass |
+| `INSERT … ON CONFLICT / ON DUPLICATE KEY / MERGE` | three flavor spellings of the one `merge_by` upsert |
 | `<statement>; <statement>; …` | a chain: each step typed against the last, run as one pass (§1.10) |
 | `**.c` in any `ALTER`/`SELECT` path | a recursive path pattern: `*` one segment, `**` any depth |
 
@@ -1394,6 +1405,113 @@ because the one thing worse than a typo in a filter is a typo that deletes. A
 `pyarrow.compute.Expression` and a `polars.Expr` are declined by name — neither
 exposes anything but a debug rendering, and this project does not parse a
 `Debug` rendering (`AGENTS.md:601`).
+
+### 3.1.4 Cross-flavor SQL — one grammar, a per-flavor table
+
+The statements of §3.1.3 are spelled differently by every engine a user has come
+from, and the differences are small, well known, and entirely mechanical. Handle
+them the way this crate already handles compatibility targets — **one generic
+implementation plus a per-target table, never a fork** (`AGENTS.md:733`) — and
+the front end covers the SQL people actually write without becoming a database.
+
+#### The dialect is a `Scheme`, because this crate already has that vocabulary
+
+No new enum. `Scheme` is already the compatibility vocabulary
+(`AGENTS.md:411`: `ARROW`, `SPARK`, `POLARS`, `PANDAS`, `ICEBERG` in
+`COMPATIBILITY_TARGETS`, reached by `to_scheme_compat`) and already carries the
+SQL flavors as real connection-URI schemes — `sql`, `postgres`/`postgresql`,
+`mysql`, `spark` are Field protocol views today. Add the missing flavors as
+`Scheme` constants (`sqlite`, `mssql`, `duckdb`, `bigquery`, `snowflake`,
+`trino`) only where they are genuinely valid schemes, and key everything below
+by that value. **Never a second dialect enum.**
+
+- `Statement::from_str(text)` — the **canonical, permissive superset**: accepts
+  what any flavor spells whenever the reading is unambiguous, exactly as
+  `DataType::from_str` already "accepts canonical output plus common Arrow, SQL,
+  Hive, Spark forms" (`AGENTS.md:620`).
+- `Statement::from_scheme_str(&Scheme, text)` — **strict in that flavor**: what
+  the flavor cannot spell is refused with that flavor named, so a Postgres user
+  gets a Postgres answer instead of a surprise.
+- `Statement::to_scheme_sql(&Scheme)` — renders back out in a flavor, mirroring
+  `DataType::to_scheme_compat` including its discipline: a construct the target
+  has no spelling for is **refused naming both sides**, never silently
+  approximated. This is what lets a caller build a predicate here and hand the
+  text to a Postgres server.
+- The flavor table is **data, not code**: quoting, literals, operators, clause
+  spellings, and function aliases per `Scheme`, read by the one parser and the
+  one renderer. Adding a flavor is a row.
+
+#### The divergences the table must cover
+
+Each row is a real, documented difference, and each maps onto something the
+engine already has:
+
+| divergence | flavors | resolution |
+| --- | --- | --- |
+| identifier quoting | `"x"` ANSI/Postgres, `` `x` `` MySQL/Spark/BigQuery, `[x]` T-SQL | already §1.3.1; the table says which a flavor *accepts* and which it *emits* |
+| unquoted case folding | Postgres folds to lower; MySQL is platform-dependent; ANSI folds upper | this crate resolves names ASCII-case-insensitively (§1.3.1) — say so, and say it deviates from Postgres deliberately |
+| string literals | `'x'` everywhere; MySQL also accepts `"x"` | canonical mode always reads `"x"` as an identifier; the MySQL reading exists only under `Scheme::MYSQL` |
+| concatenation | `\|\|` ANSI/Postgres, `CONCAT()` MySQL — where `\|\|` means **OR** | the one genuinely dangerous ambiguity: canonical mode takes the ANSI reading, MySQL mode takes OR, and both are tested against the same text |
+| row limiting | `LIMIT n` (MySQL/Postgres/SQLite), `LIMIT o, n` (MySQL, reversed), `TOP n` (T-SQL), `OFFSET … FETCH NEXT … ROWS ONLY` (ANSI/T-SQL) | all parse to one limit/offset node; the reversed MySQL form only under `Scheme::MYSQL` |
+| upsert | `ON CONFLICT … DO UPDATE` (Postgres), `ON DUPLICATE KEY UPDATE` (MySQL), `MERGE` (T-SQL) | all three lower onto the **merge key this repo already has** (`merge_by`, §3.1.2) — one behavior, three spellings |
+| null coalescing | `COALESCE` ANSI, `IFNULL` MySQL, `NVL` Oracle, `ISNULL` T-SQL | aliases of the one `coalesce` function |
+| pattern matching | `LIKE`, `ILIKE` (Postgres), MySQL's collation-driven case behavior | one `Like` node with the case-insensitive flag §1.2 already carries |
+| booleans | `TRUE`/`FALSE`; MySQL and T-SQL also `1`/`0` | literal folding already handles the integer form against a boolean column |
+| string/temporal functions | `SUBSTRING`/`SUBSTR`, `LENGTH`/`LEN`, `NOW()`/`CURRENT_TIMESTAMP`/`GETDATE()` | function-name aliases in the table, resolving to the §1.2 vocabulary |
+| cast syntax | `CAST(x AS t)` ANSI, `x::t` Postgres | both already accepted (§1.3) |
+
+#### Statements the SQL front end adds
+
+- **`LIMIT n [OFFSET m]`**, and its three other spellings above. It is the most
+  written clause after `WHERE`, and it costs a bounded take/skip over the batch
+  reader — no materialization.
+- **`ORDER BY … [ASC|DESC] [NULLS FIRST|LAST]`, accepted only together with a
+  `LIMIT`.** Top-N through a bounded heap over `arrow-row` sort keys stays
+  memory-bounded; an unbounded sort would materialize the whole table, which
+  this project does not do anywhere. Refuse `ORDER BY` without `LIMIT` naming
+  that reason — a named limit beats a silent out-of-memory.
+- **`CREATE TABLE name (col type [NOT NULL] [, …]) [PARTITIONED BY (…)]`** —
+  the column list is a root struct `Field`, each type parsed by
+  `DataType::from_str`, each partition column marked the way
+  `mark_partitions`/`from_schema` already mark them. On a catalog handle it is
+  `Catalog::create`; on a folder it is the declared schema for the first write.
+- **`CREATE TABLE … AS SELECT …`** — the read of §3.1.1 into the write of
+  §3.1.2, one pass, no intermediate.
+- **`INSERT … ON CONFLICT/ON DUPLICATE KEY/MERGE`** — parsed in all three
+  spellings, lowered onto `merge_by`.
+- **`ALTER TABLE`'s flavor spellings**: MySQL `CHANGE`/`MODIFY COLUMN`,
+  Postgres `ALTER COLUMN … TYPE`, T-SQL `ALTER COLUMN` — all onto §3.1.3's four
+  `ALTER` forms.
+
+#### What it refuses, by name, in every flavor
+
+Joins, subqueries, aggregates and `GROUP BY`/`HAVING`, window functions, CTEs,
+views, stored procedures, transactions, `TRUNCATE`, and `DROP TABLE`. Each
+refusal names the construct and says what to do instead in one line — and
+`DROP TABLE` cites the reason the repo already gives for the absent Iceberg
+drop: the storage contract has no delete/move, and this project names that limit
+rather than emulating it (`AGENTS.md:305`). **A parser that accepts SQL it
+cannot execute is worse than one that refuses it**, so the refusal happens at
+parse time with the byte offset of the offending keyword, never halfway through
+a rewrite.
+
+#### Checked against an outside implementation
+
+`scripts/check_sql_interop.py` + `rust/tests/sql_interop.rs`, following
+`check_iceberg_interop.py` exactly, including the rule that the Rust half prints
+`SKIPPED` when the external side is absent and the driver fails on that word.
+The baseline is **SQLGlot** — a no-dependency Python SQL parser and transpiler
+covering 30+ dialects, whose per-dialect `TRANSFORMS` table is the same
+architecture this section specifies, which makes it the right thing to be
+measured against:
+
+- for a corpus of statements × flavors, our `from_scheme_str` → canonical →
+  `to_scheme_sql` must agree with SQLGlot's transpile of the same text between
+  the same two dialects, compared as parsed trees rather than as formatted text;
+- where we refuse, SQLGlot's parse must contain a construct this section
+  documents as unsupported — so a refusal is proven to be scope, not a parser
+  bug;
+- the corpus is committed, and every divergence row above appears in it.
 
 ### 3.2 Folders (`rust/src/io/partition.rs`)
 
@@ -1663,6 +1781,28 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   methods exist, so a class added later cannot ship half-implemented), `Expr`'s
   documented comparison exception raises from `__bool__` naming `.equals()`,
   and Python slice syntax reaches the range accessor.
+- **Cross-flavor SQL** (§3.1.4), in `rust/tests/expressions/sql.rs`:
+  - every divergence row of that section, parsed in each flavor that spells it
+    and rendered back into each flavor that can hold it, with the canonical form
+    identical in between;
+  - the two ambiguities that bite: `a || b` is concatenation canonically and in
+    Postgres but **OR** under `Scheme::MYSQL`, and `"x"` is an identifier
+    canonically but a string literal under `Scheme::MYSQL` — same text, two
+    documented readings, both asserted;
+  - `LIMIT 10, 5` reversed only under MySQL, `TOP`/`FETCH NEXT` under T-SQL, all
+    three producing the same limit and offset;
+  - the three upsert spellings producing the same `merge_by` and the same rows;
+  - `CREATE TABLE` building the same root `Field` as the equivalent
+    `DataType::from_str` calls, partition columns marked, and `CREATE TABLE AS
+    SELECT` writing in one pass;
+  - `ORDER BY` without `LIMIT` refused naming the memory reason; with `LIMIT`,
+    the top-N result matching a full sort of the same data, and the heap
+    bounded (assert peak retention, not just the answer);
+  - every refused construct — joins, subqueries, aggregates, windows, CTEs,
+    views, procedures, transactions, `TRUNCATE`, `DROP TABLE` — refused **at
+    parse time** with the byte offset of the offending keyword, in every flavor;
+  - `to_scheme_sql` refusing, naming both sides, where the target flavor has no
+    spelling.
 - **Boundary inference** (§3.1.3) in both bindings: statement text, a built
   `Statement`, a mapping, a pair sequence, and (Python) keywords all resolve to
   the same statement and the same outcome; a bare predicate is never accepted as
@@ -1705,6 +1845,9 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
 - **chain fusion** (§1.10): a four-statement chain run fused against the same
   four run separately with a materialization between, on the same data — the
   number that says why fusion is in the engine and not in the caller's loop;
+- **flavor parsing** (§3.1.4): the same statement parsed canonically and in each
+  flavor, so the table lookup's cost is visible and cannot quietly become a
+  per-dialect branch;
 - **the optimizer itself** (§1.11): its cost on a small predicate, a large
   disjunction, and a deep chain — which is what sets the size threshold below
   which it is skipped — and, separately, what it *buys*: the same read with the
@@ -2242,75 +2385,88 @@ cannot do one (the frame carriers in JavaScript), it carries the existing
 10. **Recursive paths**: `ALTER COLUMN **.price TYPE decimal(10,2)` over a schema
    nested several levels deep, showing every leaf it touched and every one it
    did not.
-11. **The statement vocabulary and its lowering** (§3.1.3) as one table the
+11. **Bring the SQL you already write**: the same query in Postgres, MySQL, and
+   T-SQL spelling — quoting, `LIMIT`/`TOP`/`FETCH`, `||` versus `CONCAT` —
+   parsing to the same canonical statement, with `to_scheme_sql` rendering it
+   back out for each.
+12. **The two ambiguities**, side by side and honest: `a || b` and `"x"` read one
+   way canonically and another under `Scheme::MYSQL`, and the docs say which you
+   get and why.
+13. **`CREATE TABLE` and `CREATE TABLE AS SELECT`**, then an upsert written all
+   three ways (`ON CONFLICT`, `ON DUPLICATE KEY UPDATE`, `MERGE`) landing the
+   same rows.
+14. **What it refuses and why**: a join, a subquery, a `GROUP BY`, and a
+   `DROP TABLE`, each showing the parse-time error naming the construct — so a
+   reader learns the boundary in ten seconds rather than by trial.
+15. **The statement vocabulary and its lowering** (§3.1.3) as one table the
    reader can hold in their head: every verb, and the selection + filter +
    write mode it becomes. Someone who understands this table can predict what
    any statement will cost.
-12. **What this deliberately does not do** — no subqueries, joins, aggregates,
+16. **What this deliberately does not do** — no subqueries, joins, aggregates,
    `bucket`, `CREATE`/`DROP TABLE`, no `MERGE … USING` — each with its one-line
    reason.
 
 **On `docs/io.md` — a handle**
 
-13. **Filter a file you already have**: `SELECT … WHERE` through
+17. **Filter a file you already have**: `SELECT … WHERE` through
     `apply_expression` on a Parquet leaf, with the read plan printed so the
     reader sees which row groups were skipped.
-14. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
+18. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
     asserting that the excluded directories were never listed.
-15. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
+19. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
     matches entirely — the report showing that the whole partition was unlinked
     without being decoded, which is the point — plus the three-valued footnote
     made concrete: rows whose value is null survive `DELETE WHERE price > 10`.
-16. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
+20. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
     else byte-identical, and the files no row matched never opened. Show the
     `CASE` it lowers to, so the reader learns the model rather than a spell.
-17. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
+21. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
     the statement-that-does-nothing case: `explain` first, apply second.
-18. **Apply to what you already hold** — the §1.9 carrier table as examples: a
+22. **Apply to what you already hold** — the §1.9 carrier table as examples: a
     `Value` row, an array with its `Field`, a `RecordBatch`, a streaming
     `BatchReader`, and a `Field` alone.
-19. **Write with an expression**: a filtered overwrite that replaces only the
+23. **Write with an expression**: a filtered overwrite that replaces only the
     matching rows, a computed column that becomes the partition column, and an
     expression merge key.
-20. **`INSERT … VALUES`** for the case every reader tries first: putting three
+24. **`INSERT … VALUES`** for the case every reader tries first: putting three
     rows somewhere without building an Arrow batch by hand.
 
 **On `docs/iceberg.md` — a table**
 
-21. **A filtered scan with its numbers**: manifests skipped, files skipped,
+25. **A filtered scan with its numbers**: manifests skipped, files skipped,
     rows filtered — the existing pruning example rewritten around an
     expression, with the counts asserted.
-22. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
+26. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
     the manifest without a byte being rewritten; the report proves it.
-23. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
+27. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
     rewrote a folder in use case 13 costs one document here, ids preserved —
     and a refused type change naming both sides.
-24. **A predicate on a source column pruning a transformed partition** (the
+28. **A predicate on a source column pruning a transformed partition** (the
     `day(ts)` case), and the honest counter-example: the same predicate against
     a `bucket` partition prunes nothing, and the docs say why in one sentence.
-25. **Time travel plus a filter** — `scan_at` under an expression, read with the
+29. **Time travel plus a filter** — `scan_at` under an expression, read with the
     schema that snapshot was written with.
 
 **On `docs/extensions/python.md` — the frames**
 
-26. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
-27. **Push the filter into the read instead**: `read_pandas_frame` /
+30. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
+31. **Push the filter into the read instead**: `read_pandas_frame` /
     `read_polars_frame` under options carrying the filter, with the benchmark
     number quoted from `docs/benchmarks.md` showing why this is the version to
     write.
-28. **Any spelling at the boundary** — statement text, a built `Statement`, a
+32. **Any spelling at the boundary** — statement text, a built `Statement`, a
     dict, a pair list, keywords — resolving to the same statement, and a bare
     predicate refused as a delete (§3.1.3).
 
 **On `docs/extensions/javascript.md`**
 
-29. The same boundary inference in JavaScript — statement text, `Statement`,
+33. The same boundary inference in JavaScript — statement text, `Statement`,
     `Expr`, plain object, `Map`, pair array — and `applyExpression` over a
     handle, including a `DELETE` and an `ALTER`.
 
 **Migration, once, where an existing reader will look for it**
 
-30. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
+34. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
     `with_filter_partitions([("venue", "XNAS")])` beside
     `with_filter("venue = 'XNAS'")`, saying plainly that the first still works,
     is exactly sugar for the second, and that the expression form is what adds
@@ -2336,7 +2492,7 @@ be tested without `arrow`); `cargo bench --benches --no-run`; `maturin develop` 
 `pytest` + `mypy --strict`; `npm run test:package` + `npm test`;
 `npm run test:package` + `npm test` + `tsc --noEmit`;
 `python scripts/check_docs_examples.py`; `python scripts/check_expression_interop.py`;
-`python scripts/check_avro_interop.py`;
+`python scripts/check_avro_interop.py`; `python scripts/check_sql_interop.py`;
 `python scripts/check_iceberg_interop.py` (unchanged answers);
 `python -m mkdocs build --strict`. Clean generated targets, `site/`, venvs,
 native binaries, caches, and `node_modules` after validation.
@@ -2381,6 +2537,10 @@ native binaries, caches, and `node_modules` after validation.
   variant including nested ones, or refuses by name with a message that says
   which datatype and which operation. The test matrix enumerates the core's own
   enums, so a datatype added later fails the tests rather than slipping through.
+- **One grammar, one renderer, a table per flavor.** SQL dialects are data
+  (§3.1.4) keyed by `Scheme` — never a second dialect enum, never a per-flavor
+  parser or generator fork. SQL the engine cannot execute is refused at parse
+  time, naming the construct.
 - **One lexer, one accessor resolver.** Encapsulator stripping and accessor
   resolution exist once, in `expressions/parser.rs` and `expressions/bound.rs`;
   no call site, sugar constructor, or binding splits a dotted name, trims a
