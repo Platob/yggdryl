@@ -472,7 +472,6 @@ record rather than being dropped.
     ```rust
     use yggdryl::io::{Buffer, IOBase};
     use yggdryl::Url;
-
     let mut handle = Buffer::new()
         .with_media_type(Url::from_str("file:///app.log")?.media_type());
     handle.write_all_bytes(
@@ -1841,7 +1840,6 @@ default, selects everything.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
-
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),

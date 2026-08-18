@@ -396,7 +396,7 @@ impl<H: IOBase> Table<H> {
     /// decoded.
     pub fn plan(&self, filters: &[(&str, &str)]) -> Result<ScanPlan> {
         let resolved = super::scan::filters(self.schema()?, filters)?;
-        self.planned(&resolved)
+        self.planned(&resolved, false)
     }
 
     /// Plan a scan of one retained snapshot rather than the current one.
@@ -416,7 +416,7 @@ impl<H: IOBase> Table<H> {
         let schema = self.schema_of(snapshot)?;
         let resolved = super::scan::filters(schema, filters)?;
         let manifests = self.manifests_at(snapshot)?;
-        self.plan_manifests(&manifests, &resolved)
+        self.plan_manifests(&manifests, &resolved, false)
     }
 
     /// Read one retained snapshot's rows: time travel as an ordinary scan.
@@ -441,7 +441,7 @@ impl<H: IOBase> Table<H> {
         let stored = self.schema_of(snapshot)?.clone();
         let resolved = super::scan::filters(&stored, filters)?;
         let manifests = self.manifests_at(snapshot)?;
-        let plan = self.plan_manifests(&manifests, &resolved)?;
+        let plan = self.plan_manifests(&manifests, &resolved, true)?;
         self.reader(plan.tasks, &stored, field, resolved)
     }
 
@@ -474,13 +474,24 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Plan a scan from filters that are already resolved.
-    fn planned(&self, filters: &[Filter]) -> Result<ScanPlan> {
+    ///
+    /// `for_read` marks a plan whose entries only feed a read: those decode
+    /// through the manifest planning fast path, which skips the statistics a
+    /// scan never consults. A plan whose entries may be carried into a
+    /// rewritten manifest - an overwrite, a merge, a compaction - must pass
+    /// `false` so every carried entry keeps its statistics whole.
+    fn planned(&self, filters: &[Filter], for_read: bool) -> Result<ScanPlan> {
         let manifests = self.manifests()?;
-        self.plan_manifests(&manifests, filters)
+        self.plan_manifests(&manifests, filters, for_read)
     }
 
     /// Plan one set of manifests under one set of resolved filters.
-    fn plan_manifests(&self, manifests: &[ManifestFile], filters: &[Filter]) -> Result<ScanPlan> {
+    fn plan_manifests(
+        &self,
+        manifests: &[ManifestFile],
+        filters: &[Filter],
+        for_read: bool,
+    ) -> Result<ScanPlan> {
         super::scan::plan(
             manifests,
             &|spec_id| {
@@ -491,6 +502,7 @@ impl<H: IOBase> Table<H> {
             },
             &|location| self.child_at(location),
             filters,
+            for_read,
         )
     }
 
@@ -714,7 +726,7 @@ impl<H: IOBase> Table<H> {
     ) -> Result<BatchReader> {
         let stored = self.schema()?.clone();
         let resolved = super::scan::filters(&stored, filters)?;
-        let plan = self.planned(&resolved)?;
+        let plan = self.planned(&resolved, true)?;
         self.reader(plan.tasks, &stored, field, resolved)
     }
 

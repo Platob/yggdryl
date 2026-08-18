@@ -12,6 +12,7 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
+pub mod avro;
 mod datatype;
 pub mod enums;
 mod error;

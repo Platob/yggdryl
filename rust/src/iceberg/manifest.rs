@@ -4,7 +4,7 @@
 //! snapshot names one *manifest list*; each row of that list is a *manifest*;
 //! each row of a manifest is one *data file* with its partition tuple and its
 //! statistics. Both levels are Avro, both are read and written here through
-//! [`super::avro`], and both are reached through the handle the table was
+//! [`crate::avro`], and both are reached through the handle the table was
 //! constructed from - never by opening a path.
 //!
 //! The Avro schemas are built rather than stored, because the `partition`
@@ -300,7 +300,7 @@ pub struct ManifestFile {
 /// Returns an error when the bytes are not an Avro manifest or an entry is
 /// missing a field the specification requires.
 pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry>> {
-    let container = super::avro::read_container(handle)?;
+    let container = crate::avro::read_container(handle)?;
     let mut entries = Vec::with_capacity(container.rows.len());
     for row in &container.rows {
         entries.push(entry_from_value(row)?);
@@ -314,7 +314,7 @@ pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry
 ///
 /// Returns an error when the header's `partition-spec` is not a spec document.
 pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpec> {
-    let container = super::avro::read_container(handle)?;
+    let container = crate::avro::read_container(handle)?;
     let Some(encoded) = container.get("partition-spec") else {
         return Ok(PartitionSpec::unpartitioned());
     };
@@ -354,28 +354,26 @@ pub fn write_manifest<H: IOBase + ?Sized>(
     }
 
     let schema_json = super::schema_to_json(schema)?;
+    let schema_text = String::from_utf8_lossy(&crate::json::to_vec(&schema_json)?).into_owned();
+    let spec_text =
+        String::from_utf8_lossy(&crate::json::to_vec(&spec.to_v1_json()?)?).into_owned();
+    let spec_id = spec.spec_id.to_string();
+    let format_version = version.number().to_string();
     let metadata = [
-        (
-            "schema",
-            String::from_utf8_lossy(&crate::json::to_vec(&schema_json)?).into_owned(),
-        ),
+        ("schema", schema_text.as_str()),
         (
             "schema-id",
             schema
                 .iceberg()
                 .get(super::schema::SCHEMA_ID)
-                .unwrap_or("0")
-                .to_owned(),
+                .unwrap_or("0"),
         ),
-        (
-            "partition-spec",
-            String::from_utf8_lossy(&crate::json::to_vec(&spec.to_v1_json()?)?).into_owned(),
-        ),
-        ("partition-spec-id", spec.spec_id.to_string()),
-        ("format-version", version.number().to_string()),
-        ("content", "data".to_owned()),
+        ("partition-spec", spec_text.as_str()),
+        ("partition-spec-id", spec_id.as_str()),
+        ("format-version", format_version.as_str()),
+        ("content", "data"),
     ];
-    super::avro::write_container(handle, &avro_schema, &metadata, &rows)
+    crate::avro::write_container(handle, &avro_schema, &metadata, &rows)
 }
 
 /// Read every manifest a manifest list names.
@@ -385,7 +383,7 @@ pub fn write_manifest<H: IOBase + ?Sized>(
 /// Returns an error when the bytes are not an Avro manifest list or a row is
 /// missing a field the specification requires.
 pub fn read_manifest_list<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestFile>> {
-    let container = super::avro::read_container(handle)?;
+    let container = crate::avro::read_container(handle)?;
     let mut manifests = Vec::with_capacity(container.rows.len());
     for row in &container.rows {
         manifests.push(manifest_from_value(row)?);
@@ -412,18 +410,19 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
     for manifest in manifests {
         rows.push(manifest_to_value(manifest, version)?);
     }
+    let snapshot_text = snapshot_id.to_string();
+    let parent_text = parent_snapshot_id.map_or_else(|| "null".to_owned(), |id| id.to_string());
+    let sequence_text = sequence_number.to_string();
+    let format_version = version.number().to_string();
     let mut metadata = vec![
-        ("snapshot-id", snapshot_id.to_string()),
-        (
-            "parent-snapshot-id",
-            parent_snapshot_id.map_or_else(|| "null".to_owned(), |id| id.to_string()),
-        ),
-        ("format-version", version.number().to_string()),
+        ("snapshot-id", snapshot_text.as_str()),
+        ("parent-snapshot-id", parent_text.as_str()),
+        ("format-version", format_version.as_str()),
     ];
     if version >= FormatVersion::V2 {
-        metadata.insert(2, ("sequence-number", sequence_number.to_string()));
+        metadata.insert(2, ("sequence-number", sequence_text.as_str()));
     }
-    super::avro::write_container(handle, &avro_schema, &metadata, &rows)
+    crate::avro::write_container(handle, &avro_schema, &metadata, &rows)
 }
 
 /// Build the Avro schema one manifest's entries are written against.
@@ -1077,4 +1076,220 @@ fn invalid(reason: SmolStr) -> Error {
         position: 0,
         reason,
     }
+}
+
+/// The compiled planning resolutions, keyed by the fingerprint of the raw
+/// schema bytes.
+///
+/// A scan reads many manifests written by one writer, so the JSON parse, the
+/// schema parse, and the resolution build happen once per writer schema
+/// rather than once per manifest. The map is small by construction - a table
+/// rarely sees more than a handful of writer schemas - and cleared outright
+/// if it ever grows past its cap, which is simpler than an eviction order
+/// nothing would exercise.
+type PlanningPlans =
+    std::collections::HashMap<(u64, bool), std::sync::Arc<crate::avro::Resolution>>;
+static PLANNING_PLANS: std::sync::Mutex<Option<PlanningPlans>> = std::sync::Mutex::new(None);
+
+/// How many compiled planning resolutions are retained.
+const PLANNING_PLAN_CAP: usize = 64;
+
+/// Read the entries a read-only scan plan needs, skipping the rest.
+///
+/// The reader schema is the writer's own schema projected down to the
+/// planning columns - status, the sequence numbers, and the data file's
+/// identity, partition tuple, and sizes - so decoding runs through a compiled
+/// resolution plan whose skip steps jump every statistics map the plan will
+/// never consult. When `with_stats` is set, which is a *filtered* plan, the
+/// value counts, null counts, and bounds survive, because file pruning reads
+/// them. This path serves reads only: a rewrite carries entries into new
+/// manifests and must decode them whole with [`read_manifest`], because a
+/// carried entry has to keep its statistics.
+///
+/// # Errors
+///
+/// Returns an error when the bytes are not an Avro manifest or a row does not
+/// decode.
+pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
+    handle: &H,
+    with_stats: bool,
+) -> Result<Vec<ManifestEntry>> {
+    use crate::avro::container;
+    use crate::avro::datum::Cursor;
+
+    let limits = crate::Limits::default();
+    let bytes = handle.read_all()?;
+    if bytes.len() > limits.max_input_bytes() {
+        return Err(invalid(format_smolstr!(
+            "expected a manifest of at most {} bytes, got {}",
+            limits.max_input_bytes(),
+            bytes.len()
+        )));
+    }
+    let mut cursor = Cursor::new(&bytes);
+    container::check_magic(cursor.take(container::MAGIC.len())?)?;
+    let (header, sync) = container::parse_header_entries(&mut cursor, limits)?;
+    let schema_bytes =
+        container::header_entry(&header, container::SCHEMA_KEY).ok_or_else(|| {
+            invalid(SmolStr::new_static(
+                "expected an Avro header carrying \"avro.schema\"",
+            ))
+        })?;
+    let coding = match container::header_entry(&header, container::CODEC_KEY) {
+        Some(value) => {
+            crate::avro::container::BlockCoding::from_name(&String::from_utf8_lossy(value))?
+        }
+        None => crate::avro::container::BlockCoding::Shared(crate::Codec::Identity),
+    };
+    let plan = planning_plan(schema_bytes, with_stats, limits)?;
+
+    let mut entries = Vec::new();
+    // DESIGN: one decompression buffer for every block of every manifest this
+    // call reads; its capacity carries across blocks so a wide manifest costs
+    // one allocation, not one per block.
+    let mut scratch = Vec::new();
+    while !cursor.is_exhausted() {
+        let count = cursor.long()?;
+        let count = u64::try_from(count).map_err(|_| {
+            invalid(format_smolstr!(
+                "expected a non-negative Avro block count, got {count}"
+            ))
+        })?;
+        let payload = cursor.bytes()?;
+        let marker = cursor.take(16)?;
+        if marker != sync {
+            return Err(invalid(SmolStr::new_static(
+                "expected the header's synchronization marker after an Avro block",
+            )));
+        }
+        if count as usize > limits.max_nodes() {
+            return Err(invalid(format_smolstr!(
+                "expected at most {} rows in a block",
+                limits.max_nodes()
+            )));
+        }
+        coding.load_into(payload, limits, &mut scratch)?;
+        let mut block = Cursor::new(&scratch);
+        for _ in 0..count {
+            let mut budget = limits.max_nodes();
+            let row = plan.decode(&mut block, limits, &mut budget)?;
+            entries.push(entry_from_value(&row)?);
+        }
+        if !block.is_exhausted() {
+            return Err(invalid(format_smolstr!(
+                "expected the block to end after {count} declared rows"
+            )));
+        }
+    }
+    Ok(entries)
+}
+
+/// Compile or fetch the planning resolution for one writer schema.
+fn planning_plan(
+    schema_bytes: &[u8],
+    with_stats: bool,
+    limits: crate::Limits,
+) -> Result<std::sync::Arc<crate::avro::Resolution>> {
+    let key = (crate::avro::schema::rabin(schema_bytes), with_stats);
+    if let Ok(mut guard) = PLANNING_PLANS.lock() {
+        if let Some(plan) = guard.as_ref().and_then(|plans| plans.get(&key)) {
+            return Ok(plan.clone());
+        }
+        let plans = guard.get_or_insert_with(std::collections::HashMap::new);
+        if plans.len() >= PLANNING_PLAN_CAP {
+            plans.clear();
+        }
+    }
+    let writer_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
+    let writer = crate::avro::Schema::from_json_with_limits(&writer_json, limits)?;
+    let reader_json = planning_schema(&writer_json, with_stats);
+    // Projection drops whole fields, and Avro lets a legal schema define a
+    // named type inside one field and reference it by bare name from another;
+    // a projection that drops the defining field orphans the reference. Such
+    // a schema degrades to the identity plan - a full decode - rather than
+    // failing the scan.
+    let projected = crate::avro::Schema::from_json_with_limits(&reader_json, limits)
+        .and_then(|reader| crate::avro::Resolution::from_schemas(&writer, &reader));
+    let plan = std::sync::Arc::new(match projected {
+        Ok(plan) => plan,
+        Err(_) => crate::avro::Resolution::from_schemas(&writer, &writer)?,
+    });
+    if let Ok(mut guard) = PLANNING_PLANS.lock() {
+        guard
+            .get_or_insert_with(std::collections::HashMap::new)
+            .insert(key, plan.clone());
+    }
+    Ok(plan)
+}
+
+/// Project a manifest-entry schema down to what a plan reads.
+///
+/// A schema whose shape is not the expected entry record is returned whole,
+/// so an unusual writer degrades to a full decode rather than an error.
+fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
+    const ENTRY_KEEP: [&str; 4] = [
+        "status",
+        "snapshot_id",
+        "sequence_number",
+        "file_sequence_number",
+    ];
+    const FILE_KEEP: [&str; 6] = [
+        "content",
+        "file_path",
+        "file_format",
+        "partition",
+        "record_count",
+        "file_size_in_bytes",
+    ];
+    const FILE_STATS: [&str; 4] = [
+        "value_counts",
+        "null_value_counts",
+        "lower_bounds",
+        "upper_bounds",
+    ];
+
+    let whole = || writer_json.clone();
+    let Some(fields) = writer_json
+        .get_key_str("fields")
+        .and_then(Value::as_sequence)
+    else {
+        return whole();
+    };
+    let mut kept = Vec::new();
+    for field in fields {
+        let Some(name) = field.get_key_str("name").and_then(Value::as_str) else {
+            return whole();
+        };
+        if name == "data_file" {
+            let Some(declared) = field.get_key_str("type") else {
+                return whole();
+            };
+            let Some(filtered) = filter_record_fields(declared, &|child| {
+                FILE_KEEP.contains(&child) || (with_stats && FILE_STATS.contains(&child))
+            }) else {
+                return whole();
+            };
+            let Ok(rebuilt) = field.with_key("type", filtered) else {
+                return whole();
+            };
+            kept.push(rebuilt);
+        } else if ENTRY_KEEP.contains(&name) {
+            kept.push(field.clone());
+        }
+    }
+    writer_json
+        .with_key("fields", Value::from_sequence(kept))
+        .unwrap_or_else(|_| whole())
+}
+
+/// Rebuild a record schema JSON keeping only the fields `keep` accepts.
+fn filter_record_fields(record: &Value, keep: &dyn Fn(&str) -> bool) -> Option<Value> {
+    let fields = record.get_key_str("fields")?.as_sequence()?;
+    let mut kept = Vec::new();
+    for field in fields {
+        if keep(field.get_key_str("name")?.as_str()?) {
+            kept.push(field.clone());
+        }
+    }
+    record.with_key("fields", Value::from_sequence(kept)).ok()
 }

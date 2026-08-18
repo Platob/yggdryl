@@ -530,11 +530,22 @@ must yield no rows rather than fail.
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
-Iceberg puts two levels of indirection between a snapshot and its rows, and both are Avro. That Avro
-is implemented in this module: a container is a header naming a writer schema, then blocks of records
-separated by a synchronization marker. Manifest rows cross the boundary as the same
-[`Value`](json.md) the JSON parser produces, so a manifest row and a metadata document are read with
-one vocabulary.
+Iceberg puts two levels of indirection between a snapshot and its rows, and both are Avro,
+implemented by the [`avro`](avro.md) codec module: a container is a header naming a writer schema,
+then blocks of records separated by a synchronization marker. Manifest rows cross the boundary as
+the same [`Value`](json.md) the JSON parser produces, so a manifest row and a metadata document are
+read with one vocabulary. The writer is deterministic - the marker is derived from the content - so
+two writers given the same entries produce the same bytes, which is what lets a conformance check
+diff manifests instead of only comparing what they mean.
+
+Two readers serve two needs. `read_manifest` decodes every field, and is what any path that may
+*carry an entry forward* - an overwrite, a merge, a compaction - must use, because a carried entry
+keeps its statistics. `read_manifest_for_plan` is the read-only planning fast path: it decodes
+through a compiled schema-resolution plan that keeps only what pruning consults - file identity, the
+partition tuple, sizes, and (for a filtered plan) the counts and bounds - and skips every other
+statistics map as raw bytes. On wide manifests it decodes several times faster than the full read;
+[the benchmarks](benchmarks.md) put numbers and outside baselines on that claim. A table's scans use
+it automatically; the function is public for callers walking manifests themselves.
 
 Statistics come from the Parquet footer the write just produced. Counts and sizes are emitted for
 every top-level column; *bounds* are emitted only for the types whose Parquet statistic bytes are

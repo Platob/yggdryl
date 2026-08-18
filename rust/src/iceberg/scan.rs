@@ -329,6 +329,7 @@ pub(super) fn plan(
     spec_of: &dyn Fn(i32) -> PartitionSpec,
     manifest_at: &dyn Fn(&str) -> Result<Holder>,
     filters: &[Filter],
+    for_read: bool,
 ) -> Result<ScanPlan> {
     let mut plan = ScanPlan::default();
     for manifest in manifests {
@@ -343,7 +344,15 @@ pub(super) fn plan(
         plan.manifests_read += 1;
 
         let handle = manifest_at(&manifest.manifest_path)?;
-        for mut entry in super::manifest::read_manifest(&handle)? {
+        // A read-only plan decodes just the columns pruning consults; a plan
+        // whose entries may be carried into a rewritten manifest decodes
+        // everything, because a carried entry must keep its statistics.
+        let entries = if for_read {
+            super::manifest::read_manifest_for_plan(&handle, !filters.is_empty())?
+        } else {
+            super::manifest::read_manifest(&handle)?
+        };
+        for mut entry in entries {
             if entry.status == EntryStatus::Deleted {
                 continue;
             }

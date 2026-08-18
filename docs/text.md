@@ -392,7 +392,6 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::{arrow, DataType, Value};
-
 let schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::Utf8.nullable_field("venue"),

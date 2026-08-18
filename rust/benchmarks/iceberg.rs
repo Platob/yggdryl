@@ -17,7 +17,7 @@ use criterion::{BatchSize, Criterion, Throughput, criterion_group};
 use smol_str::SmolStr;
 use yggdryl::iceberg::{
     DataFile, FormatVersion, IcebergOptions, ManifestEntry, PartitionSpec, Snapshot, Table,
-    TableMetadata, assign_field_ids, read_manifest, write_manifest,
+    TableMetadata, assign_field_ids, read_manifest, read_manifest_for_plan, write_manifest,
 };
 use yggdryl::io::partition::partition_text;
 use yggdryl::io::{Buffer, IOBase};
@@ -298,6 +298,42 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
     group.bench_function("decode_1000", |bencher| {
         bencher.iter(|| read_manifest(black_box(&buffer)).expect("the manifest decodes"));
     });
+
+    // The planning fast path against the full decode, at manifest scale. The
+    // filtered variant keeps counts and bounds - the lazy statistics a
+    // filtered plan consults - and the unfiltered one skips even those.
+    for scale in [1_000_usize, 10_000, 100_000] {
+        let entries = manifest_entries(scale);
+        let mut stored = Buffer::new();
+        stored.set_media_type(MediaType::new(MimeType::AVRO));
+        write_manifest(&mut stored, FormatVersion::V2, &schema, &spec, &entries)
+            .expect("the synthetic manifest encodes");
+        // Proven once outside the timers: both paths see every entry.
+        assert_eq!(
+            read_manifest_for_plan(&stored, true)
+                .expect("the planning path reads")
+                .len(),
+            scale
+        );
+        let elements = u64::try_from(scale).expect("the scale fits");
+        group.throughput(Throughput::Elements(elements));
+        if scale > 1_000 {
+            group.sample_size(20);
+        }
+        group.bench_function(format!("decode_full/{scale}"), |bencher| {
+            bencher.iter(|| read_manifest(black_box(&stored)).expect("the manifest decodes"));
+        });
+        group.bench_function(format!("decode_plan_with_stats/{scale}"), |bencher| {
+            bencher.iter(|| {
+                read_manifest_for_plan(black_box(&stored), true).expect("the plan path decodes")
+            });
+        });
+        group.bench_function(format!("decode_plan_identity_only/{scale}"), |bencher| {
+            bencher.iter(|| {
+                read_manifest_for_plan(black_box(&stored), false).expect("the plan path decodes")
+            });
+        });
+    }
     group.finish();
 }
 
