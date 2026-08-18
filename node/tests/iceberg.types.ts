@@ -21,6 +21,11 @@ import {
   type SnapshotView,
   type Table,
 } from '..'
+import {
+  IcebergOptions,
+  type ScanPlan,
+  type SnapshotRefView,
+} from '../index'
 
 declare const schema: Field
 declare const arrowTable: ArrowTable
@@ -150,3 +155,106 @@ const committed: number = chained.commit()
 
 iceberg.canPromote('int32', 'int64')
 iceberg.canPromote(DataType.from('float32'), DataType.from('float64'))
+
+// The options value, the scan plan, and the reference view are declared in
+// `index.d.ts` but not yet re-exported through the curated `iceberg` namespace
+// in `binding.d.ts`, so they are exercised where they are written.
+const options: IcebergOptions = new IcebergOptions({
+  commitRetries: 4,
+  commitMinBackoffMs: 100,
+  commitMaxBackoffMs: 60_000,
+  targetFileSize: 4096,
+  readParallelism: 2,
+  readParallelMinFiles: 16,
+  readParallelMinFileSize: 4096,
+  compactAfterCommits: 8,
+  dataFormat: 'avro',
+})
+const emptyOptions: IcebergOptions = new IcebergOptions()
+options.commitRetries = 2
+options.commitMinBackoffMs = 50
+options.commitMaxBackoffMs = 5_000
+options.targetFileSize = 8192
+options.readParallelism = 1
+options.readParallelMinFiles = 4
+options.readParallelMinFileSize = 1024
+options.compactAfterCommits = 3
+options.dataFormat = 'parquet'
+const commitRetries: number = options.commitRetries
+const commitMinBackoffMs: number = options.commitMinBackoffMs
+const commitMaxBackoffMs: number = options.commitMaxBackoffMs
+const targetFileSizeOption: number = options.targetFileSize
+const readParallelism: number = options.readParallelism
+const readParallelMinFiles: number = options.readParallelMinFiles
+const readParallelMinFileSize: number = options.readParallelMinFileSize
+const compactAfterCommits: number | null = options.compactAfterCommits
+const dataFormat: string = options.dataFormat
+
+created.setOptions(options)
+const resolvedOptions: IcebergOptions = created.options()
+
+const scannedWithOptions: BatchReader = created.scan(numbered, options)
+const atWithOptions: BatchReader = created.scanAt(1n, null, numbered, options)
+created.append(BatchReader.from(arrowTable), options)
+created.overwrite(BatchReader.from(arrowTable), options)
+
+const filtered: BatchReader = created.scanWhere({ venue: 'XNAS' })
+const filteredProjected: BatchReader = created.scanWhere(
+  [{ column: 'venue', value: 'XNAS' }],
+  'row: struct<id int64> not null',
+)
+const onRef: BatchReader = created.scanRef('nightly')
+const onRefFiltered: BatchReader = created.scanRef('nightly', { venue: 'XNAS' }, numbered)
+
+const wholePlan: ScanPlan = created.plan()
+const filteredPlan: ScanPlan = created.plan({ venue: 'XNAS' })
+const pastPlan: ScanPlan = created.planAt(1n, { venue: 'XNAS' })
+const plannedRecords: number = filteredPlan.recordCount
+const plannedFiles: number = filteredPlan.filesPlanned
+const skippedFiles: number = filteredPlan.filesSkipped
+const readManifests: number = filteredPlan.manifestsRead
+const skippedManifests: number = filteredPlan.manifestsSkipped
+
+created.overwriteWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable))
+created.merge(BatchReader.from(arrowTable), ['id'])
+created.merge(BatchReader.from(arrowTable), ['id'], false)
+created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), ['id'], true)
+
+const expired: bigint[] = created.expireSnapshots(1)
+const pastManifests: ManifestFileView[] = created.manifestsAt(1n)
+created.createBranch('audit', 1n)
+created.createTag('nightly', 1)
+created.fastForward('audit', 1n)
+const dropped: SnapshotRefView = created.removeRef('nightly')
+const droppedSnapshot: bigint = dropped.snapshotId
+const droppedKind: string = dropped.kind
+
+const namespacesView = catalog.namespaces
+const namespaceNames: string[] = namespacesView.names()
+const namespaceCount: number = namespacesView.size()
+const hasNamespace: boolean = namespacesView.has('sales')
+const sales = namespacesView.get('sales')
+const salesName: string = sales.name
+const madeNamespace = namespacesView.create('emea')
+const eitherNamespace = namespacesView.openOrCreate('emea')
+const nestedNamespaces = sales.namespaces
+
+const tablesView = sales.tables
+const tableNames: string[] = tablesView.names()
+const tableCount: number = tablesView.size()
+const hasOrders: boolean = tablesView.has('orders')
+const openedOrders: Table = tablesView.get('orders')
+const madeTable: Table = tablesView.create('orders', numbered)
+const eitherTable: Table = tablesView.openOrCreate(
+  'orders',
+  'row: struct<id int64> not null',
+)
+const appendedThroughView: Table = tablesView.append(
+  'orders',
+  BatchReader.from(arrowTable),
+  options,
+)
+const replacedThroughView: Table = tablesView.overwrite(
+  'orders',
+  BatchReader.from(arrowTable),
+)
