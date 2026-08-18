@@ -196,7 +196,9 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Valu
     for field in fields {
         let mut declared = node_json(field.data_type(), field.name(), counter)
             .map_err(|error| locate(error, field.name()))?;
-        if field.is_nullable() {
+        // A null-typed column is already the null it would be wrapped in; a
+        // ["null","null"] union is illegal, so the wrap is skipped.
+        if field.is_nullable() && declared.as_str() != Some("null") {
             declared = Value::from_sequence([Value::from("null"), declared]);
         }
         let mut pairs = vec![
@@ -291,7 +293,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Va
         }
         DataType::List(item) | DataType::LargeList(item) => {
             let mut items = node_json(item.data_type(), item.name(), counter)?;
-            if item.is_nullable() {
+            if item.is_nullable() && items.as_str() != Some("null") {
                 items = Value::from_sequence([Value::from("null"), items]);
             }
             Value::from_mapping([
@@ -310,7 +312,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Va
                 return Err(unspellable(data_type));
             }
             let mut values = node_json(value.data_type(), value.name(), counter)?;
-            if value.is_nullable() {
+            if value.is_nullable() && values.as_str() != Some("null") {
                 values = Value::from_sequence([Value::from("null"), values]);
             }
             Value::from_mapping([

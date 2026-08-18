@@ -180,9 +180,16 @@ impl Builder<'_> {
         if let Node::Union(branches) = writer {
             let mut ops = Vec::with_capacity(branches.len());
             for branch in branches.iter() {
+                let saved = self.plans.clone();
                 ops.push(match self.resolve(branch, reader) {
                     Ok(op) => op,
-                    Err(error) => Op::Fail(SmolStr::new(error.to_string())),
+                    Err(error) => {
+                        // A failed attempt may have registered partial plans;
+                        // restore the registry so the failure stays inside
+                        // this branch instead of poisoning later pairs.
+                        self.plans = saved;
+                        Op::Fail(SmolStr::new(error.to_string()))
+                    }
                 });
             }
             return Ok(Op::FromUnion(ops.into()));
@@ -192,7 +199,23 @@ impl Builder<'_> {
         // the value model carries the branch value directly, so no wrapper.
         if let Node::Union(branches) = reader {
             let saved = self.plans.clone();
+            // A branch whose fullname (or alias) matches the writer exactly is
+            // tried before every other branch, so the lenient bare-name
+            // comparison can never shadow an exact match later in the union.
+            let mut order: Vec<&Node> = Vec::with_capacity(branches.len());
+            if writer.name().is_some() {
+                for branch in branches.iter() {
+                    if self.reader_names_match_exactly(writer, branch) {
+                        order.push(branch);
+                    }
+                }
+            }
             for branch in branches.iter() {
+                if !order.iter().any(|kept| std::ptr::eq(*kept, branch)) {
+                    order.push(branch);
+                }
+            }
+            for branch in order {
                 match self.resolve(writer, branch) {
                     Ok(op) => return Ok(op),
                     // A failed attempt may have registered partial plans;
@@ -275,6 +298,28 @@ impl Builder<'_> {
         })
     }
 
+    /// Return whether a reader branch names the writer exactly.
+    ///
+    /// Exact means fullname equality or a reader alias naming the writer's
+    /// fullname - never the bare-name fallback [`names_match`] allows.
+    fn reader_names_match_exactly(&self, writer: &Node, branch: &Node) -> bool {
+        let resolved;
+        let target = match branch {
+            Node::Ref(name) => match self.reader_names.get(name) {
+                Some(node) => {
+                    resolved = node.clone();
+                    &resolved
+                }
+                None => return false,
+            },
+            other => other,
+        };
+        let (Some(from), Some(to)) = (writer.name(), target.name()) else {
+            return false;
+        };
+        from == to || target.aliases().contains(from)
+    }
+
     /// Compile the field plan for one record pair.
     fn record_plan(
         &mut self,
@@ -285,11 +330,18 @@ impl Builder<'_> {
         let mut matched = vec![false; reader.fields.len()];
         for from in &writer.fields {
             // A reader field matches by name, or by declaring the writer's
-            // name among its aliases.
+            // name among its aliases; an exact name wins over an alias
+            // wherever both appear.
             let slot = reader
                 .fields
                 .iter()
-                .position(|to| to.name == from.name || to.aliases.contains(&from.name));
+                .position(|to| to.name == from.name)
+                .or_else(|| {
+                    reader
+                        .fields
+                        .iter()
+                        .position(|to| to.aliases.contains(&from.name))
+                });
             match slot {
                 Some(index) => {
                     matched[index] = true;
@@ -644,8 +696,33 @@ fn locate(error: crate::Error, record: &str, field: &str) -> crate::Error {
     }
 }
 
+/// How deep a default walk may recurse.
+///
+/// A default is a small document literal inside the schema, not a data
+/// stream, so this sits far below [`super::schema::MAX_SCHEMA_DEPTH`]: a
+/// recursive type lets a hostile schema nest its default without limit, and
+/// this walk descends through union and reference hops that cost calls
+/// without costing document nesting.
+const MAX_DEFAULT_DEPTH: usize = 64;
+
 /// Convert a schema-declared JSON default into the value a reader fills with.
 fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -> Result<Value> {
+    default_value_at(node, default, names, 0)
+}
+
+/// [`default_value`], bounded like every other recursive walk in the codec.
+fn default_value_at(
+    node: &Node,
+    default: &Value,
+    names: &HashMap<SmolStr, Node>,
+    depth: usize,
+) -> Result<Value> {
+    if depth >= MAX_DEFAULT_DEPTH {
+        return Err(invalid(format_smolstr!(
+            "expected a default at most {MAX_DEFAULT_DEPTH} levels deep"
+        )));
+    }
+    let depth = depth + 1;
     Ok(match node {
         Node::Null => {
             if !default.is_null() {
@@ -677,8 +754,17 @@ fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -
                 .ok_or_else(|| bad_default("double", default))?,
         ),
         // A bytes default is a JSON string whose code points are the bytes.
-        Node::Bytes | Node::Fixed(_) | Node::Duration(_) | Node::UuidFixed(_) => {
-            Value::Bytes(default_bytes(default)?.into())
+        Node::Bytes => Value::Bytes(default_bytes(default)?.into()),
+        Node::Fixed(fixed) | Node::Duration(fixed) | Node::UuidFixed(fixed) => {
+            let bytes = default_bytes(default)?;
+            if bytes.len() != fixed.size {
+                return Err(invalid(format_smolstr!(
+                    "expected a fixed default of {} bytes, got {}",
+                    fixed.size,
+                    bytes.len()
+                )));
+            }
+            Value::Bytes(bytes.into())
         }
         Node::Decimal(decimal) => {
             let bytes = default_bytes(default)?;
@@ -726,7 +812,7 @@ fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -
         }
         // A union default always describes the union's first branch.
         Node::Union(branches) => match branches.first() {
-            Some(first) => default_value(first, default, names)?,
+            Some(first) => default_value_at(first, default, names, depth)?,
             None => return Err(bad_default("union", default)),
         },
         Node::Array(items) => {
@@ -735,7 +821,7 @@ fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -
                 .ok_or_else(|| bad_default("array", default))?;
             let mut converted = Vec::with_capacity(values.len());
             for value in values {
-                converted.push(default_value(items, value, names)?);
+                converted.push(default_value_at(items, value, names, depth)?);
             }
             Value::from_sequence(converted)
         }
@@ -745,7 +831,7 @@ fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -
                 .ok_or_else(|| bad_default("map", default))?;
             let mut converted = Vec::with_capacity(entries.len());
             for (key, value) in entries {
-                converted.push((key.clone(), default_value(values, value, names)?));
+                converted.push((key.clone(), default_value_at(values, value, names, depth)?));
             }
             Value::from_mapping(converted)?
         }
@@ -756,9 +842,9 @@ fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -
             let mut entries = Vec::with_capacity(record.fields.len());
             for field in &record.fields {
                 let value = match default.get_key_str(&field.name) {
-                    Some(value) => default_value(&field.schema, value, names)?,
+                    Some(value) => default_value_at(&field.schema, value, names, depth)?,
                     None => match &field.default {
-                        Some(value) => default_value(&field.schema, value, names)?,
+                        Some(value) => default_value_at(&field.schema, value, names, depth)?,
                         None => {
                             return Err(invalid(format_smolstr!(
                                 "expected a default for {}.{} inside the record default",
@@ -777,7 +863,7 @@ fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -
                 .get(name)
                 .cloned()
                 .ok_or_else(|| bad_default("reference", default))?;
-            default_value(&target, default, names)?
+            default_value_at(&target, default, names, depth)?
         }
     })
 }

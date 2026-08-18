@@ -593,11 +593,15 @@ enum ColumnReader {
         /// Validity per row.
         nulls: NullBufferBuilder,
     },
-    /// A union of `null` and one branch.
-    Nullable {
-        /// The branch index that means null.
-        null_branch: usize,
-        /// The value decoder.
+    /// A union: the branch index is read and validated per value.
+    Union {
+        /// The branch index that means null, when the union has one.
+        null_branch: Option<usize>,
+        /// The branch index carrying the value, when the union has one.
+        value_branch: Option<usize>,
+        /// How many branches the union declares, for the failure message.
+        width: usize,
+        /// The value decoder; a null-only union decodes as a null column.
         inner: Box<ColumnReader>,
     },
 }
@@ -685,15 +689,25 @@ impl ColumnReader {
             Node::Union(branches) => {
                 let null_branch = branches
                     .iter()
-                    .position(|branch| matches!(branch, Node::Null))
-                    .ok_or_else(|| shape_error(node, arrow))?;
-                let value = branches.iter().find(|branch| !matches!(branch, Node::Null));
-                match value {
-                    Some(value) => Self::Nullable {
-                        null_branch,
-                        inner: Box::new(Self::new(value, schema, arrow)?),
-                    },
-                    None => Self::Null { length: 0 },
+                    .position(|branch| matches!(branch, Node::Null));
+                let mut values = branches
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, branch)| !matches!(branch, Node::Null));
+                let value = values.next();
+                if values.next().is_some() {
+                    return Err(shape_error(node, arrow));
+                }
+                Self::Union {
+                    null_branch,
+                    value_branch: value.map(|(index, _)| index),
+                    width: branches.len(),
+                    inner: Box::new(match value {
+                        Some((_, value)) => Self::new(value, schema, arrow)?,
+                        // A null-only union still spends a branch index per
+                        // value; the inner reader is the null column it fills.
+                        None => Self::Null { length: 0 },
+                    }),
                 }
             }
             Node::Ref(name) => {
@@ -737,8 +751,21 @@ impl ColumnReader {
                 let part = |index: usize| {
                     u32::from_le_bytes(bytes[index..index + 4].try_into().unwrap_or_default())
                 };
-                let months = i32::try_from(part(0)).unwrap_or(i32::MAX);
-                let days = i32::try_from(part(4)).unwrap_or(i32::MAX);
+                // The wire counts are unsigned 32-bit; the arrow interval is
+                // signed. A count outside 31 bits is refused, never clamped.
+                let position = cursor.position;
+                let bounded = |name: &'static str, value: u32| {
+                    i32::try_from(value).map_err(|_| {
+                        codec(
+                            position,
+                            format_smolstr!(
+                                "expected a duration {name} within 31 bits, got {value}"
+                            ),
+                        )
+                    })
+                };
+                let months = bounded("months", part(0))?;
+                let days = bounded("days", part(4))?;
                 let nanos = i64::from(part(8)) * 1_000_000;
                 builder.append_value(IntervalMonthDayNano::new(months, days, nanos));
             }
@@ -834,18 +861,25 @@ impl ColumnReader {
                 offsets.push(*child_length);
                 nulls.append_non_null();
             }
-            Self::Nullable { null_branch, inner } => {
-                let index = cursor.long()?;
-                let index = usize::try_from(index).map_err(|_| {
-                    codec(
-                        cursor.position,
-                        format_smolstr!("expected a non-negative union branch, got {index}"),
-                    )
-                })?;
-                if index == *null_branch {
+            Self::Union {
+                null_branch,
+                value_branch,
+                width,
+                inner,
+            } => {
+                let declared = cursor.long()?;
+                let index = usize::try_from(declared).ok();
+                if index.is_some() && index == *null_branch {
                     inner.append_null()?;
-                } else {
+                } else if index.is_some() && index == *value_branch {
                     inner.append(cursor, datum, budget)?;
+                } else {
+                    return Err(codec(
+                        cursor.position,
+                        format_smolstr!(
+                            "expected an Avro union branch below {width}, got {declared}"
+                        ),
+                    ));
                 }
             }
         }
@@ -904,7 +938,7 @@ impl ColumnReader {
                 offsets.push(*child_length);
                 nulls.append_null();
             }
-            Self::Nullable { inner, .. } => inner.append_null()?,
+            Self::Union { inner, .. } => inner.append_null()?,
         }
         Ok(())
     }
@@ -1032,7 +1066,7 @@ impl ColumnReader {
                 .map_err(|error| invalid(format_smolstr!("{error}")))?;
                 Arc::new(array)
             }
-            Self::Nullable { inner, .. } => inner.finish()?,
+            Self::Union { inner, .. } => inner.finish()?,
         })
     }
 }
@@ -1161,9 +1195,26 @@ fn encode_cell(
                     value.nanoseconds
                 )));
             }
-            let months = u32::try_from(value.months).unwrap_or_default();
-            let days = u32::try_from(value.days).unwrap_or_default();
-            let millis = u32::try_from(value.nanoseconds / 1_000_000).unwrap_or_default();
+            // An Avro duration is three unsigned 32-bit counts; a component
+            // outside that range is refused, never silently rewritten.
+            let months = u32::try_from(value.months).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a non-negative duration months, got {}",
+                    value.months
+                ))
+            })?;
+            let days = u32::try_from(value.days).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a non-negative duration days, got {}",
+                    value.days
+                ))
+            })?;
+            let millis = u32::try_from(value.nanoseconds / 1_000_000).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a duration within u32 milliseconds, got {} nanoseconds",
+                    value.nanoseconds
+                ))
+            })?;
             payload.extend_from_slice(&months.to_le_bytes());
             payload.extend_from_slice(&days.to_le_bytes());
             payload.extend_from_slice(&millis.to_le_bytes());

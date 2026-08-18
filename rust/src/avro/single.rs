@@ -6,7 +6,7 @@
 //! receiver picks the writer schema out of a store - and the same fingerprint
 //! is the natural cache key for a resolution plan.
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Limits, Result, Value};
 
@@ -79,5 +79,11 @@ pub fn from_single_object_slice_with_limits(
         limits,
     };
     let mut budget = datum.budget();
-    datum.decode(&writer.node, &mut cursor, 0, &mut budget)
+    let value = datum.decode(&writer.node, &mut cursor, 0, &mut budget)?;
+    if !cursor.is_exhausted() {
+        return Err(invalid(SmolStr::new_static(
+            "expected the single-object frame to end after its datum",
+        )));
+    }
+    Ok(value)
 }

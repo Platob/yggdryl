@@ -408,7 +408,8 @@ fn decode_container<H: IOBase + ?Sized>(
                 ),
             ));
         }
-        if count as usize > limits.max_nodes() || rows.len() + count as usize > limits.max_nodes() {
+        let counted = usize::try_from(count).unwrap_or(usize::MAX);
+        if counted > limits.max_nodes() || rows.len().saturating_add(counted) > limits.max_nodes() {
             return Err(invalid(format_smolstr!(
                 "expected at most {} rows in a container",
                 limits.max_nodes()
@@ -524,6 +525,7 @@ pub(crate) fn derived_sync(schema_bytes: &[u8], payload: &[u8]) -> [u8; SYNC_LEN
 /// The marker only has to be constant within one file and improbable in its
 /// data, so hashing process-seeded state is enough and avoids a dependency
 /// whose only job would be sixteen bytes.
+#[cfg(feature = "arrow")]
 pub(crate) fn sync_marker() -> [u8; SYNC_LEN] {
     use std::hash::{BuildHasher, Hasher};
 
@@ -818,7 +820,7 @@ impl<H: IOBase + ?Sized> Blocks<'_, H> {
                 format_smolstr!("expected a non-negative Avro block count, got {count}"),
             )
         })?;
-        if count as usize > self.limits.max_nodes() {
+        if usize::try_from(count).map_or(true, |count| count > self.limits.max_nodes()) {
             return Err(invalid(format_smolstr!(
                 "expected at most {} rows in a block",
                 self.limits.max_nodes()

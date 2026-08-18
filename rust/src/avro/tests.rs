@@ -358,6 +358,42 @@ mod schemas {
             .to_string();
         assert!(message.contains("8 levels deep"), "{message}");
     }
+
+    #[test]
+    fn a_second_definition_of_a_named_type_is_refused_naming_it() {
+        // One definition per fullname; the second body could disagree with
+        // the first and silently shadow it in the name table.
+        let bodies = [
+            r#"{"type":"record","name":"dup","fields":[{"name":"x","type":"long"}]}"#,
+            r#"{"type":"enum","name":"dup","symbols":["A"]}"#,
+            r#"{"type":"fixed","name":"dup","size":4}"#,
+        ];
+        for body in bodies {
+            let message = Schema::from_str(&format!(
+                r#"{{"type":"record","name":"row","fields":[
+                    {{"name":"p","type":{body}}},
+                    {{"name":"q","type":{body}}}
+                ]}}"#
+            ))
+            .unwrap_err()
+            .to_string();
+            assert!(message.contains("one definition"), "{message}");
+            assert!(message.contains("dup"), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_reference_to_an_earlier_definition_is_not_a_redefinition() {
+        let schema = Schema::from_str(
+            r#"{"type":"record","name":"row","fields":[
+                {"name":"p","type":{"type":"record","name":"kv","fields":[
+                    {"name":"x","type":"long"}]}},
+                {"name":"q","type":"kv"}
+            ]}"#,
+        )
+        .unwrap();
+        assert!(schema.names.contains_key("kv"));
+    }
 }
 
 mod logical {
@@ -838,6 +874,104 @@ mod resolution {
             .rows;
         assert_eq!(direct, via_plan);
     }
+
+    #[test]
+    fn a_failed_writer_union_branch_does_not_poison_later_plans() {
+        // Resolving f1 tries writer "r" against reader "r" and fails on the
+        // field types; that attempt registers a partial record plan for the
+        // ("r", "r") pair. Resolving f2 then needs the same pair for real -
+        // a plan registry that kept the poisoned entry would refuse a legal
+        // decode.
+        let writer = r#"{"type":"record","name":"top","fields":[
+            {"name":"f1","type":[
+                {"type":"record","name":"a","fields":[{"name":"x","type":"long"}]},
+                {"type":"record","name":"r","fields":[{"name":"x","type":"string"}]}
+            ]},
+            {"name":"f2","type":"r"}
+        ]}"#;
+        let reader = r#"{"type":"record","name":"top","fields":[
+            {"name":"f1","type":{"type":"record","name":"r","aliases":["a"],"fields":[
+                {"name":"x","type":"long"}]}},
+            {"name":"f2","type":[
+                "r",
+                {"type":"record","name":"rr","aliases":["r"],"fields":[
+                    {"name":"x","type":"string"}]}
+            ]}
+        ]}"#;
+        let rows = resolved(writer, reader, &[r#"{"f1":{"x":7},"f2":{"x":"hi"}}"#]);
+        assert_eq!(rows[0].path("f1.x").and_then(Value::as_i64), Some(7));
+        assert_eq!(rows[0].path("f2.x").and_then(Value::as_str), Some("hi"));
+    }
+
+    #[test]
+    fn a_reader_union_prefers_the_branch_naming_the_writer_exactly() {
+        // Both reader branches can hold the row; the branch whose fullname
+        // is the writer's must win over one that merely shares a bare name
+        // across namespaces, whatever the union order says.
+        let rows = resolved(
+            r#"{"type":"record","name":"r","fields":[{"name":"v","type":"long"}]}"#,
+            r#"[
+                {"type":"record","name":"ns1.r","fields":[
+                    {"name":"v","type":"long"},
+                    {"name":"via","type":"string","default":"lenient"}]},
+                {"type":"record","name":"r","fields":[
+                    {"name":"v","type":"long"},
+                    {"name":"via","type":"string","default":"exact"}]}
+            ]"#,
+            &[r#"{"v":3}"#],
+        );
+        assert_eq!(
+            rows[0].get_key_str("via").and_then(Value::as_str),
+            Some("exact")
+        );
+    }
+
+    #[test]
+    fn a_reader_field_matches_a_writer_field_by_name_before_alias() {
+        let rows = resolved(
+            &record(r#"{"name":"a","type":"long"},{"name":"b","type":"long"}"#),
+            &record(r#"{"name":"b","aliases":["a"],"type":"long"}"#),
+            &[r#"{"a":1,"b":2}"#],
+        );
+        assert_eq!(rows[0].get_key_str("b").and_then(Value::as_i64), Some(2));
+    }
+
+    #[test]
+    fn a_fixed_default_of_the_wrong_length_is_refused() {
+        let writer = Schema::from_str(&record(r#"{"name":"a","type":"long"}"#)).unwrap();
+        let reader = Schema::from_str(&record(
+            r#"{"name":"a","type":"long"},
+               {"name":"pad","type":{"type":"fixed","name":"four","size":4},
+                "default":"ab"}"#,
+        ))
+        .unwrap();
+        let message = Resolution::from_schemas(&writer, &reader)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("4 bytes, got 2"), "{message}");
+    }
+
+    #[test]
+    fn a_default_nested_past_the_default_depth_bound_is_refused() {
+        // A recursive type lets a default nest as deep as the schema
+        // document allows, which is deeper than the schema's own structure
+        // may go; the default walk carries its own bound.
+        let deep = format!("{}null{}", r#"{"next":"#.repeat(100), "}".repeat(100));
+        let reader = Schema::from_str(&format!(
+            r#"{{"type":"record","name":"row","fields":[
+                {{"name":"a","type":"long"}},
+                {{"name":"chain","type":{{"type":"record","name":"n","fields":[
+                    {{"name":"next","type":["n","null"]}}
+                ]}},"default":{deep}}}
+            ]}}"#
+        ))
+        .unwrap();
+        let writer = Schema::from_str(&record(r#"{"name":"a","type":"long"}"#)).unwrap();
+        let message = Resolution::from_schemas(&writer, &reader)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("64 levels deep"), "{message}");
+    }
 }
 
 mod streaming {
@@ -936,6 +1070,17 @@ mod single_object {
             .to_string();
         assert!(message.contains("fingerprint"), "{message}");
     }
+
+    #[test]
+    fn bytes_after_the_datum_are_refused() {
+        let schema = Schema::from_str("\"long\"").unwrap();
+        let mut framed = avro::to_single_object_vec(&schema, &Value::I64(1)).unwrap();
+        framed.push(0x00);
+        let message = avro::from_single_object_slice(&framed, &schema)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("end after its datum"), "{message}");
+    }
 }
 
 #[cfg(feature = "parquet")]
@@ -1027,6 +1172,16 @@ mod hardening {
         let handle = super::handmade_container("\"long\"", "null", &[(1, vec![0x80, 0x80])]);
         let message = avro::read_container(&handle).unwrap_err().to_string();
         assert!(message.contains("expected"), "{message}");
+    }
+
+    #[test]
+    fn a_block_declaring_an_absurd_row_count_is_refused_without_reserving() {
+        // The count is a claim, not a measurement: a block declaring more
+        // rows than the node limit must fail the cap check, never size an
+        // allocation by it.
+        let handle = super::handmade_container("\"long\"", "null", &[(i64::MAX, vec![0x00])]);
+        let message = avro::read_container(&handle).unwrap_err().to_string();
+        assert!(message.contains("expected at most"), "{message}");
     }
 }
 
@@ -1230,6 +1385,130 @@ mod records {
             .unwrap_err()
             .to_string();
         assert!(message.contains("3 branches"), "{message}");
+    }
+
+    #[test]
+    fn single_branch_unions_read_through_the_record_surface() {
+        // ["null"] alone and ["long"] alone are legal unions, and each still
+        // spends a branch index on the wire.
+        let mut handle = handle();
+        avro::write_container(
+            &mut handle,
+            &crate::json::from_str(
+                r#"{"type":"record","name":"row","fields":[
+                    {"name":"gap","type":["null"]},
+                    {"name":"v","type":["long"]}
+                ]}"#,
+            )
+            .unwrap(),
+            &[],
+            &[
+                crate::json::from_str(r#"{"gap":null,"v":5}"#).unwrap(),
+                crate::json::from_str(r#"{"gap":null,"v":6}"#).unwrap(),
+            ],
+        )
+        .unwrap();
+        let read: Vec<RecordBatch> = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(read[0].num_rows(), 2);
+        // A NullArray's nulls are logical, so the count is asked logically.
+        assert_eq!(read[0].column(0).logical_null_count(), 2);
+        assert_eq!(
+            read[0].column(1).as_primitive::<Int64Type>().values(),
+            &[5, 6]
+        );
+    }
+
+    #[test]
+    fn a_null_typed_column_round_trips_without_double_wrapping() {
+        // A nullable Null column must not be spelled ["null","null"] - the
+        // declared type is already the null the wrap would add.
+        let schema = Field::new(
+            "row",
+            DataType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::Null.nullable_field("gap"),
+            ])
+            .unwrap(),
+            false,
+        );
+        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            arrow_schema,
+            vec![
+                Arc::new(arrow_array::Int64Array::from(vec![1, 2])),
+                Arc::new(arrow_array::NullArray::new(2)),
+            ],
+        )
+        .unwrap();
+        let mut handle = handle();
+        avro::write_batch_reader(
+            &mut handle,
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+            &AvroOptions::new(),
+        )
+        .unwrap();
+        let read: Vec<RecordBatch> = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(read[0].num_rows(), 2);
+        assert_eq!(read[0].column(1).logical_null_count(), 2);
+    }
+
+    #[test]
+    fn an_out_of_range_duration_is_refused_in_both_directions() {
+        // Encode: the wire counts are unsigned, so a negative arrow interval
+        // cannot be spelled.
+        let schema = Field::new(
+            "row",
+            DataType::from_fields([
+                DataType::Interval(crate::enums::TimeUnit::MonthDayNano).required_field("span")
+            ])
+            .unwrap(),
+            false,
+        );
+        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            arrow_schema,
+            vec![Arc::new(arrow_array::IntervalMonthDayNanoArray::from(
+                vec![arrow_buffer::IntervalMonthDayNano::new(-1, 0, 0)],
+            ))],
+        )
+        .unwrap();
+        let mut handle = handle();
+        let message = avro::write_batch_reader(
+            &mut handle,
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+            &AvroOptions::new(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            message.contains("non-negative duration months"),
+            "{message}"
+        );
+
+        // Decode: a wire count above 31 bits cannot fit the arrow interval
+        // and is refused, never clamped.
+        let mut payload = vec![0xFF, 0xFF, 0xFF, 0xFF];
+        payload.extend_from_slice(&[0; 8]);
+        let handle = super::handmade_container(
+            r#"{"type":"record","name":"row","fields":[
+                {"name":"span","type":
+                    {"type":"fixed","name":"dur","size":12,"logicalType":"duration"}}
+            ]}"#,
+            "null",
+            &[(1, payload)],
+        );
+        let message = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+            .unwrap()
+            .collect::<Result<Vec<RecordBatch>, _>>()
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("within 31 bits"), "{message}");
     }
 
     #[test]

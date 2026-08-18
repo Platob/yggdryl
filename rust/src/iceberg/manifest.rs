@@ -1078,7 +1078,8 @@ fn invalid(reason: SmolStr) -> Error {
     }
 }
 
-/// The compiled planning resolutions, keyed by the writer schema's raw bytes.
+/// The compiled planning resolutions, keyed by the fingerprint of the raw
+/// schema bytes.
 ///
 /// A scan reads many manifests written by one writer, so the JSON parse, the
 /// schema parse, and the resolution build happen once per writer schema
@@ -1118,6 +1119,13 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
 
     let limits = crate::Limits::default();
     let bytes = handle.read_all()?;
+    if bytes.len() > limits.max_input_bytes() {
+        return Err(invalid(format_smolstr!(
+            "expected a manifest of at most {} bytes, got {}",
+            limits.max_input_bytes(),
+            bytes.len()
+        )));
+    }
     let mut cursor = Cursor::new(&bytes);
     container::check_magic(cursor.take(container::MAGIC.len())?)?;
     let (header, sync) = container::parse_header_entries(&mut cursor, limits)?;
@@ -1195,8 +1203,17 @@ fn planning_plan(
     let writer_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
     let writer = crate::avro::Schema::from_json_with_limits(&writer_json, limits)?;
     let reader_json = planning_schema(&writer_json, with_stats);
-    let reader = crate::avro::Schema::from_json_with_limits(&reader_json, limits)?;
-    let plan = std::sync::Arc::new(crate::avro::Resolution::from_schemas(&writer, &reader)?);
+    // Projection drops whole fields, and Avro lets a legal schema define a
+    // named type inside one field and reference it by bare name from another;
+    // a projection that drops the defining field orphans the reference. Such
+    // a schema degrades to the identity plan - a full decode - rather than
+    // failing the scan.
+    let projected = crate::avro::Schema::from_json_with_limits(&reader_json, limits)
+        .and_then(|reader| crate::avro::Resolution::from_schemas(&writer, &reader));
+    let plan = std::sync::Arc::new(match projected {
+        Ok(plan) => plan,
+        Err(_) => crate::avro::Resolution::from_schemas(&writer, &writer)?,
+    });
     if let Ok(mut guard) = PLANNING_PLANS.lock() {
         guard
             .get_or_insert_with(std::collections::HashMap::new)

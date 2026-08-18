@@ -3133,4 +3133,52 @@ mod manifest_planning {
             "a manifest writer must be a pure function of its input"
         );
     }
+
+    #[test]
+    fn a_schema_defining_a_named_type_under_a_dropped_field_still_plans() {
+        // Avro lets a writer define a named type inside one field and
+        // reference it by bare name from another. Projecting away the
+        // defining field (column_sizes) orphans the reference kept in
+        // value_counts; such a manifest degrades to a full decode instead
+        // of failing the scan.
+        let schema = crate::json::from_str(
+            r#"{"type":"record","name":"manifest_entry","fields":[
+                {"name":"status","type":"int"},
+                {"name":"snapshot_id","type":["null","long"],"default":null},
+                {"name":"data_file","type":{"type":"record","name":"r2","fields":[
+                    {"name":"file_path","type":"string"},
+                    {"name":"column_sizes","type":["null",{"type":"array","items":
+                        {"type":"record","name":"kv","fields":[
+                            {"name":"key","type":"int"},
+                            {"name":"value","type":"long"}
+                        ]}}],"default":null},
+                    {"name":"value_counts","type":["null",{"type":"array","items":"kv"}],
+                     "default":null}
+                ]}}
+            ]}"#,
+        )
+        .unwrap();
+        let row = crate::json::from_str(
+            r#"{"status":1,"snapshot_id":77,"data_file":{
+                "file_path":"file:///t/data/part-0.parquet",
+                "column_sizes":[{"key":1,"value":512}],
+                "value_counts":[{"key":1,"value":100}]}}"#,
+        )
+        .unwrap();
+        let mut handle = Buffer::new();
+        crate::avro::write_container(&mut handle, &schema, &[], &[row]).unwrap();
+
+        let entries = read_manifest_for_plan(&handle, true).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].snapshot_id, Some(77));
+        assert_eq!(
+            entries[0].data_file.file_path,
+            "file:///t/data/part-0.parquet"
+        );
+        assert_eq!(entries[0].data_file.value_counts, vec![(1, 100)]);
+        // Without statistics nothing references the orphaned type and the
+        // projected plan applies as usual.
+        let pruned = read_manifest_for_plan(&handle, false).unwrap();
+        assert!(pruned[0].data_file.value_counts.is_empty());
+    }
 }

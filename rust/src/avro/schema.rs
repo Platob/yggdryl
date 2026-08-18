@@ -482,6 +482,7 @@ impl Parser {
     /// self-referential field resolves.
     fn parse_record(&mut self, document: &Value, namespace: &str, depth: usize) -> Result<Node> {
         let (fullname, child_namespace) = declared_name(document, namespace)?;
+        self.check_unregistered(&fullname)?;
         let aliases = declared_aliases(document, &child_namespace);
         let entries = document
             .get_key_str("fields")
@@ -540,9 +541,24 @@ impl Parser {
         Ok(node)
     }
 
+    /// Refuse a second definition of an already-registered name.
+    ///
+    /// A repeated *reference* is the point of named types; a repeated
+    /// *definition* is ambiguous, because the two bodies could disagree and
+    /// silently shadow each other in the name table.
+    fn check_unregistered(&self, fullname: &SmolStr) -> Result<()> {
+        if self.names.contains_key(fullname) {
+            return Err(invalid(format_smolstr!(
+                "expected one definition of the Avro type {fullname:?}, got a second"
+            )));
+        }
+        Ok(())
+    }
+
     /// Parse an enum and register it.
     fn parse_enum(&mut self, document: &Value, namespace: &str) -> Result<Node> {
         let (fullname, child_namespace) = declared_name(document, namespace)?;
+        self.check_unregistered(&fullname)?;
         let symbols = document
             .get_key_str("symbols")
             .and_then(Value::as_sequence)
@@ -581,6 +597,7 @@ impl Parser {
         logical: Option<&str>,
     ) -> Result<Node> {
         let (fullname, child_namespace) = declared_name(document, namespace)?;
+        self.check_unregistered(&fullname)?;
         let size = document
             .get_key_str("size")
             .and_then(Value::as_i64)
