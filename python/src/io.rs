@@ -621,9 +621,9 @@ impl PyIOBase {
             None => match target.inner.codec() {
                 Codec::Identity => {
                     return Err(PyValueError::new_err(format!(
-                        "expected a target naming a content coding, got {:?}; pass codec= to say \
+                        "expected a target declaring a content coding, got {}; pass codec= to say \
                          which coding to write",
-                        target.name(),
+                        target.inner.media_type(),
                     )));
                 }
                 codec => codec,

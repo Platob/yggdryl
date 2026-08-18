@@ -427,12 +427,16 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
   assert.equal(memory.codec, 'gzip')
   assert.equal(memory.decompressInto(IOBase.fromBytes()), 8)
 
-  // A target whose name declares nothing encodes with identity, which is a
-  // copy, while a coding no codec answers to is refused naming the ones that
-  // exist rather than silently passing the bytes through.
+  // A target whose name declares nothing is refused rather than copied
+  // uncompressed, because a coding nobody named is a coding nobody can decode
+  // by name later; a coding no codec answers to is refused naming the ones
+  // that exist.
   const flat = new IOBase(path.join(root, 'copy.json'))
-  assert.equal(plain.compressInto(flat), 8)
-  assert.equal(flat.readText(), '{"id":1}')
+  assert.throws(
+    () => plain.compressInto(flat),
+    /expected a target declaring a content coding, got application\/json; pass a codec/,
+  )
+  assert.equal(fs.existsSync(path.join(root, 'copy.json')), false)
   assert.throws(
     () => plain.compressInto(flat, 'nonsense'),
     /expected one of identity, gzip, zlib, deflate, zstd, got "nonsense"/,

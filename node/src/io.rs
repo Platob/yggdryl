@@ -419,9 +419,12 @@ impl JsIOBase {
     /// `codec` defaults to the coding `target`'s own name declares, so writing
     /// into `trades.json.gz` gzips without anyone naming gzip twice; passing one
     /// explicitly is how an in-memory target, which has no name to declare
-    /// anything, picks a coding. `level` is the shared 0-9 scale the whole-buffer
-    /// codecs use. The target's media type records the added coding, so
-    /// [`decompressInto`](Self::decompress_into) later needs no argument.
+    /// anything, picks a coding. A target that declares none is refused rather
+    /// than silently copied, because a coding nobody named is a coding nobody
+    /// can decode by name later. `level` is the shared 0-9 scale the
+    /// whole-buffer codecs use. The target's media type records the added
+    /// coding, so [`decompressInto`](Self::decompress_into) later needs no
+    /// argument.
     #[napi]
     pub fn compress_into(
         &self,
@@ -431,7 +434,16 @@ impl JsIOBase {
     ) -> Result<i64> {
         let codec = match codec {
             Some(name) => yggdryl::Codec::from_str(&name).map_err(napi_error)?,
-            None => target.inner.codec(),
+            None => match target.inner.codec() {
+                found if found.is_identity() => {
+                    return Err(napi::Error::from_reason(format!(
+                        "expected a target declaring a content coding, got {}; pass a codec to \
+                         say which coding to write",
+                        target.inner.media_type(),
+                    )));
+                }
+                found => found,
+            },
         };
         let level = level.map_or(yggdryl::Level::DEFAULT, yggdryl::Level::new);
         let written = self

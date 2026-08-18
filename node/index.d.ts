@@ -739,9 +739,12 @@ export declare class IOBase {
    * `codec` defaults to the coding `target`'s own name declares, so writing
    * into `trades.json.gz` gzips without anyone naming gzip twice; passing one
    * explicitly is how an in-memory target, which has no name to declare
-   * anything, picks a coding. `level` is the shared 0-9 scale the whole-buffer
-   * codecs use. The target's media type records the added coding, so
-   * [`decompressInto`](Self::decompress_into) later needs no argument.
+   * anything, picks a coding. A target that declares none is refused rather
+   * than silently copied, because a coding nobody named is a coding nobody
+   * can decode by name later. `level` is the shared 0-9 scale the
+   * whole-buffer codecs use. The target's media type records the added
+   * coding, so [`decompressInto`](Self::decompress_into) later needs no
+   * argument.
    */
   compressInto(target: IOBase, codec?: string | undefined | null, level?: number | undefined | null): number
   /**

@@ -95,8 +95,9 @@ class TestCompressInto:
         target = IOBase(tmp_path / "copy.json")
 
         # Silently copying would leave bytes nobody can decode by name later,
-        # so the refusal names the target and says how to say what was meant.
-        with pytest.raises(ValueError, match=r'got "copy\.json"; pass codec='):
+        # so the refusal reports what the target does declare - a media type
+        # carrying no coding - and says how to say what was meant.
+        with pytest.raises(ValueError, match=r"got application/json; pass codec="):
             plain.compress_into(target)
 
         assert not (tmp_path / "copy.json").exists()
