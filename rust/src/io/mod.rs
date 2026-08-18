@@ -13,8 +13,11 @@
 //!
 //! The core ships [`Buffer`], an auto-scaling in-memory implementation, and
 //! [`crate::local`], whose [`File`](crate::local::File) is an auto-resizing
-//! memory-mapped local file. Anything else - an object store, an Arrow
-//! filesystem - implements the same trait outside the core.
+//! memory-mapped local file. Two wrapping handles sit over any of them and are
+//! handles themselves: [`Coded`] presents the decoded bytes of a compressed
+//! resource, and [`crate::buffered::Buffered`] serves reads from a page cache
+//! whose header and footer pages are pinned. Anything else - an object store,
+//! an Arrow filesystem - implements the same trait outside the core.
 //!
 //! ```
 //! use yggdryl::io::{Buffer, IOBase};
@@ -785,6 +788,39 @@ pub trait IOBase: Send {
         Self: Sized,
     {
         Cursor::at(self, position)
+    }
+
+    /// Consume this handle into a page-cached [`Buffered`] one.
+    ///
+    /// Reads are served from fixed-size pages held under a byte budget, with
+    /// the first page and the page holding the last byte pinned so a
+    /// header-and-footer access pattern never re-reads either end. Everything
+    /// else answers exactly as this handle does.
+    ///
+    /// [`Buffered`] shadows this with an inherent method of the same name, so
+    /// buffering an already-buffered handle re-wraps the handle it holds
+    /// rather than stacking a second cache.
+    ///
+    /// ```
+    /// use yggdryl::buffered::BufferedOptions;
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"symbol,price\n".to_vec())
+    ///     .buffered(BufferedOptions::default());
+    /// assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    ///
+    /// // The second read of the same bytes reaches no further than memory.
+    /// assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    /// assert_eq!(handle.cached_pages(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn buffered(self, options: crate::buffered::BufferedOptions) -> crate::buffered::Buffered<Self>
+    where
+        Self: Sized,
+    {
+        crate::buffered::Buffered::new(self, options)
     }
 
     /// Borrow a streaming writer positioned at `offset`.
