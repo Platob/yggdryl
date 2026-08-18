@@ -21,6 +21,12 @@ through writes (filtered overwrites, deletes, computed columns, expression merge
 keys) — and it reaches Python's frames, where a pandas or polars object is
 inferred as one more carrier rather than given an engine of its own.
 
+Everything composes and everything recurses: expressions nest without a cap,
+statements chain with `;` and are typed step against step, a chain of four runs
+as **one pass with one read and at most one write**, and a recursive path
+pattern (`**.price`) rewrites every matching leaf at any depth through the one
+walker this project already has.
+
 One handle method puts all of it in reach of a one-liner:
 `handle.apply_expression("DELETE WHERE venue = 'XNAS'")` — and `UPDATE … SET`,
 `ALTER … ADD/DROP/RENAME COLUMN`, `SELECT`, `INSERT … VALUES` beside it, every
@@ -139,6 +145,7 @@ implementation and never an empty shell:
 | `stats.rs` | `ColumnStats`, `Certainty`, bounds evaluation and residual computation (unconditional) |
 | `select.rs` | `Selection` — the ordered projection of named expressions, and the root `Field` it produces |
 | `statement.rs` | `Statement` — the SQL-like verbs, their lowering to selection + filter + write mode (§3.1.3) |
+| `chain.rs` | composition and fusion: a chain of statements becoming one pass, and the recursion bounds (§1.10) |
 | `arrow.rs` | vectorized evaluation over `RecordBatch` → `BooleanArray`, projection and filtering (`#[cfg(feature = "arrow")]`) |
 | `apply.rs` | the `Apply` / `ArrowApply` extension traits and their type redirections (§1.9) |
 | `tests.rs` | the module's edge cases |
@@ -655,6 +662,104 @@ Requirements that make this surface worth having rather than sugar:
   place — not that the trait may never gain a derived convenience, which
   `children_where` and `copy_into` already are.
 
+### 1.10 Chaining, and recursion all the way down
+
+Two properties that have to be designed in rather than bolted on: **anything
+composes with anything**, and **everything works at every depth**. A grammar
+that stops composing after two steps, or an evaluator that special-cases the
+third level of nesting, is a grammar and an evaluator that will be worked
+around.
+
+#### Chaining is a value, not a fluent API over a mutable builder
+
+- `Expr` already nests arbitrarily — a comparison of two arithmetic subtrees of
+  two accessor chains of two casts is one `Expr`, and nothing in §1.2 caps that.
+  Keep it that way: **no node type may accept only a leaf where it could accept
+  an expression**. `CAST(CASE WHEN … THEN a[0] ELSE m['k'] END AS decimal(10,2))
+  > price * (1 + rate)` is one ordinary expression, and the tests say so.
+- `Statement` composes the same way: `Statement::Chain(Arc<[Statement]>)`, a
+  chain being itself a statement, so a chain of chains is a chain. Text spelling
+  is `;`-separated statements — `UPDATE . SET p = p * 1.1 WHERE v = 'X';
+  DELETE WHERE p > 100` — with `Display` round-tripping the whole chain.
+- **Each step is typed against the previous one.** Step *n* binds against
+  `apply_field` of step *n−1*, so a chain is checked end to end before anything
+  runs, and a failure names the step by position and the column by path:
+  `step 2 of 4: unknown column "prise"; the previous step produces id, price,
+  venue`. A chain that cannot be typed is refused whole — nothing partially
+  applied.
+- Combinators follow the vocabulary (`AGENTS.md:397`) and are consuming, so a
+  chain is built without a mutable builder anywhere: `expr.and(other)`,
+  `statement.then(next)`, `selection.then(more)`. The bindings chain with their
+  own idiom — Python operators and methods returning new values, JavaScript
+  method chaining — and neither mutates in place.
+
+#### A chain executes as one pass
+
+This is the whole reason chaining belongs in the engine rather than in the
+caller's for-loop:
+
+- **Fusion, in `chain.rs`, before execution**: adjacent selections compose into
+  one projection; adjacent filters conjoin; a filter after a selection is pushed
+  *before* it whenever every column the filter reads passes through that
+  selection unchanged (and is left where it is when it does not — the same
+  provable-equivalence rule as §3.1.1 rung 5); a cast of a cast collapses to the
+  outer one when the inner cannot lose information, and is kept when it can;
+  a statement the previous step made unreachable (`WHERE` on a column the
+  previous `DROP COLUMN` removed) is a typed error, not a silent no-op.
+- **One read and at most one write per chain.** Intermediate results never
+  touch storage: a chain of four statements over a table opens the files once,
+  streams batches through the fused plan, and commits once. Materializing
+  between steps would be the obvious implementation and it is explicitly
+  refused — say so in `chain.rs` beside the code.
+- **The plan reports the fusion**: `explain` on a chain shows the steps as
+  written and the passes they became, so "four statements, one pass" is a
+  number the caller can see and a test can assert.
+- **Fusion is equivalence-preserving or it does not happen.** The property test:
+  for a matrix of chains over a matrix of data, the fused result equals the
+  result of running each step separately with a full materialization between.
+  Where the optimizer cannot prove a rewrite safe, it declines it — a slower
+  chain is always acceptable, a different answer never is.
+
+#### Recursion, with no special cases and no unbounded stacks
+
+Recursion shows up on four axes; all four follow the same rules.
+
+1. **Into values.** Accessor chains and nested containers descend to any depth —
+   a struct in a list in a map in a struct — through one traversal, not a
+   per-depth branch. `Value`, `DataType`, and `Field` are already recursive;
+   the evaluator walks them with the same code at level 1 and level 12.
+2. **Into schemas — one walker, never a second.** A recursive rewrite (`ALTER
+   COLUMN **.price TYPE decimal(10,2)`, `DROP COLUMN **.debug`) uses a **path
+   pattern**: `*` matches one segment, `**` matches any depth, quoting rules
+   from §1.3.1 apply per segment. It rewrites through the project's existing
+   generic recursive walker — `AGENTS.md:733` already says compatibility targets
+   run one generic walker and forbids forking a per-target one; this is the same
+   rule. A rewrite preserves name, nullability, and metadata at every level and
+   invalidates a populated Arrow cache exactly once.
+3. **Into containers.** A statement over a folder descends the whole tree, not
+   one level: nested `column=value` directories at any depth, leaves anywhere
+   below, through the existing recursive listing and glob rather than a new
+   walk. A pruned subtree is pruned at the level it is refuted, so a predicate
+   settled at depth 1 never lists depth 5.
+4. **Into chains themselves.** A chain inside a chain flattens during fusion;
+   the flattening is what makes "compose freely" cost nothing at run time.
+
+Bounds, stated once and enforced everywhere:
+
+- **Every recursion is explicitly bounded** by the same kind of limit the schema
+  parser already carries, refused as a typed error naming the limit and the
+  depth reached — never a stack overflow, never a silent truncation
+  (`AGENTS.md:614`). Parse depth, expression depth, chain length, schema-rewrite
+  depth, and container descent each have a stated bound.
+- **Where the repository already requires iteration over recursion, iterate**:
+  the Node boundary's depth ceiling stays what `AGENTS.md:1109` fixes it at, and
+  a recursive N-API traversal is not widened by this work.
+- **A cycle is impossible by construction** (`Expr` and `Statement` are trees of
+  `Arc`, built only by consuming combinators), and the tests prove the limits
+  hold on adversarial input: a 10 000-deep expression, a 10 000-step chain, a
+  `**` pattern over a 12-level schema, and a folder nested past the descent
+  bound each fail as typed errors and leave the process standing.
+
 ---
 
 ## 2. Order of work
@@ -663,7 +768,8 @@ Requirements that make this surface worth having rather than sugar:
 
 - **Phase A1 — the module.** `Expr`, parser (encapsulators and accessors
   included), `Bound`, row evaluation, statistics evaluation, `Selection`, Arrow
-  evaluation, the `Apply`/`ArrowApply` surface, edge-case tests, benchmarks,
+  evaluation, the `Apply`/`ArrowApply` surface, chaining with its fusion and its
+  recursion bounds (§1.10), edge-case tests, benchmarks,
   `docs/expressions.md` with runnable Rust examples (Python/JS tabs marked
   `!!! note "Rust first"` until Phases A4/A5 land).
 - **Phase A2 — the record surface** (`generic/options.rs`, `io/partition.rs`,
@@ -827,6 +933,11 @@ fn apply_expression(&mut self, statement: &Statement, options: &RecordOptions)
   catalog resolution here; the handle already named the table.
 - **One default implementation on the trait**, composed from the three record
   methods. No backend implements it, no encoding gains an entry point.
+- **A chain is one statement**, so `apply_expression` takes a chain exactly as
+  it takes a single verb, types it end to end before running anything, fuses it
+  (§1.10), and carries it out in **one read and at most one write** — never a
+  materialization between steps. `explain` shows the steps as written beside the
+  passes they became.
 - `Applied` is the outcome: a `BatchReader` for a statement that reads, a
   `StatementReport` for one that changes something — rows read, written,
   deleted, updated; files deleted, rewritten, untouched; columns added, dropped,
@@ -850,6 +961,8 @@ Serde) — one parser, one set of encapsulator and accessor rules.
 | `ALTER … DROP COLUMN c` | remove a column |
 | `ALTER … RENAME COLUMN a TO b` | rename, keeping field ids |
 | `ALTER … ALTER COLUMN c TYPE <type>` | change a column's type |
+| `<statement>; <statement>; …` | a chain: each step typed against the last, run as one pass (§1.10) |
+| `**.c` in any `ALTER`/`SELECT` path | a recursive path pattern: `*` one segment, `**` any depth |
 
 #### Everything lowers to three primitives
 
@@ -1106,6 +1219,28 @@ select, arrow}.rs`, mirroring how `rust/tests/field.rs` dispatches
   - the guards: a `WHERE` binding to `TRUE` refused unless spelled `WHERE TRUE`,
     a bare `DELETE` truncating, an unknown column listed against what exists,
     `UPDATE` on an absent column and `ADD COLUMN` on a present one both refused.
+- **Chaining and recursion** (§1.10):
+  - **fusion equivalence**, the property that matters: for a matrix of chains
+    over a matrix of data, the fused result equals running each step separately
+    with a full materialization between — including the pushdown-through-
+    projection rewrite and the cases where it must decline;
+  - a chain of four statements over a table opens the files **once** and commits
+    **once** (proved with a counting handle), and `explain` reports the fused
+    pass count;
+  - a chain that cannot be typed is refused whole, naming the step by position
+    and the column by path, with nothing applied;
+  - a step made unreachable by an earlier one (`WHERE` on a dropped column) is a
+    typed error, not a silent no-op;
+  - chains of chains flatten, and the flattened result equals the nested one;
+  - **recursion on all four axes**: an accessor chain twelve levels deep; a
+    `**` path pattern rewriting every matching leaf of a twelve-level schema
+    through the one walker, preserving name, nullability, and metadata and
+    invalidating a populated Arrow cache exactly once; a statement over a folder
+    nested several levels deep, with a subtree pruned at the level it was
+    refuted (nothing below it listed); and the bounds — a 10 000-deep
+    expression, a 10 000-step chain, an over-deep schema pattern, and an
+    over-deep container descent each refused as typed errors naming the limit
+    and the depth reached, with the process still standing.
 - **Boundary inference** (§3.1.3) in both bindings: statement text, a built
   `Statement`, a mapping, a pair sequence, and (Python) keywords all resolve to
   the same statement and the same outcome; a bare predicate is never accepted as
@@ -1138,6 +1273,9 @@ over `rust/benchmarks/expressions/{parse, bind, eval, prune}.rs`:
   comparison it replaces**, on the same batches. That second baseline is the
   claim this change makes; report it.
 - statistics pruning: files skipped per second over a synthetic manifest;
+- **chain fusion** (§1.10): a four-statement chain run fused against the same
+  four run separately with a materialization between, on the same data — the
+  number that says why fusion is in the engine and not in the caller's loop;
 - the encapsulated-name and accessor-chain legs: parsing and evaluating
   `"total amount"`, `a.b[0]`, and `a[1:3]` beside their unencapsulated,
   unaccessored equivalents, so the grammar's convenience carries a known cost;
@@ -1185,7 +1323,10 @@ that word — a skipped half can never read as a pass. Check both:
   the core parser (`AGENTS.md:843`, infer at the boundary, compute in Rust).
 - Idiomatic operators building expressions without evaluating anything:
   `__eq__`/`__ne__`/`__lt__`/`__le__`/`__gt__`/`__ge__`, `&`, `|`, `~`,
-  `is_null()`, `isin([...])`, `like(...)`, `cast(dtype)`, `alias(name)`.
+  `is_null()`, `isin([...])`, `like(...)`, `cast(dtype)`, `alias(name)` — every
+  one returning a new value, so chains build without mutation, and nesting is
+  uncapped. `Statement.then(next)` chains statements the same way, and a list of
+  statements is accepted wherever a chain is.
   `__eq__` returning an `Expr` means `__hash__` must be defined explicitly (the
   canonical text's stable hash) and the docs must say the class is not a value
   you put in a set expecting equality semantics.
@@ -1227,7 +1368,8 @@ since JS has no operator overloading; `toString`, `toJSON`, `equals`,
 `Table`/`RecordBatch`, IPC bytes, a native `Field`, or a row object, and
 `expr.bind(field)` / `expr.field(schema)` expose the bound form and the result
 schema; `handle.applyExpression(…)` takes statement text or a `Statement` built
-by the same constructors, whose predicate argument accepts a string, an `Expr`,
+by the same constructors and chained with `.then(next)` (or handed over as an
+array of statements), whose predicate argument accepts a string, an `Expr`,
 a plain object, a `Map`, or a pair array, and returns either a `BatchReader` or
 the report as a plain object with `bigint` counts; the `iceberg` namespace keeps its shape (`AGENTS.md:1092`) and its table
 methods take the same argument in the same position as Python. Tests
@@ -1590,75 +1732,81 @@ cannot do one (the frame carriers in JavaScript), it carries the existing
 7. **Null semantics**, as a short truth table plus one example where a reader
    would otherwise be surprised: `venue != 'XNAS'` does not select the rows
    where `venue` is null, and `venue IS NULL` is how you ask.
-8. **The statement vocabulary and its lowering** (§3.1.3) as one table the
+8. **Chain four statements into one pass** — write them, `explain` them, see
+   four steps become one, and read the assertion that the fused answer equals
+   the step-by-step one.
+9. **Recursive paths**: `ALTER COLUMN **.price TYPE decimal(10,2)` over a schema
+   nested several levels deep, showing every leaf it touched and every one it
+   did not.
+10. **The statement vocabulary and its lowering** (§3.1.3) as one table the
    reader can hold in their head: every verb, and the selection + filter +
    write mode it becomes. Someone who understands this table can predict what
    any statement will cost.
-9. **What this deliberately does not do** — no subqueries, joins, aggregates,
+11. **What this deliberately does not do** — no subqueries, joins, aggregates,
    `bucket`, `CREATE`/`DROP TABLE`, no `MERGE … USING` — each with its one-line
    reason.
 
 **On `docs/io.md` — a handle**
 
-10. **Filter a file you already have**: `SELECT … WHERE` through
+12. **Filter a file you already have**: `SELECT … WHERE` through
     `apply_expression` on a Parquet leaf, with the read plan printed so the
     reader sees which row groups were skipped.
-11. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
+13. **Prune a partitioned lake**: the same predicate over a `column=value` tree,
     asserting that the excluded directories were never listed.
-12. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
+14. **`DELETE … WHERE`** on a leaf, then on a folder where one partition
     matches entirely — the report showing that the whole partition was unlinked
     without being decoded, which is the point — plus the three-valued footnote
     made concrete: rows whose value is null survive `DELETE WHERE price > 10`.
-13. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
+15. **`UPDATE … SET`**: one column recomputed for the matching rows, everything
     else byte-identical, and the files no row matched never opened. Show the
     `CASE` it lowers to, so the reader learns the model rather than a spell.
-14. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
+16. **`ALTER … ADD COLUMN` / `DROP` / `RENAME` / `TYPE`** on a folder, beside
     the statement-that-does-nothing case: `explain` first, apply second.
-15. **Apply to what you already hold** — the §1.9 carrier table as examples: a
+17. **Apply to what you already hold** — the §1.9 carrier table as examples: a
     `Value` row, an array with its `Field`, a `RecordBatch`, a streaming
     `BatchReader`, and a `Field` alone.
-16. **Write with an expression**: a filtered overwrite that replaces only the
+18. **Write with an expression**: a filtered overwrite that replaces only the
     matching rows, a computed column that becomes the partition column, and an
     expression merge key.
-17. **`INSERT … VALUES`** for the case every reader tries first: putting three
+19. **`INSERT … VALUES`** for the case every reader tries first: putting three
     rows somewhere without building an Arrow batch by hand.
 
 **On `docs/iceberg.md` — a table**
 
-18. **A filtered scan with its numbers**: manifests skipped, files skipped,
+20. **A filtered scan with its numbers**: manifests skipped, files skipped,
     rows filtered — the existing pruning example rewritten around an
     expression, with the counts asserted.
-19. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
+21. **`DELETE … WHERE`** as a copy-on-write commit: files that fully match leave
     the manifest without a byte being rewritten; the report proves it.
-20. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
+22. **`ALTER … ADD COLUMN` as a metadata-only commit** — the same statement that
     rewrote a folder in use case 13 costs one document here, ids preserved —
     and a refused type change naming both sides.
-21. **A predicate on a source column pruning a transformed partition** (the
+23. **A predicate on a source column pruning a transformed partition** (the
     `day(ts)` case), and the honest counter-example: the same predicate against
     a `bucket` partition prunes nothing, and the docs say why in one sentence.
-22. **Time travel plus a filter** — `scan_at` under an expression, read with the
+24. **Time travel plus a filter** — `scan_at` under an expression, read with the
     schema that snapshot was written with.
 
 **On `docs/extensions/python.md` — the frames**
 
-23. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
-24. **Push the filter into the read instead**: `read_pandas_frame` /
+25. **`Expr.apply(df)` for pandas and for polars**, same type out as in.
+26. **Push the filter into the read instead**: `read_pandas_frame` /
     `read_polars_frame` under options carrying the filter, with the benchmark
     number quoted from `docs/benchmarks.md` showing why this is the version to
     write.
-25. **Any spelling at the boundary** — statement text, a built `Statement`, a
+27. **Any spelling at the boundary** — statement text, a built `Statement`, a
     dict, a pair list, keywords — resolving to the same statement, and a bare
     predicate refused as a delete (§3.1.3).
 
 **On `docs/extensions/javascript.md`**
 
-26. The same boundary inference in JavaScript — statement text, `Statement`,
+28. The same boundary inference in JavaScript — statement text, `Statement`,
     `Expr`, plain object, `Map`, pair array — and `applyExpression` over a
     handle, including a `DELETE` and an `ALTER`.
 
 **Migration, once, where an existing reader will look for it**
 
-27. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
+29. A short **before/after table** in `docs/io.md` and `docs/iceberg.md`:
     `with_filter_partitions([("venue", "XNAS")])` beside
     `with_filter("venue = 'XNAS'")`, saying plainly that the first still works,
     is exactly sugar for the second, and that the expression form is what adds
@@ -1706,6 +1854,12 @@ native binaries, caches, and `node_modules` after validation.
   is one derived method composed from the three, with a default implementation
   on the trait — no encoding gains an entry point, no backend implements it
   itself, and every statement reaches the bytes through the same three calls.
+- **A chain never materializes between steps**, and fusion never changes an
+  answer: an unprovable rewrite is declined, not attempted. One read, at most
+  one write, whatever the chain's length.
+- **One recursive walker.** Schema rewrites go through the project's existing
+  generic walker; no per-statement, per-pattern, or per-target fork. Every
+  recursion carries an explicit bound and refuses past it as a typed error.
 - **One lexer, one accessor resolver.** Encapsulator stripping and accessor
   resolution exist once, in `expressions/parser.rs` and `expressions/bound.rs`;
   no call site, sugar constructor, or binding splits a dotted name, trims a
