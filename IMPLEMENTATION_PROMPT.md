@@ -44,6 +44,11 @@ implementation, and documented with running examples.
 Work on branch `claude/generic-expression-filtering-fm76gl`; commit and push
 there. Do not open a pull request.
 
+> A companion prompt, `BINDING_PARITY_PROMPT.md`, closes the binding gaps that
+> predate this work — the modules and surfaces the documentation still marks
+> `Rust only`. The two are independent; whichever lands second rebases where
+> they touch the same file.
+
 ---
 
 ## 0. Read first (non-negotiable)
