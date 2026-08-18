@@ -12,6 +12,10 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
+// Foreign Arrow filesystems behind the one storage trait. The vtable adds no
+// dependency, so the module is unconditional like the Avro value codec; the
+// record surface its handles answer is inherited and already gated by `arrow`.
+pub mod arrowfs;
 pub mod avro;
 mod datatype;
 pub mod enums;
