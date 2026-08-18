@@ -45,6 +45,25 @@ Add an Arrow projection of matched line records:
   `read_lines`, **not** a fourth record method — the three-method record
   surface (`read/write/append_arrow_batch_reader`) is untouched, and say so
   in the module docs.
+- **Folder-or-file detection, and absence reads as empty.** The handle's
+  `IOKind` decides the shape — never a second existence check, per
+  `AGENTS.md` (`is_container` derives from `IOKind`; handles are lazy and a
+  read on a missing resource skips):
+  - `IOKind::File` / `Memory`: parse that one resource's lines.
+  - `IOKind::Directory`: stream across the leaf files beneath it (the same
+    posture as the record surface, where a container reads across its
+    leaves) — enumerate with the existing container walk
+    (`children_where`/`ls`), deterministic name-sorted order, leaves
+    concatenated into one `BatchReader`. Each leaf contributes its own
+    canonical `Url` in the `url` column and restarts `rownum` at 1 (the
+    `(url, rownum)` pair stays a record identity), and each leaf's content
+    codings are peeled from *its own* media type, so a folder mixing
+    `a.log` and `b.log.gz` reads uniformly. Leaves are opened lazily, one
+    at a time, as the reader advances — never enumerated-and-buffered.
+  - `IOKind::Unknown` (the resource does not exist): return an **empty**
+    `BatchReader` — zero batches, schema still answered — exactly as
+    `read_lines` yields no lines and `pread` reads zero bytes. Absence is
+    never an error on the read path.
 - `LineRecordOptions` (in `io/lines.rs`): the header `pattern` (e.g.
   `r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]"`
   for `2024-02-01 10:00:00.000_000 [xx] [xxx]` lines), an optional
@@ -144,8 +163,15 @@ Mirror the existing test layout (`rust/src/io/tests.rs` for unit-level,
   coding): batches must be byte-identical to the uncompressed read. Cover at
   least one more coding (`.zst`) since the peeling is generic.
 - Multi-line records (stack traces), a preamble before the first match, an
-  empty and a missing resource (zero batches, schema still answered), CRLF
-  endings, `batch_size` boundaries (records % batch_size ≠ 0), a malformed
+  empty and a missing resource (zero batches, schema still answered), a
+  missing *folder* path (also zero batches, not an error), CRLF endings,
+- Folder handles: a directory of several log files read as one stream in
+  name-sorted order, per-leaf `url` and `rownum` restarting at 1, a folder
+  mixing uncompressed and gzip leaves (`a.log` + `b.log.gz`) decoding each
+  by its own media type, an empty folder (zero batches), and laziness
+  observable — a leaf after the first is not opened until the reader
+  reaches it (assert via a leaf that fails to decode: earlier batches must
+  still arrive before its error surfaces), `batch_size` boundaries (records % batch_size ≠ 0), a malformed
   timestamp inside a matching header (typed error naming row and byte
   position — never a silent null for a *matched* header), named-capture
   columns, custom constant columns, and the collision rejection.
@@ -183,6 +209,9 @@ Mirror the existing test layout (`rust/src/io/tests.rs` for unit-level,
 
 - `offset` (int64): byte offset of the record's first line in the *decoded*
   stream — the resume/seek key a tailing trading pipeline wants.
+- Glob handles: a `logs/2024-02-*/app.log*` URL routed through the existing
+  `Url::is_glob` / `IOBase::glob` walk selects its matching leaves with the
+  same per-leaf semantics as a folder — no new matching logic.
 - `lines` (int32): line count of the record, a free flag for exceptions.
 - A `timezone` option: when set, `unix` is interpreted in that zone and
   becomes a zoned timestamp column instead of naive int64 nanos (route
