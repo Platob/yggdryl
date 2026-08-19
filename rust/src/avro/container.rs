@@ -369,7 +369,7 @@ fn decode_container<H: IOBase + ?Sized>(
     limits: Limits,
     reader: Option<&Schema>,
 ) -> Result<Container> {
-    let bytes = handle.read_all()?;
+    let bytes = handle.read_all_bytes()?;
     if bytes.len() > limits.max_input_bytes() {
         return Err(invalid(format_smolstr!(
             "expected a container of at most {} bytes, got {}",

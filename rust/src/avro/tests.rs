@@ -158,7 +158,7 @@ mod containers {
         .unwrap();
 
         let mut truncated = buffer();
-        let bytes = handle.read_all().unwrap();
+        let bytes = handle.read_all_bytes().unwrap();
         truncated
             .write_all_bytes(&bytes[..bytes.len() - 8])
             .unwrap();
@@ -180,7 +180,7 @@ mod containers {
             &[crate::json::from_str(r#"{"v":1}"#).unwrap()],
         )
         .unwrap();
-        let mut bytes = handle.read_all().unwrap();
+        let mut bytes = handle.read_all_bytes().unwrap();
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
         let mut corrupt = buffer();
@@ -1715,7 +1715,7 @@ mod snapshots {
         ];
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
-        let bytes = handle.read_all().unwrap();
+        let bytes = handle.read_all_bytes().unwrap();
         let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
         let expected = concat!(
             "4f626a0106166176726f2e736368656d61ca017b2274797065223a227265636f72",
@@ -1733,7 +1733,7 @@ mod snapshots {
         // The same input encodes to the same bytes, every time.
         let mut again = super::buffer();
         avro::write_container(&mut again, &schema, &[("k", "v")], &rows).unwrap();
-        assert_eq!(bytes, again.read_all().unwrap());
+        assert_eq!(bytes, again.read_all_bytes().unwrap());
 
         // And they still decode to the rows that produced them.
         let decoded = avro::read_container(&handle).unwrap();
@@ -1800,7 +1800,7 @@ mod fuzz_lite {
         .unwrap()];
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
-        let valid = handle.read_all().unwrap();
+        let valid = handle.read_all_bytes().unwrap();
 
         let limits = Limits::new(32, 1 << 16, 1 << 12, 64);
         let mut random = Lcg(0x5EED);

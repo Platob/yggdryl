@@ -87,6 +87,24 @@ class TestPathlibParity:
         assert absent.read_bytes() == b""
         assert absent.size == 0
 
+    def test_a_handle_says_whether_it_holds_bytes_or_rows(
+        self, lake: pathlib.Path, tmp_path: pathlib.Path
+    ) -> None:
+        notes = IOBase(tmp_path / "notes.txt")
+        trades = IOBase(tmp_path / "trades.parquet")
+
+        # The name is enough; neither location has been written to.
+        assert notes.is_atomic()
+        assert not notes.is_tabular()
+        assert trades.is_tabular()
+        assert not trades.is_atomic()
+
+        # A folder is never one whole byte value, and reads as the table
+        # beneath it.
+        handle = IOBase(lake)
+        assert not handle.is_atomic()
+        assert handle.is_tabular()
+
     def test_children_are_resolved_the_way_paths_are(self, lake: pathlib.Path) -> None:
         by_operator = IOBase(lake) / "year=2024" / "month=01" / "part-0.parquet"
         by_method = IOBase(lake).joinpath("year=2024", "month=01", "part-0.parquet")

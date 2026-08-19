@@ -385,7 +385,8 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // exactly what this wrapper owns: the two positional primitives, the
     // resize that invalidates, and the open/close pair that holds the cache.
     crate::delegate_iobase!(handle: size, capacity, reserve, url, media_type,
-        set_media_type, flush, parent, child_by, ls, kind);
+        set_media_type, flush, parent, child_by, ls, kind, is_atomic,
+        is_tabular);
 
     /// Serve the range from the pages holding it, fetching what is missing.
     ///

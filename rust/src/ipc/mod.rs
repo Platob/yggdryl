@@ -212,7 +212,7 @@ where
 
 /// Read a handle's bytes with any declared content coding removed.
 fn decoded_bytes<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
-    let bytes = handle.read_all()?;
+    let bytes = handle.read_all_bytes()?;
     if bytes.is_empty() {
         return Ok(bytes);
     }
@@ -362,7 +362,21 @@ impl<H: IOBase> Ipc<H> {
 /// [`IOBase::open`] additionally caches the stream's schema and
 /// [`IOBase::close`] releases it.
 impl<H: IOBase> IOBase for Ipc<H> {
-    crate::delegate_iobase!(handle);
+    crate::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve,
+        truncate, url, media_type, set_media_type, flush, parent, child_by,
+        ls, kind);
+
+    /// An Arrow IPC stream is a record encoding, so this handle holds rows
+    /// whatever media type the bytes underneath happen to carry - no probe, no
+    /// listing, no read.
+    fn is_tabular(&self) -> bool {
+        true
+    }
+
+    /// A record encoding is never read as one whole byte value.
+    fn is_atomic(&self) -> bool {
+        false
+    }
 
     /// Materialize the handle and cache the stream's schema.
     ///

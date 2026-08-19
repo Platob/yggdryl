@@ -322,7 +322,7 @@ impl PyIOBase {
                 return handle.rebuilt();
             }
             // No location to rebuild from, so the content is what is taken.
-            let bytes = handle.inner.read_all().map_err(value_error)?;
+            let bytes = handle.inner.read_all_bytes().map_err(value_error)?;
             let mut buffer = Holder::Buffer(yggdryl::io::Buffer::from_bytes(bytes));
             buffer.set_media_type(handle.inner.media_type().clone());
             return Ok(Self::from_core(buffer));
@@ -500,6 +500,25 @@ impl PyIOBase {
         self.inner.kind() == yggdryl::IOKind::File
     }
 
+    /// Return whether this resource is one whole byte value.
+    ///
+    /// The byte surface - `read_bytes` and `write_bytes` - is for an atomic
+    /// resource; `is_tabular` names the record surface instead. A container
+    /// holding neither answers `False` to both.
+    fn is_atomic(&self) -> bool {
+        self.inner.is_atomic()
+    }
+
+    /// Return whether this resource holds rows and columns.
+    ///
+    /// The record surface - `read_arrow_batch_reader` and its two writing
+    /// siblings - is for a tabular resource: a leaf whose media type names a
+    /// record encoding, a folder that reads as the table beneath it, or a
+    /// table format's own folder.
+    fn is_tabular(&self) -> bool {
+        self.inner.is_tabular()
+    }
+
     /// Iterate the immediate children, as `Path.iterdir`.
     ///
     /// Private entries - names beginning with a dot - are skipped unless
@@ -611,13 +630,13 @@ impl PyIOBase {
     /// A resource that does not exist reads as empty rather than raising, per
     /// the laziness contract.
     fn read_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.inner.read_all().map_err(value_error)?;
+        let bytes = self.inner.read_all_bytes().map_err(value_error)?;
         Ok(PyBytes::new(py, &bytes))
     }
 
     /// Read every byte here as text, as `Path.read_text`.
     fn read_text(&self) -> PyResult<String> {
-        let bytes = self.inner.read_all().map_err(value_error)?;
+        let bytes = self.inner.read_all_bytes().map_err(value_error)?;
         String::from_utf8(bytes).map_err(|error| PyValueError::new_err(error.to_string()))
     }
 

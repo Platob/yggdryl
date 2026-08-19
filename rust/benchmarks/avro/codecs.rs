@@ -75,7 +75,7 @@ pub(crate) fn codec_benchmarks(criterion: &mut Criterion) {
                 &options,
             )
             .expect("the sweep fixture encodes");
-            let encoded = stored.read_all().expect("the buffer reads").len() as u64;
+            let encoded = stored.read_all_bytes().expect("the buffer reads").len() as u64;
             // Proven once outside the timers: every row survives the codec.
             let container = avro::read_container(&stored).expect("the fixture decodes");
             assert_eq!(container.rows.len(), ROWS);

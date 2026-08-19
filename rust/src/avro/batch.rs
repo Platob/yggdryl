@@ -165,7 +165,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     options: &AvroOptions,
 ) -> Result<BatchReader> {
     reject_outer_coding(handle)?;
-    let bytes = handle.read_all()?;
+    let bytes = handle.read_all_bytes()?;
     if bytes.is_empty() {
         // Per the laziness contract, a missing container holds no batches.
         let schema = match options.schema() {
@@ -1447,7 +1447,21 @@ impl<H: IOBase> Avro<H> {
 /// [`IOBase::open`] additionally caches the container's schema and
 /// [`IOBase::close`] releases it.
 impl<H: IOBase> IOBase for Avro<H> {
-    crate::delegate_iobase!(handle);
+    crate::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve,
+        truncate, url, media_type, set_media_type, flush, parent, child_by,
+        ls, kind);
+
+    /// An Avro object container is a record encoding, so this handle holds
+    /// rows whatever media type the bytes underneath happen to carry - no
+    /// probe, no listing, no read.
+    fn is_tabular(&self) -> bool {
+        true
+    }
+
+    /// A record encoding is never read as one whole byte value.
+    fn is_atomic(&self) -> bool {
+        false
+    }
 
     /// Materialize the handle and cache the container's schema.
     fn open(&mut self) -> crate::Result<()> {

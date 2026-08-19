@@ -11,17 +11,33 @@ use crate::{Error, Result};
 /// The role a resource plays, independent of where it lives.
 ///
 /// Every backend has the same three roles - bytes with no location, a leaf that
-/// holds bytes, a container that holds other resources - plus the honest fourth
-/// answer for a location that does not exist yet. A generic handle such as
+/// holds bytes, a container that holds other resources - plus the honest answer
+/// for a location that does not exist yet. A generic handle such as
 /// [`crate::local::Path`] reads this to decide which specialized implementation
 /// to work through, so adding a backend means answering this question rather
 /// than inventing new vocabulary.
+///
+/// A table format names three container roles of its own, because the folders
+/// it owns are not ordinary folders and answering "directory" about them loses
+/// what a caller most needs to know. A [`Table`](Self::Table) is one tabular
+/// value spread over many files, so it is read through the record surface
+/// rather than by listing it; a [`Namespace`](Self::Namespace) holds tables and
+/// further namespaces; a [`Catalog`](Self::Catalog) is the warehouse those
+/// namespaces live under. All three contain others, so
+/// [`is_container`](Self::is_container) stays the one question a walk asks.
 ///
 /// ```
 /// use yggdryl::io::{Buffer, IOBase};
 /// use yggdryl::IOKind;
 ///
 /// assert_eq!(Buffer::new().kind(), IOKind::Memory);
+///
+/// // A table format's roles are containers too, so one walk covers them all.
+/// assert!(IOKind::Table.is_container());
+/// assert!(IOKind::Namespace.is_container());
+/// assert!(IOKind::Catalog.is_container());
+/// assert_eq!(IOKind::from_str("catalog")?, IOKind::Catalog);
+/// # Ok::<(), yggdryl::Error>(())
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -33,6 +49,15 @@ pub enum IOKind {
     File,
     /// A container holding other resources: a directory, a key prefix.
     Directory,
+    /// A container that is one tabular value: an Iceberg table's folder.
+    ///
+    /// Its files are the table's storage, not its contents, so a caller reads
+    /// it through the record surface and never by listing what is under it.
+    Table,
+    /// A container of tables and further namespaces.
+    Namespace,
+    /// A container of namespaces: the warehouse a catalog resolves names in.
+    Catalog,
     /// A location that does not exist yet, so its role is not decided.
     ///
     /// A read of an unknown location yields nothing and a write creates it,
@@ -42,7 +67,18 @@ pub enum IOKind {
 
 impl IOKind {
     /// Every kind in canonical order.
-    pub const ALL: [Self; 4] = [Self::Memory, Self::File, Self::Directory, Self::Unknown];
+    ///
+    /// The order widens: memory, then a leaf, then the containers from the
+    /// plainest to the one every other lives under, then the undecided answer.
+    pub const ALL: [Self; 7] = [
+        Self::Memory,
+        Self::File,
+        Self::Directory,
+        Self::Table,
+        Self::Namespace,
+        Self::Catalog,
+        Self::Unknown,
+    ];
 
     /// Parse a canonical kind name.
     ///
@@ -60,13 +96,23 @@ impl IOKind {
             Self::Memory => "memory",
             Self::File => "file",
             Self::Directory => "directory",
+            Self::Table => "table",
+            Self::Namespace => "namespace",
+            Self::Catalog => "catalog",
             Self::Unknown => "unknown",
         }
     }
 
     /// Return whether this kind holds other resources.
+    ///
+    /// A table format's roles hold resources exactly as a directory does - a
+    /// table holds its files, a namespace its tables, a catalog its namespaces
+    /// - so everything that asks "can this hold others?" keeps asking it once.
     pub const fn is_container(self) -> bool {
-        matches!(self, Self::Directory)
+        matches!(
+            self,
+            Self::Directory | Self::Table | Self::Namespace | Self::Catalog
+        )
     }
 
     /// Return whether this kind holds bytes of its own.

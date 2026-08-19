@@ -15,7 +15,7 @@ use yggdryl::io::{Buffer, IOBase};
 let mut handle = Holder::buffer(Buffer::new());
 handle.write_all_bytes(b"AAPL,1\n")?;
 
-assert_eq!(handle.read_all()?, b"AAPL,1\n");
+assert_eq!(handle.read_all_bytes()?, b"AAPL,1\n");
 assert_eq!(handle.kind(), yggdryl::IOKind::Memory);
 ```
 
@@ -75,7 +75,7 @@ handle.write_all_bytes(b"symbol,price\nAAPL,1\nAAPL,2\n")?;
 handle.flush()?;
 
 // The coded handle reads plain bytes; the handle underneath holds the frame.
-assert_eq!(handle.read_all()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
+assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
 assert_ne!(handle.handle().as_slice(), b"symbol,price\nAAPL,1\nAAPL,2\n");
 ```
 

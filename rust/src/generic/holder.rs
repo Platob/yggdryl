@@ -216,6 +216,14 @@ impl IOBase for Holder {
     fn kind(&self) -> crate::IOKind {
         self.as_io().kind()
     }
+
+    fn is_atomic(&self) -> bool {
+        self.as_io().is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.as_io().is_tabular()
+    }
 }
 
 impl From<Buffer> for Holder {

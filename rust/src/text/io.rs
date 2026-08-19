@@ -142,7 +142,7 @@ pub fn load(source: &impl IOBase) -> Result<Value> {
 ///
 /// Returns a read, decoding, or parse failure.
 pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value> {
-    let bytes = source.read_all()?;
+    let bytes = source.read_all_bytes()?;
     let plan = Plan::detect(source, &bytes)?;
     let decoded = plan.codec().load(&bytes)?;
     crate::text::from_slice_with_limits(&decoded, plan.format(), limits)
@@ -163,7 +163,7 @@ pub fn load_all(source: &impl IOBase) -> Result<Vec<Value>> {
 ///
 /// Returns a read, decoding, or parse failure.
 pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Value>> {
-    let bytes = source.read_all()?;
+    let bytes = source.read_all_bytes()?;
     let plan = Plan::detect(source, &bytes)?;
     let decoded = plan.codec().load(&bytes)?;
     crate::text::from_slice_all_with_limits(&decoded, plan.format(), limits)

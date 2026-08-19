@@ -79,7 +79,7 @@ fn the_handle_reads_decoded_and_stores_encoded() {
     handle.write_all_bytes(PAYLOAD).unwrap();
     handle.flush().unwrap();
 
-    assert_eq!(handle.read_all().unwrap(), PAYLOAD);
+    assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
     assert_eq!(handle.size(), PAYLOAD.len() as u64);
     assert_eq!(load(handle.handle().as_slice()).unwrap(), PAYLOAD);
 
@@ -95,5 +95,5 @@ fn a_handle_level_reaches_the_encoder() {
 
     handle.write_all_bytes(PAYLOAD).unwrap();
     handle.flush().unwrap();
-    assert_eq!(handle.read_all().unwrap(), PAYLOAD);
+    assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
 }
