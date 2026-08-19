@@ -58,8 +58,8 @@ const WIDTH: usize = 2;
 impl Field {
     /// A readable, indented rendering of this field and everything under it.
     ///
-    /// The named spelling of `{:#}`; both run the one implementation. See the
-    /// [module docs](self) for the shape.
+    /// The named spelling of `{:#}`; both run the one implementation, and
+    /// [`Pretty`] documents the shape they produce.
     #[must_use]
     pub const fn pretty(&self) -> Pretty<'_> {
         Pretty::Field(self)
@@ -95,7 +95,7 @@ impl DataType {
     }
 }
 
-/// A [`Display`] adapter rendering a schema node readably.
+/// A [`std::fmt::Display`] adapter rendering a schema node readably.
 ///
 /// Built by [`Field::pretty`] and [`DataType::pretty`]; borrowing, so building
 /// one allocates nothing and the rendering happens on write.

@@ -380,8 +380,9 @@ pub(crate) fn appended(
 
 /// Chain two readers onto one declared root Field, casting both sides.
 ///
-/// [`appended`] promoted to public and made symmetric: this is what a caller
-/// reaches for when they already know the shape both sides must land in.
+/// The old private `appended` promoted to public and made symmetric: this is
+/// what a caller reaches for when they already know the shape both sides must
+/// land in.
 /// Neither side is drained to inspect it and nothing is collected - a batch is
 /// cast when it is pulled, and [`cast_reader`] short-circuits a side that is
 /// already the declared shape rather than rebuilding arrays it would hand back

@@ -159,6 +159,7 @@ mod read_lines_matching {
     }
 }
 
+#[cfg(feature = "arrow")]
 mod arrow_lines {
     //! The Arrow projection of matched line records: a text-line surface,
     //! never a fourth record method.

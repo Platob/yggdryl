@@ -69,6 +69,7 @@ pub use cast::{ArrowCast, ArrowFieldType};
 pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
 pub(crate) use diff::{data_types_equal, show_diff};
+pub use pretty::Pretty;
 pub use typed::{AnyType, FieldType, TypedField, TypedFieldRef};
 pub(crate) use value::validate_data_type_value_for;
 
@@ -2085,7 +2086,7 @@ impl Hash for Field {
 ///
 /// Item access on a [`Field`] or a [`DataType`] means one thing and only one
 /// thing: descend the schema. Metadata is reached through its own view -
-/// [`Field::metadata`] and [`Field::get_metadata`] - because a view whose keys
+/// [`Field::metadata_iter`] and [`Field::get_metadata`] - because a view whose keys
 /// *are* keys is where item syntax legitimately means "a key". Before this,
 /// `field["level"]` was a metadata lookup while `data_type["level"]` was a
 /// child, so a caller walking one object graph got two unrelated things from

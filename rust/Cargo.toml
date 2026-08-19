@@ -149,6 +149,7 @@ required-features = ["iceberg"]
 [[test]]
 name = "combined"
 path = "tests/combined.rs"
+required-features = ["arrow"]
 
 # A counting global allocator, and a program has exactly one - so the
 # hot-path allocation claims are pinned in a target of their own.
@@ -158,6 +159,16 @@ path = "tests/allocations.rs"
 
 [[test]]
 name = "batch_cast"
+required-features = ["arrow"]
+
+# The recursive cast walk and the landing-page example both materialize Arrow
+# values, so neither compiles in a schema-only build.
+[[test]]
+name = "cast_coverage"
+required-features = ["arrow"]
+
+[[test]]
+name = "docs_index"
 required-features = ["arrow"]
 
 [[test]]

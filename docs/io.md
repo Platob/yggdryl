@@ -1793,7 +1793,8 @@ the allocation - enough to tell two live buffers apart in a log, without pretend
 somewhere. The other implementations in the core are [local.md](local.md), the memory-mapped local
 tree, and [arrowfs.md](arrowfs.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
 one you wrote - behind the same trait. Anything else is a sibling module supplying the same three
-roles, never a change to this one.
+roles, never a change to this one. Two wrapping handles sit over any of them and are handles
+themselves: `Coded` below, and the page cache in [buffered.md](buffered.md).
 
 ## Coded
 
@@ -1829,6 +1830,28 @@ A content coding is not seekable, which forces two tradeoffs. The decoded value 
 and held until `close`, so positional reads and writes work at all over a compressed payload; and a
 write is published to the wrapped handle on `flush` or `close`, not on every `pwrite`. `into_handle`
 publishes and returns the wrapped handle. `Codec::Identity` makes the wrapper a pass-through.
+
+## Buffered
+
+!!! note "Rust only"
+    The Python and JavaScript packages do not expose the page cache.
+
+```rust
+use yggdryl::buffered::BufferedOptions;
+use yggdryl::io::{Buffer, IOBase};
+
+let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
+
+// The first read fetches the page holding the range; the second is memory.
+assert_eq!(handle.read_range(0, 8)?, [4_u8; 8]);
+assert_eq!(handle.read_range(2_000, 8)?, [4_u8; 8]);
+assert_eq!(handle.cached_pages(), 1);
+```
+
+`Buffered` is the other wrapping handle: it serves reads from fixed-size pages under a byte budget
+and a time to live, writes through, and pins the value's first and last pages so a footer-first
+container never re-reads either end. Everything else it mirrors. [buffered.md](buffered.md) is the
+page.
 
 ## Roles
 
@@ -1940,10 +1963,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `delegate_iobase!` expands to the forwarding bodies for every byte method - `pread`, `pwrite`, `size`,
 `capacity`, `reserve`, `truncate`, `url`, `media_type`, `set_media_type`, `flush`, `parent`,
-`child_by`, `ls`, `kind` - inside an `impl IOBase for` block. It deliberately does not forward `open`,
-`opened`, or `close`: a wrapper that caches something of its own writes those after the invocation,
-as the example does. [ipc.md](ipc.md), [parquet.md](parquet.md), and the compression handles are all
-built this way.
+`child_by`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
+deliberately does not forward `open`, `opened`, or `close`: a wrapper that caches something of its
+own writes those after the invocation, as the example does. [ipc.md](ipc.md),
+[parquet.md](parquet.md), and the compression handles are all built this way.
+
+It has two other spellings, for two other shapes:
+
+- `delegate_iobase!(handle, except_lifecycle)` is the same list **without** `clear` and `remove`, for
+  a wrapper that holds a cache: it writes that pair itself so the cache is invalidated as part of the
+  call rather than left to answer a later read with bytes that are gone. `Ipc`, `Parquet`, and the
+  [text handler](#text-records) are all this shape.
+- `delegate_iobase!(handle: pread, size, ...)` names the methods to mirror one by one, for a wrapper
+  that *changes* one of them - a method cannot be both expanded by the macro and written out
+  underneath it. [`Buffered`](buffered.md) is this shape: it owns the two positional primitives, the
+  resize that invalidates, the open/close pair, and the `clear`/`remove` pair, and mirrors the rest.
+  A method left out of the list falls back to the trait's own default, which for `clear` and `remove`
+  means truncating rather than reaching the resource - so leave them out only when writing them.
 
 ## Arrow batches
 

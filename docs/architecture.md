@@ -112,6 +112,7 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 | `uri` | [URI, URL, URN, and std path interop](uri.md) |
 | `text`, `json`, `yaml`, `toml` | [The shared value tree](text.md) and its codecs |
 | `text::line` | [`Text<H>`, the text-record handle](io.md#text-records): record splitting, the extractor options, and their Arrow projection - the one place lines are split |
+| `buffered` | [`Buffered<H>`, the page cache](buffered.md): fixed-size pages under a byte budget and a time to live, both ends pinned, write-through and invalidating |
 
 ## Feature boundaries
 

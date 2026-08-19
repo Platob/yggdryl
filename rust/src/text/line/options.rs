@@ -190,7 +190,7 @@ impl TextLineOptions {
     /// timestamp opens.
     ///
     /// No expression is written anywhere, and the schema gains the fixed
-    /// [`LOG_COLUMNS`] - `level`, `logger`, `thread` - always emitted and
+    /// The fixed log columns - `level`, `logger`, `thread` - always emitted and
     /// always nullable, so it still follows from the options alone.
     #[must_use]
     pub fn for_logs() -> Self {
@@ -706,7 +706,8 @@ impl TextLineOptions {
 
     /// Return whether records open where a timestamp opens.
     ///
-    /// Log mode adds the fixed [`LOG_COLUMNS`] to the schema, always nullable
+    /// Log mode adds the fixed `level`, `logger`, and `thread` columns to the
+    /// schema, always nullable
     /// and always emitted, so the emitted shape still follows from the options
     /// alone - never from what the first batch happened to contain.
     #[must_use]

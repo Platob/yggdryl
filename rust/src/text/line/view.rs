@@ -31,8 +31,8 @@ use super::options::TextLineOptions;
 
 /// One parsed record, borrowed from the reader's window.
 ///
-/// Built by the readers in [`super`]; see the [module docs](self) for what is
-/// borrowed and what is not.
+/// Built by the readers in [`super`], which document what is borrowed and what
+/// is not.
 #[derive(Debug)]
 pub struct TextLine<'window> {
     /// The record's bytes, terminator excluded.
