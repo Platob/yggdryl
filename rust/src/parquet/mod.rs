@@ -20,6 +20,32 @@
 //! which is what lets a downstream Iceberg or Delta layer resolve columns by
 //! id rather than by position.
 //!
+//! # Geospatial and variant columns
+//!
+//! A column whose Arrow field metadata declares the `geoarrow.wkb` extension
+//! writes Parquet's own `GEOMETRY` or `GEOGRAPHY` logical type over
+//! `BYTE_ARRAY` WKB - CRS and edge algorithm included - and one declaring
+//! `arrow.parquet.variant` writes its metadata/value storage struct with the
+//! `VARIANT` logical type attached. (GeoArrow is a community specification
+//! whose own documents say it is not finalized; the `geoarrow.wkb` spelling
+//! here is revisitable if it changes.) The writer then refuses min/max value
+//! bounds for geospatial columns - their sort order is undefined, so a bound
+//! would be a lie - and records the format's own geospatial statistics
+//! instead: bounding box and geometry types, computed from the WKB bytes by
+//! [`crate::generic::wkb`] and readable back through
+//! [`ColumnStatistics::geospatial`] or recomputable by
+//! [`read_geospatial_statistics`]. Geography columns record no bounding box:
+//! a planar fold of the vertices under-covers non-planar edges.
+//!
+//! Two named limits remain. Reading a *foreign* file whose columns carry
+//! `GEOMETRY`/`GEOGRAPHY`/`VARIANT` surfaces plain `Binary`/`Struct` Arrow
+//! types without extension metadata, because the pinned parquet crate only
+//! maps those logical types to Arrow extensions behind crate features that
+//! pull new dependencies; files written here round-trip their extension
+//! metadata through the embedded Arrow schema. And a variant *value* cannot
+//! cross an Arrow array boundary yet - the variant binary encoding lands with
+//! the Iceberg v3 layer - so variant columns are schema-level until it does.
+//!
 //! ```
 //! use yggdryl::io::{Buffer, IOBase};
 //! use yggdryl::parquet::Parquet;
@@ -51,6 +77,7 @@ use bytes::Bytes;
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::ProjectionMask;
 use parquet::arrow::arrow_reader::{ArrowReaderOptions, ParquetRecordBatchReaderBuilder};
+use parquet::arrow::arrow_writer::ArrowWriterOptions;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::metadata::ParquetMetaData;
 use parquet::file::properties::WriterProperties;
@@ -63,8 +90,10 @@ use crate::generic::IORecordOptions;
 use crate::io::IOBase;
 use crate::{Error as CoreError, Field};
 
+mod geospatial;
 mod metadata;
 
+pub use geospatial::{GeospatialStatistics, read_geospatial_statistics};
 pub use metadata::{ColumnStatistics, FileStatistics, RowGroupStatistics};
 
 /// The settings a Parquet read or write takes.
@@ -288,11 +317,16 @@ where
     let schema = batches.schema();
 
     let mut encoded = Vec::new();
-    let mut writer = ArrowWriter::try_new(
-        &mut encoded,
-        Arc::clone(&schema),
-        Some(options.to_properties()),
-    )?;
+    let mut writer_options = ArrowWriterOptions::new().with_properties(options.to_properties());
+    if let Some(descriptor) = geospatial::extension_schema(schema.as_ref())? {
+        // A geospatial or variant extension column: hand the writer a Parquet
+        // schema carrying the matching logical type, and make sure the WKB
+        // statistics factory is in place before the first geospatial page.
+        geospatial::install_wkb_statistics();
+        writer_options = writer_options.with_parquet_schema(descriptor);
+    }
+    let mut writer =
+        ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)?;
     for (index, batch) in batches.enumerate() {
         let batch = batch.map_err(from_reader_error)?;
         if batch.schema() != schema {
@@ -487,6 +521,21 @@ impl<H: IOBase> Parquet<H> {
             Some(metadata) => Ok(FileStatistics::from_metadata(metadata)),
             None => read_statistics(&self.handle),
         }
+    }
+
+    /// Compute one geospatial column's statistics by scanning its stored WKB.
+    ///
+    /// [`Self::read_statistics`] exposes what the footer recorded; this
+    /// decodes the named column and computes the same bounding-box-and-types
+    /// answer from the values, so it also serves files whose writer recorded
+    /// no geospatial statistics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read, when `column` does not
+    /// name a stored WKB binary column, or when a stored value is malformed.
+    pub fn read_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics> {
+        read_geospatial_statistics(&self.handle, column)
     }
 }
 
