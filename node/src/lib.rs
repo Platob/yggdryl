@@ -13,6 +13,7 @@ mod arrow;
 mod codec;
 pub mod codings;
 mod datatype;
+mod expression;
 mod field;
 mod generic;
 mod iceberg;
@@ -42,6 +43,7 @@ pub use codec::{
     yaml_loads_all_native, yaml_loads_native,
 };
 pub use datatype::JsDataType;
+pub use expression::{JsBound, JsExpression, JsStatement};
 pub use field::{JsField, JsProtocolMetadata, MetadataEntry};
 pub use generic::JsRecordOptions;
 pub use iceberg::{

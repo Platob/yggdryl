@@ -664,6 +664,52 @@ impl PyTable {
         batch_reader_to_pyarrow(py, reader)
     }
 
+    /// Read the rows matching one predicate as a `pyarrow.RecordBatchReader`.
+    ///
+    /// `filter` is an `Expression` or the text of one, which parses. It is the
+    /// whole expression language rather than equality pairs: ranges, null
+    /// tests, `in` lists, nested paths, and `&holder.*` questions about the
+    /// files themselves. Planning prunes with the metadata chain, and only the
+    /// conjuncts it could not settle are tested against the rows.
+    #[pyo3(signature = (filter, schema = None))]
+    fn scan_matching<'py>(
+        &self,
+        py: Python<'py>,
+        filter: &Bound<'_, PyAny>,
+        schema: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let filter = crate::expression::expression_from_value(filter)?;
+        let field = schema
+            .map(|schema| core_root_field_from_value(schema, SCHEMA_ROOT_NAME))
+            .transpose()?;
+        let reader = self
+            .inner
+            .scan_matching(filter, field.as_ref())
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Report what one predicate lets the scan leave alone.
+    ///
+    /// The mapping carries `tasks`, `files_skipped`, `manifests_read`,
+    /// `manifests_skipped`, and `record_count`, so "a filtered read touches
+    /// only the files the metadata says it must" is a number a caller checks.
+    fn plan_matching<'py>(
+        &self,
+        py: Python<'py>,
+        filter: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let filter = crate::expression::expression_from_value(filter)?;
+        let plan = self.inner.plan_matching(filter).map_err(value_error)?;
+        let answer = pyo3::types::PyDict::new(py);
+        answer.set_item("tasks", plan.tasks.len())?;
+        answer.set_item("files_skipped", plan.files_skipped())?;
+        answer.set_item("manifests_read", plan.manifests_read)?;
+        answer.set_item("manifests_skipped", plan.manifests_skipped())?;
+        answer.set_item("record_count", plan.record_count())?;
+        Ok(answer)
+    }
+
     /// Append `batches` as a new snapshot, keeping everything already stored.
     fn append(&mut self, batches: &Bound<'_, PyAny>) -> PyResult<()> {
         let batches = batch_reader_from_value(batches)?;

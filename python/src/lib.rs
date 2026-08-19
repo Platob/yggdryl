@@ -21,6 +21,7 @@ use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
 mod codec;
 mod codings;
 mod datatype;
+mod expression;
 mod field;
 mod iceberg;
 mod io;
@@ -102,6 +103,9 @@ impl PyDifferenceIterator {
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
     module.add_class::<PyField>()?;
+    module.add_class::<expression::PyExpression>()?;
+    module.add_class::<expression::PyBound>()?;
+    module.add_class::<expression::PyStatement>()?;
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;

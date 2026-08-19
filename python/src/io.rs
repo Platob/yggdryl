@@ -352,6 +352,30 @@ impl PyIOBase {
         PyTuple::new(py, self.inner.partitions())
     }
 
+    /// Iterate the entries beneath this one a predicate does not rule out.
+    ///
+    /// The predicate is asked of the holder, not of the rows: `&holder.name`,
+    /// `&holder.partition['year']`, `&holder.size`. A conjunct that reads a
+    /// row column cannot be answered by a listing, so it is dropped rather
+    /// than guessed at - this may keep a file the rows later discard and can
+    /// never discard one they would have kept.
+    ///
+    /// `filter` is an `Expression` or the text of one, which parses.
+    #[pyo3(signature = (filter, include_private = false))]
+    fn children_matching(
+        &self,
+        filter: &Bound<'_, PyAny>,
+        include_private: bool,
+    ) -> PyResult<Vec<Self>> {
+        let filter = crate::expression::expression_from_value(filter)?;
+        Ok(self
+            .inner
+            .children_matching(&filter, include_private)
+            .map_err(value_error)?
+            .map(Self::from_core)
+            .collect())
+    }
+
     /// Iterate the leaves beneath this one carrying every given partition.
     ///
     /// `filters` is a mapping or a sequence of pairs, so a partitioned write
