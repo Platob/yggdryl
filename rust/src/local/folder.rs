@@ -159,6 +159,46 @@ impl IOFolder for Folder {
         Self::collect(&self.url, recursive, include_private, &mut found)?;
         Ok(found)
     }
+
+    /// Remove the directory itself, which `remove_dir` refuses when populated.
+    ///
+    /// Issued unconditionally: `NotFound` is the no-op success and
+    /// `DirectoryNotEmpty` is what [`IOFolder::folder_remove`] turns into the
+    /// refusal naming the location. Nothing is listed or stat-ed first.
+    fn delete_folder(&mut self) -> Result<()> {
+        crate::io::skip_absent(std::fs::remove_dir(self.url.to_path()?))
+    }
+
+    /// Empty the directory in one call, keeping the directory itself.
+    ///
+    /// `remove_dir_all` then `create_dir` would change the inode; deleting the
+    /// entries keeps the directory the caller already holds. The listing is the
+    /// work rather than a probe - an absent directory lists nothing and the
+    /// call does nothing, which is the contract.
+    fn folder_clear(&mut self) -> Result<()> {
+        for mut child in self.list_folder(false, true)? {
+            child.remove(true)?;
+        }
+        Ok(())
+    }
+
+    /// Delete the whole tree in one call when `recursive` allows it.
+    ///
+    /// `remove_dir_all` is a single walk the platform performs, so a recursive
+    /// removal never issues one delete per entry from here.
+    fn folder_remove(&mut self, recursive: bool) -> Result<()> {
+        if recursive {
+            return crate::io::skip_absent(std::fs::remove_dir_all(self.url.to_path()?));
+        }
+        match self.delete_folder() {
+            Err(crate::Error::Io(error))
+                if error.kind() == std::io::ErrorKind::DirectoryNotEmpty =>
+            {
+                Err(crate::io::not_empty(&self.url))
+            }
+            other => other,
+        }
+    }
 }
 
 impl IOBase for Folder {
@@ -216,6 +256,14 @@ impl IOBase for Folder {
 
     fn kind(&self) -> crate::IOKind {
         self.folder_kind()
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.folder_clear()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.folder_remove(recursive)
     }
 
     fn is_atomic(&self) -> bool {

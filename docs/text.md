@@ -576,6 +576,78 @@ answers the same trait.
 Only JSON Lines and YAML hold more than one document. `is_multi_document` says which, and the
 bindings enforce it by simply not exposing an `_all` form on `toml`.
 
+## Laying out a dump
+
+`Formatting` is the one layout value all three formats share. It is deliberately not called `Format`
+- that name already belongs to the `Json`/`Yaml`/`Toml` enum, and a second type beside it would be
+genuinely confusing.
+
+`Indent` has three states, because "the format's own default" and "explicitly none" are different
+requests: `Default` is what every existing dump method uses, `None` is no layout at all, and
+`Spaces(n)` / `Tabs` name a width. What each means is the format's own business, stated on its page:
+[JSON](json.md#laying-out-a-dump), [YAML](yaml.md#laying-out-a-dump), [TOML](toml.md#laying-out-a-dump).
+
+Formatting changes **bytes, never meaning**. Parsing any formatting of the same value yields an equal
+value, in every format, and dumping the same value under the same formatting twice is byte-identical.
+A knob that quietly altered what round-trips would be worse than no knob at all.
+
+The level a redirected dump encodes at rides on the same value, so `dump` keeps *one* options
+companion - `dump_with` - rather than growing `dump_with_level_and_formatting`. Two orthogonal knobs
+today become three tomorrow; one options value absorbs that, a naming cross-product does not.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::Value;
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::{Format, Formatting, Indent, dump_with, load, to_vec_with_formatting};
+    use yggdryl::{Level, Url};
+
+    let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
+
+    // One value, three formats, each resolving the layout its own way.
+    assert_eq!(to_vec_with_formatting(&value, Format::Json, Formatting::indented(2))?,
+               b"{\n  \"id\": 1\n}");
+    assert_eq!(to_vec_with_formatting(&value, Format::Yaml, Formatting::compact())?,
+               b"{id: 1}\n");
+
+    // Layout and coding level ride on one options value, so `dump` keeps one
+    // companion rather than a name per knob combination.
+    let mut handle = Buffer::new().with_media_type(Url::from_str("file:///a.json.gz")?.media_type());
+    dump_with(
+        &mut handle,
+        &value,
+        Formatting::indented(2).with_level(Level::BEST),
+    )?;
+    assert_eq!(load(&handle)?, value);
+    assert_eq!(Formatting::default().indent(), Indent::Default);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    field = Field("id", "int64", nullable=False)
+
+    # `indent` is the Python spelling, matching `json.dumps`.
+    assert "\n" not in field.to_json()
+    assert field.to_json(indent=2).startswith('{\n  "name": "id",')
+    assert field.to_yaml().startswith("name: id\n")
+
+    # Bytes change, meaning does not.
+    for indent in (None, 2, 4):
+        assert Field.from_json(field.to_json(indent=indent)) == field
+        assert Field.from_yaml(field.to_yaml(indent=indent)) == field
+        assert Field.from_toml(field.to_toml(indent=indent)) == field
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The layout option lands in the JavaScript facades once the core surface settles.
+
+
 ## Inferring the format
 
 === "Rust"
@@ -843,6 +915,210 @@ The bindings have no handle type. `load` and `dump` take a path, a string, bytes
 directly, and derive the format from the path suffix or the content - which means they read and
 write plain text and leave content coding to the caller. `TextCodec::load` and `TextCodec::dump`
 are the per-format form of the same two functions, using that format instead of the handle's.
+
+## Jinja-style placeholders
+
+A configuration document wants to carry `{{ LOG_ROOT }}` and resolve it at load time. `Loading`
+carries that: the read-side options value, beside [`Formatting`](#laying-out-a-dump) on the write
+side. It is **not a template engine** - there are no loops, no conditionals, no includes, no
+expressions, no filter chains, and nothing that evaluates code, and none of those will be added.
+The whole grammar is three lines, and that is the point.
+
+| form | meaning |
+| ---- | ------- |
+| `{{ NAME }}` | resolve `NAME`; absent from every source is an **error** naming it |
+| `{{ NAME \| default(LITERAL) }}` | `NAME` is optional, falling back to `LITERAL` - a JSON scalar, so `default("logs")`, `default(8080)`, `default(1.5)`, `default(true)`, and `default(null)` each carry their own type |
+| `{{{{` | a literal `{{`; nothing else needs escaping, and a `}}` outside a placeholder is ordinary text |
+
+`default` is the only filter. A name starts with an ASCII letter or `_` and continues with letters,
+digits, `_`, `.`, or `-`. A missing variable is a typed error naming the variable, the document
+path it sits at, and its byte offset within the value - never a silent empty string, which is how a
+configuration quietly points at the wrong place.
+
+Two typing rules, and the asymmetry between them is deliberate:
+
+- a string scalar that is **exactly** one placeholder adopts the resolved value's own type, so with
+  `PORT = 8080`, `port: "{{ PORT }}"` is the integer `8080` - a quoted placeholder is not forced to
+  stay a string just because YAML made the caller quote it;
+- a placeholder **embedded** in a larger string substitutes textually and the result stays a
+  string: `path: "{{ ROOT }}/logs"`. An embedded value must therefore have a text form; a sequence,
+  a mapping, and `null` are refused rather than rendered as something plausible.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::text::{Format, Loading, Placeholders};
+    use yggdryl::Value;
+
+    let placeholders = Placeholders::new()
+        .with_variable("ROOT", Value::from("/var/log"))
+        .with_variable("PORT", Value::I64(8080));
+    let loading = Loading::new().with_placeholders(placeholders);
+
+    let document = r#"{"path": "{{ ROOT }}/app", "port": "{{ PORT }}", "tls": "{{ TLS | default(false) }}"}"#;
+    let value = yggdryl::text::from_str_with(document, Format::Json, &loading)?;
+
+    // Embedded: textual, and still a string.
+    assert_eq!(value.get_key_str("path").and_then(Value::as_str), Some("/var/log/app"));
+    // Whole-scalar: the resolved value's own type.
+    assert_eq!(value.get_key_str("port"), Some(&Value::I64(8080)));
+    // A default carries its own type too.
+    assert_eq!(value.get_key_str("tls"), Some(&Value::Bool(false)));
+
+    // A name nothing resolves is an error naming it, never an empty string.
+    let refused = yggdryl::text::from_str_with(r#"{"a": "{{ MISSING }}"}"#, Format::Json, &loading)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("MISSING"), "{refused}");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import json
+
+    variables = {"ROOT": "/var/log", "PORT": 8080}
+    document = (
+        '{"path": "{{ ROOT }}/app", "port": "{{ PORT }}",'
+        ' "tls": "{{ TLS | default(false) }}"}'
+    )
+    value = json.loads(document, placeholders=variables)
+
+    assert value["path"] == "/var/log/app"
+    assert value["port"] == 8080
+    assert value["tls"] is False
+
+    try:
+        json.loads('{"a": "{{ MISSING }}"}', placeholders={})
+    except ValueError as failure:
+        assert "MISSING" in str(failure)
+    else:
+        raise AssertionError("a missing variable must not resolve silently")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { json } = require('yggdryl')
+
+    const variables = { ROOT: '/var/log', PORT: 8080 }
+    const document =
+      '{"path": "{{ ROOT }}/app", "port": "{{ PORT }}", "tls": "{{ TLS | default(false) }}"}'
+    const value = json.loads(document, { placeholders: variables })
+
+    assert.equal(value.path, '/var/log/app')
+    assert.equal(value.port, 8080)
+    assert.equal(value.tls, false)
+
+    assert.throws(() => json.loads('{"a": "{{ MISSING }}"}', { placeholders: {} }), /MISSING/)
+    ```
+
+### Substitution happens after parsing
+
+Rendering the *text* first would destroy the byte positions every parse diagnostic carries - a
+failure would point into rendered text rather than into the file the author wrote - and a valid
+template could render a syntactically invalid document. Walking the parsed value instead keeps
+positions exact, still fails a malformed document exactly where it is malformed, and makes it
+impossible for a substitution to change the document's *shape*.
+
+It also fits the formats, because a placeholder has to sit inside a string anyway: JSON and TOML
+require typed values, and **in YAML a bare `{{ PORT }}` is not a scalar at all** but a flow mapping
+whose single key is another flow mapping. Quote it:
+
+```yaml
+port: "{{ PORT }}"   # a string scalar, so it resolves
+port: {{ PORT }}     # a flow mapping - YAML read it that way before anything here ran
+```
+
+That is the single most common way people get this wrong, and nothing here rewrites the document's
+shape to paper over it: unquoted, you get the mapping YAML says you asked for.
+
+If structural templating - keys, whole blocks, repeated sections - is ever wanted, it would be a
+separate, explicitly opt-in textual pass whose documentation says that positions then refer to
+rendered text. It does not exist.
+
+### The environment is a second switch
+
+Nothing in this library reads the process environment on its own. A document that resolves
+`{{ AWS_SECRET_ACCESS_KEY }}` into a value that is then dumped, logged, or written to a table has
+leaked it, so:
+
+- substitution is **off** unless a caller turns it on;
+- environment access is a **separate** switch on top of that, and with it off no `std::env` call
+  happens at all - not "reads and ignores";
+- a caller can always resolve entirely from a supplied mapping, which is what makes a parse
+  deterministic and testable.
+
+The supplied mapping wins over the environment, so a test overrides anything without touching the
+process it runs in.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::text::{Format, Loading, Placeholders};
+    use yggdryl::Value;
+
+    // Resolving from a mapping alone: no environment access whatsoever.
+    let supplied = Placeholders::new().with_variable("HOME_DIR", Value::from("/supplied"));
+    let sealed = Loading::new().with_placeholders(supplied);
+    let value = yggdryl::text::from_str_with(r#"{"h": "{{ HOME_DIR }}"}"#, Format::Json, &sealed)?;
+    assert_eq!(value.get_key_str("h").and_then(Value::as_str), Some("/supplied"));
+
+    // The environment, turned on explicitly, and still losing to the mapping.
+    let both = Placeholders::new()
+        .with_environment(true)
+        .with_variable("HOME_DIR", Value::from("/supplied"));
+    let loading = Loading::new().with_placeholders(both);
+    let value = yggdryl::text::from_str_with(r#"{"h": "{{ HOME_DIR }}"}"#, Format::Json, &loading)?;
+    assert_eq!(value.get_key_str("h").and_then(Value::as_str), Some("/supplied"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import json
+
+    document = '{"h": "{{ HOME_DIR }}"}'
+
+    # Resolving from a mapping alone: no environment access whatsoever.
+    assert json.loads(document, placeholders={"HOME_DIR": "/supplied"})["h"] == "/supplied"
+
+    # The environment, turned on explicitly, and still losing to the mapping.
+    value = json.loads(document, placeholders={"HOME_DIR": "/supplied"}, environment=True)
+    assert value["h"] == "/supplied"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { json } = require('yggdryl')
+
+    const document = '{"h": "{{ HOME_DIR }}"}'
+
+    // Resolving from a mapping alone: no environment access whatsoever.
+    assert.equal(json.loads(document, { placeholders: { HOME_DIR: '/supplied' } }).h, '/supplied')
+
+    // The environment, turned on explicitly, and still losing to the mapping.
+    const value = json.loads(document, {
+      placeholders: { HOME_DIR: '/supplied' },
+      environment: true,
+    })
+    assert.equal(value.h, '/supplied')
+    ```
+
+### What it costs, and what it does not
+
+Before any substitution work the raw bytes are scanned once for `{{`. A document without one is
+returned exactly as it parsed - no value walk, no allocation, no per-scalar inspection - so the
+overwhelming majority of documents, which have no placeholders, do not pay for the feature. When
+placeholders are present only string scalars are visited, and only the scalars that actually
+contain one are rebuilt; every other value is moved through untouched. The
+[benchmarks](benchmarks.md#placeholder-substitution) page prices all three cases.
+
+Dumping never re-introduces a placeholder. Substitution is a **load-time** transformation, so a
+round trip through load-then-dump yields the resolved document; templates do not survive a rewrite.
 
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 

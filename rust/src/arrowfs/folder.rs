@@ -146,6 +146,35 @@ impl IOFolder for Folder {
         });
         Ok(found)
     }
+
+    /// Delete the directory marker itself, leaving its entries alone.
+    ///
+    /// An Arrow filesystem addresses a directory as one more path, so the
+    /// vtable's own delete is what removes it and the backend's not-found
+    /// answer is the no-op success. An object store that keeps no marker
+    /// reports absence, which is the same success.
+    fn delete_folder(&mut self) -> Result<()> {
+        crate::io::skip_absent(
+            self.filesystem
+                .delete_file(&self.location)
+                .map_err(std::io::Error::other),
+        )
+    }
+
+    /// Refuse a non-recursive delete while entries remain.
+    ///
+    /// An Arrow filesystem's delete does not distinguish an empty prefix from a
+    /// populated one, so the emptiness answer cannot come from the store's own
+    /// failure here. The listing is one call and it is the *only* extra one -
+    /// the recursive path never makes it.
+    fn folder_remove(&mut self, recursive: bool) -> Result<()> {
+        if recursive {
+            self.folder_clear()?;
+        } else if !self.list_folder(false, true)?.is_empty() {
+            return Err(crate::io::not_empty(&self.url));
+        }
+        self.delete_folder()
+    }
 }
 
 impl IOBase for Folder {
@@ -225,6 +254,14 @@ impl IOBase for Folder {
 
     fn kind(&self) -> IOKind {
         self.folder_kind()
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.folder_clear()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.folder_remove(recursive)
     }
 
     fn is_atomic(&self) -> bool {

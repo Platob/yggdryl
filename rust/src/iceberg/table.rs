@@ -1712,6 +1712,8 @@ impl<H: IOBase> Table<H> {
 /// cannot answer is a mistake worth naming rather than a row set worth
 /// guessing.
 impl<H: IOBase> IOBase for Table<H> {
+    // `kind` is answered below: storage sees a folder, and this handle is
+    // the table that folder holds.
     crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
         truncate, url, media_type, set_media_type, flush, parent, child_by,
         ls);
@@ -1740,6 +1742,62 @@ impl<H: IOBase> IOBase for Table<H> {
     /// A table is never one whole byte value.
     fn is_atomic(&self) -> bool {
         false
+    }
+
+    /// Empty the table's *rows*, keeping the table.
+    ///
+    /// A table is a folder holding a metadata tree, so the two lifecycle
+    /// methods mean genuinely different things here and neither is inherited
+    /// silently from the folder route.
+    ///
+    /// Emptying a table cannot mean deleting files: the manifests would still
+    /// name them, which is exactly the partial teardown a complete operation
+    /// must not leave behind. So `clear` commits one snapshot that carries no
+    /// data files - the table still exists afterwards, with its schema, its
+    /// properties, and its whole history intact, and holding zero rows. That is
+    /// what "empty the contents, keep the resource" is for a table format.
+    ///
+    /// A table with no snapshot is already empty and commits nothing, which is
+    /// the same no-op success absence gets everywhere else on this pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns the commit's failure, including a
+    /// [`CommitConflict`](crate::Error) when concurrent writers exhaust the
+    /// retries - an overwrite never rebases.
+    fn clear(&mut self) -> Result<()> {
+        if self.current_snapshot().is_none() {
+            // Nothing has ever been written, so there is nothing to replace.
+            return Ok(());
+        }
+        let schema = crate::arrow::schema_from_field(self.schema()?)?;
+        self.overwrite(crate::arrow::batch_reader(schema, []))
+    }
+
+    /// Delete the table completely: metadata, manifests, and data files.
+    ///
+    /// Complete removal of a table is removal of its whole location, exactly as
+    /// for the folder it is - the metadata documents, the manifest lists, the
+    /// manifests, and the data files all go, with nothing orphaned behind. This
+    /// is deliberately *not* what [`Self::clear`] does: dropping a table is not
+    /// emptying it, and the two must not be reachable by accident from each
+    /// other.
+    ///
+    /// `recursive` behaves as it does on any container: without it, a table
+    /// root that still holds a `metadata/` tree is refused naming the location,
+    /// because a populated container is never silently recursed into.
+    ///
+    /// The in-memory [`Table`] value describes a table that no longer exists
+    /// once this returns, so it must not be committed to afterwards; reopen the
+    /// location instead. The handle itself stays usable and lazy, per the
+    /// contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure, or a refusal naming the
+    /// location when it still has children and `recursive` is not set.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.root.remove(recursive)
     }
 
     /// The encoding of this table's data files, from metadata alone.

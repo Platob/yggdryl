@@ -187,6 +187,12 @@ everything at or past the new size. `flush` delegates. `close` flushes and drops
 cache - pinned pages included, because closing releases cached state - and leaves a working
 handle behind that simply fetches again.
 
+`clear` and `remove` drop the whole cache too, and they drop it **before** delegating: a page
+that outlived either would answer a later read with bytes that are gone, and one that outlived a
+*failed* removal would describe a resource whose state is no longer known. That ordering is why
+they are written out rather than delegated by the macro - a body the macro provides cannot be
+overridden, and a cache wrapper has to invalidate as part of the call.
+
 ```rust
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::io::{Buffer, IOBase};

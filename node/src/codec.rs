@@ -217,16 +217,44 @@ fn exact_i128(value: &BigInt, name: &str) -> Result<i128> {
     Ok(value)
 }
 
+/// Assemble the read-side options from the boundary's two switches.
+///
+/// Substitution is on when the caller supplied variables *or* asked for the
+/// environment, and off - meaning no value walk and no environment access at
+/// all - when they did neither. The two are separate because a document that
+/// resolves `{{ AWS_SECRET_ACCESS_KEY }}` into a value that is then dumped has
+/// leaked it, so reaching the process environment is its own decision.
+fn loading_from(
+    limits: yggdryl::text::Limits,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: bool,
+) -> Result<yggdryl::text::Loading> {
+    let loading = yggdryl::text::Loading::new().with_limits(limits);
+    if placeholders.is_none() && !environment {
+        return Ok(loading);
+    }
+    let variables = match placeholders {
+        Some(mapping) => {
+            yggdryl::text::Placeholders::from_variables(&mapping.inner).map_err(napi_error)?
+        }
+        None => yggdryl::text::Placeholders::new(),
+    };
+    Ok(loading.with_placeholders(variables.with_environment(environment)))
+}
+
 /// Decode one JSON value without generic format parsing or dispatch.
 #[napi(js_name = "jsonLoadsNative", skip_typescript)]
 pub fn json_loads_native(
     input: Either<Buffer, String>,
     max_depth: Option<u32>,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: Option<bool>,
 ) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
+    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
     let value = match &input {
-        Either::A(bytes) => json::from_slice_with_limits(bytes.as_ref(), limits),
-        Either::B(value) => json::from_str_with_limits(value, limits),
+        Either::A(bytes) => text::from_slice_with(bytes.as_ref(), Format::Json, &loading),
+        Either::B(value) => text::from_str_with(value, Format::Json, &loading),
     }
     .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
@@ -237,11 +265,14 @@ pub fn json_loads_native(
 pub fn yaml_loads_native(
     input: Either<Buffer, String>,
     max_depth: Option<u32>,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: Option<bool>,
 ) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
+    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
     let value = match &input {
-        Either::A(bytes) => yaml::from_slice_with_limits(bytes.as_ref(), limits),
-        Either::B(value) => yaml::from_str_with_limits(value, limits),
+        Either::A(bytes) => text::from_slice_with(bytes.as_ref(), Format::Yaml, &loading),
+        Either::B(value) => text::from_str_with(value, Format::Yaml, &loading),
     }
     .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
@@ -252,11 +283,14 @@ pub fn yaml_loads_native(
 pub fn toml_loads_native(
     input: Either<Buffer, String>,
     max_depth: Option<u32>,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: Option<bool>,
 ) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
+    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
     let value = match &input {
-        Either::A(bytes) => toml::from_slice_with_limits(bytes.as_ref(), limits),
-        Either::B(value) => toml::from_str_with_limits(value, limits),
+        Either::A(bytes) => text::from_slice_with(bytes.as_ref(), Format::Toml, &loading),
+        Either::B(value) => text::from_str_with(value, Format::Toml, &loading),
     }
     .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
@@ -396,28 +430,58 @@ pub fn yaml_dump_all_native(
 
 /// Decode one JSON value from a path through the native reader boundary.
 #[napi(js_name = "jsonLoadPathNative", skip_typescript)]
-pub fn json_load_path_native(path: String, max_depth: Option<u32>) -> Result<serde_json::Value> {
+pub fn json_load_path_native(
+    path: String,
+    max_depth: Option<u32>,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: Option<bool>,
+) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
-    let value = json::from_reader_with_limits(open_path(&path, limits.max_input_bytes())?, limits)
-        .map_err(napi_error)?;
+    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    let value = text::from_reader_with(
+        open_path(&path, limits.max_input_bytes())?,
+        Format::Json,
+        &loading,
+    )
+    .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
 }
 
 /// Decode one YAML value from a path through the native reader boundary.
 #[napi(js_name = "yamlLoadPathNative", skip_typescript)]
-pub fn yaml_load_path_native(path: String, max_depth: Option<u32>) -> Result<serde_json::Value> {
+pub fn yaml_load_path_native(
+    path: String,
+    max_depth: Option<u32>,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: Option<bool>,
+) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
-    let value = yaml::from_reader_with_limits(open_path(&path, limits.max_input_bytes())?, limits)
-        .map_err(napi_error)?;
+    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    let value = text::from_reader_with(
+        open_path(&path, limits.max_input_bytes())?,
+        Format::Yaml,
+        &loading,
+    )
+    .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
 }
 
 /// Decode one TOML value from a path through the native reader boundary.
 #[napi(js_name = "tomlLoadPathNative", skip_typescript)]
-pub fn toml_load_path_native(path: String, max_depth: Option<u32>) -> Result<serde_json::Value> {
+pub fn toml_load_path_native(
+    path: String,
+    max_depth: Option<u32>,
+    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    environment: Option<bool>,
+) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
-    let value = toml::from_reader_with_limits(open_path(&path, limits.max_input_bytes())?, limits)
-        .map_err(napi_error)?;
+    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    let value = text::from_reader_with(
+        open_path(&path, limits.max_input_bytes())?,
+        Format::Toml,
+        &loading,
+    )
+    .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
 }
 

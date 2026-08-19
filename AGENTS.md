@@ -55,6 +55,16 @@ layer compiling annotations into native values.
   discovery lives, and the pin follows the current end. Wrapping is idempotent:
   `IOBase::buffered` is shadowed by inherent methods on `Buffered` and `Holder`,
   so a cache is never stacked on a cache. No cache crate, no background thread.
+- The text-record surface lives in `rust/src/text/line/` and nowhere else:
+  `Text<H>` is the wrapping handle (`into_text`, idempotent), `TextLine<'_>` a
+  borrowed view over the window with lazily cached text, hash, and captures,
+  and `TextLineOptions` the whole extractor - which is exactly what a JSON,
+  YAML, or TOML document parses into, so a reader is specifiable from
+  configuration alone. Regex is the only structuring mechanism; there is no
+  format-string parser and no user callback. Splitting records happens in one
+  place. It is a surface *beside* the three record methods, never a fourth
+  one, and it never introduces a tabular/dataset type or a second storage
+  trait.
 - One module per content coding - `rust/src/{gzip,zlib,zstd}/` - each with
   `load`/`dump`, `reader`/`writer`, and a transparent `IOBase` handle (`Gzip`,
   `Zlib`, `Zstd`). `Codec` in `enums/codec.rs` dispatches; never a fourth
@@ -124,6 +134,19 @@ layer compiling annotations into native values.
   (`iceberg::Table` through `IOBase::kind`, `Catalog::kind`,
   `Namespace::kind`), never guessed from a listing: storage sees three
   indistinguishable folders.
+- **`clear` empties, `remove(recursive)` deletes, and neither pre-calls.** A
+  leaf clears to zero bytes and still exists; a container clears to empty and
+  still exists; `remove` leaves nothing of the resource - a wrapping handle
+  removes what it *wraps*, plus the pending writes and caches it holds, so a
+  later flush cannot resurrect it. Absence is a no-op success on both, and it
+  is reached by issuing the delete and mapping the backend's own not-found
+  answer (`NotFound`, `NoSuchKey`, 404) to `Ok`: never by calling `kind`,
+  `size`, `ls`, or an exists check first, because on a remote backend every
+  probe is a round trip and a recursive delete becomes a flood of them. Only
+  not-found maps to success. A leaf ignores `recursive`; a non-empty container
+  without it is refused naming the location. The return is `Result<()>` - a
+  bool or a count would force exactly that probe. The one exception is a
+  generic `Path`, which routes on the `IOKind` it already resolves.
 - **A handle presents its value as bytes or as rows, and says which.**
   `is_atomic` is the byte surface (`read_all_bytes` whole in, `write_all_bytes`
   whole out); `is_tabular` is the record surface. Wherever bytes are held they
@@ -138,6 +161,13 @@ layer compiling annotations into native values.
 - `open` materializes and caches what repeated calls would re-derive (schema,
   footer); `close` publishes and releases. Bindings bind scope dunders to
   exactly these.
+- **A positional write stages; a whole-value write publishes.** `pwrite` is a
+  *piece* of a value, so a backend that buffers - an Arrow filesystem replaces
+  whole files, a memory-mapped file grows geometrically - holds it until
+  `flush` or `close`. `write_all_bytes`, `write_lines`, and `append_lines`
+  each *are* an operation, so they flush when they finish: otherwise a second
+  handle on the same location reads a pending value or the mapping's zero
+  padding as content.
 - **The record surface is exactly three methods**:
   `read_arrow_batch_reader(options)` -> `arrow::BatchReader`,
   `write_arrow_batch_reader(reader, options)` (replace or merge),
@@ -711,6 +741,16 @@ actual, where.
   comment-only stays YAML, complete nonempty TOML next, remainder YAML;
   JSON Lines is never content-inferred; `text::infer_format(&[u8])` only
   when the value is not needed.
+- `{{ }}` placeholders are a closed grammar - `{{ NAME }}`,
+  `{{ NAME | default(LITERAL) }}`, and `{{{{` for a literal brace - resolved
+  by walking the parsed `Value`, never by rendering text before the parse:
+  byte positions in diagnostics stay exact and a substitution can never
+  change a document's shape. It is not a template engine and no
+  template-engine dependency is taken; the docs say "Jinja-style", never
+  "Jinja". Substitution is opt-in, **environment access is a second opt-in on
+  top of it**, and with that switch off no `std::env` call is made at all - a
+  resolved secret that is then dumped or written to a table has leaked. A
+  document with no `{{` costs one linear scan and nothing else.
 - Benchmark slice parsing, reader streaming, vector and writer emission,
   enveloped values, wide mappings, deep structures; keep allocation
   baselines; report throughput rather than calling unmeasured code
@@ -744,7 +784,11 @@ actual, where.
   once; runtime adapters accumulate one ordered/hashed overlay (last write
   wins) and cross the mutation boundary once.
 - No per-record maps or schemas. Measure before claiming optimization; keep
-  Criterion out of production graphs.
+  Criterion out of production graphs. A claim that something does *not* scale
+  with N is **counted**, not asserted: `rust/tests/allocations.rs` holds a
+  pass-through counting global allocator and compares the same work at two
+  corpus sizes, because a timing hides a per-record allocation inside I/O and
+  a comment is not evidence at all.
 - Defaults are `DataType::default_value`/`Field::default_value`: a datatype
   prefers a present zero/empty value (`Null` and transparent null-only
   wrappers excepted); a nullable Field prefers logical null including
@@ -901,8 +945,17 @@ Both extensions:
   selector: exact integer-likes and base-10 integer strings, reject bools
   and floats, no re-implemented width rules.
 - Idiomatic `__str__`, `__repr__`, rich comparison, `__hash__`, pickle,
-  JSON. `DataType` acts as a read-only child collection; `Field` metadata
-  uses mapping dunders plus `get`, `keys`, `values`, `items`, `update`.
+  JSON. **Item access on a `Field` or a `DataType` reaches a nested child and
+  nothing else** - `str` by name, `int` by position, with `len`/`iter`/`in`
+  speaking children on both, one shared semantic so a schema walk never gets a
+  child from one node and a metadata string from the next. `DataType` stays a
+  *read-only* child collection (it is hashable); child mutation lives on
+  `Field` through cache-aware `set_field`/`set_field_by_name`/`remove_field*`,
+  never an `IndexMut` or a handed-out `&mut` child, and assignment is
+  dict-like by name (unknown appends) and list-like by position (replaces
+  only). `Field` metadata is a live mapping *view* - `field.metadata` with
+  mapping dunders plus `get`, `keys`, `values`, `items`, `update`, `clear` -
+  because a view whose keys are keys is where item syntax means a key.
 - Conversion work stays in Rust over the C Data Interface; no duplicated
   parsing, validation, comparison, hashing.
 - Arrow scalars: exactly `DataType.arrow_scalar(value, *, safe=True)` and

@@ -53,6 +53,12 @@ Handles are lazy by contract. Constructing one touches nothing; a read of someth
 zero bytes; a write creates the resource and any parent it needs. That rule is why a location can be
 described, passed around, and inspected before anything is there.
 
+Lifecycle is stated rather than implied. `clear` empties, `remove` deletes, and each reaches the
+backend once - absence is a completed removal, not something to check for first, so neither ever
+issues a probe. A `remove` is the *complete* removal: pending writes and caches go with it.
+`open`/`close` bracket the only window in which a handle may cache, so a *complete* write publishes
+when it finishes and only a positional one stages.
+
 ## A role implements the boilerplate
 
 Every storage backend has the same three roles, and the role traits pre-implement what follows from
@@ -121,6 +127,8 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 | `ipc`, `parquet`, `iceberg` | [Batches and tables on disk](ipc.md) |
 | `uri` | [URI, URL, URN, and std path interop](uri.md) |
 | `text`, `json`, `yaml`, `toml` | [The shared value tree](text.md) and its codecs |
+| `text::line` | [`Text<H>`, the text-record handle](io.md#text-records): record splitting, the extractor options, and their Arrow projection - the one place lines are split |
+| `buffered` | [`Buffered<H>`, the page cache](buffered.md): fixed-size pages under a byte budget and a time to live, both ends pinned, write-through and invalidating |
 
 ## Feature boundaries
 

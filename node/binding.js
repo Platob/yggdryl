@@ -526,7 +526,28 @@ function checkedOptions(options) {
   if (options.format !== undefined && typeof options.format !== 'string') {
     throw new TypeError('codec format must be a string')
   }
+  if (
+    options.placeholders !== undefined &&
+    options.placeholders !== null &&
+    (typeof options.placeholders !== 'object' || Array.isArray(options.placeholders))
+  ) {
+    throw new TypeError('placeholders must be a mapping of variable names to values')
+  }
+  if (options.environment !== undefined && typeof options.environment !== 'boolean') {
+    throw new TypeError('environment must be a boolean')
+  }
   return options
+}
+
+// The two `{{ }}` switches, crossing as one native `Value` and one boolean.
+// Both stay `undefined` unless the caller set them, so a plain load is exactly
+// the plain load: no substitution pass, and no environment access at all.
+function fillingArguments(options) {
+  const { placeholders, environment } = options
+  return [
+    placeholders === undefined || placeholders === null ? null : Value.fromJs(placeholders),
+    environment === undefined ? null : environment,
+  ]
 }
 
 function toNativeContent(content) {
@@ -822,7 +843,11 @@ function nativeFormat(format) {
 function nativeLoads(content, format, options) {
   options = checkedOptions(options)
   return fromTransport(
-    nativeFormat(format).loads(toNativeContent(content), options.maxDepth),
+    nativeFormat(format).loads(
+      toNativeContent(content),
+      options.maxDepth,
+      ...fillingArguments(options),
+    ),
   )
 }
 
@@ -844,7 +869,9 @@ function nativeLoadsAll(content, format, options) {
 
 function nativeLoadPath(path, format, options) {
   options = checkedOptions(options)
-  return fromTransport(nativeFormat(format).loadPath(path, options.maxDepth))
+  return fromTransport(
+    nativeFormat(format).loadPath(path, options.maxDepth, ...fillingArguments(options)),
+  )
 }
 
 function nativeLoadAllPath(path, format, options) {
@@ -1883,12 +1910,34 @@ if (binding.LineIterator) {
   })
 }
 
-// The Arrow projection of matched line records. The native halves take the
-// constant columns and the capture declarations as parallel name and value
-// vectors; this coercion is where a plain object, a Map, or an iterable of
-// pairs becomes those, with each constant crossing through the one
-// JavaScript-to-core conversion and each declared type crossing as a native
-// `DataType` or a type-expression string.
+// The text-line surface. The whole extractor crosses as one native `Value` -
+// the same shape a YAML or TOML document parses into - so JavaScript and a
+// configuration file configure the identical reader, and the core validates
+// both through one conversion. This block is only the coercion: camelCase
+// spellings become the document's names, a `DataType` becomes its canonical
+// expression, and each constant crosses through the one JavaScript-to-core
+// conversion.
+const LINE_OPTION_NAMES = new Map([
+  ['pattern', 'pattern'],
+  ['opening', 'opening'],
+  ['header', 'header'],
+  ['linesep', 'linesep'],
+  ['lineSep', 'linesep'],
+  ['lstrip', 'lstrip'],
+  ['rstrip', 'rstrip'],
+  ['byteSize', 'byte_size'],
+  ['byte_size', 'byte_size'],
+  ['batchSize', 'batch_size'],
+  ['batch_size', 'batch_size'],
+  ['timestampCapture', 'timestamp_capture'],
+  ['timestamp_capture', 'timestamp_capture'],
+  ['timezone', 'timezone'],
+  ['captureTypes', 'capture_types'],
+  ['capture_types', 'capture_types'],
+  ['customFields', 'custom_fields'],
+  ['custom_fields', 'custom_fields'],
+])
+
 function lineColumnEntries(kind, source) {
   if (source === undefined || source === null) {
     return []
@@ -1903,48 +1952,133 @@ function lineColumnEntries(kind, source) {
   return Symbol.iterator in source ? [...source] : Object.entries(source)
 }
 
-function lineColumnArguments(options) {
-  const { customFields, captureTypes } = options ?? {}
-  const customNames = []
-  const customValues = []
-  for (const [name, value] of lineColumnEntries('customFields', customFields)) {
-    customNames.push(name)
-    customValues.push(Value.fromJs(value))
+// A declared type crosses as the canonical expression `DataType.fromString`
+// reads back, so a native `DataType` and the string spelling of one are the
+// same declaration.
+function lineCaptureTypes(source) {
+  const declared = {}
+  for (const [name, type] of lineColumnEntries('captureTypes', source)) {
+    declared[name] = typeof type === 'string' ? type : String(type)
   }
-  const captureNames = []
-  const captureTypeInputs = []
-  for (const [name, type] of lineColumnEntries('captureTypes', captureTypes)) {
-    captureNames.push(name)
-    captureTypeInputs.push(type)
-  }
-  return { customNames, customValues, captureNames, captureTypeInputs }
+  return declared
 }
 
-{
-  const nativeReadArrowLines = IOBase.prototype._readArrowLinesNative
-  delete IOBase.prototype._readArrowLinesNative
-  Object.defineProperty(IOBase.prototype, 'readArrowLines', {
-    configurable: true,
-    value: function readArrowLines(pattern, options) {
-      const { batchSize, timestampCapture } = options ?? {}
-      if (
-        batchSize !== undefined &&
-        batchSize !== null &&
-        (!Number.isInteger(batchSize) || batchSize <= 0)
-      ) {
-        throw new TypeError(`batchSize must be a positive integer, got ${batchSize}`)
+function lineCustomFields(source) {
+  const constants = {}
+  for (const [name, value] of lineColumnEntries('customFields', source)) {
+    constants[name] = value
+  }
+  return constants
+}
+
+// `logs: true` is the timestamp opening spelled for the common case; a
+// pattern is the third opening. Whichever the caller names wins over the
+// default, and naming two is the core's error to report, not this loader's.
+function lineOptionsValue(options, pattern) {
+  const document = {}
+  const source = options ?? {}
+  if (typeof source !== 'object') {
+    throw new TypeError('line options must be an object')
+  }
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined || value === null) {
+      continue
+    }
+    if (key === 'logs') {
+      if (value) {
+        document.opening = 'timestamp'
       }
-      const parts = lineColumnArguments(options)
-      return nativeReadArrowLines.call(
-        this,
-        pattern,
-        batchSize ?? null,
-        parts.customNames,
-        parts.customValues,
-        parts.captureNames,
-        parts.captureTypeInputs,
-        timestampCapture ?? null,
+      continue
+    }
+    const name = LINE_OPTION_NAMES.get(key)
+    if (name === undefined) {
+      throw new TypeError(
+        `unknown line option ${JSON.stringify(key)}; expected one of ` +
+          `${[...new Set(LINE_OPTION_NAMES.values())].join(', ')}, or logs`,
       )
+    }
+    if (name === 'capture_types') {
+      document.capture_types = lineCaptureTypes(value)
+    } else if (name === 'custom_fields') {
+      document.custom_fields = lineCustomFields(value)
+    } else {
+      document[name] = value
+    }
+  }
+  if (pattern !== undefined && pattern !== null) {
+    document.pattern = pattern
+  }
+  if (
+    document.batch_size !== undefined &&
+    (!Number.isInteger(document.batch_size) || document.batch_size <= 0)
+  ) {
+    throw new TypeError(`batchSize must be a positive integer, got ${document.batch_size}`)
+  }
+  if (
+    document.byte_size !== undefined &&
+    (!Number.isInteger(document.byte_size) || document.byte_size <= 0)
+  ) {
+    throw new TypeError(`byteSize must be a positive integer, got ${document.byte_size}`)
+  }
+  return Object.keys(document).length === 0 ? null : Value.fromJs(document)
+}
+
+// The first argument is the pattern the common case names positionally, or
+// the options object when there is no pattern to name.
+function lineArguments(patternOrOptions, options) {
+  if (typeof patternOrOptions === 'string') {
+    return lineOptionsValue(options, patternOrOptions)
+  }
+  if (patternOrOptions !== undefined && patternOrOptions !== null && options !== undefined) {
+    throw new TypeError('pass the options once: as the first argument or the second, not both')
+  }
+  return lineOptionsValue(patternOrOptions ?? options, null)
+}
+
+// Records stream: the iterable is pulled one record at a time, so neither
+// side of the boundary ever holds the whole write.
+function linePuller(lines, kind) {
+  if (lines === undefined || lines === null) {
+    throw new TypeError(`${kind} needs an iterable of records`)
+  }
+  if (typeof lines === 'string') {
+    // A string is iterable and would silently become one record per character.
+    throw new TypeError(`${kind} takes an iterable of records, not one string`)
+  }
+  const iterator = lines[Symbol.iterator]?.()
+  if (iterator === undefined) {
+    throw new TypeError(`${kind} needs an iterable of records`)
+  }
+  return function pull() {
+    const step = iterator.next()
+    return step.done ? null : step.value
+  }
+}
+
+for (const [name, nativeName] of [
+  ['readLines', '_readLinesNative'],
+  ['readArrowLines', '_readArrowLinesNative'],
+]) {
+  const native = IOBase.prototype[nativeName]
+  delete IOBase.prototype[nativeName]
+  Object.defineProperty(IOBase.prototype, name, {
+    configurable: true,
+    value: function readText(patternOrOptions, options) {
+      return native.call(this, lineArguments(patternOrOptions, options))
+    },
+  })
+}
+
+for (const [name, nativeName] of [
+  ['writeLines', '_writeLinesNative'],
+  ['appendLines', '_appendLinesNative'],
+]) {
+  const native = IOBase.prototype[nativeName]
+  delete IOBase.prototype[nativeName]
+  Object.defineProperty(IOBase.prototype, name, {
+    configurable: true,
+    value: function writeText(lines, options) {
+      return native.call(this, linePuller(lines, name), lineOptionsValue(options, null))
     },
   })
 }
@@ -1954,15 +2088,8 @@ function lineColumnArguments(options) {
 {
   const nativeSchemaFromPattern = binding._schemaFromPatternNative
   delete binding._schemaFromPatternNative
-  binding.schemaFromPattern = function schemaFromPattern(pattern, options) {
-    const parts = lineColumnArguments(options)
-    return nativeSchemaFromPattern(
-      pattern,
-      parts.customNames,
-      parts.customValues,
-      parts.captureNames,
-      parts.captureTypeInputs,
-    )
+  binding.schemaFromPattern = function schemaFromPattern(patternOrOptions, options) {
+    return nativeSchemaFromPattern(lineArguments(patternOrOptions, options))
   }
 }
 

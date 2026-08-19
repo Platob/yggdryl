@@ -327,28 +327,42 @@ def loads(
     cls: type[_T] | None = None,
     safe: bool = True,
     errors: ErrorPolicy = "raise",
+    placeholders: Mapping[str, Any] | None = None,
+    environment: bool = False,
 ) -> _T | Any:
     _check_decode_options(cls, safe, errors)
-    decoded = _decode_source(source, format)
+    decoded = _decode_source(
+        source, format, placeholders=placeholders, environment=environment
+    )
     return _materialize_decoded(decoded, cls, safe=safe, errors=errors)
 
 
-def _decode_source(source: Source, format: str) -> Any:
+def _decode_source(
+    source: Source,
+    format: str,
+    *,
+    placeholders: Mapping[str, Any] | None = None,
+    environment: bool = False,
+) -> Any:
+    # Both switches travel to the core untouched: `placeholders=None` with
+    # `environment=False` is the plain parse, and nothing here decides for the
+    # caller which of the two they meant.
+    filling = (placeholders, environment)
     if isinstance(source, (bytes, bytearray, memoryview)):
-        return _native._codec_decode(source, format)
+        return _native._codec_decode(source, format, *filling)
     if isinstance(source, os.PathLike):
         with open(source, "rb") as stream:
-            return _native._codec_decode_reader(stream, format)
+            return _native._codec_decode_reader(stream, format, *filling)
     if isinstance(source, str):
         if _is_file(source):
             with open(source, "rb") as stream:
-                return _native._codec_decode_reader(stream, format)
-        return _native._codec_decode_text(source, format)
+                return _native._codec_decode_reader(stream, format, *filling)
+        return _native._codec_decode_text(source, format, *filling)
     if getattr(source, "read", None) is None:
         raise TypeError(
             "source must be bytes-like, str, PathLike, or a readable file object"
         )
-    return _native._codec_decode_reader(source, format)
+    return _native._codec_decode_reader(source, format, *filling)
 
 
 def dumps_all(

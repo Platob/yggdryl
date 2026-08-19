@@ -432,6 +432,109 @@ be sent to another thread.
 reader reports before yielding anything, so a generator is encoded as it produces rather than
 materialized first.
 
+## Combining two readers
+
+`combined` chains two readers onto the root their two schemas merge into - the case where the schemas
+differ and no target is known in advance. `combined_as` is the same chaining onto a root the caller
+already holds. Both are **fully lazy**: a reader answers its schema without pulling a batch, so the
+merge costs no rows, neither side is drained to inspect it, and nothing is collected.
+
+The merge rules are the contract, not an accident:
+
+- **Columns unite by name**, ASCII case-insensitively, the way column names already resolve wherever
+  a cast or a selection matches them. Left's columns keep left's order; columns only in right are
+  appended after, in right's order.
+- **A column in both must reconcile to one datatype**, and differing datatypes are **refused**,
+  naming both sides. Refusing is the honest default: a silent widening is how a decimal quietly
+  becomes a float.
+- **A column present in only one side becomes nullable**, necessarily - the other side's rows have no
+  value for it and the cast fills null. This holds even when the column is non-nullable on its own
+  side, so a caller expecting their non-null declaration to survive a merge reads it here rather than
+  discovering it.
+- **Metadata and field ids: left's are kept**, and a conflicting `PARQUET:field_id` is refused rather
+  than silently reassigned - Iceberg cares about field identity, and a reassigned id corrupts a
+  table's schema evolution.
+- **The root name is left's**, and the merged root is a bounded, non-nullable Struct. Because the
+  merge never widens a datatype, every column stays exactly what one of the two sides declared, so a
+  merged reader is appendable to an Iceberg table wherever both inputs were.
+
+Every cast goes through the one definition - `arrow::cast_reader` - which short-circuits a side that
+is already the declared shape rather than rebuilding arrays it would hand back unchanged.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::DataType;
+
+    let left_root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+        .required_field("row");
+    let right_root = DataType::from_fields([
+        DataType::Int64.nullable_field("id"),
+        DataType::Utf8.nullable_field("venue"),
+    ])?
+    .required_field("row");
+
+    let left_schema = yggdryl::arrow::schema_from_field(&left_root)?;
+    let right_schema = yggdryl::arrow::schema_from_field(&right_root)?;
+    let left = yggdryl::arrow::batch_reader(
+        Arc::clone(&left_schema),
+        [RecordBatch::try_new(left_schema, vec![Arc::new(Int64Array::from(vec![1_i64]))])?],
+    );
+    let right = yggdryl::arrow::batch_reader(
+        Arc::clone(&right_schema),
+        [RecordBatch::try_new(
+            right_schema,
+            vec![
+                Arc::new(Int64Array::from(vec![2_i64])),
+                Arc::new(StringArray::from(vec!["XPAR"])),
+            ],
+        )?],
+    );
+
+    let joined = yggdryl::arrow::combined(left, right)?;
+    assert_eq!(joined.schema().fields().len(), 2);
+    // The left's rows carry no `venue`, so they read null for it.
+    let batches: Vec<_> = joined.collect::<Result<_, _>>()?;
+    assert!(batches[0].column(1).is_null(0));
+    assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import combined
+
+    left = pa.table({"id": [1]})
+    right = pa.table({"id": [2], "venue": ["XPAR"]})
+
+    joined = combined(left, right).read_all()
+    assert joined.column_names == ["id", "venue"]
+    assert joined.num_rows == 2
+    # The left's row has no `venue`, so it reads null.
+    assert joined.column("venue").to_pylist() == [None, "XPAR"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { BatchReader, DataType, Field } = require('yggdryl')
+    const { tableFromArrays, tableToIPC } = require('apache-arrow')
+
+    const left = BatchReader.from(tableFromArrays({ id: BigInt64Array.from([1n]) }))
+    const right = BatchReader.from(tableFromArrays({ id: BigInt64Array.from([2n]) }))
+
+    const joined = left.combined(right)
+    assert.equal(joined.field.dataType.length, 1)
+    assert.equal(joined.toTable().numRows, 2)
+    ```
+
+
 ## Materialization budgets
 
 ```rust

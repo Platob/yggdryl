@@ -922,17 +922,17 @@ let mut media = Parquet::new(handle);
 assert_eq!(media.read_range(0, 4)?, *b"PAR1");
 
 // open caches the footer, close releases it.
-assert!(!media.is_open());
+assert!(!media.opened());
 media.open()?;
-assert!(media.is_open());
+assert!(media.opened());
 assert_eq!(media.read_statistics()?.num_rows, 2);
 media.close()?;
-assert!(!media.is_open());
+assert!(!media.opened());
 ```
 
 `Parquet<H>` is itself an [`IOBase`](io.md) over the handle it owns, so the encoded file is reachable
 without unwrapping anything - to copy it, upload it, or hand it to another reader. It forwards every
-byte method to the handle and keeps `open`, `is_open`, and `close` for itself: `open` parses the
+byte method to the handle and keeps `open`, `opened`, and `close` for itself: `open` parses the
 footer once and caches it, so repeated statistics reads do not re-parse it, `close` drops it, and any
 write invalidates it.
 

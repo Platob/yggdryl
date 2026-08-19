@@ -6,8 +6,12 @@ use std::io::{Read, Write};
 mod codec;
 mod display;
 mod format;
+mod formatting;
 mod io;
 mod limits;
+pub mod line;
+mod loading;
+mod placeholder;
 pub(crate) mod position;
 pub(crate) mod wire;
 
@@ -16,13 +20,21 @@ pub use crate::generic::value::{Children, Float, Float32, Value};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 #[cfg(feature = "arrow")]
 pub(crate) use display::ERROR_TEXT_LIMIT;
-pub use display::stable_hash_bytes;
 pub(crate) use display::{elide_display, elide_to, expected_got, stable_hash_display};
+pub use display::{stable_hash_bytes, stable_hash_chunks};
 pub use format::Format;
+pub use formatting::{Formatting, Indent};
 pub use io::{
-    Plan, dump, dump_all, dump_with_level, load, load_all, load_all_with_limits, load_with_limits,
+    Plan, dump, dump_all, dump_all_with, dump_with, dump_with_level, load, load_all,
+    load_all_with_limits, load_with, load_with_limits,
 };
 pub use limits::Limits;
+pub use line::{
+    LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines,
+    schema_from_pattern,
+};
+pub use loading::Loading;
+pub use placeholder::Placeholders;
 
 use crate::{Error, Result, json, toml, yaml};
 
@@ -55,6 +67,23 @@ impl Iterator for ValueIter<'_> {
     }
 }
 
+/// Apply `loading`'s placeholders to a freshly parsed value, if any apply.
+///
+/// The cheap guard lives here: substitution is off unless a caller turned it
+/// on, and even then a document whose bytes contain no `{{` is returned
+/// untouched - no walk, no allocation, no per-scalar inspection. The
+/// overwhelming majority of documents have no placeholders and must not pay for
+/// the feature.
+fn filled(value: Value, input: &[u8], loading: &Loading) -> Result<Value> {
+    let Some(placeholders) = loading.placeholders() else {
+        return Ok(value);
+    };
+    if !placeholder::present(input) {
+        return Ok(value);
+    }
+    placeholder::substitute(value, placeholders)
+}
+
 /// Decode one value from borrowed UTF-8 text using the selected format.
 ///
 /// This delegates through the string's borrowed bytes without an intermediate
@@ -76,6 +105,22 @@ pub fn from_str_with_limits(input: &str, format: Format, limits: Limits) -> Resu
     }
 }
 
+/// Decode one value from borrowed UTF-8 text under [`Loading`].
+///
+/// The parse itself is unchanged - `loading`'s limits are the same limits - so
+/// a malformed document still fails exactly where it is malformed, with exact
+/// byte positions. `{{ }}` placeholders, when [`Loading::with_placeholders`]
+/// turned them on, are resolved *after* that, by walking the parsed value.
+///
+/// # Errors
+///
+/// Returns the codec's parse failure, or the substitution's refusal - an
+/// unresolved variable, a malformed placeholder - naming where it sits.
+pub fn from_str_with(input: &str, format: Format, loading: &Loading) -> Result<Value> {
+    let value = from_str_with_limits(input, format, loading.limits())?;
+    filled(value, input.as_bytes(), loading)
+}
+
 /// Decode one value using the selected format.
 pub fn from_slice(input: &[u8], format: Format) -> Result<Value> {
     from_slice_with_limits(input, format, Limits::default())
@@ -91,6 +136,16 @@ pub fn from_slice_with_limits(input: &[u8], format: Format, limits: Limits) -> R
         Format::Yaml => yaml::from_slice_with_limits(input, limits),
         Format::Toml => toml::from_slice_with_limits(input, limits),
     }
+}
+
+/// Decode one value from bytes under [`Loading`], as [`from_str_with`] does.
+///
+/// # Errors
+///
+/// Returns the codec's parse failure, or the substitution's refusal.
+pub fn from_slice_with(input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
+    let value = from_slice_with_limits(input, format, loading.limits())?;
+    filled(value, input, loading)
 }
 
 /// Decode one value from a byte reader using the selected format.
@@ -112,6 +167,31 @@ pub fn from_reader_with_limits<R: Read>(
         Format::Yaml => yaml::from_reader_with_limits(reader, limits),
         Format::Toml => toml::from_reader_with_limits(reader, limits),
     }
+}
+
+/// Decode one value from a byte reader under [`Loading`].
+///
+/// With placeholders off this is [`from_reader_with_limits`] exactly, reader
+/// and all. With them on the reader is drained into memory first - bounded by
+/// [`Limits::max_input_bytes`] - because the cheap `{{` guard needs the bytes,
+/// and a document small enough to want substitution is small enough to hold.
+///
+/// # Errors
+///
+/// Returns the read failure, the codec's parse failure, or the substitution's
+/// refusal.
+pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -> Result<Value> {
+    let Some(_) = loading.placeholders() else {
+        return from_reader_with_limits(reader, format, loading.limits());
+    };
+    let mut bytes = Vec::new();
+    let limit = loading.limits().max_input_bytes();
+    // One past the limit, so exceeding it is the codec's own refusal rather
+    // than a silent truncation here.
+    reader
+        .take(limit.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)?;
+    from_slice_with(&bytes, format, loading)
 }
 
 /// Decode all values or documents in an in-memory byte stream.
@@ -191,17 +271,35 @@ pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
 
 /// Encode one value to a new byte vector.
 pub fn to_vec(value: &Value, format: Format) -> Result<Vec<u8>> {
+    to_vec_with_formatting(value, format, Formatting::default())
+}
+
+/// Encode one value to a new byte vector, laid out as `formatting` asks.
+///
+/// Each format resolves the layout its own way - see
+/// [`json::to_vec_with_formatting`], [`yaml::to_vec_with_formatting`], and
+/// [`toml::to_vec_with_formatting`]. Formatting changes bytes, never meaning:
+/// parsing any formatting of the same value yields an equal value.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure.
+pub fn to_vec_with_formatting(
+    value: &Value,
+    format: Format,
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
     match format {
-        Format::Json => json::to_vec(value),
+        Format::Json => json::to_vec_with_formatting(value, formatting),
         Format::JsonLines => {
             if let Value::Sequence(values) = value {
-                json::to_vec_all(values)
+                json::to_vec_all_with_formatting(values, formatting)
             } else {
-                json::to_vec_all(std::slice::from_ref(value))
+                json::to_vec_all_with_formatting(std::slice::from_ref(value), formatting)
             }
         }
-        Format::Yaml => yaml::to_vec(value),
-        Format::Toml => toml::to_vec(value),
+        Format::Yaml => yaml::to_vec_with_formatting(value, formatting),
+        Format::Toml => toml::to_vec_with_formatting(value, formatting),
     }
 }
 
@@ -213,19 +311,46 @@ pub fn into_vec(value: Value, format: Format) -> Result<Vec<u8>> {
     to_vec(&value, format)
 }
 
+/// Consume and encode one value, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure.
+pub fn into_vec_with_formatting(
+    value: Value,
+    format: Format,
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
+    to_vec_with_formatting(&value, format, formatting)
+}
+
 /// Encode one value to a byte writer.
 pub fn to_writer<W: Write>(writer: W, value: &Value, format: Format) -> Result<()> {
+    to_writer_with_formatting(writer, value, format, Formatting::default())
+}
+
+/// Encode one value to a byte writer, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure or the sink's.
+pub fn to_writer_with_formatting<W: Write>(
+    writer: W,
+    value: &Value,
+    format: Format,
+    formatting: Formatting,
+) -> Result<()> {
     match format {
-        Format::Json => json::to_writer(writer, value),
+        Format::Json => json::to_writer_with_formatting(writer, value, formatting),
         Format::JsonLines => {
             if let Value::Sequence(values) = value {
-                json::to_writer_all(writer, values.iter())
+                json::to_writer_all_with_formatting(writer, values.iter(), formatting)
             } else {
-                json::to_writer_all(writer, std::slice::from_ref(value))
+                json::to_writer_all_with_formatting(writer, std::slice::from_ref(value), formatting)
             }
         }
-        Format::Yaml => yaml::to_writer(writer, value),
-        Format::Toml => toml::to_writer(writer, value),
+        Format::Yaml => yaml::to_writer_with_formatting(writer, value, formatting),
+        Format::Toml => toml::to_writer_with_formatting(writer, value, formatting),
     }
 }
 
@@ -236,10 +361,31 @@ where
     I: IntoIterator<Item = V>,
     V: Borrow<Value>,
 {
+    to_writer_all_with_formatting(writer, values, format, Formatting::default())
+}
+
+/// Encode multiple values or documents, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the format's encoding failure or the sink's.
+pub fn to_writer_all_with_formatting<W, I, V>(
+    writer: W,
+    values: I,
+    format: Format,
+    formatting: Formatting,
+) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = V>,
+    V: Borrow<Value>,
+{
     match format {
-        Format::Json | Format::JsonLines => json::to_writer_all(writer, values),
-        Format::Yaml => yaml::to_writer_all(writer, values),
-        Format::Toml => toml::to_writer_all(writer, values),
+        Format::Json | Format::JsonLines => {
+            json::to_writer_all_with_formatting(writer, values, formatting)
+        }
+        Format::Yaml => yaml::to_writer_all_with_formatting(writer, values, formatting),
+        Format::Toml => toml::to_writer_all_with_formatting(writer, values, formatting),
     }
 }
 

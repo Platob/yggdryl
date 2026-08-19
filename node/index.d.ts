@@ -15,6 +15,21 @@ export declare class BatchReader {
   get field(): JsField
   /** Return whether the stream has been read or handed to a write. */
   get consumed(): boolean
+  /**
+   * Chain this reader and `other` onto the root their schemas merge into.
+   *
+   * Both readers are consumed, and the result stays lazy: the merge is
+   * derived from the two schemas alone, which a reader answers without
+   * pulling a batch.
+   *
+   * Columns unite by name (ASCII case-insensitively), this reader's order
+   * first and the other's extra columns after; a column present in only one
+   * side becomes nullable, because the other side's rows have no value for
+   * it; a shared column whose datatype or `PARQUET:field_id` disagrees is
+   * refused naming both sides rather than silently widened. Passing `schema`
+   * declares the root both sides cast onto instead of deriving one.
+   */
+  combined(other: BatchReader, schema?: FieldInput | undefined | null, safe?: boolean | undefined | null): BatchReader
   /** Drain every remaining batch into one Arrow IPC stream. */
   toIpc(): Buffer
 }
@@ -863,8 +878,33 @@ export declare class IOBase {
    * An existing leaf keeps its bytes, as `touch` does.
    */
   touch(): void
-  /** Remove the bytes here, as `fs.unlinkSync` on a leaf. */
+  /**
+   * Delete the resource here, as `fs.unlinkSync` on a leaf.
+   *
+   * A thin spelling of `remove(false)`; unlike `fs.unlinkSync`, a resource
+   * that is not there is not an error, because absence is a no-op success
+   * everywhere on this handle.
+   */
   unlink(): void
+  /**
+   * Empty the contents, keeping the resource.
+   *
+   * A leaf keeps existing with size 0; a directory keeps existing and is
+   * emptied of every child, recursively; a resource that is not there is
+   * left alone. Nothing is created.
+   */
+  clear(): void
+  /**
+   * Delete the resource completely.
+   *
+   * After this returns nothing of what the handle addressed remains - the
+   * bytes, the tree below a directory, and any cached schema or footer. A
+   * leaf ignores `recursive`. A directory needs `recursive` to delete
+   * anything below it; without it, one that still has children throws
+   * rather than silently succeeding or silently recursing. A resource that
+   * is not there succeeds, having done nothing.
+   */
+  remove(recursive?: boolean | undefined | null): void
   /** Cut this resource to `size` bytes, as `fs.truncateSync`. */
   truncate(size: number): void
   /** Flush anything buffered. */
@@ -880,7 +920,9 @@ export declare class IOBase {
    */
   open(): void
   /** Return whether cached state is currently held. */
-  isOpen(): boolean
+  opened(): boolean
+  /** Return whether no cached state is currently held. */
+  closed(): boolean
   /**
    * Publish and release everything [`Self::open`] cached.
    *
@@ -928,12 +970,6 @@ export declare class IOBase {
    */
   decompressInto(target: IOBase, codec?: string | undefined | null): number
   /**
-   * Iterate the resource's decoded text lines, one line at a time.
-   *
-   * Any content codings the resource's name declares - `trades.jsonl.gz`,
-   * `log.txt.zst` - decode as streams, so a compressed resource is read
-   * without ever holding its decompressed value. A line is what `
-  ` ends,
    * A positioned view over this resource.
    *
    * The cursor shares this handle - a write through the cursor is a write
@@ -941,14 +977,6 @@ export declare class IOBase {
    * and `tell` move and report it, and two cursors advance independently.
    */
   cursor(position?: number | undefined | null): JsIOCursor
-  /**
-   * a trailing `\r` belongs to the terminator, and the last line needs no
-   * terminator. The returned iterator owns a rebuilt handle, so it stays
-   * valid however long the caller keeps it.
-   * With `pattern`, lines group into records: one starts at a matching
-   * line and carries every following line until the next match.
-   */
-  readLines(pattern?: string | undefined | null): JsLineIterator
   /**
    * Return the record settings this handle's media type names.
    *
@@ -1018,17 +1046,22 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
- * Iterator over a resource's decoded text lines, one line at a time.
+ * Iterator over a resource's text records, one at a time.
  *
- * Built by [`JsIOBase::read_lines`]. The handle is rebuilt from its location
- * and owned here, bytes stream through a fixed buffer, and any content
- * codings the name declares decode as streams, so a compressed resource is
- * read without ever holding its decompressed value. `next()` is the native
- * half of the iteration protocol; the loader wraps it so `for...of` yields
- * strings.
+ * Built by `readLines`. The handle is rebuilt from its location and owned
+ * here, bytes stream through one bounded window, and any content codings the
+ * name declares decode as streams, so a compressed resource costs one window
+ * rather than its decoded size. `next()` is the native half of the iteration
+ * protocol; the loader wraps it so `for...of` yields strings.
+ *
+ * Each record crosses as a JavaScript string. The core hands back a
+ * *borrowed* view whose lifetime ends at the next read, and a JavaScript
+ * value cannot borrow it - so this is the one place the line surface copies,
+ * and it copies because the boundary requires it, not because the reader
+ * does.
  */
 export declare class LineIterator {
-  /** The next line, or `null` when the resource is exhausted. */
+  /** The next record, or `null` when the resource is exhausted. */
   next(): string | null
 }
 export type JsLineIterator = LineIterator

@@ -218,7 +218,11 @@ mod staging {
             .unwrap();
         let mut handle = File::from_location(filesystem.clone(), "bucket/trades.bin").unwrap();
 
-        handle.write_all_bytes(b"pending").unwrap();
+        // Positional writes stage: they are pieces of a value, and a store
+        // that only takes whole values must not see a half-written one.
+        handle.truncate(0).unwrap();
+        handle.pwrite(0, b"pend").unwrap();
+        handle.pwrite(4, b"ing").unwrap();
 
         // The handle presents the pending value...
         assert_eq!(handle.read_all_bytes().unwrap(), b"pending");
@@ -230,6 +234,25 @@ mod staging {
         assert_eq!(&stored, b"stored");
 
         handle.close().unwrap();
+
+        let mut published = [0_u8; 7];
+        filesystem
+            .read_range("bucket/trades.bin", 0, &mut published)
+            .unwrap();
+        assert_eq!(&published, b"pending");
+    }
+
+    #[test]
+    fn a_whole_value_write_publishes_without_waiting_for_close() {
+        let filesystem = memory();
+        filesystem
+            .write_full("bucket/trades.bin", b"stored")
+            .unwrap();
+        let mut handle = File::from_location(filesystem.clone(), "bucket/trades.bin").unwrap();
+
+        // A complete value is one store operation, so it needs no scope: the
+        // staging exists to fold *many positional* writes into one publication.
+        handle.write_all_bytes(b"pending").unwrap();
 
         let mut published = [0_u8; 7];
         filesystem
@@ -284,7 +307,7 @@ mod staging {
         let mut handle = File::from_location(filesystem.clone(), "bucket/trades.bin").unwrap();
         handle.write_all_bytes(b"first").unwrap();
         handle.close().unwrap();
-        assert!(!handle.is_open());
+        assert!(!handle.opened());
 
         // The value changes underneath the handle.
         filesystem
@@ -783,11 +806,11 @@ mod wrappers {
             .unwrap();
         let handle = File::from_location(filesystem, "bucket/app.log.gz").unwrap();
 
-        let lines: Vec<String> = handle
-            .read_lines()
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
+        let mut reader = handle.read_lines().unwrap();
+        let mut lines: Vec<String> = Vec::new();
+        while let Some(line) = reader.next() {
+            lines.push(line.unwrap().text().unwrap().to_owned());
+        }
         assert_eq!(lines, ["alpha", "beta", "gamma"]);
     }
 }

@@ -17,6 +17,8 @@ use arrow_schema::SchemaRef;
 use napi::bindgen_prelude::{Buffer, Result, Uint8Array};
 use napi_derive::napi;
 use yggdryl::arrow::{BatchReader, record_schema_from_arrow};
+
+use crate::iceberg::{FieldInput, field_from_input};
 use yggdryl::ipc::DEFAULT_ROOT_NAME;
 
 use crate::field::JsField;
@@ -131,6 +133,39 @@ impl JsBatchReader {
         };
         let batch = batch.map_err(napi_error)?;
         encoded(&self.schema, std::slice::from_ref(&batch)).map(Some)
+    }
+
+    /// Chain this reader and `other` onto the root their schemas merge into.
+    ///
+    /// Both readers are consumed, and the result stays lazy: the merge is
+    /// derived from the two schemas alone, which a reader answers without
+    /// pulling a batch.
+    ///
+    /// Columns unite by name (ASCII case-insensitively), this reader's order
+    /// first and the other's extra columns after; a column present in only one
+    /// side becomes nullable, because the other side's rows have no value for
+    /// it; a shared column whose datatype or `PARQUET:field_id` disagrees is
+    /// refused naming both sides rather than silently widened. Passing `schema`
+    /// declares the root both sides cast onto instead of deriving one.
+    #[napi]
+    pub fn combined(
+        &mut self,
+        other: &mut JsBatchReader,
+        schema: Option<FieldInput<'_>>,
+        safe: Option<bool>,
+    ) -> Result<Self> {
+        let left = self.take()?;
+        let right = other.take()?;
+        let root_name = self.root_name.clone();
+        let reader = match schema {
+            Some(schema) => {
+                let root = field_from_input(schema)?;
+                yggdryl::arrow::combined_as(left, right, &root, safe.unwrap_or(true))
+                    .map_err(napi_error)?
+            }
+            None => yggdryl::arrow::combined(left, right).map_err(napi_error)?,
+        };
+        Ok(Self::from_core(reader, &root_name))
     }
 
     /// Drain every remaining batch into one Arrow IPC stream.

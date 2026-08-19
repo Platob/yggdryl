@@ -67,9 +67,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::io::{Buffer, IOBase, LineRecordOptions};
+use yggdryl::io::{Buffer, IOBase};
 use yggdryl::local::{File, Folder};
-use yggdryl::text::stable_hash_bytes;
+use yggdryl::text::{TextLineOptions, stable_hash_bytes};
 use yggdryl::{DataType, Url};
 
 /// Log lines per corpus: enough that per-read setup is noise.
@@ -108,7 +108,7 @@ fn handle(name: &str, bytes: &[u8]) -> Buffer {
 }
 
 /// Drain one projection read, returning the row count it materialized.
-fn parsed_rows<H: IOBase>(handle: &H, options: &LineRecordOptions) -> usize {
+fn parsed_rows<H: IOBase>(handle: &H, options: &TextLineOptions) -> usize {
     handle
         .read_arrow_lines(options)
         .expect("a line reader")
@@ -117,7 +117,7 @@ fn parsed_rows<H: IOBase>(handle: &H, options: &LineRecordOptions) -> usize {
 }
 
 pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
-    let options = LineRecordOptions::new(PATTERN).expect("a valid pattern");
+    let options = TextLineOptions::with_pattern(PATTERN).expect("a valid pattern");
     let text = corpus();
     let decoded = text.len() as u64;
     let plain = handle("bench.log", text.as_bytes());
@@ -144,11 +144,17 @@ pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
     // `read_lines_matching`" is a measured number.
     group.bench_function("group/plain", |bencher| {
         bencher.iter(|| {
-            black_box(&plain)
+            let mut records = black_box(&plain)
                 .read_lines_matching(PATTERN)
-                .expect("a record reader")
-                .map(|record| record.expect("a record").len())
-                .sum::<usize>()
+                .expect("a record reader");
+            let mut bytes = 0_usize;
+            // Byte-first, and borrowed: the grouping stage never validates
+            // UTF-8 and never allocates a record, so this measures the split
+            // and nothing else.
+            while let Some(record) = records.next() {
+                bytes += record.expect("a record").bytes().len();
+            }
+            bytes
         });
     });
 
@@ -332,7 +338,7 @@ fn scratch() -> PathBuf {
 /// threw every continuation line away instead of folding it into `message`
 /// still yields one row per record, and would be charged for text it never
 /// touched. Summing the `lines` column is what separates the two.
-fn parsed_shape<H: IOBase>(handle: &H, options: &LineRecordOptions) -> (usize, i64) {
+fn parsed_shape<H: IOBase>(handle: &H, options: &TextLineOptions) -> (usize, i64) {
     let mut rows = 0_usize;
     let mut spanned = 0_i64;
     for batch in handle.read_arrow_lines(options).expect("a line reader") {
@@ -356,7 +362,7 @@ fn parsed_shape<H: IOBase>(handle: &H, options: &LineRecordOptions) -> (usize, i
 /// Both halves run outside every timer. The height catches a parser that
 /// split the multi-line records into one row each; the span catches one that
 /// dropped their continuation lines instead of folding them.
-fn proven<H: IOBase>(corpus: &Corpus<H>, options: &LineRecordOptions, label: &str) {
+fn proven<H: IOBase>(corpus: &Corpus<H>, options: &TextLineOptions, label: &str) {
     let (rows, spanned) = parsed_shape(&corpus.handle, options);
     assert_eq!(
         rows, corpus.rows,
@@ -377,7 +383,7 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
     let root = scratch();
     let _ = std::fs::remove_dir_all(&root);
 
-    let typed = LineRecordOptions::new(ROTATED_PATTERN).expect("a valid pattern");
+    let typed = TextLineOptions::with_pattern(ROTATED_PATTERN).expect("a valid pattern");
     // The same captures declared text: the strict cast the inferred int64
     // columns pay for is off, and the builders' own utf8 arrays are emitted.
     let text = typed
@@ -462,4 +468,114 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 
     // The fixtures are real directories, so the run removes what it built.
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Byte-sized batching against fixed-row batching on uneven records.
+///
+/// The corpus mixes 40-byte lines with 4 KB stack traces in the same file,
+/// which is what makes the two bounds behave differently: a row bound produces
+/// batches whose size swings by two orders of magnitude, while a byte bound
+/// produces comparably sized ones whatever the records look like. The cases
+/// report the batch-size spread alongside the timing, because the *point* of
+/// byte sizing is the spread rather than the speed.
+///
+/// `detect/*` is the ninth task's comparison: timestamp-anchored detection
+/// against the equivalent anchored regex, on the same corpus. Detection has no
+/// expression to compile or run, and its cheap first-byte guard rejects a
+/// continuation line in one byte - `docs/benchmarks.md` records by how much
+/// that pays, or whether it does.
+///
+/// `zone/*` isolates what reading a naive timestamp in a zone costs: unset
+/// against a fixed offset against a DST-observing named zone. The offset cache
+/// is what should keep the third close to the second, so a regression there
+/// shows up as the third pulling away.
+pub(crate) fn lines_shape_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::text::{Opening, Strip};
+
+    // A corpus whose record sizes swing by two orders of magnitude.
+    let mut text = String::new();
+    for index in 0..20_000_usize {
+        rotated_record(&mut text, index);
+        if index % 25 == 0 {
+            // A stack trace: ~4 KB in one record, against ~40-byte neighbours.
+            for frame in 0..40 {
+                text.push_str("\tat com.example.service.Handler.invoke(Handler.java:");
+                text.push_str(&frame.to_string());
+                text.push_str(")\n");
+            }
+        }
+    }
+    let handle = handle("uneven.log", text.as_bytes());
+    let decoded = text.len() as u64;
+
+    let base = TextLineOptions::with_pattern(PATTERN).expect("a valid pattern");
+    let mut group = criterion.benchmark_group("lines_shape");
+    group.warm_up_time(Duration::from_secs(1));
+    group.measurement_time(Duration::from_secs(5));
+    group.throughput(Throughput::Bytes(decoded));
+
+    // The spread each bound produces, measured once and reported in the docs.
+    for (label, options) in [
+        ("rows", base.clone().with_batch_size(1_024)),
+        ("bytes", base.clone().with_byte_size(1 << 20)),
+    ] {
+        let sizes: Vec<usize> = handle
+            .read_arrow_lines(&options)
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .collect();
+        let widest = sizes.iter().copied().max().unwrap_or(0);
+        let narrowest = sizes.iter().copied().min().unwrap_or(0);
+        eprintln!(
+            "batching/{label}: {} batches, rows {narrowest}..={widest}",
+            sizes.len()
+        );
+        group.bench_function(format!("batching/{label}"), |bencher| {
+            bencher.iter(|| parsed_rows(black_box(&handle), &options));
+        });
+    }
+
+    // Detection against the equivalent regex, on the same corpus.
+    let detection = TextLineOptions::new()
+        .try_with_opening(Opening::Timestamp)
+        .expect("timestamp detection");
+    let anchored = TextLineOptions::with_pattern(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*")
+        .expect("a valid pattern");
+    group.bench_function("detect/timestamp", |bencher| {
+        bencher.iter(|| parsed_rows(black_box(&handle), &detection));
+    });
+    group.bench_function("detect/regex", |bencher| {
+        bencher.iter(|| parsed_rows(black_box(&handle), &anchored));
+    });
+
+    // What a zone costs a naive timestamp: none, fixed, DST-observing.
+    for (label, zone) in [
+        ("naive", None),
+        ("fixed", Some("+02:00")),
+        ("named", Some("Europe/Paris")),
+    ] {
+        let options = match zone {
+            Some(zone) => base
+                .clone()
+                .try_with_timezone(zone.parse().expect("a known zone"))
+                .expect("a zone the registry knows"),
+            None => base.clone(),
+        };
+        group.bench_function(format!("zone/{label}"), |bencher| {
+            bencher.iter(|| parsed_rows(black_box(&handle), &options));
+        });
+    }
+
+    // What the strip options cost, since they are span arithmetic rather than
+    // an allocation: `none` should be indistinguishable from the default.
+    for (label, strip) in [("whitespace", Strip::Whitespace), ("none", Strip::None)] {
+        let options = base
+            .clone()
+            .with_lstrip(strip.clone())
+            .with_rstrip(strip.clone());
+        group.bench_function(format!("strip/{label}"), |bencher| {
+            bencher.iter(|| parsed_rows(black_box(&handle), &options));
+        });
+    }
+    group.finish();
 }

@@ -9,13 +9,13 @@
 //! changes.
 
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Either4, Env, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Either3, Either4, Env, Function, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 
 use yggdryl::generic::{Holder, IORecordOptions as _};
 use yggdryl::io::IOBase as _;
-use yggdryl::io::LineRecordOptions;
+use yggdryl::text::TextLineOptions;
 
 use crate::arrow::JsBatchReader;
 use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
@@ -24,6 +24,9 @@ use crate::field::JsField;
 use crate::generic::JsRecordOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
+
+/// Bytes accumulated before a record write is flushed to the resource.
+const LINE_WRITE_CHUNK: usize = 64 * 1024;
 
 /// A native handle, a native `Url`, or anything that names a location.
 pub(crate) type LocationInput<'a> =
@@ -563,10 +566,39 @@ impl JsIOBase {
         self.inner.write_all_bytes(b"").map_err(napi_error)
     }
 
-    /// Remove the bytes here, as `fs.unlinkSync` on a leaf.
+    /// Delete the resource here, as `fs.unlinkSync` on a leaf.
+    ///
+    /// A thin spelling of `remove(false)`; unlike `fs.unlinkSync`, a resource
+    /// that is not there is not an error, because absence is a no-op success
+    /// everywhere on this handle.
     #[napi]
     pub fn unlink(&mut self) -> Result<()> {
+        self.inner.remove(false).map_err(napi_error)
+    }
+
+    /// Empty the contents, keeping the resource.
+    ///
+    /// A leaf keeps existing with size 0; a directory keeps existing and is
+    /// emptied of every child, recursively; a resource that is not there is
+    /// left alone. Nothing is created.
+    #[napi]
+    pub fn clear(&mut self) -> Result<()> {
         self.inner.clear().map_err(napi_error)
+    }
+
+    /// Delete the resource completely.
+    ///
+    /// After this returns nothing of what the handle addressed remains - the
+    /// bytes, the tree below a directory, and any cached schema or footer. A
+    /// leaf ignores `recursive`. A directory needs `recursive` to delete
+    /// anything below it; without it, one that still has children throws
+    /// rather than silently succeeding or silently recursing. A resource that
+    /// is not there succeeds, having done nothing.
+    #[napi]
+    pub fn remove(&mut self, recursive: Option<bool>) -> Result<()> {
+        self.inner
+            .remove(recursive.unwrap_or(false))
+            .map_err(napi_error)
     }
 
     /// Cut this resource to `size` bytes, as `fs.truncateSync`.
@@ -597,8 +629,14 @@ impl JsIOBase {
 
     /// Return whether cached state is currently held.
     #[napi]
-    pub fn is_open(&self) -> bool {
-        self.inner.is_open()
+    pub fn opened(&self) -> bool {
+        self.inner.opened()
+    }
+
+    /// Return whether no cached state is currently held.
+    #[napi]
+    pub fn closed(&self) -> bool {
+        self.inner.closed()
     }
 
     /// Publish and release everything [`Self::open`] cached.
@@ -695,11 +733,6 @@ impl JsIOBase {
         Ok(i64::try_from(written).unwrap_or(i64::MAX))
     }
 
-    /// Iterate the resource's decoded text lines, one line at a time.
-    ///
-    /// Any content codings the resource's name declares - `trades.jsonl.gz`,
-    /// `log.txt.zst` - decode as streams, so a compressed resource is read
-    /// without ever holding its decompressed value. A line is what `\n` ends,
     /// A positioned view over this resource.
     ///
     /// The cursor shares this handle - a write through the cursor is a write
@@ -716,63 +749,107 @@ impl JsIOBase {
         }
     }
 
-    /// a trailing `\r` belongs to the terminator, and the last line needs no
-    /// terminator. The returned iterator owns a rebuilt handle, so it stays
-    /// valid however long the caller keeps it.
-    /// With `pattern`, lines group into records: one starts at a matching
-    /// line and carries every following line until the next match.
-    #[napi]
-    pub fn read_lines(&self, pattern: Option<String>) -> Result<JsLineIterator> {
+    /// Iterate this resource's text records, one at a time.
+    ///
+    /// The loader's `readLines` wraps this with its option coercion: the whole
+    /// extractor crosses as one native `Value` - the same shape a YAML or TOML
+    /// document parses into - so a reader is specifiable from configuration
+    /// alone, in JavaScript or in a file.
+    ///
+    /// Any content codings the resource's name declares - `trades.jsonl.gz`,
+    /// `log.txt.zst` - decode as streams, so a compressed resource is read
+    /// without ever holding its decompressed value. The iterator owns a
+    /// rebuilt handle, so it stays valid however long the caller keeps it.
+    #[napi(js_name = "_readLinesNative", skip_typescript)]
+    pub fn read_lines_native(
+        &self,
+        options: Option<ClassInstance<'_, JsCodecValue>>,
+    ) -> Result<JsLineIterator> {
+        let built = text_line_options(options.as_deref())?;
         let handle = self.rebuilt()?;
-        let inner: Box<dyn Iterator<Item = yggdryl::Result<String>> + Send> = match pattern {
-            Some(pattern) => Box::new(
-                handle
-                    .inner
-                    .into_read_lines_matching(&pattern)
-                    .map_err(napi_error)?,
-            ),
-            None => Box::new(handle.inner.into_read_lines().map_err(napi_error)?),
-        };
+        let inner = handle
+            .inner
+            .into_text_with(built)
+            .into_read_lines()
+            .map_err(napi_error)?;
         Ok(JsLineIterator { inner })
     }
 
-    /// Project matched line records into a `BatchReader`.
+    /// Project this resource's text records into a `BatchReader`.
     ///
-    /// The loader's `readArrowLines` wraps this with its option coercion: the
-    /// custom constant columns arrive as parallel name and native-value
-    /// vectors, converted through the one JavaScript-to-core conversion. The
-    /// boundary is the standard copied IPC one - each batch crosses as its
+    /// A text-line surface beside `readLines`, **never a record method**: each
+    /// record becomes one row - `url`, `rownum`, `date`, `time`, `unix`,
+    /// `hash`, `header`, `message`, `offset`, `lines`, then in log mode the
+    /// fixed `level`, `logger`, and `thread`, then one nullable column per
+    /// named capture group, then the constant custom columns.
+    ///
+    /// The boundary is the standard copied IPC one - each batch crosses as its
     /// own self-contained Arrow IPC stream, never zero-copy.
     #[napi(js_name = "_readArrowLinesNative", skip_typescript)]
-    #[allow(clippy::too_many_arguments)]
     pub fn read_arrow_lines_native(
         &self,
-        pattern: String,
-        batch_size: Option<u32>,
-        custom_names: Vec<String>,
-        custom_values: Vec<ClassInstance<'_, JsCodecValue>>,
-        capture_names: Vec<String>,
-        capture_types: Vec<Either<ClassInstance<'_, crate::datatype::JsDataType>, String>>,
-        timestamp_capture: Option<String>,
+        options: Option<ClassInstance<'_, JsCodecValue>>,
     ) -> Result<JsBatchReader> {
-        let mut options = line_record_options(
-            &pattern,
-            custom_names,
-            &custom_values,
-            capture_names,
-            capture_types,
-        )?;
-        options.set_batch_size(batch_size.map(|size| size as usize));
-        if let Some(capture) = timestamp_capture {
-            options
-                .set_timestamp_capture(Some(capture.into()))
-                .map_err(napi_error)?;
-        }
+        let built = text_line_options(options.as_deref())?;
         // The borrowed core projection: it reopens a located leaf itself -
         // keeping a declared media-type override - and snapshots an
         // in-memory handle, so `fromBytes` parses exactly as a file does.
-        let reader = self.inner.read_arrow_lines(&options).map_err(napi_error)?;
+        let reader = self.inner.read_arrow_lines(&built).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, "row"))
+    }
+
+    /// Replace this resource's records with what `pull` yields, each terminated.
+    ///
+    /// The loader turns any iterable into `pull`, a function answering the next
+    /// record or `null` at the end, so the records stream: they are never
+    /// collected into an array on either side of the boundary, and a
+    /// million-record write costs one reused buffer.
+    #[napi(js_name = "_writeLinesNative", skip_typescript)]
+    pub fn write_lines_native(
+        &mut self,
+        pull: Function<'_, (), Option<Either<String, Uint8Array>>>,
+        options: Option<ClassInstance<'_, JsCodecValue>>,
+    ) -> Result<()> {
+        self.inner.truncate(0).map_err(napi_error)?;
+        self.append_lines_native(pull, options)
+    }
+
+    /// Append what `pull` yields after this resource's current end.
+    ///
+    /// Streams exactly as `_writeLinesNative` does, and publishes when it
+    /// finishes: appending records is a complete operation, so a staging
+    /// backend must not be left holding it.
+    #[napi(js_name = "_appendLinesNative", skip_typescript)]
+    pub fn append_lines_native(
+        &mut self,
+        pull: Function<'_, (), Option<Either<String, Uint8Array>>>,
+        options: Option<ClassInstance<'_, JsCodecValue>>,
+    ) -> Result<()> {
+        let built = text_line_options(options.as_deref())?;
+        let terminator = built.write_linesep().to_vec();
+        // One reused buffer, flushed in chunks, exactly as the core writes.
+        let mut pending: Vec<u8> = Vec::with_capacity(LINE_WRITE_CHUNK);
+        let mut offset = self.inner.size();
+        while let Some(record) = pull.call(())? {
+            match &record {
+                Either::A(text) => pending.extend_from_slice(text.as_bytes()),
+                Either::B(bytes) => pending.extend_from_slice(bytes.as_ref()),
+            }
+            pending.extend_from_slice(&terminator);
+            if pending.len() >= LINE_WRITE_CHUNK {
+                self.inner
+                    .pwrite_all(offset, &pending)
+                    .map_err(napi_error)?;
+                offset += pending.len() as u64;
+                pending.clear();
+            }
+        }
+        if !pending.is_empty() {
+            self.inner
+                .pwrite_all(offset, &pending)
+                .map_err(napi_error)?;
+        }
+        self.inner.flush().map_err(napi_error)
     }
 
     /// Return the record settings this handle's media type names.
@@ -875,25 +952,36 @@ impl JsIOBase {
     }
 }
 
-/// Iterator over a resource's decoded text lines, one line at a time.
+/// Iterator over a resource's text records, one at a time.
 ///
-/// Built by [`JsIOBase::read_lines`]. The handle is rebuilt from its location
-/// and owned here, bytes stream through a fixed buffer, and any content
-/// codings the name declares decode as streams, so a compressed resource is
-/// read without ever holding its decompressed value. `next()` is the native
-/// half of the iteration protocol; the loader wraps it so `for...of` yields
-/// strings.
+/// Built by `readLines`. The handle is rebuilt from its location and owned
+/// here, bytes stream through one bounded window, and any content codings the
+/// name declares decode as streams, so a compressed resource costs one window
+/// rather than its decoded size. `next()` is the native half of the iteration
+/// protocol; the loader wraps it so `for...of` yields strings.
+///
+/// Each record crosses as a JavaScript string. The core hands back a
+/// *borrowed* view whose lifetime ends at the next read, and a JavaScript
+/// value cannot borrow it - so this is the one place the line surface copies,
+/// and it copies because the boundary requires it, not because the reader
+/// does.
 #[napi(js_name = "LineIterator")]
 pub struct JsLineIterator {
-    inner: Box<dyn Iterator<Item = yggdryl::Result<String>> + Send>,
+    inner: yggdryl::text::TextLines<Box<dyn std::io::Read + Send + 'static>>,
 }
 
 #[napi]
 impl JsLineIterator {
-    /// The next line, or `null` when the resource is exhausted.
+    /// The next record, or `null` when the resource is exhausted.
     #[napi]
     pub fn next(&mut self) -> Result<Option<String>> {
-        self.inner.next().transpose().map_err(napi_error)
+        match self.inner.next() {
+            None => Ok(None),
+            Some(record) => record
+                .and_then(|record| record.text().map(str::to_owned))
+                .map(Some)
+                .map_err(napi_error),
+        }
     }
 }
 
@@ -990,45 +1078,19 @@ impl JsIOCursor {
 // ordinary Rust call site.
 #[allow(dead_code)]
 pub fn schema_from_pattern_native(
-    pattern: String,
-    custom_names: Vec<String>,
-    custom_values: Vec<ClassInstance<'_, JsCodecValue>>,
-    capture_names: Vec<String>,
-    capture_types: Vec<Either<ClassInstance<'_, crate::datatype::JsDataType>, String>>,
+    options: Option<ClassInstance<'_, JsCodecValue>>,
 ) -> Result<JsField> {
-    line_record_options(
-        &pattern,
-        custom_names,
-        &custom_values,
-        capture_names,
-        capture_types,
-    )
-    .map(|options| JsField::from_core(options.into_schema()))
+    text_line_options(options.as_deref()).map(|options| JsField::from_core(options.into_schema()))
 }
 
-/// Assemble validated line-record options from the boundary's coerced parts.
-fn line_record_options(
-    pattern: &str,
-    custom_names: Vec<String>,
-    custom_values: &[ClassInstance<'_, JsCodecValue>],
-    capture_names: Vec<String>,
-    capture_types: Vec<Either<ClassInstance<'_, crate::datatype::JsDataType>, String>>,
-) -> Result<LineRecordOptions> {
-    let mut options = LineRecordOptions::new(pattern).map_err(napi_error)?;
-    if !custom_names.is_empty() {
-        let values = custom_values.iter().map(|value| value.inner.clone());
-        options = options
-            .try_with_custom_fields(custom_names.into_iter().zip(values))
-            .map_err(napi_error)?;
+/// Read the whole extractor out of the one native `Value` the loader built.
+///
+/// Every text-line entry point comes here, so the JavaScript surface and a
+/// configuration document are validated by exactly the same core conversion -
+/// there is no second option parser to drift.
+fn text_line_options(options: Option<&JsCodecValue>) -> Result<TextLineOptions> {
+    match options {
+        Some(value) => TextLineOptions::from_value(value.inner.clone()).map_err(napi_error),
+        None => Ok(TextLineOptions::new()),
     }
-    if !capture_names.is_empty() {
-        let mut declared = Vec::with_capacity(capture_names.len());
-        for (name, data_type) in capture_names.into_iter().zip(capture_types) {
-            declared.push((name, crate::datatype::data_type_from_input(data_type)?));
-        }
-        options = options
-            .try_with_capture_types(declared)
-            .map_err(napi_error)?;
-    }
-    Ok(options)
 }

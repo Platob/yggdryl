@@ -26,7 +26,7 @@
 //! ```
 
 use crate::io::IOBase;
-use crate::text::{Format, Limits, Value};
+use crate::text::{Format, Formatting, Limits, Value};
 use crate::{Codec, Level};
 use crate::{Error, MediaType, MimeType, Result};
 
@@ -148,6 +148,22 @@ pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value> {
     crate::text::from_slice_with_limits(&decoded, plan.format(), limits)
 }
 
+/// Read one structured value under [`Loading`](crate::text::Loading).
+///
+/// The handle form of [`from_slice_with`](crate::text::from_slice_with): the
+/// content coding is peeled first, so the `{{` guard and the substitution both
+/// see the *decoded* document rather than its compressed bytes.
+///
+/// # Errors
+///
+/// Returns a read, decoding, or parse failure, or the substitution's refusal.
+pub fn load_with(source: &impl IOBase, loading: &crate::text::Loading) -> Result<Value> {
+    let bytes = source.read_all_bytes()?;
+    let plan = Plan::detect(source, &bytes)?;
+    let decoded = plan.codec().load(&bytes)?;
+    crate::text::from_slice_with(&decoded, plan.format(), loading)
+}
+
 /// Read every structured value from a multi-document handle.
 ///
 /// # Errors
@@ -183,14 +199,51 @@ pub fn dump(target: &mut impl IOBase, value: &Value) -> Result<()> {
 
 /// Write one structured value at an explicit compression level.
 ///
+/// The one-knob spelling of [`dump_with`], kept because a caller who only
+/// wants a level should not have to build an options value.
+///
 /// # Errors
 ///
 /// Returns an encoding, serialization, or write failure.
 pub fn dump_with_level(target: &mut impl IOBase, value: &Value, level: Level) -> Result<()> {
+    dump_with(target, value, Formatting::default().with_level(level))
+}
+
+/// Write one structured value under explicit [`Formatting`].
+///
+/// One options companion rather than a cross-product of knob names: layout and
+/// content-coding level are two orthogonal knobs today and there will be a
+/// third, so they ride on one value and `dump` stays the zero-configuration
+/// path. `dump_with_level_and_formatting` is not a method name anyone should
+/// have to type.
+///
+/// ```
+/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::generic::Value;
+/// use yggdryl::text::{Formatting, dump_with, load};
+/// use yggdryl::Url;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let mut handle = Buffer::new().with_media_type(Url::from_str("file:///a.json")?.media_type());
+/// let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
+///
+/// dump_with(&mut handle, &value, Formatting::indented(2))?;
+/// assert_eq!(handle.read_all_bytes()?, b"{\n  \"id\": 1\n}");
+///
+/// // Formatting changes bytes, never meaning.
+/// assert_eq!(load(&handle)?, value);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns an encoding, serialization, or write failure.
+pub fn dump_with(target: &mut impl IOBase, value: &Value, formatting: Formatting) -> Result<()> {
     let plan = Plan::infer(target)?;
     let mut encoded = Vec::new();
-    crate::text::to_writer(&mut encoded, value, plan.format())?;
-    let encoded = plan.codec().dump_with_level(&encoded, level)?;
+    crate::text::to_writer_with_formatting(&mut encoded, value, plan.format(), formatting)?;
+    let encoded = plan.codec().dump_with_level(&encoded, formatting.level())?;
     target.write_all_bytes(&encoded)
 }
 
@@ -200,10 +253,23 @@ pub fn dump_with_level(target: &mut impl IOBase, value: &Value, level: Level) ->
 ///
 /// Returns an encoding, serialization, or write failure.
 pub fn dump_all(target: &mut impl IOBase, values: &[Value]) -> Result<()> {
+    dump_all_with(target, values, Formatting::default())
+}
+
+/// Write many structured values under explicit [`Formatting`].
+///
+/// # Errors
+///
+/// Returns an encoding, serialization, or write failure.
+pub fn dump_all_with(
+    target: &mut impl IOBase,
+    values: &[Value],
+    formatting: Formatting,
+) -> Result<()> {
     let plan = Plan::infer(target)?;
     let mut encoded = Vec::new();
-    crate::text::to_writer_all(&mut encoded, values, plan.format())?;
-    let encoded = plan.codec().dump(&encoded)?;
+    crate::text::to_writer_all_with_formatting(&mut encoded, values, plan.format(), formatting)?;
+    let encoded = plan.codec().dump_with_level(&encoded, formatting.level())?;
     target.write_all_bytes(&encoded)
 }
 

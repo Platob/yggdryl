@@ -14,7 +14,7 @@ use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::generic::{Holder, RecordOptions};
 use yggdryl::io::IOBase as _;
-use yggdryl::io::LineRecordOptions;
+use yggdryl::text::TextLineOptions;
 use yggdryl::{Codec, Level};
 
 use crate::field::PyField;
@@ -663,6 +663,13 @@ impl PyIOBase {
     }
 
     /// Write `data` at `offset`, growing and zero-filling as needed.
+    ///
+    /// A positional write is a *piece* of a value, so it does not publish:
+    /// a backend that stages - an Arrow filesystem replaces whole files, a
+    /// memory-mapped file grows geometrically - holds it until `flush` or
+    /// `close`. The whole-value calls (`write_bytes`, `write_lines`,
+    /// `append_lines`) publish for you, because each of those *is* an
+    /// operation rather than a piece of one.
     fn pwrite(&mut self, offset: u64, data: &[u8]) -> PyResult<usize> {
         self.inner.pwrite(offset, data).map_err(value_error)
     }
@@ -712,9 +719,39 @@ impl PyIOBase {
         self.inner.write_all_bytes(b"").map_err(value_error)
     }
 
-    /// Remove the bytes here, as `Path.unlink` on a leaf.
+    /// Delete the resource here, as `Path.unlink` on a leaf.
+    ///
+    /// A thin spelling of `remove(recursive=False)` under the name `pathlib`
+    /// uses; unlike `pathlib`'s, a resource that is not there is not an error,
+    /// because absence is a no-op success everywhere on this handle.
     fn unlink(&mut self) -> PyResult<()> {
+        self.inner.remove(false).map_err(value_error)
+    }
+
+    /// Empty the contents, keeping the resource.
+    ///
+    /// A leaf keeps existing with `size` 0; a directory keeps existing and is
+    /// emptied of every child, recursively; a resource that is not there is
+    /// left alone. Nothing is created.
+    fn clear(&mut self) -> PyResult<()> {
         self.inner.clear().map_err(value_error)
+    }
+
+    /// Delete the resource completely.
+    ///
+    /// After this returns nothing of what the handle addressed remains - the
+    /// bytes, the tree below a directory, and any cached schema or footer. A
+    /// leaf ignores `recursive`. A directory needs `recursive=True` to delete
+    /// anything below it; without it, a directory that still has children
+    /// raises rather than silently succeeding or silently recursing. A
+    /// resource that is not there succeeds, having done nothing - absence and
+    /// successful removal are indistinguishable by design.
+    ///
+    /// The handle stays usable afterwards: writing through it recreates the
+    /// resource exactly as a fresh handle would.
+    #[pyo3(signature = (recursive = false))]
+    fn remove(&mut self, recursive: bool) -> PyResult<()> {
+        self.inner.remove(recursive).map_err(value_error)
     }
 
     /// Cut this resource to `size` bytes.
@@ -737,8 +774,18 @@ impl PyIOBase {
     }
 
     /// Return whether cached state is currently held.
-    fn is_open(&self) -> bool {
-        self.inner.is_open()
+    ///
+    /// A property rather than a method, because `io.IOBase.closed` is one and
+    /// this module mirrors that vocabulary.
+    #[getter]
+    fn opened(&self) -> bool {
+        self.inner.opened()
+    }
+
+    /// Return whether no cached state is currently held, as `io.IOBase.closed`.
+    #[getter]
+    fn closed(&self) -> bool {
+        self.inner.closed()
     }
 
     /// Publish and release everything `open` cached.
@@ -861,73 +908,204 @@ impl PyIOBase {
             .map_err(value_error)
     }
 
-    /// Iterate the resource's decoded text lines, one line at a time.
+    /// Iterate the resource's text records, one at a time.
     ///
     /// Any content codings the resource's name declares - `trades.jsonl.gz`,
-    /// `log.txt.zst` - are decoded as streams, so a compressed resource is
-    /// read without ever holding its decompressed value. Lines are what
-    /// `\n` ends, a trailing `\r` belongs to the terminator, and the last
-    /// line needs no terminator, exactly as `str.splitlines` treats them.
-    /// With `pattern`, lines group into records: one starts at a matching
-    /// line and carries every following line until the next match, the shape
-    /// of a log whose entries open with a timestamp.
-    #[pyo3(signature = (pattern = None))]
-    fn read_lines(&self, pattern: Option<&str>) -> PyResult<PyLineIterator> {
+    /// `log.txt.zst` - are decoded as streams, so a compressed resource is read
+    /// without ever holding its decompressed value.
+    ///
+    /// The terminator is flexible by default: `\n`, `\r\n`, and a lone `\r` are
+    /// all accepted, **mixed within one resource**, because real corpora are
+    /// mixed. `linesep` pins one exactly. The final record needs no terminator.
+    ///
+    /// With `pattern`, lines group into records: one starts at a matching line
+    /// and carries every following line until the next match, the shape of a
+    /// log whose entries open with a timestamp. With `logs=True` a record opens
+    /// where a **timestamp** opens, with no expression written anywhere.
+    ///
+    /// `options` takes the whole extractor at once - a mapping, or a config
+    /// document already parsed into one - and the keywords refine it.
+    #[pyo3(signature = (
+        pattern = None,
+        *,
+        options = None,
+        header = None,
+        linesep = None,
+        lstrip = None,
+        rstrip = None,
+        logs = false,
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn read_lines(
+        &self,
+        pattern: Option<&str>,
+        options: Option<&Bound<'_, PyAny>>,
+        header: Option<&str>,
+        linesep: Option<&str>,
+        lstrip: Option<&str>,
+        rstrip: Option<&str>,
+        logs: bool,
+    ) -> PyResult<PyLineIterator> {
+        let built = line_record_options(
+            options, pattern, header, linesep, lstrip, rstrip, None, None, None, None, None, None,
+            logs,
+        )?;
         let handle = self.rebuilt()?;
-        let inner: Box<dyn Iterator<Item = yggdryl::Result<String>> + Send> = match pattern {
-            Some(pattern) => Box::new(
-                handle
-                    .inner
-                    .into_read_lines_matching(pattern)
-                    .map_err(value_error)?,
-            ),
-            None => Box::new(handle.inner.into_read_lines().map_err(value_error)?),
-        };
+        let lines = handle
+            .inner
+            .into_text_with(built)
+            .into_read_lines()
+            .map_err(value_error)?;
         Ok(PyLineIterator {
-            inner: std::sync::Mutex::new(inner),
+            inner: std::sync::Mutex::new(lines),
         })
     }
 
-    /// Project matched line records into a `pyarrow.RecordBatchReader`.
+    /// Project the resource's text records into a `pyarrow.RecordBatchReader`.
     ///
-    /// A text-line surface beside `read_lines`, never a record method: lines
-    /// group into records where `pattern` matches, and each record becomes
-    /// one row - `url`, `rownum`, `date`, `time`, `unix`, `hash`, `header`,
-    /// `message`, `offset`, `lines`, one nullable column per named capture
-    /// group, then the constant `custom_fields` columns. A capture whose
-    /// whole sub-pattern is one of the closed inference table's exact
-    /// spellings types itself - `(?<thread_id>\d+)` is `int64` - and
-    /// `capture_types` declares the rest (`{"price": "decimal(9, 2)"}`,
-    /// values as anything naming a datatype), parsed strictly: a captured
-    /// text the datatype cannot read is an error, never a silent null.
-    /// Every column's datatype is one Iceberg accepts as declared;
-    /// `schema_from_pattern` answers the same schema without a reader. The
-    /// reader stays lazy across the boundary: `PyArrow` pulls one batch at a
-    /// time through the C stream, content codings decoded as streams, a
-    /// folder read leaf by leaf - so a season of compressed logs is readable
-    /// from Python exactly as it is from Rust.
-    #[pyo3(signature = (pattern, *, batch_size = None, custom_fields = None, capture_types = None, timestamp_capture = None))]
+    /// A text-line surface beside `read_lines`, **never a record method**: each
+    /// record becomes one row - `url`, `rownum`, `date`, `time`, `unix`,
+    /// `hash`, `header`, `message`, `offset`, `lines`, then in log mode the
+    /// fixed `level`, `logger`, and `thread`, then one nullable column per
+    /// named capture group, then the constant `custom_fields` columns.
+    ///
+    /// A capture whose whole sub-pattern is one of the closed inference table's
+    /// exact spellings types itself - `(?<thread_id>\d+)` is `int64` - and
+    /// `capture_types` declares the rest (`{"price": "decimal(9, 2)"}`, values
+    /// as anything naming a datatype), parsed strictly: a captured text the
+    /// datatype cannot read is an error, never a silent null. Every column's
+    /// datatype is one Iceberg accepts as declared, and `schema_from_pattern`
+    /// answers the same schema **without a reader**.
+    ///
+    /// A batch closes on whichever bound trips first: `byte_size` counts the
+    /// *decoded input bytes* of the records appended - not Arrow buffer
+    /// memory, so it is not an allocation cap - and `batch_size` counts rows.
+    ///
+    /// `options` takes the whole extractor at once, so a YAML or TOML document
+    /// describes the reader and **no Python runs per row**. The reader stays
+    /// lazy across the boundary: `PyArrow` pulls one batch at a time through the
+    /// C stream, content codings decoded as streams, a folder read leaf by
+    /// leaf - so a season of compressed logs is readable from Python exactly as
+    /// it is from Rust.
+    #[pyo3(signature = (
+        pattern = None,
+        *,
+        options = None,
+        header = None,
+        linesep = None,
+        lstrip = None,
+        rstrip = None,
+        byte_size = None,
+        batch_size = None,
+        timestamp_capture = None,
+        timezone = None,
+        custom_fields = None,
+        capture_types = None,
+        logs = false,
+    ))]
+    #[allow(clippy::too_many_arguments)]
     fn read_arrow_lines<'py>(
         &self,
         py: Python<'py>,
-        pattern: &str,
+        pattern: Option<&str>,
+        options: Option<&Bound<'_, PyAny>>,
+        header: Option<&str>,
+        linesep: Option<&str>,
+        lstrip: Option<&str>,
+        rstrip: Option<&str>,
+        byte_size: Option<usize>,
         batch_size: Option<usize>,
+        timestamp_capture: Option<&str>,
+        timezone: Option<&str>,
         custom_fields: Option<&Bound<'_, PyAny>>,
         capture_types: Option<&Bound<'_, PyAny>>,
-        timestamp_capture: Option<&str>,
+        logs: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let mut options = line_record_options(pattern, custom_fields, capture_types)?;
-        options.set_batch_size(batch_size);
-        if let Some(capture) = timestamp_capture {
-            options
-                .set_timestamp_capture(Some(capture.into()))
+        let built = line_record_options(
+            options,
+            pattern,
+            header,
+            linesep,
+            lstrip,
+            rstrip,
+            byte_size,
+            batch_size,
+            timestamp_capture,
+            timezone,
+            custom_fields,
+            capture_types,
+            logs,
+        )?;
+        // The borrowed core projection: it reopens a located leaf itself -
+        // keeping a declared media-type override - and snapshots an in-memory
+        // handle, so `from_bytes` parses exactly as a file does.
+        let reader = self.inner.read_arrow_lines(&built).map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// Replace this resource's records with `lines`, each terminated.
+    ///
+    /// Streaming: `lines` is any iterable, never a list the binding materializes
+    /// first, for the same reason the record surface refuses one. Each item is
+    /// `str` or `bytes`. The terminator is `linesep`, or the platform-neutral
+    /// `\n` when it is unset - never the host's line ending, because a
+    /// resource's bytes must not depend on which machine wrote them.
+    #[pyo3(signature = (lines, *, options = None, linesep = None))]
+    fn write_lines(
+        &mut self,
+        lines: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        linesep: Option<&str>,
+    ) -> PyResult<()> {
+        self.inner.truncate(0).map_err(value_error)?;
+        self.append_lines(lines, options, linesep)
+    }
+
+    /// Append `lines` after this resource's current end, each terminated.
+    ///
+    /// Streams exactly as `write_lines` does.
+    #[pyo3(signature = (lines, *, options = None, linesep = None))]
+    fn append_lines(
+        &mut self,
+        lines: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        linesep: Option<&str>,
+    ) -> PyResult<()> {
+        let built = line_record_options(
+            options, None, None, linesep, None, None, None, None, None, None, None, None, false,
+        )?;
+        let terminator = built.write_linesep().to_vec();
+        // One reused buffer, flushed in chunks: a million-line write allocates
+        // a constant amount, and the iterable is never collected.
+        let mut pending: Vec<u8> = Vec::with_capacity(64 * 1024);
+        let mut offset = self.inner.size();
+        for item in lines.try_iter()? {
+            let item = item?;
+            let bytes = if let Ok(text) = item.extract::<&str>() {
+                text.as_bytes().to_vec()
+            } else {
+                item.extract::<Vec<u8>>()?
+            };
+            pending.extend_from_slice(&bytes);
+            pending.extend_from_slice(&terminator);
+            if pending.len() >= 64 * 1024 {
+                self.inner
+                    .pwrite_all(offset, &pending)
+                    .map_err(value_error)?;
+                offset += pending.len() as u64;
+                pending.clear();
+            }
+        }
+        if !pending.is_empty() {
+            self.inner
+                .pwrite_all(offset, &pending)
                 .map_err(value_error)?;
         }
-        // The borrowed core projection: it reopens a located leaf itself -
-        // keeping a declared media-type override - and snapshots an
-        // in-memory handle, so `from_bytes` parses exactly as a file does.
-        let reader = self.inner.read_arrow_lines(&options).map_err(value_error)?;
-        batch_reader_to_pyarrow(py, reader)
+        // Appending records is a complete operation, so it publishes: a handle
+        // that over-allocates would otherwise leave its slack on disk, and the
+        // next call - which rebuilds the handle from the location - would read
+        // the padding as one more record.
+        self.inner.flush().map_err(value_error)
     }
 
     /// Read the canonical non-null struct root `Field` of this resource.
@@ -1389,41 +1567,142 @@ impl PyIOBaseIterator {
     }
 }
 
-/// Build the line projection's root Struct Field straight from a pattern.
+/// Build the projection's root Struct Field straight from the extractor.
 ///
-/// The schema the reader emits, without a resource or a reader in sight:
-/// named captures become typed columns - `(?<thread_id>\d+)` infers `int64`,
-/// a `capture_types` entry declares - so a caller marks its partition columns
-/// and creates the Iceberg table before the first log line exists.
+/// The schema the reader emits, **without a resource or a reader in sight**:
+/// named captures become typed columns - `(?<thread_id>\d+)` infers `int64`, a
+/// `capture_types` entry declares - so a caller marks its partition columns and
+/// creates the Iceberg table before the first log line exists.
+///
+/// Every argument `read_arrow_lines` takes is accepted here, including
+/// `options` as a whole mapping, so the schema and the reader are described by
+/// the same document.
 #[pyfunction]
-#[pyo3(signature = (pattern, *, custom_fields = None, capture_types = None))]
+#[pyo3(signature = (
+    pattern = None,
+    *,
+    options = None,
+    header = None,
+    custom_fields = None,
+    capture_types = None,
+    logs = false,
+))]
 pub(crate) fn schema_from_pattern(
-    pattern: &str,
+    pattern: Option<&str>,
+    options: Option<&Bound<'_, PyAny>>,
+    header: Option<&str>,
     custom_fields: Option<&Bound<'_, PyAny>>,
     capture_types: Option<&Bound<'_, PyAny>>,
+    logs: bool,
 ) -> PyResult<PyField> {
-    line_record_options(pattern, custom_fields, capture_types)
-        .map(|options| PyField::from_inner(options.into_schema()))
+    line_record_options(
+        options,
+        pattern,
+        header,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        custom_fields,
+        capture_types,
+        logs,
+    )
+    .map(|built| PyField::from_inner(built.into_schema()))
 }
 
-/// Assemble validated line-record options from the boundary's arguments.
+/// Assemble validated text-line options from the boundary's arguments.
+///
+/// `options` is the whole extractor at once - a mapping, or anything a config
+/// file parsed into one - and the keywords refine it. That is what makes a
+/// reader specifiable from configuration alone: a YAML or TOML document
+/// describes the reader, Python hands it over, and nothing per row runs in
+/// Python at all. Every value is validated through the same core setters a
+/// Rust caller uses, so a document fails here rather than at the first row.
+#[allow(clippy::too_many_arguments)]
 fn line_record_options(
-    pattern: &str,
+    options: Option<&Bound<'_, PyAny>>,
+    pattern: Option<&str>,
+    header: Option<&str>,
+    linesep: Option<&str>,
+    lstrip: Option<&str>,
+    rstrip: Option<&str>,
+    byte_size: Option<usize>,
+    batch_size: Option<usize>,
+    timestamp_capture: Option<&str>,
+    timezone: Option<&str>,
     custom_fields: Option<&Bound<'_, PyAny>>,
     capture_types: Option<&Bound<'_, PyAny>>,
-) -> PyResult<LineRecordOptions> {
-    let mut options = LineRecordOptions::new(pattern).map_err(value_error)?;
-    if let Some(fields) = custom_fields {
-        options = options
-            .try_with_custom_fields(line_custom_fields(fields)?)
+    logs: bool,
+) -> PyResult<TextLineOptions> {
+    let mut built = match options {
+        // A mapping, or the value a config document parsed into - both reach
+        // the one core conversion, so a document is read exactly once.
+        Some(value) => {
+            TextLineOptions::from_value(crate::value::from_py(value)?).map_err(value_error)?
+        }
+        None => TextLineOptions::new(),
+    };
+    if logs {
+        built
+            .set_opening(yggdryl::text::Opening::Timestamp)
+            .map_err(value_error)?;
+    }
+    if let Some(pattern) = pattern {
+        built.set_pattern(Some(pattern)).map_err(value_error)?;
+    }
+    if let Some(header) = header {
+        built.set_header(Some(header)).map_err(value_error)?;
+    }
+    if let Some(linesep) = linesep {
+        built.set_linesep(Some(linesep.parse().map_err(value_error)?));
+    }
+    if let Some(lstrip) = lstrip {
+        built.set_lstrip(lstrip.parse().map_err(value_error)?);
+    }
+    if let Some(rstrip) = rstrip {
+        built.set_rstrip(rstrip.parse().map_err(value_error)?);
+    }
+    if byte_size.is_some() {
+        built.set_byte_size(byte_size);
+    }
+    if batch_size.is_some() {
+        built.set_batch_size(batch_size);
+    }
+    if let Some(timezone) = timezone {
+        built
+            .set_timezone(Some(timezone.parse().map_err(value_error)?))
             .map_err(value_error)?;
     }
     if let Some(types) = capture_types {
-        options = options
-            .try_with_capture_types(line_capture_types(types)?)
+        built
+            .set_capture_types(
+                line_capture_types(types)?
+                    .into_iter()
+                    .map(|(name, data_type)| (name.into(), data_type))
+                    .collect(),
+            )
             .map_err(value_error)?;
     }
-    Ok(options)
+    if let Some(fields) = custom_fields {
+        built
+            .set_custom_fields(
+                line_custom_fields(fields)?
+                    .into_iter()
+                    .map(|(name, value)| (name.into(), value))
+                    .collect(),
+            )
+            .map_err(value_error)?;
+    }
+    // Last, because it names a capture the expressions above have to define.
+    if let Some(capture) = timestamp_capture {
+        built
+            .set_timestamp_capture(Some(capture.into()))
+            .map_err(value_error)?;
+    }
+    Ok(built)
 }
 
 /// Coerce the `capture_types` argument into the core's declarations.
@@ -1469,15 +1748,20 @@ fn line_custom_fields(fields: &Bound<'_, PyAny>) -> PyResult<Vec<(String, yggdry
         .collect()
 }
 
-/// Iterator over a resource's decoded text lines, one line at a time.
+/// Iterator over a resource's text records, one at a time.
 ///
 /// Built by [`PyIOBase::read_lines`]. The handle is rebuilt from its location
-/// and owned by the iterator, so the lines outlive the handle that made them;
-/// bytes stream through a fixed buffer and any content codings decode as
-/// streams, so a compressed resource costs one buffer, not its decoded size.
+/// and owned by the iterator, so the records outlive the handle that made them;
+/// bytes stream through one bounded window and any content codings decode as
+/// streams, so a compressed resource costs one window, not its decoded size.
+///
+/// Each record crosses as a `str`. The core hands back a *borrowed* view whose
+/// lifetime ends at the next read, and a Python object cannot borrow it - so
+/// this is the one place the line surface copies, and it copies because the
+/// boundary requires it, not because the reader does.
 #[pyclass(name = "LineIterator", module = "yggdryl._native")]
 pub(crate) struct PyLineIterator {
-    inner: std::sync::Mutex<Box<dyn Iterator<Item = yggdryl::Result<String>> + Send>>,
+    inner: std::sync::Mutex<yggdryl::text::TextLines<Box<dyn std::io::Read + Send + 'static>>>,
 }
 
 #[pymethods]
@@ -1488,12 +1772,17 @@ impl PyLineIterator {
 
     fn __next__(&self, py: Python<'_>) -> PyResult<Option<String>> {
         // The read and the decode run without the GIL, so another thread can
-        // work while a line is fetched.
+        // work while a record is fetched.
         let next = py.detach(|| {
-            self.inner
+            let mut lines = self
+                .inner
                 .lock()
-                .map_err(|_| value_error("line iterator poisoned by an earlier panic"))
-                .map(|mut lines| lines.next())
+                .map_err(|_| value_error("line iterator poisoned by an earlier panic"))?;
+            Ok::<_, PyErr>(
+                lines
+                    .next()
+                    .map(|line| line.and_then(|line| line.text().map(str::to_owned))),
+            )
         })?;
         match next {
             None => Ok(None),

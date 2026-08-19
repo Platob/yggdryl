@@ -14,7 +14,9 @@ use crate::codec::{
     codec_encode_writer, codec_infer, codec_infer_path, codec_infer_text, codec_normalize_format,
 };
 use crate::datatype::{PyDataType, PyDataTypeIterator};
-use crate::field::{PyField, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolMetadata};
+use crate::field::{
+    PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolMetadata,
+};
 use crate::media::{PyMediaType, PyMediaTypeIterator, PyMimeType};
 use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
@@ -55,6 +57,99 @@ fn normalize_index(index: isize, length: usize) -> Option<usize> {
         usize::try_from(signed_length.checked_add(index)?)
             .ok()
             .filter(|index| *index < length)
+    }
+}
+
+/// Map Python's `indent` keyword onto the core formatting value.
+///
+/// `None` is what a Python caller means by "no layout" - `json.dumps`'s own
+/// default - so it maps to the explicit no-indent request rather than to the
+/// format's default. Each bound method chooses its own natural default in its
+/// signature (`indent=None` for JSON and TOML, `indent=2` for YAML), which is
+/// what makes the zero-argument call read right in every format.
+pub(crate) fn formatting_of(indent: Option<u8>) -> yggdryl::text::Formatting {
+    match indent {
+        None => yggdryl::text::Formatting::compact(),
+        Some(width) => yggdryl::text::Formatting::indented(width),
+    }
+}
+
+/// Resolve a subscript key to a child position on a schema node.
+///
+/// The one implementation behind `Field.__getitem__` and
+/// `DataType.__getitem__`, so the two classes cannot drift: a `str` is a child
+/// name, an `int` is a position (negative counting from the end), and anything
+/// else is a `TypeError` with the same message shape.
+pub(crate) enum ChildKey {
+    Name(String),
+    Position(isize),
+}
+
+impl ChildKey {
+    /// Read a subscript key, or report what a schema node accepts.
+    pub(crate) fn from_py(key: &pyo3::Bound<'_, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+        if let Ok(name) = key.extract::<String>() {
+            return Ok(Self::Name(name));
+        }
+        if let Ok(index) = key.extract::<isize>() {
+            return Ok(Self::Position(index));
+        }
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "schema child index must be int or str",
+        ))
+    }
+}
+
+/// Read one nested child off a schema node, per [`ChildKey`]'s rules.
+pub(crate) fn child_of(
+    node: &yggdryl::DataType,
+    key: &pyo3::Bound<'_, pyo3::types::PyAny>,
+) -> pyo3::PyResult<yggdryl::Field> {
+    match ChildKey::from_py(key)? {
+        ChildKey::Name(name) => node
+            .get_field_by_name(&name)
+            .cloned()
+            .ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(name)),
+        ChildKey::Position(index) => normalize_index(index, node.field_len())
+            .and_then(|position| node.get_field(position).cloned())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index)),
+    }
+}
+
+/// Replace or append one nested child, through the core's cache-aware mutation.
+///
+/// A name replaces in place or appends; a position replaces only. One
+/// implementation so `Field` and `DataType` cannot answer differently.
+pub(crate) fn set_child(
+    node: &mut yggdryl::Field,
+    key: &pyo3::Bound<'_, pyo3::types::PyAny>,
+    child: yggdryl::Field,
+) -> pyo3::PyResult<()> {
+    match ChildKey::from_py(key)? {
+        ChildKey::Name(name) => node.set_field_by_name(&name, child).map_err(value_error),
+        ChildKey::Position(index) => {
+            let position = normalize_index(index, node.field_len())
+                .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+            node.set_field(position, child).map_err(value_error)
+        }
+    }
+}
+
+/// Remove one nested child, through the core's cache-aware mutation.
+pub(crate) fn remove_child(
+    node: &mut yggdryl::Field,
+    key: &pyo3::Bound<'_, pyo3::types::PyAny>,
+) -> pyo3::PyResult<()> {
+    match ChildKey::from_py(key)? {
+        ChildKey::Name(name) => node
+            .remove_field_by_name(&name)
+            .map(|_| ())
+            .map_err(|_| pyo3::exceptions::PyKeyError::new_err(name)),
+        ChildKey::Position(index) => {
+            let position = normalize_index(index, node.field_len())
+                .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+            node.remove_field(position).map(|_| ()).map_err(value_error)
+        }
     }
 }
 
@@ -110,6 +205,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;
+    module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolMetadata>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyMimeType>()?;
@@ -122,6 +218,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<io::PyIOBase>()?;
     module.add_function(wrap_pyfunction!(io::schema_from_pattern, module)?)?;
+    module.add_function(wrap_pyfunction!(record::combined, module)?)?;
     module.add_class::<crate::io::PyIOCursor>()?;
     module.add_class::<io::PyLineIterator>()?;
     module.add_class::<io::PyIOBaseIterator>()?;

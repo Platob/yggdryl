@@ -134,12 +134,28 @@ Adversarial cases sit beside the happy path. The suites that matter most are the
 handle that must reject an outer content coding, an allocation budget that must reject before
 allocating.
 
+## A claim about allocations is counted, not asserted
+
+The text-record surface rests on records being *views* into a bounded window: reading a million of
+them must cost the same allocations as reading a thousand, because none of them belongs to a
+record. A comment saying so is not evidence, and neither is a timing - a per-record allocation is
+cheap enough to hide inside I/O.
+
+So `rust/tests/allocations.rs` counts them. A pass-through global allocator increments a counter
+while armed, and each case drains the same work at two corpus sizes and asserts the two counts are
+*equal*: reading records, reading them with a pattern and its captures, and writing them. It is its
+own test target because a program has exactly one global allocator.
+
+The shape generalizes. Any claim of the form "this does not scale with N" belongs in that file,
+measured the same way, rather than in prose.
+
 ## Layout
 
 | Where | What |
 | --- | --- |
 | `rust/src/**/tests.rs` | Unit tests, beside the module they cover |
 | `rust/tests/*.rs` | Integration tests, one file per domain |
+| `rust/tests/allocations.rs` | The counting-allocator target: what the hot path must *not* allocate per record |
 | `python/tests/` | Python binding and records tests |
 | `node/tests/` | JavaScript binding tests, plus `tsc --noEmit` |
 | `*/benchmarks/` | [Benchmarks](benchmarks.md) |

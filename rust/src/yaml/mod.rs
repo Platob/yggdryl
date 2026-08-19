@@ -7,7 +7,7 @@ use base64::Engine as _;
 mod parser;
 
 use crate::text::wire::{RawValue, from_raw};
-use crate::text::{Limits, Value, ValueIter, check_encode_depth, check_input_size};
+use crate::text::{Formatting, Limits, Value, ValueIter, check_encode_depth, check_input_size};
 use crate::{Error, Result};
 
 use self::parser::YamlParser;
@@ -167,8 +167,40 @@ impl Iterator for Reader<'_> {
 
 /// Encode one value to YAML bytes.
 pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
+    to_vec_with_formatting(value, Formatting::default())
+}
+
+/// Encode one value to YAML bytes laid out as `formatting` asks.
+///
+/// [`Indent::Default`](crate::text::Indent::Default) is today's output: block
+/// style, two spaces per level. [`Indent::Spaces`](crate::text::Indent::Spaces)
+/// keeps block style at that width. [`Indent::None`](crate::text::Indent::None)
+/// means **flow style** - `{a: 1, b: 2}` on one line - which is valid YAML and
+/// round-trips, and is an explicitly requested opt-in: a schema dump's block
+/// style is the default precisely so nobody has to ask for it.
+///
+/// ```
+/// use yggdryl::generic::Value;
+/// use yggdryl::text::Formatting;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
+/// assert_eq!(yggdryl::yaml::to_vec(&value)?, b"id: 1\n");
+///
+/// let flow = yggdryl::yaml::to_vec_with_formatting(&value, Formatting::compact())?;
+/// assert_eq!(flow, b"{id: 1}\n");
+/// // Formatting changes bytes, never meaning.
+/// assert_eq!(yggdryl::yaml::from_str("{id: 1}")?, value);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn to_vec_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer(&mut output, value)?;
+    to_writer_with_formatting(&mut output, value, formatting)?;
     Ok(output)
 }
 
@@ -180,41 +212,138 @@ pub fn into_vec(value: Value) -> Result<Vec<u8>> {
     to_vec(&value)
 }
 
+/// Consume and encode one value to YAML bytes laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn into_vec_with_formatting(value: Value, formatting: Formatting) -> Result<Vec<u8>> {
+    to_vec_with_formatting(&value, formatting)
+}
+
 /// Encode one value to a byte writer.
-pub fn to_writer<W: Write>(mut writer: W, value: &Value) -> Result<()> {
+pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()> {
+    to_writer_with_formatting(writer, value, Formatting::default())
+}
+
+/// Encode one value to a byte writer, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's or the sink's failure.
+pub fn to_writer_with_formatting<W: Write>(
+    mut writer: W,
+    value: &Value,
+    formatting: Formatting,
+) -> Result<()> {
     check_encode_depth(value, "yaml")?;
     // `write_value` terminates the document, so nothing is added here.
-    write_value(&mut writer, value)
+    write_value(&mut writer, value, Layout::from(formatting))
 }
 
 /// Encode YAML documents to a byte vector.
 pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
+    to_vec_all_with_formatting(values, Formatting::default())
+}
+
+/// Encode YAML documents to a byte vector, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn to_vec_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_all(&mut output, values)?;
+    to_writer_all_with_formatting(&mut output, values, formatting)?;
     Ok(output)
 }
 
 /// Encode multiple values as a YAML document stream.
-pub fn to_writer_all<W, I, V>(mut writer: W, values: I) -> Result<()>
+pub fn to_writer_all<W, I, V>(writer: W, values: I) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
     V: std::borrow::Borrow<Value>,
 {
+    to_writer_all_with_formatting(writer, values, Formatting::default())
+}
+
+/// Encode a YAML document stream, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's or the sink's failure.
+pub fn to_writer_all_with_formatting<W, I, V>(
+    mut writer: W,
+    values: I,
+    formatting: Formatting,
+) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = V>,
+    V: std::borrow::Borrow<Value>,
+{
+    let layout = Layout::from(formatting);
     for (index, value) in values.into_iter().enumerate() {
         if index != 0 {
             writer.write_all(b"---\n")?;
         }
         let value = value.borrow();
         check_encode_depth(value, "yaml")?;
-        write_value(&mut writer, value)?;
+        write_value(&mut writer, value, layout)?;
     }
     Ok(())
 }
 
-/// Write one document in block style.
-fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
-    write_node(writer, value, 0, Position::Root)?;
+/// The resolved layout one dump runs under.
+///
+/// `Formatting` is the caller's request; this is what the writer actually
+/// applies, with YAML's own default already substituted for
+/// `Indent::Default` - so the writing code never re-decides the default.
+#[derive(Clone, Copy)]
+struct Layout {
+    /// How many columns one nesting level costs, or `None` for flow style.
+    ///
+    /// Columns rather than a byte string, because YAML's indentation is
+    /// positional: a mapping nested under a key indents by this width, while
+    /// one nested under a `- ` indents by the *dash marker's* two columns so
+    /// its keys line up with the first one. A level count cannot express both.
+    width: Option<usize>,
+}
+
+/// YAML's own default: block style, two columns per level.
+const DEFAULT_WIDTH: usize = 2;
+
+/// The width the `- ` marker itself occupies, which continuation lines match.
+const DASH_WIDTH: usize = 2;
+
+impl From<Formatting> for Layout {
+    fn from(value: Formatting) -> Self {
+        let indent = value.indent();
+        if indent.is_none() {
+            // Flow style is the only thing "no indent" can mean in YAML, and
+            // it is reached only by asking for it explicitly.
+            return Self { width: None };
+        }
+        Self {
+            width: Some(match indent.unit() {
+                // YAML forbids a tab as indentation outright, so a tab request
+                // falls back to the default width rather than emitting a
+                // document that will not parse. A zero width would too.
+                Some(b"\t") | Some(b"") | None => DEFAULT_WIDTH,
+                Some(unit) => unit.len(),
+            }),
+        }
+    }
+}
+
+/// Write one document, block or flow as the layout asks.
+fn write_value<W: Write>(writer: &mut W, value: &Value, layout: Layout) -> Result<()> {
+    match layout.width {
+        Some(width) => write_node(writer, value, 0, Position::Root, width)?,
+        // Flow style, spelled the way the block writer spells its scalars so
+        // the two differ only in layout: `{id: 1}` rather than `{? "id" : 1}`.
+        None => write_flow(writer, value)?,
+    }
     writer.write_all(b"\n")?;
     Ok(())
 }
@@ -234,26 +363,29 @@ enum Position {
 fn write_node<W: Write>(
     writer: &mut W,
     value: &Value,
-    indent: usize,
+    columns: usize,
     position: Position,
+    width: usize,
 ) -> Result<()> {
     // After a dash the line is already open, so the collection continues it;
     // after a key the collection starts on the next line.
     let skip_first_indent = position == Position::AfterDash;
     match value {
         // A record is its named-mapping spelling, block or inline alike.
-        Value::Record(..) => write_node(writer, &value.record_to_mapping(), indent, position),
+        Value::Record(..) => {
+            write_node(writer, &value.record_to_mapping(), columns, position, width)
+        }
         Value::Sequence(values) if !values.is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_sequence(writer, values, indent, skip_first_indent)
+            write_sequence(writer, values, columns, skip_first_indent, width)
         }
         Value::Mapping(entries) if !entries.is_empty() && !is_yaml_envelope_collision(entries) => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_mapping(writer, entries, indent, skip_first_indent)
+            write_mapping(writer, entries, columns, skip_first_indent, width)
         }
         // Everything else is one scalar-shaped token: it stays on the line the
         // marker opened, including the empty collections and the envelopes.
@@ -268,20 +400,28 @@ fn write_node<W: Write>(
 fn write_sequence<W: Write>(
     writer: &mut W,
     values: &[Value],
-    indent: usize,
+    columns: usize,
     skip_first_indent: bool,
+    width: usize,
 ) -> Result<()> {
     for (index, value) in values.iter().enumerate() {
         if index != 0 {
             writer.write_all(b"\n")?;
         }
         if index != 0 || !skip_first_indent {
-            write_indent(writer, indent)?;
+            write_indent(writer, columns)?;
         }
         writer.write_all(b"- ")?;
-        // A nested collection under a dash indents one level past the dash and
-        // keeps its first line on the dash.
-        write_node(writer, value, indent + 1, Position::AfterDash)?;
+        // A nested collection under a dash keeps its first line on the dash
+        // and aligns its later lines with the text after the marker, which is
+        // what YAML requires whatever the level width is.
+        write_node(
+            writer,
+            value,
+            columns + DASH_WIDTH,
+            Position::AfterDash,
+            width,
+        )?;
     }
     Ok(())
 }
@@ -290,15 +430,16 @@ fn write_sequence<W: Write>(
 fn write_mapping<W: Write>(
     writer: &mut W,
     entries: &[(Value, Value)],
-    indent: usize,
+    columns: usize,
     skip_first_indent: bool,
+    width: usize,
 ) -> Result<()> {
     for (index, (key, value)) in entries.iter().enumerate() {
         if index != 0 {
             writer.write_all(b"\n")?;
         }
         if index != 0 || !skip_first_indent {
-            write_indent(writer, indent)?;
+            write_indent(writer, columns)?;
         }
         if is_plain_key(key) {
             write_inline(writer, key)?;
@@ -306,13 +447,19 @@ fn write_mapping<W: Write>(
         } else {
             // A key that is not a scalar needs YAML's explicit-key form.
             writer.write_all(b"? ")?;
-            write_node(writer, key, indent + 1, Position::AfterDash)?;
+            write_node(
+                writer,
+                key,
+                columns + DASH_WIDTH,
+                Position::AfterDash,
+                width,
+            )?;
             writer.write_all(b"\n")?;
-            write_indent(writer, indent)?;
+            write_indent(writer, columns)?;
             writer.write_all(b":")?;
         }
         if is_block(value) {
-            write_node(writer, value, indent + 1, Position::AfterKey)?;
+            write_node(writer, value, columns + width, Position::AfterKey, width)?;
         } else {
             writer.write_all(b" ")?;
             write_inline(writer, value)?;
@@ -343,9 +490,14 @@ fn is_plain_key(key: &Value) -> bool {
     )
 }
 
-fn write_indent<W: Write>(writer: &mut W, indent: usize) -> Result<()> {
-    for _ in 0..indent {
-        writer.write_all(b"  ")?;
+fn write_indent<W: Write>(writer: &mut W, columns: usize) -> Result<()> {
+    /// One chunk of spaces, so a deep indent costs a handful of writes.
+    const SPACES: &[u8; 32] = b"                                ";
+    let mut left = columns;
+    while left > 0 {
+        let step = left.min(SPACES.len());
+        writer.write_all(&SPACES[..step])?;
+        left -= step;
     }
     Ok(())
 }
@@ -518,6 +670,49 @@ fn write_inline_recursive<W: Write>(writer: &mut W, value: &Value) -> Result<()>
             Ok(())
         }
         Value::String(value) => write_quoted(writer, value),
+        other => write_inline(writer, other),
+    }
+}
+
+/// Write one value in flow style, at any depth.
+///
+/// The scalar spelling is the block writer's - a plain key stays plain, a
+/// string is quoted only when a plain scalar would read back as something
+/// else - so flow and block differ in layout and nothing else. A key the flow
+/// grammar cannot spell plainly falls back to YAML's explicit-key form.
+fn write_flow<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+    match value {
+        Value::Record(..) => write_flow(writer, &value.record_to_mapping()),
+        Value::Sequence(values) if !values.is_empty() => {
+            writer.write_all(b"[")?;
+            for (index, value) in values.iter().enumerate() {
+                if index != 0 {
+                    writer.write_all(b", ")?;
+                }
+                write_flow(writer, value)?;
+            }
+            writer.write_all(b"]")?;
+            Ok(())
+        }
+        Value::Mapping(entries) if !entries.is_empty() && !is_yaml_envelope_collision(entries) => {
+            writer.write_all(b"{")?;
+            for (index, (key, value)) in entries.iter().enumerate() {
+                if index != 0 {
+                    writer.write_all(b", ")?;
+                }
+                if is_plain_key(key) {
+                    write_inline(writer, key)?;
+                    writer.write_all(b": ")?;
+                } else {
+                    writer.write_all(b"? ")?;
+                    write_flow(writer, key)?;
+                    writer.write_all(b" : ")?;
+                }
+                write_flow(writer, value)?;
+            }
+            writer.write_all(b"}")?;
+            Ok(())
+        }
         other => write_inline(writer, other),
     }
 }

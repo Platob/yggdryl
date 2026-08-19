@@ -11,7 +11,7 @@ mod wire;
 
 use crate::text::position::{LineOffsets, line_column_to_byte_offset};
 use crate::text::wire::from_raw;
-use crate::text::{Limits, Value, ValueIter, check_encode_depth, check_input_size};
+use crate::text::{Formatting, Limits, Value, ValueIter, check_encode_depth, check_input_size};
 use crate::{Error, Result};
 
 use self::wire::JsonRef;
@@ -363,8 +363,36 @@ impl<R: Read> Iterator for LinesReader<R> {
 
 /// Encode one value to compact JSON bytes.
 pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
+    to_vec_with_formatting(value, Formatting::default())
+}
+
+/// Encode one value to JSON bytes laid out as `formatting` asks.
+///
+/// [`Indent::Default`](crate::text::Indent::Default) and [`Indent::None`](crate::text::Indent::None) are both today's compact output;
+/// [`Indent::Spaces`](crate::text::Indent::Spaces) pretty-prints with that many spaces per nesting level,
+/// exactly as `json.dumps(indent=n)` reads.
+///
+/// ```
+/// use yggdryl::generic::Value;
+/// use yggdryl::text::Formatting;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
+/// assert_eq!(yggdryl::json::to_vec(&value)?, br#"{"id":1}"#);
+/// assert_eq!(
+///     yggdryl::json::to_vec_with_formatting(&value, Formatting::indented(2))?,
+///     b"{\n  \"id\": 1\n}",
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn to_vec_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer(&mut output, value)?;
+    to_writer_with_formatting(&mut output, value, formatting)?;
     Ok(output)
 }
 
@@ -376,22 +404,75 @@ pub fn into_vec(value: Value) -> Result<Vec<u8>> {
     to_vec(&value)
 }
 
+/// Consume and encode one value to JSON bytes laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's failure, including the published depth cap.
+pub fn into_vec_with_formatting(value: Value, formatting: Formatting) -> Result<Vec<u8>> {
+    to_vec_with_formatting(&value, formatting)
+}
+
 /// Encode one value to a byte writer.
 pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()> {
+    to_writer_with_formatting(writer, value, Formatting::default())
+}
+
+/// Encode one value to a byte writer, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's or the sink's failure.
+pub fn to_writer_with_formatting<W: Write>(
+    writer: W,
+    value: &Value,
+    formatting: Formatting,
+) -> Result<()> {
     check_encode_depth(value, "json")?;
-    serde_json::to_writer(writer, &JsonRef(value))
-        .map_err(|error| codec_error(0, &error.to_string()))
+    write_one(writer, value, formatting)
 }
 
 /// Encode values as newline-delimited JSON bytes.
 pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
+    to_vec_all_with_formatting(values, Formatting::default())
+}
+
+/// Encode values as newline-delimited JSON bytes, laid out as `formatting` asks.
+///
+/// An indented document still occupies one line-delimited slot, because the
+/// stream separator is the newline *between* documents; an indented JSON Lines
+/// stream is therefore no longer one document per line, which is why the
+/// compact default is what a `.jsonl` reader expects.
+///
+/// # Errors
+///
+/// Returns the encoder's failure.
+pub fn to_vec_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_all(&mut output, values)?;
+    to_writer_all_with_formatting(&mut output, values, formatting)?;
     Ok(output)
 }
 
 /// Encode values as newline-delimited JSON to a byte writer.
-pub fn to_writer_all<W, I, V>(mut writer: W, values: I) -> Result<()>
+pub fn to_writer_all<W, I, V>(writer: W, values: I) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = V>,
+    V: Borrow<Value>,
+{
+    to_writer_all_with_formatting(writer, values, Formatting::default())
+}
+
+/// Encode values as newline-delimited JSON, laid out as `formatting` asks.
+///
+/// # Errors
+///
+/// Returns the encoder's or the sink's failure.
+pub fn to_writer_all_with_formatting<W, I, V>(
+    mut writer: W,
+    values: I,
+    formatting: Formatting,
+) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
@@ -400,11 +481,25 @@ where
     for value in values {
         let value = value.borrow();
         check_encode_depth(value, "json")?;
-        serde_json::to_writer(&mut writer, &JsonRef(value))
-            .map_err(|error| codec_error(0, &error.to_string()))?;
+        write_one(&mut writer, value, formatting)?;
         writer.write_all(b"\n")?;
     }
     Ok(())
+}
+
+/// Emit one already-depth-checked value under `formatting`.
+fn write_one<W: Write>(writer: W, value: &Value, formatting: Formatting) -> Result<()> {
+    match formatting.indent().unit() {
+        // Compact is the default and the only shape JSON Lines can carry.
+        None => serde_json::to_writer(writer, &JsonRef(value))
+            .map_err(|error| codec_error(0, &error.to_string())),
+        Some(unit) => {
+            let formatter = serde_json::ser::PrettyFormatter::with_indent(unit);
+            let mut serializer = serde_json::Serializer::with_formatter(writer, formatter);
+            serde::Serialize::serialize(&JsonRef(value), &mut serializer)
+                .map_err(|error| codec_error(0, &error.to_string()))
+        }
+    }
 }
 
 fn parse_raw_document(input: &[u8], limits: Limits, base: usize) -> Result<Value> {

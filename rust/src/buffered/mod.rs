@@ -383,7 +383,9 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // Everything the cache does not change is the wrapped handle's answer,
     // expanded from the one delegation macro. What the list leaves out is
     // exactly what this wrapper owns: the two positional primitives, the
-    // resize that invalidates, and the open/close pair that holds the cache.
+    // resize that invalidates, the open/close pair that holds the cache, and
+    // the `clear`/`remove` pair - a cache that outlived either would answer a
+    // later read with bytes that are gone.
     crate::delegate_iobase!(handle: size, capacity, reserve, url, media_type,
         set_media_type, flush, parent, child_by, ls, kind, is_atomic,
         is_tabular);
@@ -440,8 +442,43 @@ impl<H: IOBase> IOBase for Buffered<H> {
         self.handle.open()
     }
 
-    fn is_open(&self) -> bool {
-        self.handle.is_open()
+    fn opened(&self) -> bool {
+        self.handle.opened()
+    }
+
+    /// Stream the wrapped handle's records rather than the cache's.
+    ///
+    /// Deferring rather than defaulting, for two reasons. The wrapped handle
+    /// may have chosen a better implementation - a [`Coded`](crate::io::Coded)
+    /// view peels its coding as a streaming decoder instead of materializing
+    /// the decoded value - and a sequential scan has no reuse to cache anyway,
+    /// so paging it would fill the whole budget with pages nothing re-reads.
+    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn std::io::Read + '_>>>
+    where
+        Self: Sized,
+    {
+        self.handle.read_lines()
+    }
+
+    /// Project the wrapped handle's records, not this cache's location.
+    ///
+    /// This one is correctness, not preference. The default projection reopens
+    /// the handle's *location*, which is sound for a storage handle and wrong
+    /// for a view: a `Buffered<Coded<_>>` reports the decoded media type while
+    /// its location still holds the compressed bytes, so the default reads a
+    /// gzip header as text. Deferring keeps whatever the wrapped handle
+    /// decided - [`Coded`](crate::io::Coded) snapshots the value it presents, a
+    /// storage handle reopens its location - and a cache that changes what a
+    /// read returns is not a cache.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(
+        &self,
+        options: &crate::text::TextLineOptions,
+    ) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized,
+    {
+        self.handle.read_arrow_lines(options)
     }
 
     /// Flush the inner handle and release every cached page.
@@ -452,6 +489,27 @@ impl<H: IOBase> IOBase for Buffered<H> {
         let closed = self.handle.close();
         self.table().clear();
         closed
+    }
+
+    /// Empty the wrapped resource, and drop every page describing what it held.
+    ///
+    /// The delegation list above leaves `clear` and `remove` out for exactly
+    /// this reason: a cache that survived either would answer a later read
+    /// with bytes that are gone.
+    fn clear(&mut self) -> Result<()> {
+        self.table().clear();
+        self.handle.clear()
+    }
+
+    /// Delete the wrapped resource, dropping the pages *first*.
+    ///
+    /// Order matters: the pages go before the removal rather than after, so a
+    /// failed delete cannot leave a cache describing a resource whose state is
+    /// now unknown, and nothing cached can be written back over a resource
+    /// that is being removed.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.table().clear();
+        self.handle.remove(recursive)
     }
 }
 

@@ -126,13 +126,13 @@ fn open_and_close_carry_the_cached_schema() {
     let mut reader = Media::ipc(Holder::buffer(Buffer::from_bytes(
         media.read_all_bytes().unwrap(),
     )));
-    assert!(!reader.is_open());
+    assert!(!reader.opened());
     reader.open().unwrap();
-    assert!(reader.is_open());
+    assert!(reader.opened());
     assert_eq!(reader.schema().unwrap(), schema());
 
     reader.close().unwrap();
-    assert!(!reader.is_open());
+    assert!(!reader.opened());
     // Still usable after closing; it simply re-derives.
     assert_eq!(reader.read_batch_reader(None).unwrap().count(), 1);
 }

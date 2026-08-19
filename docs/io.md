@@ -124,7 +124,8 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
 
     handle.close()?;
-    std::fs::remove_file(&path)?;
+    // Teardown through the abstraction: absence is a no-op success.
+    handle.remove(false)?;
     ```
 
 === "Python"
@@ -499,27 +500,53 @@ built on exactly it. In Python and JavaScript the cursor *shares the handle*
 conventions: `seek(offset, whence)` and `read(size=-1)` in Python, `seek`,
 `tell`, and a `position` property in JavaScript.
 
-## Lines
+## Text records
 
-`read_lines` iterates a resource's decoded text lines with one line in memory at a time. Bytes
-stream through a fixed-size buffer, and any content codings the resource's name declares are peeled
-as *streaming* decoders - a `trades.jsonl.gz` reads line by line without ever holding the
-decompressed value, which is what makes a scan over a compressed log cost a buffer instead of the
-log. A line is what `\n` ends, a trailing `\r` belongs to the terminator, the last line needs no
-terminator, and a resource that does not exist yields no lines, exactly as it reads zero bytes.
+`into_text` wraps any handle in `Text<H>`, the text-record surface: a wrapping handle in the same
+shape as [`Coded`](#coded), [`Gzip`](gzip.md), [`Ipc`](ipc.md), and [`Parquet`](parquet.md). It owns
+its inner handle, mirrors every byte method through it, and exposes the raw encoded bytes
+unchanged - so a `.log.gz` behind a `Text` can still be copied or uploaded verbatim. It is
+idempotent: `handle.into_text().into_text()` is the same handle, not a handle wrapped twice.
+
+A record is a *span of the decoded byte window*, not a `String`. Reading yields `TextLine<'_>`
+views that borrow the window and cache what they are asked for - the UTF-8 check, the stable hash,
+the regex captures - each computed at most once and never on a record nobody inspects. Bytes stream
+through that window, and any content codings the resource's name declares are peeled as *streaming*
+decoders: a `trades.jsonl.gz` reads record by record without ever holding the decompressed value,
+which is what makes a scan over a compressed log cost a window instead of the log.
+
+By default every line is a record. `linesep` unset is *flexible*: `\n`, `\r\n`, and a lone `\r` all
+end a record, mixed in one resource, and the last record needs no terminator. Pinning it - to
+`\r\n`, to `\0`, to `\x1e` - makes that terminator exact, so anything else is content. A resource
+that does not exist yields no records, exactly as it reads zero bytes.
 
 === "Rust"
 
     ```rust
     use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::LineSep;
     use yggdryl::Url;
 
     let mut handle = Buffer::new()
-        .with_media_type(Url::from_str("file:///trades.jsonl.gz")?.media_type());
-    handle.write_all_bytes(&yggdryl::gzip::dump(b"{\"id\":1}\n{\"id\":2}\n")?)?;
+        .with_media_type(Url::from_str("file:///trades.jsonl.gz")?.media_type())
+        .into_text();
+    handle.write_all_bytes(&yggdryl::gzip::dump(b"{\"id\":1}\r\n{\"id\":2}\n")?)?;
 
-    let lines: Vec<String> = handle.read_lines()?.collect::<yggdryl::Result<_>>()?;
-    assert_eq!(lines, ["{\"id\":1}", "{\"id\":2}"]);
+    // A record borrows the window; `text()` is the checked view of its bytes.
+    let mut records = handle.read_lines()?;
+    let mut seen: Vec<String> = Vec::new();
+    while let Some(record) = records.next() {
+        seen.push(record?.text()?.to_owned());
+    }
+    assert_eq!(seen, ["{\"id\":1}", "{\"id\":2}"]);
+
+    // Pinned, a lone `\n` is content rather than a break.
+    let mixed = Buffer::from_bytes(b"lf\ncrlf\r\nlast".to_vec())
+        .into_text()
+        .with_linesep(LineSep::CRLF);
+    let mut pinned = mixed.read_lines()?;
+    assert_eq!(pinned.next().unwrap()?.text()?, "lf\ncrlf");
+    assert_eq!(pinned.next().unwrap()?.text()?, "last");
     ```
 
 === "Python"
@@ -531,10 +558,16 @@ terminator, and a resource that does not exist yields no lines, exactly as it re
 
     from yggdryl import IOBase
 
-    target = pathlib.Path(tempfile.mkdtemp()) / "trades.jsonl.gz"
-    target.write_bytes(gzip.compress(b'{"id":1}\n{"id":2}\n'))
+    root = pathlib.Path(tempfile.mkdtemp())
+    target = root / "trades.jsonl.gz"
+    target.write_bytes(gzip.compress(b'{"id":1}\r\n{"id":2}\n'))
 
     assert list(IOBase(target).read_lines()) == ['{"id":1}', '{"id":2}']
+
+    # Pinned, a lone `\n` is content rather than a break.
+    mixed = root / "mixed.txt"
+    mixed.write_bytes(b"lf\ncrlf\r\nlast")
+    assert list(IOBase(mixed).read_lines(linesep=r"\r\n")) == ["lf\ncrlf", "last"]
     ```
 
 === "JavaScript"
@@ -549,34 +582,46 @@ terminator, and a resource that does not exist yields no lines, exactly as it re
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const target = path.join(root, 'trades.jsonl.gz')
-    fs.writeFileSync(target, zlib.gzipSync('{"id":1}\n{"id":2}\n'))
+    fs.writeFileSync(target, zlib.gzipSync('{"id":1}\r\n{"id":2}\n'))
 
     assert.deepEqual([...new IOBase(target).readLines()], ['{"id":1}', '{"id":2}'])
+
+    // Pinned, a lone `\n` is content rather than a break.
+    const mixed = path.join(root, 'mixed.txt')
+    fs.writeFileSync(mixed, 'lf\ncrlf\r\nlast')
+    assert.deepEqual([...new IOBase(mixed).readLines({ linesep: '\\r\\n' })], [
+      'lf\ncrlf',
+      'last',
+    ])
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-With a pattern, lines group into the records the pattern opens: one record starts at a matching
-line and carries every following line until the next match - the shape of a log whose entries open
-with a timestamp and continue with stack traces. Lines before the first match form the first
-record rather than being dropped.
+With a `pattern`, records group into what the pattern opens: one record starts at a matching line
+and carries every following line until the next match - the shape of a log whose entries open with
+a timestamp and continue with stack traces. Lines before the first match form the first record
+rather than being dropped. `logs: true` is the same grouping without an expression at all: a record
+opens at every line whose first bytes parse as a timestamp.
 
 === "Rust"
 
     ```rust
     use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::Url;
-    let mut handle = Buffer::new()
-        .with_media_type(Url::from_str("file:///app.log")?.media_type());
-    handle.write_all_bytes(
-        b"2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n2024-02-01 10:00:01.000_000 [ii] [beta] fine\n",
-    )?;
+    use yggdryl::text::TextLineOptions;
 
-    let entries: Vec<String> = handle
-        .read_lines_matching(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")?
-        .collect::<yggdryl::Result<_>>()?;
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0], "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one");
+    let handle = Buffer::from_bytes(
+        b"2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n\
+          2024-02-01 10:00:01.000_000 [ii] [beta] fine\n".to_vec(),
+    )
+    .into_text_with(TextLineOptions::for_logs());
+
+    let mut records = handle.read_lines()?;
+    let first = records.next().unwrap()?;
+    // The stack frame joined its entry rather than becoming a record.
+    assert_eq!(first.line_count(), 2);
+    assert_eq!(first.text()?, "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one");
+    assert_eq!(records.next().unwrap()?.line_count(), 1);
+    assert!(records.next().is_none());
     ```
 
 === "Python"
@@ -594,7 +639,9 @@ record rather than being dropped.
         "2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
     )
 
+    # A pattern names the opening line; `logs=True` needs no expression at all.
     entries = list(IOBase(target).read_lines(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"))
+    assert entries == list(IOBase(target).read_lines(logs=True))
     assert len(entries) == 2
     assert entries[0] == "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one"
     ```
@@ -618,6 +665,7 @@ record rather than being dropped.
     )
 
     const entries = [...new IOBase(target).readLines('^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}')]
+    assert.deepEqual(entries, [...new IOBase(target).readLines({ logs: true })])
     assert.equal(entries.length, 2)
     assert.equal(entries[0], '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one')
 
@@ -625,19 +673,99 @@ record rather than being dropped.
     ```
 
 The core also has `into_read_lines`, which consumes the handle so the iterator owns it - the shape
-the bindings use, and the one a Rust caller needs when the lines outlive the scope that built the
+the bindings use, and the one a Rust caller needs when the records outlive the scope that built the
 handle. Stacked codings peel outermost first, so a `.jsonl.gz.zst` reads exactly as its name says it
 was written.
 
-### Line records as Arrow batches
+### Writing records
 
-`read_arrow_lines` projects the same matched records into a streaming Arrow reader - a *text-line*
-surface beside `read_lines_matching`, never a fourth record method: the record surface stays
-exactly `read_arrow_batch_reader`, `write_arrow_batch_reader`, and `append_arrow_batch_reader`,
-and nothing here touches how a record encoding decodes rows. One batch is in memory at a time
-(1024 records by default), content codings still decode as streams, and every column is a datatype
-the strict Iceberg codec accepts **as declared**, so the parsed batches append into an Iceberg
-table without a single widening:
+`write_lines` replaces a resource's records and `append_lines` adds after its end, each record
+terminated. Both take an **iterator**, never a `Vec` or an array, for the same reason the record
+surface refuses one: a shape requiring materialization cannot describe a resource larger than
+memory. Records accumulate in one reused 64 KiB buffer and flush in chunks, so a million-record
+write allocates a constant amount and nothing is ever joined into a single value first.
+
+The terminator written is deterministic: `\n` unless `linesep` pins one, whatever the platform. A
+write is a *complete* operation, so it publishes when it finishes - a staging backend is not left
+holding it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::LineSep;
+
+    let mut handle = Buffer::new().into_text();
+    // A lazy iterator, never a collected `Vec`.
+    handle.write_lines((0..1_000).map(|index| format!("row-{index}")))?;
+    handle.append_lines(["tail"])?;
+    assert!(handle.read_all_bytes()?.ends_with(b"row-999\ntail\n"));
+
+    // A pinned terminator is written verbatim and read back exactly.
+    let mut pinned = Buffer::new().into_text().with_linesep(LineSep::CRLF);
+    pinned.write_lines(["one", "two"])?;
+    assert_eq!(pinned.read_all_bytes()?, b"one\r\ntwo\r\n");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "out.log")
+    # A generator, never a list the binding materializes first.
+    handle.write_lines(f"row-{index}" for index in range(1_000))
+    handle.append_lines(["tail"])
+    assert handle.read_bytes().endswith(b"row-999\ntail\n")
+    assert len(list(handle.read_lines())) == 1_001
+
+    pinned = IOBase(root / "crlf.log")
+    pinned.write_lines(["one", "two"], linesep=r"\r\n")
+    assert pinned.read_bytes() == b"one\r\ntwo\r\n"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'out.log'))
+    // A generator, never an array the binding materializes first.
+    handle.writeLines(
+      (function* rows() {
+        for (let index = 0; index < 1_000; index += 1) {
+          yield `row-${index}`
+        }
+      })(),
+    )
+    handle.appendLines(['tail'])
+    assert.ok(handle.readBytes().toString().endsWith('row-999\ntail\n'))
+    assert.equal([...handle.readLines()].length, 1_001)
+
+    const pinned = new IOBase(path.join(root, 'crlf.log'))
+    pinned.writeLines(['one', 'two'], { linesep: '\\r\\n' })
+    assert.equal(pinned.readBytes().toString(), 'one\r\ntwo\r\n')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+### Records as Arrow batches
+
+`read_arrow_lines` projects the same records into a streaming Arrow reader - a *text-record*
+surface beside `read_lines`, never a fourth record method: the record surface stays exactly
+`read_arrow_batch_reader`, `write_arrow_batch_reader`, and `append_arrow_batch_reader`, and nothing
+here touches how a record encoding decodes rows. One batch is in memory at a time, content codings
+still decode as streams, and every column is a datatype the strict Iceberg codec accepts **as
+declared**, so the parsed batches append into an Iceberg table without a single widening:
 
 | column    | datatype     | meaning |
 | --------- | ------------ | ------- |
@@ -645,33 +773,45 @@ table without a single widening:
 | `rownum`  | `int64`      | 1-based record index within the resource |
 | `date`    | `date32`     | the entry's civil date |
 | `time`    | `time64(us)` | the clock reading, truncated - never rounded - to microseconds |
-| `unix`    | `int64`      | total nanoseconds since the Unix epoch, naive - no zone is applied |
+| `unix`    | `int64`      | total nanoseconds since the Unix epoch; naive unless `timezone` is set |
 | `hash`    | `int64`      | the stable 64-bit FNV-1a of `message` alone, reinterpreted as `i64` bit for bit - a dedupe and join key that holds across files, runs, and releases |
 | `header`  | `utf8`       | the exact text the pattern matched, within the record's opening line |
 | `message` | `utf8`       | the record with the header match removed, then trimmed |
 | `offset`  | `int64`      | byte offset of the record's first line in the *decoded* stream - the resume key a tailing reader seeks back to |
 | `lines`   | `int32`      | how many lines the record spans |
 
-Then one nullable column per **named capture group** of the pattern, in group order - the primary
-custom-field mechanism. A capture whose whole sub-pattern is one of a closed table of exact
-spellings types itself - `(?<thread_id>\d+)` or `[0-9]+` is `int64`, `(?<qty>\d+\.\d+)` is
-`float64` - and every other capture is `utf8`, because inference is a deterministic table, never a
-guess about what a regex might match. `capture_types` declares a capture's datatype explicitly -
-`(?<price>[0-9.]+)` as `decimal(9, 2)`, or an inferred numeric back to `utf8` - and typed columns
-parse through the one cast definition as each batch closes, strictly: a captured text the datatype
-cannot read is an error, never a silent null. Then the constant `custom_fields` columns a caller
-stamps onto every row, typed from their values. Capture declarations and custom columns alike are
-validated against the Iceberg vocabulary before anything is read. The entry timestamp is parsed off the front of the matched header - `T`, `t`, or a space
-between date and clock, and a fraction whose digits may be grouped with `_`, so
-`10:00:00.000_000` reads exactly as `10:00:00.000000`; a malformed timestamp in a *matched* header
-is a typed error naming the row and byte position, never a silent null. A record the pattern did
-not open - the preamble a rotated file starts with - keeps null `date`/`time`/`unix`/`header` and
-capture columns and carries the whole record as `message`.
+In log mode - `logs: true`, or `Opening::Timestamp` - three more fixed columns follow: `level`,
+`logger`, and `thread`, each read from a **closed token table** rather than from an expression, and
+each nullable because a line need not carry one.
+
+Then one nullable column per **named capture group**, in group order - the primary custom-field
+mechanism. A capture whose whole sub-pattern is one of a closed table of exact spellings types
+itself - `(?<thread_id>\d+)` or `[0-9]+` is `int64`, `(?<qty>\d+\.\d+)` is `float64` - and every
+other capture is `utf8`, because inference is a deterministic table, never a guess about what a
+regex might match. `capture_types` declares a capture's datatype explicitly - `(?<price>[0-9.]+)`
+as `decimal(9, 2)`, or an inferred numeric back to `utf8` - and typed columns parse through the one
+cast definition as each batch closes, strictly: a captured text the datatype cannot read is an
+error, never a silent null. Then the constant `custom_fields` columns a caller stamps onto every
+row, typed from their values. Capture declarations and custom columns alike are validated against
+the Iceberg vocabulary before anything is read.
+
+A batch closes on whichever bound trips first: `byte_size` counts the *decoded input bytes* of the
+records appended - not Arrow buffer memory, so it is not an allocation cap - and `batch_size`
+counts rows. Both default (8 MiB, 65,536 rows), so a corpus of long records and a corpus of short
+ones both produce batches of a workable size without being told anything.
+
+The entry timestamp is parsed off the front of the matched header - `T`, `t`, or a space between
+date and clock, and a fraction whose digits may be grouped with `_`, so `10:00:00.000_000` reads
+exactly as `10:00:00.000000`; a malformed timestamp in a *matched* header is a typed error naming
+the row and byte position, never a silent null. A record the pattern did not open - the preamble a
+rotated file starts with - keeps null `date`/`time`/`unix`/`header` and capture columns and carries
+the whole record as `message`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase, LineRecordOptions};
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::TextLineOptions;
     use yggdryl::{Url, Value};
 
     let mut handle = Buffer::new()
@@ -681,7 +821,7 @@ capture columns and carries the whole record as `message`.
           2024-02-01 10:00:01.500 [ii] [beta] fill 100 @ 187.23\n",
     )?)?;
 
-    let options = LineRecordOptions::new(
+    let options = TextLineOptions::with_pattern(
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]",
     )?
     .try_with_custom_fields([("venue", Value::from("XNAS"))])?;
@@ -759,16 +899,127 @@ capture columns and carries the whole record as `message`.
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-The schema is answerable before any resource exists: `schema_from_pattern` builds the projection's
-root straight from the header pattern - the same builder the reader itself leverages - so a table
-can be created from it first and the parse appended after. Named captures arrive typed, by the
+### A reader is a configuration document
+
+Every option above is one entry in a mapping, so the whole extractor is exactly what a JSON, YAML,
+or TOML document parses into. That is the point of the options value: an optimized Arrow reader is
+specifiable **from configuration alone** - no Rust, no Python callbacks, no per-row code in any
+language - and the same document round-trips back out. Both spellings validate through the one
+conversion, so a document is refused exactly where code would be: an unknown key names itself, a
+capture type naming a capture the pattern does not have is an error, an unknown zone is an error.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::TextLineOptions;
+    use yggdryl::Field;
+
+    let document = r#"
+    pattern: '^(?<stamp>\S+) \[(?<level>[A-Z]+)\]'
+    byte_size: 1048576
+    batch_size: 4096
+    timestamp_capture: stamp
+    timezone: Europe/Paris
+    capture_types:
+      level: utf8
+    custom_fields:
+      source: gateway
+    "#;
+
+    let options = TextLineOptions::from_value(yggdryl::yaml::from_str(document)?)?;
+    assert_eq!(options.byte_size(), Some(1 << 20));
+    assert_eq!(options.timestamp_capture(), Some("stamp"));
+
+    // The schema answers from the document alone - no resource in sight - so
+    // the table exists before the first log line does.
+    let names: Vec<&str> = options.schema().fields().iter().map(Field::name).collect();
+    assert_eq!(names[names.len() - 2..], ["level", "source"]);
+
+    let handle = Buffer::from_bytes(b"2024-02-01T10:00:00 [ERROR] boom\n".to_vec());
+    let batch = handle.read_arrow_lines(&options)?.next().unwrap()?;
+    assert_eq!(batch.num_rows(), 1);
+
+    // And the options project back out, so a reader can be persisted as one.
+    assert_eq!(TextLineOptions::from_value(options.to_value())?.pattern(), options.pattern());
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, schema_from_pattern, yaml
+
+    document = """
+    pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
+    byte_size: 1048576
+    batch_size: 4096
+    timestamp_capture: stamp
+    capture_types:
+      level: utf8
+    custom_fields:
+      source: gateway
+    """
+    options = yaml.loads(document)
+
+    # The schema answers from the document alone, with no resource in sight.
+    schema = schema_from_pattern(options=options)
+    assert [field.name for field in schema][-2:] == ["level", "source"]
+
+    target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
+    target.write_text("2024-02-01T10:00:00 [ERROR] boom\n")
+    table = IOBase(target).read_arrow_lines(options=options).read_all()
+    assert table.column("source").to_pylist() == ["gateway"]
+
+    # Keywords refine a document rather than replacing it.
+    assert IOBase(target).read_arrow_lines(options=options, batch_size=1).read_all().num_rows == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, schemaFromPattern, yaml } = require('yggdryl')
+
+    const options = yaml.loads(
+      [
+        "pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'",
+        'byte_size: 1048576',
+        'batch_size: 4096',
+        'timestamp_capture: stamp',
+        'custom_fields:',
+        '  source: gateway',
+      ].join('\n'),
+    )
+
+    // The schema answers from the document alone, with no resource in sight.
+    const schema = schemaFromPattern(options)
+    assert.equal(String(schema.dataType.get('source').dataType), 'utf8')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const target = path.join(root, 'app.log')
+    fs.writeFileSync(target, '2024-02-01T10:00:00 [ERROR] boom\n')
+    const table = new IOBase(target).readArrowLines(options).toTable()
+    assert.deepEqual([...table.getChild('source')], ['gateway'])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+`schema_from_pattern` is the same builder without a reader, so a table can be created from the
+projection's root first and the parse appended after. Named captures arrive typed, by the
 deterministic sub-pattern table or by declaration:
 
 === "Rust"
 
     ```rust
     use arrow_array::Array;
-    use yggdryl::io::{Buffer, IOBase, LineRecordOptions, schema_from_pattern};
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::{TextLineOptions, schema_from_pattern};
     use yggdryl::{DataType, Url};
 
     let pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>[0-9.]+)";
@@ -786,7 +1037,7 @@ deterministic sub-pattern table or by declaration:
     handle.write_all_bytes(b"2024-02-01 10:00:00 [42] (info) qty=1.50 fill\n")?;
 
     // A declaration types what inference cannot: `qty` lands as a decimal.
-    let options = LineRecordOptions::new(pattern)?
+    let options = TextLineOptions::with_pattern(pattern)?
         .try_with_capture_types([("qty", DataType::decimal(9, 2)?)])?;
     let batch = handle.read_arrow_lines(&options)?.next().unwrap()?;
     let threads = batch
@@ -866,20 +1117,113 @@ deterministic sub-pattern table or by declaration:
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
+### Trimming, and a zone that makes `unix` an instant
+
+`lstrip` and `rstrip` are independent and are **span arithmetic**, not string surgery: they move
+the record's own start and end, so the `hash`, the `message`, and the reported spans all describe
+the trimmed record and nothing is copied to trim it. Each is `whitespace` (the default, Unicode),
+`none`, `ascii`, or `chars:...` naming an explicit set.
+
+`unix` is a naive count by default - the civil reading counted from the epoch, no zone applied,
+which is the only honest answer when a log carries no offset. Setting `timezone` makes it a real
+instant: **an offset present in the timestamp text always wins**, and the option applies only to
+readings that carry none. Near a daylight-saving transition the reading is resolved by an explicit
+policy rather than a guess - the *earliest* instant for a local time that occurs twice, a shift
+forward for one that does not occur at all - and the zone's offset is cached, because a sorted log
+resolves it once or twice per file rather than once per row.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::text::{Strip, TextLineOptions};
+    use yggdryl::Timezone;
+
+    let handle = Buffer::from_bytes(b"2024-02-01T00:00:00 [INFO] x\n".to_vec());
+    let pattern = r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]";
+
+    let naive = TextLineOptions::with_pattern(pattern)?;
+    let batch = handle.read_arrow_lines(&naive)?.next().unwrap()?;
+    let unix = |batch: &arrow_array::RecordBatch| {
+        use arrow_array::Array as _;
+        batch.column(4).as_any().downcast_ref::<arrow_array::Int64Array>().unwrap().value(0)
+    };
+    assert_eq!(unix(&batch), 1_706_745_600_000_000_000);
+
+    // Read in Paris, the same civil reading is an hour earlier as an instant.
+    let zoned = TextLineOptions::with_pattern(pattern)?
+        .try_with_timezone("Europe/Paris".parse::<Timezone>()?)?
+        .with_rstrip(Strip::Ascii);
+    let batch = handle.read_arrow_lines(&zoned)?.next().unwrap()?;
+    assert_eq!(unix(&batch), 1_706_745_600_000_000_000 - 3_600 * 1_000_000_000);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
+    target.write_text("2024-02-01T00:00:00 [INFO] x\n")
+    pattern = r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]"
+
+    source = IOBase(target)
+    naive = source.read_arrow_lines(pattern).read_all().column("unix").to_pylist()
+    zoned = (
+        source.read_arrow_lines(pattern, timezone="+02:00", rstrip="ascii")
+        .read_all()
+        .column("unix")
+        .to_pylist()
+    )
+    assert naive == [1_706_745_600_000_000_000]
+    assert zoned == [naive[0] - 2 * 3_600 * 1_000_000_000]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const target = path.join(root, 'app.log')
+    fs.writeFileSync(target, '2024-02-01T00:00:00 [INFO] x\n')
+    const pattern = '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
+
+    const source = new IOBase(target)
+    const naive = [...source.readArrowLines(pattern).toTable().getChild('unix')]
+    const zoned = [
+      ...source
+        .readArrowLines(pattern, { timezone: '+02:00', rstrip: 'ascii' })
+        .toTable()
+        .getChild('unix'),
+    ]
+    assert.equal(naive[0], 1_706_745_600_000_000_000n)
+    assert.equal(zoned[0], naive[0] - 2n * 3_600n * 1_000_000_000n)
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
 The handle's `IOKind` decides the shape, never a second existence check. A leaf parses its own
-lines; a folder streams the leaf files beneath it in name-sorted order, each opened lazily as the
+records; a folder streams the leaf files beneath it in name-sorted order, each opened lazily as the
 reader reaches it, each decoded by its *own* media type - a directory mixing `a.log` and
 `b.log.gz` reads uniformly - each contributing its own `url` and restarting `rownum` at 1, so
 `(url, rownum)` stays a record identity and a batch never spans two leaves. A resource that does
 not exist reads as zero batches with the schema still answered, exactly as `read_lines` yields no
-lines. The consuming `into_arrow_lines` is the same projection when the reader must own the
+records. The consuming `into_arrow_lines` is the same projection when the reader must own the
 handle - the shape the bindings hand across FFI.
 
 What that costs on a production-sized directory is measured rather than asserted: the
 [benchmarks](benchmarks.md#big-gzip-log-files-end-to-end) page reads a million records across
-eight rotated `.log.gz` leaves - 93.6 MiB of text from 16.8 MiB on disk - at ~182,000 rows/s,
-holding 8 MiB of memory to do it, and prices the content coding, the rotation, and the typed
-capture columns separately.
+eight rotated `.log.gz` leaves - 93.6 MiB of text from 16.8 MiB on disk - at ~136,000 rows/s,
+with residency bounded by one batch rather than by the corpus, and says plainly which of the
+structural deltas its container is too noisy to report.
 
 ### Streaming a trading log into a partitioned Iceberg table
 
@@ -894,8 +1238,9 @@ for the next reader to prune with.
 
     ```rust
     use yggdryl::iceberg::Catalog;
-    use yggdryl::io::{IOBase, LineRecordOptions};
+    use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
+    use yggdryl::text::TextLineOptions;
     use yggdryl::Value;
 
     let root = std::env::temp_dir().join("yggdryl-doc-log-lake");
@@ -912,7 +1257,7 @@ for the next reader to prune with.
         yggdryl::gzip::dump(b"2024-02-01 11:00:00.000_000 [ii] [gamma] fill 200 @ 188.01\n")?,
     )?;
 
-    let options = LineRecordOptions::new(
+    let options = TextLineOptions::with_pattern(
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]",
     )?
     .try_with_custom_fields([("venue", Value::from("XNAS"))])?;
@@ -1285,15 +1630,15 @@ themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), 
     use yggdryl::Codec;
 
     let mut handle = Coded::new(Buffer::new(), Codec::Zstd);
-    assert!(!handle.is_open());
+    assert!(!handle.opened());
 
     handle.open()?;
-    assert!(handle.is_open());
+    assert!(handle.opened());
     handle.write_all_bytes(b"symbol,price\n")?;
 
     // Closing publishes the pending write and releases the cache.
     handle.close()?;
-    assert!(!handle.is_open());
+    assert!(!handle.opened());
 
     // The handle stays usable; the next read re-materializes.
     assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
@@ -1312,7 +1657,8 @@ themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), 
     # `with` is the scoped pair: `__enter__` opens and `__exit__` closes.
     with IOBase(path) as handle:
         handle.write_text("symbol,price\n")
-        assert handle.is_open()
+        assert handle.opened
+        assert not handle.closed
 
     # Closing published the bytes at their exact length, which is what another
     # reader needs; the handle stays usable and simply re-materializes.
@@ -1333,7 +1679,7 @@ operations against one resource cheap. Nothing fills the cache as a side effect 
 because a cache nobody asked for is how a handle serves a stale answer.
 
 What is cached depends on the implementation. `Buffer` has nothing to cache, so the trait defaults
-apply and `is_open` stays `false`. `local::File` caches the descriptor and the memory mapping.
+apply and `opened` stays `false`. `local::File` caches the descriptor and the memory mapping.
 `Coded` caches the decoded value. The media wrappers cache exactly the metadata their format keeps
 re-reading: `Ipc` the stream's schema, `Parquet` the footer - so a schema probe, a statistics read,
 and a batch read inside one scope pay for the footer once. These are the operations a scoped context
@@ -1364,6 +1710,147 @@ assert rows == 2
 # which is exactly right for a resource another writer may be changing.
 assert IOBase(target).read_arrow_field() == field
 ```
+
+## Clearing and removing
+
+`clear` and `remove` are the lifecycle pair, and what they mean is stated by kind rather than
+implied by a byte operation. `clear` empties the contents and keeps the resource: a leaf keeps
+existing with size `0`, a container keeps existing and loses every child recursively. `remove`
+deletes the resource itself - completely, whatever "the resource" is for that handle. A wrapping
+handle removes what it *wraps*: `Gzip::remove` deletes the `.gz` resource rather than discarding a
+decoded buffer, and a media handle's cached schema or footer goes with it.
+
+Two rules hold on both, and they are the reason the pair exists at all:
+
+- **Absence is a no-op success.** Neither call is an error on a resource that is not there, and
+  neither creates one. `clear` is not a write.
+- **Absence is reached without a probe.** An implementation issues the delete and treats the
+  backend's own not-found answer as success. It never calls `kind`, `size`, an exists check, or
+  `ls` first to decide whether to proceed - on a remote backend each of those is a second round
+  trip, and a recursive delete would become a flood of them. Only not-found maps to success; a
+  permission, network, or busy failure stays the typed error it is.
+
+Because absence and successful removal are indistinguishable, `remove` returns nothing rather than
+a bool or a count - reporting "did something exist" would force exactly the probe this refuses.
+`recursive` is ignored on a leaf, and a container that still has children is refused by name rather
+than silently recursed into.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::local::Folder;
+
+    let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
+    let mut folder = Folder::new(&root)?;
+    folder.truncate(0)?;
+    folder.child_by("a.log")?.write_all_bytes(b"line\n")?;
+
+    // Clearing empties the container and keeps it.
+    folder.clear()?;
+    assert!(folder.ls(true, false)?.is_empty());
+    assert_eq!(folder.kind(), yggdryl::IOKind::Directory);
+
+    // Removing deletes it; a second call succeeds, having done nothing. A
+    // handle asked for as a container keeps answering `Directory`, because that
+    // is what it was asked for - the parent's listing is what shows it gone.
+    let leaf = root.join("nested");
+    let mut nested = Folder::new(&leaf)?;
+    nested.truncate(0)?;
+    assert_eq!(folder.ls(false, false)?.len(), 1);
+    nested.remove(false)?;
+    nested.remove(false)?;
+    assert!(folder.ls(false, false)?.is_empty());
+    folder.remove(false)?;
+
+    // A wrapping handle removes what it wraps, cache included.
+    let mut coded = yggdryl::gzip::Gzip::new(Buffer::new());
+    coded.write_all_bytes(b"symbol,price\n")?;
+    coded.remove(false)?;
+    assert_eq!(coded.size(), 0);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "logs")
+    handle.mkdir()
+    (handle / "a.log").write_text("line\n")
+
+    # Clearing empties the container and keeps it.
+    handle.clear()
+    assert list(handle.iterdir()) == []
+    assert handle.is_dir()
+
+    # Removing deletes it; a second call succeeds, having done nothing. A
+    # handle asked for as a container keeps answering `is_dir`, because that
+    # is what it was asked for - the parent's listing is what shows it gone.
+    handle.remove()
+    handle.remove()
+    assert list(IOBase(root).iterdir()) == []
+
+    # A container that still has children is refused rather than recursed into.
+    handle.mkdir()
+    (handle / "a.log").write_text("line\n")
+    try:
+        handle.remove()
+    except Exception as error:
+        assert "children" in str(error)
+    handle.remove(recursive=True)
+    assert list(IOBase(root).iterdir()) == []
+
+    # The handle stays usable and lazy - a write recreates the resource.
+    leaf = IOBase(root / "trades.csv")
+    leaf.write_text("symbol,price\n")
+    leaf.remove()
+    assert not leaf.exists()
+    leaf.write_text("symbol,price\n")
+    assert leaf.read_text() == "symbol,price\n"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = path.join(os.tmpdir(), `yggdryl-docs-lifecycle-${process.pid}`)
+    const handle = new IOBase(path.join(root, 'logs'))
+    handle.mkdir()
+    handle.joinpath(['a.log']).writeText('line\n')
+
+    // Clearing empties the container and keeps it.
+    handle.clear()
+    assert.equal(handle.ls(true, false).length, 0)
+
+    // Removing deletes it; a second call succeeds, having done nothing.
+    handle.remove()
+    handle.remove()
+    assert.equal(new IOBase(root).ls(false, false).length, 0)
+
+    // The handle stays usable and lazy - a write recreates the resource.
+    const leaf = new IOBase(path.join(root, 'trades.csv'))
+    leaf.writeText('symbol,price\n')
+    leaf.remove()
+    assert.equal(leaf.exists(), false)
+    leaf.writeText('symbol,price\n')
+    assert.equal(leaf.readText(), 'symbol,price\n')
+    new IOBase(root).remove(true)
+    ```
+
+`Table` decides both deliberately rather than inheriting a folder's answers. `clear` commits one
+snapshot carrying no data files, so the table still exists with its schema, properties, and history
+and holds zero rows - deleting files behind the manifests would leave exactly the orphaned state a
+complete operation must not. `remove` deletes the table's whole location, metadata tree and data
+files together, because dropping a table is not emptying it.
 
 ## Buffer
 
@@ -1570,10 +2057,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `delegate_iobase!` expands to the forwarding bodies for every byte method - `pread`, `pwrite`, `size`,
 `capacity`, `reserve`, `truncate`, `url`, `media_type`, `set_media_type`, `flush`, `parent`,
-`child_by`, `ls`, `kind` - inside an `impl IOBase for` block. It deliberately does not forward `open`,
-`is_open`, or `close`: a wrapper that caches something of its own writes those after the invocation,
-as the example does. [ipc.md](ipc.md), [parquet.md](parquet.md), and the compression handles are all
-built this way.
+`child_by`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
+deliberately does not forward `open`, `opened`, or `close`: a wrapper that caches something of its
+own writes those after the invocation, as the example does. [ipc.md](ipc.md),
+[parquet.md](parquet.md), and the compression handles are all built this way.
+
+It has two other spellings, for two other shapes:
+
+- `delegate_iobase!(handle, except_lifecycle)` is the same list **without** `clear` and `remove`, for
+  a wrapper that holds a cache: it writes that pair itself so the cache is invalidated as part of the
+  call rather than left to answer a later read with bytes that are gone. `Ipc`, `Parquet`, and the
+  [text handler](#text-records) are all this shape.
+- `delegate_iobase!(handle: pread, size, ...)` names the methods to mirror one by one, for a wrapper
+  that *changes* one of them - a method cannot be both expanded by the macro and written out
+  underneath it. [`Buffered`](buffered.md) is this shape: it owns the two positional primitives, the
+  resize that invalidates, the open/close pair, and the `clear`/`remove` pair, and mirrors the rest.
+  A method left out of the list falls back to the trait's own default, which for `clear` and `remove`
+  means truncating rather than reaching the resource - so leave them out only when writing them.
 
 ## Arrow batches
 

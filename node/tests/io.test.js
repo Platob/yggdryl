@@ -385,6 +385,111 @@ test('named captures type themselves and declarations override', (t) => {
   assert.deepEqual([...table.getChild('logLevel')], ['info'])
 })
 
+test('writeLines and appendLines stream and round-trip', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-writelines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const target = new IOBase(path.join(root, 'out.log'))
+  // A generator, never an array the binding materializes first.
+  target.writeLines(
+    (function* rows() {
+      for (let index = 0; index < 1_000; index += 1) {
+        yield `row-${index}`
+      }
+    })(),
+  )
+  target.appendLines(['tail'])
+
+  assert.ok(target.readBytes().toString().endsWith('row-999\ntail\n'))
+  const records = [...target.readLines()]
+  assert.equal(records.length, 1_001)
+  assert.equal(records.at(-1), 'tail')
+
+  // A pinned terminator is written verbatim and read back exactly.
+  const pinned = new IOBase(path.join(root, 'crlf.log'))
+  pinned.writeLines(['one', 'two'], { linesep: '\\r\\n' })
+  assert.equal(pinned.readBytes().toString(), 'one\r\ntwo\r\n')
+  assert.deepEqual([...pinned.readLines({ linesep: '\\r\\n' })], ['one', 'two'])
+
+  // Bytes pass as themselves, and a bare string is refused rather than
+  // silently written one character per record.
+  const bytes = new IOBase(path.join(root, 'bytes.log'))
+  bytes.writeLines([Buffer.from('alpha'), 'beta'])
+  assert.deepEqual([...bytes.readLines()], ['alpha', 'beta'])
+  assert.throws(() => bytes.writeLines('alpha'), TypeError)
+})
+
+test('a reader is fully described by a configuration document', (t) => {
+  const { schemaFromPattern, yaml } = require('yggdryl')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-lineconfig-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'app.log')
+  fs.writeFileSync(
+    target,
+    '2024-02-01T10:00:00 [ERROR] boom\n\tat Handler.invoke(Handler.java:42)\n' +
+      '2024-02-01T10:00:01 [INFO] fine\n',
+  )
+
+  // No JavaScript in the loop: the document *is* the reader.
+  const options = yaml.loads(
+    [
+      "pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'",
+      'byte_size: 1048576',
+      'batch_size: 4096',
+      'timestamp_capture: stamp',
+      'custom_fields:',
+      '  source: gateway',
+    ].join('\n'),
+  )
+
+  // The schema answers from the document alone, with no resource in sight.
+  const schema = schemaFromPattern(options)
+  assert.equal(schema.name, 'row')
+  assert.equal(String(schema.dataType.get('source').dataType), 'utf8')
+
+  const table = new IOBase(target).readArrowLines(options).toTable()
+  assert.equal(table.numRows, 2)
+  assert.deepEqual([...table.getChild('level')], ['ERROR', 'INFO'])
+  assert.deepEqual([...table.getChild('source')], ['gateway', 'gateway'])
+})
+
+test('log mode needs no expression, and both batch bounds apply', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-logmode-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'app.log')
+  const rows = []
+  for (let index = 0; index < 50; index += 1) {
+    rows.push(`2024-02-01T10:00:00 [INFO] row ${index}`)
+  }
+  fs.writeFileSync(target, `${rows.join('\n')}\n`)
+  const handle = new IOBase(target)
+
+  // The fixed token columns come from the closed table, not from captures.
+  const table = handle.readArrowLines({ logs: true }).toTable()
+  assert.equal(table.numRows, 50)
+  assert.deepEqual([...table.getChild('level')].slice(0, 2), ['INFO', 'INFO'])
+
+  const byRows = [...handle.readArrowLines({ logs: true, batchSize: 10 })]
+  assert.deepEqual(
+    byRows.map((batch) => batch.numRows),
+    [10, 10, 10, 10, 10],
+  )
+
+  // `byteSize` counts decoded input bytes, so it closes batches sooner here;
+  // whichever bound trips first wins, and every record still arrives.
+  const byBytes = [...handle.readArrowLines({ logs: true, byteSize: 100 })]
+  const counts = byBytes.map((batch) => batch.numRows)
+  assert.equal(
+    counts.reduce((total, count) => total + count, 0),
+    50,
+  )
+  assert.ok(Math.max(...counts) < 10)
+
+  // An option the core does not know is refused by name, not ignored.
+  assert.throws(() => handle.readArrowLines({ 'batch-size': 1 }), TypeError)
+  assert.throws(() => handle.readLines({ timezone: 'Not/AZone' }), Error)
+})
+
 test('a cursor shares the handle and owns its position', () => {
   const handle = IOBase.fromBytes()
   const cursor = handle.cursor()

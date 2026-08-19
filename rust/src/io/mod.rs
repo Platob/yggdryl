@@ -58,10 +58,6 @@ mod cursor;
 /// spelling every caller already uses keeps working.
 pub const NULL_PARTITION: &str = "null";
 
-// The Arrow projection of matched line records - a text-line surface beside
-// `read_lines`, never a fourth record method.
-#[cfg(feature = "arrow")]
-pub mod lines;
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
@@ -73,8 +69,6 @@ mod roles;
 pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
-#[cfg(feature = "arrow")]
-pub use lines::{LineRecordOptions, schema_from_pattern};
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -91,6 +85,46 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// to the forwarding bodies inside an `impl IOBase for` block, so anything the
 /// wrapper wants to override (typically [`IOBase::open`] and [`IOBase::close`],
 /// which usually also manage a cache) is simply written after the invocation.
+///
+/// [`IOBase::clear`] and [`IOBase::remove`] are delegated too, so a wrapper
+/// empties and deletes the resource it wraps - not merely its own view of it -
+/// without thinking about it. A wrapper holding a cache of its own must
+/// invalidate it as part of those calls, and a macro-provided body cannot be
+/// overridden, so it invokes the second form and writes the pair itself:
+///
+/// ```
+/// use yggdryl::io::{Buffer, IOBase};
+///
+/// struct Cached {
+///     handle: Buffer,
+///     schema: Option<String>,
+/// }
+///
+/// impl IOBase for Cached {
+///     yggdryl::delegate_iobase!(handle, except_lifecycle);
+///
+///     fn clear(&mut self) -> yggdryl::Result<()> {
+///         self.schema = None;
+///         self.handle.clear()
+///     }
+///
+///     fn remove(&mut self, recursive: bool) -> yggdryl::Result<()> {
+///         self.schema = None;
+///         self.handle.remove(recursive)
+///     }
+/// }
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let mut cached = Cached {
+///     handle: Buffer::from_bytes(b"AAPL".to_vec()),
+///     schema: Some("row".to_owned()),
+/// };
+/// cached.remove(false)?;
+/// assert!(cached.schema.is_none());
+/// assert_eq!(cached.size(), 0);
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// ```
 /// use yggdryl::io::{Buffer, IOBase};
@@ -118,6 +152,11 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// out below. The list form is that spelling - it is exactly the same bodies,
 /// only chosen - and what it leaves out is what the wrapper owns:
 ///
+/// Leave a name out and the wrapper takes the trait's own default for it,
+/// which for `clear` and `remove` means truncating rather than reaching the
+/// resource. That is why the list below still names them: a wrapper drops them
+/// from the list only when it writes the pair itself, as `Cached` does above.
+///
 /// ```
 /// use std::sync::atomic::{AtomicUsize, Ordering};
 ///
@@ -132,7 +171,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// impl IOBase for Counted {
 ///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
 ///         truncate, url, media_type, set_media_type, flush, parent, child_by,
-///         ls, kind, is_atomic, is_tabular);
+///         ls, kind, clear, remove, is_atomic, is_tabular);
 ///
 ///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
 ///     // the trait is `Send`, and a double is held across threads like any
@@ -155,10 +194,23 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// ```
 #[macro_export]
 macro_rules! delegate_iobase {
+    // The whole contract, lifecycle included: the wrapper changes nothing.
     ($handle:ident) => {
         $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
             truncate, url, media_type, set_media_type, flush, parent, child_by,
-            ls, kind, is_atomic, is_tabular);
+            ls, kind, clear, remove, is_atomic, is_tabular);
+    };
+
+    // Everything but [`IOBase::clear`] and [`IOBase::remove`], which a wrapper
+    // holding a cache of its own writes itself so the cache is invalidated as
+    // part of the call rather than left to go stale, and but for the two surface
+    // questions, which a record encoding answers as constants rather than
+    // mirroring the bytes underneath. The same list, named once instead of at
+    // five call sites.
+    ($handle:ident, except_lifecycle) => {
+        $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            ls, kind);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -253,6 +305,18 @@ macro_rules! delegate_iobase {
         }
     };
 
+    (@method $handle:ident, clear) => {
+        fn clear(&mut self) -> $crate::Result<()> {
+            $crate::io::IOBase::clear(&mut self.$handle)
+        }
+    };
+
+    (@method $handle:ident, remove) => {
+        fn remove(&mut self, recursive: bool) -> $crate::Result<()> {
+            $crate::io::IOBase::remove(&mut self.$handle, recursive)
+        }
+    };
+
     (@method $handle:ident, is_atomic) => {
         fn is_atomic(&self) -> bool {
             $crate::io::IOBase::is_atomic(&self.$handle)
@@ -264,6 +328,53 @@ macro_rules! delegate_iobase {
             $crate::io::IOBase::is_tabular(&self.$handle)
         }
     };
+}
+
+/// Treat a backend's own not-found answer as a completed removal.
+///
+/// This is the shape [`IOBase::clear`] and [`IOBase::remove`] require: issue the
+/// delete, and let the store say whether there was anything there. A backend
+/// with a different absence signal - a store's no-such-key, an HTTP 404 - maps
+/// its own answer the same way; everything else stays the typed failure it is,
+/// because a permission or network error is not an absence.
+///
+/// ```
+/// use yggdryl::io::skip_absent;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let absent = std::io::Error::from(std::io::ErrorKind::NotFound);
+/// skip_absent(Err::<(), _>(absent))?;
+///
+/// let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+/// assert!(skip_absent(Err::<(), _>(denied)).is_err());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns every failure that is not [`std::io::ErrorKind::NotFound`].
+pub fn skip_absent<T: Default>(result: std::io::Result<T>) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),
+        Err(error) => Err(Error::Io(error)),
+    }
+}
+
+/// Refuse to delete a container that still holds children.
+///
+/// `remove(false)` on a populated container is an error naming the location and
+/// the fact that it has children - never a silent success and never a silent
+/// recursion.
+pub fn not_empty(url: &Url) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::DirectoryNotEmpty,
+        format!(
+            "expected an empty container to remove, got {url}, which still has children; pass \
+             recursive to delete them too"
+        ),
+    ))
 }
 
 /// Resolve a chain of fixed names below `base`, without touching anything.
@@ -432,8 +543,38 @@ pub trait IOBase: Send {
     }
 
     /// Return whether cached state is currently held.
-    fn is_open(&self) -> bool {
+    ///
+    /// This reports a state of the *handle*, not a property of the resource -
+    /// which is why it reads `opened` rather than `is_open`, matching the
+    /// past-participle form the [`open`](Self::open)/[`close`](Self::close)
+    /// pair already establishes. [`Self::is_container`] and [`Self::is_empty`]
+    /// keep the `is_` prefix because they genuinely are predicates over the
+    /// resource.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new();
+    /// // A plain buffer caches nothing, so it is never open.
+    /// assert!(!handle.opened());
+    /// assert!(handle.closed());
+    /// handle.open()?;
+    /// assert_eq!(handle.opened(), !handle.closed());
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn opened(&self) -> bool {
         false
+    }
+
+    /// Return whether no cached state is currently held.
+    ///
+    /// Exactly `!`[`Self::opened`], so the pair can never disagree: this is a
+    /// derived reading, never something an implementation answers
+    /// independently.
+    fn closed(&self) -> bool {
+        !self.opened()
     }
 
     /// Flush and release everything [`Self::open`] cached.
@@ -867,21 +1008,151 @@ pub trait IOBase: Send {
     ///
     /// The writing half of the pair [`Self::read_all_bytes`] reads.
     ///
+    /// A whole-value write is a *complete* operation, so it ends with
+    /// [`Self::flush`]: a handle that over-allocates - the memory-mapped
+    /// [`local::File`](crate::local::File) grows geometrically so appending
+    /// does not remap on every write - must not leave that slack visible to a
+    /// second handle on the same location, which would read the padding as
+    /// content. Positional [`Self::pwrite`] deliberately does not publish;
+    /// it is the primitive a larger operation is built from, and the operation
+    /// publishes when it finishes.
+    ///
     /// # Errors
     ///
     /// Returns the backing store's resize or write failure.
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
         self.truncate(0)?;
-        self.pwrite_all(0, bytes)
+        self.pwrite_all(0, bytes)?;
+        self.flush()
     }
 
-    /// Discard every byte, keeping the allocation.
+    /// Empty the resource's contents, keeping the resource itself.
+    ///
+    /// The meaning follows [`Self::kind`], and it is *stated* here rather than
+    /// implied by a byte operation:
+    ///
+    /// - A leaf ([`IOKind::File`], [`IOKind::Memory`]) discards every byte.
+    ///   The resource still exists afterwards, with [`Self::size`] `0`.
+    /// - A container ([`IOKind::Directory`]) removes every child, recursively.
+    ///   The container itself still exists afterwards, and is empty.
+    /// - A resource that does not exist succeeds, having done nothing. It is
+    ///   *not* created: clearing is not a write.
+    ///
+    /// Any cache [`Self::open`] filled - a schema, a footer, compiled options -
+    /// is invalidated as part of the call, so a later read cannot serve an
+    /// answer describing bytes that are gone.
+    ///
+    /// See [`Self::remove`] for the no-pre-call rule both lifecycle methods
+    /// follow.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
+    /// handle.clear()?;
+    ///
+    /// // Emptied, not deleted.
+    /// assert_eq!(handle.size(), 0);
+    /// assert!(handle.is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns the backing store's resize failure.
+    /// Returns the backing store's failure to empty the resource. Absence is
+    /// never one of them.
     fn clear(&mut self) -> Result<()> {
         self.truncate(0)
+    }
+
+    /// Delete the resource completely.
+    ///
+    /// `remove` is not "delete a file". It is the one *total* removal action
+    /// on this abstraction: after it returns, nothing of the resource this
+    /// handle addresses remains, whatever that resource is for this
+    /// implementation. The signature is generic and each implementation adapts
+    /// the mechanics, but no implementation removes only part of what it
+    /// addresses - a wrapping handle removes what it *wraps*, not merely its
+    /// own view of it, and any pending write, staged buffer, or live mapping is
+    /// dropped as part of the removal so a later flush cannot resurrect what
+    /// was deleted.
+    ///
+    /// - On a leaf, the resource is deleted. `recursive` is irrelevant and
+    ///   ignored.
+    /// - On a container with `recursive`, everything below it and the
+    ///   container itself are deleted.
+    /// - On a container without `recursive`, the container is deleted only if
+    ///   it is already empty; a non-empty one is an error naming the location
+    ///   and the fact that it has children. It never silently succeeds and
+    ///   never silently recurses.
+    /// - On a resource that does not exist, it succeeds, having done nothing.
+    ///
+    /// Afterwards the handle stays usable and lazy: writing through it
+    /// recreates the resource exactly as a never-touched handle would, and any
+    /// cache [`Self::open`] filled is gone rather than waiting to be refreshed.
+    ///
+    /// # Absence is a no-op success, reached without a probe
+    ///
+    /// This is the requirement that shapes every implementation. An
+    /// implementation **issues the delete and treats the backend's own
+    /// not-found answer as success**. It must not call [`Self::kind`],
+    /// [`Self::size`], an exists-style check, [`Self::ls`], or any other probe
+    /// first to decide whether to proceed: on a remote backend every such probe
+    /// is a second round trip on the hot path, and a recursive delete over a
+    /// large tree turns into a flood of them. Where a backend needs a different
+    /// call for a leaf than for a container, the handle's own static role
+    /// answers which - [`local::File`](crate::local::File) is a file,
+    /// [`local::Folder`](crate::local::Folder) is a directory - so the dispatch
+    /// is on the type, not on a probe. The one documented exception is a
+    /// generic path handle such as [`local::Path`](crate::local::Path), whose
+    /// whole job is to report [`IOKind`] from what is actually there: it routes
+    /// on the kind it *already* resolves, and adds no second probe for the
+    /// delete.
+    ///
+    /// Only the not-found failure maps to `Ok(())` -
+    /// [`std::io::ErrorKind::NotFound`] locally, and the backend equivalents (a
+    /// store's no-such-key, an HTTP 404) elsewhere. A permission, network, or
+    /// busy failure surfaces as the typed error it is; a blanket
+    /// `let _ = ...` is not an implementation of this rule.
+    ///
+    /// # Absence and successful removal are indistinguishable
+    ///
+    /// The return is `Result<()>`, never a bool or a count of what was deleted.
+    /// Reporting "did something exist" would force exactly the probe this
+    /// design refuses, so it is not reported. That is the contract, not an
+    /// omission.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
+    /// handle.remove(false)?;
+    /// assert_eq!(handle.size(), 0);
+    ///
+    /// // Removing again succeeds, having done nothing: absence is not an error.
+    /// handle.remove(false)?;
+    ///
+    /// // The handle stays usable and lazy - a write recreates the resource.
+    /// handle.write_all_bytes(b"MSFT,2")?;
+    /// assert_eq!(handle.read_all_bytes()?, b"MSFT,2");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's delete failure, or a refusal naming a
+    /// non-empty container when `recursive` is not set. Absence is never one of
+    /// them.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        // A handle owning nothing beyond its own bytes removes exactly those.
+        // Every implementation addressing an external resource overrides this;
+        // the trait cannot delete what it has no primitive for.
+        let _ = recursive;
+        self.clear()
     }
 
     /// Copy this value's bytes into `target`, replacing its contents.
@@ -1049,60 +1320,121 @@ pub trait IOBase: Send {
         }
     }
 
-    /// Iterate the resource's decoded text lines, one line in memory at a time.
+    /// Wrap this handle in the text-line handler.
     ///
-    /// Bytes stream through a fixed-size buffer from [`Self::pread`], any
-    /// content codings the resource's media type declares are peeled as
-    /// streaming decoders - a `trades.jsonl.gz` reads its lines without ever
-    /// holding the decompressed value - and each call to the iterator yields
-    /// one line. A resource that does not exist yields no lines, exactly as it
-    /// reads zero bytes. Lines must be UTF-8; the first invalid byte sequence
-    /// ends the iteration with an error.
+    /// The entry point to [`text::line`](crate::text::line): every line read and
+    /// write goes through the handler this returns.
+    /// [`Text::new`](crate::text::Text::new) is lazy exactly as
+    /// [`Coded::new`](Coded) is - the resource is not opened, listed, or probed
+    /// here.
     ///
-    /// # Errors
+    /// **Idempotent.** A handle that is already a [`Text`](crate::text::Text)
+    /// returns itself unchanged, because `Text` carries an inherent
+    /// `into_text` and inherent methods win method resolution over trait ones.
+    /// So `handle.into_text().into_text()` is `handle.into_text()`, and a
+    /// caller who does not know whether they hold a raw handle or an
+    /// already-wrapped one can call it unconditionally.
     ///
-    /// Construction itself cannot fail; each yielded item carries the read,
-    /// decode, or encoding failure of its line.
-    fn read_lines(&self) -> Result<Lines<Box<dyn Read + '_>>>
+    /// One edge that resolution rule leaves open: an explicit
+    /// `IOBase::into_text(text_handle)` still wraps, producing a
+    /// `Text<Text<H>>`. That composition behaves correctly through delegation -
+    /// it is wasteful, not broken - so call the method normally.
+    ///
+    /// It composes with the coding handles: `gzip_handle.into_text()` is a
+    /// `Text<Gzip<_>>`, and the codings are peeled as streams underneath.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new().into_text();
+    /// handle.write_lines(["one", "two"])?;
+    ///
+    /// // A constructor and one method call: no format strings, no mode flags.
+    /// let mut lines = handle.read_lines()?;
+    /// assert_eq!(lines.next().transpose()?.map(|line| line.bytes()), Some(&b"one"[..]));
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn into_text(self) -> crate::text::Text<Self>
     where
         Self: Sized,
     {
-        let encodings = self.media_type().encodings().to_vec();
-        let mut stream: Box<dyn Read + '_> = Box::new(self.reader_at(0));
-        for coding in encodings.iter().rev() {
-            stream = Codec::from_mime_type(coding).reader(stream);
-        }
-        Ok(Lines::over(stream))
+        crate::text::Text::new(self)
     }
 
-    /// Group the decoded lines into records opened by a pattern match.
+    /// [`Self::into_text`] with an extractor already in hand.
     ///
-    /// A record starts at a line `pattern` matches and carries every
-    /// following line until the next match, which is how a log whose entries
-    /// open with a timestamp reads whole: an entry, its stack trace, and its
-    /// wrapped lines arrive as one string. Lines before the first match form
-    /// the first record. The stream costs what [`Self::read_lines`] costs -
-    /// one record in memory at a time, codings peeled as streams.
+    /// The one-call form, for a caller who built the options elsewhere - a
+    /// configuration document, a shared constant.
+    fn into_text_with(self, options: crate::text::TextLineOptions) -> crate::text::Text<Self>
+    where
+        Self: Sized,
+    {
+        crate::text::Text::with_options(self, options)
+    }
+
+    /// Iterate the resource's text records, one in memory at a time.
+    ///
+    /// A thin shim over [`Self::into_text`], so there is exactly one
+    /// implementation of line splitting in the tree. Bytes stream through a
+    /// bounded window and any content codings the media type declares are
+    /// peeled as streaming decoders - a `trades.jsonl.gz` reads its records
+    /// without ever holding the decompressed value. A resource that does not
+    /// exist yields no records, exactly as it reads zero bytes.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read or
+    /// decode failure of its record.
+    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn Read + '_>>>
+    where
+        Self: Sized,
+    {
+        Ok(crate::text::line::borrowed_lines(
+            self,
+            std::sync::Arc::new(crate::text::TextLineOptions::new()),
+        ))
+    }
+
+    /// Group the resource's records by a pattern, one in memory at a time.
+    ///
+    /// A thin shim over [`Self::into_text`] with a record-opening pattern. A
+    /// record starts at a line `pattern` matches and carries every following
+    /// line until the next match, which is how a log whose entries open with a
+    /// timestamp reads whole: an entry, its stack trace, and its wrapped lines
+    /// arrive as one record. Lines before the first match form the first
+    /// record.
     ///
     /// # Errors
     ///
     /// Returns an error when the pattern does not parse; each yielded item
-    /// carries the read or decode failure of its lines.
-    fn read_lines_matching(&self, pattern: &str) -> Result<LineRecords<Box<dyn Read + '_>>>
+    /// carries the read or decode failure of its record.
+    fn read_lines_matching(
+        &self,
+        pattern: &str,
+    ) -> Result<crate::text::TextLines<Box<dyn Read + '_>>>
     where
         Self: Sized,
     {
-        let pattern = regex_lite::Regex::new(pattern).map_err(|error| Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::format_smolstr!("expected a valid line pattern: {error}"),
-        })?;
-        Ok(LineRecords {
-            lines: self.read_lines()?,
-            pattern,
-            pending: None,
-            pending_offset: 0,
-            done: false,
-        })
+        let options = crate::text::TextLineOptions::with_pattern(pattern)?;
+        Ok(crate::text::line::borrowed_lines(
+            self,
+            std::sync::Arc::new(options),
+        ))
+    }
+
+    /// [`Self::read_lines`], consuming the handle so the records own it.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read or
+    /// decode failure of its record.
+    fn into_read_lines(self) -> Result<crate::text::TextLines<Box<dyn Read + Send + 'static>>>
+    where
+        Self: Sized + 'static,
+    {
+        self.into_text().into_read_lines()
     }
 
     /// [`Self::read_lines_matching`], consuming the handle so the records own it.
@@ -1113,88 +1445,37 @@ pub trait IOBase: Send {
     fn into_read_lines_matching(
         self,
         pattern: &str,
-    ) -> Result<LineRecords<Box<dyn Read + Send + 'static>>>
+    ) -> Result<crate::text::TextLines<Box<dyn Read + Send + 'static>>>
     where
         Self: Sized + 'static,
     {
-        let pattern = regex_lite::Regex::new(pattern).map_err(|error| Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::format_smolstr!("expected a valid line pattern: {error}"),
-        })?;
-        Ok(LineRecords {
-            lines: self.into_read_lines()?,
-            pattern,
-            pending: None,
-            pending_offset: 0,
-            done: false,
-        })
+        let options = crate::text::TextLineOptions::with_pattern(pattern)?;
+        self.into_text_with(options).into_read_lines()
     }
 
-    /// [`Self::read_lines`], consuming the handle so the lines own it.
+    /// Project the resource's text records into Arrow batches.
     ///
-    /// This is the shape a caller needs when the iterator must outlive the
-    /// scope that built the handle - handing lines across an FFI boundary, or
-    /// returning them from a function that constructed the handle itself.
-    ///
-    /// # Errors
-    ///
-    /// Construction itself cannot fail; each yielded item carries the read,
-    /// decode, or encoding failure of its line.
-    fn into_read_lines(self) -> Result<Lines<Box<dyn Read + Send + 'static>>>
-    where
-        Self: Sized + 'static,
-    {
-        let encodings = self.media_type().encodings().to_vec();
-        Ok(Lines::over(decoded_stream(Cursor::new(self), &encodings)))
-    }
-
-    // (decoded_stream peels the codings for the owned variant; the borrowed
-    // one inlines the same walk because its boxes carry no Send.)
-
-    /// Project the matched line records of this resource into Arrow batches.
-    ///
-    /// This is a text-line projection like [`Self::read_lines`], **not a
-    /// fourth record method**: the record surface stays exactly
-    /// [`Self::read_arrow_batch_reader`], [`Self::write_arrow_batch_reader`],
-    /// and [`Self::append_arrow_batch_reader`], and this method never touches
-    /// how a record encoding decodes rows. What it reads is text - the same
-    /// decoded lines [`Self::read_lines_matching`] yields, grouped into
-    /// records by the options' header pattern - and what it returns is those
-    /// records as one streaming [`BatchReader`](crate::arrow::BatchReader),
-    /// one batch in memory at a time. The columns are described on
-    /// [`LineRecordOptions`].
-    ///
-    /// [`IOKind`] decides the shape, never a second existence check:
-    ///
-    /// - A leaf ([`IOKind::File`], [`IOKind::Memory`]) parses that one
-    ///   resource's lines. This borrowed variant needs an owned view of the
-    ///   resource behind the reader it returns, so it reopens the same
-    ///   location through [`Self::parent`] and [`Self::child_by`]; a handle
-    ///   with no parent - an in-memory buffer - contributes a snapshot of its
-    ///   still-encoded bytes instead, which those handles already hold in
-    ///   memory. [`Self::into_arrow_lines`] avoids both by consuming the
-    ///   handle.
-    /// - A container ([`IOKind::Directory`]) streams across the leaf files
-    ///   beneath it in deterministic name-sorted order, each leaf opened
-    ///   lazily when the reader reaches it, each contributing its own `url`
-    ///   and restarting `rownum` at 1, and each decoded by its *own* media
-    ///   type - a folder mixing `a.log` and `b.log.gz` reads uniformly. A
-    ///   batch never spans two leaves.
-    /// - [`IOKind::Unknown`] - the resource does not exist - reads as an
-    ///   **empty** reader: zero batches, schema still answered, exactly as
-    ///   [`Self::read_lines`] yields no lines and [`Self::pread`] reads zero
-    ///   bytes. Absence is never an error on the read path.
+    /// A thin shim over [`Self::into_text`]. This is a *text-line* projection
+    /// like [`Self::read_lines`], **not a fourth record method**: the record
+    /// surface stays exactly [`Self::read_arrow_batch_reader`],
+    /// [`Self::write_arrow_batch_reader`], and
+    /// [`Self::append_arrow_batch_reader`], and this never touches how a record
+    /// encoding decodes rows. The columns are described on
+    /// [`TextLineOptions`](crate::text::TextLineOptions).
     ///
     /// # Errors
     ///
     /// Returns a listing or reopen failure; each yielded batch carries the
     /// read, decode, or parse failure of its rows.
     #[cfg(feature = "arrow")]
-    fn read_arrow_lines(&self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    fn read_arrow_lines(
+        &self,
+        options: &crate::text::TextLineOptions,
+    ) -> Result<crate::arrow::BatchReader>
     where
         Self: Sized,
     {
-        lines::read_arrow_lines(self, options)
+        crate::text::line::arrow::read_arrow_lines(self, options)
     }
 
     /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
@@ -1204,14 +1485,17 @@ pub trait IOBase: Send {
     ///
     /// # Errors
     ///
-    /// Returns a listing failure; each yielded batch carries the read,
-    /// decode, or parse failure of its rows.
+    /// Returns a listing failure; each yielded batch carries the read, decode,
+    /// or parse failure of its rows.
     #[cfg(feature = "arrow")]
-    fn into_arrow_lines(self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    fn into_arrow_lines(
+        self,
+        options: &crate::text::TextLineOptions,
+    ) -> Result<crate::arrow::BatchReader>
     where
         Self: Sized + 'static,
     {
-        lines::into_arrow_lines(self, options)
+        crate::text::line::arrow::into_arrow_lines(self, options)
     }
 
     /// Return the record options this resource's encoding names.
@@ -1669,189 +1953,6 @@ impl Read for Reader<'_> {
     }
 }
 
-/// An iterator over the decoded text lines of one resource.
-///
-/// Built by [`IOBase::read_lines`] and [`IOBase::into_read_lines`]. Bytes are
-/// pulled through a fixed-size buffer and any content codings the resource
-/// declares are peeled as streams, so one line is in memory at a time whether
-/// the resource is plain or compressed. A line is what `\n` ends, a trailing
-/// `\r` is part of the terminator, and the last line needs no terminator. A
-/// UTF-8 byte-order mark opening the resource is an encoding signature rather
-/// than content, so it is stripped from the first line.
-pub struct Lines<R> {
-    reader: std::io::BufReader<R>,
-    buffer: Vec<u8>,
-    /// Byte offset in the decoded stream where the last yielded line starts.
-    ///
-    /// Tracked so a consumer that groups lines into records - the Arrow line
-    /// projection - can report where a record begins, which is the resume key
-    /// a tailing reader seeks back to.
-    start: u64,
-    /// Decoded bytes consumed so far, line terminators included.
-    consumed: u64,
-    done: bool,
-}
-
-impl<R: Read> Lines<R> {
-    /// Wrap a decoded byte stream in line iteration.
-    fn over(source: R) -> Self {
-        Self {
-            reader: std::io::BufReader::with_capacity(TRANSFER_CHUNK, source),
-            buffer: Vec::new(),
-            start: 0,
-            consumed: 0,
-            done: false,
-        }
-    }
-}
-
-impl<R: Read> Iterator for Lines<R> {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        use std::io::BufRead;
-
-        if self.done {
-            return None;
-        }
-        self.buffer.clear();
-        match self.reader.read_until(b'\n', &mut self.buffer) {
-            Ok(0) => {
-                self.done = true;
-                None
-            }
-            Ok(read) => {
-                self.start = self.consumed;
-                self.consumed += read as u64;
-                if self.buffer.last() == Some(&b'\n') {
-                    self.buffer.pop();
-                    if self.buffer.last() == Some(&b'\r') {
-                        self.buffer.pop();
-                    }
-                }
-                match std::str::from_utf8(&self.buffer) {
-                    Ok(line) => {
-                        // A byte-order mark is an encoding signature, not
-                        // content: stripped off the first line so an anchored
-                        // pattern still opens the file's first record. The
-                        // byte offsets keep counting it, so seeks stay exact.
-                        let line = if self.start == 0 {
-                            line.strip_prefix('\u{feff}').unwrap_or(line)
-                        } else {
-                            line
-                        };
-                        Some(Ok(line.to_owned()))
-                    }
-                    Err(error) => {
-                        self.done = true;
-                        Some(Err(Error::Io(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            error,
-                        ))))
-                    }
-                }
-            }
-            Err(error) => {
-                self.done = true;
-                Some(Err(Error::Io(error)))
-            }
-        }
-    }
-}
-
-/// An iterator over multi-line records, split where a pattern matches.
-///
-/// Built by [`IOBase::read_lines_matching`]. A record starts at a line the
-/// pattern matches and carries every following line until the next match -
-/// the shape of a log whose entries open with a timestamp and continue with
-/// stack traces and wrapped output. Lines before the first match form the
-/// first record rather than being dropped, because a rotated file often opens
-/// mid-entry and the bytes are still the caller's data.
-pub struct LineRecords<R> {
-    lines: Lines<R>,
-    pattern: regex_lite::Regex,
-    pending: Option<String>,
-    /// Where, in the decoded stream, the pending record's first line starts.
-    pending_offset: u64,
-    done: bool,
-}
-
-impl<R: Read> LineRecords<R> {
-    /// The next record with the byte offset its first line starts at.
-    ///
-    /// The offset counts decoded bytes - the stream after every content
-    /// coding is peeled - so it is the position a reader of the decoded value
-    /// seeks back to, and it is exact whatever the line terminators were.
-    /// This is the one grouping implementation; [`Iterator::next`] merely
-    /// drops the offset.
-    pub(crate) fn next_with_offset(&mut self) -> Option<Result<(u64, String)>> {
-        if self.done {
-            return None;
-        }
-        loop {
-            match self.lines.next() {
-                Some(Ok(line)) => {
-                    let start = self.lines.start;
-                    if self.pattern.is_match(&line) {
-                        // A match opens the next record; whatever accumulated
-                        // is the finished one.
-                        let finished = self.pending.replace(line);
-                        let opened_at = std::mem::replace(&mut self.pending_offset, start);
-                        if let Some(record) = finished {
-                            return Some(Ok((opened_at, record)));
-                        }
-                    } else {
-                        match &mut self.pending {
-                            Some(pending) => {
-                                pending.push('\n');
-                                pending.push_str(&line);
-                            }
-                            None => {
-                                self.pending = Some(line);
-                                self.pending_offset = start;
-                            }
-                        }
-                    }
-                }
-                Some(Err(error)) => {
-                    self.done = true;
-                    return Some(Err(error));
-                }
-                None => {
-                    self.done = true;
-                    let offset = self.pending_offset;
-                    return self.pending.take().map(|record| Ok((offset, record)));
-                }
-            }
-        }
-    }
-}
-
-impl<R: Read> Iterator for LineRecords<R> {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.next_with_offset()?.map(|(_, record)| record))
-    }
-}
-
-/// Peel `encodings` off a raw byte stream, outermost coding first.
-///
-/// The list is the order the codings were applied, so decoding walks it
-/// backwards; every layer is a streaming decoder, so nothing is buffered
-/// whole. This is what makes [`IOBase::read_lines`] cost one buffer over a
-/// compressed resource instead of the decompressed size.
-fn decoded_stream<'source>(
-    raw: impl Read + Send + 'source,
-    encodings: &[MimeType],
-) -> Box<dyn Read + Send + 'source> {
-    let mut stream: Box<dyn Read + Send + 'source> = Box::new(raw);
-    for coding in encodings.iter().rev() {
-        stream = Codec::from_mime_type(coding).reader_send(stream);
-    }
-    stream
-}
-
 /// A streaming writer over an [`IOBase`], advancing its own offset.
 pub struct Writer<'target> {
     target: &'target mut dyn IOBase,
@@ -1876,6 +1977,14 @@ impl Write for Writer<'_> {
 impl IOBase for Box<dyn IOBase> {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_ref().pread(offset, buffer)
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.as_mut().clear()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.as_mut().remove(recursive)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {

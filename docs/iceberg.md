@@ -3314,7 +3314,7 @@ grows, so a reader of an old file can never mistake a retired column for a new o
     assert not schema.data_type[0].nullable
     assert schema.data_type[1].nullable
     assert schema.data_type[0].parquet_field_id == 1
-    assert schema.data_type[0]["PARQUET:field_id"] == "1"
+    assert schema.data_type[0].metadata["PARQUET:field_id"] == "1"
 
     # The same document comes back out.
     assert schema_to_json(schema) == document

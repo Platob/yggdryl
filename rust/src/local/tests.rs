@@ -2,12 +2,16 @@
 
 mod mapped {
     use crate::io::IOBase;
-    use crate::local::File;
+    use crate::local::{File, Folder};
 
     fn path(label: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!("yggdryl-mmap-{label}-{}.bin", std::process::id()));
-        let _ = std::fs::remove_file(&path);
+        // Teardown through the abstraction: absence is a no-op success.
+        File::new(&path)
+            .expect("a local leaf")
+            .remove(false)
+            .expect("a removable leaf");
         path
     }
 
@@ -38,7 +42,11 @@ mod mapped {
         assert_eq!(reopened.read_range(0, 5).unwrap(), b"trade");
         assert_eq!(reopened.url().unwrap().extension(), Some("bin"));
 
-        let _ = std::fs::remove_file(&path);
+        // Teardown through the abstraction: absence is a no-op success.
+        File::new(&path)
+            .expect("a local leaf")
+            .remove(false)
+            .expect("a removable leaf");
     }
 
     #[test]
@@ -69,7 +77,10 @@ mod mapped {
     fn the_first_write_creates_the_file_and_its_parent() {
         let mut path = std::env::temp_dir();
         path.push(format!("yggdryl-mmap-create-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
         path.push("nested");
         path.push("trades.bin");
 
@@ -86,6 +97,39 @@ mod mapped {
     }
 
     #[test]
+    fn a_complete_write_publishes_its_length_to_another_handle() {
+        let path = path("published");
+
+        let mut writer = File::new(&path).unwrap();
+        writer.write_all_bytes(b"one\ntwo\n").unwrap();
+
+        // The geometric growth is this handle's working state, not the value:
+        // a second handle - or another process - must see the logical length,
+        // or it would read the mapping's zero padding as content.
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 8);
+        let second = File::new(&path).unwrap();
+        assert_eq!(second.size(), 8);
+        assert_eq!(second.read_all_bytes().unwrap(), b"one\ntwo\n");
+
+        // Records read back through a fresh handle are exactly what was
+        // written: no trailing record made of padding.
+        let mut lines = second.read_lines().unwrap();
+        let mut seen = Vec::new();
+        while let Some(record) = lines.next() {
+            seen.push(record.unwrap().text().unwrap().to_owned());
+        }
+        assert_eq!(seen, ["one", "two"]);
+
+        drop(writer);
+        drop(lines);
+        // Teardown through the abstraction: absence is a no-op success.
+        File::new(&path)
+            .expect("a local leaf")
+            .remove(false)
+            .expect("a removable leaf");
+    }
+
+    #[test]
     fn a_mapped_file_zero_fills_a_write_gap() {
         let path = path("gap");
         let mut mapped = File::create(&path).unwrap();
@@ -96,7 +140,11 @@ mod mapped {
         assert_eq!(mapped.read_all_bytes().unwrap(), b"ab\0\0\0z");
 
         drop(mapped);
-        let _ = std::fs::remove_file(&path);
+        // Teardown through the abstraction: absence is a no-op success.
+        File::new(&path)
+            .expect("a local leaf")
+            .remove(false)
+            .expect("a removable leaf");
     }
 }
 
@@ -108,7 +156,10 @@ mod hierarchy {
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!("yggdryl-tree-{label}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
         path
     }
 
@@ -155,7 +206,10 @@ mod hierarchy {
         let deep = directory.ls(true, false).unwrap();
         assert_eq!(deep.len(), 3, "{deep:?}");
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -201,7 +255,10 @@ mod hierarchy {
         // Truncating to zero is how a directory is brought into being.
         directory.truncate(0).unwrap();
         assert!(path.exists());
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -211,35 +268,41 @@ mod hierarchy {
         directory.create().unwrap();
 
         let mut leaf = directory.child_by("cached.bin").unwrap();
-        assert!(!leaf.is_open());
+        assert!(!leaf.opened());
 
         leaf.pwrite(0, b"cached").unwrap();
-        assert!(leaf.is_open());
+        assert!(leaf.opened());
 
         // Closing publishes and releases; the handle stays usable.
         leaf.close().unwrap();
-        assert!(!leaf.is_open());
+        assert!(!leaf.opened());
         assert_eq!(leaf.read_all_bytes().unwrap(), b"cached");
 
         // Opening a handle for a missing file caches nothing and creates nothing.
         let mut absent = directory.child_by("absent.bin").unwrap();
         absent.open().unwrap();
-        assert!(!absent.is_open());
+        assert!(!absent.opened());
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 }
 
 /// One generic location resolves to the implementation it turns out to need.
 mod generic_path {
     use crate::io::IOBase;
-    use crate::local::Path;
+    use crate::local::{Folder, Path};
     use crate::{IOKind, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!("yggdryl-path-{label}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
         path
     }
 
@@ -260,7 +323,10 @@ mod generic_path {
         assert!(missing.read_all_bytes().unwrap().is_empty());
         assert_eq!(missing.size(), 0);
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -278,7 +344,10 @@ mod generic_path {
         assert_eq!(leaf.kind(), IOKind::File);
         assert_eq!(leaf.read_all_bytes().unwrap(), b"AAPL");
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -301,7 +370,10 @@ mod generic_path {
         assert_eq!(child.read_all_bytes().unwrap(), b"a");
         assert_eq!(child.parent().unwrap().kind(), IOKind::Directory);
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -314,7 +386,10 @@ mod generic_path {
         location.as_directory().unwrap().create().unwrap();
         assert_eq!(location.kind(), IOKind::Directory);
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 }
 
@@ -327,7 +402,10 @@ mod roles {
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!("yggdryl-roles-{label}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
         path
     }
 
@@ -350,7 +428,10 @@ mod roles {
         assert_eq!(folder.kind(), IOKind::Directory);
         assert_eq!(folder.media_type().base(), &MimeType::DIRECTORY);
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -367,7 +448,10 @@ mod roles {
         // Its kind follows from whether it exists yet.
         assert_eq!(leaf.file_kind(), IOKind::Unknown);
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 
     #[test]
@@ -392,7 +476,10 @@ mod roles {
         // An undecided location still reports what its name says it holds.
         assert_eq!(absent.path_media_type().base(), &MimeType::ARROW_STREAM);
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 }
 
@@ -405,7 +492,10 @@ mod privacy {
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!("yggdryl-private-{label}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
         path
     }
 
@@ -453,7 +543,10 @@ mod privacy {
         let deep_all = folder.ls(true, true).unwrap();
         assert!(deep_all.len() >= 5, "{deep_all:?}");
 
-        let _ = std::fs::remove_dir_all(&path);
+        Folder::new(&path)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
     }
 }
 

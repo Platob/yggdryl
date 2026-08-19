@@ -213,6 +213,31 @@ impl IOBase for Buffer {
     fn set_media_type(&mut self, media_type: MediaType) {
         self.declared = Some(media_type);
     }
+
+    /// Discard every byte, keeping the allocation for the next write.
+    ///
+    /// The buffer still exists afterwards, empty - which for an in-memory
+    /// resource is exactly what a cleared leaf is.
+    fn clear(&mut self) -> Result<()> {
+        self.bytes.clear();
+        self.invalidate();
+        Ok(())
+    }
+
+    /// Delete the buffer completely: the bytes *and* the allocation.
+    ///
+    /// Complete removal for an in-memory resource means giving the memory back,
+    /// not merely forgetting the length - a cleared buffer still holds its
+    /// capacity, a removed one holds nothing. `recursive` is irrelevant: a
+    /// buffer contains no other resources. The handle stays usable and lazy
+    /// afterwards, so writing through it allocates again exactly as a fresh
+    /// buffer would.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        let _ = recursive;
+        self.bytes = Vec::new();
+        self.invalidate();
+        Ok(())
+    }
 }
 
 impl From<Vec<u8>> for Buffer {

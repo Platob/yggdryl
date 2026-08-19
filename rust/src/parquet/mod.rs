@@ -491,9 +491,7 @@ impl<H: IOBase> Parquet<H> {
 /// [`IOBase::open`] additionally caches the footer and [`IOBase::close`]
 /// releases it, which is what a scoped context binds to.
 impl<H: IOBase> IOBase for Parquet<H> {
-    crate::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve,
-        truncate, url, media_type, set_media_type, flush, parent, child_by,
-        ls, kind);
+    crate::delegate_iobase!(handle, except_lifecycle);
 
     /// Parquet is a record encoding, so this handle holds rows whatever media
     /// type the bytes underneath happen to carry - no probe, no listing, no
@@ -517,7 +515,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
     }
 
     /// Return whether a footer is currently cached.
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.cached.is_some()
     }
 
@@ -525,6 +523,25 @@ impl<H: IOBase> IOBase for Parquet<H> {
     fn close(&mut self) -> crate::Result<()> {
         self.cached = None;
         self.handle.close()
+    }
+
+    /// Empty the encoded resource and drop the cached footer with it.
+    ///
+    /// Invalidation is part of the call, not deferred to the next `open`: a
+    /// cached footer describing bytes that are gone is a stale answer, and a
+    /// stale answer after an emptying is a bug.
+    fn clear(&mut self) -> crate::Result<()> {
+        self.cached = None;
+        self.handle.clear()
+    }
+
+    /// Delete the encoded resource, and every cached footer it filled.
+    ///
+    /// A media handle removes what it wraps, not merely its own view: the
+    /// resource behind the handle goes, and the footer cache goes with it.
+    fn remove(&mut self, recursive: bool) -> crate::Result<()> {
+        self.cached = None;
+        self.handle.remove(recursive)
     }
 }
 

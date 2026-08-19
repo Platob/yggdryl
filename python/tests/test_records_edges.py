@@ -63,10 +63,10 @@ def test_record_is_dataclass_and_schema_values_are_singletons() -> None:
     assert EdgeOrder.schema_fields() is schema_fields(EdgeOrder)
 
     assert root.name == "EdgeOrder"
-    assert root["python.module"] == __name__
-    assert root["python.class"] == "EdgeOrder"
-    assert root["python.qualname"] == EdgeOrder.__qualname__
-    assert root["python.kind"] == "record"
+    assert root.metadata["python.module"] == __name__
+    assert root.metadata["python.class"] == "EdgeOrder"
+    assert root.metadata["python.qualname"] == EdgeOrder.__qualname__
+    assert root.metadata["python.kind"] == "record"
     assert root.data_type.id == "struct"
     assert tuple(child.name for child in schema_fields(EdgeOrder)) == (
         "order_id",
@@ -95,8 +95,8 @@ def test_annotated_metadata_and_direct_overlay_are_preserved() -> None:
         Annotated[int, {"source": "annotation", "priority": "low"}],
         {"priority": "high"},
     )
-    assert value["source"] == "annotation"
-    assert value["priority"] == "high"
+    assert value.metadata["source"] == "annotation"
+    assert value.metadata["priority"] == "high"
 
 
 def test_record_unions_materialize_dense_native_tags_at_every_depth() -> None:
@@ -106,7 +106,7 @@ def test_record_unions_materialize_dense_native_tags_at_every_depth() -> None:
     assert payload.id == history.id == "union"
     assert tuple(payload.to_arrow().type_codes) == (0, 1)
     assert tuple(history.to_arrow().type_codes) == (0, 1)
-    assert payload[0].data_type["count"]["branch"] == "count"
+    assert payload[0].data_type["count"].metadata["branch"] == "count"
 
     count = VariantEnvelope.from_dict(
         {"payload": {"count": "7"}, "history": [1, "two"]}
@@ -206,7 +206,7 @@ def test_safe_rejects_unknown_keys_while_shallow_mode_does_not_cast() -> None:
 
 def test_plain_dataclasses_share_schema_and_conversion_implementation() -> None:
     assert schema_field(PlainValue) is schema_field(PlainValue)
-    assert schema_field(PlainValue)["python.kind"] == "dataclass"
+    assert schema_field(PlainValue).metadata["python.kind"] == "dataclass"
     value = from_dict(PlainValue, {"count": "7"})
     assert value == PlainValue(7)
     assert to_dict(value) == {"count": 7}

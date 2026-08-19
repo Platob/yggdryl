@@ -881,22 +881,22 @@ let mut writer = Ipc::new(Buffer::new()).with_schema(schema.clone());
 writer.write_batch_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]))?;
 
 let mut reader = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
-assert!(!reader.is_open());
+assert!(!reader.opened());
 
 // Opening derives the schema once; every later question is answered from the cache.
 reader.open()?;
-assert!(reader.is_open());
+assert!(reader.opened());
 assert_eq!(reader.schema()?, schema);
 
 reader.close()?;
-assert!(!reader.is_open());
+assert!(!reader.opened());
 // Still usable afterwards: it simply derives the schema again.
 assert_eq!(reader.schema()?, schema);
 ```
 
 `Ipc` works without `open`, like every other handle in [io.md](io.md): each call
 materializes what it needs. What `open` adds is a schema derived once instead of once per
-question, and `is_open` reports exactly that - whether a schema is cached. `close` drops
+question, and `opened` reports exactly that - whether a schema is cached. `close` drops
 it. A write also refreshes the cache, since the batches just written are the schema.
 
 Deriving a schema means decoding the stream's header, and behind a coding it means
@@ -924,7 +924,7 @@ decoding the stream. That is the cost `open` moves to a known point.
     // Opening an absent stream succeeds and caches nothing.
     let mut empty = Ipc::new(Buffer::new());
     empty.open()?;
-    assert!(!empty.is_open());
+    assert!(!empty.opened());
 
     // Writing no batches still writes the schema, so the stream exists and is readable.
     let mut written = Ipc::new(Buffer::new()).with_schema(schema.clone());

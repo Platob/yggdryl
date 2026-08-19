@@ -186,12 +186,20 @@ impl<H: IOBase> IOBase for Codec<H> {
         self.as_io_mut().open()
     }
 
-    fn is_open(&self) -> bool {
-        self.as_io().is_open()
+    fn opened(&self) -> bool {
+        self.as_io().opened()
     }
 
     fn close(&mut self) -> Result<()> {
         self.as_io_mut().close()
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.as_io_mut().clear()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.as_io_mut().remove(recursive)
     }
 
     fn parent(&self) -> Option<super::Holder> {

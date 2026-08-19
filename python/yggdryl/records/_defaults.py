@@ -244,7 +244,7 @@ def _value_hint(field: SchemaField, hint: Any) -> Any:
             native_field.name,
             native_field.data_type,
             nullable=False,
-            metadata=dict(native_field.items()),
+            metadata=dict(native_field.metadata.items()),
         )
         _adopt_record_schema(
             value_type,
@@ -253,7 +253,7 @@ def _value_hint(field: SchemaField, hint: Any) -> Any:
             hints,
             class_name=name,
             module=__name__,
-            schema_metadata=dict(native_field.items()),
+            schema_metadata=dict(native_field.metadata.items()),
             preserve_root=True,
         )
     return _replace_record_classes(hint, replacements)

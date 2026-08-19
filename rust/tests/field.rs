@@ -16,6 +16,8 @@ mod integer;
 mod nested;
 #[path = "field/scalar.rs"]
 mod scalar;
+#[path = "field/serde.rs"]
+mod serde;
 #[path = "field/temporal.rs"]
 mod temporal;
 #[path = "field/typed.rs"]

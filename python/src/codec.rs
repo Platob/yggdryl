@@ -456,33 +456,73 @@ pub(crate) fn codec_encode_path(
     }
 }
 
+/// Assemble the read-side options from the boundary's two switches.
+///
+/// Substitution is on when the caller supplied variables *or* asked for the
+/// environment, and off - meaning no walk and no `std::env` call at all - when
+/// they did neither. The two are separate because a document that resolves
+/// `{{ AWS_SECRET_ACCESS_KEY }}` into a value that is then dumped has leaked
+/// it, so reaching the process environment is its own decision.
+fn loading_from(
+    placeholders: Option<&Bound<'_, PyAny>>,
+    environment: bool,
+) -> PyResult<yggdryl::text::Loading> {
+    if placeholders.is_none() && !environment {
+        return Ok(yggdryl::text::Loading::new());
+    }
+    let variables = match placeholders {
+        Some(mapping) => {
+            yggdryl::text::Placeholders::from_variables(&from_py(mapping)?).map_err(value_error)?
+        }
+        None => yggdryl::text::Placeholders::new(),
+    };
+    Ok(yggdryl::text::Loading::new().with_placeholders(variables.with_environment(environment)))
+}
+
 #[pyfunction(name = "_codec_decode")]
+#[pyo3(signature = (data, format, placeholders = None, environment = false))]
 pub(crate) fn codec_decode(
     py: Python<'_>,
     data: &Bound<'_, PyAny>,
     format: &str,
+    placeholders: Option<&Bound<'_, PyAny>>,
+    environment: bool,
 ) -> PyResult<Py<PyAny>> {
     let format = format_from_str(format)?;
+    let loading = loading_from(placeholders, environment)?;
     let value = with_python_bytes(data, |data| {
-        yggdryl::text::from_slice(data, format).map_err(value_error)
+        yggdryl::text::from_slice_with(data, format, &loading).map_err(value_error)
     })?;
     as_py(py, &value)
 }
 
 #[pyfunction(name = "_codec_decode_text")]
-pub(crate) fn codec_decode_text(py: Python<'_>, data: &str, format: &str) -> PyResult<Py<PyAny>> {
-    let value = yggdryl::text::from_str(data, format_from_str(format)?).map_err(value_error)?;
+#[pyo3(signature = (data, format, placeholders = None, environment = false))]
+pub(crate) fn codec_decode_text(
+    py: Python<'_>,
+    data: &str,
+    format: &str,
+    placeholders: Option<&Bound<'_, PyAny>>,
+    environment: bool,
+) -> PyResult<Py<PyAny>> {
+    let loading = loading_from(placeholders, environment)?;
+    let value = yggdryl::text::from_str_with(data, format_from_str(format)?, &loading)
+        .map_err(value_error)?;
     as_py(py, &value)
 }
 
 #[pyfunction(name = "_codec_decode_reader")]
+#[pyo3(signature = (source, format, placeholders = None, environment = false))]
 pub(crate) fn codec_decode_reader(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
     format: &str,
+    placeholders: Option<&Bound<'_, PyAny>>,
+    environment: bool,
 ) -> PyResult<Py<PyAny>> {
+    let loading = loading_from(placeholders, environment)?;
     let mut reader = PythonReader::new(source);
-    let decoded = yggdryl::text::from_reader(&mut reader, format_from_str(format)?);
+    let decoded = yggdryl::text::from_reader_with(&mut reader, format_from_str(format)?, &loading);
     if let Some(error) = reader.take_error() {
         return Err(error);
     }

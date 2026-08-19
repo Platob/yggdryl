@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, Literal, TypeVar
 
 from .. import _codec
@@ -37,8 +37,16 @@ def loads(
     cls: type[_T] | None = None,
     safe: bool = True,
     errors: _ErrorPolicy = "raise",
+    placeholders: Mapping[str, Any] | None = None,
+    environment: bool = False,
 ) -> _T | Any:
-    """Decode YAML bytes, content text, a path, or a readable file object."""
+    """Decode YAML bytes, content text, a path, or a readable file object.
+
+    `placeholders` turns Jinja-style `{{ NAME }}` substitution on, resolving
+    from the mapping it is given; `environment` additionally consults the
+    process environment, which is never read unless asked for. Both default to
+    off, and the mapping wins over the environment.
+    """
 
     return _codec.loads(
         source,
@@ -46,6 +54,8 @@ def loads(
         cls=cls,
         safe=safe,
         errors=errors,
+        placeholders=placeholders,
+        environment=environment,
     )
 
 

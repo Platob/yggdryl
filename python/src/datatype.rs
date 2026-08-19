@@ -8,7 +8,7 @@ use arrow_data::ArrayData;
 use arrow_pyarrow::{FromPyArrow, PyArrowType, ToPyArrow};
 use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
-use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList};
 use yggdryl::ArrowCast;
@@ -18,7 +18,7 @@ use yggdryl::{
 };
 
 use crate::field::PyField;
-use crate::{PyDifferenceIterator, compare, normalize_index, value_error};
+use crate::{PyDifferenceIterator, child_of, compare, normalize_index, value_error};
 
 fn import_ffi_schema<'py>(
     py: Python<'py>,
@@ -691,13 +691,116 @@ impl PyDataType {
         core_data_type_to_pyarrow(py, &self.inner)
     }
 
-    fn to_json(&self) -> PyResult<String> {
-        self.inner.to_json().map_err(value_error)
+    /// Serialize as deterministic structural JSON.
+    ///
+    /// `indent=None` is compact - today's output and the default; an integer
+    /// pretty-prints with that many spaces per nesting level, exactly as
+    /// `json.dumps(indent=n)` reads.
+    #[pyo3(signature = (*, indent = None))]
+    fn to_json(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .to_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
+    /// Consume and serialize as structural JSON.
     #[allow(clippy::wrong_self_convention)]
-    fn into_json(&self) -> PyResult<String> {
-        self.inner.clone().into_json().map_err(value_error)
+    #[pyo3(signature = (*, indent = None))]
+    fn into_json(&self, indent: Option<u8>) -> PyResult<String> {
+        self.to_json(indent)
+    }
+
+    /// Deserialize and validate from structural YAML.
+    ///
+    /// The same structure `from_json` reads, in YAML's syntax - so a config
+    /// document can carry a declared schema inline beside its other settings.
+    #[staticmethod]
+    fn from_yaml(value: &str) -> PyResult<Self> {
+        CoreDataType::from_yaml(value)
+            .map_err(value_error)
+            .and_then(Self::from_validated)
+    }
+
+    /// Serialize as YAML: block style, one key per line.
+    ///
+    /// `indent=2` is the default. `indent=None` asks for flow style -
+    /// `{a: 1, b: 2}` on one line - which is valid YAML and round-trips, and
+    /// is never what a caller gets by accident.
+    #[pyo3(signature = (*, indent = Some(2)))]
+    fn to_yaml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .to_yaml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Consume and serialize as YAML.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = Some(2)))]
+    fn into_yaml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.to_yaml(indent)
+    }
+
+    /// Deserialize and validate from structural TOML.
+    #[staticmethod]
+    fn from_toml(value: &str) -> PyResult<Self> {
+        CoreDataType::from_toml(value)
+            .map_err(value_error)
+            .and_then(Self::from_validated)
+    }
+
+    /// Serialize as TOML.
+    ///
+    /// TOML has no null, and this model never needs one: an unset optional
+    /// attribute is omitted rather than faked, so nothing is lost.
+    #[pyo3(signature = (*, indent = None))]
+    fn to_toml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .to_toml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Consume and serialize as TOML.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_toml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.to_toml(indent)
+    }
+
+    /// Project this value onto a plain structural mapping.
+    ///
+    /// The core's one structural model - the model JSON, YAML, and TOML are
+    /// all expressed over - handed back as a `dict`, so a schema drops into any
+    /// document a caller already builds. Spelled `to_dict` rather than
+    /// `to_value` because `from_value` is already this module's
+    /// boundary-inference entry point and a Python caller reads a `dict` here.
+    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        crate::value::as_py(py, &self.inner.to_value())
+    }
+
+    /// Read this value back from a plain structural mapping.
+    ///
+    /// The inverse of `to_dict`, through the core's one conversion.
+    #[staticmethod]
+    fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        CoreDataType::from_value(crate::value::from_py(value)?)
+            .map_err(value_error)
+            .and_then(Self::from_validated)
+    }
+
+    /// A readable, indented rendering of this value and everything under it.
+    ///
+    /// `str` and `repr` are unchanged - the compact constructor form, which
+    /// round-trips through `from_str` - because that is what a Python reader
+    /// expects of `repr` and what the parsers depend on. This is the form for
+    /// a human looking at a schema three levels deep.
+    fn pretty(&self) -> String {
+        format!("{:#}", self.inner)
+    }
+
+    /// The readable rendering, for `IPython` and notebook cells.
+    fn _repr_pretty_(&self, printer: &Bound<'_, PyAny>, _cycle: bool) -> PyResult<()> {
+        printer.call_method1("text", (self.pretty(),))?;
+        Ok(())
     }
 
     /// Coarse datatype family, such as ``integer`` or ``list``.
@@ -804,27 +907,43 @@ impl PyDataType {
         }
     }
 
+    /// Reach a nested child by name or by position.
+    ///
+    /// Item access on a schema node means a **child**, never metadata: a `str`
+    /// is a child name and raises `KeyError` when absent, an `int` is a
+    /// position counting from the end when negative and raising `IndexError`
+    /// when out of range, and anything else raises `TypeError`. `Field` carries
+    /// exactly the same behavior, so a caller walking one object graph gets a
+    /// child from every node in it. Metadata is reached through
+    /// `Field.metadata[...]` or `Field.get_metadata(...)`.
+    ///
+    /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
+    /// path form.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<PyField> {
-        if let Ok(name) = key.extract::<&str>() {
-            return self
-                .inner
-                .get_field_by_name(name)
-                .cloned()
-                .map(PyField::from_inner)
-                .ok_or_else(|| PyKeyError::new_err(name.to_owned()));
-        }
-        if let Ok(index) = key.extract::<isize>() {
-            let normalized = normalize_index(index, self.inner.field_len())
-                .ok_or_else(|| PyIndexError::new_err(index))?;
-            return self
-                .inner
-                .get_field(normalized)
-                .cloned()
-                .map(PyField::from_inner)
-                .ok_or_else(|| PyIndexError::new_err(index));
-        }
+        child_of(&self.inner, key).map(PyField::from_inner)
+    }
+
+    /// Refuse child mutation: a `DataType` is a read-only child collection.
+    ///
+    /// Reading is shared with `Field` - `data_type["price"]` and
+    /// `field["price"]` both reach a nested child - but *writing* belongs on
+    /// `Field`, which owns the cache-aware mutation the core requires and the
+    /// metadata a datatype does not carry. A `DataType` is immutable and
+    /// hashable; letting a subscript rewrite one would break both.
+    #[allow(clippy::unused_self, reason = "the dunder is a method by protocol")]
+    fn __setitem__(&self, _key: &Bound<'_, PyAny>, _value: &Bound<'_, PyAny>) -> PyResult<()> {
         Err(PyTypeError::new_err(
-            "datatype child index must be int or str",
+            "a DataType is a read-only child collection; mutate children on the Field that \
+             carries it",
+        ))
+    }
+
+    /// Refuse child removal, for the reason `__setitem__` gives.
+    #[allow(clippy::unused_self, reason = "the dunder is a method by protocol")]
+    fn __delitem__(&self, _key: &Bound<'_, PyAny>) -> PyResult<()> {
+        Err(PyTypeError::new_err(
+            "a DataType is a read-only child collection; mutate children on the Field that \
+             carries it",
         ))
     }
 
@@ -885,6 +1004,13 @@ impl PyDataType {
 pub(crate) struct PyDataTypeIterator {
     inner: CoreDataType,
     index: usize,
+}
+
+impl PyDataTypeIterator {
+    /// Iterate one node's children, from `Field` or from `DataType`.
+    pub(crate) const fn over(inner: CoreDataType) -> Self {
+        Self { inner, index: 0 }
+    }
 }
 
 #[pymethods]

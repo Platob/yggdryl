@@ -328,48 +328,39 @@ where
     ))
 }
 
-/// One reader's batches, then another's cast to a declared root Field.
+/// One reader's batches, then another's - the one chaining implementation.
 ///
-/// This is what an append is: the resource's current contents followed by the
-/// new ones, encoded as they arrive so neither side is collected.
-struct Appended {
-    stored: BatchReader,
-    incoming: BatchReader,
-    field: Field,
-    safe: bool,
+/// This is what an append is, and what a combine is: two streams end to end,
+/// each batch encoded as it arrives so neither side is collected. Whether
+/// either side is cast is decided *before* it gets here, by wrapping it in
+/// [`cast_reader`], so there is exactly one concatenation and one cast route.
+struct Chained {
+    first: BatchReader,
+    second: BatchReader,
     schema: SchemaRef,
 }
 
-impl Iterator for Appended {
+impl Iterator for Chained {
     type Item = std::result::Result<arrow_array::RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        use crate::field::cast::ArrowCast;
-
-        // What is already stored is yielded as it stands; only the new batches
-        // are cast, because the stored ones are already what they are.
-        if let Some(batch) = self.stored.next() {
+        if let Some(batch) = self.first.next() {
             return Some(batch);
         }
-        let batch = match self.incoming.next()? {
-            Ok(batch) => batch,
-            Err(error) => return Some(Err(error)),
-        };
-        Some(
-            self.field
-                .cast_arrow_batch(batch, self.safe)
-                .map_err(|error| ArrowError::ExternalError(Box::new(error))),
-        )
+        self.second.next()
     }
 }
 
-impl arrow_array::RecordBatchReader for Appended {
+impl arrow_array::RecordBatchReader for Chained {
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
     }
 }
 
 /// Chain `incoming`, cast to `field`, after everything `stored` yields.
+///
+/// What is already stored is yielded as it stands, because the stored batches
+/// are already what they are; only the incoming side is cast.
 ///
 /// # Errors
 ///
@@ -380,13 +371,214 @@ pub(crate) fn appended(
     field: &Field,
     safe: bool,
 ) -> Result<BatchReader> {
-    Ok(Box::new(Appended {
-        stored,
-        incoming,
-        field: field.clone(),
-        safe,
+    Ok(Box::new(Chained {
+        first: stored,
+        second: cast_reader(incoming, field, safe)?,
         schema: schema_from_field(field)?,
     }))
+}
+
+/// Chain two readers onto one declared root Field, casting both sides.
+///
+/// The old private `appended` promoted to public and made symmetric: this is
+/// what a caller reaches for when they already know the shape both sides must
+/// land in.
+/// Neither side is drained to inspect it and nothing is collected - a batch is
+/// cast when it is pulled, and [`cast_reader`] short-circuits a side that is
+/// already the declared shape rather than rebuilding arrays it would hand back
+/// unchanged.
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// use arrow_array::{Int64Array, RecordBatch};
+/// use yggdryl::DataType;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+///     .required_field("row");
+/// let schema = yggdryl::arrow::schema_from_field(&root)?;
+/// let batch = RecordBatch::try_new(
+///     Arc::clone(&schema),
+///     vec![Arc::new(Int64Array::from(vec![1_i64]))],
+/// )?;
+///
+/// let left = yggdryl::arrow::batch_reader(Arc::clone(&schema), [batch.clone()]);
+/// let right = yggdryl::arrow::batch_reader(schema, [batch]);
+/// let joined = yggdryl::arrow::combined_as(left, right, &root, false)?;
+///
+/// assert_eq!(joined.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 2);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns an error unless `field` is a bounded, non-nullable Struct root.
+pub fn combined_as(
+    left: BatchReader,
+    right: BatchReader,
+    field: &Field,
+    safe: bool,
+) -> Result<BatchReader> {
+    Ok(Box::new(Chained {
+        first: cast_reader(left, field, safe)?,
+        second: cast_reader(right, field, safe)?,
+        schema: schema_from_field(field)?,
+    }))
+}
+
+/// Chain two readers onto the root their two schemas merge into.
+///
+/// The case [`combined_as`] cannot serve: two readers whose schemas differ and
+/// no target known in advance. The merged root is derived from both schemas
+/// alone - [`BatchReader::schema`](arrow_array::RecordBatchReader::schema)
+/// answers without pulling a batch - so the combine is **fully lazy**: nothing
+/// is collected, and neither side is drained to inspect it.
+///
+/// # The merge rules
+///
+/// These are the contract, not an accident of the implementation:
+///
+/// - **Columns unite by name**, resolved ASCII case-insensitively, the way
+///   column names already resolve everywhere a cast or a selection matches
+///   them. Left's columns keep left's order; columns only in right are appended
+///   after, in right's order.
+/// - **A column in both must reconcile to one datatype.** Differing datatypes
+///   are **refused**, naming both sides. Refusing is the honest default: a
+///   silent widening is how a decimal quietly becomes a float.
+/// - **A column present in only one side becomes nullable**, necessarily - the
+///   other side's rows have no value for it and the cast fills null. This holds
+///   even when that column is non-nullable on its own side, so a caller
+///   expecting their non-null declaration to survive a merge reads it here
+///   rather than discovering it.
+/// - **Metadata and field ids: left's are kept**, and a conflicting
+///   `PARQUET:field_id` is refused rather than silently reassigned - Iceberg
+///   cares about field identity, and a reassigned id corrupts a table's schema
+///   evolution.
+/// - **The root name is left's**, and the merged root is a bounded,
+///   non-nullable Struct, as [`cast_reader`] requires. Because the merge never
+///   widens a datatype - it refuses instead - every column stays exactly what
+///   one of the two sides declared, so a merged reader is appendable to an
+///   Iceberg table wherever both inputs were.
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// use arrow_array::{Int64Array, RecordBatch, StringArray};
+/// use yggdryl::DataType;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let left_root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+///     .required_field("row");
+/// let right_root = DataType::from_fields([
+///     DataType::Int64.nullable_field("id"),
+///     DataType::Utf8.nullable_field("venue"),
+/// ])?
+/// .required_field("row");
+///
+/// let left_schema = yggdryl::arrow::schema_from_field(&left_root)?;
+/// let right_schema = yggdryl::arrow::schema_from_field(&right_root)?;
+/// let left = yggdryl::arrow::batch_reader(
+///     Arc::clone(&left_schema),
+///     [RecordBatch::try_new(left_schema, vec![Arc::new(Int64Array::from(vec![1_i64]))])?],
+/// );
+/// let right = yggdryl::arrow::batch_reader(
+///     Arc::clone(&right_schema),
+///     [RecordBatch::try_new(
+///         right_schema,
+///         vec![
+///             Arc::new(Int64Array::from(vec![2_i64])),
+///             Arc::new(StringArray::from(vec!["XPAR"])),
+///         ],
+///     )?],
+/// );
+///
+/// let joined = yggdryl::arrow::combined(left, right)?;
+/// // The merged root carries both columns; left's rows read null for `venue`.
+/// assert_eq!(joined.schema().fields().len(), 2);
+/// assert_eq!(joined.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 2);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns an error naming both sides when a shared column's datatype or
+/// `PARQUET:field_id` disagrees, or when either schema is not a bounded,
+/// non-nullable Struct root.
+pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader> {
+    // Both schemas are answered without pulling a batch, so the merge costs no
+    // rows and the result stays lazy.
+    let left_root = record_schema_from_arrow("row", left.schema().as_ref())?;
+    let right_root = record_schema_from_arrow("row", right.schema().as_ref())?;
+    let merged = merged_root(&left_root, &right_root)?;
+    // Safe casting: a merge never widens, so a value that will not fit is a
+    // disagreement worth raising rather than a null worth inventing.
+    combined_as(left, right, &merged, true)
+}
+
+/// Merge two struct roots into the one both sides cast onto.
+///
+/// The rules are documented on [`combined`]; this is the one implementation of
+/// them.
+fn merged_root(left: &Field, right: &Field) -> Result<Field> {
+    let mut columns: Vec<Field> = Vec::with_capacity(left.field_len() + right.field_len());
+    for column in left.fields() {
+        let Some(counterpart) = right
+            .fields()
+            .iter()
+            .find(|held| held.name().eq_ignore_ascii_case(column.name()))
+        else {
+            // Only on the left, so the right's rows have no value for it.
+            columns.push(column.clone().with_nullable(true));
+            continue;
+        };
+        columns.push(reconciled(column, counterpart)?);
+    }
+    for column in right.fields() {
+        if left
+            .fields()
+            .iter()
+            .any(|held| held.name().eq_ignore_ascii_case(column.name()))
+        {
+            continue;
+        }
+        // Only on the right, so the left's rows have no value for it.
+        columns.push(column.clone().with_nullable(true));
+    }
+    // The root name is left's, and the root is what a cast target must be.
+    Ok(DataType::from_fields(columns)?.required_field(left.name()))
+}
+
+/// Reconcile one column present on both sides, or refuse naming both.
+fn reconciled(left: &Field, right: &Field) -> Result<Field> {
+    if left.data_type() != right.data_type() {
+        return Err(Error::IncompatibleSchema(format!(
+            "expected one datatype for the merged column {:?}, got {} on the left and {} on the \
+             right",
+            left.name(),
+            left.data_type(),
+            right.data_type()
+        )));
+    }
+    let left_id = left.parquet_field_id()?;
+    let right_id = right.parquet_field_id()?;
+    if let (Some(left_id), Some(right_id)) = (left_id, right_id) {
+        if left_id != right_id {
+            return Err(Error::IncompatibleSchema(format!(
+                "expected one PARQUET:field_id for the merged column {:?}, got {left_id} on the \
+                 left and {right_id} on the right",
+                left.name()
+            )));
+        }
+    }
+    // Left's metadata and identity are kept; nullability widens, because a
+    // column required on one side and nullable on the other is nullable in a
+    // stream that carries both.
+    Ok(left
+        .clone()
+        .with_nullable(left.is_nullable() || right.is_nullable()))
 }
 
 /// One reader's batches, each cast to a declared root Field as it arrives.

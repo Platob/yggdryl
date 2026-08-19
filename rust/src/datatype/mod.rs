@@ -18,7 +18,7 @@ mod integer;
 mod nested;
 mod parser;
 mod scalar;
-mod serde;
+pub(crate) mod serde;
 mod temporal;
 
 pub(crate) use arrow::arrow_data_type_to_ffi;

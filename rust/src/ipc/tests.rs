@@ -113,15 +113,15 @@ fn open_caches_the_schema_and_close_releases_it() {
     writer.write_batch_reader(reader()).unwrap();
 
     let mut reader = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
-    assert!(!reader.is_open());
+    assert!(!reader.opened());
 
     reader.open().unwrap();
-    assert!(reader.is_open());
+    assert!(reader.opened());
     // The cached schema answers without re-deriving it.
     assert_eq!(reader.schema().unwrap(), schema());
 
     reader.close().unwrap();
-    assert!(!reader.is_open());
+    assert!(!reader.opened());
     // Still usable after closing; it simply re-derives.
     assert_eq!(reader.schema().unwrap(), schema());
 }
@@ -143,7 +143,7 @@ fn a_closed_stream_fetches_fresh_and_an_open_one_holds_what_it_cached() {
     // immediately. A cache nobody opened would have answered stale.
     let mut probe = Ipc::new(Buffer::from_bytes(first.handle().as_slice().to_vec()));
     assert_eq!(probe.schema().unwrap(), schema());
-    assert!(!probe.is_open());
+    assert!(!probe.opened());
     probe
         .handle_mut()
         .write_all_bytes(second.handle().as_slice())
@@ -168,7 +168,7 @@ fn opening_an_empty_stream_caches_nothing_and_reads_no_batches() {
     let mut media = Ipc::new(handle("empty.arrows"));
     media.open().unwrap();
 
-    assert!(!media.is_open());
+    assert!(!media.opened());
     assert_eq!(media.read_batch_reader(None).unwrap().count(), 0);
 }
 

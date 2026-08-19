@@ -599,3 +599,90 @@ fn a_url_named_handle_keeps_its_own_identity() {
     let handle = inner.buffered(BufferedOptions::default());
     assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
 }
+
+#[test]
+fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
+    let mut handle = Buffered::new(counted(8 * PAGE), options(16));
+
+    // A cache with something in it, and pinned pages among them.
+    assert_eq!(handle.read_all_bytes().unwrap().len(), 8 * PAGE);
+    assert!(handle.cached_pages() > 1);
+
+    // Clearing empties the resource, and the pages describing it go with it -
+    // a page that survived would answer the next read with bytes that are gone.
+    handle.clear().unwrap();
+    assert_eq!(handle.cached_pages(), 0);
+    assert_eq!(handle.size(), 0);
+    assert_eq!(handle.read_all_bytes().unwrap(), b"");
+
+    // The same for `remove`, which for a memory-backed handle is the same
+    // emptying: what matters is that nothing cached outlives the call.
+    let mut handle = Buffered::new(counted(8 * PAGE), options(16));
+    assert_eq!(handle.read_all_bytes().unwrap().len(), 8 * PAGE);
+    handle.remove(false).unwrap();
+    assert_eq!(handle.cached_pages(), 0);
+    assert_eq!(handle.read_all_bytes().unwrap(), b"");
+
+    // And neither pre-calls: absence is a completed removal, so a second one
+    // succeeds having done nothing rather than probing first.
+    handle.remove(false).unwrap();
+    handle.clear().unwrap();
+    assert_eq!(handle.cached_pages(), 0);
+}
+
+#[cfg(feature = "arrow")]
+#[test]
+fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
+    use crate::text::TextLineOptions;
+
+    // A located leaf, because that is the case the projection gets wrong: it
+    // reopens a handle's *location*, which for a coding view holds the
+    // compressed form rather than the bytes the view presents.
+    let root = std::env::temp_dir().join(format!(
+        "yggdryl-buffered-coded-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("app.log.gz");
+    let plain = b"2024-02-01T10:00:00 [INFO] alpha\n2024-02-01T10:00:01 [WARN] beta\n";
+    std::fs::write(&path, crate::gzip::dump(plain).unwrap()).unwrap();
+
+    let options = TextLineOptions::with_pattern(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]").unwrap();
+    let rows = |reader: crate::arrow::BatchReader| -> usize {
+        reader.map(|batch| batch.unwrap().num_rows()).sum()
+    };
+    let coded =
+        || crate::io::Coded::new(crate::local::File::new(&path).unwrap(), crate::Codec::Gzip);
+
+    // Four ways to the same two records. The last is the one that read the
+    // gzip header as text before the cache learned to defer.
+    let plain_file = rows(
+        crate::local::File::new(&path)
+            .unwrap()
+            .read_arrow_lines(&options)
+            .unwrap(),
+    );
+    let cached_file = rows(
+        crate::local::File::new(&path)
+            .unwrap()
+            .buffered(BufferedOptions::default())
+            .read_arrow_lines(&options)
+            .unwrap(),
+    );
+    let coded_view = rows(coded().read_arrow_lines(&options).unwrap());
+    let cached_view = rows(
+        coded()
+            .buffered(BufferedOptions::default())
+            .read_arrow_lines(&options)
+            .unwrap(),
+    );
+    assert_eq!(
+        (plain_file, cached_file, coded_view, cached_view),
+        (2, 2, 2, 2),
+        "a page cache must not change what a read returns",
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}

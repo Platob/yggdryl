@@ -201,6 +201,66 @@ hold, and `max_input_bytes` bounds the whole input. Two ceilings are the parser'
 limit raises them: `MAX_FLOW_DEPTH` (255) for `[` and `{` flow nesting, and `MAX_PARSER_DEPTH`
 (384) for block nesting.
 
+## Laying out a dump
+
+Every dump method has a `_with_formatting` companion taking one shared
+[`Formatting`](text.md#laying-out-a-dump) value, and every existing method delegates to it with the
+default - so no output changes a byte unless a caller asks. Formatting changes **bytes, never
+meaning**: parsing any formatting of the same value yields an equal value, and dumping the same value
+under the same formatting twice is byte-identical.
+
+Block style with a two-space indent is today's behavior and stays the default; an integer width
+simply replaces the `2`. **No indent means flow style** - `{a: 1, b: 2}` on one line - which is valid
+YAML and round-trips, and is an explicitly requested opt-in, never what a caller gets by accident.
+A schema dump's one-key-per-line block style is the default precisely so nobody has to ask for it.
+A tab request falls back to the default width, because YAML forbids tabs as indentation outright and
+emitting one would produce a document that will not parse.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::Value;
+    use yggdryl::text::Formatting;
+
+    let value = Value::from_mapping([
+        (Value::String("id".into()), Value::I64(1)),
+        (Value::String("tags".into()), Value::from_sequence([Value::String("a".into())])),
+    ])?;
+
+    assert_eq!(yggdryl::yaml::to_vec(&value)?, b"id: 1\ntags:\n  - a\n");
+    assert_eq!(
+        yggdryl::yaml::to_vec_with_formatting(&value, Formatting::indented(4))?,
+        b"id: 1\ntags:\n    - a\n",
+    );
+
+    // Flow style is the explicit opt-in, and it round-trips.
+    let flow = yggdryl::yaml::to_vec_with_formatting(&value, Formatting::compact())?;
+    assert_eq!(flow, b"{id: 1, tags: [a]}\n");
+    assert_eq!(yggdryl::yaml::from_slice(&flow)?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field
+
+    field = Field("id", "int64", nullable=False)
+
+    # Block style at two spaces is the default; a width replaces the 2.
+    assert field.to_yaml().startswith("name: id\ndata_type:\n  type: int64")
+    assert field.to_yaml(indent=4).startswith("name: id\ndata_type:\n    type: int64")
+
+    # `indent=None` asks for flow style, which is valid YAML and round-trips.
+    assert field.to_yaml(indent=None).startswith("{name: id,")
+    assert Field.from_yaml(field.to_yaml(indent=None)) == field
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust first"
+        The layout option lands in the JavaScript facades once the core surface settles.
+
+
 ## Tags are read, never written
 
 === "Rust"
@@ -375,6 +435,66 @@ and is never promoted to bytes or to any other kind.
 
 The same [`Value`](text.md) is what [JSON](json.md) and [TOML](toml.md) read and write, and
 `yggdryl::text` picks the format at run time when the caller does not know it in advance.
+
+## Placeholders, and the quoting that YAML requires
+
+`loads` resolves Jinja-*style* `{{ NAME }}` placeholders when a caller asks it to - the grammar and
+the security notes are on the [structured text](text.md#jinja-style-placeholders) page. YAML has
+one rule of its own, and it is the single most common way people get this wrong:
+
+**A bare `{{ PORT }}` is not a placeholder to YAML.** It is a flow mapping whose only key is
+another flow mapping, and YAML has read it that way before any substitution runs. Quote it:
+
+```yaml
+port: "{{ PORT }}"   # a string scalar - it resolves
+port: {{ PORT }}     # a flow mapping - YAML already decided
+```
+
+Substitution happens after parsing and never changes a document's shape, so nothing here rewrites
+the unquoted form into the one you meant. You get the mapping YAML says you asked for.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::text::{Format, Loading, Placeholders};
+    use yggdryl::Value;
+
+    let loading = Loading::new()
+        .with_placeholders(Placeholders::new().with_variable("PORT", Value::I64(8080)));
+
+    // Quoted: a string scalar, so it resolves - and adopts the resolved type.
+    let quoted = yggdryl::text::from_str_with("port: \"{{ PORT }}\"\n", Format::Yaml, &loading)?;
+    assert_eq!(quoted.get_key_str("port"), Some(&Value::I64(8080)));
+
+    // Unquoted: the flow mapping YAML read, untouched.
+    let bare = yggdryl::text::from_str_with("port: {{ PORT }}\n", Format::Yaml, &loading)?;
+    assert!(bare.get_key_str("port").and_then(Value::as_mapping).is_some());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import yaml
+
+    filling = {"placeholders": {"PORT": 8080}}
+    assert yaml.loads('port: "{{ PORT }}"\n', **filling)["port"] == 8080
+
+    # Unquoted, YAML read a flow mapping before anything else ran.
+    assert isinstance(yaml.loads("port: {{ PORT }}\n", **filling)["port"], dict)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { yaml } = require('yggdryl')
+
+    const options = { placeholders: { PORT: 8080 } }
+    assert.equal(yaml.loads('port: "{{ PORT }}"\n', options).port, 8080)
+
+    // Unquoted, YAML read a flow mapping before anything else ran.
+    assert.equal(typeof yaml.loads('port: {{ PORT }}\n', options).port, 'object')
+    ```
 
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 

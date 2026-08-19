@@ -119,12 +119,14 @@ Metadata belongs to the field, and it behaves like the mapping type of each lang
     from yggdryl import Field
 
     field = Field("symbol", "utf8", metadata={"source": "book"})
-    field["venue"] = "XPAR"
+    # Metadata is a mapping on `field.metadata`; subscripting the field itself
+    # reaches a nested child.
+    field.metadata["venue"] = "XPAR"
     field.set_parquet_field_id(7)
 
-    assert field["source"] == "book"
-    assert "venue" in field
-    assert len(field) == 3
+    assert field.metadata["source"] == "book"
+    assert "venue" in field.metadata
+    assert len(field.metadata) == 3
     assert field.parquet_field_id == 7
     ```
 

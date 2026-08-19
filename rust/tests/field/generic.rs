@@ -150,7 +150,10 @@ fn metadata_behaves_as_a_sorted_transactional_mapping() {
     assert_eq!(field.metadata_len(), 2);
     assert!(!field.is_metadata_empty());
     assert!(field.has_metadata("a"));
-    assert_eq!(&field["z"], "last");
+    // Metadata is reached through its view, never by subscripting the node:
+    // `field["..."]` descends into children.
+    assert_eq!(field.get_metadata("z"), Some("last"));
+    assert_eq!(field.as_metadata().get("z"), Some("last"));
     assert_eq!(
         field.metadata_iter().collect::<Vec<_>>(),
         [("a", "first"), ("z", "last")]
@@ -1270,4 +1273,140 @@ fn a_datatype_rebuilds_any_layout_from_replacement_children() {
 
     // A scalar has no children, so replacing none of them is itself.
     assert_eq!(DataType::Int64.with_fields([]).unwrap(), DataType::Int64);
+}
+
+#[test]
+fn subscripting_a_schema_node_reaches_a_nested_child() {
+    let line = DataType::from_fields([
+        DataType::Float64.required_field("price"),
+        DataType::Int64.required_field("qty"),
+    ])
+    .unwrap()
+    .required_field("line");
+    let mut order = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        line.clone(),
+        DataType::list(DataType::Utf8.nullable_field("tag")).nullable_field("tags"),
+        DataType::map_of(DataType::Utf8, DataType::Int64, false)
+            .unwrap()
+            .nullable_field("counts"),
+    ])
+    .unwrap()
+    .required_field("order");
+    order.insert_metadata("owner", "trading").unwrap();
+
+    // By name and by position, on the Field and on the DataType alike.
+    assert_eq!(order["id"].data_type(), &DataType::Int64);
+    assert_eq!(order[0].name(), "id");
+    assert_eq!(order.data_type()["id"].data_type(), &DataType::Int64);
+    assert_eq!(order.data_type()[1].name(), "line");
+
+    // Chained descent, two levels and through a List and a Map.
+    assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+    assert_eq!(order["tags"][0].name(), "tag");
+    assert_eq!(
+        order["counts"]["entries"]["key"].data_type(),
+        &DataType::Utf8
+    );
+    assert_eq!(order["counts"][0]["value"].data_type(), &DataType::Int64);
+
+    // Metadata is not reachable by subscript any more, and is still reachable
+    // through its own view and the named accessor.
+    assert_eq!(order.get_metadata("owner"), Some("trading"));
+    assert_eq!(order.as_metadata().get("owner"), Some("trading"));
+    assert!(order.get_field_by_name("owner").is_none());
+}
+
+#[test]
+#[should_panic(expected = "is not a child of the field")]
+fn subscripting_an_absent_child_panics_by_name() {
+    let row = DataType::from_fields([DataType::Int64.required_field("id")])
+        .unwrap()
+        .required_field("row");
+    let _ = &row["absent"];
+}
+
+#[test]
+#[should_panic(expected = "so position 3 is out of range")]
+fn subscripting_an_absent_child_panics_by_position() {
+    let row = DataType::from_fields([DataType::Int64.required_field("id")])
+        .unwrap()
+        .required_field("row");
+    let _ = &row[3];
+}
+
+#[test]
+#[should_panic(expected = "is not a child of the datatype")]
+fn subscripting_a_scalar_datatype_panics() {
+    let _ = &DataType::Int64["anything"];
+}
+
+#[test]
+fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
+    let mut row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.required_field("venue"),
+    ])
+    .unwrap()
+    .required_field("row");
+
+    // A known name replaces in place, keeping its position.
+    row.set_field_by_name("id", DataType::Utf8.required_field("id"))
+        .unwrap();
+    assert_eq!(row.field_len(), 2);
+    assert_eq!(row[0].name(), "id");
+    assert_eq!(row["id"].data_type(), &DataType::Utf8);
+
+    // An unknown name appends.
+    row.set_field_by_name("price", DataType::Float64.nullable_field("price"))
+        .unwrap();
+    assert_eq!(row.field_len(), 3);
+    assert_eq!(row[2].name(), "price");
+
+    // A position replaces only, and never grows the node.
+    row.set_field(1, DataType::Int32.required_field("venue"))
+        .unwrap();
+    assert_eq!(row.field_len(), 3);
+    assert_eq!(row["venue"].data_type(), &DataType::Int32);
+    let refused = row
+        .set_field(9, DataType::Int64.required_field("late"))
+        .unwrap_err();
+    assert!(refused.to_string().contains("below 3"), "{refused}");
+    assert_eq!(row.field_len(), 3, "a refusal leaves the field unchanged");
+
+    // Removal closes the gap, by either key form.
+    let dropped = row.remove_field_by_name("id").unwrap();
+    assert_eq!(dropped.name(), "id");
+    assert_eq!(row[0].name(), "venue");
+    row.remove_field(0).unwrap();
+    assert_eq!(row.field_len(), 1);
+    assert_eq!(row[0].name(), "price");
+
+    // A non-struct has no children to replace, and says so.
+    let mut scalar = DataType::Int64.required_field("id");
+    let refused = scalar
+        .set_field_by_name("child", DataType::Int64.required_field("child"))
+        .unwrap_err();
+    assert!(refused.to_string().contains("struct field"), "{refused}");
+}
+
+#[test]
+fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
+    let mut row = DataType::from_fields([DataType::Int64.required_field("id")])
+        .unwrap()
+        .required_field("row");
+    let before = row.to_arrow().unwrap();
+    assert!(before.data_type().to_string().contains("id"));
+    assert!(!before.data_type().to_string().contains("venue"));
+
+    row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))
+        .unwrap();
+
+    // The projection is rebuilt from the mutated field, never served stale.
+    let after = row.to_arrow().unwrap();
+    assert!(
+        after.data_type().to_string().contains("venue"),
+        "{}",
+        after.data_type()
+    );
 }

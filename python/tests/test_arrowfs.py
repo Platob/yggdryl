@@ -207,13 +207,23 @@ class TestBytesAndFolders:
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
         handle = IOBase.from_arrow_fs(local, f"{root}/staged.bin")
-        handle.write_bytes(b"pending")
+        # Positional writes are pieces of a value, so they stage: an Arrow
+        # filesystem replaces whole files and must never see a half-written one.
+        handle.pwrite(0, b"pend")
+        handle.pwrite(4, b"ing")
 
-        # An Arrow filesystem replaces whole files, so the write publishes
-        # when the handle closes - not on every positional write.
         assert not pathlib.Path(root, "staged.bin").exists()
         handle.close()
         assert pathlib.Path(root, "staged.bin").read_bytes() == b"pending"
+
+    def test_a_whole_value_write_publishes_without_a_close(
+        self, local: pafs.LocalFileSystem, root: str
+    ) -> None:
+        handle = IOBase.from_arrow_fs(local, f"{root}/whole.bin")
+        # A complete value is one store operation, so it needs no scope; the
+        # staging above exists to fold many positional writes into one.
+        handle.write_bytes(b"published")
+        assert pathlib.Path(root, "whole.bin").read_bytes() == b"published"
 
     def test_a_with_block_publishes_what_it_wrote(
         self, local: pafs.LocalFileSystem, root: str

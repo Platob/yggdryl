@@ -463,10 +463,14 @@ const fn days_from_civil(date: toml::value::Date) -> i64 {
     era * 146_097 + day_of_era - 719_468
 }
 
-pub(super) fn write_document<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+pub(super) fn write_document<W: Write>(
+    writer: &mut W,
+    value: &Value,
+    layout: Layout,
+) -> Result<()> {
     // A record at the root is the plain table its field names spell.
     if let Value::Record(..) = value {
-        return write_document(writer, &value.record_to_mapping());
+        return write_document(writer, &value.record_to_mapping(), layout);
     }
     if let Value::Mapping(entries) = value {
         if is_plain_mapping(entries) {
@@ -476,7 +480,7 @@ pub(super) fn write_document<W: Write>(writer: &mut W, value: &Value) -> Result<
                 };
                 write_quoted(writer, key)?;
                 writer.write_all(b" = ")?;
-                write_value(writer, value)?;
+                write_value(writer, value, layout, 0)?;
                 writer.write_all(b"\n")?;
             }
             return Ok(());
@@ -485,8 +489,47 @@ pub(super) fn write_document<W: Write>(writer: &mut W, value: &Value) -> Result<
 
     write_quoted(writer, MARKER)?;
     writer.write_all(b" = ")?;
-    write_root_envelope(writer, value)?;
+    write_root_envelope(writer, value, layout)?;
     writer.write_all(b"\n")?;
+    Ok(())
+}
+
+/// The resolved layout one TOML dump runs under.
+///
+/// TOML's whitespace is largely insignificant, so this affects readability and
+/// nothing else - the parse is identical either way. What it actually reaches
+/// is the indentation of **array** entries, which is the one nested structure
+/// every version of the grammar lets span lines. Inline *tables* stay on one
+/// line: multi-line inline tables are a TOML 1.1 addition, and emitting one
+/// would make a document a 1.0 reader refuses.
+#[derive(Clone, Copy)]
+pub(super) struct Layout {
+    /// The bytes one nesting level costs, or `None` for a flat document.
+    pub(super) unit: Option<&'static [u8]>,
+}
+
+impl Layout {
+    /// Everything on one line - today's output and the default.
+    pub(super) const fn flat() -> Self {
+        Self { unit: None }
+    }
+}
+
+impl From<crate::text::Formatting> for Layout {
+    fn from(value: crate::text::Formatting) -> Self {
+        Self {
+            // TOML has no layout of its own to default to, so `Default` and
+            // `None` are the same flat document.
+            unit: value.indent().unit(),
+        }
+    }
+}
+
+/// Write `count` indentation units.
+fn write_units<W: Write>(writer: &mut W, unit: &[u8], count: usize) -> Result<()> {
+    for _ in 0..count {
+        writer.write_all(unit)?;
+    }
     Ok(())
 }
 
@@ -674,20 +717,29 @@ fn observe_depth(depth: usize, maximum: usize) -> Result<()> {
     }
 }
 
-fn write_root_envelope<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+fn write_root_envelope<W: Write>(writer: &mut W, value: &Value, layout: Layout) -> Result<()> {
     if is_enveloped(value) {
         return write_envelope_body(writer, value);
     }
     writer.write_all(b"{ version = 1, type = \"value\", value = ")?;
-    write_value(writer, value)?;
+    // The envelope is a fixed-shape escape hatch rather than prose a reader
+    // scans, and it sits inside an inline table that cannot span lines in TOML
+    // 1.0, so its body is always flat whatever the caller asked for.
+    let _ = layout;
+    write_value(writer, value, Layout::flat(), 0)?;
     writer.write_all(b" }")?;
     Ok(())
 }
 
-fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+fn write_value<W: Write>(
+    writer: &mut W,
+    value: &Value,
+    layout: Layout,
+    depth: usize,
+) -> Result<()> {
     match value {
         // A record writes as the plain table its field names spell.
-        Value::Record(..) => write_value(writer, &value.record_to_mapping())?,
+        Value::Record(..) => write_value(writer, &value.record_to_mapping(), layout, depth)?,
         Value::Bool(value) => writer.write_all(if *value { b"true" } else { b"false" })?,
         Value::I8(value) => write!(writer, "{value}")?,
         Value::I16(value) => write!(writer, "{value}")?,
@@ -700,14 +752,32 @@ fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
         Value::F64(value) => write_float(writer, value.as_f64())?,
         Value::String(value) => write_quoted(writer, value)?,
         Value::Sequence(values) => {
-            writer.write_all(b"[")?;
-            for (index, value) in values.iter().enumerate() {
-                if index != 0 {
-                    writer.write_all(b", ")?;
+            // An array is the one nested structure TOML lets span lines in
+            // every version of the grammar, so it is what an indent reaches.
+            // Inline *tables* stay on one line: multi-line inline tables are a
+            // TOML 1.1 addition and a 1.0 reader would refuse the document.
+            match layout.unit.filter(|_| !values.is_empty()) {
+                None => {
+                    writer.write_all(b"[")?;
+                    for (index, value) in values.iter().enumerate() {
+                        if index != 0 {
+                            writer.write_all(b", ")?;
+                        }
+                        write_value(writer, value, layout, depth)?;
+                    }
+                    writer.write_all(b"]")?;
                 }
-                write_value(writer, value)?;
+                Some(unit) => {
+                    writer.write_all(b"[\n")?;
+                    for value in values.iter() {
+                        write_units(writer, unit, depth + 1)?;
+                        write_value(writer, value, layout, depth + 1)?;
+                        writer.write_all(b",\n")?;
+                    }
+                    write_units(writer, unit, depth)?;
+                    writer.write_all(b"]")?;
+                }
             }
-            writer.write_all(b"]")?;
         }
         Value::Mapping(entries) if is_plain_mapping(entries) => {
             writer.write_all(b"{")?;
@@ -720,7 +790,7 @@ fn write_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
                 };
                 write_quoted(writer, key)?;
                 writer.write_all(b" = ")?;
-                write_value(writer, value)?;
+                write_value(writer, value, layout, depth)?;
             }
             writer.write_all(b"}")?;
         }
@@ -820,9 +890,9 @@ fn write_envelope_body<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
                     writer.write_all(b", ")?;
                 }
                 writer.write_all(b"[")?;
-                write_value(writer, key)?;
+                write_value(writer, key, Layout::flat(), 0)?;
                 writer.write_all(b", ")?;
-                write_value(writer, value)?;
+                write_value(writer, value, Layout::flat(), 0)?;
                 writer.write_all(b"]")?;
             }
             writer.write_all(b"] }")?;

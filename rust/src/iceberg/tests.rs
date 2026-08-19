@@ -3293,7 +3293,8 @@ mod line_projection {
 
     use super::*;
     use crate::Url;
-    use crate::io::{Buffer, LineRecordOptions};
+    use crate::io::Buffer;
+    use crate::text::TextLineOptions;
 
     const PATTERN: &str =
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]";
@@ -3307,8 +3308,8 @@ mod line_projection {
 
     /// The projection options every append parses under: the header pattern,
     /// its two capture columns, and one constant `venue` stamp.
-    fn options() -> LineRecordOptions {
-        LineRecordOptions::new(PATTERN)
+    fn options() -> TextLineOptions {
+        TextLineOptions::with_pattern(PATTERN)
             .unwrap()
             .try_with_custom_fields([("venue", Value::from("XNAS"))])
             .unwrap()
@@ -3426,14 +3427,14 @@ mod line_projection {
         // The standalone builder is the table's schema: `thread_id` inferred
         // `int64` off its own sub-pattern, before a reader or a resource
         // exists.
-        let mut schema = crate::io::schema_from_pattern(pattern).unwrap();
+        let mut schema = crate::text::schema_from_pattern(pattern).unwrap();
         schema.assign_parquet_field_ids(1).unwrap();
         let thread_id = schema.get_field_by_name("thread_id").unwrap();
         assert_eq!(thread_id.data_type(), &crate::DataType::Int64);
         let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
         catalog.create_table("logs.threads", schema).unwrap();
 
-        let options = crate::io::LineRecordOptions::new(pattern).unwrap();
+        let options = crate::text::TextLineOptions::with_pattern(pattern).unwrap();
         let day = named(
             "t.log",
             b"2024-02-01 10:00:00 [7] (info) fill\n2024-02-01 10:00:01 [42] (warn) partial\n",

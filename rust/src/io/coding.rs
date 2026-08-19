@@ -178,22 +178,11 @@ impl<H: IOBase> IOBase for Coded<H> {
     /// codings the decoded media type still carries, so a compressed resource
     /// pays one buffer instead of its decompressed size. A pending write has
     /// the decoded value in memory already, so it takes the default path.
-    fn read_lines(&self) -> Result<super::Lines<Box<dyn std::io::Read + '_>>>
+    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn std::io::Read + '_>>>
     where
         Self: Sized,
     {
-        if self.dirty {
-            let mut stream: Box<dyn std::io::Read + '_> = Box::new(self.reader_at(0));
-            for coding in self.media_type().encodings().iter().rev() {
-                stream = crate::Codec::from_mime_type(coding).reader(stream);
-            }
-            return Ok(super::Lines::over(stream));
-        }
-        let mut stream: Box<dyn std::io::Read + '_> = self.codec.reader(self.handle.reader_at(0));
-        for coding in self.media_type().encodings().iter().rev() {
-            stream = crate::Codec::from_mime_type(coding).reader(stream);
-        }
-        Ok(super::Lines::over(stream))
+        crate::text::line::coded_lines(self, &self.handle, self.codec, self.dirty)
     }
 
     /// The borrowed projection reads a snapshot of the *decoded* value.
@@ -205,12 +194,12 @@ impl<H: IOBase> IOBase for Coded<H> {
     #[cfg(feature = "arrow")]
     fn read_arrow_lines(
         &self,
-        options: &super::LineRecordOptions,
+        options: &crate::text::TextLineOptions,
     ) -> Result<crate::arrow::BatchReader>
     where
         Self: Sized,
     {
-        super::lines::snapshot_arrow_lines(self, options)
+        crate::text::line::arrow::snapshot_arrow_lines(self, options)
     }
 
     /// Read the range out of the decoded value.
@@ -301,7 +290,7 @@ impl<H: IOBase> IOBase for Coded<H> {
         Ok(())
     }
 
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.plain.is_some()
     }
 
@@ -321,6 +310,28 @@ impl<H: IOBase> IOBase for Coded<H> {
 
     fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
         self.handle.ls(recursive, include_private)
+    }
+
+    /// Empty the encoded resource, dropping the decoded value with it.
+    ///
+    /// The decoded buffer is discarded rather than published: a pending write
+    /// must never survive an emptying to reappear on a later flush.
+    fn clear(&mut self) -> Result<()> {
+        self.plain = None;
+        self.dirty = false;
+        self.handle.clear()
+    }
+
+    /// Delete the *encoded* resource, not merely this view of it.
+    ///
+    /// A coding handle wraps bytes that live somewhere; complete removal is
+    /// deleting those bytes, plus the decoded value held in `plain` and any
+    /// unflushed `dirty` write, so a later flush cannot resurrect what was
+    /// removed.
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.plain = None;
+        self.dirty = false;
+        self.handle.remove(recursive)
     }
 }
 

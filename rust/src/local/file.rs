@@ -111,6 +111,17 @@ impl File {
         self.path.exists()
     }
 
+    /// Drop the descriptor and mapping *without* publishing anything.
+    ///
+    /// The lifecycle pair uses this rather than `close`: a pending write must
+    /// not be flushed on its way to being deleted, or the removal would race
+    /// its own resurrection.
+    fn release(&mut self) -> Result<()> {
+        let mut state = self.state.lock().map_err(|_| poisoned())?;
+        *state = None;
+        Ok(())
+    }
+
     /// Materialize the mapping, creating the file when `create` is set.
     ///
     /// Returns `Ok(false)` when the file does not exist and creation was not
@@ -213,6 +224,35 @@ impl IOFile for File {
 
     fn file_exists(&self) -> bool {
         self.path.exists()
+    }
+
+    /// Truncate the file in place, without creating one that is not there.
+    ///
+    /// One `open` with `truncate(true)` and no `create`, so a missing file
+    /// answers `NotFound` and that answer *is* the no-op success. Nothing
+    /// probes first. The mapping is released beforehand, because a mapping
+    /// must never outlive the length it was taken over.
+    fn clear_file(&mut self) -> Result<()> {
+        self.release()?;
+        crate::io::skip_absent(
+            OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&self.path)
+                .map(|_| ()),
+        )
+    }
+
+    /// Unlink the file, dropping the mapping first.
+    ///
+    /// Releasing the mapping is part of the removal, not housekeeping around
+    /// it: an unpublished write held in the mapping must not survive to
+    /// recreate the file on a later flush, and no mapping may outlive the file
+    /// it maps. `std::fs::remove_file` is issued unconditionally and its own
+    /// `NotFound` is the success answer.
+    fn delete_file(&mut self) -> Result<()> {
+        self.release()?;
+        crate::io::skip_absent(std::fs::remove_file(&self.path))
     }
 }
 
@@ -360,7 +400,7 @@ impl IOBase for File {
         Ok(())
     }
 
-    fn is_open(&self) -> bool {
+    fn opened(&self) -> bool {
         self.state.lock().is_ok_and(|state| state.is_some())
     }
 
@@ -380,6 +420,14 @@ impl IOBase for File {
             return None;
         }
         Holder::folder(parent).ok()
+    }
+
+    fn clear(&mut self) -> Result<()> {
+        self.clear_file()
+    }
+
+    fn remove(&mut self, recursive: bool) -> Result<()> {
+        self.file_remove(recursive)
     }
 }
 

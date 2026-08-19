@@ -5,6 +5,7 @@ export {
   Expression,
   Field,
   IOBase,
+  LineIterator,
   MediaType,
   MimeType,
   ProtocolMetadata,
@@ -31,6 +32,7 @@ import type {
   DataType,
   Field,
   IOBase,
+  LineIterator,
   MediaType,
   MetadataEntry,
   MimeType,
@@ -714,6 +716,22 @@ export interface CodecOptions {
   format?: SingleCodecFormat
   /** Maximum recursive container depth in the inclusive range 1..48. */
   maxDepth?: number
+  /**
+   * Resolve Jinja-style `{{ NAME }}` placeholders from this mapping.
+   *
+   * Substitution is off unless this or `environment` is set. A name nothing
+   * resolves is an error naming it, never a silent empty string, and this
+   * mapping wins over the environment.
+   */
+  placeholders?: Record<string, unknown> | ReadonlyMap<string, unknown> | null
+  /**
+   * Also resolve placeholders from the process environment.
+   *
+   * Its own switch, and off by default: with it off no environment variable is
+   * read at all. A document that resolves a secret into a value that is then
+   * dumped, logged, or written to a table has leaked it.
+   */
+  environment?: boolean
 }
 
 export interface JsonLinesCodecOptions extends Omit<CodecOptions, 'format'> {
@@ -1015,24 +1033,50 @@ declare module './index' {
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowBatchReader(options?: RecordOptionsInput | null): BatchReader
     /**
-     * Project matched line records into a `BatchReader`.
+     * Iterate this resource's text records, one at a time.
      *
-     * A text-line surface beside `readLines`, never a record method: lines
-     * group into records where `pattern` matches and each record becomes one
-     * typed row, with one nullable column per named capture group and the
-     * constant `customFields` columns after them. A capture whose whole
-     * sub-pattern is one of the closed inference table's exact spellings
-     * types itself - `(?<threadId>\d+)` is `int64` - and `captureTypes`
-     * declares the rest (a native `DataType` or a type-expression string),
-     * parsed strictly: a captured text the datatype cannot read is an
-     * error, never a silent null. `schemaFromPattern` answers the same
-     * schema without a reader. The boundary is the standard copied IPC one,
-     * never zero-copy.
+     * Without options every line is a record. `logs: true` starts a record at
+     * every line carrying a leading timestamp, and a `pattern` starts one at
+     * every line the expression matches - each record carrying the lines that
+     * follow it until the next one starts. Any content coding the name
+     * declares decodes as a stream, so a `.log.gz` costs one window rather
+     * than its decompressed size.
      */
-    readArrowLines(
-      pattern: string,
-      options?: LineRecordInput | null,
-    ): BatchReader
+    readLines(pattern: string, options?: TextLineInput | null): LineIterator
+    readLines(options?: TextLineInput | null): LineIterator
+    /**
+     * Project this resource's text records into a `BatchReader`.
+     *
+     * A text-line surface beside `readLines`, never a record method: each
+     * record becomes one typed row, with one nullable column per named
+     * capture group and the constant `customFields` columns after them. A
+     * capture whose whole sub-pattern is one of the closed inference table's
+     * exact spellings types itself - `(?<threadId>\d+)` is `int64` - and
+     * `captureTypes` declares the rest (a native `DataType` or a
+     * type-expression string), parsed strictly: a captured text the datatype
+     * cannot read is an error, never a silent null. A batch closes on
+     * whichever bound trips first, `byteSize` or `batchSize`.
+     * `schemaFromPattern` answers the same schema without a reader. The
+     * boundary is the standard copied IPC one, never zero-copy.
+     */
+    readArrowLines(pattern: string, options?: TextLineInput | null): BatchReader
+    readArrowLines(options?: TextLineInput | null): BatchReader
+    /**
+     * Replace this resource's records with `lines`, each terminated.
+     *
+     * Streaming: the iterable is pulled one record at a time and never
+     * collected, so a million-record write costs one reused buffer. `linesep`
+     * unset writes the platform-neutral `\n`.
+     */
+    writeLines(
+      lines: Iterable<string | Uint8Array>,
+      options?: TextLineInput | null,
+    ): void
+    /** Append `lines` after this resource's end, streaming as `writeLines` does. */
+    appendLines(
+      lines: Iterable<string | Uint8Array>,
+      options?: TextLineInput | null,
+    ): void
     /** Replace or merge this resource's rows with every batch `batches` yields. */
     writeArrowBatchReader(
       batches: BatchSource,
@@ -1201,20 +1245,52 @@ export interface Iceberg {
 
 export declare const iceberg: Iceberg
 
-/** The options the line projection's reader and schema builder share. */
-export interface LineRecordInput {
+/**
+ * The whole text-record extractor, shared by every entry point that reads,
+ * writes, or describes text records.
+ *
+ * It is exactly what a JSON, YAML, or TOML document parses into - the same
+ * names, one snake_case spelling accepted beside each camelCase one - so a
+ * reader is specifiable from configuration alone, with no JavaScript in the
+ * loop.
+ */
+export interface TextLineInput {
+  /** Start a record at every line this expression matches. */
+  pattern?: string | null
+  /** The opening spelled directly: `'every_line'` or `'timestamp'`. */
+  opening?: 'every_line' | 'timestamp' | null
+  /** A second expression matched against the record's opening line. */
+  header?: string | null
+  /** `logs: true` is `opening: 'timestamp'`, spelled for the common case. */
+  logs?: boolean | null
+  /**
+   * The record terminator. Unset reads `\n`, `\r\n`, and a lone `\r`,
+   * mixed in one resource, and writes `\n`.
+   */
+  linesep?: string | null
+  /** What to trim from each end: `'whitespace'`, `'none'`, or `'chars:...'`. */
+  lstrip?: string | null
+  rstrip?: string | null
+  /** Close a batch after this many decoded input bytes. */
+  byteSize?: number | null
+  /** Close a batch after this many rows; the first bound to trip wins. */
   batchSize?: number | null
+  /** The named capture holding the record's timestamp. */
+  timestampCapture?: string | null
+  /** The zone a naive timestamp is read in, making `unix` a real instant. */
+  timezone?: string | null
+  /** Constant columns appended to every row. */
   customFields?:
     | ReadonlyMap<string, unknown>
     | Iterable<readonly [string, unknown]>
     | Record<string, unknown>
     | null
+  /** Declared datatypes for the captures inference does not type. */
   captureTypes?:
     | ReadonlyMap<string, DataType | string>
     | Iterable<readonly [string, DataType | string]>
     | Record<string, DataType | string>
     | null
-  timestampCapture?: string | null
 }
 
 /**
@@ -1227,8 +1303,9 @@ export interface LineRecordInput {
  */
 export declare function schemaFromPattern(
   pattern: string,
-  options?: Pick<LineRecordInput, 'customFields' | 'captureTypes'> | null,
+  options?: TextLineInput | null,
 ): Field
+export declare function schemaFromPattern(options: TextLineInput): Field
 
 /** What an Arrow file system reports one path to be. */
 export type ArrowFileKind = 'file' | 'directory' | 'unknown' | 'not-found'

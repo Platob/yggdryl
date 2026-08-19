@@ -114,6 +114,64 @@ impl Index<usize> for Fields {
     }
 }
 
+/// Subscripting a datatype reaches a nested **child**, never metadata.
+///
+/// The same semantic [`Field`] carries, so a caller walking a schema gets a
+/// child from every node in the graph. See
+/// [`Index<&str> for Field`](Field#impl-Index<%26str>-for-Field) for the rule in
+/// full; [`DataType::get_field_by_name`] is the non-panicking form.
+///
+/// ```
+/// use yggdryl::DataType;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+/// assert_eq!(row["id"].data_type(), &DataType::Int64);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this datatype has no child with that name - including when it is
+/// not a nested datatype at all, which has no children by definition.
+impl Index<&str> for DataType {
+    type Output = Field;
+
+    fn index(&self, name: &str) -> &Self::Output {
+        self.get_field_by_name(name)
+            .unwrap_or_else(|| panic!("{name:?} is not a child of the datatype {self}"))
+    }
+}
+
+/// Subscripting a datatype by position reaches that nested child.
+///
+/// ```
+/// use yggdryl::DataType;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let items = DataType::list(DataType::Utf8.nullable_field("item"));
+/// assert_eq!(items[0].name(), "item");
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this datatype has no child at that position.
+impl Index<usize> for DataType {
+    type Output = Field;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.get_field(index).unwrap_or_else(|| {
+            panic!(
+                "the datatype {self} has {} children, so position {index} is out of range",
+                self.field_len()
+            )
+        })
+    }
+}
+
 impl fmt::Debug for Fields {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_ref().fmt(formatter)
