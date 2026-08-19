@@ -15,7 +15,7 @@ use napi_derive::napi;
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
     Catalog as CoreCatalog, DataFile, FileFormat, FormatVersion,
-    IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile,
+    IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
     Namespaces as CoreNamespaces, PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan,
     SchemaUpdate as CoreSchemaUpdate, Snapshot, SnapshotRef, Table as CoreTable,
     Tables as CoreTables, assign_field_ids, can_promote, last_field_id, schema_from_json,
@@ -1813,7 +1813,8 @@ impl JsCatalog {
     #[napi]
     pub fn create_table(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
         self.inner
-            .create_table(&name, schema_from_input(schema)?)
+            .tables()
+            .create(&name, schema_from_input(schema)?)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1830,7 +1831,7 @@ impl JsCatalog {
     /// Return whether the named table exists.
     #[napi]
     pub fn has_table(&self, name: String) -> Result<bool> {
-        self.inner.has_table(&name).map_err(napi_error)
+        self.inner.tables().contains(&name).map_err(napi_error)
     }
 
     /// Open the named table if it exists, creating it otherwise.
@@ -1844,7 +1845,8 @@ impl JsCatalog {
         schema: TableSchemaInput<'_>,
     ) -> Result<JsTable> {
         self.inner
-            .open_or_create_table(&name, schema_from_input(schema)?)
+            .tables()
+            .open_or_create(&name, schema_from_input(schema)?)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1862,6 +1864,7 @@ impl JsCatalog {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsTable> {
         self.inner
+            .tables()
             .append_with(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
@@ -1880,6 +1883,7 @@ impl JsCatalog {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsTable> {
         self.inner
+            .tables()
             .overwrite_with(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
@@ -1891,9 +1895,7 @@ impl JsCatalog {
     /// that does not exist lists nothing rather than failing.
     #[napi]
     pub fn list_namespaces(&self, parent: Option<String>) -> Result<Vec<String>> {
-        self.inner
-            .list_namespaces(parent.as_deref())
-            .map_err(napi_error)
+        collect_level(&self.inner, parent.as_deref(), false)
     }
 
     /// List the tables in a namespace, as sorted dotted names.
@@ -1901,7 +1903,7 @@ impl JsCatalog {
     /// A namespace that does not exist lists nothing rather than failing.
     #[napi]
     pub fn list_tables(&self, namespace: String) -> Result<Vec<String>> {
-        self.inner.list_tables(&namespace).map_err(napi_error)
+        collect_level(&self.inner, Some(&namespace), true)
     }
 
     /// One namespace as a view: `catalog.namespace('analytics')`.
@@ -1949,9 +1951,15 @@ pub struct JsNamespace {
 }
 
 impl JsNamespace {
-    /// The core view this namespace's tables are asked of.
+    /// The root tables view, which accepts this namespace's dotted spelling -
+    /// the resolution rule lives in the core collection, not here.
     fn table_view(&self) -> CoreTables<'_, Holder> {
-        self.catalog.inner.namespace(&self.name).tables()
+        self.catalog.inner.tables()
+    }
+
+    /// Spell one table's full dotted name under this namespace.
+    fn dotted(&self, name: &str) -> String {
+        format!("{}.{name}", self.name)
     }
 }
 
@@ -1986,7 +1994,7 @@ impl JsNamespace {
     #[napi]
     pub fn table(&self, name: String) -> Result<JsTable> {
         self.table_view()
-            .get(&name)
+            .get(&self.dotted(&name))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2000,14 +2008,16 @@ impl JsNamespace {
     /// Return whether the named table exists here.
     #[napi]
     pub fn has(&self, name: String) -> Result<bool> {
-        self.table_view().contains(&name).map_err(napi_error)
+        self.table_view()
+            .contains(&self.dotted(&name))
+            .map_err(napi_error)
     }
 
     /// Open the named table, creating it with `schema` when absent.
     #[napi]
     pub fn open_or_create_table(&self, name: String, schema: &JsField) -> Result<JsTable> {
         self.table_view()
-            .open_or_create(&name, schema.inner.clone())
+            .open_or_create(&self.dotted(&name), schema.inner.clone())
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2021,7 +2031,7 @@ impl JsNamespace {
     pub fn set_ipc(&self, name: String, rows: Buffer) -> Result<JsTable> {
         let reader = crate::arrow::JsBatchReader::decoded(rows.as_ref(), "row")?.take()?;
         self.table_view()
-            .overwrite(&name, reader)
+            .overwrite(&self.dotted(&name), reader)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2042,12 +2052,23 @@ pub struct JsNamespaces {
 }
 
 impl JsNamespaces {
-    /// The core view every question here is asked of.
+    /// The root view, which accepts the dotted spelling this value builds -
+    /// the resolution rule lives in the core collection, not here.
     fn view(&self) -> CoreNamespaces<'_, Holder> {
+        self.catalog.inner.namespaces()
+    }
+
+    /// Spell one child's full dotted name.
+    fn dotted(&self, name: &str) -> String {
         match &self.parent {
-            Some(parent) => self.catalog.inner.namespace(parent).namespaces(),
-            None => self.catalog.inner.namespaces(),
+            Some(parent) => format!("{parent}.{name}"),
+            None => name.to_owned(),
         }
+    }
+
+    /// The names one level down, as the core's lazy iterator.
+    fn level(&self) -> Result<CoreNames> {
+        level_of(&self.catalog.inner, self.parent.as_deref(), false)
     }
 
     /// Wrap one child namespace's dotted name as the view of it.
@@ -2057,6 +2078,42 @@ impl JsNamespaces {
             name: dotted,
         })
     }
+}
+
+/// The names of one level, with an absent parent listing empty.
+fn level_of(
+    catalog: &CoreCatalog<Holder>,
+    parent: Option<&str>,
+    tables: bool,
+) -> Result<CoreNames> {
+    match parent {
+        None if tables => Ok(catalog.tables().iter()),
+        None => Ok(catalog.namespaces().iter()),
+        Some(parent) => match catalog.namespaces().get(parent) {
+            Ok(namespace) if tables => Ok(namespace.tables().iter()),
+            Ok(namespace) => Ok(namespace.namespaces().iter()),
+            // A parent that does not exist lists nothing rather than failing.
+            Err(error) if error.is_absent() => Ok(CoreNames::empty()),
+            Err(error) => Err(napi_error(error)),
+        },
+    }
+}
+
+/// One level's names collected dotted, for the flat listing methods.
+fn collect_level(
+    catalog: &CoreCatalog<Holder>,
+    parent: Option<&str>,
+    tables: bool,
+) -> Result<Vec<String>> {
+    let mut dotted = Vec::new();
+    for name in level_of(catalog, parent, tables)? {
+        let name = name.map_err(napi_error)?;
+        dotted.push(match parent {
+            Some(parent) => format!("{parent}.{name}"),
+            None => name,
+        });
+    }
+    Ok(dotted)
 }
 
 // Counts cross as JavaScript numbers, exact to 2^53 - the same contract
@@ -2075,7 +2132,7 @@ impl JsNamespaces {
     pub fn get(&self, env: Env, name: String) -> Result<JsNamespace> {
         let dotted = self
             .view()
-            .get(&name)
+            .get(&self.dotted(&name))
             .map_err(napi_error)?
             .name()
             .to_owned();
@@ -2088,19 +2145,39 @@ impl JsNamespaces {
     /// `false` here, and so does a location nothing occupies yet.
     #[napi]
     pub fn has(&self, name: String) -> Result<bool> {
-        self.view().contains(&name).map_err(napi_error)
+        self.view()
+            .contains(&self.dotted(&name))
+            .map_err(napi_error)
+    }
+
+    /// The names one level down, lazily - the loader wires `Symbol.iterator`,
+    /// `keys`, `values`, and `entries` over this, so `for...of` walks it.
+    #[napi]
+    pub fn keys(&self) -> Result<JsIcebergNames> {
+        Ok(JsIcebergNames {
+            names: self.level()?,
+        })
     }
 
     /// The namespaces one level down, as sorted bare names.
     #[napi]
     pub fn names(&self) -> Result<Vec<String>> {
-        self.view().names().map_err(napi_error)
+        self.level()?
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .map_err(napi_error)
     }
 
     /// How many namespaces are one level down, right now.
+    ///
+    /// This drains the level's listing, so it costs the full listing.
     #[napi]
     pub fn size(&self) -> Result<f64> {
-        Ok(self.view().len().map_err(napi_error)? as f64)
+        let mut count = 0_u64;
+        for name in self.level()? {
+            name.map_err(napi_error)?;
+            count += 1;
+        }
+        Ok(count as f64)
     }
 
     /// Create the named namespace, as the folder it is.
@@ -2113,7 +2190,7 @@ impl JsNamespaces {
     pub fn create(&self, env: Env, name: String) -> Result<JsNamespace> {
         let dotted = self
             .view()
-            .create(&name)
+            .create(&self.dotted(&name))
             .map_err(napi_error)?
             .name()
             .to_owned();
@@ -2125,11 +2202,32 @@ impl JsNamespaces {
     pub fn open_or_create(&self, env: Env, name: String) -> Result<JsNamespace> {
         let dotted = self
             .view()
-            .open_or_create(&name)
+            .open_or_create(&self.dotted(&name))
             .map_err(napi_error)?
             .name()
             .to_owned();
         self.wrap(env, dotted)
+    }
+}
+
+/// The names of one collection level, one at a time.
+///
+/// Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
+/// iterator directly, so nothing is collected on the way across the boundary;
+/// `next()` is the native half of the iteration protocol and the loader wraps
+/// it so `for...of` yields strings. A failure throws at the entry it happened
+/// on, after which the iterator is exhausted.
+#[napi(js_name = "IcebergNames")]
+pub struct JsIcebergNames {
+    names: CoreNames,
+}
+
+#[napi]
+impl JsIcebergNames {
+    /// The next name, or `null` when the level is exhausted.
+    #[napi]
+    pub fn next(&mut self) -> Result<Option<String>> {
+        self.names.next().transpose().map_err(napi_error)
     }
 }
 
@@ -2147,9 +2245,19 @@ pub struct JsTables {
 }
 
 impl JsTables {
-    /// The core view every question here is asked of.
+    /// The root view, which accepts the dotted spelling this value builds.
     fn view(&self) -> CoreTables<'_, Holder> {
-        self.catalog.inner.namespace(&self.namespace).tables()
+        self.catalog.inner.tables()
+    }
+
+    /// Spell one table's full dotted name under this namespace.
+    fn dotted(&self, name: &str) -> String {
+        format!("{}.{name}", self.namespace)
+    }
+
+    /// The table names one level down, as the core's lazy iterator.
+    fn level(&self) -> Result<CoreNames> {
+        level_of(&self.catalog.inner, Some(&self.namespace), true)
     }
 }
 
@@ -2167,7 +2275,7 @@ impl JsTables {
     #[napi]
     pub fn get(&self, name: String) -> Result<JsTable> {
         self.view()
-            .get(&name)
+            .get(&self.dotted(&name))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2175,19 +2283,39 @@ impl JsTables {
     /// Return whether the named table exists, asked of storage now.
     #[napi]
     pub fn has(&self, name: String) -> Result<bool> {
-        self.view().contains(&name).map_err(napi_error)
+        self.view()
+            .contains(&self.dotted(&name))
+            .map_err(napi_error)
+    }
+
+    /// The names one level down, lazily - the loader wires `Symbol.iterator`,
+    /// `keys`, `values`, and `entries` over this, so `for...of` walks it.
+    #[napi]
+    pub fn keys(&self) -> Result<JsIcebergNames> {
+        Ok(JsIcebergNames {
+            names: self.level()?,
+        })
     }
 
     /// This namespace's tables, as sorted bare names.
     #[napi]
     pub fn names(&self) -> Result<Vec<String>> {
-        self.view().names().map_err(napi_error)
+        self.level()?
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .map_err(napi_error)
     }
 
     /// How many tables the namespace holds, right now.
+    ///
+    /// This drains the level's listing, so it costs the full listing.
     #[napi]
     pub fn size(&self) -> Result<f64> {
-        Ok(self.view().len().map_err(napi_error)? as f64)
+        let mut count = 0_u64;
+        for name in self.level()? {
+            name.map_err(napi_error)?;
+            count += 1;
+        }
+        Ok(count as f64)
     }
 
     /// Create the named table, writing its first metadata document.
@@ -2203,7 +2331,7 @@ impl JsTables {
     #[napi]
     pub fn create(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
         self.view()
-            .create(&name, schema_from_input(schema)?)
+            .create(&self.dotted(&name), schema_from_input(schema)?)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2215,7 +2343,7 @@ impl JsTables {
     #[napi]
     pub fn open_or_create(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
         self.view()
-            .open_or_create(&name, schema_from_input(schema)?)
+            .open_or_create(&self.dotted(&name), schema_from_input(schema)?)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2235,7 +2363,7 @@ impl JsTables {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsTable> {
         self.view()
-            .append_with(&name, batches.take()?, call_options(options))
+            .append_with(&self.dotted(&name), batches.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2254,7 +2382,7 @@ impl JsTables {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsTable> {
         self.view()
-            .overwrite_with(&name, batches.take()?, call_options(options))
+            .overwrite_with(&self.dotted(&name), batches.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }

@@ -417,12 +417,24 @@ meets all of these; a new media that cannot yet is not done:
   unchanged). Inspection is `inspect_history`/`inspect_snapshots`/
   `inspect_files` as record batches under PyIceberg's column names; never a
   second struct-shaped spelling.
-- **A catalog is a warehouse folder over `IOBase`.** `iceberg::Catalog` maps
-  dotted names to nested folders, creates tables from partition-marked
-  schemas, answers `append` (create-or-append) and `overwrite`. No network,
-  no transaction protocol; REST catalog is future work behind an HTTP
-  backend. Drop/rename are absent until the storage contract gains
-  delete/move - name that reason, do not emulate.
+- **A catalog is a warehouse folder over `IOBase`, and the hierarchy is one
+  shape at three levels.** `Catalogs`/`Catalog`, `Namespaces`/`Namespace`,
+  and `Tables` share one collection vocabulary - `get` (absence raised),
+  `create` (conflict raised), `open_or_create` (both absorbed, same attempt,
+  one code path), `contains`, lazy `iter`, draining `len`/`is_empty` - and
+  no level invents a verb. Dotted names resolve in the collections
+  (`tables.get("sales.eu.orders")` descends); `Catalog` keeps exactly two
+  dotted entry points, `table` and `namespace`. A catalog and a namespace
+  each carry properties in `metadata/catalog.json` / `metadata/namespace.json`
+  (absent = empty; the `iceberg:` prefix reserved; writing the namespace
+  document is what makes an empty namespace durable and creates its
+  ancestry). A table create makes its namespaces by writing its first
+  metadata document - nothing pre-walks or pre-checks, per the existence
+  contract, and `metadata` is a reserved name at every level. `Tables` keeps
+  `append` (create-or-append) and `overwrite`. No network, no transaction
+  protocol; REST catalog is future work behind an HTTP backend. Drop/rename
+  are absent until the storage contract gains delete/move - name that
+  reason, do not emulate.
 - **One key names the file-size target**: `write.target-file-size-bytes`,
   falling back to the schema root's `iceberg:` spelling, then 512 MiB. Rolls
   a partition's stream at batch boundaries, sized by Arrow in-memory bytes

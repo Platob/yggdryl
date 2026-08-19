@@ -195,11 +195,22 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when a metadata document is found but is not table
     /// metadata.
     pub fn locate(root: H) -> Result<Option<Self>> {
+        Ok(Self::locate_keeping(root)?.ok())
+    }
+
+    /// [`Self::locate`], handing the handle back when nothing is there.
+    ///
+    /// A handle is not always cheap to rebuild - and per the existence
+    /// contract the locate *is* the existence question, so a caller that
+    /// creates on absence must not have to resolve the folder a second time
+    /// to do it. `Ok(Err(root))` is that answer: no table, and here is the
+    /// handle you gave, untouched.
+    pub(crate) fn locate_keeping(root: H) -> Result<std::result::Result<Self, H>> {
         let metadata_dir = root.child_by_path(METADATA_DIR)?;
         let Some((version, document)) = find_metadata(&metadata_dir)? else {
-            return Ok(None);
+            return Ok(Err(root));
         };
-        Ok(Some(Self {
+        Ok(Ok(Self {
             root,
             metadata: TableMetadata::from_json(&document)?,
             version,
@@ -208,6 +219,10 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Open the table if it exists, creating it otherwise.
+    ///
+    /// One locate is the whole existence question, per the existence
+    /// contract: the handle comes back from the miss, so the create needs no
+    /// second resolution.
     ///
     /// # Errors
     ///
@@ -218,11 +233,10 @@ impl<H: IOBase> Table<H> {
         schema: Field,
         spec: PartitionSpec,
     ) -> Result<Self> {
-        let metadata_dir = root.child_by_path(METADATA_DIR)?;
-        if find_metadata(&metadata_dir)?.is_some() {
-            return Self::open(root);
+        match Self::locate_keeping(root)? {
+            Ok(table) => Ok(table),
+            Err(root) => Self::create(root, format_version, schema, spec),
         }
-        Self::create(root, format_version, schema, spec)
     }
 
     /// Borrow the container the table lives in.

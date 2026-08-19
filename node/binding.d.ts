@@ -1149,6 +1149,27 @@ declare module './index' {
     function from(source: BatchSource, rootName?: string): BatchReader
   }
 
+  /**
+   * The catalog's names iterator is a JS iterable and iterator at once, so
+   * `for...of` walks it and `[...keys]` drains it - nothing is collected on
+   * the way across the boundary.
+   */
+  interface IcebergNames extends Iterable<string> {}
+
+  /**
+   * The collection views are Map-like: `for...of` yields the names lazily,
+   * and `values`/`entries` open each named resource through `get`, one at a
+   * time.
+   */
+  interface Namespaces extends Iterable<string> {
+    values(): IterableIterator<Namespace>
+    entries(): IterableIterator<readonly [string, Namespace]>
+  }
+  interface Tables extends Iterable<string> {
+    values(): IterableIterator<Table>
+    entries(): IterableIterator<readonly [string, Table]>
+  }
+
   interface Table {
     /** Append batches as a new snapshot, keeping everything already stored. */
     append(batches: BatchSource): void

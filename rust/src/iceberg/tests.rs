@@ -3432,7 +3432,7 @@ mod line_projection {
         let thread_id = schema.get_field_by_name("thread_id").unwrap();
         assert_eq!(thread_id.data_type(), &crate::DataType::Int64);
         let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
-        catalog.create_table("logs.threads", schema).unwrap();
+        catalog.tables().create("logs.threads", schema).unwrap();
 
         let options = crate::text::TextLineOptions::with_pattern(pattern).unwrap();
         let day = named(
@@ -3440,6 +3440,7 @@ mod line_projection {
             b"2024-02-01 10:00:00 [7] (info) fill\n2024-02-01 10:00:01 [42] (warn) partial\n",
         );
         let table = catalog
+            .tables()
             .append("logs.threads", day.into_arrow_lines(&options).unwrap())
             .unwrap();
 
@@ -3510,7 +3511,7 @@ mod line_projection {
 
         let warehouse = path.join("warehouse");
         let catalog = super::super::Catalog::new(Folder::new(&warehouse).unwrap());
-        let created = catalog.create_table("logs.app", schema).unwrap();
+        let created = catalog.tables().create("logs.app", schema).unwrap();
         let spec = created.metadata().default_spec().unwrap();
         assert_eq!(spec.fields.len(), 1);
         assert_eq!(spec.fields[0].name, "level");
@@ -3520,6 +3521,7 @@ mod line_projection {
         // reader is the parse, never a collected vector of batches.
         let folder = crate::local::Folder::new(&logs).unwrap();
         let table = catalog
+            .tables()
             .append("logs.app", folder.into_arrow_lines(&options).unwrap())
             .unwrap();
 
@@ -3612,6 +3614,7 @@ mod line_projection {
             b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n",
         );
         let table = catalog
+            .tables()
             .append("logs.app", day_two.into_arrow_lines(&options).unwrap())
             .unwrap();
         assert_eq!(table.metadata().snapshots.len(), 2);

@@ -1911,6 +1911,45 @@ if (binding.Listing) {
   })
 }
 
+// The catalog collections are Map-like: `keys()` is a lazy native iterator,
+// and the loader supplies the protocol plus `values()` and `entries()` so
+// `for...of namespaces.keys()` and spreading both work. `values` and
+// `entries` open each named resource through `get`, one at a time.
+if (binding.IcebergNames) {
+  const nativeNext = binding.IcebergNames.prototype.next
+  binding.IcebergNames.prototype.next = function next() {
+    const name = nativeNext.call(this)
+    return name === null ? { value: undefined, done: true } : { value: name, done: false }
+  }
+  Object.defineProperty(binding.IcebergNames.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function names() {
+      return this
+    },
+  })
+}
+for (const collection of [binding.Namespaces, binding.Tables]) {
+  if (!collection) continue
+  Object.defineProperty(collection.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function keys() {
+      return this.keys()[Symbol.iterator]()
+    },
+  })
+  Object.defineProperty(collection.prototype, 'values', {
+    configurable: true,
+    value: function* values() {
+      for (const name of this.keys()) yield this.get(name)
+    },
+  })
+  Object.defineProperty(collection.prototype, 'entries', {
+    configurable: true,
+    value: function* entries() {
+      for (const name of this.keys()) yield [name, this.get(name)]
+    },
+  })
+}
+
 // A line iterator is a JS iterable and iterator at once: `next()` is native,
 // the protocol wrappers live here, so `for...of handle.readLines()` works and
 // so does spreading. The native `next` returns null at the end; the protocol

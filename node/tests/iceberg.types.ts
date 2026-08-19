@@ -248,6 +248,11 @@ const salesName: string = sales.name
 const madeNamespace = namespacesView.create('emea')
 const eitherNamespace = namespacesView.openOrCreate('emea')
 const nestedNamespaces = sales.namespaces
+// The Map-like surface: lazy keys, values and entries opened one at a time.
+const namespaceKeys: string[] = [...namespacesView.keys()]
+const namespaceValues = [...namespacesView.values()]
+const namespaceEntries: (readonly [string, unknown])[] = [...namespacesView.entries()]
+const namespaceForOf: string[] = [...namespacesView]
 
 const tablesView = sales.tables
 const tableNames: string[] = tablesView.names()
@@ -268,3 +273,6 @@ const replacedThroughView: Table = tablesView.overwrite(
   'orders',
   BatchReader.from(arrowTable),
 )
+const tableKeys: string[] = [...tablesView.keys()]
+const tableValues: Table[] = [...tablesView.values()]
+const tableEntries: (readonly [string, Table])[] = [...tablesView.entries()]

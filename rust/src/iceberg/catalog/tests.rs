@@ -1,10 +1,10 @@
-//! The storage catalog: namespaces of tables under one warehouse folder.
+//! The catalog hierarchy: catalogs of namespaces of tables, one shape each.
 
 use std::sync::Arc;
 
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
-use super::Catalog;
+use super::{Catalog, Catalogs};
 use crate::iceberg::Transform;
 use crate::io::IOBase;
 use crate::local::Folder;
@@ -86,15 +86,20 @@ fn collect(reader: crate::arrow::BatchReader) -> Vec<(i64, Option<String>)> {
     rows
 }
 
+/// Drain a names iterator, panicking on the first failing entry.
+fn names(names: super::Names) -> Vec<String> {
+    names.collect::<crate::Result<Vec<_>>>().unwrap()
+}
+
 #[test]
 fn constructing_a_catalog_touches_nothing() {
     let (path, catalog) = warehouse("lazy");
 
     // Asking questions of an empty warehouse is answered, not failed, and
     // neither the construction nor the questions bring the folder into being.
-    assert_eq!(catalog.list_namespaces(None).unwrap(), Vec::<String>::new());
-    assert_eq!(catalog.list_tables("nyc").unwrap(), Vec::<String>::new());
-    assert!(!catalog.has_table("nyc.taxis").unwrap());
+    assert_eq!(names(catalog.namespaces().iter()), Vec::<String>::new());
+    assert_eq!(names(catalog.tables().iter()), Vec::<String>::new());
+    assert!(!catalog.tables().contains("nyc.taxis").unwrap());
     assert!(!path.exists());
 }
 
@@ -105,11 +110,9 @@ fn each_catalog_role_answers_the_kind_it_plays() {
     // Storage sees three folders; the framing is what tells them apart, so
     // each value answers for itself.
     assert_eq!(catalog.kind(), IOKind::Catalog);
-    assert_eq!(catalog.namespace("nyc").kind(), IOKind::Namespace);
     assert!(catalog.kind().is_container());
-    assert!(catalog.namespace("nyc").kind().is_container());
 
-    let table = catalog.create_table("nyc.taxis", taxi_schema()).unwrap();
+    let table = catalog.tables().create("nyc.taxis", taxi_schema()).unwrap();
     assert_eq!(IOBase::kind(&table), IOKind::Table);
     assert!(table.is_tabular());
     assert!(!table.is_atomic());
@@ -121,12 +124,11 @@ fn each_catalog_role_answers_the_kind_it_plays() {
     assert!(folder.is_tabular());
     assert!(!folder.is_atomic());
 
-    // A namespace folder holds tables, not rows of its own - but a handle
-    // that is only a folder cannot know that, and says what it would read.
-    assert_eq!(
-        catalog.namespaces().get("nyc").unwrap().kind(),
-        IOKind::Namespace
-    );
+    // A namespace is a folder that is not a table; that it is a *namespace*
+    // is what the catalog framing adds.
+    let nyc = catalog.namespaces().get("nyc").unwrap();
+    assert_eq!(nyc.kind(), IOKind::Namespace);
+    assert!(nyc.kind().is_container());
 }
 
 #[test]
@@ -135,14 +137,16 @@ fn a_table_created_through_a_dotted_name_round_trips_its_rows() {
 
     // Two namespace levels deep, from one dotted name.
     let table = catalog
-        .create_table("nyc.yellow.taxis", taxi_schema())
+        .tables()
+        .create("nyc.yellow.taxis", taxi_schema())
         .unwrap();
     assert!(table.current_snapshot().is_none());
-    assert!(catalog.has_table("nyc.yellow.taxis").unwrap());
-    assert!(!catalog.has_table("nyc.green.taxis").unwrap());
+    assert!(catalog.tables().contains("nyc.yellow.taxis").unwrap());
+    assert!(!catalog.tables().contains("nyc.green.taxis").unwrap());
 
     let batch = taxis(&[1, 2], &[Some("XNAS"), None]);
     catalog
+        .tables()
         .append(
             "nyc.yellow.taxis",
             crate::arrow::batch_reader(batch.schema(), [batch]),
@@ -157,11 +161,64 @@ fn a_table_created_through_a_dotted_name_round_trips_its_rows() {
 }
 
 #[test]
+fn the_cascade_and_the_dotted_name_reach_the_same_table() {
+    let (_path, catalog) = warehouse("cascade-equality");
+    catalog
+        .tables()
+        .create("sales.eu.orders", taxi_schema())
+        .unwrap();
+
+    // The same table, three spellings: the full cascade, a dotted collection
+    // name, and the catalog's dotted entry point.
+    let cascaded = catalog
+        .namespaces()
+        .get("sales")
+        .unwrap()
+        .namespaces()
+        .get("eu")
+        .unwrap()
+        .tables()
+        .get("orders")
+        .unwrap();
+    let dotted = catalog.tables().get("sales.eu.orders").unwrap();
+    let entry = catalog.table("sales.eu.orders").unwrap();
+
+    assert_eq!(cascaded.metadata().table_uuid, dotted.metadata().table_uuid);
+    assert_eq!(cascaded.metadata().table_uuid, entry.metadata().table_uuid);
+
+    // And a dotted namespace name descends exactly as the cascade does.
+    let eu = catalog.namespaces().get("sales.eu").unwrap();
+    assert_eq!(eu.name(), "sales.eu");
+    assert!(eu.tables().contains("orders").unwrap());
+}
+
+#[test]
+fn a_table_create_makes_its_namespaces_by_writing() {
+    let (path, catalog) = warehouse("ancestry");
+
+    // Three namespace levels that do not exist: the first metadata write is
+    // what brings them into being - nothing checked for them first.
+    let table = catalog
+        .tables()
+        .create("a.b.c.orders", taxi_schema())
+        .unwrap();
+    assert!(table.current_snapshot().is_none());
+    assert!(path.join("a/b/c/orders/metadata").is_dir());
+
+    // The table opens through every spelling, and each ancestor namespace is
+    // reachable even though none was created explicitly.
+    assert!(catalog.table("a.b.c.orders").is_ok());
+    assert!(catalog.namespaces().contains("a").unwrap());
+    assert!(catalog.namespaces().get("a.b.c").is_ok());
+}
+
+#[test]
 fn create_table_derives_the_spec_and_numbers_an_unnumbered_schema() {
     let (_path, catalog) = warehouse("marked-schema");
 
     let table = catalog
-        .create_table("nyc.taxis", marked_taxi_schema())
+        .tables()
+        .create("nyc.taxis", marked_taxi_schema())
         .unwrap();
 
     // The schema's own partition mark became the table's default spec.
@@ -195,7 +252,7 @@ fn create_table_derives_the_spec_and_numbers_an_unnumbered_schema() {
     assert_eq!(spec.fields[0].source_id, 2);
 
     // A schema that marks nothing produces the unpartitioned spec.
-    let plain = catalog.create_table("nyc.plain", taxi_schema()).unwrap();
+    let plain = catalog.tables().create("nyc.plain", taxi_schema()).unwrap();
     assert!(plain.metadata().default_spec().unwrap().is_unpartitioned());
 }
 
@@ -205,6 +262,7 @@ fn append_creates_on_first_write_and_appends_on_the_second() {
 
     let first = taxis(&[1], &[Some("XNAS")]);
     let table = catalog
+        .tables()
         .append(
             "ops.trips",
             crate::arrow::batch_reader(first.schema(), [first]),
@@ -225,6 +283,7 @@ fn append_creates_on_first_write_and_appends_on_the_second() {
 
     let second = taxis(&[2], &[None]);
     let appended = catalog
+        .tables()
         .append(
             "ops.trips",
             crate::arrow::batch_reader(second.schema(), [second]),
@@ -256,6 +315,7 @@ fn append_takes_the_partition_marks_that_survived_the_arrow_round_trip() {
     )
     .unwrap();
     let table = catalog
+        .tables()
         .append(
             "nyc.marked",
             crate::arrow::batch_reader(arrow_schema, [batch]),
@@ -274,6 +334,7 @@ fn overwrite_creates_when_absent_and_replaces_when_present() {
 
     let first = taxis(&[1, 2], &[Some("XNAS"), Some("XNYS")]);
     catalog
+        .tables()
         .overwrite(
             "nyc.taxis",
             crate::arrow::batch_reader(first.schema(), [first]),
@@ -282,6 +343,7 @@ fn overwrite_creates_when_absent_and_replaces_when_present() {
 
     let second = taxis(&[9], &[None]);
     let table = catalog
+        .tables()
         .overwrite(
             "nyc.taxis",
             crate::arrow::batch_reader(second.schema(), [second]),
@@ -292,24 +354,38 @@ fn overwrite_creates_when_absent_and_replaces_when_present() {
 }
 
 #[test]
-fn an_existing_table_refuses_create_and_a_missing_one_refuses_open() {
-    let (_path, catalog) = warehouse("refusals");
-    catalog.create_table("nyc.taxis", taxi_schema()).unwrap();
+fn absence_and_conflict_are_typed_at_every_level() {
+    let (_path, catalog) = warehouse("typed-failures");
+    catalog.tables().create("nyc.taxis", taxi_schema()).unwrap();
 
-    let message = catalog
-        .create_table("nyc.taxis", taxi_schema())
-        .unwrap_err()
-        .to_string();
+    // A create over an existing table is the typed conflict, from the same
+    // one classification the open paths use - never from a separate probe.
+    let conflict = catalog
+        .tables()
+        .create("nyc.taxis", taxi_schema())
+        .unwrap_err();
+    assert!(conflict.is_conflict(), "{conflict}");
     assert!(
-        message.contains("expected no table at \"nyc.taxis\", got one; open it with table"),
-        "{message}"
+        conflict.to_string().contains("nyc.taxis"),
+        "the full dotted path is named: {conflict}"
     );
 
-    let message = catalog.table("nyc.cabs").unwrap_err().to_string();
-    assert!(
-        message.contains("expected a table at \"nyc.cabs\""),
-        "{message}"
-    );
+    // A missing table is the typed absence, naming the full dotted path.
+    let absent = catalog.table("nyc.cabs").unwrap_err();
+    assert!(absent.is_absent(), "{absent}");
+    assert!(absent.to_string().contains("nyc.cabs"), "{absent}");
+
+    // The same two shapes one level up.
+    catalog.namespaces().create("sales").unwrap();
+    let conflict = catalog.namespaces().create("sales").unwrap_err();
+    assert!(conflict.is_conflict(), "{conflict}");
+    let absent = catalog.namespaces().get("ops").unwrap_err();
+    assert!(absent.is_absent(), "{absent}");
+
+    // And a table's name conflicts with a namespace create, naming both.
+    let message = catalog.namespaces().create("nyc.taxis").unwrap_err();
+    assert!(message.is_conflict(), "{message}");
+    assert!(message.to_string().contains("table"), "{message}");
 }
 
 #[test]
@@ -317,23 +393,42 @@ fn a_bad_name_segment_is_refused_by_name() {
     let (path, catalog) = warehouse("bad-names");
 
     let message = catalog
-        .create_table("", taxi_schema())
+        .tables()
+        .create("", taxi_schema())
         .unwrap_err()
         .to_string();
     assert!(message.contains("got an empty one"), "{message}");
 
-    let message = catalog.has_table("nyc..taxis").unwrap_err().to_string();
+    let message = catalog
+        .tables()
+        .contains("nyc..taxis")
+        .unwrap_err()
+        .to_string();
     assert!(message.contains("\"nyc..taxis\""), "{message}");
 
     let message = catalog
-        .create_table("a=b", taxi_schema())
+        .tables()
+        .create("a=b", taxi_schema())
         .unwrap_err()
         .to_string();
     assert!(message.contains("\"a=b\""), "{message}");
     assert!(message.contains("partition directory"), "{message}");
 
-    let message = catalog.list_tables("nyc/taxis").unwrap_err().to_string();
+    let message = catalog
+        .namespaces()
+        .get("nyc/taxis")
+        .unwrap_err()
+        .to_string();
     assert!(message.contains("'/'"), "{message}");
+
+    // The reserved metadata name is refused at every level, because that
+    // folder is where each level keeps its own document.
+    let message = catalog
+        .tables()
+        .create("metadata", taxi_schema())
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("metadata"), "{message}");
 
     // A refused name creates nothing.
     assert!(!path.exists());
@@ -342,33 +437,24 @@ fn a_bad_name_segment_is_refused_by_name() {
 #[test]
 fn listing_sees_what_was_created_and_a_stray_folder_is_a_namespace() {
     let (path, catalog) = warehouse("listing");
-    catalog.create_table("nyc.taxis", taxi_schema()).unwrap();
-    catalog.create_table("nyc.cabs", taxi_schema()).unwrap();
-    catalog.create_table("ops.trips", taxi_schema()).unwrap();
+    catalog.tables().create("nyc.taxis", taxi_schema()).unwrap();
+    catalog.tables().create("nyc.cabs", taxi_schema()).unwrap();
+    catalog.tables().create("ops.trips", taxi_schema()).unwrap();
 
     // A plain folder somebody else made is a namespace, never a table, and a
     // stray file is neither.
     std::fs::create_dir_all(path.join("nyc").join("scratch")).unwrap();
     std::fs::write(path.join("notes.txt"), b"not a namespace").unwrap();
 
-    assert_eq!(catalog.list_namespaces(None).unwrap(), ["nyc", "ops"]);
-    assert_eq!(
-        catalog.list_namespaces(Some("nyc")).unwrap(),
-        ["nyc.scratch"]
-    );
-    assert_eq!(
-        catalog.list_tables("nyc").unwrap(),
-        ["nyc.cabs", "nyc.taxis"]
-    );
-    assert_eq!(catalog.list_tables("ops").unwrap(), ["ops.trips"]);
-    assert_eq!(
-        catalog.list_tables("nyc.scratch").unwrap(),
-        Vec::<String>::new()
-    );
-    assert_eq!(
-        catalog.list_namespaces(Some("ops")).unwrap(),
-        Vec::<String>::new()
-    );
+    assert_eq!(names(catalog.namespaces().iter()), ["nyc", "ops"]);
+    let nyc = catalog.namespaces().get("nyc").unwrap();
+    assert_eq!(names(nyc.namespaces().iter()), ["scratch"]);
+    assert_eq!(names(nyc.tables().iter()), ["cabs", "taxis"]);
+    let ops = catalog.namespaces().get("ops").unwrap();
+    assert_eq!(names(ops.tables().iter()), ["trips"]);
+    assert_eq!(names(ops.namespaces().iter()), Vec::<String>::new());
+    let scratch = nyc.namespaces().get("scratch").unwrap();
+    assert_eq!(names(scratch.tables().iter()), Vec::<String>::new());
 }
 
 #[test]
@@ -378,7 +464,7 @@ fn the_views_are_lazy_and_answer_from_storage_at_call_time() {
     // Constructing every view in the chain touches nothing at all.
     let namespaces = catalog.namespaces();
     assert!(!path.exists());
-    assert_eq!(namespaces.names().unwrap(), Vec::<String>::new());
+    assert_eq!(names(namespaces.iter()), Vec::<String>::new());
     assert_eq!(namespaces.len().unwrap(), 0);
     assert!(namespaces.is_empty().unwrap());
     assert!(!namespaces.contains("nyc").unwrap());
@@ -386,17 +472,17 @@ fn the_views_are_lazy_and_answer_from_storage_at_call_time() {
 
     // A view constructed before a write observes the write, because every
     // answer comes from storage when the question is asked.
-    catalog.create_table("nyc.taxis", taxi_schema()).unwrap();
-    assert_eq!(namespaces.names().unwrap(), ["nyc"]);
+    catalog.tables().create("nyc.taxis", taxi_schema()).unwrap();
+    assert_eq!(names(namespaces.iter()), ["nyc"]);
     assert!(namespaces.contains("nyc").unwrap());
     let nyc = namespaces.get("nyc").unwrap();
-    assert_eq!(nyc.tables().names().unwrap(), ["taxis"]);
+    assert_eq!(names(nyc.tables().iter()), ["taxis"]);
 
     // Two views over the same catalog observe each other's writes.
     let tables = nyc.tables();
     let second = catalog.namespaces().get("nyc").unwrap().tables();
     second.create("cabs", taxi_schema()).unwrap();
-    assert_eq!(tables.names().unwrap(), ["cabs", "taxis"]);
+    assert_eq!(names(tables.iter()), ["cabs", "taxis"]);
     assert_eq!(tables.len().unwrap(), 2);
     assert!(tables.contains("cabs").unwrap());
 }
@@ -405,7 +491,8 @@ fn the_views_are_lazy_and_answer_from_storage_at_call_time() {
 fn access_chains_through_the_views_and_a_missing_name_is_named() {
     let (_path, catalog) = warehouse("chained-views");
     catalog
-        .create_table("nyc.yellow.taxis", taxi_schema())
+        .tables()
+        .create("nyc.yellow.taxis", taxi_schema())
         .unwrap();
 
     // The cascade: a nested namespace is reached through its parent's view.
@@ -415,60 +502,137 @@ fn access_chains_through_the_views_and_a_missing_name_is_named() {
     let table = yellow.tables().get("taxis").unwrap();
     assert!(table.current_snapshot().is_none());
 
-    // A missing table is a typed error naming the table.
+    // A missing table is a typed error naming the full dotted path.
     let message = yellow.tables().get("cabs").unwrap_err().to_string();
-    assert!(
-        message.contains("expected a table at \"nyc.yellow.cabs\""),
-        "{message}"
-    );
+    assert!(message.contains("nyc.yellow.cabs"), "{message}");
 
     // A missing namespace is a typed error naming the namespace, and a
     // table's name is not a namespace.
     let message = catalog.namespaces().get("ops").unwrap_err().to_string();
-    assert!(
-        message.contains("expected a namespace at \"ops\""),
-        "{message}"
-    );
+    assert!(message.contains("\"ops\""), "{message}");
     assert!(!nyc.namespaces().contains("taxis").unwrap());
     let message = nyc
         .namespaces()
         .get("yellow.taxis")
         .unwrap_err()
         .to_string();
-    assert!(message.contains("namespace"), "{message}");
+    assert!(message.contains("table"), "{message}");
 }
 
 #[test]
-fn namespaces_create_and_open_or_create_make_the_folder() {
-    let (path, catalog) = warehouse("namespace-create");
+fn an_empty_namespace_is_durable_and_survives_a_reopen() {
+    let (path, catalog) = warehouse("durable-namespace");
 
+    // The namespace document is what makes an empty one durable - no marker
+    // trick, no zero-byte truncation.
     let sales = catalog.namespaces().create("sales").unwrap();
     assert_eq!(sales.name(), "sales");
-    assert!(path.join("sales").is_dir());
-    assert!(catalog.namespaces().contains("sales").unwrap());
-    assert_eq!(catalog.namespaces().names().unwrap(), ["sales"]);
+    assert!(path.join("sales/metadata/namespace.json").is_file());
 
-    // Creating what exists is refused by name; opening it is not.
-    let message = catalog
-        .namespaces()
-        .create("sales")
-        .unwrap_err()
-        .to_string();
-    assert!(
-        message.contains("expected no namespace at \"sales\""),
-        "{message}"
+    // A second catalog over the same folder sees it, holding no tables.
+    let reopened = Catalog::new(Folder::new(&path).unwrap());
+    assert!(reopened.namespaces().contains("sales").unwrap());
+    let sales = reopened.namespaces().get("sales").unwrap();
+    assert!(sales.tables().is_empty().unwrap());
+    assert_eq!(names(reopened.namespaces().iter()), ["sales"]);
+
+    // Its own metadata folder is infrastructure, never a child namespace.
+    assert_eq!(names(sales.namespaces().iter()), Vec::<String>::new());
+}
+
+#[test]
+fn properties_round_trip_at_all_three_levels() {
+    let mut root = std::env::temp_dir();
+    root.push(format!("yggdryl-iceberg-catalogs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+
+    // The catalogs level: a folder of warehouses.
+    let catalogs = Catalogs::new(Folder::new(&root).unwrap());
+    let lake = catalogs.create("lake").unwrap();
+    assert!(catalogs.contains("lake").unwrap());
+    assert_eq!(
+        catalogs.iter().collect::<crate::Result<Vec<_>>>().unwrap(),
+        ["lake"]
     );
-    let again = catalog.namespaces().open_or_create("sales").unwrap();
-    assert_eq!(again.name(), "sales");
 
-    // A table's name is refused as a namespace in both spellings.
-    catalog.create_table("sales.orders", taxi_schema()).unwrap();
-    let message = sales
-        .namespaces()
-        .open_or_create("orders")
+    // Catalog properties live in metadata/catalog.json under the warehouse.
+    assert!(lake.properties().unwrap().is_empty());
+    lake.update_properties([("owner".to_owned(), "ops".to_owned())], [])
+        .unwrap();
+    assert_eq!(
+        lake.properties().unwrap().get("owner").map(String::from),
+        Some("ops".to_owned())
+    );
+
+    // Namespace properties live in metadata/namespace.json under the folder.
+    let sales = lake.namespaces().create("sales").unwrap();
+    assert!(sales.properties().unwrap().is_empty());
+    sales
+        .update_properties(
+            [
+                ("region".to_owned(), "eu".to_owned()),
+                ("tier".to_owned(), "gold".to_owned()),
+            ],
+            [],
+        )
+        .unwrap();
+    sales.update_properties([], ["tier".to_owned()]).unwrap();
+    let properties = sales.properties().unwrap();
+    assert_eq!(
+        properties.get("region").map(String::from),
+        Some("eu".to_owned())
+    );
+    assert!(properties.get("tier").is_none());
+
+    // The reserved prefix is refused by name, and the refusal changes nothing.
+    let refused = sales
+        .update_properties([("iceberg:spec".to_owned(), "x".to_owned())], [])
         .unwrap_err()
         .to_string();
-    assert!(message.contains("got a table"), "{message}");
+    assert!(refused.contains("iceberg:"), "{refused}");
+    assert_eq!(sales.properties().unwrap().len(), 1);
+
+    // Table properties already ride TableMetadata - assert the level exists.
+    let table = lake.tables().create("sales.orders", taxi_schema()).unwrap();
+    assert!(table.metadata().properties.is_empty());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn two_creators_of_one_table_converge_or_one_gets_the_typed_conflict() {
+    let (path, _catalog) = warehouse("racing-creates");
+
+    // Two threads, two catalogs, one name. Storage has no compare-and-swap,
+    // so the contract is: both converge on the same table, or one of them
+    // gets the typed conflict - never corruption, never a silent third state.
+    let barrier = std::sync::Barrier::new(2);
+    fn make(path: &std::path::Path, barrier: &std::sync::Barrier) -> crate::Result<()> {
+        let catalog = Catalog::new(Folder::new(path).unwrap());
+        barrier.wait();
+        catalog
+            .tables()
+            .create("race.orders", taxi_schema())
+            .map(|_| ())
+    }
+    let outcomes: Vec<crate::Result<()>> = std::thread::scope(|scope| {
+        let left = scope.spawn(|| make(&path, &barrier));
+        let right = scope.spawn(|| make(&path, &barrier));
+        vec![left.join().unwrap(), right.join().unwrap()]
+    });
+
+    let successes = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+    assert!(successes >= 1, "{outcomes:?}");
+    for outcome in &outcomes {
+        if let Err(error) = outcome {
+            assert!(error.is_conflict(), "{error}");
+        }
+    }
+
+    // Whoever won, the table is whole and opens.
+    let catalog = Catalog::new(Folder::new(&path).unwrap());
+    let table = catalog.table("race.orders").unwrap();
+    assert!(table.current_snapshot().is_none());
 }
 
 #[test]
@@ -497,10 +661,178 @@ fn table_writes_through_the_views_create_on_first_write() {
         .unwrap();
     assert_eq!(collect(table.scan(None).unwrap()), [(9, None)]);
 
-    // The flat dotted-name spelling is the same implementation, so both
-    // spellings observe the same table.
+    // The dotted entry point is the same implementation, so both spellings
+    // observe the same table.
     assert_eq!(
         collect(catalog.table("sales.orders").unwrap().scan(None).unwrap()),
         [(9, None)]
     );
+}
+
+/// The number of backend calls an operation makes is a behavior, not an
+/// implementation detail - the expression module's selector cost tests set
+/// that precedent, and the existence audit's whole point is the round trips
+/// that are no longer spent asking questions whose answers were stale.
+mod call_counts {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{Catalog, taxi_schema};
+    use crate::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, Folder, MemoryFileSystem};
+    use crate::Result;
+
+    /// A memory filesystem that counts every vtable call reaching it.
+    #[derive(Debug, Default)]
+    struct Counting {
+        inner: MemoryFileSystem,
+        calls: AtomicUsize,
+    }
+
+    impl Counting {
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::Relaxed)
+        }
+
+        fn count(&self) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    impl ArrowFileSystem for Counting {
+        fn type_name(&self) -> &str {
+            self.inner.type_name()
+        }
+
+        fn file_info(&self, path: &str) -> Result<FileInfo> {
+            self.count();
+            self.inner.file_info(path)
+        }
+
+        fn list(&self, path: &str, recursive: bool) -> FileInfos {
+            self.count();
+            self.inner.list(path, recursive)
+        }
+
+        fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+            self.count();
+            self.inner.read_range(path, offset, buffer)
+        }
+
+        fn write_full(&self, path: &str, bytes: &[u8]) -> Result<()> {
+            self.count();
+            self.inner.write_full(path, bytes)
+        }
+
+        fn create_dir(&self, path: &str) -> Result<()> {
+            self.count();
+            self.inner.create_dir(path)
+        }
+
+        fn delete_file(&self, path: &str) -> Result<()> {
+            self.count();
+            self.inner.delete_file(path)
+        }
+    }
+
+    /// A catalog over a counting warehouse, with the counter beside it.
+    fn counted() -> (Arc<Counting>, Catalog<Folder>) {
+        let filesystem = Arc::new(Counting::default());
+        let warehouse = Folder::from_location(
+            Arc::clone(&filesystem) as Arc<dyn ArrowFileSystem>,
+            "warehouse",
+        )
+        .expect("a valid location");
+        (filesystem, Catalog::new(warehouse))
+    }
+
+    /// One measured run: the calls `operation` makes on a fresh counter.
+    fn cost(filesystem: &Counting, operation: impl FnOnce()) -> usize {
+        let before = filesystem.calls();
+        operation();
+        filesystem.calls() - before
+    }
+
+    #[test]
+    fn a_get_of_an_existing_table_is_one_resolution_and_one_locate() {
+        let (filesystem, catalog) = counted();
+        catalog
+            .tables()
+            .create("sales.orders", taxi_schema())
+            .unwrap();
+
+        // One child resolution (the backend's own file_info), one presence
+        // answer, and the locate that *is* the open: the version hint's
+        // resolution and read, and the current document's resolution and
+        // read. Before the audit, `get` ran `contains` - a full
+        // resolve-plus-locate - and then resolved and located again: double
+        // this.
+        let calls = cost(&filesystem, || {
+            catalog.tables().get("sales.orders").unwrap();
+        });
+        assert_eq!(calls, 11, "get on an existing table");
+    }
+
+    #[test]
+    fn a_get_of_a_missing_table_stops_at_the_presence_answer() {
+        let (filesystem, catalog) = counted();
+        catalog
+            .tables()
+            .create("sales.orders", taxi_schema())
+            .unwrap();
+
+        // One child resolution, one presence answer (a file_info and, for a
+        // prefix with no marker, one listing), done: nothing is there, so no
+        // locate runs and no metadata is asked for.
+        let calls = cost(&filesystem, || {
+            catalog.tables().get("sales.nothing").unwrap_err();
+        });
+        assert_eq!(calls, 3, "get on a missing table");
+    }
+
+    #[test]
+    fn a_create_into_a_missing_ancestry_never_walks_the_ancestry() {
+        let (filesystem, catalog) = counted();
+
+        // One resolution, one presence answer, then the create's own writes:
+        // the ancestor namespaces are never probed, never listed, and never
+        // made in advance - the metadata write is what brings them into
+        // being. Before the audit this path ran `contains` (resolve + locate)
+        // and then `create_at` resolved again before writing.
+        let calls = cost(&filesystem, || {
+            catalog
+                .tables()
+                .create("a.b.c.orders", taxi_schema())
+                .unwrap();
+        });
+        assert_eq!(calls, 9, "create into three missing namespace levels");
+
+        // And the table it made opens.
+        catalog.tables().get("a.b.c.orders").unwrap();
+    }
+
+    #[test]
+    fn open_or_create_costs_the_same_one_classification_on_both_branches() {
+        let (filesystem, catalog) = counted();
+
+        // The absent branch: one classification, then the create's writes -
+        // exactly what `create` costs, because it is the same attempt.
+        let absent = cost(&filesystem, || {
+            catalog
+                .tables()
+                .open_or_create("sales.orders", taxi_schema())
+                .unwrap();
+        });
+        assert_eq!(absent, 9, "open_or_create when absent");
+
+        // The present branch: one classification, whose locate already opened
+        // the table - exactly what `get` costs, because it is the same
+        // attempt.
+        let present = cost(&filesystem, || {
+            catalog
+                .tables()
+                .open_or_create("sales.orders", taxi_schema())
+                .unwrap();
+        });
+        assert_eq!(present, 11, "open_or_create when present");
+    }
 }

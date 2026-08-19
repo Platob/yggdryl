@@ -227,6 +227,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iceberg::PyNamespace>()?;
     module.add_class::<iceberg::PyNamespaces>()?;
     module.add_class::<iceberg::PyTables>()?;
+    module.add_class::<iceberg::PyNames>()?;
     module.add_class::<iceberg::PyIcebergOptions>()?;
     module.add_class::<iceberg::PyTable>()?;
     module.add_class::<iceberg::PySchemaUpdate>()?;

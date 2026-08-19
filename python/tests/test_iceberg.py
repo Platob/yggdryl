@@ -416,7 +416,7 @@ class TestCatalog:
         assert list(nyc.namespaces) == ["yellow"]
 
         # Creating what exists is refused by name; a table is not a namespace.
-        with pytest.raises(ValueError, match="expected no namespace"):
+        with pytest.raises(ValueError, match="expected to create a namespace"):
             catalog.namespaces.create("nyc")
         yellow.tables.create("taxis", SCHEMA)
         assert "taxis" not in yellow.namespaces
@@ -477,7 +477,7 @@ class TestCatalog:
         assert catalog.list_tables("ns") == ["ns.trades"]
         assert table.spec.is_unpartitioned()
 
-        with pytest.raises(ValueError, match="expected no table"):
+        with pytest.raises(ValueError, match="expected to create a table"):
             catalog.create_table("ns.trades", [Field("id", "int64", nullable=False)])
         # An existing table is opened as it is; the schema describes only the
         # table the call would create.

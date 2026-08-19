@@ -606,6 +606,21 @@ export declare class Field {
 export type JsField = Field
 
 /**
+ * The names of one collection level, one at a time.
+ *
+ * Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
+ * iterator directly, so nothing is collected on the way across the boundary;
+ * `next()` is the native half of the iteration protocol and the loader wraps
+ * it so `for...of` yields strings. A failure throws at the entry it happened
+ * on, after which the iterator is exhausted.
+ */
+export declare class IcebergNames {
+  /** The next name, or `null` when the level is exhausted. */
+  next(): string | null
+}
+export type JsIcebergNames = IcebergNames
+
+/**
  * Configuration for one table's commits, writes, and reads.
  *
  * The value records only what was set on it: every getter answers the field's
@@ -1322,9 +1337,18 @@ export declare class Namespaces {
    * `false` here, and so does a location nothing occupies yet.
    */
   has(name: string): boolean
+  /**
+   * The names one level down, lazily - the loader wires `Symbol.iterator`,
+   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
+   */
+  keys(): JsIcebergNames
   /** The namespaces one level down, as sorted bare names. */
   names(): Array<string>
-  /** How many namespaces are one level down, right now. */
+  /**
+   * How many namespaces are one level down, right now.
+   *
+   * This drains the level's listing, so it costs the full listing.
+   */
   size(): number
   /**
    * Create the named namespace, as the folder it is.
@@ -1919,9 +1943,18 @@ export declare class Tables {
   get(name: string): Table
   /** Return whether the named table exists, asked of storage now. */
   has(name: string): boolean
+  /**
+   * The names one level down, lazily - the loader wires `Symbol.iterator`,
+   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
+   */
+  keys(): IcebergNames
   /** This namespace's tables, as sorted bare names. */
   names(): Array<string>
-  /** How many tables the namespace holds, right now. */
+  /**
+   * How many tables the namespace holds, right now.
+   *
+   * This drains the level's listing, so it costs the full listing.
+   */
   size(): number
   /**
    * Create the named table, writing its first metadata document.

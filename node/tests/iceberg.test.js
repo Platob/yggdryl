@@ -1030,7 +1030,7 @@ test('the collection views do no I/O until a question is asked of them', (t) => 
   assert.equal(orders.size(), 0)
   assert.deepEqual(fs.readdirSync(root), [])
 
-  assert.throws(() => namespaces.get('sales'), /expected a namespace at "sales", got none/)
+  assert.throws(() => namespaces.get('sales'), /expected a namespace at "sales", got nothing/)
 
   // Both views were built before the write and answer storage at call time, so
   // both see it without being rebuilt.
@@ -1040,7 +1040,7 @@ test('the collection views do no I/O until a question is asked of them', (t) => 
   assert.deepEqual(orders.names(), ['orders'])
   assert.equal(orders.size(), 1)
   assert.equal(orders.has('orders'), true)
-  assert.throws(() => orders.get('ledger'), /expected a table at "sales\.ledger", got none/)
+  assert.throws(() => orders.get('ledger'), /expected a table at "sales\.ledger", got nothing/)
 
   // One spelling chains from the catalog to the rows.
   assert.equal(catalog.namespaces.get('sales').tables.get('orders').scan().toTable().numRows, 1)
@@ -1061,7 +1061,7 @@ test('the tables view creates on first write and takes the same per-call options
   assert.equal(tables.openOrCreate('quotes', schema()).tableUuid, created.tableUuid)
   assert.throws(
     () => tables.create('quotes', schema()),
-    /expected no table at "sales\.quotes", got one/,
+    /expected to create a table at "sales\.quotes", got an existing table/,
   )
 
   // A write through the view creates the table from the rows' own schema, and
