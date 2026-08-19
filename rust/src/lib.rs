@@ -15,6 +15,7 @@ pub mod arrow;
 mod datatype;
 pub mod enums;
 mod error;
+pub mod expression;
 pub mod field;
 pub mod generic;
 pub mod gzip;
@@ -42,6 +43,7 @@ pub use enums::{
     Timezone, UnionMode,
 };
 pub use error::{Error, Result};
+pub use expression::Expression;
 #[cfg(feature = "arrow")]
 pub use field::cast::{ArrowCast, ArrowFieldType};
 pub use field::{
