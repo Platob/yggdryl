@@ -1,17 +1,21 @@
-# Prompt: the catalog as a service hierarchy, Iceberg v3 in full, and Apache Doris 4.1 as the outside implementation that checks both
+# Prompt: the shared shapes, Iceberg v3 in full, one maintenance method, and Apache Doris 4.1 as the outside implementation that checks it all
 
 This prompt has four parts, in this order, each complete work on its own if the
 task stops there. Each one is the ground the next stands on.
 
-**Part one** (section 1) refactors `iceberg::Catalog` into a real service
-hierarchy - `catalogs`/`catalog`, `namespaces`/`namespace`, `tables`/`table`,
-one shape at every level, so `catalog.namespaces[...].tables[...]` addresses a
-table - and carries two workspace-wide sweeps with it: **every
-probe-before-act is deleted** in favor of acting and handling the failure, and
-**every listing becomes a lazy iterator** instead of a collected `Vec`, so a
-folder or a catalog larger than memory can be listed at all. One mechanical
-rename, `IOBase::child_by` → `child_by_path`, rides along. It is where every
-later part addresses a table from, so it lands first.
+**Part one** (section 1) settles the shapes every later part is written
+against. `iceberg::Catalog` becomes a real service hierarchy -
+`catalogs`/`catalog`, `namespaces`/`namespace`, `tables`/`table`, one shape at
+every level, so `catalog.namespaces[...].tables[...]` addresses a table. Three
+workspace-wide sweeps ride with it: **every probe-before-act is deleted** in
+favor of acting and handling the failure; **every listing becomes a lazy
+iterator** instead of a collected `Vec`, so a folder or a catalog larger than
+memory can be listed at all; and **applying an expression becomes one trait the
+target implements**, so a new target never means another method on `Bound`.
+Record options gain `max_row_size` and `max_byte_size`, honored in the one
+place every media already routes through, and `IOBase::child_by` is renamed
+`child_by_path`. Nothing below works well until this is done, so it lands
+first.
 
 **Part two** (section 2) makes Iceberg format version 3 fully readable and
 writable - deletion vectors over a new `rust/src/puffin/`, row lineage,
@@ -153,7 +157,7 @@ Work on branch `claude/catalog-v3-doris`; commit and push there.
 
 ---
 
-## 1. Part one: the catalog becomes a service hierarchy, and existence stops being pre-checked
+## 1. Part one: the shared shapes everything else stands on
 
 `doris/catalog.rs` leans on `iceberg::Catalog`, and what it would lean on is a
 good idea left half-finished. The collection views already exist -
@@ -161,10 +165,14 @@ good idea left half-finished. The collection views already exist -
 but `Catalog` still carries a whole flat surface *over* them, the three levels
 do not share a shape, nothing addresses a catalog above a warehouse, no level
 but the table carries properties, **every level probes storage before it
-acts**, and **every listing collects into a `Vec`**. The last two are
-workspace-wide, not catalog-local: the existence audit of 1.4 and the listing
-sweep of 1.5 touch `io`, `local`, `arrowfs`, and `generic` as much as
-`iceberg`. One mechanical rename (1.6) rides along.
+acts**, and **every listing collects into a `Vec`**.
+
+The last two are workspace-wide, not catalog-local: the existence audit of 1.4
+and the listing sweep of 1.5 touch `io`, `local`, `arrowfs`, and `generic` as
+much as `iceberg`. Three more shape changes belong in the same pass, because
+every part below is written against them and none of them is worth doing twice:
+a mechanical rename (1.6), the record-option limits (1.7), and one trait for
+applying an expression (1.8).
 
 Fix all of it first, in its own commits, before anything new leans on it. This
 section is complete work on its own if the task stops here (`AGENTS.md:9`).
@@ -370,7 +378,140 @@ name of their own, so no binding signature changes and `.api-bindings.txt` must
 come back **byte-identical**. Land it alone, separate from anything that
 changes behavior, so the diff reviews at a glance.
 
-### 1.7 Tests, benchmarks, bindings, and docs for part one
+### 1.7 `max_row_size` and `max_byte_size`: one limit, applied in one place
+
+Every record option gains two flattened fields, with the getter/setter pairs
+the trait already uses for `batch_size` and `safe`
+(`generic/options.rs:46`), on `IORecordOptions` and on all four implementors -
+`RecordOptions`, `IpcOptions`, `ParquetOptions`, `AvroOptions`:
+
+```rust
+fn max_row_size(&self) -> Option<u64>;        // rows, not bytes-per-row
+fn set_max_row_size(&mut self, rows: Option<u64>);
+fn max_byte_size(&self) -> Option<u64>;       // Arrow in-memory bytes
+fn set_max_byte_size(&mut self, bytes: Option<u64>);
+```
+
+**The first doc sentence of `max_row_size` says it is a count of rows**, not a
+per-row byte cap, because the name reads both ways and a reader must not have
+to guess.
+
+**One place applies them.** `IORecordOptions::cast_arrow_reader` and
+`cast_arrow_batch` (`generic/options.rs:248`, `280`) are already the single
+definition of option-driven shaping that every media routes through
+(`AGENTS.md:265`). The limit composes into that same seam as one more
+transform. **No media implements a limit**, and no media may check one; if a
+media needs to know, the seam is wrong.
+
+**The order is fixed and documented**: declared schema → selection → completion
+cast → filter → **limit last**. The limit therefore counts *result* rows, so
+`max_row_size = 10` with a predicate means the first ten matching rows, not ten
+rows of which some match.
+
+**Zero is a value, never an error.** `Some(0)` yields a reader with **the
+correct schema and no batches** - a `BatchReader` whose `schema()` is the
+declared or stored schema and whose first `next()` is `None`. `None` is
+unlimited. Neither is a failure, and a caller that passes zero gets something
+it can still bind, cast, and write. Test that on every media, asserting the
+schema, not only the emptiness.
+
+**Reads and writes both**, symmetrically and for free: a write takes a
+`BatchReader`, so the same wrapper sits on the incoming side. Two things follow
+and must be handled rather than discovered:
+
+- A limited write **truncates data the caller offered**. Say that in the doc
+  line for the write path, in those words.
+- A limit combined with a non-empty `merge_by_names` is **refused by name**. A
+  truncated merge updates some matched keys and silently drops the rest, which
+  is the one shape here that corrupts rather than shortens.
+
+**Bytes are Arrow in-memory bytes**, the same accounting the Iceberg
+target-file-size rolling already uses (`AGENTS.md:310`) - not encoded bytes.
+Say so, and say that a Parquet file written under a byte limit lands well under
+it. Reuse that accounting; do not invent a second one.
+
+**Exactness differs, and the docs state it**: `max_row_size` is exact, reached
+by slicing the last batch - `RecordBatch::slice` is a view, so no buffer is
+copied. `max_byte_size` stops at the last row that keeps the running total at
+or under the limit, and a **non-zero byte limit always yields at least one
+row**, so a limit is never a silent total loss; only `Some(0)` yields nothing.
+When both are set, whichever binds first wins.
+
+**It must actually stop the read.** The limiter holds at most one batch and
+stops pulling the moment it is satisfied - the point of a limit is not decoding
+the rest of the file. Assert that with a counting reader: a `max_row_size` of
+10 over a 1e6-row Parquet file reads the row groups ten rows need and no more.
+Pushing the limit into the encoding's own reader, where the encoding has one,
+is an optimization: measure it, land it if it pays, and record it if it does
+not (`AGENTS.md:789`).
+
+Bindings get both as ordinary keyword and option fields, named identically
+across the three languages, and `RecordOptions` in `.api-bindings.txt` gains
+exactly two entries.
+
+### 1.8 One way to apply an expression
+
+`Bound` currently owns a method per target: `matches` and `eval` for a `Value`
+row, `evaluate` / `filter_mask` / `filter` / `project` / `sort` for a
+`RecordBatch`, `filter_reader` / `project_reader` for a stream,
+`matches_holder` for a handle, `statistics_prune` and `statistics_certainty`
+for bounds (`expression/bind.rs`, `expression/arrow.rs`,
+`expression/pushdown.rs`). That is inside-out: one type accumulates a method
+per target kind, so **every new target means another method on `Bound`** -
+which is exactly how the flat `Catalog` surface of 1.1 got the way it did. And
+the parts below add targets: a deletion vector's positions, an export listing,
+a Doris SQL rendering.
+
+Invert it. The **target** says how an expression applies to it:
+
+```rust
+pub trait ApplyExpression {
+    /// What applying a bound expression to this target produces.
+    type Output;
+
+    /// Apply one bound expression to this target.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed failure of the application.
+    fn apply_expression(&self, bound: &Bound) -> Result<Self::Output>;
+}
+```
+
+Implemented for, at least: `Value` (a row) → `Value`; `RecordBatch` →
+`ArrayRef`; `Bounds` → `Option<bool>`, which is the three-valued answer
+`statistics_certainty` already returns; `dyn Attributes` (a handle) → `Value`.
+A consuming sibling covers the stream case, where the receiver is taken by
+value:
+`ApplyExpressionStream` over `BatchReader` → `BatchReader`. Choose an
+associated type over a generic output parameter unless a target genuinely needs
+two, and if one does, say which and why in the module docs rather than making
+every call site annotate.
+
+Rules for the refactor, which are what make it worth doing:
+
+- **The trait owns the implementation.** Nothing evaluates an expression
+  outside an `apply_expression` body.
+- **`Bound` keeps only the verbs that mean something more than "apply".**
+  `matches` is apply-then-require-boolean; `filter` is apply-then-select
+  through the shared kernel; `project` and `sort` are their own operations.
+  Each becomes a two-line composition over the trait. Everything that was a
+  pure per-target alias goes away - part one deleted thin delegates from
+  `Catalog` for this exact reason (`AGENTS.md:491`), and the rule does not stop
+  at the catalog.
+- **The test of the refactor: adding a new target must not touch
+  `expression/`.** Write that test literally - part two's delete sources and
+  part four's Doris rendering are implemented as `ApplyExpression` impls in
+  *their* modules, and if either needs a line inside `expression/`, the trait
+  is shaped wrong.
+- **Behavior does not change.** The scalar-versus-vectorized property test
+  that already exists must pass unchanged, and the expression benchmarks must
+  show no regression against their kernel baselines - a trait that costs a
+  virtual call per batch is fine, one that costs a virtual call per row is not.
+  Measure it (`AGENTS.md:789`).
+- Land it as its own commit, before parts two through four use it.
+
+### 1.9 Tests, benchmarks, bindings, and docs for part one
 
 - **Tests** (`iceberg/catalog/tests.rs`): the cascade to depth; a dotted name
   and its cascaded form returning equal values; a table created into three
@@ -391,6 +532,21 @@ changes behavior, so the diff reviews at a glance.
 - **Rename verification**: after 1.6, `.api-bindings.txt` is byte-identical and
   `git diff --stat` for that commit shows no `python/` or `node/` signature
   change.
+- **Limit tests** (per media, in each media's own test module): `Some(0)`
+  yields a reader whose schema equals the declared or stored schema and whose
+  first `next()` is `None` - assert the schema, not only the emptiness; a limit
+  exactly at the row count, one below, and one above; a limit with a projection
+  and a cast, proving the limit counts *result* rows; a limit with a predicate,
+  proving it means "the first N matching"; a byte limit landing mid-batch,
+  proving the last batch is a zero-copy slice; a non-zero byte limit smaller
+  than one row still yielding one row; a limit plus non-empty `merge_by_names`
+  refused by name; a limited write reported as truncating; peak retained
+  batches of one; and a counting reader proving a small `max_row_size` over a
+  large Parquet file stops reading early.
+- **Expression trait tests**: the existing scalar-versus-vectorized property
+  test passes unchanged, and one test adds a new `ApplyExpression` target
+  defined entirely outside `expression/` - if that test needs a line inside the
+  module, the trait is shaped wrong.
 - **Benchmarks**: `rust/benchmarks/iceberg.rs` gains a `catalog_resolve` group
   - resolve by cascade, resolve by dotted name, and create into a missing
   ancestry - reporting **backend calls** beside wall time, since removing a
@@ -424,8 +580,11 @@ empty warehouse in any of the three languages; the namespaces come into being
 because the metadata document was written, not because anything checked for
 them; the same table is reachable as `catalog.table("sales.eu.orders")`;
 listing a folder of a hundred thousand entries and taking three costs three
-entries' worth of backend calls; and the counting tests show fewer calls than
-before, with the numbers in the commit message.
+entries' worth of backend calls; a read with `max_row_size = 0` returns an
+empty reader carrying the right schema on every media, and one with
+`max_row_size = 10` stops decoding after ten rows; a new expression target is
+added without touching `expression/`; and the counting tests show fewer backend
+calls than before, with the numbers in the commit message.
 
 ## 2. Part two: Iceberg v3, read and written in full, on the mechanisms that already exist
 
@@ -1255,7 +1414,8 @@ Behind `#[cfg(all(feature = "doris", feature = "iceberg"))]`:
 ## 5. Order of work (`AGENTS.md:9` — Rust first, fully)
 
 **Phase 0** — section 1: the catalog hierarchy, the existence audit, the
-listing sweep, the rename. Rust then both bindings then docs, landed and green.
+listing sweep, the rename, the record-option limits, and the expression trait.
+Rust then both bindings then docs, landed and green.
 → **Phase 1** — section 2: the delete path first, then Puffin, then the v3
 types, lineage, defaults, and transforms, with the PyIceberg v3 interop green.
 → **Phase 2** — section 3: `IOBase::remove` first, then `optimize` step by
