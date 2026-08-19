@@ -199,14 +199,15 @@ impl Placeholders {
 /// there the parsed value is returned untouched - no walk, no allocation, no
 /// per-scalar inspection.
 ///
-/// Written as a single-byte search that then checks its neighbour, rather than
-/// as `windows(2).any(..)`: the two-byte comparison per position does not
-/// vectorize, and on a document of a few kilobytes that difference is the whole
-/// measured cost of the guard.
+/// Written as a vectorized single-byte search that then checks its neighbour,
+/// rather than as `windows(2).any(..)`: the two-byte comparison per position
+/// does not vectorize, and on a document of a few kilobytes that difference is
+/// the whole measured cost of the guard. `memchr` is already in the tree under
+/// the regex engine, so the SIMD scan costs no extra crate.
 #[must_use]
 pub(crate) fn present(bytes: &[u8]) -> bool {
     let mut cursor = 0;
-    while let Some(found) = bytes[cursor..].iter().position(|byte| *byte == OPEN[0]) {
+    while let Some(found) = memchr::memchr(OPEN[0], &bytes[cursor..]) {
         let at = cursor + found;
         if bytes.get(at + 1) == Some(&OPEN[1]) {
             return true;

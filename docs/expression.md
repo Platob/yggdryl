@@ -365,7 +365,7 @@ partition tuple *proves* is dropped rather than re-tested.
 
 === "JavaScript"
 
-    ```javascript,ignore
+    ```{ .javascript .ignore }
     const { iceberg } = require('yggdryl')
 
     const table = iceberg.Table.open('/lake/trades')
