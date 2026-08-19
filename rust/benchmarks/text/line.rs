@@ -1,16 +1,21 @@
 //! The Arrow line projection: parse throughput and the cost of its hash.
 //!
-//! The corpus is ~100k synthetic trading-log lines. Parse cases report the
+//! The corpus is anonymized production-shaped OMS log lines -
+//! `2026-08-14 00:05:01.167_250 [250-<hex>:<hex>:72503] [OrderFlow_Enrichment]
+//! (DEBUG) message` - the `[thread] [logger] (LEVEL)` header real trading
+//! systems write. One record spec and **one pattern, spelled identically in
+//! Rust, Python, and JavaScript** (`(?P<name>...)` groups, which both engines
+//! read), generates every corpus in every language. Parse cases report the
 //! *decoded* payload as byte throughput - for the gzip case too, because
 //! decoded text is what the parser actually consumes - so the two numbers
 //! answer "what does the coding cost" rather than mixing wire sizes. The
 //! hash cases isolate the stable FNV-1a fold the `hash` column pays, on the
 //! same messages the parse hashes: hashing measured beside the whole parse is
 //! what justifies keeping the dependency-free hash (regex and UTF-8 dominate;
-//! the recorded numbers in `docs/benchmarks.md` say by how much).
+//! the recorded numbers in `docs/io.md` say by how much).
 //!
 //! `lines_gzip` measures the same projection over the production shape:
-//! rotated log files on local storage, a million records split across eight
+//! rotated log files on local storage, 200k records split across eight
 //! leaves, read through one [`Folder`] handle. It isolates four differences,
 //! one per pair of cases, over corpora holding byte-identical records:
 //!
@@ -21,7 +26,7 @@
 //!   the parser consumes the same text either way, but the two sides do not
 //!   move the same *source* bytes: [`File`] maps its leaf, so `folder/plain`
 //!   pulls the whole decoded payload through the mapping while `folder/gzip`
-//!   pulls about a fifth of it and inflates. The delta is inflate work minus
+//!   pulls about a ninth of it and inflates. The delta is inflate work minus
 //!   the source traffic it saves, two effects of opposite sign that nearly
 //!   cancel here - near enough that which side is faster has not been stable
 //!   between runs on one box, so read the pair as "coded storage costs about
@@ -35,13 +40,12 @@
 //!   the same records in one leaf against eight, so the number covers
 //!   per-leaf open, listing, and the batch boundary a leaf change forces.
 //! - `casts/text` against `casts/typed` is what typed captures cost.
-//!   `thread_id` and `latency_us` infer `int64` from their `\d+`
-//!   sub-patterns, so the default read casts every closing batch onto the
-//!   declared root; `casts/text` declares both `utf8`, which turns the cast
-//!   off and leaves the text the builders already produced. The difference
-//!   is the price of handing a consumer typed columns instead of strings it
-//!   would convert itself.
-//! - `scale/125k` through `scale/1m` is the same gzip folder at four sizes.
+//!   `port` infers `int64` from its `\d+` sub-pattern, so the default read
+//!   casts every closing batch onto the declared root; `casts/text` declares
+//!   it `utf8`, which turns the cast off and leaves the text the builders
+//!   already produced. The difference is the price of handing a consumer a
+//!   typed column instead of strings it would convert itself.
+//! - `scale/25k` through `scale/200k` is the same gzip folder at four sizes.
 //!   Per-byte throughput staying flat across them is the evidence that
 //!   nothing in the projection is quadratic. It is not evidence about
 //!   residency: a reader that buffered the whole decoded corpus before
@@ -49,7 +53,7 @@
 //!   These cases time wall clock and nothing else, so the streaming claim -
 //!   one batch, not one corpus, held at a time - is not measured here; it
 //!   needs a peak-RSS probe across the sizes, which Criterion does not
-//!   report. `scale/1m` and `casts/typed` repeat
+//!   report. `scale/200k` and `casts/typed` repeat
 //!   `folder/gzip`'s work deliberately: a claim is read off cases from the
 //!   same run, so each comparison carries its own baseline.
 //!
@@ -72,26 +76,97 @@ use yggdryl::local::{File, Folder};
 use yggdryl::text::{TextLineOptions, stable_hash_bytes};
 use yggdryl::{DataType, Url};
 
-/// Log lines per corpus: enough that per-read setup is noise.
-const LINES: usize = 100_000;
+/// Log lines per small corpus: enough that per-read setup is noise.
+const LINES: usize = 50_000;
 
-/// The header pattern of the synthetic feed, capturing level and logger.
-const PATTERN: &str =
-    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]";
+/// The shared header pattern, **byte-identical in every language**.
+///
+/// `(?P<name>...)` is the spelling both CPython's `re` and the Rust engine
+/// read, so the Python baseline compiles exactly this string. `port` is the
+/// one capture whose whole body is `\d+`, which the closed inference table
+/// types `int64`.
+const PATTERN: &str = r"^(?P<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}_\d{3}) \[(?P<thread>\d+-[^\]]*:(?P<port>\d+))\] \[(?P<logger>[^\]]+)\] \((?P<level>[A-Z]+)\)";
 
-/// One session of synthetic trading-log text.
+/// Append one record of the shared corpus spec to `text`.
+///
+/// The anonymized production shape: a microsecond timestamp with the `_`
+/// separator, a pool-and-hex thread id, a bracketed logger, a parenthesized
+/// level, and one of eight message shapes. `index` drives every varying part
+/// through the same arithmetic in each language, so the three generators stay
+/// byte-for-byte identical. With `continuations`, every fiftieth record
+/// carries two continuation lines that belong to the same row: the multi-line
+/// shape a line-counting loop miscounts and the projection folds.
+fn record(text: &mut String, index: usize, continuations: bool) {
+    use std::fmt::Write as _;
+
+    let (minute, second) = (index / 3_600 % 60, index / 60 % 60);
+    let micro = index % 1_000_000;
+    let (ms, us) = (micro / 1_000, micro % 1_000);
+    let pool = 250 + index % 4;
+    let hex_a = (index as u64).wrapping_mul(2_654_435_761) % 4_294_967_296;
+    let hex_b = index * 40_503 % 65_536;
+    let port = 72_500 + index % 8;
+    let logger = [
+        "OrderFlow_Enrichment",
+        "Regulatory_Timestamps",
+        "GatewayBridge",
+        "OrderFlow",
+        "RiskManager",
+        "MarketDataManager",
+        "TagWrapper",
+        "RouteCheck",
+    ][index % 8];
+    let level = ["DEBUG", "INFO", "WARNING"][index % 3];
+    let message = match index % 8 {
+        0 => format!(
+            "-> [S] (trade || cancel || tradecancel || replace || new) - ExecType=required, \
+             cumQty={}, CompositeID=null",
+            index % 100
+        ),
+        1 => format!("CLIENTID set to ROUTE{:02}", index % 50),
+        2 => format!(
+            "After Enrichment -> #ROUTINGINDICATOR=yes #CFICODE=ESXXXX #GROUP=GRP{} \
+             #ISINCODE=XX{:010}",
+            index % 9,
+            index % 10_000
+        ),
+        3 => format!(
+            "Message received: Message type [executionreport] from [gateway as FU{:06}] \
+             forwarded to [(null) as (null)] [Direct reject]",
+            index % 1_000_000
+        ),
+        4 => String::from(
+            "Message rejected because : Ignoring expiry message from fully filled orders",
+        ),
+        5 => format!(
+            "Setting last event id for order , 1 to 20260814-2206{:02}-906-02-1",
+            index % 100
+        ),
+        6 => String::from(
+            "Expression from TCRPRICE=xpath(\"/event/action/trade/capturereport/@price\") gives \
+             no result, no mapping is done",
+        ),
+        _ => format!(
+            "Found code(db: XX{0:010}_XNAS_USD) from instrument(db: XX{0:010} XNAS USD)",
+            index % 10_000
+        ),
+    };
+    writeln!(
+        text,
+        "2026-08-14 00:{minute:02}:{second:02}.{ms:03}_{us:03} \
+         [{pool}-{hex_a:08x}:{hex_b:04x}:{port}] [{logger}] ({level}) {message}",
+    )
+    .expect("a string write cannot fail");
+    if continuations && index % 50 == 49 {
+        text.push_str("    at core::enrich(order.rs:118)\n    at core::route(order.rs:64)\n");
+    }
+}
+
+/// One session of the shared corpus, single-line records only.
 fn corpus() -> String {
-    let mut text = String::with_capacity(LINES * 96);
+    let mut text = String::with_capacity(LINES * 176);
     for index in 0..LINES {
-        let (minute, second, micro) = (index / 3_600 % 60, index / 60 % 60, index % 1_000_000);
-        let level = ["ii", "ww", "ee"][index % 3];
-        let price = 187.0 + (index % 400) as f64 / 100.0;
-        text.push_str(&format!(
-            "2024-02-01 10:{minute:02}:{second:02}.{micro:06} [{level}] [engine] \
-             fill {} SYMB-{:04} @ {price:.2} order={index:08}\n",
-            100 + index % 900,
-            index % 128,
-        ));
+        record(&mut text, index, false);
     }
     text
 }
@@ -162,7 +237,9 @@ pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
     // them alone is the parse's hash cost, measured over the same payload.
     let messages: Vec<&str> = text
         .lines()
-        .map(|line| line.split(']').nth(2).expect("a message tail").trim())
+        // The first `) ` in a line closes the parenthesized level, so what
+        // follows is the message the projection hashes.
+        .map(|line| line.split_once(") ").expect("a message tail").1.trim())
         .collect();
     let hashed: u64 = messages.iter().map(|message| message.len() as u64).sum();
     group.throughput(Throughput::Bytes(hashed));
@@ -180,7 +257,7 @@ pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
     // decide whether a faster hash dependency would ever be worth adding.
     let mut micro = criterion.benchmark_group("lines_hash");
     for (label, size) in [("100b", 100), ("512b", 512), ("2kib", 2_048)] {
-        let message: String = "fill 100 SYMB-0042 @ 188.01 order=00001234 "
+        let message: String = "CLIENTID set to ROUTE42 ExecType=required cumQty=45 "
             .chars()
             .cycle()
             .take(size)
@@ -194,18 +271,15 @@ pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
 }
 
 /// Records in the rotated corpus: the production shape the group measures.
-const RECORDS: usize = 1_000_000;
+///
+/// Small enough that the whole group runs in well under a minute, large
+/// enough that per-read setup is noise; the same count the Python and
+/// JavaScript targets read, so the three languages' numbers describe the
+/// same work.
+const RECORDS: usize = 200_000;
 
 /// Rotated leaves one folder corpus is split across.
 const LEAVES: usize = 8;
-
-/// The rotated feed's header pattern.
-///
-/// `level` and `logger` are text; `thread_id` and `latency_us` are exactly
-/// `\d+`, which the closed inference table types `int64` - so the default
-/// read is the typed one, and `casts/text` is the declaration that turns it
-/// off.
-const ROTATED_PATTERN: &str = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\] \[(?<thread_id>\d+)\] took=(?<latency_us>\d+)";
 
 /// A written corpus: the handle addressing it and what its rows weigh.
 struct Corpus<H> {
@@ -229,36 +303,6 @@ const fn spanned_lines(records: usize) -> i64 {
     (records + 2 * (records / 50)) as i64
 }
 
-/// Append one record of the shared corpus spec to `text`.
-///
-/// `index` is global across leaves, so the rotated corpus and the single-file
-/// one hold byte-identical records. Every fiftieth record carries two
-/// continuation lines that belong to the same row: the multi-line shape a
-/// line-counting loop miscounts and the projection folds.
-fn rotated_record(text: &mut String, index: usize) {
-    use std::fmt::Write as _;
-
-    let (minute, second, micro) = (index / 3_600 % 60, index / 60 % 60, index % 1_000_000);
-    let level = ["ii", "ww", "ee"][index % 3];
-    let logger = ["engine", "router", "ledger", "feed"][index % 4];
-    let (thread, latency) = (index % 16, 40 + index % 960);
-    let (qty, symbol) = (100 + index % 900, index % 128);
-    // Cents rather than a float: the two-decimal price is exact and identical
-    // in every language that generates this corpus.
-    let cents = 18_700 + index % 400;
-    writeln!(
-        text,
-        "2024-02-01 10:{minute:02}:{second:02}.{micro:06} [{level}] [{logger}] [{thread}] \
-         took={latency} fill {qty} SYMB-{symbol:04} @ {}.{:02} order={index:08}",
-        cents / 100,
-        cents % 100,
-    )
-    .expect("a string write cannot fail");
-    if index % 50 == 49 {
-        text.push_str("    at engine::match(order.rs:118)\n    at engine::step(order.rs:64)\n");
-    }
-}
-
 /// The [`LEAVES`] rotated payloads holding `records` records between them.
 fn rotated_shards(records: usize) -> Vec<String> {
     assert!(
@@ -268,9 +312,9 @@ fn rotated_shards(records: usize) -> Vec<String> {
     let per_leaf = records / LEAVES;
     (0..LEAVES)
         .map(|leaf| {
-            let mut text = String::with_capacity(per_leaf * 128);
+            let mut text = String::with_capacity(per_leaf * 176);
             for index in leaf * per_leaf..(leaf + 1) * per_leaf {
-                rotated_record(&mut text, index);
+                record(&mut text, index, true);
             }
             text
         })
@@ -383,37 +427,33 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
     let root = scratch();
     let _ = std::fs::remove_dir_all(&root);
 
-    let typed = TextLineOptions::with_pattern(ROTATED_PATTERN).expect("a valid pattern");
-    // The same captures declared text: the strict cast the inferred int64
-    // columns pay for is off, and the builders' own utf8 arrays are emitted.
+    let typed = TextLineOptions::with_pattern(PATTERN).expect("a valid pattern");
+    // The same capture declared text: the strict cast the inferred int64
+    // column pays for is off, and the builders' own utf8 arrays are emitted.
     let text = typed
         .clone()
-        .try_with_capture_types([
-            ("thread_id", DataType::Utf8),
-            ("latency_us", DataType::Utf8),
-        ])
-        .expect("the pattern names both captures");
+        .try_with_capture_types([("port", DataType::Utf8)])
+        .expect("the pattern names the capture");
 
     let shards = rotated_shards(RECORDS);
     let gzip = rotated_folder(&root.join("gzip"), &shards, RECORDS, true);
     let plain = rotated_folder(&root.join("plain"), &shards, RECORDS, false);
     let single = single_leaf(&root.join("single"), &shards, RECORDS);
     drop(shards);
-    // The scale sweep stops at four points, `scale/1m` reusing the folder the
-    // headline cases read: each added point costs a full pass, and the claim
-    // is flat per-byte throughput, which four sizes over an eightfold range
-    // carry.
-    let scale: Vec<(&str, Corpus<Folder>)> =
-        [("125k", 125_000), ("250k", 250_000), ("500k", 500_000)]
-            .into_iter()
-            .map(|(label, records)| {
-                let shards = rotated_shards(records);
-                (
-                    label,
-                    rotated_folder(&root.join(label), &shards, records, true),
-                )
-            })
-            .collect();
+    // The scale sweep stops at four points, `scale/200k` reusing the folder
+    // the headline cases read: each added point costs a full pass, and the
+    // claim is flat per-byte throughput, which four sizes over an eightfold
+    // range carry.
+    let scale: Vec<(&str, Corpus<Folder>)> = [("25k", 25_000), ("50k", 50_000), ("100k", 100_000)]
+        .into_iter()
+        .map(|(label, records)| {
+            let shards = rotated_shards(records);
+            (
+                label,
+                rotated_folder(&root.join(label), &shards, records, true),
+            )
+        })
+        .collect();
 
     // Proven once, outside the timers: a projection that split or dropped the
     // multi-line records would still look fast.
@@ -426,12 +466,12 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
     }
 
     let mut group = criterion.benchmark_group("lines_gzip");
-    // One pass over a million records is seconds, not microseconds: ten
-    // samples is the whole measurement, and a long warm-up would only repeat
-    // it.
+    // One pass over the corpus is hundreds of milliseconds, not
+    // microseconds: ten samples is the whole measurement, and a long warm-up
+    // would only repeat it.
     group.sample_size(10);
     group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(30));
+    group.measurement_time(Duration::from_secs(10));
 
     group.throughput(Throughput::Bytes(gzip.decoded));
     group.bench_function("folder/gzip", |bencher| {
@@ -461,7 +501,7 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
         });
     }
     group.throughput(Throughput::Bytes(gzip.decoded));
-    group.bench_function("scale/1m", |bencher| {
+    group.bench_function("scale/200k", |bencher| {
         bencher.iter(|| parsed_rows(black_box(&gzip.handle), &typed));
     });
     group.finish();
@@ -472,9 +512,9 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 
 /// Byte-sized batching against fixed-row batching on uneven records.
 ///
-/// The corpus mixes 40-byte lines with 4 KB stack traces in the same file,
+/// The corpus mixes short lines with ~2 KB stack traces in the same file,
 /// which is what makes the two bounds behave differently: a row bound produces
-/// batches whose size swings by two orders of magnitude, while a byte bound
+/// batches whose sizes swing widely, while a byte bound
 /// produces comparably sized ones whatever the records look like. The cases
 /// report the batch-size spread alongside the timing, because the *point* of
 /// byte sizing is the spread rather than the speed.
@@ -482,7 +522,7 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 /// `detect/*` is the ninth task's comparison: timestamp-anchored detection
 /// against the equivalent anchored regex, on the same corpus. Detection has no
 /// expression to compile or run, and its cheap first-byte guard rejects a
-/// continuation line in one byte - `docs/benchmarks.md` records by how much
+/// continuation line in one byte - `docs/io.md` records by how much
 /// that pays, or whether it does.
 ///
 /// `zone/*` isolates what reading a naive timestamp in a zone costs: unset
@@ -492,12 +532,12 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 pub(crate) fn lines_shape_benchmarks(criterion: &mut Criterion) {
     use yggdryl::text::{Opening, Strip};
 
-    // A corpus whose record sizes swing by two orders of magnitude.
+    // A corpus whose record sizes swing by an order of magnitude.
     let mut text = String::new();
     for index in 0..20_000_usize {
-        rotated_record(&mut text, index);
+        record(&mut text, index, true);
         if index % 25 == 0 {
-            // A stack trace: ~4 KB in one record, against ~40-byte neighbours.
+            // A stack trace: ~2 KB in one record, against short neighbours.
             for frame in 0..40 {
                 text.push_str("\tat com.example.service.Handler.invoke(Handler.java:");
                 text.push_str(&frame.to_string());

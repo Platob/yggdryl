@@ -3,13 +3,13 @@
 Run from ``python/`` against a **release** wheel (a debug build understates
 the native side by an order of magnitude)::
 
-    .venv/Scripts/python benchmarks/log_lines_bulk.py --min-time 0.2 --repeat 3
+    .venv/Scripts/python benchmarks/read_lines_bulk.py --min-time 0.2 --repeat 3
 
-``benchmarks/log_lines.py`` answers "how fast is the projection against the
+``benchmarks/read_lines.py`` answers "how fast is the projection against the
 ``re`` loop a Python engineer would write". This target answers a different
 question and carries no plain-Python baseline: what the *production shape*
-costs - a folder of rotated ``.log.gz`` leaves, a million records, read as a
-stream. Every case below is one claim:
+costs - a folder of rotated ``.log.gz`` leaves, 200k anonymized OMS records,
+read as a stream. Every case below is one claim:
 
 ``read folder gzip``
     Throughput over the production shape: eight ``app-N.log.gz`` leaves read
@@ -30,16 +30,15 @@ stream. Every case below is one claim:
     type, and batch boundaries.
 ``read folder utf8``
     The same drain of the same gzip folder with ``capture_types`` declaring
-    ``thread_id`` and ``latency_us`` as ``utf8``, which turns the strict
-    native cast off. Only the cast differs from ``read folder gzip``, and
-    both rows only count rows, so *that* difference is what typing two
-    captures on every record costs - 2 x RECORDS values. This is the same
-    pairing the Rust ``lines_gzip/casts/{typed,text}`` cases make.
+    ``port`` as ``utf8``, which turns the strict native cast off. Only the
+    cast differs from ``read folder gzip``, and both rows only count rows, so
+    *that* difference is what typing a capture on every record costs. This is
+    the same pairing the Rust ``lines_gzip/casts/{typed,text}`` cases make.
 ``typed accessors``
-    Parse *and aggregate*. ``(?<thread_id>\\d+)`` and ``(?<latency_us>\\d+)``
-    infer ``int64`` from the closed inference table, so the aggregate is
-    ``pyarrow.compute`` over already-typed columns with no Python-side
-    conversion at all. Minus ``read folder gzip``, that is the aggregation.
+    Parse *and aggregate*. ``(?P<port>\\d+)`` infers ``int64`` from the
+    closed inference table, so the aggregate is ``pyarrow.compute`` over an
+    already-typed column with no Python-side conversion at all. Minus
+    ``read folder gzip``, that is the aggregation.
 ``text captures + py cast``
     The identical aggregate over the ``utf8`` parse, so the conversion falls
     to the consumer. Minus ``read folder utf8``, that is the aggregation plus
@@ -47,13 +46,13 @@ stream. Every case below is one claim:
 
     Read these two aggregate rows against *their own* parse row, never
     against each other: the two sides do not convert the same volume. The
-    native cast types every record's two captures (2,000,000 values), while
-    the consumer converts only the rows that survive the ``level`` filter
-    (about a third of them). Subtracting one aggregate row from the other
-    would compare a whole-corpus cast against a filtered one and call the
-    difference a verdict. The consumer side uses ``pyarrow.compute.cast``,
-    the fastest conversion a Python caller has - C-speed and vectorized - so
-    its cost is a floor; an ``int()`` loop over ``to_pylist()`` is far worse.
+    native cast types the capture on every record, while the consumer
+    converts only the rows that survive the ``level`` filter (about a third
+    of them). Subtracting one aggregate row from the other would compare a
+    whole-corpus cast against a filtered one and call the difference a
+    verdict. The consumer side uses ``pyarrow.compute.cast``, the fastest
+    conversion a Python caller has - C-speed and vectorized - so its cost is
+    a floor; an ``int()`` loop over ``to_pylist()`` is far worse.
 
 Then a scale sweep over 1/8, 1/4, 1/2 and 1/1 of the corpus. The claim there
 is not a speed but a *shape*: throughput per decoded byte stays flat as the
@@ -100,12 +99,12 @@ which is a floor masquerading as a measurement. ``signal->maxrss`` is not
 inherited, only the mm's high-water is, so putting a ~10 MiB interpreter in
 between gives each probe an honest number of its own.
 
-The corpus generator is shared byte-for-byte with the Rust and Node targets of
-the same name so the three languages' numbers are comparable. Do not "improve"
-it. Every 50th record is a three-line stack trace that the projection folds
-into a single row, which is why the row-count assertion below is load-bearing:
-a parser that split those into three rows, or dropped the continuations, would
-still look fast.
+The corpus specification lives in ``benchmarks/_corpus.py`` and is shared
+byte-for-byte with the Rust and Node targets of the same name, so the three
+languages' numbers are comparable. Do not "improve" it. Every 50th record is a
+three-line stack trace that the projection folds into a single row, which is
+why the row-count assertion below is load-bearing: a parser that split those
+into three rows, or dropped the continuations, would still look fast.
 """
 
 from __future__ import annotations
@@ -135,7 +134,7 @@ try:  # `resource` is Unix-only; only --measure-memory needs it.
 except ImportError:  # pragma: no cover - Windows
     resource = None  # type: ignore[assignment]
 
-RECORDS = 1_000_000
+RECORDS = 200_000
 LEAVES = 8
 
 # Lines generated per write, so building a fixture costs constant memory
@@ -144,18 +143,15 @@ LEAVES = 8
 # high-water mark the probe exists to report.
 CHUNK = 4_096
 
-PATTERN = (
-    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*"
-    r" \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]"
-    r" \[(?<thread_id>\d+)\] took=(?<latency_us>\d+)"
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _corpus import PATTERN, line as _shared_line  # noqa: E402
 
-# The two captures that infer int64 off their own `\d+` sub-pattern, declared
-# back to utf8 for the "what does the typed accessor cost" row.
-TEXT_CAPTURES = {"thread_id": "utf8", "latency_us": "utf8"}
+# The capture that infers int64 off its own `\d+` sub-pattern, declared back
+# to utf8 for the "what does the typed accessor cost" row.
+TEXT_CAPTURES = {"port": "utf8"}
 
 # The level the aggregate filters on; one of the three the generator cycles.
-ERROR_LEVEL = "ee"
+ERROR_LEVEL = "WARNING"
 
 # Level 6 is the DEFLATE default and what the crate's own gzip writes, so the
 # wire the parser decodes here is the wire it decodes in production.
@@ -182,29 +178,12 @@ ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-log-bulk-"))
 
 
 def _line(index: int) -> str:
-    """Render record ``index`` of the shared corpus specification."""
-    minute = index // 3_600 % 60
-    second = index // 60 % 60
-    micro = index % 1_000_000
-    level = ("ii", "ww", "ee")[index % 3]
-    logger = ("engine", "router", "ledger", "feed")[index % 4]
-    thread = index % 16
-    latency = 40 + index % 960
-    qty = 100 + index % 900
-    symbol = index % 128
-    price = 187.0 + (index % 400) / 100.0
-    line = (
-        f"2024-02-01 10:{minute:02}:{second:02}.{micro:06}"
-        f" [{level}] [{logger}] [{thread}]"
-        f" took={latency} fill {qty} SYMB-{symbol:04} @ {price:.2f}"
-        f" order={index:08}\n"
-    )
-    if index % 50 == 49:
-        # A three-line record. The projection folds it into one row with
-        # lines=3; a naive splitlines loop would miscount it.
-        line += "    at engine::match(order.rs:118)\n"
-        line += "    at engine::step(order.rs:64)\n"
-    return line
+    """Render record ``index`` of the shared corpus specification.
+
+    Every fiftieth record is a three-line record the projection folds into
+    one row with ``lines=3``; a naive splitlines loop would miscount it.
+    """
+    return _shared_line(index, continuations=True)
 
 
 @dataclass(frozen=True)
@@ -296,34 +275,30 @@ def _read_rows(corpus: Corpus, *, text: bool = False) -> int:
     return rows
 
 
-def _aggregate(corpus: Corpus, *, text: bool) -> tuple[int, int, int]:
-    """Filter on ``level`` and total both numeric captures, batch by batch.
+def _aggregate(corpus: Corpus, *, text: bool) -> tuple[int, int]:
+    """Filter on ``level`` and total the ``port`` capture, batch by batch.
 
-    With ``text`` false the two captures arrive as ``int64`` from the native
-    cast and ``pyarrow.compute`` reads them directly. With ``text`` true they
-    are declared ``utf8``, the native cast is off, and the consumer pays for
-    the conversion here. Both branches compute the identical three numbers,
-    which is what makes the pair of timings a comparison and not two
-    unrelated measurements.
+    With ``text`` false the capture arrives as ``int64`` from the native cast
+    and ``pyarrow.compute`` reads it directly. With ``text`` true it is
+    declared ``utf8``, the native cast is off, and the consumer pays for the
+    conversion here. Both branches compute the identical numbers, which is
+    what makes the pair of timings a comparison and not two unrelated
+    measurements.
     """
     capture_types = TEXT_CAPTURES if text else None
     reader = IOBase(corpus.path).read_arrow_lines(PATTERN, capture_types=capture_types)
     rows = 0
-    latency = 0
-    threads = 0
+    ports = 0
     for batch in reader:
         kept = batch.filter(pc.equal(batch.column("level"), ERROR_LEVEL))
         if kept.num_rows == 0:
             continue
-        latency_column = kept.column("latency_us")
-        thread_column = kept.column("thread_id")
+        port_column = kept.column("port")
         if text:
-            latency_column = pc.cast(latency_column, pa.int64())
-            thread_column = pc.cast(thread_column, pa.int64())
+            port_column = pc.cast(port_column, pa.int64())
         rows += kept.num_rows
-        latency += pc.sum(latency_column).as_py()
-        threads += pc.sum(thread_column).as_py()
-    return rows, latency, threads
+        ports += pc.sum(port_column).as_py()
+    return rows, ports
 
 
 def _measure(
@@ -513,7 +488,7 @@ def main() -> None:
         )
         print(
             f"aggregate: {typed_total[0]:,} rows at level {ERROR_LEVEL!r}, "
-            f"latency_us total {typed_total[1]:,}"
+            f"port total {typed_total[1]:,}"
         )
         print()
 
@@ -595,7 +570,14 @@ def main() -> None:
                 f"{'floor (no corpus)':26} {0:>12} {0.0:>14.1f} "
                 f"{_mib(floor):>14.1f} {0.0:>16.1f}"
             )
-            for label, size in _sweep_sizes(records):
+            # The memory sweep continues past the timing corpus, because the
+            # claim is a *plateau*: residency stops growing once the corpus is
+            # comfortably larger than the batch budget, and a corpus of only a
+            # few batches cannot show that by itself.
+            probes = list(_sweep_sizes(records)) + [
+                (f"scale {factor}/1", records * factor) for factor in (2, 4)
+            ]
+            for label, size in probes:
                 probed = _folder(ROOT, f"rss-{size}", size, coded=True)
                 report = _run_probe(size, probed.path)
                 assert report["rows"] == size, report

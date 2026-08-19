@@ -121,7 +121,7 @@ use super::view::TextLine;
 /// - [`IOKind::Unknown`] - the resource does not exist - reads as an **empty**
 ///   reader: zero batches, schema still answered. Absence is never an error on
 ///   the read path.
-pub(crate) fn read_arrow_lines<H: IOBase>(
+pub(crate) fn read_arrow_lines<H: IOBase + ?Sized>(
     handle: &H,
     options: &TextLineOptions,
 ) -> Result<BatchReader> {
@@ -146,7 +146,7 @@ pub(crate) fn read_arrow_lines<H: IOBase>(
 /// copy of the presented value, under the handle's own url and media type. A
 /// coded view materializes that value to serve any read, so the copy is its
 /// ordinary cost, not a new one.
-pub(crate) fn snapshot_arrow_lines<H: IOBase>(
+pub(crate) fn snapshot_arrow_lines<H: IOBase + ?Sized>(
     handle: &H,
     options: &TextLineOptions,
 ) -> Result<BatchReader> {
@@ -178,7 +178,7 @@ pub(crate) fn into_arrow_lines<H: IOBase + 'static>(
 }
 
 /// An owned view of the same location a borrowed handle addresses.
-fn reopened<H: IOBase>(handle: &H) -> Result<Holder> {
+fn reopened<H: IOBase + ?Sized>(handle: &H) -> Result<Holder> {
     if let Some(parent) = handle.parent() {
         if let Some(name) = handle.url().and_then(crate::Url::file_name) {
             let mut child = parent.child_by_path(name)?;
@@ -623,6 +623,206 @@ fn append_timestamp(builders: &mut RowBuilders, line: &TextLine<'_>, header: &st
     builders.time.append_value(micros);
     builders.unix.append_value(nanos);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The write half: Arrow batches out as text lines.
+//
+// This is what makes `Text` a full media rather than a read-only projection:
+// `write_arrow_batch_reader` and `append_arrow_batch_reader` land here when
+// the record options say text, exactly as they land in the IPC encoder when
+// they say IPC.
+// ---------------------------------------------------------------------------
+
+/// Replace a handle's contents with `batches` rendered as text lines.
+///
+/// Each row renders as one line - the `header` column when present and
+/// non-null, a single space, then the `message` column; a message holding
+/// interior newlines writes back as the multi-line record it was read from.
+/// A batch with no `message` column but exactly one `utf8` column writes that
+/// column, so "write these strings as lines" needs no rename.
+///
+/// The rendered value is held whole before anything reaches the handle - the
+/// same shape as the IPC encoder, and for the same reason: a failure mid-way
+/// must leave the resource exactly as it was.
+///
+/// # Errors
+///
+/// Returns an error when no column can be read as the line text, or the
+/// handle's resize or write failure.
+pub(crate) fn write_arrow_lines(
+    handle: &mut (impl IOBase + ?Sized),
+    batches: BatchReader,
+    options: &super::record::TextOptions,
+) -> Result<()> {
+    use crate::generic::IORecordOptions;
+
+    let rendered = rendered_lines(batches, &options.lines)?;
+    let encoded = handle.codec().dump_with_level(&rendered, options.level())?;
+    handle.write_all_bytes(&encoded)?;
+    Ok(())
+}
+
+/// Add `batches` after a handle's current lines.
+///
+/// A stored final line without its terminator is closed first, so the first
+/// appended row never merges into it. An uncoded handle appends in place at
+/// its current end. A content coding is
+/// not appendable, so a coded handle decodes its value, extends it, and
+/// stores the whole coding again - stated rather than hidden, because it is
+/// the coding's cost, not the append's.
+///
+/// # Errors
+///
+/// Returns an error when no column can be read as the line text, or the
+/// handle's read, resize, or write failure.
+pub(crate) fn append_arrow_lines(
+    handle: &mut (impl IOBase + ?Sized),
+    batches: BatchReader,
+    options: &super::record::TextOptions,
+) -> Result<()> {
+    use crate::generic::IORecordOptions;
+
+    let rendered = rendered_lines(batches, &options.lines)?;
+    let linesep = options.lines.write_linesep();
+    let codec = handle.codec();
+    if matches!(codec, crate::Codec::Identity) {
+        let mut offset = handle.size();
+        // A stored final line may lack its terminator; appending straight
+        // after it would merge the first new row into it, so the terminator
+        // is supplied first.
+        if offset > 0 {
+            let mut last = [0_u8; 1];
+            handle.pread_exact(offset - 1, &mut last)?;
+            if Some(&last[0]) != linesep.last() {
+                handle.pwrite_all(offset, linesep)?;
+                offset += linesep.len() as u64;
+            }
+        }
+        handle.pwrite_all(offset, &rendered)?;
+        return handle.flush();
+    }
+    let mut decoded = if handle.is_empty() {
+        Vec::new()
+    } else {
+        codec.load(&handle.read_all_bytes()?)?
+    };
+    if decoded.last().is_some() && decoded.last() != linesep.last() {
+        decoded.extend_from_slice(linesep);
+    }
+    decoded.extend_from_slice(&rendered);
+    let encoded = codec.dump_with_level(&decoded, options.level())?;
+    handle.write_all_bytes(&encoded)?;
+    Ok(())
+}
+
+/// Render every batch's rows as terminated lines, into one buffer.
+///
+/// Held whole deliberately: the caller publishes it in one write, so a
+/// failure while rendering leaves the resource untouched.
+fn rendered_lines(batches: BatchReader, options: &TextLineOptions) -> Result<Vec<u8>> {
+    let schema = batches.schema();
+    let columns = LineColumns::resolve(schema.as_ref())?;
+    let linesep = options.write_linesep();
+    let mut rendered = Vec::new();
+    for batch in batches {
+        let batch = batch.map_err(crate::arrow::from_reader_error)?;
+        columns.render(&batch, linesep, &mut rendered)?;
+    }
+    Ok(rendered)
+}
+
+/// Where a batch's line text lives: a `message` column, its optional
+/// `header`, or the single `utf8` column a plain batch holds.
+struct LineColumns {
+    message: usize,
+    header: Option<usize>,
+}
+
+impl LineColumns {
+    /// Resolve the line columns once per reader, ASCII case-insensitively -
+    /// the way every cast matches names.
+    fn resolve(schema: &arrow_schema::Schema) -> Result<Self> {
+        let named = |name: &str| {
+            schema
+                .fields()
+                .iter()
+                .position(|field| field.name().eq_ignore_ascii_case(name))
+        };
+        if let Some(message) = named("message") {
+            return Ok(Self {
+                message,
+                header: named("header"),
+            });
+        }
+        let mut texts = schema
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| field.data_type() == &arrow_schema::DataType::Utf8);
+        if let (Some((only, _)), None) = (texts.next(), texts.next()) {
+            return Ok(Self {
+                message: only,
+                header: None,
+            });
+        }
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                "rows a line can be rendered from (a `message` utf8 column, optionally beside a \
+                 `header` one, or exactly one utf8 column)",
+                format_smolstr!(
+                    "columns {:?}",
+                    schema
+                        .fields()
+                        .iter()
+                        .map(|field| field.name().as_str())
+                        .collect::<Vec<_>>()
+                ),
+            ),
+        })
+    }
+
+    /// Append one batch's rows to `rendered`, each line terminated.
+    fn render(&self, batch: &RecordBatch, linesep: &[u8], rendered: &mut Vec<u8>) -> Result<()> {
+        use arrow_array::Array as _;
+
+        let message = text_column(batch, self.message)?;
+        let header = self
+            .header
+            .map(|index| text_column(batch, index))
+            .transpose()?;
+        for row in 0..batch.num_rows() {
+            if let Some(header) = header {
+                if !header.is_null(row) && !header.value(row).is_empty() {
+                    rendered.extend_from_slice(header.value(row).as_bytes());
+                    if !message.is_null(row) && !message.value(row).is_empty() {
+                        rendered.push(b' ');
+                    }
+                }
+            }
+            if !message.is_null(row) {
+                rendered.extend_from_slice(message.value(row).as_bytes());
+            }
+            rendered.extend_from_slice(linesep);
+        }
+        Ok(())
+    }
+}
+
+/// Borrow one column as text, or say what it is instead.
+fn text_column(batch: &RecordBatch, index: usize) -> Result<&arrow_array::StringArray> {
+    batch
+        .column(index)
+        .as_any()
+        .downcast_ref::<arrow_array::StringArray>()
+        .ok_or_else(|| Error::InvalidRecord {
+            path: format_smolstr!("$.{}", batch.schema().field(index).name()),
+            reason: crate::text::expected_got(
+                "a utf8 column to render lines from",
+                format_smolstr!("{}", batch.schema().field(index).data_type()),
+            ),
+        })
 }
 
 /// A typed per-row failure: the column path, the row, and the resource.

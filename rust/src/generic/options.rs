@@ -623,6 +623,12 @@ pub enum RecordOptions {
     Parquet(crate::parquet::ParquetOptions),
     /// Apache Avro container options.
     Avro(crate::avro::AvroOptions),
+    /// Text-line options: records split by a terminator, grouped and
+    /// projected by [`TextLineOptions`](crate::text::TextLineOptions).
+    ///
+    /// Boxed because the extractor - two compiled expressions and a schema -
+    /// dwarfs the other variants, and options are cloned per read.
+    Text(Box<crate::text::TextOptions>),
 }
 
 impl RecordOptions {
@@ -655,13 +661,18 @@ impl RecordOptions {
         if base == &MimeType::AVRO {
             return Ok(Self::Avro(crate::avro::AvroOptions::new()));
         }
+        // Plain text reads and writes as lines: the projection is the
+        // encoding, so a `.log` answers the record surface out of the box.
+        if base == &MimeType::PLAIN_TEXT {
+            return Ok(Self::Text(Box::default()));
+        }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: crate::text::expected_got(
                 if cfg!(feature = "parquet") {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro)"
+                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain)"
                 } else {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro; the `parquet` feature is not enabled)"
+                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain; the `parquet` feature is not enabled)"
                 },
                 base,
             ),
@@ -675,6 +686,7 @@ impl RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => MimeType::PARQUET,
             Self::Avro(_) => MimeType::AVRO,
+            Self::Text(_) => MimeType::PLAIN_TEXT,
         }
     }
 }
@@ -686,6 +698,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.schema(),
             Self::Avro(options) => options.schema(),
+            Self::Text(options) => options.schema(),
         }
     }
 
@@ -695,6 +708,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_schema(schema),
             Self::Avro(options) => options.set_schema(schema),
+            Self::Text(options) => options.set_schema(schema),
         }
     }
 
@@ -704,6 +718,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.root_name(),
             Self::Avro(options) => options.root_name(),
+            Self::Text(options) => options.root_name(),
         }
     }
 
@@ -713,6 +728,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_root_name(root_name),
             Self::Avro(options) => options.set_root_name(root_name),
+            Self::Text(options) => options.set_root_name(root_name),
         }
     }
 
@@ -722,6 +738,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.safe(),
             Self::Avro(options) => options.safe(),
+            Self::Text(options) => options.safe(),
         }
     }
 
@@ -731,6 +748,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_safe(safe),
             Self::Avro(options) => options.set_safe(safe),
+            Self::Text(options) => options.set_safe(safe),
         }
     }
 
@@ -740,6 +758,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.batch_size(),
             Self::Avro(options) => options.batch_size(),
+            Self::Text(options) => options.batch_size(),
         }
     }
 
@@ -749,6 +768,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_batch_size(batch_size),
             Self::Avro(options) => options.set_batch_size(batch_size),
+            Self::Text(options) => options.set_batch_size(batch_size),
         }
     }
 
@@ -758,6 +778,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.max_row_size(),
             Self::Avro(options) => options.max_row_size(),
+            Self::Text(options) => options.max_row_size(),
         }
     }
 
@@ -767,6 +788,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_max_row_size(max_row_size),
             Self::Avro(options) => options.set_max_row_size(max_row_size),
+            Self::Text(options) => options.set_max_row_size(max_row_size),
         }
     }
 
@@ -776,6 +798,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.max_byte_size(),
             Self::Avro(options) => options.max_byte_size(),
+            Self::Text(options) => options.max_byte_size(),
         }
     }
 
@@ -785,6 +808,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_max_byte_size(max_byte_size),
             Self::Avro(options) => options.set_max_byte_size(max_byte_size),
+            Self::Text(options) => options.set_max_byte_size(max_byte_size),
         }
     }
 
@@ -794,6 +818,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.level(),
             Self::Avro(options) => options.level(),
+            Self::Text(options) => options.level(),
         }
     }
 
@@ -803,6 +828,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_level(level),
             Self::Avro(options) => options.set_level(level),
+            Self::Text(options) => options.set_level(level),
         }
     }
 
@@ -812,6 +838,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.merge_by_names(),
             Self::Avro(options) => options.merge_by_names(),
+            Self::Text(options) => options.merge_by_names(),
         }
     }
 
@@ -821,6 +848,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_merge_by_names(merge_by_names),
             Self::Avro(options) => options.set_merge_by_names(merge_by_names),
+            Self::Text(options) => options.set_merge_by_names(merge_by_names),
         }
     }
 
@@ -830,6 +858,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.select_by_names(),
             Self::Avro(options) => options.select_by_names(),
+            Self::Text(options) => options.select_by_names(),
         }
     }
 
@@ -839,6 +868,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_select_by_names(select_by_names),
             Self::Avro(options) => options.set_select_by_names(select_by_names),
+            Self::Text(options) => options.set_select_by_names(select_by_names),
         }
     }
 
@@ -848,6 +878,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.filter_partitions(),
             Self::Avro(options) => options.filter_partitions(),
+            Self::Text(options) => options.filter_partitions(),
         }
     }
 
@@ -857,6 +888,7 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_filter_partitions(filter_partitions),
             Self::Avro(options) => options.set_filter_partitions(filter_partitions),
+            Self::Text(options) => options.set_filter_partitions(filter_partitions),
         }
     }
 }
@@ -877,6 +909,18 @@ impl From<crate::parquet::ParquetOptions> for RecordOptions {
 impl From<crate::avro::AvroOptions> for RecordOptions {
     fn from(value: crate::avro::AvroOptions) -> Self {
         Self::Avro(value)
+    }
+}
+
+impl From<crate::text::TextOptions> for RecordOptions {
+    fn from(value: crate::text::TextOptions) -> Self {
+        Self::Text(Box::new(value))
+    }
+}
+
+impl From<crate::text::TextLineOptions> for RecordOptions {
+    fn from(value: crate::text::TextLineOptions) -> Self {
+        Self::Text(Box::new(crate::text::TextOptions::with_lines(value)))
     }
 }
 

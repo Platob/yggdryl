@@ -618,6 +618,55 @@ spheroid, named for their methods: Vincenty's iterative formulae, the Thomas cub
 Andoyer first-order approximations, and Karney's exact algorithm. The workspace stores and spells
 the choice; it does not evaluate geodesics.
 
+## Listing the vocabularies
+
+Pure enums cross the bindings as strings - a datatype id is `"int64"`, a codec is `"gzip"` - and
+the vocabularies enumerate what those strings can be. Every listing is unpacked from one native
+call, so it can never drift from the Rust constants it mirrors.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Codec, DataTypeId, IOKind, TimeUnit, UnionMode};
+
+    // Every core enum publishes its variants in canonical order.
+    assert_eq!(DataTypeId::ALL.len(), 41);
+    assert!(DataTypeId::ALL.contains(&DataTypeId::Int64));
+    assert_eq!(UnionMode::ALL.map(UnionMode::as_str), ["sparse", "dense"]);
+    assert!(TimeUnit::ALL.contains(&TimeUnit::Microsecond));
+    assert!(Codec::ALL.contains(&Codec::Gzip));
+    assert!(IOKind::ALL.contains(&IOKind::File));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import enums
+
+    assert "int64" in enums.DATA_TYPE_IDS
+    assert enums.UNION_MODES == ("sparse", "dense")
+    assert "us" in enums.TIME_UNITS
+    assert "gzip" in enums.CODECS
+    assert "file" in enums.IO_KINDS
+    assert "arrow" in enums.COMPATIBILITY_SCHEMES
+    assert enums.LEVELS["default"] == 6
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { enums } = require('yggdryl')
+
+    assert.ok(enums.dataTypeIds.includes('int64'))
+    assert.deepEqual([...enums.unionModes], ['sparse', 'dense'])
+    assert.ok(enums.timeUnits.includes('us'))
+    assert.ok(enums.codecs.includes('gzip'))
+    assert.ok(enums.ioKinds.includes('file'))
+    assert.ok(enums.compatibilitySchemes.includes('arrow'))
+    assert.equal(enums.levels.default, 6)
+    ```
+
 ## Timezone
 
 `Timezone` is the one way to name a zone: an alias, a case variant, and a fixed offset all
@@ -714,8 +763,8 @@ a schema and re-exporting it moves no bytes.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/enums-rust.ipynb){ download },
-[Python](notebooks/enums-python.ipynb){ download },
-[JavaScript](notebooks/enums-javascript.ipynb){ download }.
+[Rust](notebooks/rust/enums.ipynb){ download },
+[Python](notebooks/python/enums.ipynb){ download },
+[JavaScript](notebooks/javascript/enums.ipynb){ download }.
 
 <!-- /notebooks -->

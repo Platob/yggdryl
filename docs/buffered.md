@@ -239,7 +239,7 @@ assert_eq!(handle.cached_pages(), 1);
 assert_eq!(handle.size(), payload.len() as u64);
 ```
 
-Three things follow, and the [benchmarks](benchmarks.md) measure all of them:
+Three things follow, and the [measurements below](#what-the-cache-buys-and-what-it-costs) cover all of them:
 
 - **The order of wrapping matters.** `Buffered<Coded<_>>` caches the *decoded* bytes, which
   is what the reads want. `Coded<Buffered<_>>` would cache the compressed bytes and still
@@ -334,7 +334,7 @@ let _ = std::fs::remove_file(&path);
 
 Over a memory-mapped [local file](local.md), a `pread` is already a `memcpy` out of the page
 cache the kernel keeps, so wrapping one buys little and costs a lock and a second copy - the
-[benchmarks](benchmarks.md) say by how much.
+[measurements below](#what-the-cache-buys-and-what-it-costs) say by how much.
 
 The cache earns its keep where a fetch is not a `memcpy`, and the core ships two such
 handles. An [`arrowfs`](arrowfs.md) handle answers every read with one `read_range` call
@@ -343,12 +343,109 @@ through the foreign-filesystem vtable - over `LocalFileSystem` an `open`, a `see
 Both are the same code as the mapped case, which is the point of the wrapper: what changes is
 only how much the fetch it removes was worth.
 
+## What the cache buys, and what it costs
+
+`io_buffered` runs three read workloads over one 16 MiB fixture and every handle the core
+ships, plus a fourth workload over a compressed one. The handles fall into two families, and
+that split is the whole result:
+
+- **Already memory.** An in-memory `Buffer`, a memory-mapped `local::File`, and an
+  [`arrowfs`](arrowfs.md) handle over `MemoryFileSystem`. A read is a `memcpy` - out of a
+  `Vec`, out of the mapping the kernel already caches, or out of the vtable's own map.
+- **A fetch per read.** An `arrowfs` handle over `LocalFileSystem`, where every `pread` is an
+  `open`, a `seek` and a `read`, and every `size` is a `stat`. That is the shape of every
+  object store, and the only such backend the core ships.
+
+`random` reads 512 bytes at a time inside a 4 MiB hot region that fits the 8 MiB budget;
+`sequential` scans the whole 16 MiB in 8 KiB steps, twice the budget, so every page is
+fetched once and evicted before it is wanted again; `footer` reads both ends, sweeps 12 MiB
+of the middle, and reads both ends again.
+
+From one containerized x86_64 Linux run with the group run alone
+(`cargo bench --bench io --features "parquet" -- io_buffered`; Criterion, 100 samples,
+medians). This box's run-to-run spread is wide - a case can move 15% between runs - so read
+the multiples, never the percentages:
+
+```text
+                                     random        sequential        footer
+buffer                             10.041 µs        606.58 µs      439.58 µs
+file                               28.037 µs        517.80 µs      367.66 µs
+buffered  (over file)              75.362 µs      1.9495 ms        507.49 µs
+arrowfs_memory                     46.739 µs        734.30 µs      392.83 µs
+arrowfs_memory_buffered            77.633 µs      2.0068 ms        503.69 µs
+arrowfs_local                     1.0832 ms       2.7574 ms       2.0924 ms
+arrowfs_local_buffered             73.668 µs      2.3841 ms        532.18 µs
+```
+
+**Over a backend that is already memory, the cache is a cost; over one that fetches, it is
+worth 4x to 15x.** The same code, the same page table, the same pinning:
+
+| Workload | `arrowfs_local` | with the cache | |
+| --- | --- | --- | --- |
+| `random` (a hot region, re-read) | 1.0832 ms | 73.668 µs | **14.7x faster** |
+| `footer` (both ends, big middle) | 2.0924 ms | 532.18 µs | **3.9x faster** |
+| `sequential` (one pass, nothing re-read) | 2.7574 ms | 2.3841 ms | **1.2x faster** |
+
+The ordering of those three is the useful part. A cache pays where reads *repeat* - a hot
+region, or the two ends of a footer-first container - and barely pays where every byte is
+read exactly once, because a one-pass scan copies each byte twice and reuses none of it. The
+`sequential` row is the honest floor: 8 KiB reads through 64 KiB pages, so the cache still
+turns eight `open`/`seek`/`read` triples into one, and that is worth 16%.
+
+Over the memory-like handles the same cache costs 2.7x (`random`, against `file`), because
+there was no fetch to remove: a hit is a clock read, a lock, a map lookup and a copy against
+a `memcpy` that was going to happen anyway. That is the price of not knowing what you were
+handed, and it is why the wrapper is opt-in rather than automatic.
+
+**Two changes during this work moved these numbers, and both are in the diff:**
+
+- *A hit asks the handle for nothing.* `read_at` used to call `size()` on every read, for the
+  end-of-value bound and the pin. On `arrowfs_local` that is a `stat` per read - the cache
+  paying exactly the cost it exists to remove. The size is now remembered beside the pages and
+  re-asked only when a read runs past what the cache knows. `random/arrowfs_local_buffered`
+  went **597.88 µs to 73.668 µs** and `sequential` turned from a 1.2x *loss* into a win.
+- *Dense page indexes hash with a multiply and a rotation* rather than SipHash, and the offset
+  arithmetic shifts rather than divides - which is what the power-of-two page size is for.
+  Together, −20% on the hit case.
+
+**What pinning buys cannot be timed over a backend whose re-read is a `memcpy`**, so the
+target asserts it as a count before any timer starts, over a counting handle: after a 12 MiB
+middle scan four times wider than the whole budget, re-reading the head and the tail costs
+**zero** inner fetches. On `arrowfs_local`, where a fetch is real, that count is what the
+`footer` row's 3.9x is made of.
+
+### Over a compressed handle
+
+A content coding is not seekable, so [`Coded`](io.md) answers a positional read by decoding
+the value, and *which* decode it pays depends on whether the handle is open. The `coded`
+cases read a 256 KiB gzip value in 64 reads of 4 KiB:
+
+```text
+io_buffered/coded/closed     18.673 ms    13.389 MiB/s
+io_buffered/coded/open        4.2057 µs   58.050 GiB/s
+io_buffered/coded/buffered    7.8713 µs   31.017 GiB/s
+```
+
+- **`closed` is the trap.** Nothing may be cached as a side effect of an ordinary read, so a
+  coded handle nobody opened decodes the **whole payload for every `pread`**: 64 reads, 64
+  decodes, 18.7 ms to read 256 KiB.
+- **`open` is the cure the coding already ships** - and it got **~100x faster in this diff**.
+  `Coded::pread` used to reach the materialized value through a helper that *cloned* it, so an
+  open handle copied the entire payload to serve four bytes; `size()` cloned it just to read
+  a length. Both now borrow. Measured on the same case: **420.40 µs to 4.2057 µs**.
+- **`buffered` is what the page cache is worth when the handle is not opened** - the case a
+  caller who does not know what they were handed is in. It turns one decode per read into one
+  decode per page miss: **2,372x faster than `closed`**, within 2x of the open path.
+
+The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the *decoded* bytes.
+`Coded<Buffered<_>>` would cache the compressed bytes and still decode on every read.
+
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 
 ## Notebooks
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/buffered-rust.ipynb){ download }.
+[Rust](notebooks/rust/buffered.ipynb){ download }.
 
 <!-- /notebooks -->

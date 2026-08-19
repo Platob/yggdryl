@@ -1472,13 +1472,14 @@ pub trait IOBase: Send {
 
     /// Project the resource's text records into Arrow batches.
     ///
-    /// A thin shim over [`Self::into_text`]. This is a *text-line* projection
-    /// like [`Self::read_lines`], **not a fourth record method**: the record
-    /// surface stays exactly [`Self::read_arrow_batch_reader`],
-    /// [`Self::write_arrow_batch_reader`], and
-    /// [`Self::append_arrow_batch_reader`], and this never touches how a record
-    /// encoding decodes rows. The columns are described on
-    /// [`TextLineOptions`](crate::text::TextLineOptions).
+    /// The extractor-first spelling of the record surface: text is a record
+    /// encoding like any other, and [`Self::read_arrow_batch_reader`] under
+    /// [`RecordOptions::Text`] reaches
+    /// this very method - **not a fourth record method**. Decoding views
+    /// (a [`Coded`] handle, [`Gzip`](crate::gzip::Gzip) and its siblings)
+    /// override it to project a snapshot of the value they *present*, which
+    /// is what keeps a pending write visible to the record surface too. The
+    /// columns are described on [`TextLineOptions`](crate::text::TextLineOptions).
     ///
     /// # Errors
     ///
@@ -1488,10 +1489,7 @@ pub trait IOBase: Send {
     fn read_arrow_lines(
         &self,
         options: &crate::text::TextLineOptions,
-    ) -> Result<crate::arrow::BatchReader>
-    where
-        Self: Sized,
-    {
+    ) -> Result<crate::arrow::BatchReader> {
         crate::text::line::arrow::read_arrow_lines(self, options)
     }
 
@@ -1536,13 +1534,23 @@ pub trait IOBase: Send {
             if let Some(table) = crate::iceberg::located(self)? {
                 return table.record_options();
             }
-            // The first leaf that names an encoding answers, and the listing
-            // is lazy, so a lake of a million files costs the walk to its
-            // first leaf and stops there.
+            // The listing is lazy, so a lake costs the walk to its first
+            // structured leaf and stops there. Text answers last: plain text
+            // maps to the line projection, so a stray README or marker file
+            // must not re-type a lake whose data files are a structured
+            // encoding.
+            let mut lines = None;
             for child in self.children_where(&[], false)? {
                 if let Ok(options) = RecordOptions::for_media_type(child?.media_type()) {
+                    if matches!(options, RecordOptions::Text(_)) {
+                        lines.get_or_insert(options);
+                        continue;
+                    }
                     return Ok(options);
                 }
+            }
+            if let Some(options) = lines {
+                return Ok(options);
             }
         }
         RecordOptions::for_media_type(self.media_type())
@@ -1813,6 +1821,10 @@ pub(crate) fn leaf_reader(
             crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
+        // Through the trait method rather than the free function, so a
+        // decoding view's snapshot override is honored: the record surface
+        // must see the value a handle presents, pending writes included.
+        RecordOptions::Text(text) => handle.read_arrow_lines(&text.lines)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
@@ -1838,6 +1850,9 @@ fn leaf_writer(
             crate::parquet::write_batch_reader(handle, batches, parquet)?;
         }
         RecordOptions::Avro(avro) => crate::avro::write_batch_reader(handle, batches, avro)?,
+        RecordOptions::Text(text) => {
+            crate::text::line::arrow::write_arrow_lines(handle, batches, text)?;
+        }
     }
     Ok(())
 }
@@ -1855,6 +1870,11 @@ pub(crate) fn stored_field(
     use crate::generic::IORecordOptions;
 
     if handle.is_empty() {
+        return Ok(None);
+    }
+    // Text lines store no record shape of their own: any row shape writes,
+    // rendered line by line, so there is nothing to complete a cast onto.
+    if matches!(options, RecordOptions::Text(_)) {
         return Ok(None);
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
@@ -1893,6 +1913,18 @@ fn merge_leaf(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
+    // A text line has no row identity: re-parsing the resource yields
+    // projection rows, not the rows a caller wrote, so a key match would
+    // silently compare against the wrong thing. Refused rather than guessed.
+    if matches!(options, RecordOptions::Text(_)) {
+        return Err(Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$.merge_by_names"),
+            reason: crate::text::expected_got(
+                "a record encoding with row identity to merge by (Arrow IPC, Parquet, Avro)",
+                "text lines, which have none - use write or append",
+            ),
+        });
+    }
     let target = target_field(handle, &incoming, options)?;
     // The stored side is read as the target so both sides of the match agree
     // column for column before a single key is compared.
@@ -1921,6 +1953,12 @@ fn append_leaf(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
+    // Text lines append natively: rows render after the current last line,
+    // with no reason to re-parse what is already there.
+    if let RecordOptions::Text(text) = options {
+        let incoming = options.cast_arrow_reader(incoming, None)?;
+        return crate::text::line::arrow::append_arrow_lines(handle, incoming, text);
+    }
     let target = target_field(handle, &incoming, options)?;
     let mut rewrite = options.clone();
     rewrite.set_schema(target.clone());

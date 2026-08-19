@@ -567,6 +567,6 @@ assert.throws(() => DataType.from('decimal(0,0)'), /precision/)
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[JavaScript](../notebooks/extensions_javascript-javascript.ipynb){ download }.
+[JavaScript](../notebooks/javascript/extensions_javascript.ipynb){ download }.
 
 <!-- /notebooks -->

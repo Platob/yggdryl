@@ -175,10 +175,10 @@ fn matched_captures_and_a_pattern_add_no_per_record_allocation() {
     let (large_allocations, large_levels) = counted(|| matched(&large));
 
     assert_eq!((small_levels, large_levels), (1_000, 10_000));
-    // Matching allocates nothing per record either. `regex-lite` would build a
-    // fresh `Captures` for every call and the span vector would be one per
-    // match; both belong to the *reader* instead, which holds one of each and
-    // rewrites them as records go by.
+    // Matching allocates nothing per record either. The engine's `captures`
+    // would build a fresh `Captures` for every call and the span vector would
+    // be one per match; both belong to the *reader* instead, which holds one
+    // of each and rewrites them as records go by.
     flat(
         "matching",
         small_allocations,

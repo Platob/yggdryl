@@ -57,6 +57,13 @@ pub enum Holder {
     /// The box is what keeps the enum a fixed size: this variant holds a
     /// handle of the very type it belongs to.
     Buffered(Box<Buffered<Self>>),
+    /// Any of the others, read and written as text records.
+    ///
+    /// A [`Text`](crate::text::Text) handler mirrors its handle's bytes and
+    /// answers the record surface through the line projection, so a holder
+    /// wrapped this way reads and writes Arrow batches as lines by default.
+    /// Boxed for the same reason [`Self::Buffered`] is.
+    Text(Box<crate::text::Text<Self>>),
 }
 
 impl Holder {
@@ -119,6 +126,53 @@ impl Holder {
         Self::Buffered(Box::new(Buffered::new(held, options)))
     }
 
+    /// Hold this resource behind the text-line surface.
+    ///
+    /// Idempotent exactly as [`Text::into_text`](crate::text::Text::into_text)
+    /// is: a holder that is already text keeps its handler - and the options
+    /// it carries - rather than nesting a second one. This is the inherent
+    /// spelling of [`IOBase::into_text`], and it wins method resolution over
+    /// it, so a `Holder` stays a `Holder`.
+    #[must_use]
+    pub fn into_text(self) -> Self {
+        match self {
+            Self::Text(text) => Self::Text(text),
+            other => Self::Text(Box::new(crate::text::Text::new(other))),
+        }
+    }
+
+    /// Hold this resource behind the text-line surface, under `options`.
+    ///
+    /// An already-text holder keeps its handle and replaces the extractor.
+    #[must_use]
+    pub fn into_text_with(self, options: crate::text::TextLineOptions) -> Self {
+        match self {
+            Self::Text(text) => Self::Text(Box::new(text.with_options_of(options))),
+            other => Self::Text(Box::new(crate::text::Text::with_options(other, options))),
+        }
+    }
+
+    /// Read this resource's records, consuming the holder.
+    ///
+    /// The inherent spelling of [`IOBase::into_read_lines`], and it wins
+    /// method resolution over it - which matters: the trait default wraps a
+    /// *fresh* text handler, while a holder that is already text must read
+    /// under the extractor it carries rather than silently under defaults.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read or
+    /// decode failure of its record.
+    pub fn into_read_lines(
+        self,
+    ) -> Result<crate::text::TextLines<Box<dyn std::io::Read + Send + 'static>>> {
+        let text = match self {
+            Self::Text(text) => *text,
+            other => crate::text::Text::new(other),
+        };
+        text.into_read_lines()
+    }
+
     /// Borrow the held implementation as a trait object.
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
@@ -130,6 +184,7 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
+            Self::Text(inner) => inner.as_ref(),
         }
     }
 
@@ -144,6 +199,7 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
+            Self::Text(inner) => inner.as_mut(),
         }
     }
 }
@@ -232,6 +288,13 @@ impl IOBase for Holder {
     fn is_tabular(&self) -> bool {
         self.as_io().is_tabular()
     }
+
+    /// Forwarded rather than defaulted, so a [`Self::Text`] holder answers
+    /// with its own extractor instead of the media type's default.
+    #[cfg(feature = "arrow")]
+    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+        self.as_io().record_options()
+    }
 }
 
 impl From<Buffer> for Holder {
@@ -273,5 +336,11 @@ impl From<crate::arrowfs::File> for Holder {
 impl From<Buffered<Holder>> for Holder {
     fn from(value: Buffered<Self>) -> Self {
         Self::Buffered(Box::new(value))
+    }
+}
+
+impl From<crate::text::Text<Holder>> for Holder {
+    fn from(value: crate::text::Text<Self>) -> Self {
+        Self::Text(Box::new(value))
     }
 }

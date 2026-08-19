@@ -554,6 +554,27 @@ function fillingArguments(options) {
   ]
 }
 
+// `{{ }}` substitution is a YAML and TOML feature: JSON is a data
+// interchange format, and the core refuses the pair for it by name. The
+// refusal happens here too, so a JS caller learns at the call site rather
+// than from a native error.
+function refuseFillingForJson(format, options) {
+  if (options.placeholders !== undefined && options.placeholders !== null) {
+    throw new TypeError(`placeholders are a yaml/toml feature, not a ${format} one`)
+  }
+  if (options.environment !== undefined && options.environment !== false) {
+    throw new TypeError(`environment resolution is a yaml/toml feature, not a ${format} one`)
+  }
+}
+
+function loadArguments(format, options) {
+  if (format === FORMAT_JSON || format === FORMAT_JSON_LINES) {
+    refuseFillingForJson(format, options)
+    return []
+  }
+  return fillingArguments(options)
+}
+
 function toNativeContent(content) {
   if (typeof content === 'string' || Buffer.isBuffer(content)) return content
   if (utilTypes.isAnyArrayBuffer(content)) return Buffer.from(content)
@@ -850,7 +871,7 @@ function nativeLoads(content, format, options) {
     nativeFormat(format).loads(
       toNativeContent(content),
       options.maxDepth,
-      ...fillingArguments(options),
+      ...loadArguments(format, options),
     ),
   )
 }
@@ -866,6 +887,9 @@ function nativeLoadsInferred(content, options) {
 
 function nativeLoadsAll(content, format, options) {
   options = checkedOptions(options)
+  if (format === FORMAT_JSON || format === FORMAT_JSON_LINES) {
+    refuseFillingForJson(format, options)
+  }
   return nativeFormat(format)
     .loadsAll(toNativeContent(content), options.maxDepth)
     .map((value) => fromTransport(value))
@@ -874,12 +898,15 @@ function nativeLoadsAll(content, format, options) {
 function nativeLoadPath(path, format, options) {
   options = checkedOptions(options)
   return fromTransport(
-    nativeFormat(format).loadPath(path, options.maxDepth, ...fillingArguments(options)),
+    nativeFormat(format).loadPath(path, options.maxDepth, ...loadArguments(format, options)),
   )
 }
 
 function nativeLoadAllPath(path, format, options) {
   options = checkedOptions(options)
+  if (format === FORMAT_JSON || format === FORMAT_JSON_LINES) {
+    refuseFillingForJson(format, options)
+  }
   return nativeFormat(format)
     .loadAllPath(path, options.maxDepth)
     .map((value) => fromTransport(value))
@@ -1092,6 +1119,10 @@ function isJsonWhitespace(bytes) {
 }
 
 async function* jsonLinesStream(stream, options) {
+  // Refused here, before the first chunk: deferring to the per-line load
+  // would surface the misconfiguration as a mid-stream parse error - or not
+  // at all on an empty stream.
+  refuseFillingForJson(FORMAT_JSON_LINES, checkedOptions(options))
   let lineParts = []
   let lineLength = 0
   let lineOffset = 0
@@ -2188,5 +2219,25 @@ binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml
 binding.yaml = yaml
+
+// The core's static enum vocabularies, frozen: pure enums cross the boundary
+// as strings by convention, and this is the enumeration of what those strings
+// can be, unpacked from one native listing so it can never drift.
+{
+  const listing = binding._enumValuesNative()
+  const levels = binding._levelValuesNative()
+  delete binding._enumValuesNative
+  delete binding._levelValuesNative
+  binding.enums = Object.freeze({
+    dataTypeIds: Object.freeze(listing.dataTypeIds),
+    dataTypeKinds: Object.freeze(listing.dataTypeKinds),
+    timeUnits: Object.freeze(listing.timeUnits),
+    unionModes: Object.freeze(listing.unionModes),
+    codecs: Object.freeze(listing.codecs),
+    ioKinds: Object.freeze(listing.ioKinds),
+    compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),
+    levels: Object.freeze(levels),
+  })
+}
 
 module.exports = binding

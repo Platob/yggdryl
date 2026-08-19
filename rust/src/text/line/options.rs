@@ -18,7 +18,7 @@
 
 use std::str::FromStr;
 
-use regex_lite::Regex;
+use regex::Regex;
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
 use crate::generic::Value;
@@ -577,17 +577,7 @@ impl TextLineOptions {
     /// collision with a base, capture, or earlier custom column. Failure leaves
     /// the options unchanged.
     pub fn set_custom_fields(&mut self, custom_fields: Vec<(SmolStr, Value)>) -> Result<()> {
-        let held = std::mem::replace(&mut self.custom_fields, custom_fields);
-        match self.rebuild_schema() {
-            Ok(schema) => {
-                self.schema = schema;
-                Ok(())
-            }
-            Err(error) => {
-                self.custom_fields = held;
-                Err(error)
-            }
-        }
+        self.rebuild_with(|options| &mut options.custom_fields, custom_fields)
     }
 
     /// Return these options with constant columns appended to every row.
@@ -654,17 +644,7 @@ impl TextLineOptions {
                 });
             }
         }
-        let held = std::mem::replace(&mut self.capture_types, capture_types);
-        match self.rebuild_schema() {
-            Ok(schema) => {
-                self.schema = schema;
-                Ok(())
-            }
-            Err(error) => {
-                self.capture_types = held;
-                Err(error)
-            }
-        }
+        self.rebuild_with(|options| &mut options.capture_types, capture_types)
     }
 
     /// Return these options with declared capture column datatypes.
@@ -750,6 +730,24 @@ impl TextLineOptions {
                 self.header = held.1;
                 self.captures = held.2;
                 self.pattern_captures = held.3;
+                Err(error)
+            }
+        }
+    }
+
+    /// Swap one setting in, rebuild the schema, and restore it on failure.
+    ///
+    /// The transactional half every setter shares: an error leaves the options
+    /// exactly as they were.
+    fn rebuild_with<T>(&mut self, setting: impl Fn(&mut Self) -> &mut T, value: T) -> Result<()> {
+        let held = std::mem::replace(setting(self), value);
+        match self.rebuild_schema() {
+            Ok(schema) => {
+                self.schema = schema;
+                Ok(())
+            }
+            Err(error) => {
+                *setting(self) = held;
                 Err(error)
             }
         }

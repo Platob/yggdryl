@@ -3,18 +3,20 @@
 Run from ``python/`` after ``maturin develop --release`` (a debug build
 understates the native side by an order of magnitude)::
 
-    .venv/Scripts/python benchmarks/log_lines.py --min-time 0.2 --repeat 7
+    .venv/Scripts/python benchmarks/read_lines.py --min-time 0.2 --repeat 7
 
-The payload is ~100k synthetic trading-log lines, timed uncompressed and
-gzip-coded. The baseline is what a Python engineer would write without the
-binding: ``re`` with named groups over ``str.splitlines``, timestamps through
-``datetime.fromisoformat``, columns accumulated into lists and handed to
-``pyarrow.table``. The baseline hashes messages with ``zlib.crc32`` - a
-C-speed 32-bit checksum - while the binding pays for the stable 64-bit
-FNV-1a the ``hash`` column contractually carries, so the comparison flatters
-the baseline slightly and is still a fair "same job" measurement. PyArrow's
-CSV reader is deliberately absent: a regex-matched log line is not a CSV row,
-and a baseline doing a different job is not a baseline.
+The payload is 50k anonymized production-shaped OMS log lines -
+``2026-08-14 00:05:01.167_250 [250-<hex>:<hex>:72503] [OrderFlow_Enrichment]
+(DEBUG) message`` - timed uncompressed and gzip-coded. The baseline is what a
+Python engineer would write without the binding: ``re`` with named groups over
+``str.splitlines``, timestamps through ``datetime.fromisoformat``, columns
+accumulated into lists and handed to ``pyarrow.table``. **The regex is the
+same string on both sides**: ``(?P<name>...)`` groups, which CPython's ``re``
+and the binding's engine both read, so the row is an engine comparison over
+one expression. The baseline hashes messages with ``zlib.crc32`` - a C-speed
+32-bit checksum - while the binding pays for the stable 64-bit FNV-1a the
+``hash`` column contractually carries, so the comparison flatters the baseline
+slightly and is still a fair "same job" measurement.
 
 The boundary measured is the Arrow C Stream interface: the reader crosses
 lazily and every batch is drained on the Python side.
@@ -31,31 +33,25 @@ import re
 import shutil
 import statistics
 import tempfile
+import sys
 import timeit
 import zlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Callable
 
 import pyarrow as pa
 
 from yggdryl import IOBase
 
-LINES = 100_000
+LINES = 50_000
 
-PATTERN = (
-    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*"
-    r" \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]"
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _corpus import PATTERN, line as _line  # noqa: E402
 
-# Python's re spells named groups (?P<name>...); the pattern is otherwise the
-# same expression the binding compiles.
-BASELINE_PATTERN = re.compile(
-    r"^(?P<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S*)"
-    r" \[(?P<level>[^\]]+)\] \[(?P<logger>[^\]]+)\]"
-)
+BASELINE_PATTERN = re.compile(PATTERN)
 
-ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-log-lines-"))
+ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-read-lines-"))
 PLAIN = ROOT / "bench.log"
 CODED = ROOT / "bench.log.gz"
 
@@ -63,17 +59,7 @@ EPOCH = datetime(1970, 1, 1)
 
 
 def _corpus() -> str:
-    lines = []
-    for index in range(LINES):
-        minute, second, micro = index // 3_600 % 60, index // 60 % 60, index % 1_000_000
-        level = ("ii", "ww", "ee")[index % 3]
-        price = 187.0 + (index % 400) / 100
-        lines.append(
-            f"2024-02-01 10:{minute:02}:{second:02}.{micro:06} [{level}] [engine]"
-            f" fill {100 + index % 900} SYMB-{index % 128:04} @ {price:.2f}"
-            f" order={index:08}"
-        )
-    return "\n".join(lines) + "\n"
+    return "".join(_line(index) for index in range(LINES))
 
 
 def _read_lines(target: pathlib.Path) -> int:
@@ -89,18 +75,16 @@ def _baseline(target: pathlib.Path) -> int:
         text = gzip.decompress(target.read_bytes()).decode()
     else:
         text = target.read_text()
-    columns: dict[str, list] = {
-        name: []
-        for name in ("rownum", "unix", "hash", "header", "message", "level", "logger")
-    }
+    names = (
+        "rownum", "unix", "hash", "header", "message",
+        "stamp", "thread", "port", "logger", "level",
+    )
+    columns: dict[str, list] = {name: [] for name in names}
     rownum = 0
     for line in text.splitlines():
         matched = BASELINE_PATTERN.match(line)
         rownum += 1
         if matched is None:
-            # The multi-line grouping the binding does is folded down to the
-            # header row here; a preamble or continuation stays one row so
-            # the two sides parse the same number of headers.
             continue
         message = line[matched.end() :].strip()
         stamp = datetime.fromisoformat(matched.group("stamp").replace("_", ""))
@@ -109,8 +93,11 @@ def _baseline(target: pathlib.Path) -> int:
         columns["hash"].append(zlib.crc32(message.encode()))
         columns["header"].append(matched.group(0))
         columns["message"].append(message)
-        columns["level"].append(matched.group("level"))
+        columns["stamp"].append(matched.group("stamp"))
+        columns["thread"].append(matched.group("thread"))
+        columns["port"].append(int(matched.group("port")))
         columns["logger"].append(matched.group("logger"))
+        columns["level"].append(matched.group("level"))
     return pa.table(columns).num_rows
 
 
@@ -177,7 +164,8 @@ def main() -> None:
 
         print(
             f"Python {platform.python_version()}, PyArrow {pa.__version__}; "
-            f"{LINES:,} log lines, {len(text):,} decoded bytes"
+            f"{LINES:,} log lines, {len(text):,} decoded bytes; "
+            f"one shared pattern compiled by both engines"
         )
         print(f"{'benchmark':32} {'median':>12} {'best':>12} {'throughput':>20}")
         print("-" * 80)

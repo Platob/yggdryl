@@ -544,7 +544,7 @@ keeps its statistics. `read_manifest_for_plan` is the read-only planning fast pa
 through a compiled schema-resolution plan that keeps only what pruning consults - file identity, the
 partition tuple, sizes, and (for a filtered plan) the counts and bounds - and skips every other
 statistics map as raw bytes. On wide manifests it decodes several times faster than the full read;
-[the benchmarks](benchmarks.md) put numbers and outside baselines on that claim. A table's scans use
+[the avro page's baselines](avro.md#against-fastavro-and-pyiceberg-on-identical-bytes) put numbers and outside implementations on that claim. A table's scans use
 it automatically; the function is public for callers walking manifests themselves.
 
 Statistics come from the Parquet footer the write just produced. Counts and sizes are emitted for
@@ -3708,8 +3708,8 @@ which partition each file belongs to.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/iceberg-rust.ipynb){ download },
-[Python](notebooks/iceberg-python.ipynb){ download },
-[JavaScript](notebooks/iceberg-javascript.ipynb){ download }.
+[Rust](notebooks/rust/iceberg.ipynb){ download },
+[Python](notebooks/python/iceberg.ipynb){ download },
+[JavaScript](notebooks/javascript/iceberg.ipynb){ download }.
 
 <!-- /notebooks -->

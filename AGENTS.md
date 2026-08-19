@@ -347,7 +347,8 @@ meets all of these; a new media that cannot yet is not done:
   silent cap (top-N, sampling) is worse than none.
 - **Benchmarked against something the reader trusts** (the stdlib, PyArrow,
   the native library), in release builds, with the numbers regenerated -
-  never edited - into `docs/benchmarks.md`.
+  never edited - into the module page's own benchmark section
+  (`docs/benchmarks.md` holds only the commands and the rules).
 
 ## Table format contract
 
@@ -522,8 +523,9 @@ meets all of these; a new media that cannot yet is not done:
   the documentation carries a baseline from outside the project on the same
   payload and wire: `python/benchmarks/compression.py` beside the stdlib
   codecs, the PyArrow IPC/Parquet baselines in
-  `python/benchmarks/records_io.py`. Numbers in `docs/benchmarks.md` name the
-  machine, interpreter, and build profile that produced them; a binding is
+  `python/benchmarks/records_io.py`. Published numbers live on the page of
+  the module they measure and name the machine, interpreter, and build
+  profile that produced them; a binding is
   timed only as a **release** build (`maturin build --release`,
   `napi build --release`), and a stale table is regenerated, never edited.
 - **Every doc example runs**: `python scripts/check_docs_examples.py`

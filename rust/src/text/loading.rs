@@ -19,13 +19,13 @@ use crate::text::{Limits, Placeholders};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// // Placeholders left off: the document is parsed and nothing is walked.
-/// let plain = yggdryl::text::from_str_with(r#"{"a": "{{ X }}"}"#, Format::Json, &Loading::new())?;
+/// let plain = yggdryl::text::from_str_with("a: \"{{ X }}\"\n", Format::Yaml, &Loading::new())?;
 /// assert_eq!(plain.get_key_str("a").and_then(Value::as_str), Some("{{ X }}"));
 ///
 /// // Turned on, and resolving entirely from the supplied mapping.
 /// let loading = Loading::new()
 ///     .with_placeholders(Placeholders::new().with_variable("X", Value::from("resolved")));
-/// let filled = yggdryl::text::from_str_with(r#"{"a": "{{ X }}"}"#, Format::Json, &loading)?;
+/// let filled = yggdryl::text::from_str_with("a: \"{{ X }}\"\n", Format::Yaml, &loading)?;
 /// assert_eq!(filled.get_key_str("a").and_then(Value::as_str), Some("resolved"));
 /// # Ok(())
 /// # }

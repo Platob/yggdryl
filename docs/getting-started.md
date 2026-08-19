@@ -175,8 +175,8 @@ python -m mkdocs build --strict
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/getting_started-rust.ipynb){ download },
-[Python](notebooks/getting_started-python.ipynb){ download },
-[JavaScript](notebooks/getting_started-javascript.ipynb){ download }.
+[Rust](notebooks/rust/getting_started.ipynb){ download },
+[Python](notebooks/python/getting_started.ipynb){ download },
+[JavaScript](notebooks/javascript/getting_started.ipynb){ download }.
 
 <!-- /notebooks -->

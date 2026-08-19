@@ -35,7 +35,7 @@ pub fn placeholder_benchmarks(criterion: &mut Criterion) {
         for (state, loading) in [("off", &off), ("on", &on)] {
             group.bench_function(format!("{label}/{state}"), |bencher| {
                 bencher.iter(|| {
-                    black_box(text::from_str_with(&document, Format::Json, loading).unwrap())
+                    black_box(text::from_str_with(&document, Format::Yaml, loading).unwrap())
                 });
             });
         }
@@ -43,19 +43,18 @@ pub fn placeholder_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// A JSON document of [`ENTRIES`] scalars, `filled` of them placeholders.
+/// A YAML document of [`ENTRIES`] scalars, `filled` of them placeholders.
+///
+/// YAML rather than JSON, because JSON refuses substitution: the guard and
+/// the walk are format-independent, so one format prices both.
 fn document(filled: usize) -> String {
-    let mut text = String::from("{");
+    let mut text = String::new();
     for index in 0..ENTRIES {
-        if index > 0 {
-            text.push(',');
-        }
         if index < filled {
-            text.push_str(&format!("\"key_{index}\":\"{{{{ VAR_{index} }}}}\""));
+            text.push_str(&format!("key_{index}: \"{{{{ VAR_{index} }}}}\"\n"));
         } else {
-            text.push_str(&format!("\"key_{index}\":\"plain value {index}\""));
+            text.push_str(&format!("key_{index}: \"plain value {index}\"\n"));
         }
     }
-    text.push('}');
     text
 }

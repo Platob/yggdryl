@@ -354,6 +354,6 @@ out of them entirely.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/local-rust.ipynb){ download }.
+[Rust](notebooks/rust/local.ipynb){ download }.
 
 <!-- /notebooks -->

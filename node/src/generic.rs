@@ -59,9 +59,11 @@ impl JsRecordOptions {
         let encoding = self.inner.mime_type();
         match &mut self.inner {
             CoreRecordOptions::Parquet(options) => Ok(options),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) => Err(napi_error(format!(
-                "expected Parquet options to set {setting}, got {encoding}"
-            ))),
+            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
+                Err(napi_error(format!(
+                    "expected Parquet options to set {setting}, got {encoding}"
+                )))
+            }
         }
     }
 
@@ -280,7 +282,9 @@ impl JsRecordOptions {
     pub fn compression(&self) -> Option<String> {
         match &self.inner {
             CoreRecordOptions::Parquet(options) => Some(compression_name(options.compression)),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) => None,
+            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
+                None
+            }
         }
     }
 
@@ -299,7 +303,9 @@ impl JsRecordOptions {
     pub fn max_row_group_size(&self) -> Option<u32> {
         match &self.inner {
             CoreRecordOptions::Parquet(options) => u32::try_from(options.max_row_group_size).ok(),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) => None,
+            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
+                None
+            }
         }
     }
 
@@ -322,7 +328,9 @@ impl JsRecordOptions {
                     value: value.clone(),
                 })
                 .collect(),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) => Vec::new(),
+            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
+                Vec::new()
+            }
         }
     }
 

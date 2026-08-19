@@ -240,6 +240,7 @@ def _codec_encode_path(
     destination: str | PathLike[str] | PathLike[bytes],
     format: str,
 ) -> None: ...
+def _enum_values() -> dict[str, object]: ...
 def _codec_decode(
     data: bytes | bytearray | memoryview,
     format: str,

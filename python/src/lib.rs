@@ -195,6 +195,54 @@ impl PyDifferenceIterator {
 }
 
 /// Initializes the private native extension module.
+/// Every static enum vocabulary of the core, as canonical spellings.
+///
+/// The single source the `yggdryl.enums` module unpacks, so the listings can
+/// never drift from the Rust constants they mirror. Pure enums cross the
+/// boundary as strings by convention; this is the enumeration of what those
+/// strings can be.
+#[pyfunction]
+#[pyo3(name = "_enum_values")]
+fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
+    use pyo3::types::PyDict;
+    use yggdryl::{Codec, DataTypeId, DataTypeKind, IOKind, Scheme, TimeUnit, UnionMode};
+
+    let listing = PyDict::new(py);
+    listing.set_item(
+        "data_type_ids",
+        DataTypeId::ALL.map(DataTypeId::as_str).to_vec(),
+    )?;
+    listing.set_item(
+        "data_type_kinds",
+        DataTypeKind::ALL.map(DataTypeKind::as_str).to_vec(),
+    )?;
+    listing.set_item("time_units", TimeUnit::ALL.map(TimeUnit::as_str).to_vec())?;
+    listing.set_item(
+        "union_modes",
+        UnionMode::ALL.map(UnionMode::as_str).to_vec(),
+    )?;
+    listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
+    listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
+    listing.set_item(
+        "compatibility_schemes",
+        Scheme::COMPATIBILITY_TARGETS
+            .map(|scheme| scheme.as_str().to_owned())
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "levels",
+        [
+            ("none", yggdryl::Level::NONE.get()),
+            ("fast", yggdryl::Level::FAST.get()),
+            ("default", yggdryl::Level::DEFAULT.get()),
+            ("best", yggdryl::Level::BEST.get()),
+        ]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>(),
+    )?;
+    Ok(listing.into())
+}
+
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
@@ -218,6 +266,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<io::PyIOBase>()?;
     module.add_function(wrap_pyfunction!(io::schema_from_pattern, module)?)?;
+    module.add_function(wrap_pyfunction!(enum_values, module)?)?;
     module.add_function(wrap_pyfunction!(record::combined, module)?)?;
     module.add_class::<crate::io::PyIOCursor>()?;
     module.add_class::<io::PyLineIterator>()?;

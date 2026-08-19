@@ -83,6 +83,13 @@ fn recognized_prefix(rest: &str) -> Option<usize> {
         let _ = token;
         return Some(token.len() + 2);
     }
+    if let Some((token, _)) = parenthesized(rest) {
+        // A parenthesized token is consumed only when it spells a level;
+        // parentheses open ordinary prose far too often to claim more.
+        if is_level(token) {
+            return Some(token.len() + 2);
+        }
+    }
     let token = match rest.find([' ', '\t']) {
         Some(at) => &rest[..at],
         None => rest,
@@ -111,14 +118,21 @@ fn recognized_prefix(rest: &str) -> Option<usize> {
 /// | shape | example | column |
 /// | ----- | ------- | ------ |
 /// | a bracketed level | `[ERROR]`, `[ee]` | `level` |
+/// | a parenthesized level | `(DEBUG)`, `(WARNING)` | `level` |
 /// | a bare level | `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`, `FATAL` | `level` |
+/// | a bracketed id token (digits, hex, `-`, `:`, with a `:`) | `[250-e7256676:9effef3a6a:72503]` | `thread` |
 /// | a bracketed non-numeric token | `[engine]` | `logger` |
 /// | a bracketed all-digit token | `[42]` | `thread` |
 /// | a `thread=` or `tid=` key-value | `thread=42` | `thread` |
 ///
 /// A bracketed token is read as `logger` before `thread` only when it is not
-/// all digits, so `[engine] [42]` fills both and `[42] [engine]` fills both the
-/// same way - position does not decide, shape does.
+/// all digits and not an id, so `[engine] [42]` fills both and `[42] [engine]`
+/// fills both the same way - position does not decide, shape does. The id
+/// shape requires a `:` **and** only `0-9a-f-:` characters, so a logger like
+/// `al-iris:RiskManager` keeps its letters and stays a logger.
+///
+/// A parenthesized token is consumed only when it spells a level - `(DEBUG)`
+/// is unambiguous where a parenthesis opening ordinary prose is not.
 ///
 /// Returns the three column values in `LOG_COLUMNS` order.
 pub fn recognized(header: &str) -> [Option<&str>; 3] {
@@ -146,7 +160,9 @@ pub fn recognized(header: &str) -> [Option<&str>; 3] {
         if let Some((token, tail)) = bracketed(rest) {
             if is_level(token) && level.is_none() {
                 level = Some(token);
-            } else if token.bytes().all(|byte| byte.is_ascii_digit()) && thread.is_none() {
+            } else if (token.bytes().all(|byte| byte.is_ascii_digit()) || is_id(token))
+                && thread.is_none()
+            {
                 thread = Some(token);
             } else if logger.is_none() {
                 logger = Some(token);
@@ -155,6 +171,16 @@ pub fn recognized(header: &str) -> [Option<&str>; 3] {
             }
             rest = tail.trim_start_matches([' ', '\t']);
             continue;
+        }
+        if let Some((token, tail)) = parenthesized(rest) {
+            // Only a level is claimed from parentheses; anything else is the
+            // message's own prose, so the header stops here.
+            if is_level(token) && level.is_none() {
+                level = Some(token);
+                rest = tail.trim_start_matches([' ', '\t']);
+                continue;
+            }
+            break;
         }
         let (token, tail) = match rest.find([' ', '\t']) {
             Some(at) => (&rest[..at], &rest[at..]),
@@ -180,6 +206,27 @@ fn bracketed(rest: &str) -> Option<(&str, &str)> {
     let body = rest.strip_prefix('[')?;
     let close = body.find(']')?;
     Some((&body[..close], &body[close + 1..]))
+}
+
+/// A `(token)` at the front of `rest`, and what follows it.
+fn parenthesized(rest: &str) -> Option<(&str, &str)> {
+    let body = rest.strip_prefix('(')?;
+    let close = body.find(')')?;
+    Some((&body[..close], &body[close + 1..]))
+}
+
+/// Whether `token` spells a thread-like id: digits, hex, dashes, and colons,
+/// with at least one colon and one digit.
+///
+/// The shape of `250-e7256676:9effef3a6a:72503` - exact, in the same way the
+/// level table is exact: a token with any letter outside `a-f` keeps being a
+/// logger, so `al-iris:RiskManager` is never claimed.
+fn is_id(token: &str) -> bool {
+    token.contains(':')
+        && token.bytes().any(|byte| byte.is_ascii_digit())
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-' || byte == b':')
 }
 
 /// Whether `token` spells a level, in the closed set of spellings.

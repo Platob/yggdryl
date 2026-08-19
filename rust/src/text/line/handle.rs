@@ -52,6 +52,11 @@ use super::view::TextLine;
 pub struct Text<H: IOBase> {
     handle: H,
     options: Arc<TextLineOptions>,
+    /// A declared canonical schema, cast onto the projected rows.
+    ///
+    /// What [`with_schema`](Self::with_schema) sets, exactly as on every other
+    /// media handle; unset, the projection's own root is the schema.
+    declared: Option<Field>,
     /// The location the records report, when it is not the handle's own.
     ///
     /// A container's leaf is reopened through `parent`/`child_by_path`, and its rows
@@ -84,9 +89,25 @@ impl<H: IOBase> Text<H> {
         Self {
             handle,
             options: Arc::new(options),
+            declared: None,
             url: None,
             cached: None,
         }
+    }
+
+    /// Declare the canonical schema the projected rows are cast onto.
+    ///
+    /// The same setting every media handle carries: unset, the projection's
+    /// own root is the schema.
+    pub fn set_schema(&mut self, schema: Field) {
+        self.declared = Some(schema);
+    }
+
+    /// Return this handler with a declared canonical schema.
+    #[must_use]
+    pub fn with_schema(mut self, schema: Field) -> Self {
+        self.set_schema(schema);
+        self
     }
 
     /// Report a different location on this handler's records.
@@ -265,10 +286,14 @@ impl<H: IOBase> Text<H> {
 
     /// The root Struct Field this handler's records project onto.
     ///
-    /// Answered from the options alone when the handle is closed, and from the
-    /// cache between `open` and `close`. No resource is read either way.
+    /// The declared schema when one was set; otherwise, answered from the
+    /// options alone when the handle is closed, and from the cache between
+    /// `open` and `close`. No resource is read either way.
     #[must_use]
     pub fn schema(&self) -> &Field {
+        if let Some(declared) = &self.declared {
+            return declared;
+        }
         match &self.cached {
             Some(cached) => &cached.schema,
             None => self.options.schema(),
@@ -553,10 +578,27 @@ impl<R: Read> TextLines<R> {
 impl<H: IOBase> IOBase for Text<H> {
     crate::delegate_iobase!(handle, except_lifecycle);
 
-    // A `Text` reads its rows through the line options a caller supplies, not
-    // through a record encoding of its own, so both surface questions are the
-    // wrapped handle's answers.
-    crate::delegate_iobase!(handle: is_atomic, is_tabular);
+    // The byte surface is the wrapped handle's; the record surface is this
+    // handler's own, so `is_tabular` is answered here rather than delegated.
+    crate::delegate_iobase!(handle: is_atomic);
+
+    /// A `Text` always presents its value as rows: the line projection needs
+    /// no stored schema, so the record surface answers for any bytes.
+    fn is_tabular(&self) -> bool {
+        true
+    }
+
+    /// The record options of a `Text` are its own extractor.
+    ///
+    /// This is what routes the three record methods through the line
+    /// projection: a read parses records under these options, a write renders
+    /// batches back as lines - the default path, with no options in sight.
+    #[cfg(feature = "arrow")]
+    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+        let mut options = super::record::TextOptions::with_lines(self.options.as_ref().clone());
+        options.schema = self.declared.clone();
+        Ok(crate::generic::RecordOptions::Text(Box::new(options)))
+    }
 
     /// Materialize what repeated calls would re-derive.
     ///

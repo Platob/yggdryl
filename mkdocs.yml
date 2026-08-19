@@ -117,42 +117,42 @@ markdown_extensions:
       permalink_title: Link to this section
 
 nav:
-  - Home: index.md
+  - Home:
+      - index.md
+      - Architecture: architecture.md
+      - Testing: testing.md
+      - Benchmarks: benchmarks.md
+      - Contributing: contributing.md
   - Getting started: getting-started.md
   - Schema:
-      - enums: enums.md
       - datatype: datatype.md
       - field: field.md
       - arrow: arrow.md
+  - Generic:
+      - enums: enums.md
+      - generic: generic.md
   - Storage:
+      - uri: uri.md
       - io: io.md
       - buffered: buffered.md
       - expression: expression.md
-      - generic: generic.md
       - local: local.md
       - arrowfs: arrowfs.md
       - gzip: gzip.md
       - zlib: zlib.md
       - zstd: zstd.md
-  - Records:
-      - ipc: ipc.md
-      - parquet: parquet.md
-      - avro: avro.md
-      - iceberg: iceberg.md
-  - Values:
-      - uri: uri.md
+  - Medias:
       - text: text.md
       - json: json.md
       - yaml: yaml.md
       - toml: toml.md
+      - ipc: ipc.md
+      - parquet: parquet.md
+      - avro: avro.md
+      - iceberg: iceberg.md
   - Extensions:
       - Python: extensions/python.md
       - JavaScript: extensions/javascript.md
-  - Architecture: architecture.md
-  - Development:
-      - Testing: testing.md
-      - Benchmarks: benchmarks.md
-      - Contributing: contributing.md
 
 validation:
   links:

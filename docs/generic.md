@@ -2,11 +2,13 @@
 
 One enum per contract, so a caller can hold *some* handle, *some* coding, *some* encoding, or *some* settings as a concrete, matchable value.
 
-!!! note "Rust only"
+!!! note "Mostly Rust"
     The bindings hold one handle class and one record settings value rather
-    than the enums behind them; `RecordOptions` is the one section below that
-    crosses, and it says so. `TypedValue` and the `wkb` reader are Rust-only
-    too; a geospatial value crosses the bindings as its plain WKB bytes.
+    than the enums behind them; `RecordOptions` crosses, and the [static enum
+    vocabularies](enums.md#listing-the-vocabularies) cross as `yggdryl.enums`
+    in Python and the `enums` export in JavaScript. `TypedValue` and the
+    `wkb` reader are Rust-only; a geospatial value crosses the bindings as
+    its plain WKB bytes.
 
 ```rust
 use yggdryl::generic::Holder;
@@ -26,7 +28,7 @@ That last part is what makes the enums invisible in use. Each one delegates ever
 
 ## Holder: every storage handle
 
-`Holder` names the four [`IOBase`](io.md) implementations the core ships: `Buffer`, `Folder`, `Path`, and `File`.
+`Holder` names every [`IOBase`](io.md) implementation the core ships: the local `Buffer`, `Folder`, `Path`, and `File`, the [`arrowfs`](arrowfs.md) trio, and the two wrappers - `Buffered` for the [page cache](buffered.md) and `Text` for the [line surface](text.md#reading-and-writing-arrow-batches). `Holder::into_text` wraps idempotently, so a holder that is already text keeps its handler.
 
 ```rust
 use yggdryl::generic::Holder;
@@ -109,7 +111,7 @@ assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 
 ## Media: a record encoding over a handle
 
-`Media` is to a record encoding what `Holder` is to a handle. `Media::open` reads the handle's declared media type and binds the implementation it names - [`ipc`](ipc.md) for Arrow IPC, [`parquet`](parquet.md) for Parquet. Nothing is read to decide.
+`Media` is to a record encoding what `Holder` is to a handle. `Media::open` reads the handle's declared media type and binds the implementation it names - [`ipc`](ipc.md) for Arrow IPC, [`parquet`](parquet.md) for Parquet, [`text`](text.md#reading-and-writing-arrow-batches) for plain text read and written as lines. Nothing is read to decide.
 
 ```rust
 use yggdryl::generic::{Holder, Media};
@@ -123,6 +125,7 @@ fn named(name: &str) -> Result<Holder, Box<dyn std::error::Error>> {
 
 assert!(matches!(Media::open(named("trades.arrows")?)?, Media::Ipc(_)));
 assert!(matches!(Media::open(named("trades.parquet")?)?, Media::Parquet(_)));
+assert!(matches!(Media::open(named("app.log")?)?, Media::Text(_)));
 ```
 
 Choosing the encoding is the only thing that changes. Every variant answers the same questions - what is the schema, what are the batches, what are the bytes - and both directions stream, through [`arrow::BatchReader`](arrow.md): `Media::read_batch_reader` returns one and `Media::write_batch_reader` consumes one. `Media` is the encoding bound to a handle; the three methods a caller reaches for on a bare handle are [io.md](io.md)'s `read_arrow_batch_reader`, `write_arrow_batch_reader`, and `append_arrow_batch_reader`.
@@ -418,8 +421,8 @@ when it stabilizes.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/generic-rust.ipynb){ download },
-[Python](notebooks/generic-python.ipynb){ download },
-[JavaScript](notebooks/generic-javascript.ipynb){ download }.
+[Rust](notebooks/rust/generic.ipynb){ download },
+[Python](notebooks/python/generic.ipynb){ download },
+[JavaScript](notebooks/javascript/generic.ipynb){ download }.
 
 <!-- /notebooks -->

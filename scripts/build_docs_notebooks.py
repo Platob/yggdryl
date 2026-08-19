@@ -288,7 +288,10 @@ def build(pages, *, write: bool = True) -> tuple[int, list[str]]:
             examples = examples_of(page, language)
             if not examples:
                 continue
-            path = NOTEBOOKS / f"{slug(page)}-{language}.ipynb"
+            # One folder per language, so a reader browsing their own
+            # language sees every page's notebook side by side; the page name
+            # needs no language suffix inside a language-specific folder.
+            path = NOTEBOOKS / language / f"{slug(page)}.ipynb"
             wanted[path] = notebook(page, language, examples)
             produced.append((language, path))
 
@@ -301,7 +304,7 @@ def build(pages, *, write: bool = True) -> tuple[int, list[str]]:
         if problem:
             problems.append(problem)
 
-    existing = sorted(NOTEBOOKS.glob("*.ipynb")) if NOTEBOOKS.exists() else []
+    existing = sorted(NOTEBOOKS.rglob("*.ipynb")) if NOTEBOOKS.exists() else []
     for path in existing:
         if path in wanted:
             continue

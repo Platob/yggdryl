@@ -804,8 +804,8 @@ names replaced; [io.md](io.md) does exactly that.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/uri-rust.ipynb){ download },
-[Python](notebooks/uri-python.ipynb){ download },
-[JavaScript](notebooks/uri-javascript.ipynb){ download }.
+[Rust](notebooks/rust/uri.ipynb){ download },
+[Python](notebooks/python/uri.ipynb){ download },
+[JavaScript](notebooks/javascript/uri.ipynb){ download }.
 
 <!-- /notebooks -->

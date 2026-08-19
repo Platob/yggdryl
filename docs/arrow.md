@@ -615,8 +615,8 @@ casting itself is documented in [field.md](field.md).
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/arrow-rust.ipynb){ download },
-[Python](notebooks/arrow-python.ipynb){ download },
-[JavaScript](notebooks/arrow-javascript.ipynb){ download }.
+[Rust](notebooks/rust/arrow.ipynb){ download },
+[Python](notebooks/python/arrow.ipynb){ download },
+[JavaScript](notebooks/javascript/arrow.ipynb){ download }.
 
 <!-- /notebooks -->

@@ -784,8 +784,8 @@ value's own type rather than staying text:
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/toml-rust.ipynb){ download },
-[Python](notebooks/toml-python.ipynb){ download },
-[JavaScript](notebooks/toml-javascript.ipynb){ download }.
+[Rust](notebooks/rust/toml.ipynb){ download },
+[Python](notebooks/python/toml.ipynb){ download },
+[JavaScript](notebooks/javascript/toml.ipynb){ download }.
 
 <!-- /notebooks -->
