@@ -94,7 +94,7 @@ layer compiling annotations into native values.
   `partition.rs`, `snapshot.rs` (snapshots and refs), `metadata.rs`,
   `manifest.rs`, `statistics.rs`, `value.rs` (Iceberg's text and
   single-value renderings of a scalar), `scan.rs`, `table.rs`, `options.rs`,
-  `catalog.rs`, `evolve.rs`, `inspect.rs`. A table format sits on the record
+  `catalog/` (one file per hierarchy level), `evolve.rs`, `inspect.rs`. A table format sits on the record
   encodings; it never becomes one.
 - No tabular descriptor, dataset, or in-memory table type: a handle plus
   `RecordOptions` is the whole surface; an in-memory table is a `Buffer`.

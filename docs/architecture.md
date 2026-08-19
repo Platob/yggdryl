@@ -105,6 +105,20 @@ a lost row.
 The `(column, value)` pairs the older surfaces take are sugar that builds an expression. There is no
 second implementation behind them, in the listing, in the record options, or in the table scan.
 
+## One shape per hierarchy level
+
+The Iceberg catalog is three levels - catalogs of namespaces of tables - and every level reads the
+same way. A *collection* is a lazy map-oriented view whose construction touches nothing: `get`
+raises a typed absence, `create` raises a typed conflict, `open_or_create` absorbs both as the same
+attempt, `contains` answers the caller's own question, and `iter` yields names one at a time. A
+*resource* is one addressed thing: its dotted name, its kind, its properties, and its child
+collections. Dotted names resolve inside the collections - `tables.get("sales.eu.orders")`
+descends - so the rule lives in one place, and no level invents a verb the others lack.
+
+The shape exists to be learned once and reused twice - and to be leaned on: the Doris bridge and
+any future catalog-shaped surface address `catalog.namespaces()...tables()` rather than growing a
+flat method per operation.
+
 ## Listings yield, they do not collect
 
 A listing says what is there, and it must never require holding all of it. `IOBase::ls`, `glob`,
