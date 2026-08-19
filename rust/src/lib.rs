@@ -48,6 +48,10 @@ mod metadata;
 #[cfg(feature = "parquet")]
 pub mod parquet;
 mod path;
+// The Puffin blob container, a sibling of the other container encodings. It
+// needs only bytes, the JSON codec, the Zstandard codec, and flate2's CRC-32,
+// so - like the Avro value codec - it compiles unconditionally.
+pub mod puffin;
 pub mod text;
 pub mod toml;
 mod uri;
