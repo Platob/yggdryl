@@ -67,9 +67,12 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "run_end_encoded": fields.run_end_encoded(
             "value", run_ends, values
         ),
+        "variant": fields.variant("value"),
+        "geometry": fields.geometry("value"),
+        "geography": fields.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 41
+    assert len(values_by_kind) == 44
     assert set(values_by_kind) == {
         value.data_type.id for value in values_by_kind.values()
     }

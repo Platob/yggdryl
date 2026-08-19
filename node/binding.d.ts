@@ -140,6 +140,9 @@ export type DataTypeId =
   | 'decimal256'
   | 'map'
   | 'run_end_encoded'
+  | 'variant'
+  | 'geometry'
+  | 'geography'
 
 /**
  * The coarse family one datatype variant belongs to.
@@ -162,6 +165,8 @@ export type DataTypeKind =
   | 'map'
   | 'dictionary'
   | 'run_end_encoded'
+  | 'variant'
+  | 'geospatial'
 
 interface DataTypeKindById {
   null: 'null'
@@ -205,6 +210,9 @@ interface DataTypeKindById {
   decimal256: 'decimal'
   map: 'map'
   run_end_encoded: 'run_end_encoded'
+  variant: 'variant'
+  geometry: 'geospatial'
+  geography: 'geospatial'
 }
 
 /** The family a variant identity belongs to, as the native core reports it. */
@@ -351,6 +359,12 @@ export type UnionValue<V = unknown, I extends number = number> = Readonly<{
 export type UnionField<V = UnionValue> = FieldOf<'union', V>
 /** The dense Arrow Union with sequential type IDs, as one field type. */
 export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
+/** The self-describing semi-structured Variant datatype, as one field type. */
+export type VariantField = FieldOf<'variant', unknown>
+/** A planar geometry column carrying Well-Known Binary payloads. */
+export type GeometryField = FieldOf<'geometry', Uint8Array>
+/** A geography column: WKB features on a sphere or spheroid. */
+export type GeographyField = FieldOf<'geography', Uint8Array>
 export type DictionaryField<V = unknown> = FieldOf<'dictionary', V>
 export type Decimal32Field = FieldOf<'decimal32', bigint>
 export type Decimal64Field = FieldOf<'decimal64', bigint>
@@ -512,6 +526,17 @@ export interface FieldsNamespace {
     members: Iterable<Field>,
     options?: FieldOptions,
   ): DenseUnionField
+  variant(name: string, options?: FieldOptions): VariantField
+  geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
+  geometry(name: string, options: FieldOptions): GeometryField
+  geography(
+    name: string,
+    crs?: string,
+    algorithm?: string,
+    options?: FieldOptions,
+  ): GeographyField
+  geography(name: string, crs: string, options: FieldOptions): GeographyField
+  geography(name: string, options: FieldOptions): GeographyField
   dictionary(
     name: string,
     key: DataTypeInput,
@@ -693,6 +718,12 @@ export interface FieldsNamespace {
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput = undefined>(name: N, members: Ms, mode?: 'sparse' | 'dense', options?: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput>(name: N, members: Ms, options: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
   denseUnion<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', DenseUnionMembersValue<Fs>, N, O, DenseUnionMembersInput<Fs>>
+  variant<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'variant', unknown, N, O>
+  geometry<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, options?: O): NamedField<'geometry', Uint8Array, N, O>
+  geometry<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geometry', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, algorithm?: string, options?: O): NamedField<'geography', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput>(name: N, crs: string, options: O): NamedField<'geography', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geography', Uint8Array, N, O>
   dictionary<const N extends string, K extends DataTypeInput, V extends DataTypeInput, const O extends FieldOptionsInput = undefined>(name: N, key: K, value: V, options?: O): NamedField<'dictionary', TypedDataTypeValue<V>, N, O, TypedDataTypeInput<V>>
   decimal<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
   decimal<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
@@ -889,6 +920,9 @@ declare module './index' {
   namespace DataType {
     function fromArrow(value: DataType | string | ArrowStringCompatible): DataType
     function fromFields(fields: Iterable<Field>): DataType
+    // The parenthesis disambiguates: bare `variant()` is the self-describing
+    // Variant datatype; `variant(fields)` stays the dense-union sugar.
+    function variant(): TypedDataType<'variant', unknown>
     function variant<const Fs extends readonly AnyField[]>(
       fields: Fs,
     ): TypedDataType<

@@ -42,6 +42,14 @@ from .floating import (
     float32,
     float64,
 )
+from .geospatial import (
+    GeographyField,
+    GeometryField,
+    VariantField,
+    geography,
+    geometry,
+    variant,
+)
 from .integer import (
     Int8Field,
     Int16Field,
@@ -124,6 +132,8 @@ __all__ = [
     "Float16Field",
     "Float32Field",
     "Float64Field",
+    "GeographyField",
+    "GeometryField",
     "Int8Field",
     "Int16Field",
     "Int32Field",
@@ -150,6 +160,7 @@ __all__ = [
     "UInt32Field",
     "UInt64Field",
     "UnionField",
+    "VariantField",
     "Utf8Field",
     "Utf8ViewField",
     "binary",
@@ -170,6 +181,8 @@ __all__ = [
     "float16",
     "float32",
     "float64",
+    "geography",
+    "geometry",
     "int8",
     "int16",
     "int32",
@@ -197,4 +210,5 @@ __all__ = [
     "union",
     "utf8",
     "utf8_view",
+    "variant",
 ]

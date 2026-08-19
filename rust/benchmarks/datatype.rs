@@ -11,6 +11,7 @@ criterion_group!(
     benchmarks::parser::parser_benchmarks,
     benchmarks::nested::value_benchmarks,
     benchmarks::default::default_and_compatibility_benchmarks,
-    benchmarks::arrow::arrow_benchmarks
+    benchmarks::arrow::arrow_benchmarks,
+    benchmarks::geospatial::geospatial_benchmarks
 );
 criterion_main!(datatype);

@@ -196,6 +196,18 @@ export declare class DataType {
   static from(value: DataType | string): DataType
   /** Creates the physical time-of-day type selected by its resolution. */
   static time(unit: string): DataType
+  /**
+   * Creates a geometry datatype: planar features as Well-Known Binary.
+   * Omitting `crs` fills the `OGC:CRS84` default shared with Parquet and
+   * Iceberg; a geometry takes no edge algorithm.
+   */
+  static geometry(crs?: string | undefined | null): DataType
+  /**
+   * Creates a geography datatype: features on a sphere or spheroid.
+   * Omitting `crs` fills the `OGC:CRS84` default and omitting `algorithm`
+   * fills `spherical`; `algorithm` accepts the canonical lowercase names.
+   */
+  static geography(crs?: string | undefined | null, algorithm?: string | undefined | null): DataType
   /** Parse canonical, Arrow, SQL, Hive, or Spark type syntax. */
   static fromString(value: string): DataType
   /** Deserialize the native structural JSON representation. */

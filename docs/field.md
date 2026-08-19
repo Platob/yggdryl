@@ -675,6 +675,14 @@ Python and JavaScript the aliases are static views over the same native class: `
 returns an ordinary `Field`, typed as `Int64Field` for a checker only. Watch the default -
 `nullable` defaults to `True` in Python and to `false` in JavaScript.
 
+The three newest datatypes -
+[variant, geometry, and geography](datatype.md#variant-geometry-and-geography) - have no Rust
+marker aliases yet: the sealed marker set still stops at the Arrow logical types, so a generic
+`Field` carries them until their markers land. The binding-side `VariantField`, `GeometryField`,
+and `GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography`
+already exist, and are checker-level views over the one native class exactly like every alias
+above.
+
 ## Row values are validated against the root
 
 Validating and canonicalizing a [`Value`](generic.md) against a struct root is Rust-only. Python and

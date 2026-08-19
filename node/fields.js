@@ -190,6 +190,27 @@ function createFields(DataType, Field, native) {
     denseUnion(name, members, value) {
       return field(name, DataType.variant(members), value)
     },
+    variant(name, value) {
+      return field(name, DataType.variant(), value)
+    },
+    geometry(name, crs, value) {
+      if (isOptions(crs)) {
+        value = crs
+        crs = undefined
+      }
+      return field(name, DataType.geometry(crs), value)
+    },
+    geography(name, crs, algorithm, value) {
+      if (isOptions(crs)) {
+        value = crs
+        crs = undefined
+        algorithm = undefined
+      } else if (isOptions(algorithm)) {
+        value = algorithm
+        algorithm = undefined
+      }
+      return field(name, DataType.geography(crs, algorithm), value)
+    },
     dictionary(name, key, encodedValue, value) {
       return field(
         name,

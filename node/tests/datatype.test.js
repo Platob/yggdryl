@@ -38,6 +38,52 @@ test('generic time selects its physical width through native unit parsing', () =
   assert.throws(() => DataType.time())
 })
 
+test('bare variant is the self-describing datatype, not the union sugar', () => {
+  const variant = DataType.variant()
+
+  assert.equal(variant.id, 'variant')
+  assert.equal(variant.kind, 'variant')
+  assert.equal(variant.toString(), 'variant')
+  assert.ok(new DataType('variant').equals(variant))
+  assert.ok(DataType.fromString(variant.toString()).equals(variant))
+  // The parenthesis disambiguates: members keep building the dense union.
+  assert.equal(DataType.fromString('variant(only:int64)').id, 'union')
+})
+
+test('geometry and geography fill and display their shared defaults', () => {
+  const geometry = DataType.geometry()
+
+  assert.equal(geometry.id, 'geometry')
+  assert.equal(geometry.kind, 'geospatial')
+  assert.equal(geometry.toString(), 'geometry')
+  assert.ok(DataType.geometry('OGC:CRS84').equals(geometry))
+  assert.ok(new DataType('geometry').equals(geometry))
+
+  const projected = DataType.geometry('EPSG:3857')
+  assert.equal(projected.toString(), 'geometry("EPSG:3857")')
+  assert.ok(DataType.fromString(projected.toString()).equals(projected))
+
+  const geography = DataType.geography()
+  assert.equal(geography.id, 'geography')
+  assert.equal(geography.kind, 'geospatial')
+  assert.equal(geography.toString(), 'geography')
+  assert.ok(DataType.geography('OGC:CRS84', 'spherical').equals(geography))
+
+  const vincenty = DataType.geography('OGC:CRS84', 'vincenty')
+  assert.equal(vincenty.toString(), 'geography("OGC:CRS84","vincenty")')
+  assert.ok(new DataType("geography('OGC:CRS84', 'vincenty')").equals(vincenty))
+  assert.ok(DataType.fromString(vincenty.toString()).equals(vincenty))
+
+  assert.throws(
+    () => DataType.geometry(''),
+    /expected a coordinate reference system/,
+  )
+  assert.throws(
+    () => DataType.geography('OGC:CRS84', 'euclidean'),
+    /expected one of spherical/,
+  )
+})
+
 test('recursive datatypes expose fields as a collection', () => {
   const nested = DataType.fromString(
     'struct<id: bigint not null, payload: array<struct<name: string, score: decimal(18, 4)>>>',

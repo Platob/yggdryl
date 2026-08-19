@@ -410,6 +410,10 @@ Object.defineProperty(DataType, 'fromFields', {
 
 Object.defineProperty(DataType, 'variant', {
   value(values) {
+    // The parenthesis disambiguates, exactly as it does in the grammar: a
+    // bare call is the self-describing Variant datatype, and a member list
+    // keeps building the dense-union sugar.
+    if (values === undefined) return internalDataType.variant()
     return internalDataType.variant(collectFields(values))
   },
 })

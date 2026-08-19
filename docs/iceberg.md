@@ -948,7 +948,7 @@ files the metadata says it must" is something a caller can assert on rather than
 
 === "Rust"
 
-    ```rust,ignore
+    ```{ .rust .ignore }
     // Ranges, null tests, and questions about the file, in one predicate.
     let reader = table.scan_matching(
         "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
@@ -958,7 +958,7 @@ files the metadata says it must" is something a caller can assert on rather than
 
 === "Python"
 
-    ```python,ignore
+    ```{ .python .ignore }
     reader = table.scan_matching(
         "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
     )
@@ -966,7 +966,7 @@ files the metadata says it must" is something a caller can assert on rather than
 
 === "JavaScript"
 
-    ```javascript,ignore
+    ```{ .javascript .ignore }
     const reader = table.scanMatching(
       "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
     )

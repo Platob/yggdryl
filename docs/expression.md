@@ -335,7 +335,7 @@ partition tuple *proves* is dropped rather than re-tested.
 
 === "Rust"
 
-    ```rust,ignore
+    ```{ .rust .ignore }
     use yggdryl::iceberg::Table;
     use yggdryl::local::Folder;
 
@@ -352,7 +352,7 @@ partition tuple *proves* is dropped rather than re-tested.
 
 === "Python"
 
-    ```python,ignore
+    ```{ .python .ignore }
     from yggdryl.iceberg import Table
 
     table = Table("/lake/trades")
@@ -367,7 +367,7 @@ partition tuple *proves* is dropped rather than re-tested.
 
 === "JavaScript"
 
-    ```javascript,ignore
+    ```{ .javascript .ignore }
     const { iceberg } = require('yggdryl')
 
     const table = iceberg.Table.open('/lake/trades')

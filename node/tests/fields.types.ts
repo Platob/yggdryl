@@ -2,11 +2,14 @@ import {
   DataType,
   Field,
   fields,
+  type GeographyField,
+  type GeometryField,
   type Int32Field,
   type ListField,
   type MapField,
   type TimeField,
   type TimestampField,
+  type VariantField,
 } from '..'
 
 const id: Int32Field = fields.int32('id', { nullable: false })
@@ -26,6 +29,20 @@ const labels: MapField = fields.mapOf('labels', 'utf8', 'int32', true, {
   nullable: false,
 })
 const clock: TimeField = fields.time('clock', 'us', { nullable: false })
+const payload: VariantField = fields.variant('payload', { nullable: false })
+const payloadId: 'variant' = payload.dataType.id
+const shape: GeometryField = fields.geometry('shape', { nullable: false })
+const shapeKind: 'geospatial' = shape.dataType.kind
+const projectedShape: GeometryField = fields.geometry('shape', 'EPSG:3857', {
+  nullable: false,
+})
+const region: GeographyField = fields.geography('region', 'OGC:CRS84', 'vincenty', {
+  nullable: false,
+})
+void payloadId
+void shapeKind
+void projectedShape
+void region
 const clockType: DataType = DataType.time('milliseconds')
 const generic: Field = ids
 const genericItem = new Field('item', 'int32', false)
