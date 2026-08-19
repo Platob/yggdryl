@@ -2143,4 +2143,24 @@ binding.json = json
 binding.toml = toml
 binding.yaml = yaml
 
+// The core's static enum vocabularies, frozen: pure enums cross the boundary
+// as strings by convention, and this is the enumeration of what those strings
+// can be, unpacked from one native listing so it can never drift.
+{
+  const listing = binding._enumValuesNative()
+  const levels = binding._levelValuesNative()
+  delete binding._enumValuesNative
+  delete binding._levelValuesNative
+  binding.enums = Object.freeze({
+    dataTypeIds: Object.freeze(listing.dataTypeIds),
+    dataTypeKinds: Object.freeze(listing.dataTypeKinds),
+    timeUnits: Object.freeze(listing.timeUnits),
+    unionModes: Object.freeze(listing.unionModes),
+    codecs: Object.freeze(listing.codecs),
+    ioKinds: Object.freeze(listing.ioKinds),
+    compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),
+    levels: Object.freeze(levels),
+  })
+}
+
 module.exports = binding

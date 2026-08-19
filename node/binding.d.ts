@@ -878,6 +878,38 @@ export declare const json: StructuredCodec
 export declare const toml: SingleDocumentCodec<TemplateCodecOptions>
 /** Byte-first YAML codec with tagged class comments and multi-document support. */
 export declare const yaml: StructuredCodec<TemplateCodecOptions>
+
+/**
+ * The core's static enum vocabularies, as canonical spellings.
+ *
+ * Pure enums cross the boundary as strings by convention - a datatype id is
+ * `'int64'`, a codec is `'gzip'` - and this is the frozen enumeration of what
+ * those strings can be, unpacked from one native listing so it can never
+ * drift from the Rust constants it mirrors.
+ */
+export declare const enums: {
+  /** Every datatype variant identity, e.g. `'int64'`, `'decimal128'`. */
+  readonly dataTypeIds: readonly DataTypeId[]
+  /** Every datatype family, e.g. `'integer'`, `'decimal'`. */
+  readonly dataTypeKinds: readonly DataTypeKind[]
+  /** Every temporal resolution and interval layout, e.g. `'ms'`, `'year_month'`. */
+  readonly timeUnits: readonly CodecTimeUnit[]
+  /** Both union modes: `'sparse'` and `'dense'`. */
+  readonly unionModes: readonly ('sparse' | 'dense')[]
+  /** Every content coding, e.g. `'identity'`, `'gzip'`, `'zstd'`. */
+  readonly codecs: readonly string[]
+  /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
+  readonly ioKinds: readonly string[]
+  /** The compatibility targets `toSchemeCompat` accepts, e.g. `'arrow'`. */
+  readonly compatibilitySchemes: readonly CompatibilityScheme[]
+  /** The named points of the shared 0-to-9 compression scale. */
+  readonly levels: {
+    readonly none: number
+    readonly fast: number
+    readonly default: number
+    readonly best: number
+  }
+}
 /** Generic format-inferred byte codec. */
 export declare const codec: GenericCodec
 

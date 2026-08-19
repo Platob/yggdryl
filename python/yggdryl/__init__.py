@@ -25,7 +25,7 @@ from ._native import (
     combined,
     schema_from_pattern,
 )
-from . import fields, gzip, iceberg, json, toml, yaml, zlib, zstd
+from . import enums, fields, gzip, iceberg, json, toml, yaml, zlib, zstd
 from .records import Record, from_dict, record, schema_field, schema_fields, to_dict
 
 __all__ = [
@@ -47,6 +47,7 @@ __all__ = [
     "__version__",
     "combined",
     "from_dict",
+    "enums",
     "fields",
     "gzip",
     "iceberg",

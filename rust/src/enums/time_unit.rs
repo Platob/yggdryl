@@ -31,6 +31,18 @@ pub enum TimeUnit {
 }
 
 impl TimeUnit {
+    /// Every unit in canonical order: the temporal resolutions from coarsest
+    /// to finest, then the interval layouts.
+    pub const ALL: [Self; 7] = [
+        Self::Second,
+        Self::Millisecond,
+        Self::Microsecond,
+        Self::Nanosecond,
+        Self::YearMonth,
+        Self::DayTime,
+        Self::MonthDayNano,
+    ];
+
     /// Parse a temporal resolution or interval layout.
     ///
     /// Parsing is ASCII case-insensitive and accepts common Arrow, SQL, Hive,

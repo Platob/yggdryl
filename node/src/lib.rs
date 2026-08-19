@@ -14,6 +14,7 @@ mod arrowfs;
 mod codec;
 pub mod codings;
 mod datatype;
+mod enums;
 mod expression;
 mod field;
 mod generic;

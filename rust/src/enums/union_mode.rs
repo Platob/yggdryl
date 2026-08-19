@@ -13,6 +13,9 @@ pub enum UnionMode {
 }
 
 impl UnionMode {
+    /// Both modes, sparse first - the order Arrow declares them in.
+    pub const ALL: [Self; 2] = [Self::Sparse, Self::Dense];
+
     /// Return the canonical lowercase spelling.
     pub const fn as_str(self) -> &'static str {
         match self {
