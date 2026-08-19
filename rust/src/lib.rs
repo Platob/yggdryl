@@ -23,6 +23,10 @@ pub mod buffered;
 mod datatype;
 pub mod enums;
 mod error;
+// The one expression value and the plan every evaluator reads. It carries no
+// Arrow dependency, so a schema-only build keeps the value, the parser, the
+// binder, the row evaluator, and the statistics evaluator in full.
+pub mod expressions;
 pub mod field;
 pub mod generic;
 pub mod gzip;
@@ -59,6 +63,7 @@ pub use enums::{
     Timezone, UnionMode,
 };
 pub use error::{Error, Result};
+pub use expressions::{Expr, Selection};
 #[cfg(feature = "arrow")]
 pub use field::cast::{ArrowCast, ArrowFieldType};
 pub use field::{
