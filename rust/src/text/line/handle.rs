@@ -54,7 +54,7 @@ pub struct Text<H: IOBase> {
     options: Arc<TextLineOptions>,
     /// The location the records report, when it is not the handle's own.
     ///
-    /// A container's leaf is reopened through `parent`/`child_by`, and its rows
+    /// A container's leaf is reopened through `parent`/`child_by_path`, and its rows
     /// still name the location the caller addressed rather than the reopened
     /// one.
     url: Option<Arc<str>>,

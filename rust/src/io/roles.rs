@@ -285,7 +285,7 @@ pub trait IOFile: IOBase {
     /// # Errors
     ///
     /// Always returns [`std::io::ErrorKind::NotADirectory`].
-    fn file_child_by(&self, name: &str) -> Result<Holder> {
+    fn file_child_by_path(&self, name: &str) -> Result<Holder> {
         Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotADirectory,
             format!(

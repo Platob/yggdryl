@@ -1744,7 +1744,7 @@ than silently recursed into.
     let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
     let mut folder = Folder::new(&root)?;
     folder.truncate(0)?;
-    folder.child_by("a.log")?.write_all_bytes(b"line\n")?;
+    folder.child_by_path("a.log")?.write_all_bytes(b"line\n")?;
 
     // Clearing empties the container and keeps it.
     folder.clear()?;
@@ -1987,7 +1987,7 @@ to:
   `folder_truncate` (creates on `0`, errors otherwise), `folder_media_type` (`inode/directory`), and
   `folder_kind` (`Directory`).
 - **`IOFile`** - a leaf. Declares `file_url` and `file_exists`. Pre-implements `file_ls` (lists
-  nothing), `file_child_by` (refuses, naming the file), and `file_kind` (`File` when it exists,
+  nothing), `file_child_by_path` (refuses, naming the file), and `file_kind` (`File` when it exists,
   `Unknown` when it does not).
 - **`IOPath`** - a location whose role is not resolved yet. Declares `path_url`, `is_folder`,
   `is_file`. Pre-implements `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), and
@@ -2008,10 +2008,10 @@ assert!(undecided.read_all_bytes()?.is_empty());
 // A leaf is not a container: it lists nothing and resolves no child.
 let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
 assert!(leaf.ls(true, false)?.is_empty());
-assert!(leaf.child_by("nested").is_err());
+assert!(leaf.child_by_path("nested").is_err());
 ```
 
-`parent`, `child_by`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
+`parent`, `child_by_path`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
 tree needs no type parameter. A resource that cannot contain others lists nothing rather than failing,
 so a caller can walk without testing each node first. `local::Path` is the reference `IOPath`: it
 resolves by looking, and a byte write is what settles an undecided location into a file. A remote
@@ -2057,7 +2057,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `delegate_iobase!` expands to the forwarding bodies for every byte method - `pread`, `pwrite`, `size`,
 `capacity`, `reserve`, `truncate`, `url`, `media_type`, `set_media_type`, `flush`, `parent`,
-`child_by`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
+`child_by_path`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
 deliberately does not forward `open`, `opened`, or `close`: a wrapper that caches something of its
 own writes those after the invocation, as the example does. [ipc.md](ipc.md),
 [parquet.md](parquet.md), and the compression handles are all built this way.
@@ -3020,7 +3020,7 @@ each row of a write to the leaf its values name.
     )?;
 
     // Only `price` reached the leaf; the other two are the directory names.
-    let leaf = lake.child_by("year=2024/month=01/part-0.arrows")?;
+    let leaf = lake.child_by_path("year=2024/month=01/part-0.arrows")?;
     assert_eq!(
         leaf.read_arrow_field(&RecordOptions::for_media_type(leaf.media_type())?)?.field_len(),
         1

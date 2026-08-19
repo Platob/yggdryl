@@ -5,7 +5,7 @@
 //! warehouse is one container handle, a namespace is a folder under it, a
 //! table is a folder [`Table::locate`] recognizes, and a dotted name like
 //! `"nyc.taxis"` is the folder `nyc/taxis` spelled the way a catalog spells
-//! it. Every lookup runs through [`IOBase::child_by`] and [`IOBase::ls`]
+//! it. Every lookup runs through [`IOBase::child_by_path`] and [`IOBase::ls`]
 //! against that one handle - no path is opened, no network is reached - and a
 //! [`Catalog`] is only a description of where tables live, so constructing one
 //! touches nothing at all.
@@ -289,7 +289,7 @@ impl<H: IOBase> Catalog<H> {
     /// Returns an error when a name segment is refused, when a file occupies
     /// the location, or when the warehouse cannot resolve children.
     fn resolve(&self, name: &str) -> Result<Holder> {
-        let child = self.warehouse.child_by(&segments(name)?.join("/"))?;
+        let child = self.warehouse.child_by_path(&segments(name)?.join("/"))?;
         if child.is_container() {
             return Ok(child);
         }
@@ -408,7 +408,7 @@ impl<'catalog, H: IOBase> Namespaces<'catalog, H> {
         let child = self
             .catalog
             .warehouse
-            .child_by(&segments(&dotted)?.join("/"))?;
+            .child_by_path(&segments(&dotted)?.join("/"))?;
         if !child.is_container() {
             return Ok(false);
         }
@@ -445,7 +445,7 @@ impl<'catalog, H: IOBase> Namespaces<'catalog, H> {
         let child = self
             .catalog
             .warehouse
-            .child_by(&segments(&dotted)?.join("/"))?;
+            .child_by_path(&segments(&dotted)?.join("/"))?;
         if child.is_container() {
             let what = if Table::locate(child)?.is_some() {
                 "a table"
@@ -470,7 +470,7 @@ impl<'catalog, H: IOBase> Namespaces<'catalog, H> {
         let child = self
             .catalog
             .warehouse
-            .child_by(&segments(&dotted)?.join("/"))?;
+            .child_by_path(&segments(&dotted)?.join("/"))?;
         if child.is_container() {
             if Table::locate(child)?.is_some() {
                 return Err(invalid(format_smolstr!(

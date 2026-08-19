@@ -116,7 +116,7 @@ fn each_catalog_role_answers_the_kind_it_plays() {
 
     // The plain folder route reaches the same shape by probing the location,
     // where holding the table answers it outright.
-    let folder = catalog.warehouse().child_by("nyc/taxis").unwrap();
+    let folder = catalog.warehouse().child_by_path("nyc/taxis").unwrap();
     assert_eq!(folder.kind(), IOKind::Directory);
     assert!(folder.is_tabular());
     assert!(!folder.is_atomic());

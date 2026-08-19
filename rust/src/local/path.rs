@@ -286,7 +286,7 @@ impl IOBase for Path {
         Self::from_url(parent).ok().map(Holder::Path)
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         Ok(Holder::Path(Self::from_url(self.url.joinpath(name)?)?))
     }
 

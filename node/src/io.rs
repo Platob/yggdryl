@@ -312,7 +312,7 @@ impl JsIOBase {
         let mut resolved: Option<Holder> = None;
         for other in &others {
             let base = resolved.as_ref().unwrap_or(&self.inner);
-            resolved = Some(base.child_by(other).map_err(napi_error)?);
+            resolved = Some(base.child_by_path(other).map_err(napi_error)?);
         }
         match resolved {
             Some(handle) => Ok(Self::from_core(handle)),

@@ -352,7 +352,7 @@ meets all of these; a new media that cannot yet is not done:
 ## Table format contract
 
 - **A table is a folder, reached through `IOBase` only.** `Table` finds
-  metadata, manifest lists, manifests, and data files with `child_by`/`ls`;
+  metadata, manifest lists, manifests, and data files with `child_by_path`/`ls`;
   no paths, no `std::fs`; recorded absolute locations become relative names
   first. Catalog-free location works like `HadoopTables`:
   `metadata/version-hint.text`, else highest-numbered `*.metadata.json`.

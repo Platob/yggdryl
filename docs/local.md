@@ -160,13 +160,13 @@ is an error, because a container has no bytes to resize.
     folder.create()?;
 
     // A child is a handle; writing through it creates the leaf.
-    let mut leaf = folder.child_by("trades.arrows")?;
+    let mut leaf = folder.child_by_path("trades.arrows")?;
     leaf.write_all_bytes(b"payload")?;
     leaf.flush()?;
     assert!(matches!(leaf, Holder::File(_)));
 
     // A nested child creates its parent directory on write.
-    let mut nested = folder.child_by("sub/inner.bin")?;
+    let mut nested = folder.child_by_path("sub/inner.bin")?;
     nested.write_all_bytes(b"deep")?;
     nested.flush()?;
 
@@ -189,7 +189,7 @@ is an error, because a container has no bytes to resize.
     let _ = std::fs::remove_dir_all(&root);
     ```
 
-`ls`, `child_by`, and `parent` return [`Holder`](generic.md), so one enum walks a whole tree:
+`ls`, `child_by_path`, and `parent` return [`Holder`](generic.md), so one enum walks a whole tree:
 subdirectories come back as `Holder::Folder`, files as `Holder::File`. Children resolve through
 the URL, so `.` and `..` segments collapse the way they do everywhere else in the crate, and a
 name with separators in it is a nested child rather than an error.

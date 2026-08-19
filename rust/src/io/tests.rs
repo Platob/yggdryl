@@ -1301,7 +1301,7 @@ mod lifecycle {
         folder.truncate(0).expect("a created container");
         for name in ["a.log", "b.log"] {
             folder
-                .child_by(name)
+                .child_by_path(name)
                 .expect("a child")
                 .write_all_bytes(b"line\n")
                 .expect("a write");
@@ -1309,7 +1309,7 @@ mod lifecycle {
         let mut nested = Folder::new(root.join("deep")).expect("a local container");
         nested.truncate(0).expect("a created container");
         nested
-            .child_by("c.log")
+            .child_by_path("c.log")
             .expect("a child")
             .write_all_bytes(b"line\n")
             .expect("a write");
@@ -1328,7 +1328,7 @@ mod lifecycle {
         // A populated one is not.
         folder.truncate(0).expect("a created container");
         folder
-            .child_by("a.log")
+            .child_by_path("a.log")
             .expect("a child")
             .write_all_bytes(b"line\n")
             .expect("a write");

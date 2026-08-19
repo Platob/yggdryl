@@ -542,10 +542,10 @@ mod hierarchy {
         filesystem.write_full("bucket/trades.bin", b"x").unwrap();
         let folder = Folder::from_location(filesystem, "bucket").unwrap();
 
-        let leaf = folder.child_by("trades.bin").unwrap();
+        let leaf = folder.child_by_path("trades.bin").unwrap();
         assert!(!leaf.is_container());
 
-        let message = leaf.child_by("deeper").unwrap_err().to_string();
+        let message = leaf.child_by_path("deeper").unwrap_err().to_string();
         assert!(message.contains("expected a container"), "{message}");
         assert!(message.contains("trades.bin"), "{message}");
         // A leaf lists nothing rather than failing.
@@ -555,7 +555,7 @@ mod hierarchy {
     #[test]
     fn a_listed_handle_resolves_back_to_itself_by_name() {
         // Every generic caller does this round trip - the line projection
-        // reopens a leaf as `parent().child_by(url.file_name())`, a folder
+        // reopens a leaf as `parent().child_by_path(url.file_name())`, a folder
         // write routes rows by the segments under its root, and a table
         // turns a recorded location into a relative name first. So a name
         // taken off a listed handle's own URL has to address the object that
@@ -572,7 +572,7 @@ mod hierarchy {
         assert_eq!(listed[0].size(), 10);
 
         let name = url.file_name().unwrap();
-        let round = folder.child_by(name).unwrap();
+        let round = folder.child_by_path(name).unwrap();
         assert_eq!(
             round.url().unwrap(),
             &url,
@@ -582,14 +582,14 @@ mod hierarchy {
 
         // The parent of a listed child resolves it the same way.
         let parent = listed[0].parent().expect("a listed leaf has a parent");
-        let reopened = parent.child_by(name).unwrap();
+        let reopened = parent.child_by_path(name).unwrap();
         assert_eq!(reopened.read_all_bytes().unwrap(), b"REAL-BYTES");
     }
 
     #[test]
     fn a_folder_write_lands_on_the_leaf_it_read() {
         // The folder record path clears an existing leaf through its listed
-        // handle and rewrites it through `child_by`, so a name needing
+        // handle and rewrites it through `child_by_path`, so a name needing
         // escaping must resolve to one object, never two.
         let filesystem = memory();
         filesystem.write_full("lake/part 0.bin", b"old").unwrap();
@@ -601,7 +601,7 @@ mod hierarchy {
             .file_name()
             .unwrap()
             .to_owned();
-        let mut leaf = folder.child_by(&relative).unwrap();
+        let mut leaf = folder.child_by_path(&relative).unwrap();
         leaf.write_all_bytes(b"new").unwrap();
         leaf.close().unwrap();
 
@@ -621,7 +621,7 @@ mod hierarchy {
             .unwrap();
         let folder = Folder::from_location(filesystem, "bucket/lake").unwrap();
 
-        let leaf = folder.child_by("trades.bin").unwrap();
+        let leaf = folder.child_by_path("trades.bin").unwrap();
         let parent = leaf.parent().expect("a leaf has a parent");
         assert!(parent.is_container());
         assert_eq!(parent.url().unwrap(), folder.url());
@@ -745,7 +745,7 @@ mod identity {
         assert_eq!(folder.ls(true, false).unwrap().len(), 2);
 
         // A raw filesystem name is reached through `from_location`, which is
-        // the constructor that encodes; `child_by` takes URI-path text.
+        // the constructor that encodes; `child_by_path` takes URI-path text.
         let leaf = File::from_location(filesystem.clone(), "marché/données/prix€.bin").unwrap();
         assert_eq!(leaf.read_all_bytes().unwrap(), b"euro");
         assert_eq!(
@@ -948,7 +948,7 @@ mod records {
             )
             .unwrap();
             let mut leaf = folder
-                .child_by(&format!("year={year}/part-0.arrows"))
+                .child_by_path(&format!("year={year}/part-0.arrows"))
                 .unwrap();
             let options = leaf.record_options().unwrap().with_schema(schema());
             leaf.write_arrow_batch_reader(

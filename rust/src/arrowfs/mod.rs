@@ -39,12 +39,12 @@
 //! let filesystem = Arc::new(MemoryFileSystem::new());
 //! let lake = Folder::from_location(filesystem, "lake")?;
 //!
-//! let mut leaf = lake.child_by("trades.bin")?;
+//! let mut leaf = lake.child_by_path("trades.bin")?;
 //! leaf.write_all_bytes(b"AAPL")?;
 //! leaf.close()?;
 //!
 //! assert_eq!(lake.ls(false, false)?.len(), 1);
-//! assert_eq!(lake.child_by("trades.bin")?.read_all_bytes()?, b"AAPL");
+//! assert_eq!(lake.child_by_path("trades.bin")?.read_all_bytes()?, b"AAPL");
 //! # Ok(())
 //! # }
 //! ```

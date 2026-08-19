@@ -468,7 +468,7 @@ impl PyIOBase {
         for other in others {
             let name = crate::uri::path_string_from_value(&other)?;
             let base = resolved.as_ref().unwrap_or(&self.inner);
-            resolved = Some(base.child_by(&name).map_err(value_error)?);
+            resolved = Some(base.child_by_path(&name).map_err(value_error)?);
         }
         match resolved {
             Some(handle) => Ok(Self::from_core(handle)),
@@ -480,7 +480,7 @@ impl PyIOBase {
     /// `handle / "child"`, as `PurePath.__truediv__`.
     fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         self.inner
-            .child_by(&crate::uri::path_string_from_value(other)?)
+            .child_by_path(&crate::uri::path_string_from_value(other)?)
             .map(Self::from_core)
             .map_err(value_error)
     }

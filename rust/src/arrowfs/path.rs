@@ -313,9 +313,9 @@ impl IOBase for Path {
         )))
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         // `name` is URI-path text, exactly as the reference backend and the
-        // trait's own contract resolve it; see `Folder::child_by`.
+        // trait's own contract resolve it; see `Folder::child_by_path`.
         Ok(Holder::ArrowPath(Self::new(
             self.filesystem.clone(),
             self.url.joinpath(name)?,

@@ -186,14 +186,14 @@ mod hierarchy {
         directory.create().unwrap();
 
         // A write through a child creates the leaf.
-        let mut leaf = directory.child_by("trades.arrows").unwrap();
+        let mut leaf = directory.child_by_path("trades.arrows").unwrap();
         leaf.pwrite(0, b"payload").unwrap();
         leaf.flush().unwrap();
         assert!(matches!(leaf, Holder::File(_)));
         assert!(!leaf.is_container());
 
         // A nested child creates its parent directory on write.
-        let mut nested = directory.child_by("sub/inner.bin").unwrap();
+        let mut nested = directory.child_by_path("sub/inner.bin").unwrap();
         nested.pwrite(0, b"deep").unwrap();
         nested.flush().unwrap();
 
@@ -218,7 +218,7 @@ mod hierarchy {
         let directory = Folder::new(&path).unwrap();
         directory.create().unwrap();
 
-        let mut leaf = directory.child_by("leaf.bin").unwrap();
+        let mut leaf = directory.child_by_path("leaf.bin").unwrap();
         leaf.pwrite(0, b"x").unwrap();
         leaf.flush().unwrap();
 
@@ -235,7 +235,7 @@ mod hierarchy {
     fn a_relative_child_resolves_dot_segments() {
         let path = root("relative");
         let directory = Folder::new(&path).unwrap();
-        let sideways = directory.child_by("sub/../beside.bin").unwrap();
+        let sideways = directory.child_by_path("sub/../beside.bin").unwrap();
 
         let url = sideways.url().unwrap().to_string();
         assert!(url.ends_with("/beside.bin"), "{url}");
@@ -267,7 +267,7 @@ mod hierarchy {
         let directory = Folder::new(&path).unwrap();
         directory.create().unwrap();
 
-        let mut leaf = directory.child_by("cached.bin").unwrap();
+        let mut leaf = directory.child_by_path("cached.bin").unwrap();
         assert!(!leaf.opened());
 
         leaf.pwrite(0, b"cached").unwrap();
@@ -279,7 +279,7 @@ mod hierarchy {
         assert_eq!(leaf.read_all_bytes().unwrap(), b"cached");
 
         // Opening a handle for a missing file caches nothing and creates nothing.
-        let mut absent = directory.child_by("absent.bin").unwrap();
+        let mut absent = directory.child_by_path("absent.bin").unwrap();
         absent.open().unwrap();
         assert!(!absent.opened());
 
@@ -366,7 +366,7 @@ mod generic_path {
         assert_eq!(leaf.read_all_bytes().unwrap(), b"a");
 
         // Children resolve as further generic locations.
-        let child = directory.child_by("a.bin").unwrap();
+        let child = directory.child_by_path("a.bin").unwrap();
         assert_eq!(child.read_all_bytes().unwrap(), b"a");
         assert_eq!(child.parent().unwrap().kind(), IOKind::Directory);
 
@@ -442,7 +442,7 @@ mod roles {
 
         // A leaf contains nothing and resolves no children.
         assert!(leaf.file_ls().unwrap().is_empty());
-        let message = leaf.file_child_by("child").unwrap_err().to_string();
+        let message = leaf.file_child_by_path("child").unwrap_err().to_string();
         assert!(message.contains("got the file"), "{message}");
 
         // Its kind follows from whether it exists yet.

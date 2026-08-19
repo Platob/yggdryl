@@ -60,7 +60,7 @@ impl Counting {
 
 impl IOBase for Counting {
     crate::delegate_iobase!(handle: capacity, reserve, truncate, url,
-        media_type, set_media_type, flush, parent, child_by, ls, kind);
+        media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 
     fn size(&self) -> u64 {
         self.sizes.fetch_add(1, Ordering::Relaxed);

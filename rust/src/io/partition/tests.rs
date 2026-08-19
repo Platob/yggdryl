@@ -177,7 +177,7 @@ mod lake {
     fn seed(root: &Path, directory: &str, batch: &RecordBatch) {
         let mut leaf = Holder::folder(root.join(directory))
             .unwrap()
-            .child_by("part-0.arrows")
+            .child_by_path("part-0.arrows")
             .unwrap();
         leaf.write_arrow_batch_reader(
             crate::arrow::batch_reader(batch.schema(), [batch.clone()]),

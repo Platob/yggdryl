@@ -13,7 +13,7 @@ use super::{File, location_url};
 ///
 /// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
 /// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
-/// [`IOBase::child_by`], and [`IOBase::parent`] - answered through one
+/// [`IOBase::child_by_path`], and [`IOBase::parent`] - answered through one
 /// [`ArrowFileSystem::list`] and [`ArrowFileSystem::file_info`] per ask.
 ///
 /// On an object store a directory is a prefix, so existence here is what the
@@ -224,12 +224,12 @@ impl IOBase for Folder {
         )))
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         // `name` is URI-path text, not a raw object name: that is what the
         // reference backend resolves, what the trait documents (`.` and `..`
         // behave as `UriPath::joinpath` makes them), and what every generic
         // caller hands over - `read_arrow_lines` reopens a leaf through
-        // `parent().child_by(url.file_name())`, and a folder write routes
+        // `parent().child_by_path(url.file_name())`, and a folder write routes
         // rows by the segments under its root. Encoding here would escape
         // those escapes and address a different object. A caller holding a
         // raw filesystem name reaches it through `from_location`, which is

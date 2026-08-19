@@ -398,8 +398,8 @@ impl IOBase for File {
         self.file_remove(recursive)
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
-        self.file_child_by(name)
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
+        self.file_child_by_path(name)
     }
 
     fn ls(&self, _recursive: bool, _include_private: bool) -> Result<Vec<Holder>> {

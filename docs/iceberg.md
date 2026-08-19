@@ -142,7 +142,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
 
 **An Iceberg table is a folder.** `metadata/` holds the JSON documents and the Avro manifests,
 `data/` holds the Parquet files, and everything here is reached with
-[`IOBase::child_by`](io.md) and [`IOBase::ls`](io.md) against the handle the table was constructed
+[`IOBase::child_by_path`](io.md) and [`IOBase::ls`](io.md) against the handle the table was constructed
 from. Nothing in this module opens a path or calls the file system, so the same code works over a
 local directory today and over an object store the moment a backend for one exists.
 
@@ -432,7 +432,7 @@ must yield no rows rather than fail.
 
     // A manifest is self-describing: its Avro header carries the schema and the spec.
     let name = manifests[0].manifest_path.rsplit('/').next().unwrap().to_owned();
-    let handle = Folder::new(&path)?.child_by(&format!("metadata/{name}"))?;
+    let handle = Folder::new(&path)?.child_by_path(&format!("metadata/{name}"))?;
     assert_eq!(read_manifest_spec(&handle)?, spec);
 
     let entries = read_manifest(&handle)?;

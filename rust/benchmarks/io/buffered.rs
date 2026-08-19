@@ -90,7 +90,7 @@ struct Counting {
 
 impl IOBase for Counting {
     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate,
-        url, media_type, set_media_type, flush, parent, child_by, ls, kind);
+        url, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
         self.reads.fetch_add(1, Ordering::Relaxed);

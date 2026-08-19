@@ -19,7 +19,7 @@ assert_eq!(handle.read_all_bytes()?, b"AAPL,1\n");
 assert_eq!(handle.kind(), yggdryl::IOKind::Memory);
 ```
 
-A trait says what an implementation must do; the enum beside it says which implementations exist. The two are not interchangeable: `Box<dyn IOBase>` erases the concrete type, and [`IOBase::parent`, `child_by`, and `ls`](io.md) have to return *some* handle that a caller can still match on. Their signatures name `Holder`, so the enum has to be sized, `Send`, and a full implementation of the contract itself.
+A trait says what an implementation must do; the enum beside it says which implementations exist. The two are not interchangeable: `Box<dyn IOBase>` erases the concrete type, and [`IOBase::parent`, `child_by_path`, and `ls`](io.md) have to return *some* handle that a caller can still match on. Their signatures name `Holder`, so the enum has to be sized, `Send`, and a full implementation of the contract itself.
 
 That last part is what makes the enums invisible in use. Each one delegates every method of its contract to the variant it holds, so code written against the enum behaves exactly as code written against the implementation would - and a variant is still there to match when the concrete type matters.
 
@@ -50,7 +50,7 @@ let root = Holder::folder(std::env::temp_dir())?;
 assert!(root.is_container());
 
 // A child need not exist. Naming one yields a leaf handle, and nothing is created.
-let leaf = root.child_by("yggdryl-generic-child.bin")?;
+let leaf = root.child_by_path("yggdryl-generic-child.bin")?;
 assert!(matches!(leaf, Holder::File(_)));
 assert!(!leaf.is_container());
 assert_eq!(leaf.size(), 0);

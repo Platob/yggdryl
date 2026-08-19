@@ -2,7 +2,7 @@
 //!
 //! A table *is* a directory: `metadata/` holds the JSON documents and the Avro
 //! manifests, `data/` holds the Parquet files, and every one of them is reached
-//! with [`IOBase::child_by`] against the handle the table was constructed from.
+//! with [`IOBase::child_by_path`] against the handle the table was constructed from.
 //! There is no path opening and no file-system call anywhere below here, which
 //! is what makes the same code work over a local folder today and over an
 //! object store the moment a backend for one exists.
@@ -169,7 +169,7 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when the folder holds no metadata document, or when
     /// the document is not table metadata.
     pub fn open(root: H) -> Result<Self> {
-        let metadata_dir = root.child_by(METADATA_DIR)?;
+        let metadata_dir = root.child_by_path(METADATA_DIR)?;
         match find_metadata(&metadata_dir)? {
             Some((version, document)) => Ok(Self {
                 root,
@@ -195,7 +195,7 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when a metadata document is found but is not table
     /// metadata.
     pub fn locate(root: H) -> Result<Option<Self>> {
-        let metadata_dir = root.child_by(METADATA_DIR)?;
+        let metadata_dir = root.child_by_path(METADATA_DIR)?;
         let Some((version, document)) = find_metadata(&metadata_dir)? else {
             return Ok(None);
         };
@@ -218,7 +218,7 @@ impl<H: IOBase> Table<H> {
         schema: Field,
         spec: PartitionSpec,
     ) -> Result<Self> {
-        let metadata_dir = root.child_by(METADATA_DIR)?;
+        let metadata_dir = root.child_by_path(METADATA_DIR)?;
         if find_metadata(&metadata_dir)?.is_some() {
             return Self::open(root);
         }
@@ -653,7 +653,7 @@ impl<H: IOBase> Table<H> {
             Err(error)
         };
 
-        let metadata_dir = self.root.child_by(METADATA_DIR)?;
+        let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
         let mut beaten: u32 = 0;
         loop {
             match find_metadata(&metadata_dir) {
@@ -1255,13 +1255,13 @@ impl<H: IOBase> Table<H> {
     /// Resolve one recorded location into a child of the table's folder.
     ///
     /// Everything a table names is inside it, so a location is turned back into
-    /// a relative name and resolved with [`IOBase::child_by`]. That is what
+    /// a relative name and resolved with [`IOBase::child_by_path`]. That is what
     /// keeps this module free of path handling: the backend decides what a
     /// child is, and a table written on one storage system moves to another by
     /// rewriting its locations rather than its code.
     pub(super) fn child_at(&self, location: &str) -> Result<Holder> {
         let relative = relative_location(&self.metadata.location, location)?;
-        self.root.child_by(&relative)
+        self.root.child_by_path(&relative)
     }
 
     /// Write the current metadata as the next numbered document.
@@ -1282,13 +1282,13 @@ impl<H: IOBase> Table<H> {
         let document = self.metadata.to_json()?;
         let encoded = crate::json::to_vec(&document)?;
         let name = self.metadata_file_name();
-        let mut handle = self.root.child_by(&format!("{METADATA_DIR}/{name}"))?;
+        let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
         handle.write_all_bytes(&encoded)?;
 
         // The hint is how a catalog-free reader finds the current document.
         let mut hint = self
             .root
-            .child_by(&format!("{METADATA_DIR}/{VERSION_HINT}"))?;
+            .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?;
         hint.write_all_bytes(self.version.to_string().as_bytes())
     }
 
@@ -1403,7 +1403,7 @@ impl<H: IOBase> Table<H> {
             let list_name = format!("snap-{snapshot_id}-1-{}.avro", uuid());
             let mut list = table
                 .root
-                .child_by(&format!("{METADATA_DIR}/{list_name}"))?;
+                .child_by_path(&format!("{METADATA_DIR}/{list_name}"))?;
             write_manifest_list(
                 &mut list,
                 table.metadata.format_version,
@@ -1547,7 +1547,7 @@ impl<H: IOBase> Table<H> {
             format!("{DATA_DIR}/{directory}/{name}")
         };
 
-        let mut handle = self.root.child_by(&relative)?;
+        let mut handle = self.root.child_by_path(&relative)?;
         let options = handle
             .record_options()?
             .with_safe(false)
@@ -1600,7 +1600,7 @@ impl<H: IOBase> Table<H> {
         snapshot_id: i64,
         sequence_number: i64,
     ) -> Result<ManifestFile> {
-        let mut handle = self.root.child_by(&format!("{METADATA_DIR}/{name}"))?;
+        let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
         write_manifest(
             &mut handle,
             self.metadata.format_version,
@@ -1715,7 +1715,7 @@ impl<H: IOBase> IOBase for Table<H> {
     // `kind` is answered below: storage sees a folder, and this handle is
     // the table that folder holds.
     crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
-        truncate, url, media_type, set_media_type, flush, parent, child_by,
+        truncate, url, media_type, set_media_type, flush, parent, child_by_path,
         ls);
 
     /// A table folder is a container of its own kind: [`IOKind::Table`].
@@ -2321,13 +2321,13 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
         return Ok(None);
     }
 
-    let hint = metadata_dir.child_by(VERSION_HINT)?;
+    let hint = metadata_dir.child_by_path(VERSION_HINT)?;
     if hint.size() > 0 {
         let text = String::from_utf8_lossy(&hint.read_all_bytes()?)
             .trim()
             .to_owned();
         if let Ok(version) = text.parse::<u32>() {
-            let document = metadata_dir.child_by(&format!("v{version}.metadata.json"))?;
+            let document = metadata_dir.child_by_path(&format!("v{version}.metadata.json"))?;
             if document.size() > 0 {
                 return Ok(Some((
                     version,

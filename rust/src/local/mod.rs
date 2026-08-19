@@ -27,7 +27,7 @@
 //! let root = Folder::new(std::env::temp_dir())?;
 //!
 //! // Children resolve by name, and a listing is stable in sort order.
-//! let mut leaf = root.child_by("trades.arrows")?;
+//! let mut leaf = root.child_by_path("trades.arrows")?;
 //! leaf.write_all_bytes(b"...")?;
 //! # Ok(())
 //! # }

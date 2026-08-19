@@ -170,7 +170,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 ///
 /// impl IOBase for Counted {
 ///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
-///         truncate, url, media_type, set_media_type, flush, parent, child_by,
+///         truncate, url, media_type, set_media_type, flush, parent, child_by_path,
 ///         ls, kind, clear, remove, is_atomic, is_tabular);
 ///
 ///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
@@ -197,7 +197,7 @@ macro_rules! delegate_iobase {
     // The whole contract, lifecycle included: the wrapper changes nothing.
     ($handle:ident) => {
         $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular);
     };
 
@@ -209,7 +209,7 @@ macro_rules! delegate_iobase {
     // five call sites.
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
             ls, kind);
     };
 
@@ -283,9 +283,9 @@ macro_rules! delegate_iobase {
         }
     };
 
-    (@method $handle:ident, child_by) => {
-        fn child_by(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
-            $crate::io::IOBase::child_by(&self.$handle, name)
+    (@method $handle:ident, child_by_path) => {
+        fn child_by_path(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
+            $crate::io::IOBase::child_by_path(&self.$handle, name)
         }
     };
 
@@ -385,9 +385,9 @@ fn descend(base: &(impl IOBase + ?Sized), names: &[&str]) -> Result<Option<Holde
     let Some((first, rest)) = names.split_first() else {
         return Ok(None);
     };
-    let mut holder = base.child_by(first)?;
+    let mut holder = base.child_by_path(first)?;
     for name in rest {
-        holder = holder.child_by(name)?;
+        holder = holder.child_by_path(name)?;
     }
     Ok(Some(holder))
 }
@@ -596,19 +596,20 @@ pub trait IOBase: Send {
         None
     }
 
-    /// Return the child named `name`, resolved against this resource.
+    /// Return the descendant that `path` names, resolved against this resource.
     ///
-    /// `name` may be a single segment or a relative path; `.` and `..` resolve
-    /// the way they do in [`crate::UriPath::joinpath`]. The child need not
-    /// exist - per the laziness contract, reading a missing child is empty and
-    /// writing one creates it.
+    /// `path` is a *relative path*, not a single name: one segment reaches an
+    /// immediate child, `sales/eu/orders` reaches three levels down, and `.`
+    /// and `..` resolve the way they do in [`crate::UriPath::joinpath`]. The
+    /// resource need not exist - per the laziness contract, reading a missing
+    /// one is empty and writing one creates it and its parents.
     ///
     /// # Errors
     ///
-    /// Returns an error when this resource cannot have children or `name` does
+    /// Returns an error when this resource cannot have children or `path` does
     /// not form a valid location.
-    fn child_by(&self, name: &str) -> Result<Holder> {
-        Err(no_children(self.url(), name))
+    fn child_by_path(&self, path: &str) -> Result<Holder> {
+        Err(no_children(self.url(), path))
     }
 
     /// List the resources contained by this one.

@@ -11,7 +11,7 @@ use crate::io::{IOBase, IOFolder};
 ///
 /// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
 /// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
-/// [`IOBase::child_by`], and [`IOBase::parent`] - which resolve children as
+/// [`IOBase::child_by_path`], and [`IOBase::parent`] - which resolve children as
 /// further [`Folder`] values for subdirectories and mapped files for leaves.
 ///
 /// Its whole state is one [`Url`]. The platform path is derived from it on
@@ -33,7 +33,7 @@ use crate::io::{IOBase, IOFolder};
 /// assert_eq!(root.media_type().base(), &yggdryl::MimeType::DIRECTORY);
 ///
 /// // A directory that does not exist lists nothing instead of failing.
-/// let missing = root.child_by("yggdryl-absent-directory")?;
+/// let missing = root.child_by_path("yggdryl-absent-directory")?;
 /// assert!(missing.ls(false, false)?.is_empty());
 /// # Ok(())
 /// # }
@@ -244,7 +244,7 @@ impl IOBase for Folder {
         self.url.parent().map(|url| Holder::Folder(Self { url }))
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         // Resolve through the URL so `.` and `..` behave as they do everywhere
         // else in the crate.
         Self::hold(&self.url.joinpath(name)?)

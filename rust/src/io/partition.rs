@@ -765,7 +765,7 @@ pub(crate) fn write_folder(
         for (pairs, part) in split_by_partition(&batch, &columns)? {
             let relative = leaf_name(&existing, &pairs, options);
             let leaf = leaf_options(options, &pairs)?;
-            let mut handle = folder.child_by(&relative)?;
+            let mut handle = folder.child_by_path(&relative)?;
             let first = written.insert(relative);
             let replacing = !leaf.merge_by_names().is_empty() || (!append && first);
             if replacing {

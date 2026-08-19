@@ -206,8 +206,8 @@ impl<H: IOBase> IOBase for Codec<H> {
         self.as_io().parent()
     }
 
-    fn child_by(&self, name: &str) -> Result<super::Holder> {
-        self.as_io().child_by(name)
+    fn child_by_path(&self, name: &str) -> Result<super::Holder> {
+        self.as_io().child_by_path(name)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<super::Holder>> {
