@@ -934,14 +934,21 @@ A scan is planned entirely from the metadata, and every level of it prunes:
 | Manifest entry | the file's partition tuple | one data file, unopened |
 | Data file | per-column bounds and null counts | one data file, unopened |
 
-A filter is a column name and a value as text - the same vocabulary
-[`IOBase::children_where`](io.md) filters a lake with. Against an `identity`
-partition column it is compared to the text the layout spells, so `null` names
-the absence exactly as a directory name does, and the tuple settles it: every row
-of a file whose tuple matches holds that value. Against any other column it is
-compared to the value a cast from that text produces, and the surviving files are
-filtered row by row afterwards - because a statistic bounds a *file* and does not
-select a row. `ScanPlan` reports both numbers, so "a filtered read touches only
+A filter is an [expression](expressions.md), bound once against the table schema
+and read at every level of that chain through the one `evaluate_stats`. Each
+level implements `StatsSource` over what it happens to carry, so the planner
+never learns how any of them is encoded: an `identity` partition tuple is a
+column whose lower and upper bound are the same value - every row of a file
+whose tuple matches holds it - a manifest summary is a range, and a data file's
+recorded bounds are another. What the metadata could not settle is the
+*residual*, applied to the rows of the surviving files afterwards by the same
+plan, because a statistic bounds a *file* and does not select a row.
+
+The `(column, value)` text pair
+[`IOBase::children_where`](io.md) filters a lake with is still accepted and is
+sugar for one equality each; a column the schema does not declare is an error
+listing what it does, while a value the column's type cannot read matches
+nothing rather than failing the scan. `ScanPlan` reports both numbers, so "a filtered read touches only
 the files the metadata says it must" is something a caller can assert on rather
 than believe.
 
@@ -1092,9 +1099,10 @@ drains a scan drains them.
     `merge`, and `mergeWhere`; and `ScanPlan` reports the same five numbers in
     each language's casing.
 
-A filter is a column name and a value as text - the vocabulary
-[`IOBase::children_where`](io.md) filters a lake with - and it crosses as a mapping or as a
-sequence of `(column, value)` pairs. `plan` reports what a read *would* open without opening
+A filter is an [expression](expressions.md); the `(column, value)` text pair vocabulary
+[`IOBase::children_where`](io.md) filters a lake with is sugar for one equality each, and crosses as
+a mapping or as a sequence of pairs. `plan_matching`, `scan_matching`, `overwrite_matching`, and
+`merge_matching` are the expression siblings of the four `_where` calls below. `plan` reports what a read *would* open without opening
 anything; `scan_where` reads the rows that match; `overwrite_where` replaces only what matches;
 `merge` and `merge_where` upsert on a match key. They belong in one section because they are one
 mechanism: each decides what to touch through

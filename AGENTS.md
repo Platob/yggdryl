@@ -22,6 +22,17 @@ layer compiling annotations into native values.
 - **A struct `Field` is the schema.** A non-null `Struct` field describes rows;
   a row is one ordered `Value::Sequence` with a value per child. Never
   reintroduce a `Record`/`RecordSchema` pair.
+- **An expression is a value**, in `rust/src/expressions/`: an `Expr` over the
+  project's own `DataType`, `Field`, and `Value`, parsed from a SQL-like
+  grammar, bound once against a root struct `Field` into one plan, and read
+  three ways from that plan - row at a time over `Value`, vectorized over an
+  Arrow `RecordBatch`, and three-valued over column statistics. The three agree
+  because they read the same plan; a filter that prunes and a filter that
+  selects are never two implementations of one comparison. The module knows
+  nothing about storage or table formats - those implement `StatsSource` and
+  call in - and carries no Arrow dependency, so a `--no-default-features` build
+  keeps the value, the parser, the binder, the row evaluator, and the
+  statistics evaluator in full.
 - Schema behavior lives in categorized `rust/src/datatype/` and
   `rust/src/field/`: generic state and mutation in `field/mod.rs`, Arrow in
   `field/arrow.rs`, typed casting in `field/cast.rs`, grammar in
@@ -242,10 +253,16 @@ meets all of these; a new media that cannot yet is not done:
 - **A scan is planned from metadata, never a listing.** Snapshot -> manifest
   list -> `FieldSummary` skips manifests, partition tuples skip files, column
   bounds/null counts skip more. `Table::plan` reports read vs skipped so
-  pruning is a testable number. A filter is a `(column, value)` text pair
-  (same vocabulary as `children_where`), compared as text for `identity`
-  partition columns and as the cast value elsewhere; statistics bound files,
-  rows are filtered afterwards. Never scan by walking `data/`.
+  pruning is a testable number. **A filter is an `Expr`**
+  (`rust/src/expressions/`), bound once against the table schema and read at
+  every level through the one `evaluate_stats`: each level implements
+  `StatsSource` over what it carries - a manifest summary, a partition tuple,
+  a data file's column bounds - so the planner never learns any of those
+  encodings. Statistics bound files; the conjuncts they did not settle are the
+  residual, applied to the rows afterwards by the same plan. The
+  `(column, value)` text pair (same vocabulary as `children_where`) survives as
+  sugar building one equality each, tolerant of a value the column's type
+  cannot read. Never scan by walking `data/`.
 - **A table answers the same three record methods as a folder**: read through
   the snapshot, write/append as one commit each; `merge_by_names` upserts a table
   exactly as a leaf; a handle on a `column=value` directory addresses that

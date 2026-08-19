@@ -4,13 +4,13 @@
 //! computation over the columns of a row without knowing where those rows live,
 //! it round-trips through its own canonical [`Display`](std::fmt::Display), and
 //! it carries no schema, no handle, and no table format. Binding it against a
-//! struct [`Field`] once produces a [`Bound`] plan, and that one plan answers
-//! every question the rest of the crate asks:
+//! struct [`Field`](crate::Field) once produces a [`Bound`] plan, and that one
+//! plan answers every question the rest of the crate asks:
 //!
-//! - **row at a time**, over a [`Value`] record ([`Bound::matches`]);
-//! - **vectorized**, over an Arrow `RecordBatch` ([`Bound::mask`]);
+//! - **row at a time**, over a [`Value`] record ([`BoundPredicate::matches`]);
+//! - **vectorized**, over an Arrow `RecordBatch` ([`BoundPredicate::mask`]);
 //! - **three-valued over statistics**, so a file, a manifest, or a partition
-//!   directory is skipped without being read ([`Bound::evaluate_stats`]).
+//!   directory is skipped without being read ([`BoundPredicate::evaluate_stats`]).
 //!
 //! The three agree by construction, because they read the same plan. That is
 //! the whole point: a filter that prunes and a filter that selects must never

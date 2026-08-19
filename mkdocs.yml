@@ -123,6 +123,7 @@ nav:
       - enums: enums.md
       - datatype: datatype.md
       - field: field.md
+      - expressions: expressions.md
       - arrow: arrow.md
   - Storage:
       - io: io.md

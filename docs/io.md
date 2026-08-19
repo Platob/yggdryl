@@ -2296,12 +2296,19 @@ to reach one partition directly instead.
 
 ## Partition pruning and filtering
 
-One option answers the same equality wherever the value lives.
+One option answers the same question wherever the value lives. `filter` takes
+an [expression](expressions.md) - `venue = 'XNAS' AND price BETWEEN 10 AND 20` -
+bound once at the top of the read and then answered at every level below it: a
+folder read *prunes* - a leaf whose directory names a value the predicate
+refutes is never listed or decoded - and whatever the directories could not
+settle is *filtered* row by row, so a path-partitioned lake and a
+data-partitioned one answer identically.
+
 `filter_partitions` names `(column, value)` pairs, spelled the way partition
-paths spell them: a folder read *prunes* - a leaf whose directory names a
-different value is never listed or decoded - and a column the data carries is
-*filtered* row by row, so a path-partitioned lake and a data-partitioned one
-answer identically.
+paths spell them, and is sugar for one equality each - conjoined onto whatever
+predicate is already set, so the two spellings compose rather than compete. The
+expression form is what adds ranges, null tests, set membership, nested access,
+and computed columns; the pair form keeps working with identical answers.
 
 === "Rust"
 
