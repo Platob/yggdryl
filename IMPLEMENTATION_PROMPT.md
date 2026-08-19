@@ -648,8 +648,8 @@ both sides, and each is a test:
   the output, so a green run says *which* implementation agreed; an older
   PyIceberg silently writing v2 is a pass that proves nothing. Then the Doris
   interop of section 6 reads the same v3 table, because Doris 4.1 reads V3
-  Puffin deletion vectors. A v3 table that two unrelated engines agree on is settled;
-  one that only PyIceberg agrees with is not.
+  Puffin deletion vectors. A v3 table two unrelated engines agree on is
+  settled; one only PyIceberg agrees with is not.
 - **Benchmarks**: `rust/benchmarks/iceberg.rs` gains `v3_deletes` - building a
   mask from a deletion vector, from a position delete file, and from an
   equality delete file, at 1%, 50%, and 99% deleted, against the kernel
