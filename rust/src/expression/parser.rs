@@ -45,7 +45,20 @@ use super::{Comparison, Expression, Function, Operator, RECURSION_LIMIT, Safety,
 use crate::{DataType, Error, Result, TypedValue, Value};
 
 /// Which way one ordering key sorts.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Default,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Direction {
     /// Smallest first.
     #[default]
@@ -55,7 +68,19 @@ pub enum Direction {
 }
 
 /// Where nulls sit in an ordering.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum NullsOrder {
     /// Nulls sort before every value.
     First,
@@ -64,7 +89,7 @@ pub enum NullsOrder {
 }
 
 /// One ordering key: an expression, a direction, and where nulls sit.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Order {
     expression: Expression,
     direction: Direction,
@@ -116,7 +141,7 @@ impl Order {
 }
 
 /// One output column: an expression and the name it is published under.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Projection {
     expression: Expression,
     alias: Option<SmolStr>,
@@ -180,7 +205,7 @@ impl Projection {
 /// deliberately not a query language: there is no `from`, because the relation
 /// is the handle the statement is given to, and no `join`, because there is
 /// only ever one.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Default, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Statement {
     projections: Vec<Projection>,
     predicate: Option<Expression>,

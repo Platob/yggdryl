@@ -26,10 +26,11 @@
 //! text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶ Value | ArrayRef | mask
 //! ```
 //!
-//! 1. **Parse** ([`FromStr`]) - one recursive grammar, re-entered by every
-//!    nested construct, with byte-positioned errors.
-//! 2. **Type** ([`Expression::field`]) - the output [`Field`] resolved against
-//!    a schema, recursively, and the only place output types are decided.
+//! 1. **Parse** ([`FromStr`](std::str::FromStr)) - one recursive grammar,
+//!    re-entered by every nested construct, with byte-positioned errors.
+//! 2. **Type** ([`Expression::field`]) - the output [`Field`](crate::Field)
+//!    resolved against a schema, recursively, and the only place output
+//!    types are decided.
 //! 3. **Bind** ([`Expression::bind`]) - names become indices, literals are
 //!    converted once to the type they are compared against, constants fold,
 //!    and conjuncts are ordered cheapest-first. This happens **once per
@@ -39,8 +40,8 @@
 //!    three-valued over container statistics so a file, a manifest, or a
 //!    directory is skipped without being read.
 //!
-//! The scalar tier compiles with no Arrow at all; only [`arrow`](self::arrow)
-//! is behind the `arrow` feature.
+//! The scalar tier compiles with no Arrow at all; only the vectorized tier is
+//! behind the `arrow` feature.
 
 mod bind;
 mod display;
@@ -65,8 +66,8 @@ use crate::{DataType, Error, Result, TypedValue};
 
 pub use bind::{Bound, BoundStatement};
 pub use parser::{Direction, NullsOrder, Order, Projection, Statement, needs_quoting};
-pub use pushdown::{Bounds, Residual};
-pub use selector::{Attributes, Cost, Selector, read_handle};
+pub use pushdown::{Bounds, ColumnBounds, Residual};
+pub use selector::{Attributes, Cost, Handle, Selector, read_handle};
 
 /// How deep an expression may nest before the parser and every walk refuse.
 ///
@@ -86,7 +87,8 @@ pub const NODE_LIMIT: usize = 100_000;
 ///
 /// Written once in the grammar, resolved once against the container's datatype,
 /// and applied identically by the scalar and the vectorized evaluators.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Segment {
     /// `.name` - a struct child, resolved ASCII case-insensitively the way
     /// every cast in this crate resolves a name.
@@ -126,7 +128,19 @@ impl Segment {
 }
 
 /// A comparison between two expressions.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Comparison {
     /// `=` - null on either side is unknown.
     Eq,
@@ -227,7 +241,19 @@ impl Comparison {
 /// Negation is deliberately *not* here. It is unary, and a binary node with a
 /// fictional left operand would be a lie the evaluator then has to remember;
 /// [`Expression::Negate`] is its own node instead.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Operator {
     /// `+`
     Add,
@@ -256,7 +282,20 @@ impl Operator {
 }
 
 /// Whether a cast nulls what it cannot convert, or refuses it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Default,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Safety {
     /// A value the target cannot hold is an error naming both sides.
     #[default]
@@ -290,7 +329,19 @@ impl Safety {
 /// system cannot promise that the scalar evaluator, the vectorized evaluator,
 /// and the statistics evaluator agree about a function none of them knows. A
 /// name outside this set is a parse error listing the vocabulary it is not in.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Function {
     /// Lowercased text.
@@ -469,7 +520,8 @@ impl Function {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Expression {
     // ---- Leaves: nodes with no expression children -----------------------
@@ -528,8 +580,9 @@ pub enum Expression {
     Glob(Box<Expression>, Box<Expression>),
 
     // ---- Arithmetic -------------------------------------------------------
-    /// Arithmetic over two operands, with the promotion rules of
-    /// [`typing`](self::typing) - a decimal never becomes a float to be added.
+    /// Arithmetic over two operands, with the promotion rules
+    /// [`Expression::field`] states - a decimal never becomes a float to be
+    /// added.
     Arithmetic(Box<Expression>, Operator, Box<Expression>),
     /// Arithmetic negation.
     Negate(Box<Expression>),
@@ -1100,12 +1153,20 @@ impl Expression {
         found
     }
 
-    /// Walk every node of this expression, depth-first, iteratively.
+    /// Walk every node of this expression, depth-first, in evaluation order.
+    ///
+    /// The walk is iterative so a deliberately deep tree cannot overflow the
+    /// stack, and children are pushed in reverse so popping them restores the
+    /// order they are written in. Order is not cosmetic here: `columns()`
+    /// promises first-seen order and a projection pushdown reads it.
     pub(crate) fn walk<'node>(&'node self, visit: &mut impl FnMut(&'node Self)) {
-        let mut pending = vec![self];
+        let mut pending: Vec<&'node Self> = vec![self];
+        let mut children: Vec<&'node Self> = Vec::new();
         while let Some(node) = pending.pop() {
             visit(node);
-            node.for_each_child(|child| pending.push(child));
+            children.clear();
+            node.for_each_child(|child| children.push(child));
+            pending.extend(children.iter().rev().copied());
         }
     }
 

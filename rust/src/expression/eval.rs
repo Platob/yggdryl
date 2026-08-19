@@ -511,8 +511,11 @@ fn arithmetic(
 /// this widens the question to every whole number, because `price > 100` writes
 /// the bound as an integer and means it as a decimal.
 pub(crate) fn unscaled_at(value: &Value, scale: i8) -> Option<i128> {
-    if let Some(unscaled) = value.decimal_unscaled_at(scale) {
-        return Some(unscaled);
+    // A decimal answers through its own restatement and never through
+    // `as_i128`, which would hand back the raw coefficient and read `1.50` as
+    // one hundred and fifty.
+    if value.is_decimal() {
+        return value.decimal_unscaled_at(scale);
     }
     let held = value.as_i128()?;
     match scale.cmp(&0) {
@@ -939,8 +942,7 @@ pub(crate) fn convert(target: &DataType, value: &Value, safety: Safety) -> Resul
         | DataType::UInt16
         | DataType::UInt32
         | DataType::UInt64 => {
-            let held = value
-                .as_i128()
+            let held = unscaled_at(value, 0)
                 .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
                 .or_else(|| value.as_f64().map(|held| held.trunc() as i128))
                 .or_else(|| value.as_str().and_then(|text| text.parse::<i128>().ok()));

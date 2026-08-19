@@ -1087,7 +1087,15 @@ impl Binder<'_> {
         let right_type = self.type_of(right)?;
         for (literal, other) in [(left, &right_type), (right, &left_type)] {
             if let Expression::Literal(held) = literal {
-                if !held.value().is_null() && fits(other, held) {
+                // Narrowing is only ever a *choice between* types the promotion
+                // table already accepts. Without that guard a `1` would narrow
+                // into a text column and `s > 1` would quietly become a string
+                // comparison, which is the exact silent widening this module
+                // exists to refuse.
+                if held.value().is_null() || common_type(held.data_type(), other).is_none() {
+                    continue;
+                }
+                if fits(other, held) {
                     return Ok(other.clone());
                 }
             }
@@ -1208,7 +1216,7 @@ fn incompatible(expected: &str) -> Error {
 /// The result is what actually runs: folded, ordered, and with every literal in
 /// the type it will be compared in. Printing it is how a caller sees what bind
 /// decided without a second representation to keep in step.
-fn rebuild(node: &Node) -> Expression {
+pub(crate) fn rebuild(node: &Node) -> Expression {
     match &node.kind {
         Kind::Literal(value) => {
             TypedValue::from_parts(node.field.data_type().clone(), value.clone())

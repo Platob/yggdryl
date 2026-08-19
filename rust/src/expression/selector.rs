@@ -34,7 +34,20 @@ use crate::{DataType, Error, Field, Result, Url, Value};
 ///
 /// Ordering is the point: `Free < Stat`, so sorting conjuncts by the highest
 /// cost they contain is a plain `sort_by_key`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Default,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Cost {
     /// Answered from the [`Url`] alone - no call into the backing store.
     #[default]
@@ -59,7 +72,10 @@ impl Cost {
 /// Written `&holder.name` in the grammar - the `&` marks it as a question about
 /// the container rather than about a column, which is what keeps a lake with a
 /// column literally named `size` unambiguous.
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Selector {
     /// `&holder.url` - the whole identifier, as text.
@@ -251,9 +267,30 @@ impl Attributes for Url {
     }
 }
 
-impl Attributes for dyn IOBase + '_ {
+/// One live handle, seen as the attributes it can answer.
+///
+/// A thin adapter rather than a blanket implementation, because a blanket one
+/// over every [`IOBase`] would make `impl Attributes for Url` impossible: the
+/// compiler cannot prove a `Url` is not a handle, and the two overlap on
+/// paper even though they never do in fact. Wrapping is one word at the call
+/// site and it keeps both spellings.
+///
+/// ```no_run
+/// use yggdryl::expression::{Attributes, Handle, Selector};
+/// use yggdryl::local::Folder;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let folder = Folder::new(std::env::temp_dir())?;
+/// let name = Handle(&folder).attribute(&Selector::Name)?;
+/// # let _ = name;
+/// # Ok(())
+/// # }
+/// ```
+pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H);
+
+impl<H: IOBase + ?Sized> Attributes for Handle<'_, H> {
     fn attribute(&self, selector: &Selector) -> Result<Value> {
-        read_handle(self, selector)
+        read_handle(self.0, selector)
     }
 }
 
@@ -266,7 +303,7 @@ impl Attributes for dyn IOBase + '_ {
 /// # Errors
 ///
 /// Returns the backing store's failure.
-pub fn read_handle(handle: &dyn IOBase, selector: &Selector) -> Result<Value> {
+pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Result<Value> {
     match selector.cost() {
         Cost::Free => Ok(handle
             .url()

@@ -367,6 +367,11 @@ pub(crate) fn is_reserved(name: &str) -> bool {
 fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedValue) -> fmt::Result {
     let data_type = held.data_type();
     let value = held.value();
+    // Text is the one bare spelling that is not a word: it prints as the
+    // quoted literal the grammar reads back as `utf8`.
+    if let (DataType::Utf8, Value::String(text)) = (data_type, value) {
+        return write_text_literal(formatter, text);
+    }
     if let Some(bare) = bare_literal(data_type, value) {
         return formatter.write_str(&bare);
     }
