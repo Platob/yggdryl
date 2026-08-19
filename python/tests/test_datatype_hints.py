@@ -380,9 +380,9 @@ def test_pep695_alias_members_preserve_none_and_annotated_metadata() -> None:
 
     assert alias_member.nullable and alias_member.data_type.id == "int64"
     assert generic_optional.nullable and generic_optional.data_type.id == "int64"
-    assert generic_tagged["unit"] == "alias"
-    assert fixed_tagged["source"] == "fixed"
-    assert generic_tagged["python.kind"] == "type_alias"
+    assert generic_tagged.metadata["unit"] == "alias"
+    assert fixed_tagged.metadata["source"] == "fixed"
+    assert generic_tagged.metadata["python.kind"] == "type_alias"
 
 
 def test_recursive_deep_and_unresolved_annotations_fail_cleanly() -> None:

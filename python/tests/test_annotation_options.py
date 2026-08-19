@@ -822,3 +822,26 @@ def test_safe_physical_list_and_temporal_values_are_lossless() -> None:
     assert SecondTimestamp.from_dict({"instant": exact_instant}).instant == (
         exact_instant
     )
+
+
+def test_a_field_annotation_contributes_its_metadata() -> None:
+    """A `Field` in an `Annotated` carries its metadata onto the column.
+
+    The metadata lives on the `metadata` view rather than on the field itself,
+    because item access on a `Field` reaches a nested child. Reading it the
+    other way raised `AttributeError` at conversion time - a path no test
+    reached, because every other test annotates with a `("key", value)` tuple.
+    """
+    tag = Field("value", "int64")
+    tag.metadata["unit"] = "ms"
+    tag.metadata["iceberg:doc"] = "elapsed"
+
+    @record
+    class Reading:
+        value: Annotated[int, tag]
+
+    column = Reading.schema_field().data_type["value"]
+    assert column.metadata["unit"] == "ms"
+    assert column.metadata["iceberg:doc"] == "elapsed"
+    # And the conversion the missing attribute used to crash still round-trips.
+    assert Reading.from_dict({"value": "7"}).value == 7

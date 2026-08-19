@@ -960,7 +960,7 @@ def _annotation_options(
                 "exactly (key, value)"
             )
         if isinstance(extra, Field):
-            options.metadata.update(extra.items())
+            options.metadata.update(extra.metadata.items())
             continue
         if isinstance(extra, cabc.Mapping):
             try:
