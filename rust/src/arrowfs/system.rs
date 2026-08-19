@@ -593,11 +593,6 @@ impl ArrowFileSystem for LocalFileSystem {
 
     fn write_full(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let target = std::path::Path::new(path);
-        if let Some(parent) = target.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).map_err(Error::Io)?;
-            }
-        }
         // Write beside the target and rename into place, so publication is
         // atomic and a concurrent reader never sees a half-written value.
         let tag = TEMPORARY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -609,7 +604,32 @@ impl ArrowFileSystem for LocalFileSystem {
                 .unwrap_or_default(),
             std::process::id()
         ));
-        std::fs::write(&staged, bytes).map_err(Error::Io)?;
+        // The staged write *is* the ancestry question: no directory is made in
+        // advance. A missing parent is repaired once, and the original write is
+        // retried exactly once; a second absence is reported naming what the
+        // repair created.
+        if let Err(error) = std::fs::write(&staged, bytes) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(Error::from_io_at(error, "file", path));
+            }
+            let Some(parent) = target
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            else {
+                return Err(Error::from_io_at(error, "file", path));
+            };
+            std::fs::create_dir_all(parent).map_err(Error::Io)?;
+            std::fs::write(&staged, bytes).map_err(|retry| {
+                if retry.kind() == std::io::ErrorKind::NotFound {
+                    Error::absent(
+                        "file",
+                        format!("{path} (its parent {} was created)", parent.display()),
+                    )
+                } else {
+                    Error::Io(retry)
+                }
+            })?;
+        }
         std::fs::rename(&staged, target).map_err(|error| {
             let _ = std::fs::remove_file(&staged);
             Error::Io(error)

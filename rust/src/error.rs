@@ -53,6 +53,30 @@ pub enum Error {
         /// A concise description of the failure.
         reason: SmolStr,
     },
+    /// A resource an operation addressed is not there.
+    ///
+    /// This is the typed absence the existence contract branches on: act
+    /// first, then read the failure. A backend that spells absence its own
+    /// way (`NotFound`, `NoSuchKey`, a 404) is normalized into this at its own
+    /// boundary, once, so no caller matches on a message.
+    Absent {
+        /// What the operation expected to find, such as `table` or `file`.
+        expected: &'static str,
+        /// The location addressed, rendered canonically.
+        path: SmolStr,
+    },
+    /// A resource an operation meant to create is already there.
+    ///
+    /// `create` reports this from the attempt, never from a probe;
+    /// `open_or_create` is that same attempt with this absorbed.
+    Conflict {
+        /// What the operation meant to create, such as `table`.
+        expected: &'static str,
+        /// What is already at that location.
+        actual: &'static str,
+        /// The location addressed, rendered canonically.
+        path: SmolStr,
+    },
     /// Reading or writing codec bytes failed.
     Io(std::io::Error),
     /// An Arrow schema value could not be converted.
@@ -93,6 +117,17 @@ impl fmt::Display for Error {
                 formatter,
                 "invalid {format} data at byte {position}: {reason}"
             ),
+            Self::Absent { expected, path } => {
+                write!(formatter, "expected a {expected} at {path:?}, got nothing")
+            }
+            Self::Conflict {
+                expected,
+                actual,
+                path,
+            } => write!(
+                formatter,
+                "expected to create a {expected} at {path:?}, got an existing {actual}"
+            ),
             Self::Io(error) => write!(formatter, "codec I/O error: {error}"),
             Self::Arrow(error) => write!(formatter, "Arrow schema error: {error}"),
         }
@@ -128,5 +163,136 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl Error {
+    /// Report that nothing is at `path` where a `expected` was addressed.
+    pub fn absent(expected: &'static str, path: impl fmt::Display) -> Self {
+        Self::Absent {
+            expected,
+            path: SmolStr::new(path.to_string()),
+        }
+    }
+
+    /// Report that `actual` is already at `path` where an `expected` was created.
+    pub fn conflict(expected: &'static str, actual: &'static str, path: impl fmt::Display) -> Self {
+        Self::Conflict {
+            expected,
+            actual,
+            path: SmolStr::new(path.to_string()),
+        }
+    }
+
+    /// Normalize a backend's own absence and conflict spellings into the typed
+    /// variants, at that backend's boundary.
+    ///
+    /// Everything else keeps the failure it already is: a permission or network
+    /// error is neither an absence nor a conflict, and widening it into one
+    /// would make a caller repair something that was never missing.
+    pub fn from_io_at(
+        error: std::io::Error,
+        expected: &'static str,
+        path: impl fmt::Display,
+    ) -> Self {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => Self::absent(expected, path),
+            std::io::ErrorKind::AlreadyExists => Self::conflict(expected, expected, path),
+            _ => Self::Io(error),
+        }
+    }
+
+    /// Return whether this failure says the addressed resource is not there.
+    ///
+    /// [`Self::Absent`] is what backends normalize into; an [`Self::Io`] error
+    /// still spelling [`std::io::ErrorKind::NotFound`] answers the same, so a
+    /// backend whose boundary has not been normalized yet can never make a
+    /// caller branch the wrong way.
+    #[must_use]
+    pub fn is_absent(&self) -> bool {
+        match self {
+            Self::Absent { .. } => true,
+            Self::Io(error) => error.kind() == std::io::ErrorKind::NotFound,
+            _ => false,
+        }
+    }
+
+    /// Return whether this failure says the addressed resource is already there.
+    ///
+    /// Reads [`Self::Io`]'s [`std::io::ErrorKind::AlreadyExists`] for the same
+    /// reason [`Self::is_absent`] reads `NotFound`.
+    #[must_use]
+    pub fn is_conflict(&self) -> bool {
+        match self {
+            Self::Conflict { .. } => true,
+            Self::Io(error) => error.kind() == std::io::ErrorKind::AlreadyExists,
+            _ => false,
+        }
+    }
+}
+
 /// The result type returned by Yggdryl core operations.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn an_absence_names_what_was_expected_and_where() {
+        let error = Error::absent("table", "warehouse/sales/orders");
+        assert_eq!(
+            error.to_string(),
+            "expected a table at \"warehouse/sales/orders\", got nothing"
+        );
+        assert!(error.is_absent());
+        assert!(!error.is_conflict());
+    }
+
+    #[test]
+    fn a_conflict_names_both_sides_and_where() {
+        let error = Error::conflict("table", "namespace", "warehouse/sales");
+        assert_eq!(
+            error.to_string(),
+            "expected to create a table at \"warehouse/sales\", got an existing namespace"
+        );
+        assert!(error.is_conflict());
+        assert!(!error.is_absent());
+    }
+
+    #[test]
+    fn a_backend_spelling_normalizes_into_the_typed_variant() {
+        let absent = Error::from_io_at(
+            std::io::Error::from(std::io::ErrorKind::NotFound),
+            "file",
+            "/tmp/missing",
+        );
+        assert!(matches!(absent, Error::Absent { .. }));
+
+        let conflict = Error::from_io_at(
+            std::io::Error::from(std::io::ErrorKind::AlreadyExists),
+            "file",
+            "/tmp/taken",
+        );
+        assert!(matches!(conflict, Error::Conflict { .. }));
+    }
+
+    #[test]
+    fn a_permission_failure_is_neither_an_absence_nor_a_conflict() {
+        let denied = Error::from_io_at(
+            std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            "file",
+            "/tmp/locked",
+        );
+        assert!(matches!(denied, Error::Io(_)));
+        assert!(!denied.is_absent());
+        assert!(!denied.is_conflict());
+    }
+
+    #[test]
+    fn an_unnormalized_backend_answer_still_branches_the_same_way() {
+        // A boundary that has not been normalized yet must not make a caller
+        // repair something that was never missing, nor miss a real absence.
+        let absent = Error::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(absent.is_absent());
+        let conflict = Error::Io(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+        assert!(conflict.is_conflict());
+    }
+}

@@ -97,6 +97,45 @@ mod mapped {
     }
 
     #[test]
+    fn a_write_into_a_missing_ancestry_creates_it_from_the_write_itself() {
+        // No `mkdir` step runs first: the open fails with the typed absence,
+        // the ancestry is repaired once, and the same open is retried once.
+        let mut root = std::env::temp_dir();
+        root.push(format!("yggdryl-ancestry-{}", std::process::id()));
+        crate::local::Folder::new(&root)
+            .expect("a local folder")
+            .remove(true)
+            .expect("a removable folder");
+
+        let deep = root.join("a").join("b").join("c").join("trades.bin");
+        let mut leaf = File::new(&deep).expect("a local leaf");
+        leaf.write_all_bytes(b"rows").expect("a created ancestry");
+
+        assert_eq!(
+            File::new(&deep)
+                .expect("a local leaf")
+                .read_all_bytes()
+                .expect("the written bytes"),
+            b"rows"
+        );
+
+        crate::local::Folder::new(&root)
+            .expect("a local folder")
+            .remove(true)
+            .expect("a removable folder");
+    }
+
+    #[test]
+    fn a_read_of_a_missing_file_is_empty_rather_than_an_absence() {
+        // The open *is* the existence question; nothing probes before it, and
+        // a read that finds nothing is emptiness rather than a failure.
+        let path = path("absent-read");
+        let leaf = File::new(&path).expect("a local leaf");
+        assert_eq!(leaf.size(), 0);
+        assert!(leaf.read_all_bytes().expect("an empty read").is_empty());
+    }
+
+    #[test]
     fn a_complete_write_publishes_its_length_to_another_handle() {
         let path = path("published");
 
