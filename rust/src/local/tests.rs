@@ -56,7 +56,7 @@ mod mapped {
         assert!(handle.is_empty());
         let mut probe = [0_u8; 8];
         assert_eq!(handle.pread(0, &mut probe).unwrap(), 0);
-        assert!(handle.read_all().unwrap().is_empty());
+        assert!(handle.read_all_bytes().unwrap().is_empty());
         // Reading still did not create it.
         assert!(!path.exists());
 
@@ -80,7 +80,7 @@ mod mapped {
         handle.flush().unwrap();
 
         assert!(path.exists());
-        assert_eq!(handle.read_all().unwrap(), b"created");
+        assert_eq!(handle.read_all_bytes().unwrap(), b"created");
 
         let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
     }
@@ -93,7 +93,7 @@ mod mapped {
         mapped.pwrite(5, b"z").unwrap();
 
         assert_eq!(mapped.size(), 6);
-        assert_eq!(mapped.read_all().unwrap(), b"ab\0\0\0z");
+        assert_eq!(mapped.read_all_bytes().unwrap(), b"ab\0\0\0z");
 
         drop(mapped);
         let _ = std::fs::remove_file(&path);
@@ -196,7 +196,7 @@ mod hierarchy {
         let message = directory.pwrite(0, b"nope").unwrap_err().to_string();
         assert!(message.contains("expected a file"), "{message}");
         // Reads are empty rather than an error.
-        assert!(directory.read_all().unwrap().is_empty());
+        assert!(directory.read_all_bytes().unwrap().is_empty());
 
         // Truncating to zero is how a directory is brought into being.
         directory.truncate(0).unwrap();
@@ -219,7 +219,7 @@ mod hierarchy {
         // Closing publishes and releases; the handle stays usable.
         leaf.close().unwrap();
         assert!(!leaf.is_open());
-        assert_eq!(leaf.read_all().unwrap(), b"cached");
+        assert_eq!(leaf.read_all_bytes().unwrap(), b"cached");
 
         // Opening a handle for a missing file caches nothing and creates nothing.
         let mut absent = directory.child_by("absent.bin").unwrap();
@@ -257,7 +257,7 @@ mod generic_path {
         let missing = Path::new(path.join("absent.arrows")).unwrap();
         assert_eq!(missing.kind(), IOKind::Unknown);
         assert!(!missing.is_container());
-        assert!(missing.read_all().unwrap().is_empty());
+        assert!(missing.read_all_bytes().unwrap().is_empty());
         assert_eq!(missing.size(), 0);
 
         let _ = std::fs::remove_dir_all(&path);
@@ -276,7 +276,7 @@ mod generic_path {
 
         // Writing created a file, and reading it goes through that file.
         assert_eq!(leaf.kind(), IOKind::File);
-        assert_eq!(leaf.read_all().unwrap(), b"AAPL");
+        assert_eq!(leaf.read_all_bytes().unwrap(), b"AAPL");
 
         let _ = std::fs::remove_dir_all(&path);
     }
@@ -294,11 +294,11 @@ mod generic_path {
         let leaf = Path::new(path.join("a.bin")).unwrap();
         assert_eq!(leaf.kind(), IOKind::File);
         assert!(leaf.ls(true, false).unwrap().is_empty());
-        assert_eq!(leaf.read_all().unwrap(), b"a");
+        assert_eq!(leaf.read_all_bytes().unwrap(), b"a");
 
         // Children resolve as further generic locations.
         let child = directory.child_by("a.bin").unwrap();
-        assert_eq!(child.read_all().unwrap(), b"a");
+        assert_eq!(child.read_all_bytes().unwrap(), b"a");
         assert_eq!(child.parent().unwrap().kind(), IOKind::Directory);
 
         let _ = std::fs::remove_dir_all(&path);
@@ -339,7 +339,7 @@ mod roles {
         // A container holds no bytes, refuses byte writes, and is created by
         // truncating it to zero - all of that comes from the role.
         assert_eq!(folder.size(), 0);
-        assert!(folder.read_all().unwrap().is_empty());
+        assert!(folder.read_all_bytes().unwrap().is_empty());
         let message = folder.pwrite(0, b"x").unwrap_err().to_string();
         assert!(message.contains("got the directory"), "{message}");
         assert!(folder.truncate(4).is_err());

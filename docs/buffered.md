@@ -142,7 +142,7 @@ let options = BufferedOptions::default()
 let mut handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 4 * 64]), options);
 
 // Page 3 ends the value, so it holds a pin.
-assert_eq!(handle.read_all()?.len(), 4 * 64);
+assert_eq!(handle.read_all_bytes()?.len(), 4 * 64);
 assert!(handle.has_cached_page(3));
 
 // A write doubling the value moves the end; page 3 is ordinary again, and a
@@ -166,7 +166,7 @@ use yggdryl::io::{Buffer, IOBase};
 
 let mut handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
     .buffered(BufferedOptions::default());
-assert_eq!(handle.read_all()?.len(), 20);
+assert_eq!(handle.read_all_bytes()?.len(), 20);
 
 // A write goes straight to the wrapped handle and folds into the pages it
 // overlapped, so the read after it can never see the bytes it replaced.
@@ -176,9 +176,9 @@ assert_eq!(handle.handle().as_slice()[13..17], *b"MSFT");
 
 // Truncating drops every page a resize could have changed, both ways.
 handle.truncate(13)?;
-assert_eq!(handle.read_all()?, b"symbol,price\n");
+assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
 handle.truncate(15)?;
-assert_eq!(handle.read_all()?, b"symbol,price\n\0\0");
+assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
 ```
 
 `pwrite` is write-through: the bytes reach the inner handle first, and then every cached
@@ -192,7 +192,7 @@ use yggdryl::buffered::BufferedOptions;
 use yggdryl::io::{Buffer, IOBase};
 
 let mut handle = Buffer::from_bytes(vec![3_u8; 4_096]).buffered(BufferedOptions::default());
-assert_eq!(handle.read_all()?.len(), 4_096);
+assert_eq!(handle.read_all_bytes()?.len(), 4_096);
 assert_eq!(handle.cached_pages(), 1);
 
 handle.close()?;

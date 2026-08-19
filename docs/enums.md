@@ -485,6 +485,30 @@ holding other resources - plus `Unknown`, the honest answer for a location that 
 contract [`IOBase`](io.md) is built on. Adding a backend means answering this question, not
 inventing new vocabulary.
 
+A table format names three container roles of its own, because answering "directory" about them
+loses what a caller most needs to know. A `Table` is one tabular value spread over many files, so it
+is read through the record surface rather than by listing it; a `Namespace` holds tables and further
+namespaces; a `Catalog` is the warehouse those namespaces live under. All three contain others, so
+`is_container` stays the one question a walk asks.
+
+```rust
+use yggdryl::IOKind;
+
+for container in [IOKind::Table, IOKind::Namespace, IOKind::Catalog] {
+    assert!(container.is_container());
+    assert!(!container.is_leaf());
+}
+assert_eq!(IOKind::from_str("CATALOG")?, IOKind::Catalog);
+// The parser names the whole vocabulary when it refuses one.
+let refused = IOKind::from_str("warehouse").unwrap_err().to_string();
+assert!(refused.contains("namespace"));
+```
+
+Storage cannot tell one folder from another, so each role is answered by the value that adds the
+framing: [`iceberg::Catalog::kind`](iceberg.md), `iceberg::Namespace::kind`, and - because a table
+*is* a handle - `IOBase::kind` on [`iceberg::Table`](iceberg.md). A plain folder handle over the
+same location still answers `Directory`, and still reads as the table beneath it.
+
 ## Time units and union modes
 
 === "Rust"

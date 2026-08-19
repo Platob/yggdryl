@@ -32,7 +32,13 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         // The whole value is black-boxed rather than its length: observing
         // only the length lets the optimizer delete the allocation and the
         // copy outright, which would time nothing and read as a win.
-        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
+        bencher.iter(|| {
+            black_box(
+                black_box(&handle)
+                    .read_all_bytes()
+                    .expect("a readable value"),
+            )
+        });
     });
 
     group.bench_function("read_all/buffer", |bencher| {
@@ -41,7 +47,13 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         // The whole value is black-boxed rather than its length: observing
         // only the length lets the optimizer delete the allocation and the
         // copy outright, which would time nothing and read as a win.
-        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
+        bencher.iter(|| {
+            black_box(
+                black_box(&handle)
+                    .read_all_bytes()
+                    .expect("a readable value"),
+            )
+        });
     });
 
     // A ranged read, which is the shape a footer-first reader uses: the
@@ -105,7 +117,13 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         // The whole value is black-boxed rather than its length: observing
         // only the length lets the optimizer delete the allocation and the
         // copy outright, which would time nothing and read as a win.
-        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
+        bencher.iter(|| {
+            black_box(
+                black_box(&handle)
+                    .read_all_bytes()
+                    .expect("a readable value"),
+            )
+        });
     });
 
     group.bench_function("read_all/local_file", |bencher| {
@@ -116,7 +134,13 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         // The whole value is black-boxed rather than its length: observing
         // only the length lets the optimizer delete the allocation and the
         // copy outright, which would time nothing and read as a win.
-        bencher.iter(|| black_box(black_box(&handle).read_all().expect("a readable value")));
+        bencher.iter(|| {
+            black_box(
+                black_box(&handle)
+                    .read_all_bytes()
+                    .expect("a readable value"),
+            )
+        });
     });
 
     group.bench_function("write_all/arrowfs_local", |bencher| {

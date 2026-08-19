@@ -314,6 +314,14 @@ impl IOBase for File {
         self.file_kind()
     }
 
+    fn is_atomic(&self) -> bool {
+        self.file_is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.file_is_tabular()
+    }
+
     fn flush(&mut self) -> Result<()> {
         let mut stage = self.stage.lock().map_err(|_| poisoned())?;
         Self::publish(&mut stage, self.filesystem.as_ref(), &self.location)

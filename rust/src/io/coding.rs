@@ -82,7 +82,7 @@ impl<H: IOBase> Coded<H> {
     /// Materialize the decoded value, decoding the wrapped bytes once.
     fn decoded(&mut self) -> Result<&mut Vec<u8>> {
         if self.plain.is_none() {
-            let encoded = self.handle.read_all()?;
+            let encoded = self.handle.read_all_bytes()?;
             // Per the laziness contract, a resource that does not exist yet
             // decodes to nothing rather than failing.
             let plain = if encoded.is_empty() {
@@ -117,7 +117,7 @@ impl<H: IOBase> Coded<H> {
         if let Some(plain) = &self.plain {
             return Ok(plain.clone());
         }
-        let encoded = self.handle.read_all()?;
+        let encoded = self.handle.read_all_bytes()?;
         if encoded.is_empty() {
             return Ok(Vec::new());
         }

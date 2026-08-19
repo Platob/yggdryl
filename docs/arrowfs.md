@@ -25,11 +25,11 @@ records, and composes with [`Coded`](io.md), [`ipc`](ipc.md), [`parquet`](parque
 
     // Per the laziness contract nothing exists until something is written.
     assert!(!handle.exists());
-    assert_eq!(handle.read_all()?, b"");
+    assert_eq!(handle.read_all_bytes()?, b"");
 
     handle.write_all_bytes(b"AAPL")?;
     handle.close()?;
-    assert_eq!(handle.read_all()?, b"AAPL");
+    assert_eq!(handle.read_all_bytes()?, b"AAPL");
 
     // The handle's identity is a canonical URL naming the filesystem.
     assert_eq!(handle.url().to_string(), "memory://bucket/trades.bin");
@@ -140,7 +140,7 @@ mutations in memory and publishes them as exactly one whole-value replacement on
     handle.write_all_bytes(b"pending")?;
 
     // The handle presents the pending value; the filesystem still has the old one.
-    assert_eq!(handle.read_all()?, b"pending");
+    assert_eq!(handle.read_all_bytes()?, b"pending");
     assert_eq!(filesystem.file_info("bucket/trades.bin")?.size, 6);
 
     handle.close()?;
@@ -456,11 +456,11 @@ Nothing about a foreign filesystem is special to the wrappers, because they only
 
     // The view presents the decoded value...
     assert_eq!(coded.media_type().base(), &MimeType::JSON);
-    assert_eq!(coded.read_all()?, br#"{"symbol":"AAPL"}"#);
+    assert_eq!(coded.read_all_bytes()?, br#"{"symbol":"AAPL"}"#);
 
     // ...while what the filesystem holds is gzip.
     let stored = File::from_location(filesystem, "bucket/trades.json.gz")?;
-    assert_eq!(&stored.read_all()?[..2], &[0x1f, 0x8b]);
+    assert_eq!(&stored.read_all_bytes()?[..2], &[0x1f, 0x8b]);
     ```
 
 An Iceberg table is a folder reached through `IOBase` only, so a warehouse on a foreign filesystem
@@ -617,7 +617,7 @@ directory lists empty, a read past the end is short, and a write replaces the wh
     }
 
     let handle = File::from_location(Arc::new(OneObject), "bucket/only.bin")?;
-    assert_eq!(handle.read_all()?, b"AAPL!");
+    assert_eq!(handle.read_all_bytes()?, b"AAPL!");
     assert_eq!(handle.read_range(1, 3)?, b"APL");
     ```
 

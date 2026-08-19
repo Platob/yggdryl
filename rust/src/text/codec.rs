@@ -233,7 +233,7 @@ pub trait TextCodec: Copy {
 
 /// Read a handle's bytes with any declared content coding removed.
 fn decoded<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
-    let bytes = handle.read_all()?;
+    let bytes = handle.read_all_bytes()?;
     if bytes.is_empty() {
         return Ok(bytes);
     }

@@ -29,6 +29,8 @@ const joinedArray: IOBase = handle.joinpath(['year=2024', 'month=01'])
 const exists: boolean = handle.exists()
 const isDir: boolean = handle.isDir()
 const isFile: boolean = handle.isFile()
+const isAtomic: boolean = handle.isAtomic()
+const isTabular: boolean = handle.isTabular()
 
 const children: IOBase[] = handle.iterdir()
 const privateChildren: IOBase[] = handle.iterdir(true)
@@ -73,6 +75,8 @@ void joinedArray
 void exists
 void isDir
 void isFile
+void isAtomic
+void isTabular
 void children
 void privateChildren
 void listed

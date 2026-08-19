@@ -101,7 +101,7 @@ fn media_mirrors_the_bytes_of_its_handle() {
 
     // An Arrow IPC stream opens with the continuation marker.
     assert_eq!(media.read_range(0, 4).unwrap(), [0xFF, 0xFF, 0xFF, 0xFF]);
-    assert_eq!(media.size(), media.read_all().unwrap().len() as u64);
+    assert_eq!(media.size(), media.read_all_bytes().unwrap().len() as u64);
     assert_eq!(media.media_type().base(), &MimeType::ARROW_STREAM);
 }
 
@@ -124,7 +124,7 @@ fn open_and_close_carry_the_cached_schema() {
 
     // A reader with no declared schema recovers it once and remembers it.
     let mut reader = Media::ipc(Holder::buffer(Buffer::from_bytes(
-        media.read_all().unwrap(),
+        media.read_all_bytes().unwrap(),
     )));
     assert!(!reader.is_open());
     reader.open().unwrap();

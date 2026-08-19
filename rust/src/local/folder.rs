@@ -217,4 +217,12 @@ impl IOBase for Folder {
     fn kind(&self) -> crate::IOKind {
         self.folder_kind()
     }
+
+    fn is_atomic(&self) -> bool {
+        self.folder_is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.folder_is_tabular()
+    }
 }

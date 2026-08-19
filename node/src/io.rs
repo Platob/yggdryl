@@ -336,6 +336,27 @@ impl JsIOBase {
         self.inner.kind() == yggdryl::IOKind::File
     }
 
+    /// Return whether this resource is one whole byte value.
+    ///
+    /// The byte surface - `readBytes` and `writeBytes` - is for an atomic
+    /// resource; `isTabular` names the record surface instead. A container
+    /// holding neither answers `false` to both.
+    #[napi]
+    pub fn is_atomic(&self) -> bool {
+        self.inner.is_atomic()
+    }
+
+    /// Return whether this resource holds rows and columns.
+    ///
+    /// The record surface - `readArrowBatchReader` and its two writing
+    /// siblings - is for a tabular resource: a leaf whose media type names a
+    /// record encoding, a folder that reads as the table beneath it, or a
+    /// table format's own folder.
+    #[napi]
+    pub fn is_tabular(&self) -> bool {
+        self.inner.is_tabular()
+    }
+
     /// Iterate the immediate children, as `fs.readdirSync`.
     ///
     /// Private entries - names beginning with a dot - are skipped unless
@@ -444,13 +465,16 @@ impl JsIOBase {
     /// the laziness contract.
     #[napi]
     pub fn read_bytes(&self) -> Result<Buffer> {
-        self.inner.read_all().map(Buffer::from).map_err(napi_error)
+        self.inner
+            .read_all_bytes()
+            .map(Buffer::from)
+            .map_err(napi_error)
     }
 
     /// Read every byte here as UTF-8 text.
     #[napi]
     pub fn read_text(&self) -> Result<String> {
-        let bytes = self.inner.read_all().map_err(napi_error)?;
+        let bytes = self.inner.read_all_bytes().map_err(napi_error)?;
         String::from_utf8(bytes).map_err(napi_error)
     }
 

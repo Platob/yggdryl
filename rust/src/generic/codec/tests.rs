@@ -14,7 +14,7 @@ fn every_coding_round_trips_through_the_enum() {
         handle.write_all_bytes(PAYLOAD).unwrap();
         handle.flush().unwrap();
 
-        assert_eq!(handle.read_all().unwrap(), PAYLOAD, "{codec}");
+        assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD, "{codec}");
         assert_eq!(handle.size(), PAYLOAD.len() as u64, "{codec}");
     }
 }
@@ -31,7 +31,7 @@ fn the_handles_own_media_type_picks_the_coding() {
 
     handle.write_all_bytes(PAYLOAD).unwrap();
     handle.flush().unwrap();
-    assert_eq!(handle.read_all().unwrap(), PAYLOAD);
+    assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
     // The wrapped handle holds the compressed form.
     assert!(handle.handle().size() < PAYLOAD.len() as u64);
 }
@@ -64,5 +64,5 @@ fn a_level_reaches_the_encoder_and_the_handle_survives_it() {
 fn a_missing_resource_reads_as_empty_rather_than_failing() {
     let handle = CodedHandle::wrap(Buffer::new(), Codec::Gzip);
     assert_eq!(handle.size(), 0);
-    assert!(handle.read_all().unwrap().is_empty());
+    assert!(handle.read_all_bytes().unwrap().is_empty());
 }

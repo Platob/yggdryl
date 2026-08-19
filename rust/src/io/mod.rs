@@ -108,7 +108,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 ///     handle: Buffer::new(),
 /// };
 /// wrapper.write_all_bytes(b"AAPL")?;
-/// assert_eq!(wrapper.read_all()?, b"AAPL");
+/// assert_eq!(wrapper.read_all_bytes()?, b"AAPL");
 /// # Ok(())
 /// # }
 /// ```
@@ -132,7 +132,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// impl IOBase for Counted {
 ///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
 ///         truncate, url, media_type, set_media_type, flush, parent, child_by,
-///         ls, kind);
+///         ls, kind, is_atomic, is_tabular);
 ///
 ///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
 ///     // the trait is `Send`, and a double is held across threads like any
@@ -148,7 +148,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 ///     handle: Buffer::from_bytes(b"AAPL".to_vec()),
 ///     reads: AtomicUsize::new(0),
 /// };
-/// assert_eq!(counted.read_all()?, b"AAPL");
+/// assert_eq!(counted.read_all_bytes()?, b"AAPL");
 /// assert!(counted.reads.load(Ordering::Relaxed) > 0);
 /// # Ok(())
 /// # }
@@ -158,7 +158,7 @@ macro_rules! delegate_iobase {
     ($handle:ident) => {
         $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
             truncate, url, media_type, set_media_type, flush, parent, child_by,
-            ls, kind);
+            ls, kind, is_atomic, is_tabular);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -252,6 +252,18 @@ macro_rules! delegate_iobase {
             $crate::io::IOBase::kind(&self.$handle)
         }
     };
+
+    (@method $handle:ident, is_atomic) => {
+        fn is_atomic(&self) -> bool {
+            $crate::io::IOBase::is_atomic(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, is_tabular) => {
+        fn is_tabular(&self) -> bool {
+            $crate::io::IOBase::is_tabular(&self.$handle)
+        }
+    };
 }
 
 /// Resolve a chain of fixed names below `base`, without touching anything.
@@ -267,6 +279,48 @@ fn descend(base: &(impl IOBase + ?Sized), names: &[&str]) -> Result<Option<Holde
         holder = holder.child_by(name)?;
     }
     Ok(Some(holder))
+}
+
+/// Answer whether a container reads as one table, without listing the tree.
+///
+/// A folder reads as the table beneath it, so its leaves decide - and one leaf
+/// is enough, because a partitioned tree is one table in one encoding. The walk
+/// therefore descends towards the first leaf it can reach: every entry a level
+/// already listed is checked before anything deeper is listed at all, so a lake
+/// answers from the first partition that holds a file. Nothing is capped or
+/// sampled; a container holding no tabular leaf anywhere is walked exactly as a
+/// recursive listing would walk it, and answers `false` at the end of it.
+///
+/// A listing failure answers `false` rather than propagating: this is a
+/// predicate, and a container nobody can list holds no rows anyone can read.
+pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
+    #[cfg(feature = "iceberg")]
+    // A folder holding a table format is one tabular value however its files
+    // are named, and asking costs one lookup of the metadata directory.
+    if matches!(crate::iceberg::located(handle), Ok(Some(_))) {
+        return true;
+    }
+    let Ok(mut level) = handle.ls(false, false) else {
+        return false;
+    };
+    let mut deeper: Vec<Holder> = Vec::new();
+    loop {
+        for entry in level {
+            // The media type answers first because it is free, and no
+            // container reports a tabular one - asking whether an entry is a
+            // container is what costs a call into the backing store.
+            if entry.media_type().is_tabular() {
+                return true;
+            }
+            if entry.is_container() {
+                deeper.push(entry);
+            }
+        }
+        let Some(next) = deeper.pop() else {
+            return false;
+        };
+        level = next.ls(false, false).unwrap_or_default();
+    }
 }
 
 /// Random-access byte storage addressed by explicit offsets.
@@ -628,6 +682,86 @@ pub trait IOBase: Send {
         self.kind().is_container()
     }
 
+    /// Return whether this resource is one whole byte value.
+    ///
+    /// *Atomic* names the byte surface: the value [`Self::read_all_bytes`]
+    /// reads whole and [`Self::write_all_bytes`] replaces whole. It is the
+    /// complement of [`Self::is_tabular`] wherever bytes are held - a resource
+    /// is read as bytes or as rows, never as both - and both answer `false` for
+    /// the containers that hold neither, a directory of unrelated files as much
+    /// as a namespace or a catalog.
+    ///
+    /// The cheapest evidence answers first, so a name that already spells a
+    /// record encoding costs no call into the backing store at all. A location
+    /// nothing has decided yet answers from its name exactly as its media type
+    /// does: under the laziness contract absence is emptiness, not a third
+    /// shape.
+    ///
+    /// ```
+    /// use yggdryl::MimeType;
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// let mut notes = Buffer::new();
+    /// notes.set_media_type(MimeType::PLAIN_TEXT.into());
+    /// assert!(notes.is_atomic());
+    /// assert!(!notes.is_tabular());
+    ///
+    /// let mut trades = Buffer::new();
+    /// trades.set_media_type(MimeType::PARQUET.into());
+    /// assert!(trades.is_tabular());
+    /// assert!(!trades.is_atomic());
+    /// ```
+    fn is_atomic(&self) -> bool {
+        let media = self.media_type();
+        !media.is_tabular() && !media.base().is_directory() && !self.kind().is_container()
+    }
+
+    /// Return whether this resource holds rows and columns.
+    ///
+    /// *Tabular* names the record surface: what
+    /// [`read_arrow_batch_reader`](Self::read_arrow_batch_reader) decodes and
+    /// what its two writing siblings encode. The question is about the
+    /// representation rather than about this build - a `.parquet` leaf is
+    /// tabular whether or not the `parquet` feature is compiled in, and
+    /// [`record_options`](Self::record_options) is the call that reports an
+    /// encoding this build cannot decode, naming it.
+    ///
+    /// Cost drives the order, so the cheapest evidence answers first:
+    ///
+    /// - the media type, which a name already spells, settles every leaf and
+    ///   every location nothing has decided yet, with no call into the backing
+    ///   store;
+    /// - [`IOKind::Table`] settles a table format's folder outright, because it
+    ///   is one tabular value however its files happen to be named, and
+    ///   [`IOKind::Namespace`] and [`IOKind::Catalog`] settle the containers
+    ///   that hold only containers;
+    /// - only a plain [`IOKind::Directory`] is probed, and the probe stops at
+    ///   the first leaf that settles the question rather than listing the tree,
+    ///   because a folder reads as the table beneath it and a partitioned tree
+    ///   is one table in one encoding.
+    ///
+    /// ```
+    /// use yggdryl::MimeType;
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// let mut trades = Buffer::new();
+    /// trades.set_media_type(MimeType::ARROW_FILE.into());
+    /// assert!(trades.is_tabular());
+    /// ```
+    fn is_tabular(&self) -> bool {
+        // A representation that spells rows and columns is the answer whatever
+        // the backing store would say, and it is free: no container reports a
+        // tabular media type, so nothing here can mistake one for a leaf.
+        if self.media_type().is_tabular() {
+            return true;
+        }
+        match self.kind() {
+            IOKind::Table => true,
+            IOKind::Directory => container_is_tabular(self),
+            _ => false,
+        }
+    }
+
     /// Return whether the value holds no bytes.
     fn is_empty(&self) -> bool {
         self.size() == 0
@@ -663,10 +797,17 @@ pub trait IOBase: Send {
 
     /// Read the complete value into memory.
     ///
+    /// This is the reading half of the whole-value byte pair whose writing half
+    /// is [`Self::write_all_bytes`]; both name `bytes` because both are about
+    /// the bytes rather than the rows, which
+    /// [`read_arrow_batch_reader`](Self::read_arrow_batch_reader) and its
+    /// siblings answer. [`Self::is_atomic`] is how a caller asks which of the
+    /// two surfaces a handle is for.
+    ///
     /// # Errors
     ///
     /// Returns the backing store's read failure.
-    fn read_all(&self) -> Result<Vec<u8>> {
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
         let size = usize::try_from(self.size()).map_err(|_| oversized(self.size()))?;
         let mut bytes = vec![0_u8; size];
         self.pread_exact(0, &mut bytes)?;
@@ -723,6 +864,8 @@ pub trait IOBase: Send {
     }
 
     /// Replace the complete value with `bytes`.
+    ///
+    /// The writing half of the pair [`Self::read_all_bytes`] reads.
     ///
     /// # Errors
     ///
@@ -790,7 +933,7 @@ pub trait IOBase: Send {
         level: Level,
     ) -> Result<u64> {
         target.truncate(0)?;
-        let encoded = codec.dump_with_level(&self.read_all()?, level)?;
+        let encoded = codec.dump_with_level(&self.read_all_bytes()?, level)?;
         target.pwrite_all(0, &encoded)?;
         let media_type = self
             .media_type()
@@ -819,7 +962,7 @@ pub trait IOBase: Send {
     /// Returns the first read, decode, or write failure.
     fn decompress_into_with(&self, target: &mut dyn IOBase, codec: Codec) -> Result<u64> {
         target.truncate(0)?;
-        let decoded = codec.load(&self.read_all()?)?;
+        let decoded = codec.load(&self.read_all_bytes()?)?;
         target.pwrite_all(0, &decoded)?;
         // The decoded bytes carry the base representation with the coding
         // removed, which is exactly the media type minus its last encoding.
@@ -1769,6 +1912,17 @@ impl IOBase for Box<dyn IOBase> {
 
     fn flush(&mut self) -> Result<()> {
         self.as_mut().flush()
+    }
+
+    // The shape questions forward rather than deriving from this box's own
+    // answers: a boxed folder is a folder, and the default would read the
+    // trait's `kind` here rather than the one the value inside answers.
+    fn is_atomic(&self) -> bool {
+        self.as_ref().is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.as_ref().is_tabular()
     }
 }
 

@@ -90,7 +90,7 @@ use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::IOBase;
-use crate::{DataType, Error, Field, Result, Value};
+use crate::{DataType, Error, Field, IOKind, Result, Value};
 
 /// The directory a table keeps its metadata documents and manifests in.
 const METADATA_DIR: &str = "metadata";
@@ -1712,7 +1712,35 @@ impl<H: IOBase> Table<H> {
 /// cannot answer is a mistake worth naming rather than a row set worth
 /// guessing.
 impl<H: IOBase> IOBase for Table<H> {
-    crate::delegate_iobase!(root);
+    crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
+        truncate, url, media_type, set_media_type, flush, parent, child_by,
+        ls);
+
+    /// A table folder is a container of its own kind: [`IOKind::Table`].
+    ///
+    /// The root folder underneath would answer [`IOKind::Directory`], which is
+    /// true of the bytes and wrong about the value: the files below a table are
+    /// its storage, not its contents, and a caller reads it through the record
+    /// surface rather than by listing it. Saying so costs nothing - this handle
+    /// is the table - where a plain folder handle has to find the metadata
+    /// document before it can know.
+    fn kind(&self) -> IOKind {
+        IOKind::Table
+    }
+
+    /// A table is rows and columns, answered without touching storage.
+    ///
+    /// The folder route reaches the same answer by probing the location for a
+    /// metadata document; holding the table skips the probe, exactly as it
+    /// skips it for [`Self::read_arrow_field`] and the record methods.
+    fn is_tabular(&self) -> bool {
+        true
+    }
+
+    /// A table is never one whole byte value.
+    fn is_atomic(&self) -> bool {
+        false
+    }
 
     /// The encoding of this table's data files, from metadata alone.
     ///
@@ -2237,13 +2265,15 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
 
     let hint = metadata_dir.child_by(VERSION_HINT)?;
     if hint.size() > 0 {
-        let text = String::from_utf8_lossy(&hint.read_all()?).trim().to_owned();
+        let text = String::from_utf8_lossy(&hint.read_all_bytes()?)
+            .trim()
+            .to_owned();
         if let Ok(version) = text.parse::<u32>() {
             let document = metadata_dir.child_by(&format!("v{version}.metadata.json"))?;
             if document.size() > 0 {
                 return Ok(Some((
                     version,
-                    crate::json::from_slice(&document.read_all()?)?,
+                    crate::json::from_slice(&document.read_all_bytes()?)?,
                 )));
             }
         }
@@ -2280,7 +2310,7 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
     };
     Ok(Some((
         version,
-        crate::json::from_slice(&document.read_all()?)?,
+        crate::json::from_slice(&document.read_all_bytes()?)?,
     )))
 }
 
