@@ -1,21 +1,25 @@
-# Prompt: `Expression` — one recursive, typed, vectorized filter and projection tree
+# Prompt: `doris` — Apache Doris 4.1 as a first-class target, and as the outside implementation that checks Parquet and Iceberg
 
-Implement the expression layer the workspace has been missing: a single
-`Expression` value that parses from text, resolves its own output `Field`
-against a schema, evaluates row-at-a-time over `Value`, evaluates vectorized
-over Arrow arrays, selects on handle attributes (`&holder.size`,
-`&holder.url`, `&holder.partition['year']`), and pushes down into the pruning
-each engine already understands (Hive paths, Parquet statistics, Iceberg
-manifests). Today the whole project spells a filter as `(&str, &str)`
-equality pairs - `IOBase::children_where`, `IORecordOptions::filter_partitions`,
-`Table::scan_where` / `overwrite_where` / `merge_where` - and that is the same
-question asked five times in the weakest possible language. `Expression`
-becomes the one representation those five surfaces share, with the equality
-pair kept as sugar over it. Deliver it complete: fully implemented, edge-case
-tested on every datatype including nested, benchmarked against implementations
-the reader already trusts, and documented with running examples.
+Implement `rust/src/doris/`: the module that lets Yggdryl speak Apache Doris
+4.1 - its type system, its DDL, its Stream Load wire, its export layout, its
+table-value functions, and its Iceberg catalog - and then **use Doris as the
+outside implementation** that proves the Parquet and Iceberg read/write
+protocols this workspace already ships are correct against an engine nobody
+here wrote. Today the workspace validates Iceberg against PyIceberg and Avro
+against fastavro; Parquet is checked against PyArrow, which is the same
+Rust/C++ lineage the `parquet` crate came from. Doris is a genuinely
+independent C++ reader and writer with its own Parquet and Iceberg
+implementation, so a round trip through it is the strongest correctness signal
+available: if Doris reads every row and every nested value of what
+`rust/src/parquet/` and `rust/src/iceberg/` wrote, and Yggdryl reads back every
+row of what Doris wrote, both protocols are settled.
 
-Work on branch `claude/generic-expression-impl-w6dyn3`; commit and push there.
+Deliver it complete: fully implemented, edge-case tested on **every** Doris
+type including the deeply nested ones, benchmarked against implementations the
+reader already trusts, interop-checked both directions against a real Doris,
+and documented with running examples.
+
+Work on branch `claude/doris-4-1-impl`; commit and push there.
 
 ---
 
@@ -23,491 +27,776 @@ Work on branch `claude/generic-expression-impl-w6dyn3`; commit and push there.
 
 1. **`AGENTS.md`, in full.** It is the real spec. The sections that govern this
    task: *Order of work* (line 9), *Source layout and scope* (17), *Storage and
-   I/O contract* (109), *Table format contract* (228), *Documentation
-   organization* (353), *Exact method vocabulary* (409), *Error message
-   contract* (578), *Native value behavior* (604), *Parser contract* (626),
-   *Arrow and allocation contract* (707), *Binding boundary contract* (841),
-   *Python extension* (874), *JavaScript extension* (1064), *Required checks*
-   (1128).
-2. `rust/src/datatype/parser.rs` and `rust/src/field/parser.rs` — the two
-   existing recursive grammars, `PARSE_RECURSION_LIMIT`
-   (`datatype/parser.rs:15`), byte-positioned errors, top-level splitting that
-   honors quoting, balanced-wrapper stripping. Your grammar is a third sibling
-   written the same way; it never re-implements type parsing - a cast target
-   goes to `DataType::from_str`.
-3. `rust/src/generic/value.rs` — `Value` (line 348), the one native value, and
-   `rust/src/generic/typed.rs` — `TypedValue`, a value paired with the datatype
-   it belongs to. Literals are `TypedValue`, never bare Rust primitives.
-4. `rust/src/field/value.rs` (`validate_value`, `canonicalize_value`) and
-   `rust/src/field/cast/` — how a value is checked and converted against a
-   `Field`. Expression typing reuses these; it never grows a second cast.
-5. `rust/src/io/mod.rs` — `IOBase`, especially `children_where` (line 520),
-   `partitions` (492), `glob` (446), and the three record methods
-   (1043-1189). `rust/src/uri/pattern.rs` — globs and Hive partitions read off
-   a `Url`.
-6. `rust/src/iceberg/scan.rs` — `Filter` (line 99) and the residual it already
-   computes: partition-column predicates answered by planning, everything else
-   applied to rows. That split is the model for pushdown; generalize it, do not
-   fork it.
-7. `rust/src/arrow/` — `BatchReader`, `scalar_array` / `scalar_value`, the
-   allocation and cache rules. Vectorized evaluation lives here-adjacent and
-   uses the pinned `arrow-ord` / `arrow-select` / `arrow-cast` kernels.
-8. `docs/generic.md`, `docs/io.md`, `docs/iceberg.md` — the documentation
-   register to match.
+   I/O contract* (109), *Media implementation standard* (183), *Table format
+   contract* (228), *Documentation organization* (353), *Exact method
+   vocabulary* (409), *Error message contract* (578), *Native value behavior*
+   (604), *Parser contract* (626), *Arrow and allocation contract* (707),
+   *Binding boundary contract* (841), *Python extension* (874), *JavaScript
+   extension* (1064), *Required checks* (1128).
+2. `rust/src/iceberg/` — the model for this module's shape. One folder, one
+   file per concern (`types.rs`, `schema.rs`, `partition.rs`, `metadata.rs`,
+   `options.rs`, `catalog.rs`, `scan.rs`, `table.rs`), a non-default feature,
+   no dependency for the format itself, and `iceberg::IcebergOptions` as the
+   single place every knob is resolved (explicit → table property → default).
+   `doris/` is built exactly this way. Read `iceberg/options.rs` before writing
+   `doris/options.rs`.
+3. `rust/src/parquet/` and `rust/src/ipc/` — the two record encodings Doris
+   will read and write. The three record methods
+   (`read_arrow_batch_reader`, `write_arrow_batch_reader`,
+   `append_arrow_batch_reader`) are the only decode and encode entry points; a
+   Stream Load body is produced *through* them, never by a private writer.
+4. `rust/src/expression/` — `Expression`, `Bound`, `pushdown.rs`. The predicate
+   Doris receives in a TVF `WHERE` clause is this expression rendered to Doris
+   SQL, and the residual split is the one already implemented. There is no
+   second filter representation.
+5. `rust/src/datatype/compatibility.rs` (`to_scheme_compat`, line 112) and
+   `rust/src/enums/scheme.rs` (`COMPATIBILITY_TARGETS`, line 91). Doris becomes
+   the sixth compatibility target; the walker is the one generic recursive
+   walker with a per-target scalar matrix - never a fork.
+6. `rust/src/metadata.rs` and the `Field` protocol views (`Field::iceberg`,
+   `Field::parquet_field_id`, `Field::mysql`, `Field::spark`). Doris state is
+   inert `doris:*` string properties reached through a `Field::doris` view.
+7. `rust/src/json/` and `rust/src/text/` — the Stream Load response is JSON and
+   is decoded through the shared `Value`, never `serde_json` directly, never a
+   hand-rolled scan.
+8. `scripts/check_iceberg_interop.py` and `rust/tests/iceberg_interop.rs` — the
+   exact interop harness pattern to copy, including the `SKIPPED` word the
+   driver fails on so a skipped half can never read as a pass.
+9. `docs/iceberg.md`, `docs/parquet.md`, `docs/io.md`, `docs/benchmarks.md` —
+   the documentation register to match.
 
 ---
 
 ## 1. Architecture
 
-### 1.1 Module layout
+### 1.1 Feature and module layout
 
-New top-level module `rust/src/expression/`, categorized the way `field/` is
-(`AGENTS.md:17` - modules own real implementation, never empty shells around a
-monolith):
+New non-default feature in `rust/Cargo.toml`:
+
+```toml
+# Apache Doris 4.1 interoperability. Not default: it is an engine target on
+# top of the record encodings, and a schema-only consumer never reaches it.
+doris = ["arrow", "parquet"]
+```
+
+The Iceberg bridge inside it is `#[cfg(all(feature = "doris", feature =
+"iceberg"))]`, so `--features doris` alone still compiles and still ships the
+Parquet half. `--features "parquet iceberg doris"` is the full build the
+extensions compile.
+
+New module `rust/src/doris/`, categorized the way `iceberg/` is - modules own
+real implementation, never empty shells around a monolith (`AGENTS.md:17`):
 
 | file | owns |
 | --- | --- |
-| `mod.rs` | the `Expression` enum, constructors, generic state, traits |
-| `parser.rs` | the recursive grammar and `FromStr` |
-| `display.rs` | canonical `Display` that round-trips through `FromStr` |
-| `typing.rs` | recursive output-`Field` resolution against a schema |
-| `bind.rs` | `Expression` → `Bound`: the compile step (see 1.6) |
-| `eval.rs` | scalar evaluation over `Value` |
-| `arrow.rs` | vectorized evaluation over `RecordBatch` (`arrow` feature) |
-| `selector.rs` | `&holder.*` attribute selectors and their cost classes |
-| `pushdown.rs` | partition pruning, statistics pruning, residual |
-| `serde.rs` | structural serialization |
+| `mod.rs` | the `Doris` namespace value, shared state, re-exports, the module's one-paragraph statement of what is and is not in scope |
+| `types.rs` | `DorisType`: the closed Doris 4.1 type enum, its grammar, its `Display`, and the two-way mapping against `DataType` |
+| `schema.rs` | `Field` ↔ Doris table schema: the key model, column order, comments, nullability, defaults, and the `doris:*` field properties |
+| `variant.rs` | `VARIANT` and `JSON`: schema templates, subcolumn projection, the `DataType` a variant path resolves to |
+| `ddl.rs` | `CREATE TABLE`, `CREATE CATALOG`, `DESCRIBE`/`SHOW CREATE TABLE` - rendered and parsed |
+| `sql.rs` | `Expression` → Doris SQL text: quoting, literal rendering, precedence, and the refusal list |
+| `tvf.rs` | `S3()` / `HDFS()` / `FILE()` / `HTTP()` table-value-function text from a `Url`, a `RecordOptions`, and a predicate |
+| `load.rs` | Stream Load: the header set, the body encoded through the three record methods, and `LoadReport` decoded from the JSON response |
+| `export.rs` | reading what `EXPORT`, `SELECT INTO OUTFILE`, and `INSERT INTO ... SELECT FROM tvf()` left on storage |
+| `catalog.rs` | the Doris external-catalog bridge: Iceberg and Hive catalog text, and the type-mapping check |
+| `options.rs` | `DorisOptions`: every knob, resolved explicit → table property → default |
 | `tests.rs` | the module's edge cases |
 
-`Expression` is re-exported at the crate root beside `DataType`, `Field`,
-`Uri`, `Url`, `Urn`, `Value`.
+`Doris`, `DorisType`, `DorisOptions`, `StreamLoad`, `LoadReport` are re-exported
+from `rust/src/lib.rs` behind the feature, beside the Iceberg exports.
 
-### 1.2 The enum: categorized nodes, no stringly typing
+### 1.2 What this module is, and what it is emphatically not
 
-`Expression` is one `#[non_exhaustive]` enum whose variants are grouped by what
-kind of node they are, each group documented as a group:
+Say this in the module docs, in one short paragraph, so the next reader does
+not re-open it:
 
-- **Leaves** — `Literal(TypedValue)`; `Column(SmolStr)`; `Path(Box<Expression>,
-  Arc<[Segment]>)` where a `Segment` is a struct field name, a list index, or a
-  map key, so `trade.legs[0]['ccy']` is one node resolving recursively through
-  nested types; `Attribute(Selector)` (1.4); `Parameter(SmolStr)` for a
-  late-bound value.
-- **Logical** — `And(Arc<[Expression]>)`, `Or(Arc<[Expression]>)`, `Not(Box<_>)`.
-  N-ary, not nested binaries: flattening at construction is what makes
-  pushdown, display, and equality stable.
-- **Comparison** — `Compare(Box<Expression>, Comparison, Box<Expression>)` with
-  `Comparison` a small enum (`Eq`, `NotEq`, `Lt`, `LtEq`, `Gt`, `GtEq`,
-  `IsDistinctFrom`, `IsNotDistinctFrom`); `In`, `Between`, `IsNull`,
-  `IsNotNull`, `Like { case_insensitive }`, `Glob` (delegating to
-  `Url::matches_glob` semantics), `Regex` only if it costs no new dependency -
-  otherwise omit it and say so in the docs.
-- **Arithmetic** — `Arithmetic(Box<_>, Operator, Box<_>)` (`Add`, `Sub`, `Mul`,
-  `Div`, `Rem`, `Neg`) with decimal scale rules that follow `Value::Decimal`
-  exactly: a decimal never becomes a float to be added.
-- **Scalar functions** — one `Function(Function, Arc<[Expression]>)` variant
-  over a closed `Function` enum (string: `lower/upper/length/substring/trim/
-  starts_with/ends_with/contains/concat`; temporal: `year/month/day/hour/
-  truncate`; null: `coalesce/if_null`; container: `size/element_at`). A closed
-  enum, never a name lookup at evaluation time.
-- **Shape** — `Cast(Box<Expression>, DataType, Safe)`, `Case` (searched
-  `WHEN/THEN/ELSE`), `Struct(Arc<[(SmolStr, Expression)]>)`,
-  `List(Arc<[Expression]>)`, `Map(Arc<[(Expression, Expression)]>)` so an
-  expression can *build* nested values, not only read them.
+**In scope.** Everything that is a *value*: the type system, the schema, the
+DDL text, the predicate text, the wire *body*, the wire *headers*, the response
+*document*, and the on-storage layout Doris reads and writes.
 
-Rules for the enum itself: `Arc` for shared nesting (`AGENTS.md:651`), empty
-children with no backing allocation, `Clone`/`Debug`/`Display`/`Eq`/`Ord`/
-`Hash`/`Serialize`/`Deserialize`, `Display` canonical and round-tripping,
-`Debug` diagnostic only, never a panic on caller input, and an explicit node
-budget checked before any recursive walk. Construction normalizes: flatten
-nested `And`/`And`, fold `Not(Not(x))`, sort nothing (order is data, and
-short-circuit order matters).
+**Out of scope, named not emulated** (`AGENTS.md:228` sets this precedent for
+the REST catalog and non-`main` branch writes):
 
-**`Expression` is not a `Value` variant.** A value is data; an expression is a
-plan over data. `Value` stays the codec's lossless value tree, and the two meet
-at exactly two points: `Expression::Literal(TypedValue)` going in, and
-`Expression::eval(...) -> Value` coming out. Keeping them separate is what lets
-`Value` stay serializable structural data (`AGENTS.md:604`) while an expression
-carries schema-dependent meaning. Say this in one sentence in the module docs
-so the next reader does not re-open it.
+- **No HTTP client.** `StreamLoad` produces a method, a URL, a header map, and
+  a body handle. It never opens a socket. An HTTP `IOBase` backend is a sibling
+  module and future work; when it exists, `StreamLoad` gains a one-line
+  `send` that goes through it. Say that sentence in the docs.
+- **No MySQL wire protocol.** Doris's query port is MySQL; that is a network
+  client and a second wire format. DDL, catalog, and TVF statements are
+  produced as *text* the caller executes with whatever driver it already has.
+- **No Arrow Flight SQL client.** Doris 2.1+ serves query results over Flight
+  SQL, and it is the fastest way to read from Doris - but it is gRPC, it is
+  async, and `IOBase` is neither. Record the measurement it would win
+  (published figures put it 20×-100× over the MySQL protocol) and name it as
+  future work behind a Flight backend. Do not emulate it, and do not claim a
+  number this workspace did not measure.
+- **No BE-internal formats.** Segment V3, the tablet layout, and Doris's
+  internal indexes are engine internals; the exchange surface is Parquet, ORC,
+  CSV, JSON, Arrow IPC, and Iceberg.
 
-### 1.3 Typing is recursive and total
+### 1.3 `DorisType`: one closed enum, complete for 4.1
 
-`Expression::field(&self, schema: &Field) -> Result<Field>` returns the output
-field - name, datatype, nullability - resolved recursively, and it is the only
-place output types are decided:
+`DorisType` is a `#[non_exhaustive]` enum covering **every** type Doris 4.1
+spells, grouped and documented as groups, with `Display` canonical and
+round-tripping through `FromStr` (`AGENTS.md:604`):
 
-- a `Column`/`Path` resolves through the struct root by `index_of` /
-  `get_field_by_name`, ASCII case-insensitively the way every cast selects,
-  descending into struct children, list values, and map values for each
-  `Segment`; an unknown name is an error naming the fields that do exist;
-- a comparison is `Bool`, nullable when either side is;
-- arithmetic follows a documented promotion matrix over the integer, floating,
-  decimal, and temporal families - never "promote to f64";
-- `Cast` is the declared target, `safe` deciding nullability;
-- `Struct`/`List`/`Map` build the nested datatype from their children, so
-  `Expression::field` on a nested expression is itself recursive and hits the
-  same recursion limit;
-- `Attribute` types come from the fixed table in 1.4.
+- **Boolean and integers** — `Boolean`, `TinyInt`, `SmallInt`, `Int`,
+  `BigInt`, `LargeInt` (16 bytes, signed, range ±2^127).
+- **Floating and fixed point** — `Float`, `Double`, `Decimal { precision,
+  scale }`.
+- **Temporal** — `Date`, `DateTime { precision }` (0..=6, microsecond
+  ceiling), `Time { precision }` (query-only: Doris will not store it - the
+  mapping must refuse a stored column of it, naming the reason), and
+  **`TimestampTz`**, new in 4.1: stored as UTC, converted on read.
+- **String and binary** — `Char { length }` (1..=255 bytes),
+  `Varchar { length }` (1..=65533 bytes), `String` (default 1 MiB, configurable
+  to 2 GiB), `VarBinary` (4.0+, catalog-mapped only - a native Doris table
+  cannot declare it, and the mapping says so).
+- **Nested, fixed schema** — `Array(Box<DorisType>)`,
+  `Map(Box<DorisType>, Box<DorisType>)`,
+  `Struct(Arc<[(SmolStr, DorisType)]>)`. Recursive at every level and subject
+  to `DataType::PARSE_RECURSION_LIMIT`.
+- **Semi-structured** — `Json`, `Variant(Option<VariantTemplate>)` where the
+  template is 4.x's `VARIANT<'id': INT, 'tags*': ARRAY<TEXT>>` schema-template
+  syntax, wildcards included.
+- **Aggregation state** — `Bitmap`, `Hll`, `QuantileState`,
+  `AggState(Box<DorisType>)`. These have no logical Arrow shape; they map to
+  opaque `Binary` with a `doris:agg-state` property recording the spelling, and
+  the docs say plainly that a round trip through Yggdryl preserves the bytes
+  and not the semantics.
+- **Network** — `Ipv4`, `Ipv6`.
 
-`Expression::is_predicate(schema)` is `field(schema)?.data_type() == Boolean`.
-Every entry point that wants a filter checks that once and says
-`expected a boolean predicate, got <datatype>` when it does not.
+The grammar in `types.rs` follows the parser contract (`AGENTS.md:626`)
+exactly: type keywords ASCII case-insensitive, names and quoted values keep
+case and Unicode, split only at top-level separators honoring quoting and
+escapes, reject trailing tokens and malformed numbers, enforce the recursion
+limit, every error carries a byte position and context. It never re-implements
+Arrow type parsing - where a Doris type is spelled with an Arrow-compatible
+inner type, the text goes to `DataType::from_str`.
 
-### 1.4 `&holder.<attribute>` — selectors over the handle, not the rows
+### 1.4 The mapping is total, two-way, and honest about what it loses
 
-A filter over a listing asks about the *location*, not the columns, and today
-nothing can express it. `&` opens the attribute namespace, `holder` is the
-namespace this task implements (`&field.*` and `&schema.*` are reserved,
-unimplemented, and rejected with that word). Each selector has one fixed
-datatype and one **cost class**, and the cost class is the point:
-
-| selector | datatype | cost |
-| --- | --- | --- |
-| `&holder.url` | Utf8 | free |
-| `&holder.scheme`, `&holder.authority`, `&holder.path` | Utf8 | free |
-| `&holder.name`, `&holder.stem` | Utf8 | free |
-| `&holder.suffixes` | List(Utf8) | free |
-| `&holder.query['k']`, `&holder.fragment` | Utf8 nullable | free |
-| `&holder.partition['year']` | Utf8 nullable | free (read off the path) |
-| `&holder.depth` | UInt32 | free |
-| `&holder.media_type`, `&holder.mime_type`, `&holder.codec` | Utf8 | free |
-| `&holder.kind`, `&holder.is_container` | Utf8 / Bool | one stat |
-| `&holder.size`, `&holder.is_empty` | UInt64 / Bool | one stat |
-
-"Free" means derived from the `Url` alone - no backend call. `bind` orders
-conjunct evaluation cheap-first and short-circuits, so
-`&holder.name like '%.parquet' and &holder.size > 0` never stats a file whose
-name already disqualified it. Prove that with a counting mock in tests: the
-number of backend calls is a behavior, not an implementation detail.
-
-Then generalize the one surface that wants this:
-`IOBase::children_where(&[(&str, &str)], bool)` gains a sibling
-`children_matching(&Expression, bool)` (naming per `AGENTS.md:409`), the
-existing method becomes a thin call into it building an `And` of equalities,
-and glob descent still prunes: a predicate that constrains
-`&holder.partition['year']` prunes directories exactly as the equality pairs do
-today - nothing under a losing prefix is listed or decoded.
-
-### 1.5 One grammar, recursive at every level
-
-`Expression::from_str` is the single entry point, and every nested construct
-re-enters it. A `select` list parses each item through it; a `where` clause
-parses through it; a `case` arm, a function argument, a cast operand, a list
-element, a `Path` base - all of them. There is no second parser and no
-per-construct sub-parser that could accept a different language than the top
-level. Concretely:
-
-- `Expression::from_str("price > 100")`, and the statement-shaped
-  `Statement::from_str("select ccy, price * qty as notional where price > 100
-  order by notional desc limit 10")` where `Statement` is a small struct of
-  `Vec<Expression>` projections, `Option<Expression>` predicate, ordering, and
-  limit - each field parsed by recursing into the expression grammar. The
-  statement form is what a binding hands over in one string, and it is how
-  "select parses, and when it detects `where` it recurses into the same
-  parser" is satisfied literally.
-- Accept the forms the ecosystem writes: SQL comparison and boolean keywords
-  (`and/or/not/in/between/is null/like/ilike`), C-style operators
-  (`&&`, `||`, `!`, `==`, `!=`), quoted identifiers with case and Unicode
-  preserved, single- or double-quoted string literals with escapes, typed
-  literals (`date '2024-01-01'`, `timestamp '...'`, `decimal '1.50'`,
-  `x'00ff'`), `cast(x as decimal(18,2))` delegating the type text to
-  `DataType::from_str`, nested paths `a.b[0]['k']`, and the `&holder.*`
-  namespace.
-- Follow the parser contract exactly (`AGENTS.md:626`): split only at top-level
-  separators honoring quoting and escapes; reject trailing tokens, duplicate
-  projection aliases, malformed numbers, unbalanced delimiters; never strip
-  unmatched or interior delimiters heuristically; enforce
-  `DataType::PARSE_RECURSION_LIMIT`; every error carries a byte position and
-  context; every grammar branch gets a round-trip test and an adversarial test.
-- `Display` emits canonical text that re-parses to an equal expression,
-  parenthesized by precedence and no more.
-
-### 1.6 `bind` once, evaluate many — the execution plan
-
-`Expression` is unbound and schema-free; `Bound` is what runs:
+`types.rs` owns two functions and one table, and nothing else decides a type:
 
 ```rust
-let bound = expression.bind(&schema)?;   // once per stream
-let mask  = bound.filter_mask(&batch)?;  // per batch, no schema work
+impl DorisType {
+    pub fn to_data_type(&self) -> Result<DataType>;
+    pub fn from_data_type(data_type: &DataType) -> Result<Self>;
+}
 ```
 
-`bind` resolves column names to indices, casts each literal to its comparison
-column's type once, folds constants, orders conjuncts by cost class, and
-returns a typed error if anything does not line up. Per `AGENTS.md:707` there
-are **no per-record maps or schemas**: a `Bound` holds the resolved plan and a
-batch evaluation touches no name lookup. Three evaluation surfaces, one plan:
+The mapping table is written **into the module docs and into
+`docs/doris.md` as one table**, generated from the same constant the code uses
+so the two cannot drift. Every row states the direction it is lossless in.
+The rows that are *not* symmetric are the interesting ones, and each gets a
+sentence:
 
-1. **Scalar** — `Bound::eval(&Value) -> Result<Value>` and
-   `Bound::matches(&Value) -> Result<bool>` over a `Value::Record`/`Sequence`
-   row. This is the tier that works in a build without the `arrow` feature; the
-   whole module below `arrow.rs` compiles with `--no-default-features`.
-2. **Vectorized** — `Bound::evaluate(&RecordBatch) -> Result<ArrayRef>` and
-   `filter_mask(&RecordBatch) -> Result<BooleanArray>`, built from the pinned
-   `arrow-ord` comparison kernels, `arrow-select` (`filter`, `take`, `zip`,
-   `nullif`), and `arrow-cast`. Write no elementwise loop a kernel already
-   owns. Null semantics are three-valued SQL and match Arrow's kernels exactly
-   - test that against Arrow, do not assert it.
-3. **Streaming, zero-copy** — `Bound::filter_reader(BatchReader) -> BatchReader`
-   and `project_reader`, transforms that hold at most one batch, never
-   materialize a table, and avoid copying where the shape allows: an all-true
-   mask returns the input batch untouched (no `filter` call at all), an
-   all-false mask yields an empty slice, a projection reorders `ArrayRef`s
-   without touching buffers, and a selective mask goes through the shared
-   selection kernel rather than a hand-rolled compaction. Wire it into the
-   record methods so a caller can filter what a handle decodes without reading
-   the whole thing, and into raw byte access so a line-oriented handle
-   (`read_lines_matching`) and a record handle answer the same predicate the
-   same way.
+| Doris | `DataType` | note |
+| --- | --- | --- |
+| `LARGEINT` | `Decimal128(38, 0)` | Arrow has no 128-bit integer; the decimal carries the value exactly up to 38 digits and refuses beyond. `i128::MIN` does **not** fit - reject it by name, do not wrap. |
+| `DATETIME(p)` | `Timestamp(unit, None)` | `p` 0..=6 maps to Second/Milli/Micro; Doris has no nanosecond, so a nanosecond timestamp is refused unless `safe` truncation is asked for, and then it is reported. |
+| `TIMESTAMPTZ` | `Timestamp(Micro, Some("UTC"))` | Doris stores UTC and converts on read; the timezone is the session's, so a non-UTC Arrow timezone is normalized and the original recorded in `doris:timezone`. |
+| `TIME(p)` | `Time64(Micro)` | read-only: Doris 4.1 will not store a `TIME` column. Refuse it on the write path, naming the version. |
+| `CHAR(M)` / `VARCHAR(M)` | `Utf8` | `M` is in **bytes**, not characters. A declared length that a UTF-8 payload can exceed is a real failure mode: carry `M` in `doris:length` and validate on the write path. |
+| `STRING` | `Utf8` / `LargeUtf8` | the 1 MiB default is a Doris config, not a format limit; name the config key. |
+| `VARIANT` | `Utf8` (JSON text) or the template's `Struct` | with a template, the projection is exact and typed; without one, Doris infers - integers become `BIGINT`, decimals become `DOUBLE`, a path with mixed types is promoted to `JSONB`. Say that; do not pretend inference is stable. |
+| `BITMAP`/`HLL`/`QUANTILE_STATE`/`AGG_STATE` | `Binary` | bytes preserved, semantics not. |
+| `IPV4` / `IPV6` | `FixedSizeBinary(4)` / `FixedSizeBinary(16)` | with `doris:ip` recording which, so the reverse mapping is exact. |
+| `ARRAY<T>` | `List(T)` | Doris arrays are always nullable-element; a non-nullable Arrow list element is widened and the widening is reported. |
+| `MAP<K,V>` | `Map(K, V)` | Doris map keys are non-null scalars only; a nested or nullable key is refused naming both. |
+| `STRUCT<...>` | `Struct(...)` | names are case-insensitive on both sides; an ambiguous fold is refused, never silently picked. |
 
-### 1.7 Pushdown: the same expression, answered as early as possible
+Arrow types Doris has no home for - `Interval`, `Duration`, `Union`,
+`RunEndEncoded`, `Float16`, `Dictionary` of a non-string value, `Decimal256`
+beyond 38 digits - are each refused **by name** with `expected X, got Y`
+(`AGENTS.md:578`), except where the compatibility walker can widen them
+losslessly (see 1.5).
 
-`pushdown.rs` splits a bound predicate into what a layer can answer and what is
-left over - the *residual* - exactly as `iceberg/scan.rs` already does for
-partition columns, generalized:
+### 1.5 Doris as the sixth compatibility target
 
-- `partition_split()` → the part answerable from Hive path partitions plus the
-  residual, so `IOBase` folder reads prune directories and
-  `IORecordOptions::filter_partitions` is re-expressed as one `Expression`
-  without changing its behavior;
-- `statistics_prune(min, max, null_count, row_count)` → `true` when a container
-  *may* contain a matching row, used for Parquet row groups and Iceberg
-  manifest entries. Bounds prune a container; they never select a row - keep
-  that sentence in the code.
-- `Table::scan_where(&[(&str,&str)])` keeps its signature and gains
-  `scan_matching(&Expression)`; the internal `Filter` becomes a `Bound`
-  predicate, and the residual it computes today is this module's residual. Same
-  for `overwrite_where` / `merge_where`. One filter representation in the
-  workspace after this task, not two.
+Add `Scheme::DORIS` to `COMPATIBILITY_TARGETS` (`enums/scheme.rs:91`) and a
+Doris row to the per-target scalar matrix in
+`rust/src/datatype/compatibility.rs`. `schema.to_scheme_compat(&Scheme::DORIS)`
+returns the schema Doris can actually store, widening exactly what widens
+losslessly and refusing the rest:
+
+- `Float16 → Float32`, `Dictionary(_, Utf8) → Utf8`, `RunEndEncoded(_, T) → T`,
+  `LargeList → List`, `Utf8View → Utf8`, `Decimal256(p,s)` with `p ≤ 38` →
+  `Decimal128(p,s)`;
+- `Timestamp(Nano, _) → Timestamp(Micro, _)` **only** when the caller asked for
+  it; silently dropping precision is a correctness bug, not a widening;
+- `Union`, `Interval`, `Duration`, and `Decimal256` beyond 38 digits are
+  refused, naming both sides.
+
+Never fork the walker (`AGENTS.md:707`). Rewrites preserve name, nullability,
+and metadata, and invalidate a populated Arrow cache exactly once.
+
+`Field::doris` joins the existing protocol views as the one way to reach
+`doris:*` properties - `doris:key-type`, `doris:key`, `doris:aggregate`,
+`doris:distribution`, `doris:buckets`, `doris:length`, `doris:ip`,
+`doris:agg-state`, `doris:variant-template`, `doris:auto-partition`,
+`doris:default`, `doris:comment`. It is a *view* over the one shared snapshot,
+not a second map (`AGENTS.md:17`).
+
+### 1.6 `schema.rs` and `ddl.rs`: a `Field` is the table
+
+A struct root `Field` is the schema (`AGENTS.md:17`); `ddl.rs` renders it and
+parses it back.
+
+```rust
+let sql = doris::create_table(&schema, &DorisOptions::default())?;
+let back = doris::schema_from_create_table(&sql)?;
+assert_eq!(back, schema);
+```
+
+- **Key models**: `DUPLICATE KEY`, `UNIQUE KEY` (merge-on-write), and
+  `AGGREGATE KEY` with the per-column aggregation function. The model comes
+  from `doris:key-type` on the root and `doris:key` / `doris:aggregate` on the
+  columns; absent, it is `DUPLICATE KEY` over the leading columns Doris
+  requires, and the docs say which.
+- **Distribution**: `DISTRIBUTED BY HASH(...) BUCKETS n` or
+  `... BUCKETS AUTO` or `RANDOM`, from `doris:distribution` / `doris:buckets`.
+- **Partitioning**: `PARTITION BY RANGE(...)` / `LIST(...)` and 4.x
+  `AUTO PARTITION BY RANGE (date_trunc(col, 'day'))`. The partition columns are
+  the schema's partition-marked fields - the same marker Iceberg and the Hive
+  folder layout already use (`AGENTS.md:109`). One authority on partition
+  columns, not a Doris-specific one.
+- **Properties**: `replication_num`, `storage_medium`,
+  `enable_unique_key_merge_on_write`, `light_schema_change`,
+  `variant_max_subcolumns_count`, `variant_enable_flatten_nested`, and the
+  4.1 `store_row_column` / DOC-mode keys - each resolved through
+  `DorisOptions`, never interpolated ad hoc.
+- **Parsing back** is the same recursive grammar discipline: `SHOW CREATE
+  TABLE` output and `DESCRIBE` output both round-trip to the same `Field`, and
+  every branch gets a round-trip test and an adversarial test
+  (`AGENTS.md:626`).
+
+### 1.7 `sql.rs`: the one predicate, rendered for Doris
+
+`Expression` is already the workspace's single filter representation. `sql.rs`
+renders a `Bound` predicate as Doris SQL, and renders **nothing else**:
+
+```rust
+let predicate: Expression = "ccy = 'EUR' and price > 100 and ts >= timestamp '2026-01-01'".parse()?;
+assert_eq!(doris::sql::predicate(&predicate)?, "`ccy` = 'EUR' AND `price` > 100 AND `ts` >= '2026-01-01 00:00:00'");
+```
+
+- Identifiers are backtick-quoted with backticks doubled; string literals are
+  single-quoted with Doris's escape rules; decimals never become floats;
+  temporals render in the exact literal form Doris parses.
+- Nodes Doris cannot express (a `&holder.*` selector, a function Doris does not
+  have) are **not** rendered - they come back as the *residual* through the
+  existing `pushdown.rs` split, exactly as Iceberg's residual already works.
+  A caller gets `(pushed_sql, residual_expression)`, applies the first in
+  Doris and the second on the batches. Generalize the existing split; do not
+  fork it.
+- The refusal list is documented: what Doris will be asked, what stays behind,
+  and why.
+
+### 1.8 `tvf.rs` and `export.rs`: the round trip that validates the encodings
+
+This is the pair the whole task exists for.
+
+**Out**: Yggdryl writes Parquet (or Iceberg) through the three record methods,
+then `tvf.rs` renders the exact statement that makes Doris read it:
+
+```rust
+let statement = doris::tvf::select(&url, &options)
+    .project(&["ccy", "price"])
+    .filter(&predicate)
+    .to_string();
+// SELECT `ccy`, `price` FROM S3('uri' = 's3://bucket/trades/*.parquet', 'format' = 'parquet', ...)
+//  WHERE `ccy` = 'EUR' AND `price` > 100
+```
+
+The TVF kind comes from the `Url`'s scheme (`s3`/`oss`/`cos` → `S3()`,
+`hdfs` → `HDFS()`, `file` → `LOCAL()`/`FILE()`, `http`/`https` → `HTTP()`,
+4.0.2+), the `format` property from the media type via
+`RecordOptions::for_media_type` (`AGENTS.md:109` - the encoding is never
+guessed and never an argument), and the credential properties from inert
+`s3:*` / `hdfs:*` protocol metadata already on the `Field` or `Url`. Path
+wildcards (`file_*`, `file_{1..3}`, `file_{a,b}`) come from
+`Url::is_glob`/`glob_parts` - never a second glob spelling.
+
+**Back**: Doris writes with `EXPORT`, `SELECT INTO OUTFILE`, or 4.1's
+`INSERT INTO FILE()/S3()`; `export.rs` reads that folder back. It is a
+`Holder` over a folder and nothing more (`AGENTS.md:109` - a handle plus
+`RecordOptions` is the whole surface, no dataset type): the leaves' media type
+selects the encoding, the folder's `column=value` layout restores partition
+columns through `io/partition.rs`, and the caller gets a `BatchReader`. Doris's
+own naming convention (the `<label>_<n>.parquet` suffix, the optional success
+marker) is recognized, and anything unrecognized is *reported*, never skipped
+silently.
+
+**Symmetry is the assertion**: rows written → rows Doris reads → rows Doris
+exports → rows read back must be identical, value for value, including nulls,
+decimals to the scale, timestamps to the unit, and every nested level.
+
+### 1.9 `load.rs`: Stream Load, composed not sent
+
+```rust
+let load = doris::StreamLoad::new("trades", "orders")
+    .with_format(MimeType::PARQUET)
+    .with_label("2026-08-19-batch-7")
+    .with_merge(MergeType::Merge)
+    .with_options(&options);
+let (headers, body) = load.compose(reader)?;   // body is an IOBase handle
+```
+
+- The URL shape is `PUT /api/{db}/{table}/_stream_load`, with the FE→BE
+  307 redirect documented (the FE picks a BE round-robin as coordinator).
+- The header set is a typed value, not a string map the caller fills: `label`,
+  `format` (`csv`, `csv_with_names`, `csv_with_names_and_types`, `json`,
+  `parquet`, `orc`, `arrow`), `column_separator`, `line_delimiter`, `columns`,
+  `jsonpaths`, `json_root`, `strip_outer_array`, `where`, `partitions`,
+  `max_filter_ratio`, `strict_mode`, `timezone`, `timeout`, `merge_type`,
+  `delete`, `compress_type` (**including 4.1.3's zstd**), `enclose`, `escape`,
+  `skip_lines`, `trim_double_quotes`, `hidden_columns`,
+  `function_column.sequence_col`, `unique_key_update_mode`,
+  `partial_update_new_key_behavior`, `two_phase_commit`, `group_commit`, and
+  4.x's `compute_group`. Each is one field, each resolved through
+  `DorisOptions` (explicit → property → default), each with a typed error
+  naming key and value when unparseable - never a silent default
+  (`AGENTS.md:228` states this rule for Iceberg's size key; it holds here).
+- The **body is produced through the three record methods**, into a `Buffer`
+  or any other `IOBase` handle. `format: arrow` writes an Arrow IPC stream
+  through `rust/src/ipc/`; `format: parquet` through `rust/src/parquet/`;
+  `format: json`/`csv` through the shared text tier. There is no fourth
+  writer, and nothing is collected that could stream: the body handle is
+  written by a `BatchReader` and read back by the caller in chunks, so a load
+  larger than memory is expressible (`AGENTS.md:109`).
+- `LoadReport::from_json` decodes the response document through
+  `rust/src/json/` into typed fields - `TxnId`, `Label`, `Status`
+  (`Success` | `Publish Timeout` | `Label Already Exists` | `Fail`),
+  `ExistingJobStatus`, `Message`, `NumberTotalRows`, `NumberLoadedRows`,
+  `NumberFilteredRows`, `NumberUnselectedRows`, `LoadBytes`, `LoadTimeMs`,
+  and the per-phase timings, plus `ErrorURL`. A non-`Success` status is a typed
+  error carrying the message and the error URL, so a caller can fix the input
+  without reading source.
+
+### 1.10 `catalog.rs`: the Iceberg bridge
+
+Behind `#[cfg(all(feature = "doris", feature = "iceberg"))]`:
+
+- `doris::catalog::create_catalog(&spec)` renders the `CREATE CATALOG`
+  statement for the catalog types Doris 4.1 supports - `hms`, `rest`,
+  `hadoop`, `glue`, `dlf`, `s3tables`, and 4.1.0's experimental `jdbc`
+  (PostgreSQL/MySQL/SQLite) - from the same inert protocol metadata the
+  `iceberg::Catalog` already carries. A warehouse folder Yggdryl created is
+  addressable as a `hadoop` catalog with no further configuration; say that,
+  and show it.
+- `doris::catalog::check_readable(&table)` walks a committed
+  `iceberg::Table`'s schema through `DorisType::from_data_type` and reports,
+  per column, whether Doris 4.1 can read it - so a table is known unreadable
+  *before* an interop run says so. It never mutates the table.
+- The support matrix is documented as fact, not aspiration: Doris 4.1 reads
+  and writes Iceberg **V1 and V2** fully (`INSERT INTO`, `INSERT OVERWRITE`,
+  `UPDATE`, `DELETE`, `MERGE INTO`, `CTAS`), and reads **V3** including
+  Puffin-format deletion vectors, with V3 write support arriving through the
+  same. Position deletes and equality deletes are both read. Time travel is
+  `FOR TIME AS OF` / `FOR VERSION AS OF`, and branches and tags are
+  `table@branch(name)` / `table@tag(name)`. Yggdryl writes V2; the interop
+  therefore exercises V2 in both directions and V3 read-only, and the docs say
+  exactly that rather than implying more.
 
 ---
 
 ## 2. Order of work (`AGENTS.md:9` — Rust first, fully)
 
-**Phase 0** research note → **Phase 1** Rust core complete (enum, parser,
-typing, bind, scalar eval, vectorized eval, selectors, pushdown, tests, benches,
-docs) → **Phase 2** Python → **Phase 3** JavaScript → **Phase 4** docs and
-benchmark tables → **Phase 5** required checks. Phase 1 stopping on its own is
-complete work.
+**Phase 0** research note → **Phase 1** Rust core complete (types, mapping,
+compat target, schema, DDL, variant, SQL, TVF, load, export, catalog, options,
+tests, interop, benches, docs) → **Phase 2** optimization pass → **Phase 3**
+Python → **Phase 4** JavaScript → **Phase 5** docs and benchmark tables →
+**Phase 6** required checks. Phase 1 stopping on its own is complete work.
 
 ---
 
-## 3. Phase 0: what the outside world already settled
+## 3. Phase 0: pin the target, from the sources
 
-Before writing the enum, spend one pass reading how existing systems spell this,
-and write `docs/expression.md`'s design section from it (short, cited, and
-opinionated - not a survey):
+Before writing the enum, spend one pass on the primary sources and write
+`docs/doris.md`'s design section from it - short, cited, opinionated, not a
+survey. **Verify every number below against the live docs; they are what this
+prompt was written from, in August 2026, and they are what you must confirm or
+correct:**
 
-- **Apache Iceberg expressions** — unbound vs bound expressions, `ref`,
-  residual evaluation, `NaN` handling, and why partition predicates are
-  answered by planning. The closest prior art to this design; deviate only with
-  a stated reason.
-- **Substrait** — the cross-engine serialized plan format: check whether the
-  node categories here map onto its `Expression` message, and record the
-  mapping even if no translation ships in this task.
-- **Arrow Acero / `arrow::compute::Expression` and pyarrow.dataset filters** —
-  the vectorized surface and the pushdown protocol pyarrow itself uses.
-- **DataFusion `Expr`, Polars expressions, DuckDB, Spark Catalyst, Calcite
-  `RexNode`** — for the operator set, null semantics, and decimal promotion
-  rules that users will expect.
-- **JMESPath / JSONPath and S3 Select** — for nested path syntax over
-  semi-structured values; borrow the spelling users already know.
-- **sqlglot** — an outside parser to check the grammar against in the Python
-  tests (`AGENTS.md:12` wants an outside check for anything exchange-shaped),
-  if it can be a test-only dependency; otherwise state the check performed
-  instead.
+- **The version.** Target **Apache Doris 4.1**, latest patch **4.1.3**
+  (2026-07-13; 4.1.0 was 2026-04-21, 4.1.1 2026-05-24, 4.1.2 2026-06-17). The
+  4.0 line is still receiving patches (4.0.8, 2026-08-14) - support 4.0 as the
+  floor and gate 4.1-only spellings (`TIMESTAMPTZ`, `MERGE INTO`, `UNNEST`,
+  variant DOC mode, `INSERT INTO FILE()`, zstd stream-load compression) behind
+  a declared version so a 4.0 cluster gets a typed refusal instead of a syntax
+  error from the server.
+  <https://doris.apache.org/releases/core/>
+- **What 4.1 changed that this module must know**: `TIMESTAMPTZ`; Segment V3
+  (external column metadata separation, sparse-column sharding, DOC mode for
+  deferred JSON materialization); full Iceberg V2/V3 with `MERGE INTO`;
+  Iceberg sorted write and manifest cache; a Parquet page cache reported at
+  >20% on scans; `UNNEST`; recursive CTE; `ASOF JOIN`; JDBC Iceberg catalog;
+  vector indexing (out of scope, but do not let the enum forget the column
+  types it introduces).
+  <https://doris.apache.org/releases/v4.1/release-4.1.0/>
+- **The type system**, every type and every parameter:
+  <https://doris.apache.org/docs/4.x/sql-manual/basic-element/sql-data-types/data-type-overview>
+- **VARIANT**, including schema templates, `variant_max_subcolumns_count`
+  (default 2048, practical ceiling ~10 000), sparse-column sharding, the
+  BIGINT/DOUBLE/JSONB inference rules, and DOC mode:
+  <https://doris.apache.org/docs/4.x/sql-manual/basic-element/sql-data-types/semi-structured/VARIANT>
+- **Stream Load**, every header and every response field:
+  <https://doris.apache.org/docs/4.x/data-operate/import/import-way/stream-load-manual>
+- **EXPORT / SELECT INTO OUTFILE**, formats and compression (Parquet: SNAPPY
+  default, plus GZIP, BROTLI, ZSTD, LZ4, PLAIN; ORC: ZLIB default, plus PLAIN,
+  SNAPPY, ZSTD; `max_file_size` 5 MiB..2 GiB, default 1 GiB):
+  <https://doris.apache.org/docs/4.x/sql-manual/sql-statements/data-modification/load-and-export/EXPORT>
+- **Table value functions**, syntax, properties, wildcards, and 4.1.0's
+  `INSERT INTO tvf()` export:
+  <https://doris.apache.org/docs/4.x/lakehouse/file-analysis>
+- **The Iceberg catalog**, catalog types and the operation matrix:
+  <https://doris.apache.org/docs/4.x/lakehouse/catalogs/iceberg-catalog>
+- **Arrow Flight SQL**, for the future-work note and nothing else:
+  <https://doris.apache.org/docs/4.x/db-connect/arrow-flight-sql-connect>
 
-The deliverable of this phase is a *decision list* in the docs: which forms are
-accepted, which were deliberately refused, and which are reserved.
+Read the **Doris source** where the docs are ambiguous - `apache/doris` on
+GitHub - specifically the Parquet reader (`be/src/vec/exec/format/parquet/`)
+and the Iceberg reader, because the questions this task actually answers are
+"which Parquet logical types does Doris's own C++ reader accept" and "which
+Iceberg V2 delete shapes does it apply". A doc sentence is weaker evidence
+than the reader.
+
+**The deliverable of this phase is a decision list in the docs**: which Doris
+types map losslessly, which map lossily and how, which are refused, which
+spellings are 4.1-only, and which surfaces (Flight SQL, MySQL wire, Segment
+V3) are deliberately out of scope with the reason.
 
 ---
 
 ## 4. Phase 1 details: tests
 
-`rust/src/expression/tests.rs`, plus per-file test modules where the existing
-modules keep them. Cover, at minimum:
+`rust/src/doris/tests.rs` plus per-file test modules where the existing modules
+keep them, and the interop target below. Cover, at minimum:
 
-- **Parsing**: every operator, precedence and associativity (against a hand
-  table), quoted identifiers with Unicode, every literal form, `select ... where
-  ... order by ... limit`, nesting to the recursion limit and one past it,
-  adversarial inputs (unbalanced quotes, trailing tokens, `a in ()`, `1 +`,
-  deeply nested `not`), byte position correctness in every error, and a
-  round-trip property test: `parse → display → parse` is stable for every
-  constructed expression.
-- **Typing**: output field for every node over every datatype family, including
-  nested struct/list/map/dictionary/run-end/union columns; unknown column names
-  error naming what exists; a non-boolean `where` is refused; the promotion
-  matrix is asserted case by case, including decimal scale and temporal units.
-- **Scalar evaluation**: three-valued logic truth tables; null propagation;
-  `IsDistinctFrom` against null; nested path reads on struct-in-list-in-map;
-  building nested values with `Struct`/`List`/`Map`; decimal arithmetic exact
-  to the scale; every `Function` on empty, null, and boundary input.
-- **Vectorized equivalence** (the important one): a property test asserting
-  that for a batch of random values, `Bound::evaluate` over the batch equals
-  the scalar `Bound::eval` applied per row, for every node kind and every
-  datatype - including nulls and nested types. Scalar and vectorized answering
-  differently is the bug this module can most easily hide.
-- **Selectors**: a counting mock backend proving the cost ordering and that a
-  free-attribute predicate performs zero backend calls; partition pruning skips
-  unlisted directories; glob and predicate compose.
-- **Zero copy**: an all-true mask returns a batch whose buffers are pointer-
-  equal to the input's; a projection does not touch child buffers; a stream over
-  a large synthetic table holds at most one batch (assert peak, do not claim it).
-- **Pushdown**: `partition_split` residual correctness (the union of pruned and
-  residual answers exactly what the full predicate answers) over Hive layouts
-  and Iceberg tables; statistics pruning never prunes a container that holds a
-  match (false negatives are a correctness bug, false positives are fine).
-- **Round trips**: serde structural round trip; `Eq`/`Ord`/`Hash` consistency;
-  no panic on any caller input (fuzz the parser with a bounded random corpus in
-  a test, not a new dependency).
+### 4.1 Every type, exhaustively
 
-Errors follow `AGENTS.md:578`: typed, located, `expected X, got Y`, byte
-position for parse errors, column name plus the available names for resolution
-errors.
+A single table-driven test walks **every** `DorisType` variant and asserts, for
+each: `Display` round-trips through `FromStr`; `to_data_type` then
+`from_data_type` returns the original or a documented widening; the error
+message for a refused mapping names both sides. A `#[test]` that iterates a
+`const ALL: [DorisType; N]` and fails when a new variant is added without a
+case - so the exhaustiveness is enforced by the compiler and the test, not by
+review.
+
+Parameters are boundary-tested, not sampled: `CHAR(1)`, `CHAR(255)`,
+`CHAR(256)` refused; `VARCHAR(1)`, `VARCHAR(65533)`, `VARCHAR(65534)` refused;
+`DECIMAL(1,0)`, `DECIMAL(38,38)`, `DECIMAL(39,0)` refused; `DATETIME(0)`,
+`DATETIME(6)`, `DATETIME(7)` refused; `LARGEINT` at ±(2^127−1) and the refusal
+at `i128::MIN`.
+
+### 4.2 Deep nesting
+
+The nesting tests are not decoration - they are where a mapping fails in
+production. Build and round-trip, in **both** directions and through **both**
+Parquet and Iceberg:
+
+- `ARRAY<ARRAY<ARRAY<INT>>>` — three levels;
+- `MAP<STRING, ARRAY<STRUCT<a: INT, b: MAP<STRING, DECIMAL(18,4)>>>>` — the
+  four-way alternation that breaks naive mappers;
+- `STRUCT` nested to the recursion limit, and one past it (the error carries
+  the byte position and the path);
+- a struct whose children are every scalar type, inside a list, inside a map
+  value — so one fixture exercises the whole scalar matrix at depth;
+- nulls at **every** level: a null map, a map with a null value, a list with
+  null elements, a struct with all-null children, a non-null struct containing
+  a null list containing non-null structs. Wrapper exposure must not make
+  hidden child nulls observable (`AGENTS.md:707`).
+- `VARIANT` with and without a template, including a path whose type changes
+  between rows (the JSONB promotion), a path count over
+  `variant_max_subcolumns_count`, and a nested object inside an array (which
+  Doris flattens differently - assert what it actually does, do not assume).
+
+### 4.3 DDL and SQL
+
+Round trip `Field` → `CREATE TABLE` → `Field` for every key model, every
+distribution, range/list/auto partitioning, and every property. Parse real
+`SHOW CREATE TABLE` and `DESCRIBE` output captured from a live 4.1 into
+fixtures. Adversarial: unbalanced backticks, a comment containing a backtick, a
+default value containing a quote, a duplicate column name, a partition column
+not in the schema, trailing tokens. Every error carries a byte position.
+
+Predicate rendering: an assertion table of `Expression` → Doris SQL for every
+node kind, plus the residual split for every node Doris cannot take.
+
+### 4.4 Stream Load and export
+
+Header composition for every format and every option combination, with a
+golden-file assertion. Body bytes for `parquet`, `arrow`, `json`, and `csv`
+from the same `BatchReader`, each decoded back through the matching Yggdryl
+reader and compared row for row. `LoadReport` decoding for every `Status`,
+including a malformed document and a document missing a field. A body larger
+than the batch size streams: assert peak retained batches is one, do not claim
+it (`AGENTS.md:707`).
+
+Export reading: a folder of Doris-named Parquet files, a folder of ORC, a
+folder of CSV with and without the header variants, a Hive-partitioned export
+whose partition columns must come back typed, an empty export, and a folder
+containing one unrecognized file (reported, not skipped).
+
+### 4.5 Interop, both directions — `rust/tests/doris_interop.rs`
+
+Copy the Iceberg harness pattern exactly (`AGENTS.md:228` - exchange formats
+are validated against an outside implementation):
+
+- `scripts/check_doris_interop.py` is the driver. It brings up Apache Doris
+  **4.1.3** in Docker (FE + BE, the official `apache/doris` images), waits for
+  readiness, and runs both halves.
+- **Half one, Yggdryl → Doris.** The cargo target writes, into
+  `target/doris-interop/from-rust`: a Parquet file with every scalar type; a
+  Parquet file with the deep-nested fixtures from 4.2; a partitioned Parquet
+  folder; and an Iceberg V2 table with an append and a key-matched merge. The
+  driver then makes Doris read each one - the Parquet through
+  `SELECT ... FROM LOCAL()/S3()`, the Iceberg through a `hadoop` catalog it
+  creates from the warehouse folder - and compares **every row and every
+  nested value** against what was written, not just counts.
+- **Half two, Doris → Yggdryl.** Doris writes the same rows out with
+  `INSERT INTO FILE()` (Parquet, ORC, CSV) and commits an Iceberg V2 table with
+  `INSERT INTO`, an `UPDATE`, a `DELETE`, and a `MERGE INTO` - so the table
+  carries position deletes and equality deletes. The cargo target reads all of
+  it back and asserts the rows.
+- **Half three, the wire.** The driver sends a real Stream Load with the body
+  and headers `load.rs` composed, for `parquet`, `arrow`, `json`, and `csv`,
+  and asserts the returned `LoadReport` matches what `LoadReport::from_json`
+  decodes and that `NumberLoadedRows` equals the rows written.
+- Run alone, the Rust target prints **`SKIPPED`** when the external artifacts
+  are absent, and the driver fails on that word - so a skipped half can never
+  read as a pass.
+- A CI job runs the driver; it is not part of `cargo test`, because it needs a
+  server. `docs/testing.md` says how to run it locally.
 
 ---
 
-## 5. Phase 1 benchmarks
+## 5. Phase 1 benchmarks — where the protocols get validated
 
-`rust/benchmarks/expression.rs` with the dispatcher pattern
-(`#[path = "expression/mod.rs"] mod benchmarks;`, stable criterion group IDs),
-measuring **parse and apply separately** - the user asks for both, and they
-have nothing to do with each other:
+`rust/benchmarks/doris.rs` with the dispatcher pattern
+(`#[path = "doris/mod.rs"] mod benchmarks;`, stable Criterion group IDs), plus
+the interop-driven measurements in `scripts/check_doris_interop.py`. The point
+of this benchmark is **not** to show Yggdryl is fast at rendering SQL. It is to
+put a number on the read/write protocols against an engine that did not come
+from this workspace.
 
-- **Parse**: a short predicate, a wide `select` list, a deeply nested boolean
-  tree, a nested-path expression; plus `parse → display → parse`. Baseline: the
-  existing `DataType::from_str` benchmarks, so the reader can see the grammar
-  costs the same order as the schema grammar.
-- **Bind**: binding cost against a 10-column and a 200-column schema, to prove
-  binding is once-per-stream and not once-per-batch.
-- **Apply, vectorized**: filter selectivity sweep (1%, 50%, 99%, 100%) over
-  1e6-row batches; comparison, boolean tree, string predicate, nested path
-  read, arithmetic projection. **Baseline: the raw `arrow-ord` /
-  `arrow-select` kernel call doing the same thing by hand** - that is the
-  number that says whether this layer costs anything. Report the overhead.
-- **Apply, scalar**: the same predicates over `Value` rows, to size the
-  no-`arrow` tier honestly.
-- **End to end**: read a Parquet/IPC file through `filter_reader` versus
-  reading it whole and filtering after, showing what pushdown saves.
+**In-process Criterion groups** (no server):
 
-Python and JavaScript benchmarks compare against implementations the reader
-trusts on the same payload: `pyarrow.compute` / `pyarrow.dataset` filters,
-and - if available in the bench environment without becoming a package
-dependency - DuckDB and Polars on the identical data. Numbers are regenerated
-into `docs/benchmarks.md`, never edited (`AGENTS.md:392`), naming machine,
-interpreter, and build profile.
+- `doris_types` — mapping and grammar: `DorisType::from_str` on a scalar, on
+  the four-way nested type, on a variant template; `to_data_type` /
+  `from_data_type` both directions. Baseline: the existing
+  `DataType::from_str` groups, so the reader sees this grammar costs the same
+  order as the schema grammar.
+- `doris_ddl` — `CREATE TABLE` render and parse against a 10-column, a
+  200-column, and a deeply-nested schema.
+- `doris_sql` — predicate rendering and the residual split, against the
+  `expression_bind` groups.
+- `doris_load` — body composition per format for a 1e6-row batch, reported as
+  **throughput in rows and in bytes-on-the-wire**, so the four formats are
+  directly comparable. This is the number that decides which format a caller
+  should use, and it is the first thing the docs table shows.
+- `doris_export` — reading a Doris-shaped export folder, against reading the
+  same bytes as a plain Parquet folder, so the layout handling's cost is
+  visible as a delta and not a total.
+
+**Server-driven measurements** (the driver, release build, numbers into
+`docs/benchmarks.md`, regenerated never edited, naming machine, Doris version,
+and build profile):
+
+1. **Write protocol.** Yggdryl writes N rows to Parquet; Doris reads them via
+   TVF. Report Yggdryl's write time, the file bytes, and Doris's scan time.
+   Baseline: the **same rows written by PyArrow**, read by the same Doris query.
+   If Doris scans Yggdryl's Parquet slower than PyArrow's, that is a real
+   finding about row-group sizing or encodings - chase it, do not report it and
+   move on.
+2. **Read protocol.** Doris exports N rows to Parquet and ORC; Yggdryl reads
+   them. Baseline: PyArrow reading the identical files. Same rule.
+3. **Iceberg both directions.** Yggdryl commits a partitioned V2 table; Doris
+   plans and scans it - report files read vs skipped, which the plan already
+   reports as a testable number (`AGENTS.md:228`). Then Doris commits with
+   `MERGE INTO`; Yggdryl plans and scans that. Baseline: PyIceberg on both
+   tables, which the workspace already runs.
+4. **Stream Load formats.** The same 1e6 rows loaded four ways -
+   `parquet`, `arrow`, `json`, `csv` - reporting bytes on the wire, server-side
+   `LoadTimeMs`, `ReadDataTimeMs`, and `WriteDataTimeMs` from the real
+   `LoadReport`. Plus zstd `compress_type` (4.1.3) against uncompressed.
+5. **Pushdown.** The same query with and without the projection and predicate
+   the TVF renderer emits, reporting bytes Doris actually read. Pushdown that
+   does not reduce bytes read is pushdown that does not work.
+
+Python and JavaScript benchmarks compare the boundary crossing against
+implementations the reader trusts on the same payload: `pyarrow.parquet` and
+`pyarrow.dataset`, and - if available in the bench environment without becoming
+a package dependency - the `mysql-connector-python` and ADBC paths a Doris user
+would otherwise take.
 
 ---
 
-## 6. Phase 2: Python binding
+## 6. Phase 2: the optimization pass (find them, measure them, then land them)
 
-`python/src/expression.rs` exposing `yggdryl.Expression` over the native tree -
-no Python-side parsing, no Python-side evaluation (`AGENTS.md:841`):
+This is a distinct phase with a distinct rule from `AGENTS.md:707`: **measure
+before claiming any optimization**, and an optimization that changes observable
+behavior is a bug. Work the list below; for each item, land it with a
+benchmark delta, or record in `docs/doris.md` that it was tried and did not pay
+- a refused optimization with a number beside it is a real deliverable.
 
-- `Expression.parse("price > 100")`, `Expression.column("price")`,
-  `Expression.literal(value)`, `.field(schema)`, `.matches(row)`,
-  `.evaluate(batch)`, `.filter(reader_or_table)`, `str(expr)` canonical.
-- A builder DSL users already know from polars/pyarrow: `col("price") > 100`,
-  `&`, `|`, `~`, `.is_null()`, `.isin([...])`, `.cast("decimal(18,2)")`,
-  `.like("%.parquet")`, `holder.size`, `holder.partition["year"]`. Operator
-  overloads construct native nodes directly.
-- Every existing filter argument accepts `str | Expression` beside the pairs it
-  accepts today: `IOBase.children_where`, `read_arrow_batch_reader` options,
-  `Table.scan_where`. A `str` is parsed natively; a `pyarrow.compute.Expression`
-  is refused naming what was expected (do not silently reinterpret a foreign
-  expression object).
-- Zero-copy across the boundary: a filtered read returns Arrow data through the
-  existing record path with no Python-level row loop anywhere.
+1. **Parquet writer settings Doris's reader actually likes.** Sweep row-group
+   size, page size, dictionary encoding, compression (SNAPPY / ZSTD / LZ4), and
+   statistics granularity, measured by *Doris's* scan time, not ours. Doris
+   4.1 added a Parquet page cache reported at >20%; find the page size that
+   cooperates with it. Land the winning defaults in `DorisOptions` with the
+   measurement in the commit message.
+2. **Format choice for Stream Load.** Rank `arrow`, `parquet`, `json`, `csv` by
+   bytes-on-the-wire and by server-side load time. Arrow IPC should win on CPU
+   (no serialization on either side) and lose on bytes; prove which matters at
+   which row count and document the crossover.
+3. **Streaming body with a bounded buffer.** The composed body must never
+   require holding the whole load. Use chunked transfer encoding, hold one
+   batch, and assert the peak.
+4. **zstd stream-load compression** (4.1.3): measure the bytes/CPU trade
+   against uncompressed on the same payload.
+5. **Projection and predicate pushdown into the TVF text**, measured as bytes
+   Doris read - see benchmark 5 above.
+6. **Iceberg write alignment.** Doris 4.1 added Iceberg sorted write and a
+   manifest cache. Check whether Yggdryl's `write.target-file-size-bytes`
+   default and its manifest granularity cooperate with Doris's planner; a
+   manifest layout that defeats Doris's cache is a real cost with a real
+   number.
+7. **Allocation on the hot paths.** DDL rendering, predicate rendering, and
+   header composition must not allocate per column or per node beyond the
+   single output buffer; core scalar construction, getters, and iteration setup
+   must not allocate at all (`AGENTS.md:707`). Prove it with an allocation
+   baseline the way the codec benchmarks already do.
+8. **One mapping table, computed once.** The Doris↔Arrow matrix is a `const`
+   consulted by index, never a match chain re-walked per column, and never a
+   per-record map.
+
+Every landed optimization is invisible to a caller and stated in a comment; a
+silent cap - a top-N, a sampling, a truncation - is worse than none.
+
+---
+
+## 7. Phase 3: Python binding
+
+`python/src/doris.rs` exposing a `yggdryl.doris` namespace over the native
+module - no Python-side type mapping, no Python-side SQL rendering
+(`AGENTS.md:841`):
+
+- `doris.DorisType.parse("map<string, array<struct<a:int>>>")`,
+  `.to_data_type()`, `DorisType.from_data_type(dt)`, `str(...)` canonical.
+- `doris.create_table(schema, **options) -> str`,
+  `doris.schema_from_create_table(sql) -> Field`.
+- `doris.tvf(url, **options).project([...]).filter("price > 100") -> str`,
+  accepting `str | Expression` for the filter exactly as the existing filter
+  arguments do.
+- `doris.StreamLoad(db, table, format=..., label=...)` with
+  `.compose(reader) -> (dict[str, str], IOBase)`, and
+  `doris.LoadReport.from_json(...)`. The docstring says, in one line, that
+  nothing is sent.
+- `doris.check_readable(table)` for the Iceberg bridge.
+- `schema.to_scheme_compat("doris")` works through the existing method with no
+  new spelling; `Field.doris` joins the protocol views.
 - `_native.pyi` and `__init__.pyi` updated; `mypy --strict` green.
-- `python/tests/test_expression.py` in house style: parsing parity against
-  `sqlglot`-normalized SQL where applicable, evaluation parity against
-  `pyarrow.compute` on the same batch for every operator and datatype
-  (**this is the outside-implementation check**), dataset-level filter parity
-  against `pyarrow.dataset` pushdown, nested types, null semantics, and error
-  messages surfacing unchanged.
+- `python/tests/test_doris.py` in house style: the full type matrix, the deep
+  nesting fixtures, DDL round trips, and - as the outside check - a live-Doris
+  test marked `@pytest.mark.doris` that skips loudly when no server is
+  configured, exercising Stream Load and the TVF round trip against the same
+  container the interop driver uses.
+
+## 8. Phase 4: JavaScript binding
+
+`node/src/doris.rs`, mirroring the Python surface with camelCase names in a
+`doris` loader namespace, the way `iceberg` already is a namespace
+(`AGENTS.md:1064`): `DorisType.parse`, `dorisType.toDataType()`,
+`doris.createTable(schema, options)`, `doris.schemaFromCreateTable(sql)`,
+`doris.tvf(url, options).project([...]).filter('price > 100')`,
+`doris.StreamLoad`, `doris.LoadReport.fromJson`. 64-bit values cross as
+`bigint`; `LARGEINT` crosses as a decimal string and the docs say why. Errors
+surface the native message unchanged. `node/tests/doris.test.js` +
+`doris.types.ts` (node:test + `tsc --noEmit`): the type matrix, nesting, DDL
+round trips, and type-level checks for the builder.
 
 ---
 
-## 7. Phase 3: JavaScript binding
+## 9. Phase 5: documentation
 
-`node/src/expression.rs`, mirroring the Python surface with camelCase names:
-`Expression.parse`, `Expression.column`, `expr.field(schema)`,
-`expr.matches(row)`, `expr.evaluate(batch)`, and a builder
-(`col('price').gt(100).and(col('ccy').eq('EUR'))`) since JS has no operator
-overloading - say that in the docs rather than emulating it. 64-bit values
-cross as `bigint`; errors surface the native message unchanged.
-`node/tests/expression.test.js` + `expression.types.ts` (node:test +
-`tsc --noEmit`): parse/display round trips, evaluation parity with the Rust
-tier via fixtures, nested types, and type-level checks for the builder.
-
----
-
-## 8. Phase 4: documentation
-
-- New page `docs/expression.md` — one H1, exactly one opening sentence, then
-  example-first sections: parse a predicate; the grammar (a compact table);
-  typing against a schema; scalar vs vectorized vs streaming; `&holder.*`
-  selectors with the cost table; filtering a folder listing; filtering a record
-  read; pushdown and residual; building nested values; the decision list from
-  Phase 0.
+- New page `docs/doris.md` — one H1, exactly one opening sentence, then
+  example-first sections: map a schema; the full type table (generated, not
+  hand-kept); create a table; render a TVF read; compose a Stream Load; read an
+  export; the Iceberg bridge; the decision list from Phase 0; the scope note
+  from 1.2 saying plainly what is not here and why; the optimization findings
+  from Phase 2.
 - Every example in **Rust → Python → JavaScript tabs, in that order**, each
   idiomatic, self-contained, with at least one assertion, all passing
   `python scripts/check_docs_examples.py`. Check `.api-bindings.txt` before
-  showing a language do anything.
-- Add the page to `mkdocs.yml` (a `Values:` entry beside `uri`, or its own
-  slot if the nav reads better that way - state which and why in the commit).
-  Update `docs/io.md` (`children_matching`), `docs/generic.md` (the
-  `Value`/`Expression` boundary), `docs/iceberg.md` (`scan_matching`), and
+  showing a language do anything; a surface the bindings do not expose shows
+  Rust alone under `!!! note "Rust only"`.
+- Add the page to `mkdocs.yml` beside `iceberg`, and state in the commit why
+  that slot. Update `docs/iceberg.md` (the Doris bridge), `docs/parquet.md`
+  (Doris as an outside reader), `docs/io.md` (the export layout),
+  `docs/testing.md` (how to run the interop driver), and
   `docs/architecture.md`. Regenerate notebooks with
   `python scripts/build_docs_notebooks.py` (edit blocks, never notebooks).
-  Update the README layout table for `rust/src/expression/`.
-- `docs/benchmarks.md` regenerated from real runs, release builds only.
+  Update the README layout table for `rust/src/doris/`.
+- `docs/benchmarks.md` regenerated from real runs, release builds only, naming
+  the Doris version the numbers came from.
 - `python -m mkdocs build --strict` stays green.
 
 ---
 
-## 9. Phase 5: required checks (all must pass before handoff)
+## 10. Phase 6: required checks (all must pass before handoff)
 
 Per `AGENTS.md:1128`: `cargo fmt --check`; warning-free
 `cargo clippy --locked --workspace --all-targets -- -D warnings` **twice**
-(default features and `--features "parquet iceberg"`); workspace tests twice the
-same way; `cargo doc` with `RUSTDOCFLAGS="-D warnings"`; the Rust 1.85 core
-check (default features and `--no-default-features --lib` — the scalar tier must
-compile without `arrow`); `cargo bench --benches --no-run`; maturin develop +
-pytest + `mypy --strict`; `npm run test:package` + `npm test`;
-`python scripts/check_docs_examples.py`; `python -m mkdocs build --strict`.
-Clean generated targets, venvs, and `node_modules` after validation.
+(default features and `--features "parquet iceberg doris"`); workspace tests
+twice the same way; `cargo doc` with `RUSTDOCFLAGS="-D warnings"`; the Rust
+1.85 core check (default features and `--no-default-features --lib`);
+`cargo bench --benches --no-run`; `python scripts/check_doris_interop.py`;
+maturin develop + pytest + `mypy --strict`; `npm run test:package` +
+`npm test`; `python scripts/check_docs_examples.py`;
+`python -m mkdocs build --strict`. Clean generated targets, venvs, Docker
+containers and volumes, and `node_modules` after validation.
 
 ---
 
-## 10. Hard constraints, restated
+## 11. Hard constraints, restated
 
-- **No new dependency** in any of the three manifests. The grammar is
-  hand-written like the two existing ones; evaluation uses the already-pinned
-  Arrow crates; no regex crate, no parser generator, no runtime.
-- **One representation.** After this task the workspace has exactly one filter
-  type. The `(&str, &str)` pairs stay as public sugar that builds an
-  `Expression`; they never keep a parallel implementation.
-- **Never a second parser, a second cast, or a second error enum.** Type text
-  goes to `DataType::from_str`; value conversion goes through `field/cast`;
-  failures are `crate::Error`.
-- **Bind once.** No name lookup, schema walk, or allocation of a per-record map
-  inside a batch loop; measure before claiming any optimization
-  (`AGENTS.md:707`).
-- **Scalar and vectorized must agree**, including nulls, NaN ordering, decimal
-  scale, and nested types. This is asserted by property test, not by review.
-- **Zero copy where the shape allows**, and where it does not, a comment saying
-  why a copy is unavoidable.
+- **No new dependency** in any of the three manifests. No HTTP client, no
+  MySQL driver, no gRPC or Flight stack, no `serde_json` beyond what is already
+  pinned, no Doris crate. The Docker image and the Python `requests` used by
+  the interop driver are test-only tooling in `requirements-docs.txt`'s
+  sibling, never a runtime dependency.
+- **One representation, everywhere.** The filter is `Expression`. The schema is
+  a struct `Field`. The encoding comes from the media type. Partition columns
+  come from the partition marker. Errors are `crate::Error`. Doris does not get
+  a private copy of any of them.
+- **Never a second parser, a second cast, or a second error enum.** Arrow type
+  text goes to `DataType::from_str`; value conversion goes through
+  `field/cast`; the compatibility rewrite goes through the one walker.
+- **The record surface stays three methods.** A Stream Load body and an export
+  read go through `read_arrow_batch_reader` /
+  `write_arrow_batch_reader` / `append_arrow_batch_reader`, never a private
+  encoder. Nothing that could stream is collected.
+- **Total or refused.** A type mapping either round-trips, or widens with the
+  widening documented, or errors naming both sides. There is no third outcome
+  and no silent coercion.
+- **Measure before claiming.** Every optimization in Phase 2 carries a number
+  or a note saying it did not pay.
 - Method names follow the exact vocabulary (`AGENTS.md:409`); Rust
-  `children_matching`/`scan_matching` ↔ Python `children_matching`/
-  `scan_matching` ↔ JS `childrenMatching`/`scanMatching`; argument names and
+  `create_table`/`schema_from_create_table`/`check_readable` ↔ Python the same
+  ↔ JS `createTable`/`schemaFromCreateTable`/`checkReadable`; argument names and
   order identical across languages.
-- Commit in coherent steps (enum, parser, typing, bind, scalar eval, vectorized
-  eval, selectors, pushdown, benches, python, node, docs) with descriptive
-  messages; push the branch; do not open a PR.
+- Commit in coherent steps (types, mapping, compat target, schema, DDL,
+  variant, SQL, TVF, load, export, catalog, options, interop, benches,
+  optimizations, python, node, docs) with descriptive messages; push the
+  branch; do not open a PR.
 
-**Definition of done**: a user writes
-`table.scan_matching("ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'")`
-in any of the three languages; the year predicate prunes manifests before a
-single byte is read, the rest evaluates vectorized on Arrow batches, the
-answer is identical to evaluating it row by row, and the benchmark table shows
-what the layer costs over calling the Arrow kernel by hand.
+**Definition of done**: a user writes a schema with every Doris 4.1 type in it,
+nested four levels deep, in any of the three languages; Yggdryl renders the
+`CREATE TABLE`, writes the rows as Parquet and commits them as an Iceberg V2
+table, and composes the Stream Load; a real Apache Doris 4.1.3 reads all three
+and returns every value unchanged; Doris then writes the same rows back out
+through `MERGE INTO` and `INSERT INTO FILE()`, Yggdryl reads them, and the rows
+are identical again - and `docs/benchmarks.md` shows what each protocol cost,
+beside PyArrow and PyIceberg on the same payload.
