@@ -32,13 +32,7 @@ use crate::{Error, Field, Result, Url};
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
 
-/// How a directory name spells a value that is not there.
-///
-/// A path cannot distinguish the absence of a value from the four letters, so
-/// the convention has to pick one spelling and say what it costs: reading such a
-/// partition back yields the text `null` unless a declared schema types the
-/// column as something a cast turns back into a null.
-pub const NULL_PARTITION: &str = "null";
+pub use super::NULL_PARTITION;
 
 /// How every partition value in the project is rendered as directory text.
 ///

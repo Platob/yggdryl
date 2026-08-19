@@ -42,6 +42,19 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 mod buffer;
 mod coding;
 mod cursor;
+/// How a directory name spells a value that is not there.
+///
+/// A path cannot distinguish the absence of a value from the four letters, so
+/// the convention has to pick one spelling and say what it costs: reading such a
+/// partition back yields the text `null` unless a declared schema types the
+/// column as something a cast turns back into a null.
+///
+/// It lives here rather than in [`partition`] because the expression layer's
+/// scalar tier reads it and that tier compiles with no Arrow at all, while the
+/// partition projection is Arrow's own. `partition` re-exports it, so the
+/// spelling every caller already uses keeps working.
+pub const NULL_PARTITION: &str = "null";
+
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
