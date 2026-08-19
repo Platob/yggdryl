@@ -495,19 +495,14 @@ fn prune_parts(
         },
     };
     let predicate = filter.bind_tolerant(&schema)?.into_predicate()?;
-    let mut failure = None;
+    // Binding is what could fail, and it already has; deciding one leaf cannot,
+    // because a statistics source that knows nothing answers `Maybe` and a leaf
+    // whose path names no partition column at all is simply kept.
     parts.retain(|part| {
         let stats = PartitionStats::new(pairs_under(part, root));
-        if stats.is_empty() {
-            return true;
-        }
-        let _ = &mut failure;
-        predicate.evaluate_stats(&stats).is_possible()
+        stats.is_empty() || predicate.evaluate_stats(&stats).is_possible()
     });
-    match failure {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
+    Ok(())
 }
 
 /// A schema of nothing but the partition columns the paths spell out.
@@ -524,7 +519,7 @@ fn partition_schema(parts: &[Holder], root: Option<&Url>) -> Option<Field> {
                 .iter()
                 .any(|held| held.name().eq_ignore_ascii_case(&column))
             {
-                fields.push(ArrowDataTypeText::text_field(&column));
+                fields.push(crate::DataType::Utf8.nullable_field(column));
             }
         }
     }
@@ -534,16 +529,6 @@ fn partition_schema(parts: &[Holder], root: Option<&Url>) -> Option<Field> {
     crate::DataType::from_fields(fields)
         .ok()
         .map(|data_type| data_type.required_field("row"))
-}
-
-/// The one place a path-only partition column gets its datatype.
-struct ArrowDataTypeText;
-
-impl ArrowDataTypeText {
-    /// A nullable text column named for one partition segment.
-    fn text_field(column: &str) -> Field {
-        crate::DataType::Utf8.nullable_field(column)
-    }
 }
 
 /// Return the Hive pairs `part` spells out below `root`.

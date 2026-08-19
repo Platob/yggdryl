@@ -14,6 +14,7 @@ Criterion targets for the Rust core and boundary benchmarks for each binding.
     cargo bench --bench toml
     cargo bench --bench yaml
     cargo bench --bench avro
+    cargo bench --bench expressions
     cargo bench --bench io --features "parquet"
     cargo bench --bench io --features "parquet" -- io_buffered
     cargo bench --bench io --features "parquet" -- lines_gzip   # ~12 min alone
@@ -67,6 +68,7 @@ machine against release artifacts, and compare like-for-like toolchains.
 | `text` | Value construction, format inference, display and elision helpers |
 | `json`, `toml`, `yaml` | Whole-value and streaming encode and decode |
 | `avro` | Container decode and encode by type family, codec x block-size sweep, projection skips, resolution plans, the varint floor |
+| `expressions` | Cold parsing, binding and the optimizer's own cost, both evaluation paths beside the kernels they compile to and the string filter they replaced, per-family masks, and statistics pruning |
 | `io` | Record round-trips over handles, projection pushdown, the line-record Arrow projection and its hash, (`lines_gzip`) a million-record rotated gzip log folder: content coding, folder shape, typed captures, and a scale sweep, and (`io_buffered`) the page cache against the handles it wraps |
 | `log_lines_bulk` (Python) | The same rotated gzip corpus at the binding, plus peak RSS per corpus size - the residency claim Criterion cannot report |
 | `lines` (JavaScript) | The same corpus at the copied-IPC boundary, with median, best, and spread |
@@ -94,6 +96,30 @@ group.
 
 For binding benchmarks, measure only the boundary: recursive conversion and validation happen in
 Rust and are already measured there.
+
+## Against the kernels an expression compiles to
+
+The expression engine's claim is that a *plan* costs almost nothing over the
+kernel a hand-written filter would call, and much less than the string
+comparison it replaced. The `expression_vectorized_eval` group makes that
+checkable rather than asserted: three legs over the same 65,536-row batch and
+the same predicate.
+
+| Leg | What it is |
+| --- | --- |
+| `bound_plan_equality` | The bound plan: one mask, one filter |
+| `hand_written_kernel` | What that compiles to - one `arrow_ord` comparison against a scalar built once, plus one filter |
+| `replaced_formatter_filter` | What it replaced - one rendered string per row per filtered column through an `ArrayFormatter` |
+
+The row path carries its own honest upper bound the same way:
+`expression_row_eval/hand_written_closure` asks the same question with no plan,
+no dispatch, and no three-valued bookkeeping, so the gap between it and
+`bound_plan` is the price of the plan rather than a number without a scale.
+
+`expression_by_family` runs one leg per type family plus the two fallback legs,
+so a type whose vectorized path quietly fell back to the row evaluator shows up
+as an outlier rather than hiding inside an average - which is exactly how the
+fallback's original cost was found.
 
 ## Against the native implementations
 

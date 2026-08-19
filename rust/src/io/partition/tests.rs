@@ -445,6 +445,131 @@ mod lake {
     }
 
     #[test]
+    fn one_sentence_prunes_directories_files_and_rows_together() {
+        use crate::expressions::Apply;
+
+        // The whole claim in one call: an encapsulated column name, a range, a
+        // nested accessor, and a typed temporal literal, over a lake whose
+        // partition directories the predicate can refute outright.
+        let schema = DataType::from_fields([
+            DataType::Int64.required_field("price"),
+            DataType::map_of(DataType::Utf8, DataType::Int64, false)
+                .unwrap()
+                .nullable_field("payload"),
+            DataType::Utf8.required_field("select"),
+        ])
+        .unwrap()
+        .required_field("row");
+
+        let (root, handle) = lake("capstone");
+        let rows_of = |prices: &[i64], stamps: &[i64]| -> RecordBatch {
+            let keys = StringArray::from(vec!["ts"; prices.len()]);
+            let values = arrow_array::Int64Array::from(stamps.to_vec());
+            let entries = arrow_array::StructArray::from(vec![
+                (
+                    std::sync::Arc::new(arrow_schema::Field::new(
+                        "key",
+                        arrow_schema::DataType::Utf8,
+                        false,
+                    )),
+                    std::sync::Arc::new(keys) as arrow_array::ArrayRef,
+                ),
+                (
+                    std::sync::Arc::new(arrow_schema::Field::new(
+                        "value",
+                        arrow_schema::DataType::Int64,
+                        true,
+                    )),
+                    std::sync::Arc::new(values) as arrow_array::ArrayRef,
+                ),
+            ]);
+            let offsets = arrow_buffer::OffsetBuffer::from_lengths(std::iter::repeat_n(
+                1_usize,
+                prices.len(),
+            ));
+            let map = arrow_array::MapArray::try_new(
+                std::sync::Arc::new(arrow_schema::Field::new(
+                    "entries",
+                    entries.data_type().clone(),
+                    false,
+                )),
+                offsets,
+                entries,
+                None,
+                false,
+            )
+            .unwrap();
+            RecordBatch::try_from_iter([
+                (
+                    "price",
+                    std::sync::Arc::new(arrow_array::Int64Array::from(prices.to_vec()))
+                        as arrow_array::ArrayRef,
+                ),
+                ("payload", std::sync::Arc::new(map) as arrow_array::ArrayRef),
+            ])
+            .unwrap()
+        };
+
+        // Two venues. One of them the predicate refutes outright, so nothing
+        // under its directory is ever listed or decoded.
+        seed(
+            &root,
+            "select=XNAS",
+            &rows_of(&[5, 15, 25], &[0, 1_800_000_000, 1_800_000_001]),
+        );
+        seed(
+            &root,
+            "select=XNYS",
+            &rows_of(&[15, 15, 15], &[1_800_000_000; 3]),
+        );
+
+        // `select` is a keyword, so naming the column at all needs an
+        // encapsulator - which is the whole reason the grammar has three.
+        let filter = "\"select\" = 'XNAS' AND price BETWEEN 10 AND 20 \
+                      AND payload['ts'] >= 1000000000";
+        let settings = options(Some(schema.clone())).with_filter(filter).unwrap();
+
+        let mut kept = Vec::new();
+        for batch in handle.read_arrow_batch_reader(&settings).unwrap() {
+            let batch = batch.unwrap();
+            let venues = batch
+                .column_by_name("select")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .clone();
+            let prices = batch
+                .column_by_name("price")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::Int64Array>()
+                .unwrap()
+                .clone();
+            for row in 0..batch.num_rows() {
+                kept.push((venues.value(row).to_owned(), prices.value(row)));
+            }
+        }
+
+        // One row survives: price 15 under XNAS, whose payload timestamp is
+        // above the bound. The XNYS subtree was refuted by its directory name
+        // alone, the price-5 and price-25 rows by the range, and the price-15
+        // row of XNAS at timestamp 0 by the accessor.
+        assert_eq!(kept, vec![("XNAS".to_owned(), 15)]);
+
+        // And the same expression answers the schema its result would have,
+        // with nothing opened at all.
+        let reported = filter
+            .parse::<crate::Expr>()
+            .unwrap()
+            .apply_field(&schema)
+            .unwrap();
+        assert_eq!(reported.field_len(), 3);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn an_overwrite_empties_a_partition_the_incoming_rows_no_longer_name() {
         let (root, mut handle) = lake("empty-partition");
         seed(&root, "year=2024/month=01", &prices());

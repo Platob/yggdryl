@@ -98,6 +98,12 @@ punctuation, operators, keywords, digits, and Unicode alike. One canonical spell
     assert_eq!(padded.to_string(), "\"  a  \" IS NULL");
     ```
 
+An encapsulator is a *grammar* facility, and the layout has its own, narrower alphabet: a
+`column=value` directory name has to be a legal URI path segment, so a partition column called
+`total amount` is perfectly quotable in a filter and cannot be spelled as a directory at all. A
+keyword like `select` is both - it needs quoting here and is a fine directory name - which is why
+the pruning example below uses one.
+
 A **double-quoted token is always an identifier, never a string**. That is the ANSI rule and it
 removes the one real ambiguity in the grammar:
 
@@ -422,8 +428,8 @@ because a wrong one loses rows silently.
     assert_eq!(decide("venue = 'XNAS'")?, Certainty::AlwaysTrue);
     // Unsettled: the rows have to answer.
     assert_eq!(decide("id > 150")?, Certainty::Maybe);
-    // Nothing known: never prune.
-    assert_eq!(decide("absent > 1").is_err(), true);
+    // A column the schema does not declare is refused rather than guessed.
+    assert!(decide("absent > 1").is_err());
     ```
 
 The **residual** is what a source did not settle, and it is the third answer that matters:
