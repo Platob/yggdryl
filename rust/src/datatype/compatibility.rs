@@ -368,6 +368,21 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
                 "decimal256({precision}, {scale}) requires a coefficient value cast and Spark precision is limited to 38"
             ),
         ),
+        // Spark 4 has a VARIANT, but it is one Spark version old and its
+        // Arrow interchange is not settled - outside the conservative subset.
+        D::Variant => incompatible(
+            Target::Spark,
+            path,
+            "Spark's variant is Spark-4-only and has no conservative Arrow interchange encoding",
+        ),
+        D::Geometry(_) | D::Geography(_) => incompatible(
+            Target::Spark,
+            path,
+            format_smolstr!(
+                "Spark has no first-class geospatial type; got {}",
+                data_type.name()
+            ),
+        ),
         other => unreachable_container(Target::Spark, other, path),
     }
 }
@@ -439,6 +454,15 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
                 "decimal256({precision}, {scale}) requires a coefficient value cast and Polars precision is limited to 38"
             ),
         ),
+        D::Variant | D::Geometry(_) | D::Geography(_) => incompatible(
+            Target::Polars,
+            path,
+            format_smolstr!(
+                "Polars has no {} type; got {}",
+                data_type.kind(),
+                data_type.name()
+            ),
+        ),
         other => unreachable_container(Target::Polars, other, path),
     }
 }
@@ -505,6 +529,15 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
             path,
             format_smolstr!(
                 "decimal256({precision}, {scale}) exceeds the 38-digit decimal precision pandas exchanges through Arrow"
+            ),
+        ),
+        D::Variant | D::Geometry(_) | D::Geography(_) => incompatible(
+            Target::Pandas,
+            path,
+            format_smolstr!(
+                "pandas has no {} column type; got {}",
+                data_type.kind(),
+                data_type.name()
             ),
         ),
         other => unreachable_container(Target::Pandas, other, path),
@@ -580,6 +613,10 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
                 "decimal256({precision}, {scale}) requires a coefficient value cast and Iceberg precision is limited to 38"
             ),
         ),
+        // Iceberg v3 owns all three: `variant`, `geometry(C)`, and
+        // `geography(C, A)` are the format's own spellings, parameters
+        // included, so each passes unchanged.
+        D::Variant | D::Geometry(_) | D::Geography(_) => Ok((data_type.clone(), false)),
         other => unreachable_container(Target::Iceberg, other, path),
     }
 }

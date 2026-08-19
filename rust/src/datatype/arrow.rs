@@ -437,6 +437,17 @@ impl TryFrom<&DataType> for ArrowDataType {
                     encoded.values.to_arrow_ref()?,
                 )
             }
+            // The Arrow storage of the three extension-typed variants. The
+            // extension name and metadata are *field* metadata
+            // (`ARROW:extension:name`), so they ride `Field`'s projection;
+            // this level answers the storage type Arrow actually lays out:
+            // the canonical `arrow.parquet.variant` struct of two required
+            // binaries, and WKB bytes for the geospatial pair.
+            R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
+                arrow_schema::Field::new("metadata", Self::Binary, false),
+                arrow_schema::Field::new("value", Self::Binary, false),
+            ])),
+            R::Geometry(_) | R::Geography(_) => Self::Binary,
         })
     }
 }
@@ -567,6 +578,17 @@ impl TryFrom<DataType> for ArrowDataType {
                     encoded.values.to_arrow_ref()?,
                 ),
             },
+            // The Arrow storage of the three extension-typed variants. The
+            // extension name and metadata are *field* metadata
+            // (`ARROW:extension:name`), so they ride `Field`'s projection;
+            // this level answers the storage type Arrow actually lays out:
+            // the canonical `arrow.parquet.variant` struct of two required
+            // binaries, and WKB bytes for the geospatial pair.
+            R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
+                arrow_schema::Field::new("metadata", Self::Binary, false),
+                arrow_schema::Field::new("value", Self::Binary, false),
+            ])),
+            R::Geometry(_) | R::Geography(_) => Self::Binary,
         })
     }
 }

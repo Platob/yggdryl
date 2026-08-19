@@ -55,10 +55,12 @@ pub mod yaml;
 pub mod zlib;
 pub mod zstd;
 
-pub use datatype::{DataType, DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields};
+pub use datatype::{
+    DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType, UnionFields,
+};
 pub use enums::{
-    Codec, DataTypeId, DataTypeKind, Encoder, IOKind, Level, MediaType, MimeType, Scheme, TimeUnit,
-    Timezone, UnionMode,
+    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, IOKind, Level, MediaType, MimeType,
+    Scheme, TimeUnit, Timezone, UnionMode,
 };
 pub use error::{Error, Result};
 pub use expression::Expression;

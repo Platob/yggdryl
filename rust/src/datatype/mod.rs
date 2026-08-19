@@ -14,6 +14,7 @@ mod comparison;
 mod compatibility;
 mod default;
 mod floating;
+mod geospatial;
 mod integer;
 mod nested;
 mod parser;
@@ -27,6 +28,7 @@ pub use crate::enums::{TimeUnit, UnionMode};
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
 };
+pub use geospatial::GeospatialType;
 pub use nested::{DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields};
 
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
@@ -125,6 +127,18 @@ pub enum DataType {
     Map(Arc<MapType>),
     /// Run-end encoding child fields.
     RunEndEncoded(Arc<RunEndEncodedType>),
+    /// Self-describing semi-structured values.
+    ///
+    /// A variant value is a [`crate::Value`] - a tree that declares its own
+    /// types per value - so the type takes no parameters: shredding is a
+    /// physical layout, not part of the logical type. Bare `variant` is this
+    /// type; `variant(...)` with members stays the dense-union input sugar,
+    /// and the parenthesis is what disambiguates.
+    Variant,
+    /// Planar geospatial features, carried as Well-Known Binary.
+    Geometry(Arc<GeospatialType>),
+    /// Geospatial features on a sphere or spheroid, carried as WKB.
+    Geography(Arc<GeospatialType>),
 }
 
 #[cfg(test)]
