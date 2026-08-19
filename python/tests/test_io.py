@@ -127,11 +127,11 @@ class TestPathlibParity:
     def test_glob_and_rglob_select_the_same_leaves(self, lake: pathlib.Path) -> None:
         handle = IOBase(lake)
 
-        assert len(handle.glob("**/*.parquet")) == 4
-        assert len(handle.rglob("*.parquet")) == 4
-        assert len(handle.glob("year=2024/**/*.parquet")) == 2
+        assert len(list(handle.glob("**/*.parquet"))) == 4
+        assert len(list(handle.rglob("*.parquet"))) == 4
+        assert len(list(handle.glob("year=2024/**/*.parquet"))) == 2
         # One plain segment stays at one level, where there are no leaves.
-        assert handle.glob("*.parquet") == []
+        assert list(handle.glob("*.parquet")) == []
 
     def test_a_write_creates_and_a_read_returns_it(self, tmp_path: pathlib.Path) -> None:
         handle = IOBase(tmp_path / "trades.txt")
@@ -194,15 +194,15 @@ class TestPartitions:
     ) -> None:
         handle = IOBase(lake)
 
-        year = handle.children_where({"year": "2024"})
+        year = list(handle.children_where({"year": "2024"}))
         assert len(year) == 4
         assert all(entry.is_file() for entry in year)
 
-        both = handle.children_where([("year", "2024"), ("month", "02")])
+        both = list(handle.children_where([("year", "2024"), ("month", "02")]))
         assert len(both) == 2
-        assert handle.children_where({"year": "1999"}) == []
+        assert list(handle.children_where({"year": "1999"})) == []
         # No filter is every leaf.
-        assert len(handle.children_where({})) == 8
+        assert len(list(handle.children_where({}))) == 8
 
 
 class TestUrlPathlibParity:

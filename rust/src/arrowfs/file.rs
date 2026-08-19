@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFile};
+use crate::io::{IOBase, IOFile, Listing};
 use crate::{Error, MediaType, MimeType, Result, Url};
 
 use super::system::{ArrowFileSystem, filesystem_location};
@@ -402,7 +402,7 @@ impl IOBase for File {
         self.file_child_by_path(name)
     }
 
-    fn ls(&self, _recursive: bool, _include_private: bool) -> Result<Vec<Holder>> {
+    fn ls(&self, _recursive: bool, _include_private: bool) -> Listing {
         self.file_ls()
     }
 }

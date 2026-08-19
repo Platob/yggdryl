@@ -200,7 +200,9 @@ attribute whose price depends on the backend is classified by its worst case.
     std::fs::write(lake.path()?.join("year=2025").join("part-0.parquet"), b"")?;
 
     let filter: Expression = "&holder.partition['year'] = '2024'".parse()?;
-    let matched: Vec<_> = lake.children_matching(&filter, false)?.collect();
+    let matched: Vec<_> = lake
+        .children_matching(&filter, false)?
+        .collect::<yggdryl::Result<_>>()?;
     assert!(!matched.is_empty());
     assert!(matched.iter().all(|entry| {
         entry.url().is_some_and(|url| url.to_string().contains("year=2024"))

@@ -197,7 +197,8 @@ a consumer that only needs schemas never compiles it.
     table.append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     let names: Vec<String> = Folder::new(&path)?
-        .ls(true, false)?
+        .ls(true, false)
+        .collect::<yggdryl::Result<Vec<_>>>()?
         .iter()
         .filter(|entry| !entry.is_container())
         .filter_map(|entry| entry.url().and_then(|url| url.file_name().map(str::to_owned)))
@@ -268,8 +269,7 @@ a consumer that only needs schemas never compiles it.
     table.append(new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) }))
 
     // `table.root` is the folder handle the table reads and writes through.
-    const names = table.root
-      .ls(true)
+    const names = [...table.root.ls(true)]
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
 

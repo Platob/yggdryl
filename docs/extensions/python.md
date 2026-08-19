@@ -359,7 +359,7 @@ lake = IOBase(root / "lake" / "year=2024")
 lake.mkdir()
 (lake / "part-0.arrows").touch()
 assert [entry.name for entry in lake.iterdir()] == ["part-0.arrows"]
-assert len(IOBase(root / "lake").rglob("*.arrows")) == 1
+assert len(list(IOBase(root / "lake").rglob("*.arrows"))) == 1
 ```
 
 `Url` answers the `PurePath` half under the same names - `name`, `stem`, `suffix`, `suffixes`,

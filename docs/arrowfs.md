@@ -239,14 +239,16 @@ not have written.
     let lake = Folder::from_location(filesystem, "bucket")?;
 
     assert!(lake.is_container());
-    assert_eq!(lake.ls(false, false)?.len(), 2);
-    assert_eq!(lake.glob("**/*.parquet", false)?.len(), 2);
+    assert_eq!(lake.ls(false, false).count(), 2);
+    assert_eq!(lake.glob("**/*.parquet", false)?.count(), 2);
 
     // A fixed prefix is descended rather than listed and filtered.
-    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.len(), 1);
+    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
 
     // Hive pairs are read off the location, as they are for any backend.
-    let selected: Vec<_> = lake.children_where(&[("year", "2024")], false)?.collect();
+    let selected: Vec<_> = lake
+        .children_where(&[("year", "2024")], false)?
+        .collect::<yggdryl::Result<_>>()?;
     assert_eq!(selected.len(), 1);
     ```
 
@@ -266,9 +268,9 @@ not have written.
     lake = IOBase.from_arrow_fs(pafs.LocalFileSystem(), root.as_posix())
 
     assert lake.is_dir()
-    assert len(lake.iterdir()) == 2
-    assert len(lake.glob("**/*.parquet")) == 2
-    assert len(lake.children_where({"year": "2024"})) == 1
+    assert len(list(lake.iterdir())) == 2
+    assert len(list(lake.glob("**/*.parquet"))) == 2
+    assert len(list(lake.children_where({"year": "2024"}))) == 1
 
     # A child still carries the filesystem it came from.
     part = lake / "year=2024" / "part-0.parquet"
@@ -321,10 +323,10 @@ not have written.
     const lake = IOBase.fromArrowFs(handler, 'bucket')
 
     assert.equal(lake.isDir(), true)
-    assert.equal(lake.ls().length, 2)
-    assert.equal(lake.glob('**/*.parquet').length, 2)
-    assert.equal(lake.glob('year=2024/**/*.parquet').length, 1)
-    assert.equal(lake.childrenWhere({ year: '2024' }).length, 1)
+    assert.equal([...lake.ls()].length, 2)
+    assert.equal([...lake.glob('**/*.parquet')].length, 2)
+    assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 1)
+    assert.equal([...lake.childrenWhere({ year: '2024' })].length, 1)
 
     // A child still carries the filesystem it came from.
     assert.equal(lake.joinpath('year=2024', 'part-0.parquet').readText(), 'PAR1')

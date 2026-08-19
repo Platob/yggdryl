@@ -42,7 +42,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 
-use yggdryl::arrowfs::{ArrowFileSystem, FileInfo};
+use yggdryl::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
 use yggdryl::{Error, IOKind, Result};
 
 use crate::napi_error;
@@ -268,32 +268,15 @@ impl ArrowFileSystem for JsArrowFileSystem {
             .into_core(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
-        let listed = self.on_js_thread(|env| {
-            self.list
-                .borrow_back(env)?
-                .call((path.to_owned(), recursive).into())
-        });
-        let entries = match listed {
-            Ok(entries) => entries,
-            // A directory that is not there lists empty rather than failing.
-            Err(error) => return self.recovered(path, error, Vec::new(), |kind| !kind.is_known()),
-        };
-        entries
-            .into_iter()
-            .map(|entry| {
-                // A listing entry stands for a location of its own, so unlike
-                // `fileInfo` there is nothing sensible to assume when one
-                // arrives nameless.
-                if entry.path.is_none() {
-                    return Err(invalid(format!(
-                        "expected every entry list({path:?}) returns to name its own path, \
-                         got one without"
-                    )));
-                }
-                entry.into_core(path)
-            })
-            .collect()
+    fn list(&self, path: &str, recursive: bool) -> FileInfos {
+        // The JavaScript side answers with an array, so the foreign call is
+        // what collects: Node-API has no shape here to pull one entry at a
+        // time through. The bound is that call's own answer, and it is stated
+        // here because this is where the collection happens.
+        match self.list_collected(path, recursive) {
+            Ok(entries) => FileInfos::new(entries.into_iter().map(Ok)),
+            Err(error) => FileInfos::failing(error),
+        }
     }
 
     fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
@@ -355,5 +338,36 @@ impl ArrowFileSystem for JsArrowFileSystem {
             // A file that is not there is already gone.
             Err(error) => self.recovered(path, error, (), |kind| kind != IOKind::File),
         }
+    }
+}
+
+impl JsArrowFileSystem {
+    /// The JavaScript listing, whole, as that side hands it over.
+    fn list_collected(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
+        let listed = self.on_js_thread(|env| {
+            self.list
+                .borrow_back(env)?
+                .call((path.to_owned(), recursive).into())
+        });
+        let entries = match listed {
+            Ok(entries) => entries,
+            // A directory that is not there lists empty rather than failing.
+            Err(error) => return self.recovered(path, error, Vec::new(), |kind| !kind.is_known()),
+        };
+        entries
+            .into_iter()
+            .map(|entry| {
+                // A listing entry stands for a location of its own, so unlike
+                // `fileInfo` there is nothing sensible to assume when one
+                // arrives nameless.
+                if entry.path.is_none() {
+                    return Err(invalid(format!(
+                        "expected every entry list({path:?}) returns to name its own path, \
+                         got one without"
+                    )));
+                }
+                entry.into_core(path)
+            })
+            .collect()
     }
 }

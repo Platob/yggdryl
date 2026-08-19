@@ -105,6 +105,20 @@ a lost row.
 The `(column, value)` pairs the older surfaces take are sugar that builds an expression. There is no
 second implementation behind them, in the listing, in the record options, or in the table scan.
 
+## Listings yield, they do not collect
+
+A listing says what is there, and it must never require holding all of it. `IOBase::ls`, `glob`,
+`children_matching`, and `children_where` all answer with one named iterator type, `Listing`, over
+`Result<Holder>`: the walk runs as the caller drains it, a failure arrives as an entry and fuses the
+iterator, and order is deterministic. The argument is the same one the three record methods make
+about batches - a shape that has to materialize cannot describe a resource larger than memory - and
+it applies to entries for the same reason.
+
+`IOBase` stays object-safe, which is why this is one named type rather than `impl Iterator` or a
+`Box<dyn Iterator<..>>` in a public signature: a `dyn IOBase` keeps working and a binding can name
+what it wraps. There is one such type because there is one item kind. What a recursive walk retains
+is its frontier - one level per open depth - and everything that stays owned says what bounds it.
+
 ## Bindings are views
 
 The Rust crate is the only implementation. [Python](extensions/python.md) and

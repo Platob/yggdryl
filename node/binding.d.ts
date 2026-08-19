@@ -6,6 +6,7 @@ export {
   Field,
   IOBase,
   LineIterator,
+  Listing,
   MediaType,
   MimeType,
   ProtocolMetadata,
@@ -33,6 +34,7 @@ import type {
   Field,
   IOBase,
   LineIterator,
+  Listing,
   MediaType,
   MetadataEntry,
   MimeType,
@@ -1021,12 +1023,19 @@ declare module './index' {
   /** Property updates as an object, a `Map`, or an entry sequence. */
   type PropertyUpdates = FieldMetadataInput
 
+  /**
+   * A listing is a JavaScript iterable and iterator at once, so `for...of`
+   * walks it and `[...listing]` drains it. Nothing is collected on the way
+   * across the boundary: the walk runs as the iterator is drained.
+   */
+  interface Listing extends Iterable<IOBase> {}
+
   /** Iterating a handle lists its immediate children. */
   interface IOBase extends Iterable<IOBase>, Disposable {
     /** Resolve a child of this resource, as `path.join`. */
     joinpath(...others: string[]): IOBase
     /** Leaves beneath this one carrying every requested partition pair. */
-    childrenWhere(filters: PartitionFilters, includePrivate?: boolean): IOBase[]
+    childrenWhere(filters: PartitionFilters, includePrivate?: boolean): Listing
 
     /** Read the canonical non-null struct root `Field` of this resource. */
     readArrowField(options?: RecordOptionsInput | null): Field

@@ -266,5 +266,5 @@ class TestWritesAndMerges:
         restored = lake.read_arrow_batch_reader(options=options).read_all()
         assert restored.column("venue").to_pylist() == ["XNAS", "XNAS", "XNYS"]
 
-        selected = lake.children_where({"venue": "XNAS"})
+        selected = list(lake.children_where({"venue": "XNAS"}))
         assert len(selected) == 1

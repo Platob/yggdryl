@@ -1748,7 +1748,7 @@ than silently recursed into.
 
     // Clearing empties the container and keeps it.
     folder.clear()?;
-    assert!(folder.ls(true, false)?.is_empty());
+    assert_eq!(folder.ls(true, false).count(), 0);
     assert_eq!(folder.kind(), yggdryl::IOKind::Directory);
 
     // Removing deletes it; a second call succeeds, having done nothing. A
@@ -1757,10 +1757,10 @@ than silently recursed into.
     let leaf = root.join("nested");
     let mut nested = Folder::new(&leaf)?;
     nested.truncate(0)?;
-    assert_eq!(folder.ls(false, false)?.len(), 1);
+    assert_eq!(folder.ls(false, false).count(), 1);
     nested.remove(false)?;
     nested.remove(false)?;
-    assert!(folder.ls(false, false)?.is_empty());
+    assert_eq!(folder.ls(false, false).count(), 0);
     folder.remove(false)?;
 
     // A wrapping handle removes what it wraps, cache included.
@@ -1829,12 +1829,12 @@ than silently recursed into.
 
     // Clearing empties the container and keeps it.
     handle.clear()
-    assert.equal(handle.ls(true, false).length, 0)
+    assert.equal([...handle.ls(true, false)].length, 0)
 
     // Removing deletes it; a second call succeeds, having done nothing.
     handle.remove()
     handle.remove()
-    assert.equal(new IOBase(root).ls(false, false).length, 0)
+    assert.equal([...new IOBase(root).ls(false, false)].length, 0)
 
     // The handle stays usable and lazy - a write recreates the resource.
     const leaf = new IOBase(path.join(root, 'trades.csv'))
@@ -1973,7 +1973,7 @@ folder.truncate(0)?;
 assert!(folder.exists());
 assert_eq!(folder.kind(), IOKind::Directory);
 assert_eq!(folder.media_type().base(), &MimeType::DIRECTORY);
-assert!(folder.ls(false, false)?.is_empty());
+assert_eq!(folder.ls(false, false).count(), 0);
 
 std::fs::remove_dir_all(&path)?;
 ```
@@ -2007,7 +2007,7 @@ assert!(undecided.read_all_bytes()?.is_empty());
 
 // A leaf is not a container: it lists nothing and resolves no child.
 let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
-assert!(leaf.ls(true, false)?.is_empty());
+assert_eq!(leaf.ls(true, false).count(), 0);
 assert!(leaf.child_by_path("nested").is_err());
 ```
 
@@ -2809,11 +2809,13 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
     let lake = Folder::new(&root)?;
 
     // A fixed prefix is descended, not listed and filtered.
-    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.len(), 1);
-    assert_eq!(lake.glob("**/*.parquet", false)?.len(), 2);
+    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
+    assert_eq!(lake.glob("**/*.parquet", false)?.count(), 2);
 
     // Partition filters select the leaves to overwrite or upsert.
-    let selected: Vec<_> = lake.children_where(&[("year", "2024")], false)?.collect();
+    let selected: Vec<_> = lake
+        .children_where(&[("year", "2024")], false)?
+        .collect::<yggdryl::Result<_>>()?;
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].partitions(), vec![
         ("year".to_owned(), "2024".to_owned()),
@@ -2839,10 +2841,10 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
 
     lake = IOBase(root)
 
-    assert len(lake.glob("year=2024/**/*.parquet")) == 1
-    assert len(lake.rglob("*.parquet")) == 2
+    assert len(list(lake.glob("year=2024/**/*.parquet"))) == 1
+    assert len(list(lake.rglob("*.parquet"))) == 2
 
-    selected = lake.children_where({"year": "2024"})
+    selected = list(lake.children_where({"year": "2024"}))
     assert len(selected) == 1
     assert selected[0].partitions == (("year", "2024"), ("month", "01"))
     ```
@@ -2866,11 +2868,11 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
     const lake = new IOBase(root)
 
     // A fixed prefix is descended, not listed and filtered.
-    assert.equal(lake.glob('year=2024/**/*.parquet').length, 1)
-    assert.equal(lake.rglob('*.parquet').length, 2)
+    assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 1)
+    assert.equal([...lake.rglob('*.parquet')].length, 2)
 
     // Partition filters select the leaves to overwrite or upsert.
-    const selected = lake.childrenWhere({ year: '2024' })
+    const selected = [...lake.childrenWhere({ year: '2024' })]
     assert.equal(selected.length, 1)
     assert.deepEqual(selected[0].partitions, [
       { column: 'year', value: '2024' },
@@ -2892,6 +2894,42 @@ The pairs are sugar. Each one builds `&holder.partition['column'] = 'value'` and
 answered by `children_matching`, which takes the [expression](expression.md) language itself: ranges,
 null tests, `in` lists, and every other `&holder.*` attribute. There is no second filter behind the
 pairs.
+
+## A listing is an iterator
+
+Every listing here yields one entry at a time: `ls`, `glob`, `rglob`, `children_matching`, and
+`children_where` all hand back a `Listing`, and none of them decides to build a vector on the
+caller's behalf. That is not a style preference. A folder with a million leaves has to be listable
+the same way one with three is, and a shape that has to materialize cannot describe a resource
+larger than memory - the same argument the three record methods already make about batches.
+
+Three consequences a caller can rely on:
+
+- **Nothing is touched until the first `next`.** Building a listing costs nothing, and taking three
+  entries from a folder of a hundred thousand costs three. A glob whose fixed prefix names nothing
+  reads no directory beneath it at all.
+- **The item is a `Result`, and the iterator is fused after the first one that fails.** A listing
+  fails *at* the failing entry, naming it, without discarding what it already yielded and without
+  spinning against a backend that is already refusing. A caller who wants a vector writes
+  `.collect::<Result<Vec<_>>>()`.
+- **Order is deterministic.** One directory's entries are sorted, and a recursive walk yields each
+  container immediately before the subtree beneath it. The same listing over the same state yields
+  the same sequence twice.
+
+What a recursive walk holds is its *frontier* - one level's cursor per open depth - never its
+result. The local backend reads and sorts one directory at a time; an Arrow filesystem answers a
+whole prefix in one call, because that is the shape an object store already has, and the laziness
+lives inside that one answer.
+
+A few returns in listing positions stay owned, and each says what bounds it: `IOBase::partitions` is
+bounded by one URL's path depth, and a report of what an operation just did - the snapshot ids an
+expiry removed, the counts a compaction reports - is bounded by the operation. Unbounded by the
+resource means an iterator; bounded by the act, or already in hand, may be owned.
+
+In Python the listings are ordinary iterators, so `iterdir`, `glob`, and `rglob` behave exactly as
+`pathlib`'s do - wrap one in `list()` when you want a sequence, and remember that `len()` of that
+list costs the whole walk. In JavaScript they are iterables: `for...of` walks one, and `[...listing]`
+drains it.
 
 ## Partition pruning and filtering
 

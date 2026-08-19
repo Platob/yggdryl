@@ -202,8 +202,11 @@ fn empty_lines(options: &TextLineOptions) -> Result<BatchReader> {
 /// Stream a container's leaves, name-sorted, one open leaf at a time.
 fn folder_lines(handle: &(impl IOBase + ?Sized), options: &TextLineOptions) -> Result<BatchReader> {
     // The walk enumerates handles only - constructions that touch nothing. Each
-    // leaf's bytes wait until the reader reaches it.
-    let leaves: Vec<Holder> = handle.children_where(&[], false)?.collect();
+    // leaf's bytes wait until the reader reaches it, and what is held is one
+    // handle per leaf, bounded by the container being read.
+    let leaves: Vec<Holder> = handle
+        .children_where(&[], false)?
+        .collect::<Result<Vec<_>>>()?;
     ArrowLines::boxed(options, leaves, None)
 }
 

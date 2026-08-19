@@ -145,10 +145,6 @@ impl JsIOBase {
         Ok(Self::from_core(yggdryl::arrowfs::located(backend, url)))
     }
 
-    fn holders(values: Vec<Holder>) -> Vec<Self> {
-        values.into_iter().map(Self::from_core).collect()
-    }
-
     /// Build a container handle for one recorded location.
     pub(crate) fn folder_at(location: &str) -> Result<Self> {
         let url = yggdryl::Url::from_str(location).map_err(napi_error)?;
@@ -362,41 +358,46 @@ impl JsIOBase {
 
     /// Iterate the immediate children, as `fs.readdirSync`.
     ///
-    /// Private entries - names beginning with a dot - are skipped unless
+    /// The listing is lazy and iterable: `for...of` walks it, and taking three
+    /// entries from a folder of a hundred thousand costs three. Private
+    /// entries - names beginning with a dot - are skipped unless
     /// `includePrivate` asks for them.
     #[napi]
-    pub fn iterdir(&self, include_private: Option<bool>) -> Result<Vec<JsIOBase>> {
-        self.inner
-            .ls(false, include_private.unwrap_or(false))
-            .map(Self::holders)
-            .map_err(napi_error)
+    pub fn iterdir(&self, include_private: Option<bool>) -> JsListing {
+        JsListing {
+            inner: self.inner.ls(false, include_private.unwrap_or(false)),
+        }
     }
 
     /// List the children, optionally descending, as the core `ls`.
+    ///
+    /// Lazy and iterable: see `iterdir`.
     #[napi]
-    pub fn ls(
-        &self,
-        recursive: Option<bool>,
-        include_private: Option<bool>,
-    ) -> Result<Vec<JsIOBase>> {
-        self.inner
-            .ls(recursive.unwrap_or(false), include_private.unwrap_or(false))
-            .map(Self::holders)
-            .map_err(napi_error)
+    pub fn ls(&self, recursive: Option<bool>, include_private: Option<bool>) -> JsListing {
+        JsListing {
+            inner: self
+                .inner
+                .ls(recursive.unwrap_or(false), include_private.unwrap_or(false)),
+        }
     }
 
     /// Expand a glob against this resource, as `fs.globSync`.
+    ///
+    /// Lazy and iterable: a pattern whose fixed prefix names nothing touches
+    /// nothing beneath it, because the walk only starts on the first `next`.
     #[napi]
-    pub fn glob(&self, pattern: String, include_private: Option<bool>) -> Result<Vec<JsIOBase>> {
-        self.inner
-            .glob(&pattern, include_private.unwrap_or(false))
-            .map(Self::holders)
-            .map_err(napi_error)
+    pub fn glob(&self, pattern: String, include_private: Option<bool>) -> Result<JsListing> {
+        Ok(JsListing {
+            inner: self
+                .inner
+                .glob(&pattern, include_private.unwrap_or(false))
+                .map_err(napi_error)?,
+        })
     }
 
     /// Expand a glob at any depth, so a pattern needs no leading `**/`.
     #[napi]
-    pub fn rglob(&self, pattern: String, include_private: Option<bool>) -> Result<Vec<JsIOBase>> {
+    pub fn rglob(&self, pattern: String, include_private: Option<bool>) -> Result<JsListing> {
         self.glob(format!("**/{pattern}"), include_private)
     }
 
@@ -423,14 +424,14 @@ impl JsIOBase {
             String,
         >,
         include_private: Option<bool>,
-    ) -> Result<Vec<JsIOBase>> {
+    ) -> Result<JsListing> {
         let filter = crate::expression::expression_from_input(filter)?;
-        Ok(self
-            .inner
-            .children_matching(&filter, include_private.unwrap_or(false))
-            .map_err(napi_error)?
-            .map(Self::from_core)
-            .collect())
+        Ok(JsListing {
+            inner: self
+                .inner
+                .children_matching(&filter, include_private.unwrap_or(false))
+                .map_err(napi_error)?,
+        })
     }
 
     /// Iterate the leaves beneath this one carrying every given partition.
@@ -442,7 +443,7 @@ impl JsIOBase {
         &self,
         filters: PartitionFilters,
         include_private: Option<bool>,
-    ) -> Result<Vec<JsIOBase>> {
+    ) -> Result<JsListing> {
         let pairs: Vec<(String, String)> = match filters {
             Either::A(entries) => entries
                 .into_iter()
@@ -454,12 +455,12 @@ impl JsIOBase {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        Ok(self
-            .inner
-            .children_where(&borrowed, include_private.unwrap_or(false))
-            .map_err(napi_error)?
-            .map(Self::from_core)
-            .collect())
+        Ok(JsListing {
+            inner: self
+                .inner
+                .children_where(&borrowed, include_private.unwrap_or(false))
+                .map_err(napi_error)?,
+        })
     }
 
     /// Read every byte here, as `fs.readFileSync`.
@@ -949,6 +950,33 @@ impl JsIOBase {
         self.inner
             .url()
             .map_or_else(|| "<memory>".to_owned(), ToString::to_string)
+    }
+}
+
+/// The entries of one listing, one at a time.
+///
+/// Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
+/// `childrenWhere`. It wraps the core listing directly, so nothing is
+/// collected on the way across the boundary; `next()` is the native half of
+/// the iteration protocol and the loader wraps it so `for...of` yields
+/// handles. A failure throws at the entry it happened on, after which the
+/// listing is exhausted.
+#[napi(js_name = "Listing")]
+pub struct JsListing {
+    inner: yggdryl::io::Listing,
+}
+
+#[napi]
+impl JsListing {
+    /// The next entry, or `null` when the listing is exhausted.
+    #[napi]
+    pub fn next(&mut self) -> Result<Option<JsIOBase>> {
+        match self.inner.next() {
+            None => Ok(None),
+            Some(entry) => entry
+                .map(|entry| Some(JsIOBase::from_core(entry)))
+                .map_err(napi_error),
+        }
     }
 }
 

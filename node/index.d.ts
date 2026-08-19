@@ -813,16 +813,27 @@ export declare class IOBase {
   /**
    * Iterate the immediate children, as `fs.readdirSync`.
    *
-   * Private entries - names beginning with a dot - are skipped unless
+   * The listing is lazy and iterable: `for...of` walks it, and taking three
+   * entries from a folder of a hundred thousand costs three. Private
+   * entries - names beginning with a dot - are skipped unless
    * `includePrivate` asks for them.
    */
-  iterdir(includePrivate?: boolean | undefined | null): Array<IOBase>
-  /** List the children, optionally descending, as the core `ls`. */
-  ls(recursive?: boolean | undefined | null, includePrivate?: boolean | undefined | null): Array<IOBase>
-  /** Expand a glob against this resource, as `fs.globSync`. */
-  glob(pattern: string, includePrivate?: boolean | undefined | null): Array<IOBase>
+  iterdir(includePrivate?: boolean | undefined | null): JsListing
+  /**
+   * List the children, optionally descending, as the core `ls`.
+   *
+   * Lazy and iterable: see `iterdir`.
+   */
+  ls(recursive?: boolean | undefined | null, includePrivate?: boolean | undefined | null): JsListing
+  /**
+   * Expand a glob against this resource, as `fs.globSync`.
+   *
+   * Lazy and iterable: a pattern whose fixed prefix names nothing touches
+   * nothing beneath it, because the walk only starts on the first `next`.
+   */
+  glob(pattern: string, includePrivate?: boolean | undefined | null): JsListing
   /** Expand a glob at any depth, so a pattern needs no leading `**\/`. */
-  rglob(pattern: string, includePrivate?: boolean | undefined | null): Array<IOBase>
+  rglob(pattern: string, includePrivate?: boolean | undefined | null): JsListing
   /** The Hive partition pairs this resource's location spells out. */
   get partitions(): Array<PartitionEntry>
   /**
@@ -836,14 +847,14 @@ export declare class IOBase {
    *
    * `filter` is an `Expression` or the text of one, which parses.
    */
-  childrenMatching(filter: Expression | string, includePrivate?: boolean | undefined | null): Array<IOBase>
+  childrenMatching(filter: Expression | string, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Iterate the leaves beneath this one carrying every given partition.
    *
    * `filters` is a mapping or a sequence of pairs, so a partitioned write
    * selects the parts it has to touch and leaves the rest alone.
    */
-  childrenWhere(filters: PartitionFilters, includePrivate?: boolean | undefined | null): Array<IOBase>
+  childrenWhere(filters: PartitionFilters, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Read every byte here, as `fs.readFileSync`.
    *
@@ -1065,6 +1076,22 @@ export declare class LineIterator {
   next(): string | null
 }
 export type JsLineIterator = LineIterator
+
+/**
+ * The entries of one listing, one at a time.
+ *
+ * Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
+ * `childrenWhere`. It wraps the core listing directly, so nothing is
+ * collected on the way across the boundary; `next()` is the native half of
+ * the iteration protocol and the loader wraps it so `for...of` yields
+ * handles. A failure throws at the entry it happened on, after which the
+ * listing is exhausted.
+ */
+export declare class Listing {
+  /** The next entry, or `null` when the listing is exhausted. */
+  next(): IOBase | null
+}
+export type JsListing = Listing
 
 /** A base MIME type plus ordered transparent encodings. */
 export declare class MediaType {

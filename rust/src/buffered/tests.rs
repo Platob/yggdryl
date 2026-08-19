@@ -547,7 +547,13 @@ fn everything_but_the_reads_is_the_wrapped_handle() {
     assert_eq!(handle.size(), 13);
     assert_eq!(handle.capacity(), handle.handle().capacity());
     assert!(handle.parent().is_none());
-    assert!(handle.ls(true, true).unwrap().is_empty());
+    assert!(
+        handle
+            .ls(true, true)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap()
+            .is_empty()
+    );
 
     handle.set_media_type(MediaType::from(MimeType::JSON));
     assert_eq!(handle.handle().media_type().base(), &MimeType::JSON);

@@ -7,6 +7,7 @@ criterion_group!(
     io,
     benchmarks::record::round_trip_benchmarks,
     benchmarks::pushdown::projection_benchmarks,
-    benchmarks::buffered::buffered_benchmarks
+    benchmarks::buffered::buffered_benchmarks,
+    benchmarks::listing::listing_benchmarks
 );
 criterion_main!(io);

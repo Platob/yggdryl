@@ -45,6 +45,7 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 mod buffer;
 mod coding;
 mod cursor;
+mod listing;
 /// How a directory name spells a value that is not there.
 ///
 /// A path cannot distinguish the absence of a value from the four letters, so
@@ -69,6 +70,7 @@ mod roles;
 pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
+pub use listing::Listing;
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -290,11 +292,7 @@ macro_rules! delegate_iobase {
     };
 
     (@method $handle:ident, ls) => {
-        fn ls(
-            &self,
-            recursive: bool,
-            include_private: bool,
-        ) -> $crate::Result<Vec<$crate::generic::Holder>> {
+        fn ls(&self, recursive: bool, include_private: bool) -> $crate::io::Listing {
             $crate::io::IOBase::ls(&self.$handle, recursive, include_private)
         }
     };
@@ -411,12 +409,16 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
     if matches!(crate::iceberg::located(handle), Ok(Some(_))) {
         return true;
     }
-    let Ok(mut level) = handle.ls(false, false) else {
-        return false;
-    };
+    let mut level = handle.ls(false, false);
+    // The frontier: the containers a level named and this walk has not opened
+    // yet. It is bounded by the tree's width at the levels already listed, and
+    // the walk stops at the first tabular leaf, so it is never the result.
     let mut deeper: Vec<Holder> = Vec::new();
     loop {
         for entry in level {
+            let Ok(entry) = entry else {
+                return false;
+            };
             // The media type answers first because it is free, and no
             // container reports a tabular one - asking whether an entry is a
             // container is what costs a call into the backing store.
@@ -430,7 +432,7 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
         let Some(next) = deeper.pop() else {
             return false;
         };
-        level = next.ls(false, false).unwrap_or_default();
+        level = next.ls(false, false);
     }
 }
 
@@ -612,18 +614,35 @@ pub trait IOBase: Send {
         Err(no_children(self.url(), path))
     }
 
-    /// List the resources contained by this one.
+    /// List the resources contained by this one, one entry at a time.
     ///
     /// `recursive` descends into every container beneath this one. A resource
     /// that cannot contain others lists nothing rather than failing, so a
     /// caller can walk a tree without testing each node first.
     ///
-    /// # Errors
+    /// The listing is lazy: nothing is touched until the first
+    /// [`next`](Iterator::next), and a caller that takes three entries from a
+    /// folder of a hundred thousand pays for three. A failure arrives *as* an
+    /// entry - the item is a [`Result`] - and the iterator is fused after it.
+    /// A caller who wants a vector writes `.collect::<Result<Vec<_>>>()`; this
+    /// never decides that for them.
     ///
-    /// Returns the backing store's listing failure.
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    /// ```no_run
+    /// use yggdryl::io::IOBase;
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    ///
+    /// for entry in lake.ls(true, false).take(3) {
+    ///     let _ = entry?;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         let _ = (recursive, include_private);
-        Ok(Vec::new())
+        Listing::empty()
     }
 
     /// Return the locations beneath this one that match a glob `pattern`.
@@ -643,55 +662,53 @@ pub trait IOBase: Send {
     /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
     ///
     /// for part in lake.glob("year=2024/**/*.parquet", false)? {
-    ///     println!("{}", part.url().expect("a located child"));
+    ///     println!("{}", part?.url().expect("a located child"));
     /// }
     /// # Ok(())
     /// # }
     /// ```
     ///
+    /// A pattern whose fixed prefix loses therefore touches nothing beneath it:
+    /// the first `next` descends the prefix and finds nothing to list.
+    ///
     /// # Errors
     ///
-    /// Returns the backing store's listing failure.
-    fn glob(&self, pattern: &str, include_private: bool) -> Result<Vec<Holder>> {
+    /// Returns a refusal when the pattern cannot be decomposed, or when a fixed
+    /// prefix segment cannot be resolved. Everything the walk itself hits
+    /// arrives as a failing entry instead.
+    fn glob(&self, pattern: &str, include_private: bool) -> Result<Listing> {
         let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
         let Some(fixed) = parts.iter().position(|part| Url::is_pattern(part)) else {
             // Nothing to expand: the pattern names one location, which counts
             // only if something is actually there.
             let child = descend(self, &parts)?;
             return Ok(match child {
-                Some(child) if child.kind() != IOKind::Unknown => vec![child],
-                _ => Vec::new(),
+                Some(child) if child.kind() != IOKind::Unknown => {
+                    Listing::new(std::iter::once(Ok(child)))
+                }
+                _ => Listing::empty(),
             });
         };
         if fixed > 0 {
             // Descend the fixed prefix so the listing starts as deep as it can.
             let Some(child) = descend(self, &parts[..fixed])? else {
-                return Ok(Vec::new());
+                return Ok(Listing::empty());
             };
             return child.glob(&parts[fixed..].join("/"), include_private);
         }
 
         let Some(root) = self.url().cloned() else {
-            return Ok(Vec::new());
+            return Ok(Listing::empty());
         };
         // One plain segment is answered by the immediate children; anything
         // deeper, or a `**`, needs the whole subtree.
         let recursive = parts.len() > 1 || parts[0] == "**";
-        let mut matched: Vec<Holder> = self
-            .ls(recursive, include_private)?
-            .into_iter()
-            .filter(|entry| {
-                entry
-                    .url()
-                    .is_some_and(|url| url.matches_glob_under(&root, pattern))
-            })
-            .collect();
-        matched.sort_by(|left, right| {
-            left.url()
-                .map(ToString::to_string)
-                .cmp(&right.url().map(ToString::to_string))
-        });
-        Ok(matched)
+        let pattern = pattern.to_owned();
+        Ok(self.ls(recursive, include_private).keeping(move |entry| {
+            entry
+                .url()
+                .is_some_and(|url| url.matches_glob_under(&root, &pattern))
+        }))
     }
 
     /// Return the Hive partition pairs this resource's own location spells out.
@@ -740,7 +757,7 @@ pub trait IOBase: Send {
         &self,
         filter: &crate::Expression,
         include_private: bool,
-    ) -> Result<std::vec::IntoIter<Holder>> {
+    ) -> Result<Listing> {
         // Only the conjuncts a listing can settle are kept. Dropping a conjunct
         // from a conjunction only ever widens what is kept, which is the whole
         // reason this is sound.
@@ -751,18 +768,23 @@ pub trait IOBase: Send {
                 .filter(|conjunct| conjunct.columns().is_empty()),
         );
         let bound = answerable.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
-        let mut matched: Vec<Holder> = Vec::new();
-        for entry in self.ls(true, include_private)? {
-            if bound.matches_holder(&crate::expression::Handle(&entry))? {
-                matched.push(entry);
-            }
-        }
-        matched.sort_by(|left, right| {
-            left.url()
-                .map(ToString::to_string)
-                .cmp(&right.url().map(ToString::to_string))
-        });
-        Ok(matched.into_iter())
+        // The predicate is asked of each entry as it arrives, so a losing entry
+        // is dropped before the next one is fetched and nothing accumulates.
+        Ok(Listing::new(
+            self.ls(true, include_private)
+                .map(move |entry| {
+                    let entry = entry?;
+                    Ok((
+                        bound.matches_holder(&crate::expression::Handle(&entry))?,
+                        entry,
+                    ))
+                })
+                .filter_map(|matched| match matched {
+                    Ok((true, entry)) => Some(Ok(entry)),
+                    Ok((false, _)) => None,
+                    Err(error) => Some(Err(error)),
+                }),
+        ))
     }
 
     /// Iterate the leaves beneath this one that carry every given partition.
@@ -787,8 +809,8 @@ pub trait IOBase: Send {
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
     ///
-    /// for mut part in lake.children_where(&[("year", "2024")], false)? {
-    ///     part.clear()?;
+    /// for part in lake.children_where(&[("year", "2024")], false)? {
+    ///     part?.clear()?;
     /// }
     /// # Ok(())
     /// # }
@@ -797,17 +819,11 @@ pub trait IOBase: Send {
     /// # Errors
     ///
     /// Returns the backing store's listing failure.
-    fn children_where(
-        &self,
-        filters: &[(&str, &str)],
-        include_private: bool,
-    ) -> Result<std::vec::IntoIter<Holder>> {
+    fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing> {
         let filter = crate::Expression::all_holder_partitions_carried(filters.iter().copied());
-        let matched: Vec<Holder> = self
+        Ok(self
             .children_matching(&filter, include_private)?
-            .filter(|entry| !entry.is_container())
-            .collect();
-        Ok(matched.into_iter())
+            .keeping(|entry| !entry.is_container()))
     }
 
     /// Return what kind of resource this handle addresses.
@@ -1520,8 +1536,11 @@ pub trait IOBase: Send {
             if let Some(table) = crate::iceberg::located(self)? {
                 return table.record_options();
             }
+            // The first leaf that names an encoding answers, and the listing
+            // is lazy, so a lake of a million files costs the walk to its
+            // first leaf and stops there.
             for child in self.children_where(&[], false)? {
-                if let Ok(options) = RecordOptions::for_media_type(child.media_type()) {
+                if let Ok(options) = RecordOptions::for_media_type(child?.media_type()) {
                     return Ok(options);
                 }
             }

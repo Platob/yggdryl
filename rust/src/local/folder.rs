@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 
-use crate::{MediaType, Result, Url};
+use crate::{Error, MediaType, Result, Url};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFolder};
+use crate::io::{IOBase, IOFolder, Listing};
 
 /// A local directory addressed as a container rather than as bytes.
 ///
@@ -34,7 +34,7 @@ use crate::io::{IOBase, IOFolder};
 ///
 /// // A directory that does not exist lists nothing instead of failing.
 /// let missing = root.child_by_path("yggdryl-absent-directory")?;
-/// assert!(missing.ls(false, false)?.is_empty());
+/// assert_eq!(missing.ls(false, false).count(), 0);
 /// # Ok(())
 /// # }
 /// ```
@@ -106,37 +106,59 @@ impl Folder {
         Holder::file(url.to_path()?)
     }
 
-    /// Collect entries, optionally descending into subdirectories.
-    fn collect(
-        url: &Url,
-        recursive: bool,
-        include_private: bool,
-        found: &mut Vec<Holder>,
-    ) -> Result<()> {
-        // A directory that does not exist contains nothing; that is not an error.
-        if !url.is_dir() {
-            return Ok(());
-        }
-        let mut entries: Vec<PathBuf> = std::fs::read_dir(url.to_path()?)?
-            .map(|entry| entry.map(|entry| entry.path()))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        // `read_dir` order is platform-defined; sort so listings are stable.
-        entries.sort();
+    /// One directory's entries, sorted, as a lazy listing.
+    ///
+    /// `read_dir` is issued without asking whether the directory is there
+    /// first: a `NotFound` answer *is* "it contains nothing", which is what the
+    /// contract says a listing of an absent container yields. The entry names
+    /// are sorted, because `read_dir` order is platform-defined and a listing
+    /// must be deterministic - so one directory's names are held, and nothing
+    /// else is. That bound is the directory's own width, never the tree's.
+    fn level(url: &Url, include_private: bool) -> Listing {
+        // Deferred into the first `next`, so constructing a listing touches
+        // nothing: a glob whose fixed prefix loses never reads a directory
+        // under it.
+        let url = url.clone();
+        Listing::new(
+            std::iter::once(()).flat_map(move |()| Self::read_level(&url, include_private)),
+        )
+    }
 
-        for entry in entries {
-            let entry = Url::from_path(entry)?;
+    /// The directory read itself, issued when the listing is first polled.
+    fn read_level(url: &Url, include_private: bool) -> Listing {
+        let path = match url.to_path() {
+            Ok(path) => path,
+            Err(error) => return Listing::failing(error),
+        };
+        let read = match std::fs::read_dir(&path) {
+            Ok(read) => read,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Listing::empty();
+            }
+            Err(error) => {
+                return Listing::failing(Error::from_io_at(error, "directory", url));
+            }
+        };
+        let mut entries: Vec<PathBuf> = Vec::new();
+        for entry in read {
+            match entry {
+                Ok(entry) => entries.push(entry.path()),
+                Err(error) => return Listing::failing(Error::Io(error)),
+            }
+        }
+        entries.sort();
+        Listing::new(entries.into_iter().filter_map(move |entry| {
+            let entry = match Url::from_path(entry) {
+                Ok(entry) => entry,
+                Err(error) => return Some(Err(error)),
+            };
             // A dot-prefixed name is private, and a private directory is not
             // descended into either.
             if !include_private && entry.is_private() {
-                continue;
+                return None;
             }
-            let is_directory = entry.is_dir();
-            found.push(Self::hold(&entry)?);
-            if recursive && is_directory {
-                Self::collect(&entry, true, include_private, found)?;
-            }
-        }
-        Ok(())
+            Some(Self::hold(&entry))
+        }))
     }
 }
 
@@ -154,10 +176,14 @@ impl IOFolder for Folder {
         self.create()
     }
 
-    fn list_folder(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
-        let mut found = Vec::new();
-        Self::collect(&self.url, recursive, include_private, &mut found)?;
-        Ok(found)
+    fn list_folder(&self, recursive: bool, include_private: bool) -> Listing {
+        let level = Self::level(&self.url, include_private);
+        if recursive {
+            // Depth-first, pre-order: an entry is yielded before the subtree
+            // under it, and only the frontier is held.
+            return level.descending(include_private);
+        }
+        level
     }
 
     /// Remove the directory itself, which `remove_dir` refuses when populated.
@@ -176,8 +202,8 @@ impl IOFolder for Folder {
     /// work rather than a probe - an absent directory lists nothing and the
     /// call does nothing, which is the contract.
     fn folder_clear(&mut self) -> Result<()> {
-        for mut child in self.list_folder(false, true)? {
-            child.remove(true)?;
+        for child in self.list_folder(false, true) {
+            child?.remove(true)?;
         }
         Ok(())
     }
@@ -250,7 +276,7 @@ impl IOBase for Folder {
         Self::hold(&self.url.joinpath(name)?)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         self.folder_ls(recursive, include_private)
     }
 

@@ -217,7 +217,7 @@ impl IOBase for Holder {
         self.as_io().child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Self>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
         self.as_io().ls(recursive, include_private)
     }
 

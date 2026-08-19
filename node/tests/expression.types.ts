@@ -54,8 +54,8 @@ const limit: number | null = statement.limit
 const statementText: string = statement.toString()
 
 const handle = new IOBase('file:///lake')
-const matching: Array<IOBase> = handle.childrenMatching(filter)
-const matchingText: Array<IOBase> = handle.childrenMatching("&holder.size > 0", true)
+const matching: Array<IOBase> = [...handle.childrenMatching(filter)]
+const matchingText: Array<IOBase> = [...handle.childrenMatching("&holder.size > 0", true)]
 
 const table: Table = iceberg.Table.create('file:///lake/trades', schema, ['ccy'])
 const rows: BatchReader = table.scanMatching(filter)

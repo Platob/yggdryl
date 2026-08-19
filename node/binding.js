@@ -1892,6 +1892,25 @@ for (const name of [
 ]) {
   delete binding[name]
 }
+// A listing is a JS iterable and iterator at once: `next()` is native, the
+// protocol wrappers live here, so `for...of handle.ls(true)` works and so does
+// spreading. Nothing is collected on the way across - the walk runs as the
+// iterator is drained. The native `next` returns null at the end; the protocol
+// spells that as done.
+if (binding.Listing) {
+  const nativeNext = binding.Listing.prototype.next
+  binding.Listing.prototype.next = function next() {
+    const entry = nativeNext.call(this)
+    return entry === null ? { value: undefined, done: true } : { value: entry, done: false }
+  }
+  Object.defineProperty(binding.Listing.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function entries() {
+      return this
+    },
+  })
+}
+
 // A line iterator is a JS iterable and iterator at once: `next()` is native,
 // the protocol wrappers live here, so `for...of handle.readLines()` works and
 // so does spreading. The native `next` returns null at the end; the protocol

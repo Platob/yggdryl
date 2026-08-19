@@ -254,12 +254,12 @@ test('folders list, glob, and carry the file system', () => {
   const lake = IOBase.fromArrowFs(handler, 'lake')
 
   assert.ok(lake.isDir())
-  assert.deepEqual(names(lake.iterdir()), ['year=2024', 'year=2025'])
+  assert.deepEqual(names([...lake.iterdir()]), ['year=2024', 'year=2025'])
   assert.deepEqual(names([...lake]), ['year=2024', 'year=2025'])
-  assert.equal(lake.ls(true).length, 14)
-  assert.equal(lake.glob('**/*.parquet').length, 4)
-  assert.equal(lake.rglob('*.parquet').length, 4)
-  assert.equal(lake.glob('year=2024/**/*.parquet').length, 2)
+  assert.equal([...lake.ls(true)].length, 14)
+  assert.equal([...lake.glob('**/*.parquet')].length, 4)
+  assert.equal([...lake.rglob('*.parquet')].length, 4)
+  assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 2)
 
   // Every handle a folder hands back still stands on the same file system.
   const leaf = lake.joinpath('year=2024', 'month=01', 'part-0.parquet')
@@ -270,7 +270,7 @@ test('folders list, glob, and carry the file system', () => {
     { column: 'year', value: '2024' },
     { column: 'month', value: '01' },
   ])
-  assert.equal(lake.childrenWhere({ year: '2024' }).length, 4)
+  assert.equal([...lake.childrenWhere({ year: '2024' })].length, 4)
 
   // A rebuilt handle keeps the file system, which its location alone would
   // not say: a `memory:` URL names no backend.
@@ -288,7 +288,7 @@ test('a missing location reads empty rather than throwing', (t) => {
   assert.ok(!absent.exists())
   assert.equal(absent.size, 0)
   assert.equal(absent.readBytes().length, 0)
-  assert.deepEqual(absent.ls(true), [])
+  assert.deepEqual([...absent.ls(true)], [])
   // Removing what was never there is what was asked for.
   absent.unlink()
 
@@ -492,6 +492,6 @@ test('a table hands back a root on its own file system', () => {
   // its recorded location happens to spell.
   const root = table.root
   assert.equal(root.isDir(), true)
-  assert.ok(root.ls().some((entry) => entry.name === 'metadata'))
-  assert.equal(root.glob('data/**/*.parquet').length, 1)
+  assert.ok([...root.ls()].some((entry) => entry.name === 'metadata'))
+  assert.equal([...root.glob('data/**/*.parquet')].length, 1)
 })

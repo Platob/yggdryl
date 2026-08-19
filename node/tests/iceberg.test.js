@@ -84,7 +84,7 @@ test('a table is a folder, and a new one has no current snapshot', (t) => {
   // Everything is a child of the one handle the table was built from.
   const handle = new IOBase(location)
   assert.deepEqual(
-    handle.joinpath('metadata').iterdir().map((child) => child.name).sort(),
+    [...handle.joinpath('metadata').iterdir()].map((child) => child.name).sort(),
     ['v1.metadata.json', 'version-hint.text'],
   )
 
@@ -134,7 +134,7 @@ test('an append commits a snapshot, one data file per partition', (t) => {
   // The Hive layout is a real one: a directory per partition value.
   const data = new IOBase(path.join(root, 'trades', 'data'))
   assert.deepEqual(
-    data.iterdir().map((child) => child.name).sort(),
+    [...data.iterdir()].map((child) => child.name).sort(),
     ['venue=XNAS', 'venue=XNYS'],
   )
 

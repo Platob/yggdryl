@@ -76,6 +76,17 @@ handle that double-compresses is worse than an error. Test the refusal.
 nothing; writing creates. New backends inherit this by implementing the
 [role traits](local.md).
 
+**Never pre-check.** No `exists` before a read, no `contains` before a `get`, no `mkdir` before a
+write, no "ensure" step of any kind. Act; branch on the typed
+[absence or conflict](io.md); repair once and retry once. A probe costs a round trip and its answer
+is stale before it returns, so the act still has to handle absence and the check bought nothing but
+a race. An existence question a *caller* asked - `exists`, `is_dir`, `contains` - is an answer, and
+stays public; one of our own on the way to doing something else is a bug.
+
+**Every listing is an iterator.** [`ls`, `glob`, and the predicate listings](io.md) yield one entry
+at a time, the item is a `Result`, and the iterator fuses at the first failure. A return that stays
+owned says what bounds it, in a comment or a test; neither means it was missed.
+
 ## Documentation is part of the change
 
 Every page mirrors one module folder, opens with one H1 and exactly one sentence, and shows every

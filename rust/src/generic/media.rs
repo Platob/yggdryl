@@ -269,7 +269,7 @@ impl IOBase for Media {
         self.as_io().child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> crate::Result<Vec<Holder>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
         self.as_io().ls(recursive, include_private)
     }
 

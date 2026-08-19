@@ -569,8 +569,8 @@ statement_projections: list[str] = statement.projections
 statement_predicate: Expression | None = statement.predicate
 statement_limit: int | None = statement.limit
 
-expression_matched: list[IOBase] = IOBase("file:///lake").children_matching(
-    "&holder.partition['year'] = '2024'"
+expression_matched: list[IOBase] = list(
+    IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
 )
 
 assert str(expression)

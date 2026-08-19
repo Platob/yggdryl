@@ -321,11 +321,12 @@ impl<H: IOBase> Catalog<H> {
     /// fails, or when a child's metadata document is not table metadata.
     fn list_children(&self, parent: Option<&str>, tables: bool) -> Result<Vec<String>> {
         let children = match parent {
-            Some(parent) => self.resolve(parent)?.ls(false, false)?,
-            None => self.warehouse.ls(false, false)?,
+            Some(parent) => self.resolve(parent)?.ls(false, false),
+            None => self.warehouse.ls(false, false),
         };
         let mut names = Vec::new();
         for child in children {
+            let child = child?;
             if !child.is_container() {
                 continue;
             }

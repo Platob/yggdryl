@@ -2339,7 +2339,8 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
 
     // No usable hint: take the highest-numbered document that is actually there.
     let mut best: Option<(u32, Holder)> = None;
-    for entry in metadata_dir.ls(false, false)? {
+    for entry in metadata_dir.ls(false, false) {
+        let entry = entry?;
         let Some(name) = entry
             .url()
             .and_then(|url| url.file_name().map(ToOwned::to_owned))
