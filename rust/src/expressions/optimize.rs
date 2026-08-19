@@ -524,14 +524,18 @@ impl Rewriter<'_> {
                 .decline("cast moved from column to literal");
             return None;
         }
-        let narrowed = coerce_value(&literal, &narrow)?;
-        // The round trip is the proof: if converting back does not reproduce
-        // exactly what was written, the rewrite would change the question.
-        if coerce_value(&narrowed, &wide)? != literal {
+        // The round trip is the proof, and it has to be one expression rather
+        // than two `?`s: a literal the narrow type cannot hold at all must
+        // record the decline just as loudly as one that converts back wrong.
+        let round_trip = coerce_value(&literal, &narrow).and_then(|narrowed| {
+            let back = coerce_value(&narrowed, &wide)?;
+            (back == literal).then_some(narrowed)
+        });
+        let Some(narrowed) = round_trip else {
             self.explanation
                 .decline("cast moved from column to literal");
             return None;
-        }
+        };
         let folded = plan.insert(Node::Literal(narrowed));
         plan.set_data_type(folded, narrow);
         Some((child, folded))
