@@ -1603,6 +1603,14 @@ pub trait IOBase: Send {
     /// Per the laziness contract, a resource that does not exist yet holds no
     /// batches rather than failing.
     ///
+    /// The shaping order is fixed: declared schema, then selection, then
+    /// completion cast, then partition filter, then
+    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size)
+    /// last - so a limit counts result rows, and a limit of ten with a filter
+    /// means the first ten matching rows. A satisfied limit stops pulling, so
+    /// the rest of the resource is never decoded.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, decoding, or cast failure.
@@ -1611,18 +1619,20 @@ pub trait IOBase: Send {
         &self,
         options: &RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
+        use crate::generic::IORecordOptions;
+
         let reader = if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(self)? {
                 let filtered = partition::filtered_reader(table.read(options)?, options)?;
-                return select_reader(filtered, options);
+                return options.limit_arrow_reader(select_reader(filtered, options)?);
             }
             partition::folder_reader(self, options)?
         } else {
             leaf_reader(self, options)?
         };
         let reader = partition::filtered_reader(reader, options)?;
-        select_reader(reader, options)
+        options.limit_arrow_reader(select_reader(reader, options)?)
     }
 
     /// Replace or merge this resource's rows with every batch `batches` yields.
@@ -1653,6 +1663,14 @@ pub trait IOBase: Send {
     /// whose statistics say they can hold an incoming key and carries the rest
     /// forward untouched.
     ///
+    /// A limited write truncates data the caller offered:
+    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size) bound
+    /// the incoming reader exactly as they bound a read, and what they cut off
+    /// is never pulled from it. A limit combined with a non-empty match key is
+    /// refused naming both settings, because a truncated merge would update
+    /// some matched keys and silently drop the rest.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, schema, cast, encoding, or write failure.
@@ -1664,6 +1682,10 @@ pub trait IOBase: Send {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
+        // The limit sits on the incoming side, before anything else pulls, so
+        // a satisfied write stops consuming the caller's reader; the same call
+        // refuses a limit combined with a match key.
+        let batches = options.limit_arrow_reader(batches)?;
         // The selection narrows what a write is about before any encoding or
         // matching sees the rows, so the columns it drops can never land.
         let batches = select_reader(batches, options)?;
@@ -1698,6 +1720,14 @@ pub trait IOBase: Send {
     /// commits a snapshot that keeps every manifest the last one had, so nothing
     /// already stored is read, rewritten, or even listed.
     ///
+    /// A limited write truncates data the caller offered: an append is a
+    /// write, so
+    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size) bound
+    /// the incoming reader here exactly as they do on
+    /// [`write_arrow_batch_reader`](Self::write_arrow_batch_reader), and a
+    /// limit combined with a non-empty match key is refused the same way.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, cast, encoding, or write failure. A failure
@@ -1711,6 +1741,9 @@ pub trait IOBase: Send {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
+        // The limit sits on the incoming side for the same reason it does on
+        // a write: a satisfied append stops consuming the caller's reader.
+        let batches = options.limit_arrow_reader(batches)?;
         // The same narrowing a write applies: an append is a write that keeps.
         let batches = select_reader(batches, options)?;
         if self.is_container() {

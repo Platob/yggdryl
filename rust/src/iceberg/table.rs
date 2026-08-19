@@ -1845,16 +1845,23 @@ impl<H: IOBase> IOBase for Table<H> {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         let reader = self.scan_where(&pairs, options.schema())?;
-        crate::io::select_reader(reader, options)
+        // The limit wraps last, as on every handle, so it counts result rows
+        // and a satisfied scan stops decoding data files.
+        options.limit_arrow_reader(crate::io::select_reader(reader, options)?)
     }
 
     /// One commit: an overwrite without a match key, a merge with one, scoped
     /// to the partitions the options' filters select.
+    ///
+    /// A limited write truncates data the caller offered, exactly as it does
+    /// on a leaf, and a limit combined with a non-empty match key is refused
+    /// naming both settings.
     fn write_arrow_batch_reader(
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
+        let batches = options.limit_arrow_reader(batches)?;
         let batches = crate::io::select_reader(batches, options)?;
         let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
         let pairs: Vec<(&str, &str)> = filters
@@ -1865,11 +1872,15 @@ impl<H: IOBase> IOBase for Table<H> {
     }
 
     /// One `append` snapshot, keeping every manifest the last one had.
+    ///
+    /// A limited write truncates data the caller offered here too: an append
+    /// is a write.
     fn append_arrow_batch_reader(
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
+        let batches = options.limit_arrow_reader(batches)?;
         let batches = crate::io::select_reader(batches, options)?;
         self.append(batches)
     }

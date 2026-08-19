@@ -425,3 +425,74 @@ mod pushdown {
         assert_eq!(reader.schema().fields().len(), 4);
     }
 }
+
+mod limits {
+    use arrow_array::RecordBatchReader;
+
+    use super::{batch, handle, reader, root};
+    use crate::generic::{IORecordOptions, RecordOptions};
+    use crate::io::{Buffer, IOBase};
+
+    /// The total rows a handle yields under `options`.
+    fn rows(handle: &Buffer, options: &RecordOptions) -> usize {
+        handle
+            .read_arrow_batch_reader(options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum()
+    }
+
+    #[test]
+    fn a_zero_limit_reads_the_declared_schema_and_no_batches() {
+        let field = root();
+        let mut handle = handle("limited.parquet");
+        let options = handle.record_options().unwrap().with_schema(field.clone());
+        handle
+            .write_arrow_batch_reader(
+                reader(
+                    &field,
+                    [batch(&field, vec![1, 2], vec![Some("AAPL"), None])],
+                ),
+                &options,
+            )
+            .unwrap();
+
+        let mut limited = handle
+            .read_arrow_batch_reader(&options.with_max_row_size(0))
+            .unwrap();
+        // The schema is asserted, not only the emptiness: `Some(0)` is a
+        // valid ask that still says what the rows would have been.
+        assert_eq!(
+            limited.schema(),
+            crate::arrow::schema_from_field(&field).unwrap()
+        );
+        assert!(limited.next().is_none());
+    }
+
+    #[test]
+    fn a_limited_write_truncates_what_the_caller_offered() {
+        let field = root();
+        let mut handle = handle("truncated.parquet");
+        let options = handle.record_options().unwrap().with_schema(field.clone());
+
+        handle
+            .write_arrow_batch_reader(
+                reader(
+                    &field,
+                    [batch(&field, vec![1, 2], vec![Some("AAPL"), None])],
+                ),
+                &options.clone().with_max_row_size(1),
+            )
+            .unwrap();
+        assert_eq!(rows(&handle, &options), 1);
+
+        // An append is a write, so the same bound truncates it the same way.
+        handle
+            .append_arrow_batch_reader(
+                reader(&field, [batch(&field, vec![3, 4], vec![None, None])]),
+                &options.clone().with_max_row_size(1),
+            )
+            .unwrap();
+        assert_eq!(rows(&handle, &options), 2);
+    }
+}

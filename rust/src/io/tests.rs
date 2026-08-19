@@ -494,6 +494,42 @@ mod records {
         assert_eq!(handle.as_slice(), before.as_slice());
     }
 
+    #[test]
+    fn a_row_limit_bounds_a_read_at_below_and_above_the_stored_count() {
+        let mut handle = handle("row-limited.arrows");
+        let options = handle.record_options().unwrap().with_schema(schema());
+        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+
+        // The bound is exact: one below slices, the count itself keeps
+        // everything, and one above changes nothing.
+        assert_eq!(rows(&handle, &options.clone().with_max_row_size(1)), 1);
+        assert_eq!(rows(&handle, &options.clone().with_max_row_size(2)), 2);
+        assert_eq!(rows(&handle, &options.clone().with_max_row_size(3)), 2);
+    }
+
+    #[test]
+    fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
+        let mut handle = handle("limited-merge.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_schema(schema())
+            .with_merge_by_names(["id"])
+            .with_max_row_size(1);
+        let before = handle.as_slice().to_vec();
+
+        // A truncated merge would update the matched keys it kept and
+        // silently drop the rest, so the combination is refused by name
+        // before a single row moves.
+        let message = handle
+            .write_arrow_batch_reader(reader(), &options)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("max_row_size = 1"), "{message}");
+        assert!(message.contains("merge_by_names [\"id\"]"), "{message}");
+        assert_eq!(handle.as_slice(), before.as_slice());
+    }
+
     /// A declared schema is what a read selects *and* casts to: the columns it
     /// names become the encoding's own projection, and what comes back is the
     /// shape it declares rather than the shape the resource stores.

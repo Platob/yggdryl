@@ -91,6 +91,10 @@ pub struct ParquetOptions {
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
     pub batch_size: Option<usize>,
+    /// Most result rows in total - a count of rows, not a per-row byte cap.
+    pub max_row_size: Option<u64>,
+    /// Most Arrow in-memory bytes of result rows, never encoded bytes.
+    pub max_byte_size: Option<u64>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// Column names forming a write's match key; empty means overwrite.
@@ -112,6 +116,8 @@ impl ParquetOptions {
             root_name: smol_str::SmolStr::new_static("row"),
             safe: false,
             batch_size: None,
+            max_row_size: None,
+            max_byte_size: None,
             level: crate::Level::DEFAULT,
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),

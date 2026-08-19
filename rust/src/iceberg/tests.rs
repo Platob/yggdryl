@@ -1827,6 +1827,58 @@ mod handles {
         assert_eq!(reopened.version(), table.version());
         assert_eq!(reopened.metadata().snapshots.len(), 3);
     }
+
+    #[test]
+    fn the_table_value_honours_the_row_limit_like_every_handle() {
+        let path = root("handle-table-limit");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let options = IOBase::record_options(&table).unwrap();
+
+        // A limited write truncates data the caller offered, so only the
+        // first row of the two lands in the commit.
+        let batch = trades(
+            &[1, 2],
+            &[Some("AAPL"), Some("MSFT")],
+            &[Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options.clone().with_max_row_size(1),
+            )
+            .unwrap();
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()).len(),
+            1
+        );
+
+        // A limited read counts result rows, and `Some(0)` is a valid ask.
+        let limited = options.clone().with_max_row_size(0);
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&limited).unwrap()).len(),
+            0
+        );
+
+        // A limit combined with a match key is refused naming both settings,
+        // on a table exactly as on a leaf.
+        let merging = options
+            .clone()
+            .with_merge_by_names(["id"])
+            .with_max_row_size(1);
+        let batch = trades(&[3], &[Some("VOD")], &[Some("XLON")]);
+        let Err(error) = table.write_arrow_batch_reader(
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+            &merging,
+        ) else {
+            panic!("a limited merge must be refused");
+        };
+        let message = error.to_string();
+        assert!(message.contains("max_row_size = 1"), "{message}");
+        assert!(message.contains("merge_by_names [\"id\"]"), "{message}");
+    }
 }
 
 #[test]
