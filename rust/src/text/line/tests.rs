@@ -2192,6 +2192,21 @@ mod record_surface {
     }
 
     #[test]
+    fn a_text_holder_reads_lines_under_the_extractor_it_carries() {
+        // The bindings spell reads as `into_text_with(built).into_read_lines()`;
+        // the inherent Holder methods must keep the built extractor rather
+        // than falling back to defaults through the trait wrapper.
+        let holder = crate::generic::Holder::buffer(named("mixed.txt", b"lf\ncrlf\r\nlast"));
+        let pinned = TextLineOptions::new().with_linesep(LineSep::CRLF);
+        let mut lines = holder.into_text_with(pinned).into_read_lines().unwrap();
+        let first = lines.next().unwrap().unwrap();
+        assert_eq!(first.text().unwrap(), "lf\ncrlf");
+        let second = lines.next().unwrap().unwrap();
+        assert_eq!(second.text().unwrap(), "last");
+        assert!(lines.next().is_none());
+    }
+
+    #[test]
     fn a_holder_wraps_into_text_idempotently() {
         let holder = crate::generic::Holder::buffer(named("app.log", b"first\n"));
         let text = holder.into_text().into_text();

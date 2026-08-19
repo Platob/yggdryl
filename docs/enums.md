@@ -579,6 +579,55 @@ assert_ne!(UnionMode::Sparse, UnionMode::Dense);
 `DataType::union` takes the mode explicitly; `DataType::variant` - the constructor the bindings
 expose - always builds a dense union.
 
+## Listing the vocabularies
+
+Pure enums cross the bindings as strings - a datatype id is `"int64"`, a codec is `"gzip"` - and
+the vocabularies enumerate what those strings can be. Every listing is unpacked from one native
+call, so it can never drift from the Rust constants it mirrors.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Codec, DataTypeId, IOKind, TimeUnit, UnionMode};
+
+    // Every core enum publishes its variants in canonical order.
+    assert_eq!(DataTypeId::ALL.len(), 41);
+    assert!(DataTypeId::ALL.contains(&DataTypeId::Int64));
+    assert_eq!(UnionMode::ALL.map(UnionMode::as_str), ["sparse", "dense"]);
+    assert!(TimeUnit::ALL.contains(&TimeUnit::Microsecond));
+    assert!(Codec::ALL.contains(&Codec::Gzip));
+    assert!(IOKind::ALL.contains(&IOKind::File));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import enums
+
+    assert "int64" in enums.DATA_TYPE_IDS
+    assert enums.UNION_MODES == ("sparse", "dense")
+    assert "us" in enums.TIME_UNITS
+    assert "gzip" in enums.CODECS
+    assert "file" in enums.IO_KINDS
+    assert "arrow" in enums.COMPATIBILITY_SCHEMES
+    assert enums.LEVELS["default"] == 6
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { enums } = require('yggdryl')
+
+    assert.ok(enums.dataTypeIds.includes('int64'))
+    assert.deepEqual([...enums.unionModes], ['sparse', 'dense'])
+    assert.ok(enums.timeUnits.includes('us'))
+    assert.ok(enums.codecs.includes('gzip'))
+    assert.ok(enums.ioKinds.includes('file'))
+    assert.ok(enums.compatibilitySchemes.includes('arrow'))
+    assert.equal(enums.levels.default, 6)
+    ```
+
 ## Timezone
 
 `Timezone` is the one way to name a zone: an alias, a case variant, and a fixed offset all

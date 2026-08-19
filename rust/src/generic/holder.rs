@@ -152,6 +152,27 @@ impl Holder {
         }
     }
 
+    /// Read this resource's records, consuming the holder.
+    ///
+    /// The inherent spelling of [`IOBase::into_read_lines`], and it wins
+    /// method resolution over it - which matters: the trait default wraps a
+    /// *fresh* text handler, while a holder that is already text must read
+    /// under the extractor it carries rather than silently under defaults.
+    ///
+    /// # Errors
+    ///
+    /// Construction itself cannot fail; each yielded item carries the read or
+    /// decode failure of its record.
+    pub fn into_read_lines(
+        self,
+    ) -> Result<crate::text::TextLines<Box<dyn std::io::Read + Send + 'static>>> {
+        let text = match self {
+            Self::Text(text) => *text,
+            other => crate::text::Text::new(other),
+        };
+        text.into_read_lines()
+    }
+
     /// Borrow the held implementation as a trait object.
     pub fn as_io(&self) -> &dyn IOBase {
         match self {

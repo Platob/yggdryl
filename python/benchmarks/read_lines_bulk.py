@@ -571,7 +571,14 @@ def main() -> None:
                 f"{'floor (no corpus)':26} {0:>12} {0.0:>14.1f} "
                 f"{_mib(floor):>14.1f} {0.0:>16.1f}"
             )
-            for label, size in _sweep_sizes(records):
+            # The memory sweep continues past the timing corpus, because the
+            # claim is a *plateau*: residency stops growing once the corpus is
+            # comfortably larger than the batch budget, and a corpus of only a
+            # few batches cannot show that by itself.
+            probes = list(_sweep_sizes(records)) + [
+                (f"scale {factor}/1", records * factor) for factor in (2, 4)
+            ]
+            for label, size in probes:
                 probed = _folder(ROOT, f"rss-{size}", size, coded=True)
                 report = _run_probe(size, probed.path)
                 assert report["rows"] == size, report

@@ -14,6 +14,9 @@ mod arrowfs;
 mod codec;
 pub mod codings;
 mod datatype;
+// Discovered through NAPI's generated registration inventory rather than
+// ordinary Rust call sites, like `uri` below.
+#[allow(dead_code)]
 mod enums;
 mod expression;
 mod field;

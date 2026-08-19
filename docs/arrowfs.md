@@ -723,6 +723,115 @@ already reach answers them:
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
+## What the wrapper costs
+
+Putting an existing Arrow filesystem behind `IOBase`, the only honest
+question is what the wrapper adds to the transport underneath it. Every row below is the same
+payload landing in the same place twice: once through an `arrowfs` handle, once through the native
+handle (or the language's own filesystem calls) holding those same bytes.
+
+=== "Rust"
+
+    `cargo bench --bench arrowfs --features "parquet"`, Criterion medians,
+    512 KiB payloads and 65,536 rows:
+
+    ```text
+                                      arrowfs      native handle
+    bytes read_all   (memory)         22.99 us     23.68 us   Buffer
+    bytes write_all  (memory)         67.00 us     24.85 us   Buffer
+    bytes pread 4KiB (memory)         63.91 ns     35.05 ns   Buffer
+    bytes read_all   (local)          25.82 us     23.51 us   local::File
+    bytes write_all  (local)         212.43 us      1.11 ms   local::File
+    ipc     write                      4.08 ms      4.44 ms   Buffer
+    ipc     read                       1.49 ms      1.30 ms   Buffer
+    parquet write                     18.16 ms     17.84 ms   Buffer
+    parquet read                       5.17 ms      5.01 ms   Buffer
+    ls recursive     (local)          61.49 us     92.84 us   local::Folder
+    ```
+
+    The ranged read is the row that matters most, and it is the one stated in
+    nanoseconds. Serving 4 KiB out of a 512 KiB value costs 64 ns, not the
+    23 us a whole-value read costs, so the handle serves a range without
+    materializing the value. The vtable itself is the 29 ns difference against
+    `Buffer`: one dynamic call plus a bounds check. This measures the handle,
+    not any reader above it - [`parquet`](parquet.md) still fetches its value
+    whole, as that page says.
+
+    Whole-value writes are where staging shows. An Arrow filesystem replaces
+    files rather than writing ranges, so a write is buffered and published
+    once - 67 us against `Buffer`'s 25 us for 512 KiB, which is the copy the
+    publication costs. Against the memory-mapped `local::File` the same write
+    is **five times faster** (212 us against 1.11 ms), because publishing a
+    whole file through a temporary and a rename beats remapping and resizing a
+    mapping. Neither number makes one backend better than the other; they
+    measure different write shapes, which is exactly why both exist.
+
+    Records are within a few percent either way, because the encoding
+    dominates and the wrapper only moves the finished bytes. Listing is faster
+    than the local backend's because one `list` call answers a recursive walk
+    that `std::fs::read_dir` has to make per directory.
+
+    `glob` over the same tree shows the descent the contract promises:
+    expanding `**/*.parquet` across a 16-leaf lake costs 57 us, while
+    `year=2024/**/*.parquet` costs 23 us, because a fixed prefix is descended
+    rather than listed and filtered.
+
+=== "Python"
+
+    The baseline is PyArrow's own calls against the same
+    `pyarrow.fs.LocalFileSystem` - the implementation the wrapper delegates
+    to - so the difference is the vtable crossing and nothing else.
+    `arrowfs.py --min-time 0.2 --repeat 7`, release wheel, medians:
+
+    ```text
+                            wrapper      PyArrow
+    bytes write            400.0 us     244.3 us
+    bytes read             115.2 us      17.6 us
+    range read (4 KiB)      14.5 us       2.9 us
+    parquet write            8.16 ms      6.19 ms
+    parquet read             2.00 ms      1.95 ms
+    listing (16 entries)    85.5 us      34.4 us
+    ```
+
+    A Parquet read is at parity, because the decode dominates and the boundary
+    moves only finished bytes. Everything smaller is dominated by the crossing
+    itself: each vtable call acquires the GIL and makes a handful of PyArrow
+    calls, which is roughly 12 us of fixed cost, so the 4 KiB range read costs
+    14.5 us against PyArrow's 2.9 us. That cost is per *call*, not per byte -
+    the ranged read still reads 4 KiB rather than the 512 KiB object, which is
+    the property that matters on an object store, and it is why the read is
+    14.5 us rather than the 115 us a whole-value read takes.
+
+    A write costs more than PyArrow's because it is a different operation: the
+    wrapper stages the value and publishes it once, which is what makes a
+    positional `pwrite` API work over a filesystem that only replaces whole
+    files.
+
+=== "JavaScript"
+
+    JavaScript pays the same shape of cost against `node:fs`, with the handler
+    crossing the boundary on every call rather than only the handle.
+    `bench:arrowfs`, release build:
+
+    ```text
+                                wrapper       node:fs
+    handle from path         107,101/s     257,632/s
+    write bytes                4,912/s      11,235/s
+    read bytes                13,193/s      58,399/s
+    read range (4 KiB)       124,733/s     227,893/s
+    list children             58,181/s     264,682/s
+    glob *.parquet             9,372/s      16,900/s
+    read records            15.6M rows/s   11.6M rows/s (local handle)
+    write records           10.2M rows/s   22.1M rows/s (local handle)
+    ```
+
+    The ranged read is again the row that carries the claim: it is the
+    *fastest* byte operation of the three, not the slowest, because it fetches
+    4 KiB rather than the whole payload. Records read faster than through the
+    local handle because the staged value is already in memory once the first
+    read has fetched it, and slower to write for the same reason a Python
+    write is - the value is staged and published once.
+
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 
 ## Notebooks

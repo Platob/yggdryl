@@ -916,6 +916,101 @@ directly, and derive the format from the path suffix or the content - which mean
 write plain text and leave content coding to the caller. `TextCodec::load` and `TextCodec::dump`
 are the per-format form of the same two functions, using that format instead of the handle's.
 
+## Reading and writing Arrow batches
+
+Text is a record encoding. A `.log` or `.txt` name says `text/plain`, and the record surface -
+the same [three methods](io.md) every media answers - parses lines into Arrow batches on the way
+in and renders rows back as lines on the way out. Nothing names a format anywhere: the media type
+decides, exactly as it does for [`ipc`](ipc.md) or [`parquet`](parquet.md).
+
+A read projects each record into the [line projection's columns](io.md) - `url`, `rownum`, the
+timestamp columns, `hash`, `header`, `message`, `offset`, `lines`. A write renders each row as one
+line: the `header` column when present and non-null, a space, then the `message` - or the single
+`utf8` column a plain batch holds, so "write these strings as lines" needs no rename. A message
+holding interior newlines writes back as the multi-line record it was read from.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::Url;
+
+    fn named(name: &str) -> yggdryl::Result<Buffer> {
+        Ok(Buffer::new().with_media_type(Url::from_str(&format!("file:///{name}"))?.media_type()))
+    }
+
+    let mut source = named("app.log")?;
+    source.write_all_bytes(b"first event\nsecond event\n")?;
+
+    // `.log` says text/plain, so the record options are the line projection.
+    let options = source.record_options()?;
+    let rows: usize = source
+        .read_arrow_batch_reader(&options)?
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .sum::<Result<_, _>>()?;
+    assert_eq!(rows, 2);
+
+    // And the write direction renders rows back as lines.
+    let mut target = named("copy.log")?;
+    let batches = source.read_arrow_batch_reader(&options)?;
+    target.write_arrow_batch_reader(batches, &options)?;
+    assert_eq!(target.read_all_bytes()?, b"first event\nsecond event\n");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import shutil
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-"))
+    (root / "app.log").write_text("first event\nsecond event\n")
+
+    # `.log` says text/plain, so no call names a format.
+    table = IOBase(root / "app.log").read_arrow_batch_reader().read_all()
+    assert table.num_rows == 2
+    assert table.column("message").to_pylist() == ["first event", "second event"]
+
+    # And the write direction renders rows back as lines.
+    IOBase(root / "copy.log").write_arrow_batch_reader(table)
+    assert (root / "copy.log").read_text() == "first event\nsecond event\n"
+
+    shutil.rmtree(root)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
+    fs.writeFileSync(path.join(root, 'app.log'), 'first event\nsecond event\n')
+
+    // `.log` says text/plain, so no call names a format.
+    const table = new IOBase(path.join(root, 'app.log')).readArrowBatchReader().toTable()
+    assert.equal(table.numRows, 2)
+    assert.deepEqual([...table.getChild('message')], ['first event', 'second event'])
+
+    // And the write direction renders rows back as lines.
+    new IOBase(path.join(root, 'copy.log')).writeArrowBatchReader(table)
+    assert.equal(fs.readFileSync(path.join(root, 'copy.log'), 'utf8'), 'first event\nsecond event\n')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+A pattern, log mode, typed captures, batch bounds, and zones all still apply - they are the
+[`TextLineOptions`](io.md) held inside the text record options, and
+[`read_arrow_lines`](io.md) remains the convenience spelling that takes the extractor directly.
+Merging by key is refused by name: a text line has no row identity, so `write` replaces and
+`append` adds after the current last line.
+
 ## Jinja-style placeholders
 
 A configuration document wants to carry `{{ LOG_ROOT }}` and resolve it at load time. `Loading`
@@ -1120,8 +1215,25 @@ Before any substitution work the raw bytes are scanned once for `{{`. A document
 returned exactly as it parsed - no value walk, no allocation, no per-scalar inspection - so the
 overwhelming majority of documents, which have no placeholders, do not pay for the feature. When
 placeholders are present only string scalars are visited, and only the scalars that actually
-contain one are rebuilt; every other value is moved through untouched. The
-[benchmarks](benchmarks.md#placeholder-substitution) page prices all three cases.
+contain one are rebuilt; every other value is moved through untouched. `codec/placeholder` in
+the `text` bench prices all three cases directly: the same 256-entry YAML document parsed with
+the feature off and on, at three placeholder densities. From one containerized x86_64 Linux run
+(`cargo bench --bench text -- codec/placeholder`; Criterion medians with 95% intervals):
+
+```text
+codec/placeholder/none/off   77.052 us   [76.681 us 77.471 us]
+codec/placeholder/none/on    76.804 us   [76.518 us 77.098 us]
+codec/placeholder/few/off    79.516 us   [78.879 us 80.122 us]
+codec/placeholder/few/on    122.020 us   [121.44 us 122.66 us]
+codec/placeholder/most/off   77.777 us   [77.305 us 78.246 us]
+codec/placeholder/most/on   198.300 us   [196.77 us 200.83 us]
+```
+
+**The guard is free.** `none/off` against `none/on` is indistinguishable - one vectorized
+`memchr` scan for `{{`, and when it finds nothing the parsed value is returned untouched. The
+other two rows are the work itself: only string scalars are visited, and only the ones that
+actually contain a placeholder are rebuilt, at about 0.5 us per substituted scalar - the fresh
+string each one builds.
 
 Dumping never re-introduces a placeholder. Substitution is a **load-time** transformation, so a
 round trip through load-then-dump yields the resolved document; templates do not survive a rewrite.

@@ -210,22 +210,22 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     let listing = PyDict::new(py);
     listing.set_item(
         "data_type_ids",
-        DataTypeId::ALL.map(|id| id.as_str()).to_vec(),
+        DataTypeId::ALL.map(DataTypeId::as_str).to_vec(),
     )?;
     listing.set_item(
         "data_type_kinds",
-        DataTypeKind::ALL.map(|kind| kind.as_str()).to_vec(),
+        DataTypeKind::ALL.map(DataTypeKind::as_str).to_vec(),
     )?;
     listing.set_item(
         "time_units",
-        TimeUnit::ALL.map(|unit| unit.as_str()).to_vec(),
+        TimeUnit::ALL.map(TimeUnit::as_str).to_vec(),
     )?;
     listing.set_item(
         "union_modes",
-        UnionMode::ALL.map(|mode| mode.as_str()).to_vec(),
+        UnionMode::ALL.map(UnionMode::as_str).to_vec(),
     )?;
-    listing.set_item("codecs", Codec::ALL.map(|codec| codec.as_str()).to_vec())?;
-    listing.set_item("io_kinds", IOKind::ALL.map(|kind| kind.as_str()).to_vec())?;
+    listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
+    listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
     listing.set_item(
         "compatibility_schemes",
         Scheme::COMPATIBILITY_TARGETS
