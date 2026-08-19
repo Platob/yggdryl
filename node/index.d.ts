@@ -78,26 +78,10 @@ export declare class Catalog {
    */
   constructor(warehouse: LocationInput)
   /**
-   * Create the named table, writing its first metadata document.
-   *
-   * `schema` is a root `Field`, a field expression, or an array of child
-   * `Field`s assembled under a root named `row`. Unnumbered columns are
-   * numbered, and the partition spec is derived from the columns the schema
-   * itself marks - a schema that marks none produces an unpartitioned
-   * table.
+   * Open the table a dotted name addresses - the one-call spelling of
+   * `catalog.tables.get(name)`.
    */
-  createTable(name: string, schema: TableSchemaInput): Table
-  /** Open the named table. */
   table(name: string): Table
-  /** Return whether the named table exists. */
-  hasTable(name: string): boolean
-  /**
-   * Open the named table if it exists, creating it otherwise.
-   *
-   * An existing table is opened as it is - `schema` describes only the
-   * table this call would create.
-   */
-  openOrCreateTable(name: string, schema: TableSchemaInput): Table
   /**
    * Append `data` to the named table, creating it on first write.
    *
@@ -114,19 +98,6 @@ export declare class Catalog {
    * table so the caller can keep going.
    */
   overwrite(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
-  /**
-   * List the namespaces one level below `parent`, as sorted dotted names.
-   *
-   * Omitting `parent` lists the warehouse's own child folders. A parent
-   * that does not exist lists nothing rather than failing.
-   */
-  listNamespaces(parent?: string | undefined | null): Array<string>
-  /**
-   * List the tables in a namespace, as sorted dotted names.
-   *
-   * A namespace that does not exist lists nothing rather than failing.
-   */
-  listTables(namespace: string): Array<string>
   /**
    * One namespace as a view: `catalog.namespace('analytics')`.
    *
@@ -145,6 +116,28 @@ export declare class Catalog {
    * chains all the way to a table.
    */
   get namespaces(): JsNamespaces
+  /**
+   * The catalog's tables, as the same lazy view over dotted names.
+   *
+   * `catalog.tables.get('sales.eu.orders')` descends; an un-dotted name
+   * addresses a table directly under the warehouse root, and the listing
+   * questions answer exactly those.
+   */
+  get tables(): JsTables
+  /**
+   * The catalog's own properties, from `metadata/catalog.json`.
+   *
+   * Absent means empty - never an error a caller has to catch.
+   */
+  properties(): Record<string, string>
+  /**
+   * Set and remove catalog properties as one transactional write.
+   *
+   * `updates` is a mapping of properties to set and `removes` lists the
+   * keys to drop, in that order. Passing neither writes nothing at all.
+   * Keys under the reserved `iceberg:` prefix are refused by name.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
 }
 export type JsCatalog = Catalog
 
@@ -1297,9 +1290,8 @@ export type JsMimeType = MimeType
  * [`tables`](Self::tables) and its child namespaces are
  * [`namespaces`](Self::namespaces), so access chains -
  * `catalog.namespaces.get('sales').tables.get('orders')` - and every
- * collection question has exactly one home. The table methods here are the
- * short spelling of the same view, kept so a caller who has a namespace need
- * not reach for one.
+ * collection question has exactly one home: a namespace is a resource, and
+ * the map verbs live on its collections, never on it.
  */
 export declare class Namespace {
   /** The namespace's dotted name. */
@@ -1311,14 +1303,22 @@ export declare class Namespace {
    * catalog itself answers - the cascade that reaches a nested namespace.
    */
   get namespaces(): JsNamespaces
-  /** Open the named table. */
-  table(name: string): Table
-  /** Open the named table, as a map reads one. */
-  get(name: string): Table
-  /** Return whether the named table exists here. */
-  has(name: string): boolean
-  /** Open the named table, creating it with `schema` when absent. */
-  openOrCreateTable(name: string, schema: Field): Table
+  /**
+   * The namespace's properties, from `metadata/namespace.json`.
+   *
+   * Absent means empty - a namespace a table write brought into being
+   * carries no document and answers no properties, and that is not a
+   * failure.
+   */
+  properties(): Record<string, string>
+  /**
+   * Set and remove namespace properties as one transactional write.
+   *
+   * `updates` is a mapping of properties to set and `removes` lists the
+   * keys to drop, in that order. Passing neither writes nothing at all.
+   * Keys under the reserved `iceberg:` prefix are refused by name.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
 }
 export type JsNamespace = Namespace
 
@@ -1959,12 +1959,14 @@ export declare class Table {
 export type JsTable = Table
 
 /**
- * The tables of one namespace, as a lazy map-like view.
+ * The tables of one namespace - or of the warehouse root - as a lazy view.
  *
  * The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
  * a [`Table`](JsTable) and the write conveniences that take a name create the
- * table on first write, from the incoming rows' own schema. Every answer comes
- * from storage at call time, so the view is never stale.
+ * table on first write, from the incoming rows' own schema. At the root,
+ * names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
+ * descends. Every answer comes from storage at call time, so the view is
+ * never stale.
  */
 export declare class Tables {
   /**

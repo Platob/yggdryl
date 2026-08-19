@@ -1750,7 +1750,6 @@ installRecords({
   BatchReader,
   Field,
   IOBase,
-  Namespace: binding.Namespace,
   RecordOptions,
   Table: binding.Table,
   Tables: binding.Tables,
@@ -1769,17 +1768,20 @@ Object.defineProperty(binding.Table.prototype, 'scanAt', {
 
 // Property updates arrive as whatever spells string pairs - an object, a Map,
 // or entries - through the same normalization Field metadata updates use.
-const nativeUpdateProperties = binding.Table.prototype.updateProperties
-Object.defineProperty(binding.Table.prototype, 'updateProperties', {
-  configurable: true,
-  value(updates, removes) {
-    return nativeUpdateProperties.call(
-      this,
-      updates == null ? undefined : normalizeMetadata(updates),
-      removes,
-    )
-  },
-})
+// Every level of the hierarchy that carries properties widens the same way.
+for (const Owner of [binding.Table, binding.Catalog, binding.Namespace]) {
+  const nativeUpdateProperties = Owner.prototype.updateProperties
+  Object.defineProperty(Owner.prototype, 'updateProperties', {
+    configurable: true,
+    value(updates, removes) {
+      return nativeUpdateProperties.call(
+        this,
+        updates == null ? undefined : normalizeMetadata(updates),
+        removes,
+      )
+    },
+  })
+}
 
 // A schema evolution reads as one chained sentence. The native recorder holds
 // the operations and the native commit replays them, so this wrapper only adds

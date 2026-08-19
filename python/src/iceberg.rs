@@ -568,40 +568,11 @@ impl PyIcebergOptions {
 /// The catalog is a description of where tables live, not proof that any do:
 /// constructing one touches nothing, and every operation resolves its dotted
 /// name - `"nyc.taxis"` is the folder `nyc/taxis` - against the warehouse
-/// handle at the moment it runs.
-/// One level's names, dotted under `parent`, with an absent parent empty.
-///
-/// The flat listing methods keep their dotted output; the views are where a
-/// lazy iterator is the answer.
-fn collect_level(
-    catalog: &Catalog<Holder>,
-    parent: Option<&str>,
-    tables: bool,
-) -> PyResult<Vec<String>> {
-    let names = match parent {
-        None => {
-            debug_assert!(!tables, "the root listing is namespaces");
-            catalog.namespaces().iter()
-        }
-        Some(parent) => match catalog.namespaces().get(parent) {
-            Ok(namespace) if tables => namespace.tables().iter(),
-            Ok(namespace) => namespace.namespaces().iter(),
-            // A parent that does not exist lists nothing rather than failing.
-            Err(error) if error.is_absent() => return Ok(Vec::new()),
-            Err(error) => return Err(value_error(error)),
-        },
-    };
-    let mut dotted = Vec::new();
-    for name in names {
-        let name = name.map_err(value_error)?;
-        dotted.push(match parent {
-            Some(parent) => format!("{parent}.{name}"),
-            None => name,
-        });
-    }
-    Ok(dotted)
-}
-
+/// handle at the moment it runs. Its collections are
+/// [`namespaces`][Self::namespaces] and [`tables`][Self::tables]; the two
+/// dotted entry points - [`table`][Self::table] and
+/// [`namespace`][Self::namespace] - are kept because a dotted identifier is a
+/// real Iceberg spelling and deserves one call.
 #[pyclass(name = "Catalog", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyCatalog {
     inner: Catalog<Holder>,
@@ -637,21 +608,8 @@ impl PyCatalog {
         ))
     }
 
-    /// Create the named table, writing its first metadata document.
-    ///
-    /// Unnumbered schema fields are numbered, and the partition spec is derived
-    /// from the columns the schema itself marks - a schema that marks none
-    /// produces an unpartitioned table.
-    fn create_table(&self, name: &str, schema: &Bound<'_, PyAny>) -> PyResult<PyTable> {
-        let schema = catalog_schema_from_value(schema)?;
-        self.inner
-            .tables()
-            .create(name, schema)
-            .map(PyTable::from_core)
-            .map_err(value_error)
-    }
-
-    /// Open the named table.
+    /// Open the table a dotted name addresses - the one-call spelling of
+    /// `catalog.tables[name]`.
     fn table(&self, name: &str) -> PyResult<PyTable> {
         self.inner
             .table(name)
@@ -659,22 +617,15 @@ impl PyCatalog {
             .map_err(value_error)
     }
 
-    /// Return whether the named table exists.
-    fn has_table(&self, name: &str) -> PyResult<bool> {
-        self.inner.tables().contains(name).map_err(value_error)
-    }
-
-    /// Open the named table if it exists, creating it otherwise.
+    /// The namespace a dotted name addresses, as a view.
     ///
-    /// An existing table is opened as it is - `schema` describes only the
-    /// table this call would create.
-    fn open_or_create_table(&self, name: &str, schema: &Bound<'_, PyAny>) -> PyResult<PyTable> {
-        let schema = catalog_schema_from_value(schema)?;
-        self.inner
-            .tables()
-            .open_or_create(name, schema)
-            .map(PyTable::from_core)
-            .map_err(value_error)
+    /// The view exists whether or not the folder does, exactly as a handle
+    /// describes a location without proof, so asking for one never fails.
+    fn namespace(slf: &Bound<'_, Self>, name: String) -> PyNamespace {
+        PyNamespace {
+            catalog: slf.clone().unbind(),
+            name,
+        }
     }
 
     /// Append `data` to the named table, creating it on first write.
@@ -724,20 +675,6 @@ impl PyCatalog {
             .map_err(value_error)
     }
 
-    /// List the namespaces one level below `parent`, as dotted names.
-    ///
-    /// `None` lists the warehouse's own child folders. A parent that does not
-    /// exist lists nothing rather than failing.
-    #[pyo3(signature = (parent = None))]
-    fn list_namespaces(&self, parent: Option<&str>) -> PyResult<Vec<String>> {
-        collect_level(&self.inner, parent, false)
-    }
-
-    /// List the tables in a namespace, as sorted dotted names.
-    fn list_tables(&self, namespace: &str) -> PyResult<Vec<String>> {
-        collect_level(&self.inner, Some(namespace), true)
-    }
-
     /// The catalog's namespaces, as a lazy map-oriented view.
     ///
     /// Constructing the view performs no I/O: membership, iteration, and
@@ -750,6 +687,59 @@ impl PyCatalog {
             catalog: slf.clone().unbind(),
             parent: None,
         }
+    }
+
+    /// The catalog's tables, as the same lazy view over dotted names.
+    ///
+    /// `catalog.tables["sales.eu.orders"]` descends; an un-dotted name
+    /// addresses a table directly under the warehouse root, and iterating
+    /// lists exactly those.
+    #[getter]
+    fn tables(slf: &Bound<'_, Self>) -> PyTables {
+        PyTables {
+            catalog: slf.clone().unbind(),
+            namespace: None,
+        }
+    }
+
+    /// The catalog's own properties, from `metadata/catalog.json`.
+    ///
+    /// Absent means empty - never an error a caller has to catch.
+    #[getter]
+    fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let properties = PyDict::new(py);
+        for (key, value) in &self.inner.properties().map_err(value_error)? {
+            properties.set_item(key, value)?;
+        }
+        Ok(properties)
+    }
+
+    /// Set and remove catalog properties as one transactional write.
+    ///
+    /// `updates` is a mapping or a sequence of `(key, value)` pairs and
+    /// `removes` an iterable of keys; the updates land first, so a key named
+    /// by both ends up removed. A call given neither writes nothing at all.
+    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    #[pyo3(signature = (updates = None, removes = None))]
+    fn update_properties(
+        &self,
+        updates: Option<&Bound<'_, PyAny>>,
+        removes: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let updates = match updates {
+            Some(value) => string_pairs_from_value(value)?,
+            None => Vec::new(),
+        };
+        let removes = match removes {
+            Some(value) => crate::media::strings_from_iterable(value, "removes")?,
+            None => Vec::new(),
+        };
+        if updates.is_empty() && removes.is_empty() {
+            return Ok(());
+        }
+        self.inner
+            .update_properties(updates, removes)
+            .map_err(value_error)
     }
 
     fn __repr__(&self) -> String {
@@ -2414,7 +2404,7 @@ impl PyNamespace {
     fn tables(&self, py: Python<'_>) -> PyTables {
         PyTables {
             catalog: self.catalog.clone_ref(py),
-            namespace: self.name.clone(),
+            namespace: Some(self.name.clone()),
         }
     }
 
@@ -2426,6 +2416,60 @@ impl PyNamespace {
             catalog: self.catalog.clone_ref(py),
             parent: Some(self.name.clone()),
         }
+    }
+
+    /// The namespace's properties, from `metadata/namespace.json`.
+    ///
+    /// Absent means empty - a namespace a table write brought into being
+    /// carries no document and answers no properties, and that is not a
+    /// failure.
+    #[getter]
+    fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let catalog = self.catalog.borrow(py);
+        let namespace = catalog
+            .inner
+            .namespaces()
+            .get(&self.name)
+            .map_err(value_error)?;
+        let properties = PyDict::new(py);
+        for (key, value) in &namespace.properties().map_err(value_error)? {
+            properties.set_item(key, value)?;
+        }
+        Ok(properties)
+    }
+
+    /// Set and remove namespace properties as one transactional write.
+    ///
+    /// `updates` is a mapping or a sequence of `(key, value)` pairs and
+    /// `removes` an iterable of keys; the updates land first, so a key named
+    /// by both ends up removed. A call given neither writes nothing at all.
+    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    #[pyo3(signature = (updates = None, removes = None))]
+    fn update_properties(
+        &self,
+        py: Python<'_>,
+        updates: Option<&Bound<'_, PyAny>>,
+        removes: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let updates = match updates {
+            Some(value) => string_pairs_from_value(value)?,
+            None => Vec::new(),
+        };
+        let removes = match removes {
+            Some(value) => crate::media::strings_from_iterable(value, "removes")?,
+            None => Vec::new(),
+        };
+        if updates.is_empty() && removes.is_empty() {
+            return Ok(());
+        }
+        let catalog = self.catalog.borrow(py);
+        catalog
+            .inner
+            .namespaces()
+            .get(&self.name)
+            .map_err(value_error)?
+            .update_properties(updates, removes)
+            .map_err(value_error)
     }
 
     fn __repr__(&self) -> String {
@@ -2486,10 +2530,11 @@ impl PyNamespaces {
 #[pymethods]
 impl PyNamespaces {
     /// `namespaces["sales"]` answers the namespace; a missing one is a
-    /// `KeyError` naming it.
+    /// `KeyError` carrying the native message.
     ///
     /// The lookup is the act, per the existence contract: the typed absence
-    /// the core raises becomes the `KeyError`, and nothing probes first.
+    /// the core raises becomes the `KeyError` - the mapping protocol's type,
+    /// the boundary's unchanged text - and nothing probes first.
     fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
         let dotted = self.dotted(name);
         let catalog = self.catalog.borrow(py);
@@ -2498,9 +2543,7 @@ impl PyNamespaces {
                 drop(catalog);
                 Ok(self.namespace(py, name))
             }
-            Err(error) if error.is_absent() => Err(PyKeyError::new_err(format!(
-                "no namespace named {dotted:?}"
-            ))),
+            Err(error) if error.is_absent() => Err(PyKeyError::new_err(error.to_string())),
             Err(error) => Err(value_error(error)),
         }
     }
@@ -2541,25 +2584,25 @@ impl PyNamespaces {
         self.__iter__(py)
     }
 
-    /// The namespaces themselves, in key order.
-    fn values(&self, py: Python<'_>) -> PyResult<Vec<PyNamespace>> {
-        let mut views = Vec::new();
-        for name in self.level(py, false)? {
-            let name = name.map_err(value_error)?;
-            views.push(self.namespace(py, &name));
-        }
-        Ok(views)
+    /// The namespaces themselves, in key order, lazily - each one wrapped as
+    /// `__next__` reaches its name.
+    fn values(&self, py: Python<'_>) -> PyResult<PyNamespaceIterator> {
+        Ok(PyNamespaceIterator {
+            catalog: self.catalog.clone_ref(py),
+            parent: self.parent.clone(),
+            names: self.level(py, false)?,
+            kind: ViewIteratorKind::Values,
+        })
     }
 
-    /// `(name, namespace)` pairs, in key order.
-    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, PyNamespace)>> {
-        let mut pairs = Vec::new();
-        for name in self.level(py, false)? {
-            let name = name.map_err(value_error)?;
-            let view = self.namespace(py, &name);
-            pairs.push((name, view));
-        }
-        Ok(pairs)
+    /// `(name, namespace)` pairs, in key order, as lazily as `values`.
+    fn items(&self, py: Python<'_>) -> PyResult<PyNamespaceIterator> {
+        Ok(PyNamespaceIterator {
+            catalog: self.catalog.clone_ref(py),
+            parent: self.parent.clone(),
+            names: self.level(py, false)?,
+            kind: ViewIteratorKind::Items,
+        })
     }
 
     /// Create the named namespace; one already there is an error.
@@ -2624,24 +2667,119 @@ impl PyNames {
     }
 }
 
-/// The tables of one namespace, as a lazy map-oriented view.
+#[derive(Clone, Copy)]
+enum ViewIteratorKind {
+    Values,
+    Items,
+}
+
+/// Lazy iterator behind `Namespaces.values()` and `Namespaces.items()`.
+///
+/// It walks the same core names iterator as `keys()` and wraps each name as
+/// its [`Namespace`][PyNamespace] view only when `__next__` reaches it, so
+/// taking one value from a level of many classifies one entry.
+#[pyclass(name = "IcebergNamespaceIterator", module = "yggdryl._native")]
+pub(crate) struct PyNamespaceIterator {
+    catalog: Py<PyCatalog>,
+    /// The parent namespace's dotted name; `None` is the warehouse root.
+    parent: Option<String>,
+    names: yggdryl::iceberg::Names,
+    kind: ViewIteratorKind,
+}
+
+#[pymethods]
+impl PyNamespaceIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some(name) = self.names.next().transpose().map_err(value_error)? else {
+            return Ok(None);
+        };
+        let namespace = PyNamespace {
+            catalog: self.catalog.clone_ref(py),
+            name: match &self.parent {
+                Some(parent) => format!("{parent}.{name}"),
+                None => name.clone(),
+            },
+        };
+        Ok(Some(match self.kind {
+            ViewIteratorKind::Values => namespace.into_pyobject(py)?.into_any().unbind(),
+            ViewIteratorKind::Items => (name, namespace).into_pyobject(py)?.into_any().unbind(),
+        }))
+    }
+}
+
+/// Lazy iterator behind `Tables.values()` and `Tables.items()`.
+///
+/// It walks the same core names iterator as `keys()` and opens each table
+/// only when `__next__` reaches its name, so taking one value from a
+/// namespace of many opens one table.
+#[pyclass(name = "IcebergTableIterator", module = "yggdryl._native")]
+pub(crate) struct PyTableIterator {
+    catalog: Py<PyCatalog>,
+    /// The owning namespace's dotted name; `None` is the warehouse root.
+    namespace: Option<String>,
+    names: yggdryl::iceberg::Names,
+    kind: ViewIteratorKind,
+}
+
+#[pymethods]
+impl PyTableIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some(name) = self.names.next().transpose().map_err(value_error)? else {
+            return Ok(None);
+        };
+        let dotted = match &self.namespace {
+            Some(namespace) => format!("{namespace}.{name}"),
+            None => name.clone(),
+        };
+        let catalog = self.catalog.borrow(py);
+        let table = match catalog.inner.tables().get(&dotted) {
+            Ok(table) => PyTable::from_core(table),
+            // A name the listing yielded that has vanished since is the same
+            // absence indexing reports: the mapping protocol's KeyError, the
+            // boundary's unchanged text.
+            Err(error) if error.is_absent() => {
+                return Err(PyKeyError::new_err(error.to_string()));
+            }
+            Err(error) => return Err(value_error(error)),
+        };
+        drop(catalog);
+        Ok(Some(match self.kind {
+            ViewIteratorKind::Values => table.into_pyobject(py)?.into_any().unbind(),
+            ViewIteratorKind::Items => (name, table).into_pyobject(py)?.into_any().unbind(),
+        }))
+    }
+}
+
+/// The tables of one namespace - or of the warehouse root - as a lazy view.
 ///
 /// The same shape as [`Namespaces`][PyNamespaces], one level down: indexing
 /// opens a [`Table`][PyTable] - a missing name is a `KeyError` naming the
 /// table - and the write conveniences that take a name create the table on
-/// first write, from the incoming rows' own schema. Every answer comes from
-/// storage at call time, so the view is never stale.
+/// first write, from the incoming rows' own schema. At the root, names may be
+/// fully dotted - `catalog.tables["sales.eu.orders"]` descends. Every answer
+/// comes from storage at call time, so the view is never stale.
 #[pyclass(name = "Tables", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyTables {
     catalog: Py<PyCatalog>,
-    /// The owning namespace's dotted name.
-    namespace: String,
+    /// The owning namespace's dotted name; `None` is the warehouse root.
+    namespace: Option<String>,
 }
 
 impl PyTables {
     /// Spell one table's full dotted name under this namespace.
     fn dotted(&self, name: &str) -> String {
-        format!("{}.{name}", self.namespace)
+        match &self.namespace {
+            Some(namespace) => format!("{namespace}.{name}"),
+            None => name.to_owned(),
+        }
     }
 
     /// Run one operation over the root tables view, which accepts the dotted
@@ -2659,12 +2797,15 @@ impl PyTables {
     /// The table names one level down, as the core's lazy iterator.
     fn level(&self, py: Python<'_>) -> PyResult<yggdryl::iceberg::Names> {
         let catalog = self.catalog.borrow(py);
-        match catalog.inner.namespaces().get(&self.namespace) {
-            Ok(namespace) => Ok(namespace.tables().iter()),
-            // A namespace that does not exist lists nothing rather than
-            // failing.
-            Err(error) if error.is_absent() => Ok(yggdryl::iceberg::Names::empty()),
-            Err(error) => Err(value_error(error)),
+        match &self.namespace {
+            None => Ok(catalog.inner.tables().iter()),
+            Some(parent) => match catalog.inner.namespaces().get(parent) {
+                Ok(namespace) => Ok(namespace.tables().iter()),
+                // A namespace that does not exist lists nothing rather than
+                // failing.
+                Err(error) if error.is_absent() => Ok(yggdryl::iceberg::Names::empty()),
+                Err(error) => Err(value_error(error)),
+            },
         }
     }
 }
@@ -2672,17 +2813,16 @@ impl PyTables {
 #[pymethods]
 impl PyTables {
     /// `tables["orders"]` opens the table; a missing one is a `KeyError`
-    /// naming it.
+    /// carrying the native message.
     ///
     /// The lookup is the act: the typed absence the core raises becomes the
-    /// `KeyError`, and the locate that found the table already opened it.
+    /// `KeyError` - the mapping protocol's type, the boundary's unchanged
+    /// text - and the locate that found the table already opened it.
     fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
         let dotted = self.dotted(name);
         match self.with_core(py, |view| view.get(&dotted)) {
             Ok(table) => Ok(PyTable::from_core(table)),
-            Err(error) if error.is_absent() => {
-                Err(PyKeyError::new_err(format!("no table named {dotted:?}")))
-            }
+            Err(error) if error.is_absent() => Err(PyKeyError::new_err(error.to_string())),
             Err(error) => Err(value_error(error)),
         }
     }
@@ -2719,25 +2859,25 @@ impl PyTables {
         self.__iter__(py)
     }
 
-    /// The tables themselves, in key order - each one opened.
-    fn values(&self, py: Python<'_>) -> PyResult<Vec<PyTable>> {
-        let mut tables = Vec::new();
-        for name in self.level(py)? {
-            let name = name.map_err(value_error)?;
-            tables.push(self.__getitem__(py, &name)?);
-        }
-        Ok(tables)
+    /// The tables themselves, in key order, lazily - each one opened only
+    /// when `__next__` reaches its name.
+    fn values(&self, py: Python<'_>) -> PyResult<PyTableIterator> {
+        Ok(PyTableIterator {
+            catalog: self.catalog.clone_ref(py),
+            namespace: self.namespace.clone(),
+            names: self.level(py)?,
+            kind: ViewIteratorKind::Values,
+        })
     }
 
-    /// `(name, table)` pairs, in key order - each table opened.
-    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, PyTable)>> {
-        let mut pairs = Vec::new();
-        for name in self.level(py)? {
-            let name = name.map_err(value_error)?;
-            let table = self.__getitem__(py, &name)?;
-            pairs.push((name, table));
-        }
-        Ok(pairs)
+    /// `(name, table)` pairs, in key order, as lazily as `values`.
+    fn items(&self, py: Python<'_>) -> PyResult<PyTableIterator> {
+        Ok(PyTableIterator {
+            catalog: self.catalog.clone_ref(py),
+            namespace: self.namespace.clone(),
+            names: self.level(py)?,
+            kind: ViewIteratorKind::Items,
+        })
     }
 
     /// Create the named table, writing its first metadata document.
@@ -2809,6 +2949,9 @@ impl PyTables {
     }
 
     fn __repr__(&self) -> String {
-        format!("Tables({:?})", self.namespace)
+        match &self.namespace {
+            Some(namespace) => format!("Tables({namespace:?})"),
+            None => "Tables()".to_owned(),
+        }
     }
 }

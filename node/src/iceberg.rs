@@ -53,6 +53,23 @@ pub type ScanFilters = Either<Vec<PartitionEntry>, HashMap<String, String>>;
 /// Table property updates: ordered entries or one plain mapping.
 pub type PropertyUpdates = Either<Vec<MetadataEntry>, HashMap<String, String>>;
 
+/// Normalize an `updateProperties` call's two optional arguments into the
+/// pair lists every level of the hierarchy commits.
+fn property_changes(
+    updates: Option<PropertyUpdates>,
+    removes: Option<Vec<String>>,
+) -> (Vec<(String, String)>, Vec<String>) {
+    let updates = match updates {
+        None => Vec::new(),
+        Some(Either::A(entries)) => entries
+            .into_iter()
+            .map(|entry| (entry.key, entry.value))
+            .collect(),
+        Some(Either::B(values)) => values.into_iter().collect(),
+    };
+    (updates, removes.unwrap_or_default())
+}
+
 /// The root name a schema assembled from bare child fields is given.
 ///
 /// It matches the name the core catalog gives a schema inferred from an
@@ -1603,15 +1620,7 @@ impl JsTable {
         updates: Option<PropertyUpdates>,
         removes: Option<Vec<String>>,
     ) -> Result<()> {
-        let updates: Vec<(String, String)> = match updates {
-            None => Vec::new(),
-            Some(Either::A(entries)) => entries
-                .into_iter()
-                .map(|entry| (entry.key, entry.value))
-                .collect(),
-            Some(Either::B(values)) => values.into_iter().collect(),
-        };
-        let removes = removes.unwrap_or_default();
+        let (updates, removes) = property_changes(updates, removes);
         if updates.is_empty() && removes.is_empty() {
             return Ok(());
         }
@@ -1803,50 +1812,12 @@ impl JsCatalog {
         })
     }
 
-    /// Create the named table, writing its first metadata document.
-    ///
-    /// `schema` is a root `Field`, a field expression, or an array of child
-    /// `Field`s assembled under a root named `row`. Unnumbered columns are
-    /// numbered, and the partition spec is derived from the columns the schema
-    /// itself marks - a schema that marks none produces an unpartitioned
-    /// table.
-    #[napi]
-    pub fn create_table(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
-        self.inner
-            .tables()
-            .create(&name, schema_from_input(schema)?)
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Open the named table.
+    /// Open the table a dotted name addresses - the one-call spelling of
+    /// `catalog.tables.get(name)`.
     #[napi]
     pub fn table(&self, name: String) -> Result<JsTable> {
         self.inner
             .table(&name)
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Return whether the named table exists.
-    #[napi]
-    pub fn has_table(&self, name: String) -> Result<bool> {
-        self.inner.tables().contains(&name).map_err(napi_error)
-    }
-
-    /// Open the named table if it exists, creating it otherwise.
-    ///
-    /// An existing table is opened as it is - `schema` describes only the
-    /// table this call would create.
-    #[napi]
-    pub fn open_or_create_table(
-        &self,
-        name: String,
-        schema: TableSchemaInput<'_>,
-    ) -> Result<JsTable> {
-        self.inner
-            .tables()
-            .open_or_create(&name, schema_from_input(schema)?)
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -1889,23 +1860,6 @@ impl JsCatalog {
             .map_err(napi_error)
     }
 
-    /// List the namespaces one level below `parent`, as sorted dotted names.
-    ///
-    /// Omitting `parent` lists the warehouse's own child folders. A parent
-    /// that does not exist lists nothing rather than failing.
-    #[napi]
-    pub fn list_namespaces(&self, parent: Option<String>) -> Result<Vec<String>> {
-        collect_level(&self.inner, parent.as_deref(), false)
-    }
-
-    /// List the tables in a namespace, as sorted dotted names.
-    ///
-    /// A namespace that does not exist lists nothing rather than failing.
-    #[napi]
-    pub fn list_tables(&self, namespace: String) -> Result<Vec<String>> {
-        collect_level(&self.inner, Some(&namespace), true)
-    }
-
     /// One namespace as a view: `catalog.namespace('analytics')`.
     ///
     /// The view exists whether or not the folder does, exactly as a handle
@@ -1933,6 +1887,53 @@ impl JsCatalog {
             parent: None,
         }
     }
+
+    /// The catalog's tables, as the same lazy view over dotted names.
+    ///
+    /// `catalog.tables.get('sales.eu.orders')` descends; an un-dotted name
+    /// addresses a table directly under the warehouse root, and the listing
+    /// questions answer exactly those.
+    #[napi(getter)]
+    pub fn tables(&self, reference: Reference<JsCatalog>) -> JsTables {
+        JsTables {
+            catalog: reference,
+            namespace: None,
+        }
+    }
+
+    /// The catalog's own properties, from `metadata/catalog.json`.
+    ///
+    /// Absent means empty - never an error a caller has to catch.
+    #[napi]
+    pub fn properties(&self) -> Result<HashMap<String, String>> {
+        Ok(self
+            .inner
+            .properties()
+            .map_err(napi_error)?
+            .iter()
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect())
+    }
+
+    /// Set and remove catalog properties as one transactional write.
+    ///
+    /// `updates` is a mapping of properties to set and `removes` lists the
+    /// keys to drop, in that order. Passing neither writes nothing at all.
+    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    #[napi]
+    pub fn update_properties(
+        &self,
+        updates: Option<PropertyUpdates>,
+        removes: Option<Vec<String>>,
+    ) -> Result<()> {
+        let (updates, removes) = property_changes(updates, removes);
+        if updates.is_empty() && removes.is_empty() {
+            return Ok(());
+        }
+        self.inner
+            .update_properties(updates, removes)
+            .map_err(napi_error)
+    }
 }
 
 /// One namespace of a catalog: identity, plus its two collection views.
@@ -1941,26 +1942,12 @@ impl JsCatalog {
 /// [`tables`](Self::tables) and its child namespaces are
 /// [`namespaces`](Self::namespaces), so access chains -
 /// `catalog.namespaces.get('sales').tables.get('orders')` - and every
-/// collection question has exactly one home. The table methods here are the
-/// short spelling of the same view, kept so a caller who has a namespace need
-/// not reach for one.
+/// collection question has exactly one home: a namespace is a resource, and
+/// the map verbs live on its collections, never on it.
 #[napi(js_name = "Namespace")]
 pub struct JsNamespace {
     catalog: Reference<JsCatalog>,
     name: String,
-}
-
-impl JsNamespace {
-    /// The root tables view, which accepts this namespace's dotted spelling -
-    /// the resolution rule lives in the core collection, not here.
-    fn table_view(&self) -> CoreTables<'_, Holder> {
-        self.catalog.inner.tables()
-    }
-
-    /// Spell one table's full dotted name under this namespace.
-    fn dotted(&self, name: &str) -> String {
-        format!("{}.{name}", self.name)
-    }
 }
 
 #[napi]
@@ -1976,7 +1963,7 @@ impl JsNamespace {
     pub fn tables(&self, env: Env) -> Result<JsTables> {
         Ok(JsTables {
             catalog: self.catalog.clone(env)?,
-            namespace: self.name.clone(),
+            namespace: Some(self.name.clone()),
         })
     }
 
@@ -1990,49 +1977,47 @@ impl JsNamespace {
         })
     }
 
-    /// Open the named table.
-    #[napi]
-    pub fn table(&self, name: String) -> Result<JsTable> {
-        self.table_view()
-            .get(&self.dotted(&name))
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Open the named table, as a map reads one.
-    #[napi]
-    pub fn get(&self, name: String) -> Result<JsTable> {
-        self.table(name)
-    }
-
-    /// Return whether the named table exists here.
-    #[napi]
-    pub fn has(&self, name: String) -> Result<bool> {
-        self.table_view()
-            .contains(&self.dotted(&name))
-            .map_err(napi_error)
-    }
-
-    /// Open the named table, creating it with `schema` when absent.
-    #[napi]
-    pub fn open_or_create_table(&self, name: String, schema: &JsField) -> Result<JsTable> {
-        self.table_view()
-            .open_or_create(&self.dotted(&name), schema.inner.clone())
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// The setter half of the map-like spelling, as raw IPC crossings.
+    /// The namespace's properties, from `metadata/namespace.json`.
     ///
-    /// The loader widens this to `set(name, schemaOrRows)`: a schema opens
-    /// the table, creating it when absent; rows replace the table's rows,
-    /// creating it from their own schema on first write.
-    #[napi(js_name = "_setIpc", skip_typescript)]
-    pub fn set_ipc(&self, name: String, rows: Buffer) -> Result<JsTable> {
-        let reader = crate::arrow::JsBatchReader::decoded(rows.as_ref(), "row")?.take()?;
-        self.table_view()
-            .overwrite(&self.dotted(&name), reader)
-            .map(JsTable::from_core)
+    /// Absent means empty - a namespace a table write brought into being
+    /// carries no document and answers no properties, and that is not a
+    /// failure.
+    #[napi]
+    pub fn properties(&self) -> Result<HashMap<String, String>> {
+        Ok(self
+            .catalog
+            .inner
+            .namespaces()
+            .get(&self.name)
+            .map_err(napi_error)?
+            .properties()
+            .map_err(napi_error)?
+            .iter()
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect())
+    }
+
+    /// Set and remove namespace properties as one transactional write.
+    ///
+    /// `updates` is a mapping of properties to set and `removes` lists the
+    /// keys to drop, in that order. Passing neither writes nothing at all.
+    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    #[napi]
+    pub fn update_properties(
+        &self,
+        updates: Option<PropertyUpdates>,
+        removes: Option<Vec<String>>,
+    ) -> Result<()> {
+        let (updates, removes) = property_changes(updates, removes);
+        if updates.is_empty() && removes.is_empty() {
+            return Ok(());
+        }
+        self.catalog
+            .inner
+            .namespaces()
+            .get(&self.name)
+            .map_err(napi_error)?
+            .update_properties(updates, removes)
             .map_err(napi_error)
     }
 }
@@ -2097,23 +2082,6 @@ fn level_of(
             Err(error) => Err(napi_error(error)),
         },
     }
-}
-
-/// One level's names collected dotted, for the flat listing methods.
-fn collect_level(
-    catalog: &CoreCatalog<Holder>,
-    parent: Option<&str>,
-    tables: bool,
-) -> Result<Vec<String>> {
-    let mut dotted = Vec::new();
-    for name in level_of(catalog, parent, tables)? {
-        let name = name.map_err(napi_error)?;
-        dotted.push(match parent {
-            Some(parent) => format!("{parent}.{name}"),
-            None => name,
-        });
-    }
-    Ok(dotted)
 }
 
 // Counts cross as JavaScript numbers, exact to 2^53 - the same contract
@@ -2231,17 +2199,19 @@ impl JsIcebergNames {
     }
 }
 
-/// The tables of one namespace, as a lazy map-like view.
+/// The tables of one namespace - or of the warehouse root - as a lazy view.
 ///
 /// The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
 /// a [`Table`](JsTable) and the write conveniences that take a name create the
-/// table on first write, from the incoming rows' own schema. Every answer comes
-/// from storage at call time, so the view is never stale.
+/// table on first write, from the incoming rows' own schema. At the root,
+/// names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
+/// descends. Every answer comes from storage at call time, so the view is
+/// never stale.
 #[napi(js_name = "Tables")]
 pub struct JsTables {
     catalog: Reference<JsCatalog>,
-    /// The owning namespace's dotted name.
-    namespace: String,
+    /// The owning namespace's dotted name; `None` is the warehouse root.
+    namespace: Option<String>,
 }
 
 impl JsTables {
@@ -2252,12 +2222,15 @@ impl JsTables {
 
     /// Spell one table's full dotted name under this namespace.
     fn dotted(&self, name: &str) -> String {
-        format!("{}.{name}", self.namespace)
+        match &self.namespace {
+            Some(namespace) => format!("{namespace}.{name}"),
+            None => name.to_owned(),
+        }
     }
 
     /// The table names one level down, as the core's lazy iterator.
     fn level(&self) -> Result<CoreNames> {
-        level_of(&self.catalog.inner, Some(&self.namespace), true)
+        level_of(&self.catalog.inner, self.namespace.as_deref(), true)
     }
 }
 
