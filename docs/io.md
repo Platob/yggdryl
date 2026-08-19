@@ -1339,7 +1339,7 @@ for the next reader to prune with.
         nullable=False,
     ).with_partition_fields(["level"])
     catalog = Catalog(root / "warehouse")
-    catalog.create_table("logs.app", marked)
+    catalog.tables.create("logs.app", marked)
 
     # The append consumes the parse itself - lazy, one batch at a time.
     table = catalog.append("logs.app", reader)
@@ -1396,7 +1396,7 @@ for the next reader to prune with.
 
     // The reader's root field is the table's schema; marking `level` partitions it.
     const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
-    catalog.createTable('logs.app', reader.field.withPartitionFields(['level']))
+    catalog.tables.create('logs.app', reader.field.withPartitionFields(['level']))
 
     // The append consumes the parse itself - lazy, one batch at a time.
     const table = catalog.append('logs.app', reader)

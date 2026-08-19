@@ -630,7 +630,7 @@ makes the line surface worth having.
     # 1. The table exists before the first record does.
     marked = schema_from_pattern(options=extractor).with_partition_fields(["level"])
     catalog = Catalog(root / "warehouse")
-    table = catalog.create_table("logs.app", marked)
+    table = catalog.tables.create("logs.app", marked)
 
     # 2, 3, 4. One handle per folder, and one lazy combine over the two: both
     # schemas are answered without pulling a batch, so nothing is read yet.
@@ -720,7 +720,7 @@ makes the line surface worth having.
     // 1. The table exists before the first record does.
     const marked = schemaFromPattern(extractor).withPartitionFields(['level'])
     const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
-    const table = catalog.createTable('logs.app', marked)
+    const table = catalog.tables.create('logs.app', marked)
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     const stream = new IOBase(incoming)

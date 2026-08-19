@@ -579,7 +579,7 @@ table = catalog.append(
 )
 past = table.current_snapshot.snapshot_id
 table.append(pa.table({"id": [3], "venue": [None]}, schema=columns))
-assert catalog.list_tables("nyc") == ["nyc.trades"]
+assert list(catalog.namespace("nyc").tables) == ["trades"]
 assert table.scan().read_all().num_rows == 3
 
 # A column change is recorded on the update and committed once, on exit.

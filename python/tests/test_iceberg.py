@@ -388,14 +388,16 @@ class TestCatalog:
         assert len(analytics.tables) == 1
 
         # Indexing opens the table; a missing one is a KeyError, as a map
-        # spells absence - the error names what is missing.
+        # spells absence - carrying the native message unchanged.
         table = catalog.namespaces["analytics"].tables["trades"]
         table.append(pa.table({"id": [1, 2], "venue": ["XNAS", None]}))
         chained = catalog.namespaces["analytics"].tables["trades"]
         assert chained.scan().read_all().num_rows == 2
-        with pytest.raises(KeyError, match="absent"):
+        with pytest.raises(KeyError, match="expected a table at .*absent.*, got nothing"):
             catalog.namespaces["analytics"].tables["absent"]
-        with pytest.raises(KeyError, match="missing"):
+        with pytest.raises(
+            KeyError, match="expected a namespace at .*missing.*, got nothing"
+        ):
             catalog.namespaces["missing"]
 
         # The write conveniences on the view create on first write, from the
@@ -429,8 +431,8 @@ class TestCatalog:
     ) -> None:
         catalog = Catalog(tmp_path / "warehouse")
         assert catalog.warehouse.name == "warehouse"
-        assert catalog.list_namespaces() == []
-        assert not catalog.has_table("nyc.taxis")
+        assert list(catalog.namespaces) == []
+        assert "nyc.taxis" not in catalog.tables
 
         # The schema's own marks say which columns the layout spells out, and
         # they ride the Arrow fields' metadata into the very first append.
@@ -450,9 +452,9 @@ class TestCatalog:
         )
 
         table = catalog.append("nyc.taxis", rows)
-        assert catalog.has_table("nyc.taxis")
-        assert catalog.list_namespaces() == ["nyc"]
-        assert catalog.list_tables("nyc") == ["nyc.taxis"]
+        assert "nyc.taxis" in catalog.tables
+        assert list(catalog.namespaces) == ["nyc"]
+        assert list(catalog.namespaces["nyc"].tables) == ["taxis"]
 
         # The schema was inferred from the reader and numbered, and the marked
         # column became the identity spec.
@@ -466,22 +468,22 @@ class TestCatalog:
         assert catalog.append("nyc.taxis", rows).scan().read_all().num_rows == 6
         assert catalog.table("nyc.taxis").table_uuid == table.table_uuid
 
-    def test_create_table_takes_an_iterable_of_fields(
+    def test_tables_create_takes_an_iterable_of_fields(
         self, tmp_path: pathlib.Path
     ) -> None:
         catalog = Catalog(IOBase(tmp_path / "warehouse"))
 
-        table = catalog.create_table(
+        table = catalog.tables.create(
             "ns.trades", [Field("id", "int64", nullable=False)]
         )
-        assert catalog.list_tables("ns") == ["ns.trades"]
+        assert list(catalog.namespace("ns").tables) == ["trades"]
         assert table.spec.is_unpartitioned()
 
         with pytest.raises(ValueError, match="expected to create a table"):
-            catalog.create_table("ns.trades", [Field("id", "int64", nullable=False)])
+            catalog.tables.create("ns.trades", [Field("id", "int64", nullable=False)])
         # An existing table is opened as it is; the schema describes only the
         # table the call would create.
-        same = catalog.open_or_create_table("ns.trades", SCHEMA)
+        same = catalog.tables.open_or_create("ns.trades", SCHEMA)
         assert same.table_uuid == table.table_uuid
 
     def test_overwrite_replaces_and_a_missing_table_is_named(
@@ -498,7 +500,104 @@ class TestCatalog:
         with pytest.raises(ValueError, match="expected a table"):
             catalog.table("absent")
         with pytest.raises(ValueError, match="path separators"):
-            catalog.create_table("a/b", SCHEMA)
+            catalog.tables.create("a/b", SCHEMA)
+
+    def test_a_dotted_create_into_an_empty_warehouse_is_one_call(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+
+        # The namespace view exists before its folder does, so the chain
+        # writes into an empty warehouse: the table's first metadata document
+        # is what brings every ancestor namespace into being.
+        created = catalog.namespace("sales.eu").tables.create("orders", SCHEMA)
+
+        # The same table, every spelling: the catalog's dotted entry point,
+        # the root tables view, and the strict indexed cascade.
+        assert catalog.table("sales.eu.orders").table_uuid == created.table_uuid
+        assert catalog.tables["sales.eu.orders"].table_uuid == created.table_uuid
+        assert "sales.eu.orders" in catalog.tables
+        chained = catalog.namespaces["sales.eu"].tables["orders"]
+        assert chained.table_uuid == created.table_uuid
+
+        # The root tables view lists tables directly under the warehouse, so
+        # a table two namespaces down is reached by name, not by listing.
+        assert list(catalog.tables) == []
+
+    def test_the_views_speak_every_mapping_spelling(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+        sales = catalog.namespaces.create("sales")
+        sales.tables.create("orders", SCHEMA)
+        sales.tables.create("returns", SCHEMA)
+        sales.namespaces.create("eu")
+
+        # keys, values, items, iteration, membership, and len - the same
+        # mapping dunders Field metadata answers.
+        assert list(catalog.namespaces.keys()) == ["sales"]
+        assert [view.name for view in catalog.namespaces.values()] == ["sales"]
+        assert [
+            (name, view.name) for name, view in catalog.namespaces.items()
+        ] == [("sales", "sales")]
+        assert "sales" in catalog.namespaces
+        assert len(catalog.namespaces) == 1
+
+        assert list(sales.tables.keys()) == ["orders", "returns"]
+        assert [table.location for table in sales.tables.values()] == [
+            sales.tables["orders"].location,
+            sales.tables["returns"].location,
+        ]
+        assert [name for name, _ in sales.tables.items()] == ["orders", "returns"]
+        assert "orders" in sales.tables
+        assert len(sales.tables) == 2
+
+    def test_values_opens_one_table_per_next(self, tmp_path: pathlib.Path) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+        catalog.tables.create("ns.aaa", SCHEMA)
+        # A sibling that lists as a table but cannot open: its current
+        # metadata document is not table metadata at all.
+        poisoned = tmp_path / "warehouse" / "ns" / "zzz" / "metadata"
+        poisoned.mkdir(parents=True)
+        (poisoned / "v1.metadata.json").write_bytes(b"{}")
+
+        # values() is lazy: taking the first value opens exactly that table,
+        # so the poisoned sibling is never touched - draining raises at it.
+        values = catalog.namespace("ns").tables.values()
+        assert next(values).root.name == "aaa"
+        with pytest.raises((ValueError, KeyError)):
+            list(values)
+        items = catalog.namespace("ns").tables.items()
+        name, table = next(items)
+        assert name == "aaa"
+        assert table.scan().read_all().num_rows == 0
+
+    def test_catalog_and_namespace_carry_properties(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+
+        # Absent means empty, and a call given nothing writes nothing.
+        assert catalog.properties == {}
+        catalog.update_properties()
+        assert not (tmp_path / "warehouse").exists()
+
+        catalog.update_properties({"owner": "finance"})
+        assert catalog.properties == {"owner": "finance"}
+        catalog.update_properties({"region": "eu"}, ["owner"])
+        assert catalog.properties == {"region": "eu"}
+
+        # The reserved prefix is refused with the core's own message.
+        with pytest.raises(ValueError, match="reserved .*iceberg:"):
+            catalog.update_properties({"iceberg:x": "1"})
+
+        sales = catalog.namespaces.create("sales")
+        assert sales.properties == {}
+        sales.update_properties({"team": "emea"})
+        assert sales.properties == {"team": "emea"}
+        assert catalog.namespaces["sales"].properties == {"team": "emea"}
+        with pytest.raises(ValueError, match="reserved .*iceberg:"):
+            sales.update_properties({"iceberg:x": "1"})
 
 
 class TestTimeTravel:

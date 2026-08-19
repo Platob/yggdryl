@@ -239,11 +239,11 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const catalog = new iceberg.Catalog(root)
-  assert.equal(catalog.hasTable('nyc.taxis'), false)
+  assert.equal(catalog.tables.has('nyc.taxis'), false)
 
   // The first append creates the table from the reader's own schema.
   const table = catalog.append('nyc.taxis', rows([1n, 2n], ['XNAS', 'XNYS']))
-  assert.ok(catalog.hasTable('nyc.taxis'))
+  assert.ok(catalog.tables.has('nyc.taxis'))
   assert.equal(table.schema.name, 'row')
   assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
   assert.equal(table.scan().toTable().numRows, 2)
@@ -251,8 +251,8 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   // The dotted name is the folder nyc/taxis, one level per dot.
   const handle = new IOBase(path.join(root, 'nyc', 'taxis'))
   assert.ok(handle.isDir())
-  assert.deepEqual(catalog.listNamespaces(), ['nyc'])
-  assert.deepEqual(catalog.listTables('nyc'), ['nyc.taxis'])
+  assert.deepEqual(catalog.namespaces.names(), ['nyc'])
+  assert.deepEqual(catalog.namespace('nyc').tables.names(), ['taxis'])
 
   // A second append accumulates rather than replacing.
   const again = catalog.append('nyc.taxis', rows([3n], ['XASE']))
@@ -260,7 +260,7 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   assert.equal(catalog.table('nyc.taxis').scan().toTable().numRows, 3)
 
   // A schema is a Field, a string expression, or an array of child Fields.
-  const rides = catalog.createTable('nyc.rides', [
+  const rides = catalog.tables.create('nyc.rides', [
     Field.from('id: int64'),
     Field.from('city: utf8'),
   ])
@@ -269,12 +269,12 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
     Array.from(rides.schema.dataType, (child) => child.name),
     ['id', 'city'],
   )
-  catalog.createTable('nyc.zones', 'row: struct<id int64, zone utf8> not null')
-  assert.deepEqual(catalog.listTables('nyc'), ['nyc.rides', 'nyc.taxis', 'nyc.zones'])
+  catalog.tables.create('nyc.zones', 'row: struct<id int64, zone utf8> not null')
+  assert.deepEqual(catalog.namespace('nyc').tables.names(), ['rides', 'taxis', 'zones'])
 
   // Creating what exists is refused; opening-or-creating is one call.
-  assert.throws(() => catalog.createTable('nyc.taxis', schema()), /nyc\.taxis/)
-  const either = catalog.openOrCreateTable('nyc.taxis', schema())
+  assert.throws(() => catalog.tables.create('nyc.taxis', schema()), /nyc\.taxis/)
+  const either = catalog.tables.openOrCreate('nyc.taxis', schema())
   assert.equal(either.tableUuid, table.tableUuid)
 
   // An overwrite through the catalog keeps the previous snapshot readable.
@@ -510,7 +510,7 @@ test('a schema is a document in both directions', () => {
   assert.equal(imported.dataType.at(0).nullable, false)
 })
 
-test('a namespace is the map-like half of the catalog', (t) => {
+test('a namespace is a resource whose collections carry the verbs', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
@@ -518,20 +518,21 @@ test('a namespace is the map-like half of the catalog', (t) => {
   const analytics = catalog.namespace('analytics')
   assert.equal(analytics.name, 'analytics')
 
-  // Setting a schema gets or creates; setting again is the same table.
+  // Table access goes through the `tables` collection: open-or-create gets
+  // or creates, and doing it again is the same table.
   const schema = new Field('row', 'struct<id: int64, venue: utf8>', false)
-  analytics.set('trades', schema)
-  analytics.set('trades', schema)
-  assert.ok(analytics.has('trades'))
-  // `tables` is the collection itself, so the name list comes off the view.
+  const first = analytics.tables.openOrCreate('trades', schema)
+  const same = analytics.tables.openOrCreate('trades', schema)
+  assert.equal(same.tableUuid, first.tableUuid)
+  assert.ok(analytics.tables.has('trades'))
   assert.deepEqual(analytics.tables.names(), ['trades'])
 
-  // Setting rows replaces the table's rows, creating a table the namespace
-  // never had from the rows' own schema.
-  analytics.set('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
-  assert.equal(analytics.get('quotes').scan().toTable().numRows, 2)
+  // Writing rows through the view replaces the table's rows, creating a
+  // table the namespace never had from the rows' own schema.
+  analytics.tables.overwrite('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
+  assert.equal(analytics.tables.get('quotes').scan().toTable().numRows, 2)
   assert.deepEqual(analytics.tables.names().sort(), ['quotes', 'trades'])
-  assert.deepEqual(catalog.listNamespaces(), ['analytics'])
+  assert.deepEqual(catalog.namespaces.names(), ['analytics'])
 })
 
 // The options value is a recording of what a caller set, never a snapshot of
@@ -728,7 +729,7 @@ test('the catalog write shorthands honour a per-call data format', (t) => {
   // other wrote PARQUET and returned a table, which is the divergence a caller
   // has no way to see without opening the manifest.
   const catalog = new iceberg.Catalog(root)
-  catalog.createTable('sales.orders', schema())
+  catalog.tables.create('sales.orders', schema())
   catalog.append('sales.orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
   assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
 
@@ -1082,4 +1083,103 @@ test('the tables view creates on first write and takes the same per-call options
   assert.equal(replaced.scan().toTable().numRows, 1)
   assert.deepEqual(tables.names(), ['orders', 'quotes'])
   assert.equal(tables.size(), 2)
+})
+
+test('a dotted create into an empty warehouse is one call', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const catalog = new iceberg.Catalog(root)
+
+  // The namespace view exists before its folder does, so the chain writes
+  // into an empty warehouse: the table's first metadata document is what
+  // brings every ancestor namespace into being.
+  const created = catalog.namespace('sales.eu').tables.create('orders', schema())
+
+  // The same table, every spelling: the catalog's dotted entry point, the
+  // root tables view, and the chained Map lookups.
+  assert.equal(catalog.table('sales.eu.orders').tableUuid, created.tableUuid)
+  assert.equal(catalog.tables.get('sales.eu.orders').tableUuid, created.tableUuid)
+  assert.ok(catalog.tables.has('sales.eu.orders'))
+  const chained = catalog.namespaces.get('sales.eu').tables.get('orders')
+  assert.equal(chained.tableUuid, created.tableUuid)
+
+  // The root tables view lists tables directly under the warehouse, so a
+  // table two namespaces down is reached by name, not by listing.
+  assert.deepEqual(catalog.tables.names(), [])
+})
+
+test('the views speak the whole Map vocabulary, lazily', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const catalog = new iceberg.Catalog(root)
+  const sales = catalog.namespaces.create('sales')
+  sales.tables.create('orders', schema())
+  sales.tables.create('returns', schema())
+  sales.namespaces.create('eu')
+
+  // has, size, keys, values, entries, and for...of - the Map verbs are the
+  // spelling, because JavaScript has no indexing hook a native class can
+  // answer, and the docs say so instead of emulating operator sugar.
+  assert.ok(catalog.namespaces.has('sales'))
+  assert.equal(catalog.namespaces.size(), 1)
+  assert.deepEqual([...catalog.namespaces.keys()], ['sales'])
+  assert.deepEqual([...catalog.namespaces.values()].map((view) => view.name), ['sales'])
+  assert.deepEqual(
+    [...catalog.namespaces.entries()].map(([name, view]) => [name, view.name]),
+    [['sales', 'sales']],
+  )
+  const walked = []
+  for (const name of catalog.namespaces) walked.push(name)
+  assert.deepEqual(walked, ['sales'])
+
+  assert.ok(sales.tables.has('orders'))
+  assert.equal(sales.tables.size(), 2)
+  assert.deepEqual([...sales.tables.keys()], ['orders', 'returns'])
+  assert.deepEqual(
+    [...sales.tables.entries()].map(([name, table]) => [name, table.location]),
+    [
+      ['orders', sales.tables.get('orders').location],
+      ['returns', sales.tables.get('returns').location],
+    ],
+  )
+  for (const name of sales.tables) walked.push(name)
+  assert.deepEqual(walked, ['sales', 'orders', 'returns'])
+
+  // values() opens one table per step: a sibling whose metadata document is
+  // broken poisons the drain, never the first value.
+  const poisoned = path.join(root, 'sales', 'zzz', 'metadata')
+  fs.mkdirSync(poisoned, { recursive: true })
+  fs.writeFileSync(path.join(poisoned, 'v1.metadata.json'), '{}')
+  const values = sales.tables.values()
+  assert.equal(values.next().value.root.name, 'orders')
+  assert.throws(() => [...values])
+})
+
+test('a catalog and a namespace carry properties, transactionally', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
+
+  // Absent means empty, and a call given nothing writes nothing.
+  assert.deepEqual(catalog.properties(), {})
+  catalog.updateProperties()
+  assert.ok(!fs.existsSync(path.join(root, 'warehouse')))
+
+  catalog.updateProperties({ owner: 'finance' })
+  assert.deepEqual(catalog.properties(), { owner: 'finance' })
+  catalog.updateProperties(new Map([['region', 'eu']]), ['owner'])
+  assert.deepEqual(catalog.properties(), { region: 'eu' })
+
+  // The reserved prefix is refused with the core's own message.
+  assert.throws(() => catalog.updateProperties({ 'iceberg:x': '1' }), /reserved "iceberg:"/)
+
+  const sales = catalog.namespaces.create('sales')
+  assert.deepEqual(sales.properties(), {})
+  sales.updateProperties({ team: 'emea' })
+  assert.deepEqual(sales.properties(), { team: 'emea' })
+  assert.deepEqual(catalog.namespaces.get('sales').properties(), { team: 'emea' })
+  assert.throws(() => sales.updateProperties({ 'iceberg:x': '1' }), /reserved "iceberg:"/)
 })

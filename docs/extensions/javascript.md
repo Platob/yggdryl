@@ -524,7 +524,7 @@ const rows = (ids, venues) =>
 const table = catalog.append('nyc.trades', rows([1n, 2n], ['XNAS', 'XNYS']))
 const past = table.currentSnapshot.snapshotId
 table.append(rows([3n], ['XASE']))
-assert.deepEqual(catalog.listTables('nyc'), ['nyc.trades'])
+assert.deepEqual(catalog.namespace('nyc').tables.names(), ['trades'])
 assert.equal(table.scan().toTable().numRows, 3)
 
 // A column change is a chain recorded on the update, committed once.

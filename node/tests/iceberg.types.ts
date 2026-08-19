@@ -105,20 +105,28 @@ const manifestContent: string = manifest.content
 
 const catalog: Catalog = new iceberg.Catalog('file:///lake/warehouse')
 const fromHandle: Catalog = new iceberg.Catalog(new IOBase('file:///lake/warehouse'))
-const fromField: Table = catalog.createTable('nyc.taxis', numbered)
-const fromExpression: Table = catalog.createTable(
+const rootTables = catalog.tables
+const fromField: Table = rootTables.create('nyc.taxis', numbered)
+const fromExpression: Table = rootTables.create(
   'nyc.taxis',
   'row: struct<id int64, venue utf8> not null',
 )
-const fromChildren: Table = catalog.createTable('nyc.taxis', [schema, schema])
+const fromChildren: Table = rootTables.create('nyc.taxis', [schema, schema])
 const openedByName: Table = catalog.table('nyc.taxis')
-const present: boolean = catalog.hasTable('nyc.taxis')
-const openedOrCreated: Table = catalog.openOrCreateTable('nyc.taxis', numbered)
+const present: boolean = rootTables.has('nyc.taxis')
+const openedOrCreated: Table = rootTables.openOrCreate('nyc.taxis', numbered)
 const appended: Table = catalog.append('nyc.taxis', arrowTable)
 const replaced: Table = catalog.overwrite('nyc.taxis', BatchReader.from(arrowTable))
-const namespaces: string[] = catalog.listNamespaces()
-const nested: string[] = catalog.listNamespaces('nyc')
-const tables: string[] = catalog.listTables('nyc')
+const namespaces: string[] = catalog.namespaces.names()
+const nested: string[] = catalog.namespace('nyc').namespaces.names()
+const tables: string[] = catalog.namespace('nyc').tables.names()
+const catalogProperties: Record<string, string> = catalog.properties()
+catalog.updateProperties({ owner: 'finance' })
+catalog.updateProperties(new Map([['a', 'b']]), ['c'])
+catalog.updateProperties()
+const salesNamespace = catalog.namespace('sales')
+const namespaceProperties: Record<string, string> = salesNamespace.properties()
+salesNamespace.updateProperties({ team: 'emea' }, ['old'])
 
 const atBigint: BatchReader = created.scanAt(1n)
 const atNumber: BatchReader = created.scanAt(1)
