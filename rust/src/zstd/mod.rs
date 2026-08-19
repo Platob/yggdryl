@@ -128,7 +128,7 @@ impl FlateFinish for FailingWrite {
 /// handle.flush()?;
 ///
 /// // What the wrapper reads is the plain text.
-/// assert_eq!(handle.read_all()?, b"symbol,price\nAAPL,1\n");
+/// assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 /// // What the wrapped handle holds is the compressed form.
 /// assert!(handle.handle().size() > 0);
 /// # Ok(())

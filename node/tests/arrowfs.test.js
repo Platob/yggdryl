@@ -390,7 +390,7 @@ test("a handler that throws surfaces its own message", () => {
   }
   assert.throws(
     () => IOBase.fromArrowFs(inventing, 'bucket/key.bin').writeText('AAPL'),
-    /memory, file, directory, unknown/,
+    /memory, file, directory, table, namespace, catalog, unknown/,
   )
 })
 

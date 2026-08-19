@@ -177,7 +177,7 @@ handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
 handle.flush()?;
 
 // The wrapper reads plain bytes and reports the decoded size.
-assert_eq!(handle.read_all()?, b"symbol,price\nAAPL,1\n");
+assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 assert_eq!(handle.size(), 20);
 
 // The wrapped handle holds the frame.
@@ -197,7 +197,7 @@ use yggdryl::zstd::Zstd;
 
 // Wrapping touches nothing, and a handle with no bytes decodes to nothing.
 let handle = Zstd::new(Buffer::new());
-assert!(handle.read_all()?.is_empty());
+assert!(handle.read_all_bytes()?.is_empty());
 assert_eq!(handle.size(), 0);
 ```
 

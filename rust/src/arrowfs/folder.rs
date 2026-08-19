@@ -263,6 +263,14 @@ impl IOBase for Folder {
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.folder_remove(recursive)
     }
+
+    fn is_atomic(&self) -> bool {
+        self.folder_is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.folder_is_tabular()
+    }
 }
 
 impl std::fmt::Debug for Folder {

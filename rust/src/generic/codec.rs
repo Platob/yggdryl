@@ -25,7 +25,7 @@ use crate::{Error, Level, MediaType, Result, Url};
 ///
 /// handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
 /// handle.flush()?;
-/// assert_eq!(handle.read_all()?, b"symbol,price\nAAPL,1\n");
+/// assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 /// # Ok(())
 /// # }
 /// ```
@@ -168,6 +168,14 @@ impl<H: IOBase> IOBase for Codec<H> {
 
     fn kind(&self) -> crate::IOKind {
         self.as_io().kind()
+    }
+
+    fn is_atomic(&self) -> bool {
+        self.as_io().is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.as_io().is_tabular()
     }
 
     fn flush(&mut self) -> Result<()> {

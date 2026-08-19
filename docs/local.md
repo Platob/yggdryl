@@ -17,7 +17,7 @@ The file system as three [`IOBase`](io.md) handles: a generic location, a direct
     file.write_all_bytes(b"AAPL")?;
     file.flush()?;
 
-    assert_eq!(file.read_all()?, b"AAPL");
+    assert_eq!(file.read_all_bytes()?, b"AAPL");
 
     drop(file);
     let _ = std::fs::remove_file(&path);
@@ -44,7 +44,7 @@ The file system as three [`IOBase`](io.md) handles: a generic location, a direct
 
     // A leaf: bytes addressed by offset.
     let leaf = File::new(root.join("a.bin"))?;
-    assert_eq!(leaf.read_all()?, b"a");
+    assert_eq!(leaf.read_all_bytes()?, b"a");
 
     // A location: it answers by looking at what is actually there.
     assert_eq!(Path::new(&root)?.kind(), IOKind::Directory);
@@ -83,7 +83,7 @@ four for a container, two for a leaf, three for a location - and inherits the re
 
     // Reading something absent yields nothing - and still creates nothing.
     assert!(folder.ls(true, false)?.is_empty());
-    assert!(leaf.read_all()?.is_empty());
+    assert!(leaf.read_all_bytes()?.is_empty());
     assert_eq!(leaf.size(), 0);
     assert!(!root.exists());
 
@@ -91,7 +91,7 @@ four for a container, two for a leaf, three for a location - and inherits the re
     leaf.write_all_bytes(b"trade")?;
     leaf.flush()?;
     assert!(leaf.exists());
-    assert_eq!(leaf.read_all()?, b"trade");
+    assert_eq!(leaf.read_all_bytes()?, b"trade");
 
     drop(leaf);
     let _ = std::fs::remove_dir_all(&root);
@@ -126,7 +126,7 @@ stored path and a stored URL can never disagree.
     location.write_all_bytes(b"AAPL")?;
     location.flush()?;
     assert_eq!(location.kind(), IOKind::File);
-    assert_eq!(location.read_all()?, b"AAPL");
+    assert_eq!(location.read_all_bytes()?, b"AAPL");
 
     // To settle it the other way, say so before writing.
     let container = Path::new(root.join("day=2026-08-16"))?;
@@ -246,7 +246,7 @@ Offsets are absolute and a write may start past the end:
     file.pwrite(5, b"z")?;
 
     // The gap the offset created is zero-filled.
-    assert_eq!(file.read_all()?, b"ab\0\0\0z");
+    assert_eq!(file.read_all_bytes()?, b"ab\0\0\0z");
 
     drop(file);
     let _ = std::fs::remove_file(&path);

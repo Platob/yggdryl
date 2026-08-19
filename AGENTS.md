@@ -127,9 +127,13 @@ layer compiling annotations into native values.
   create (`pwrite`, `truncate`, `reserve` make the resource and parents on
   first use). `media_type` is computed on demand and re-derived after bytes
   change.
-- `IOKind` (`Memory`, `File`, `Directory`, `Unknown`) is how a handle says
-  what it addresses; `is_container` derives from it - never re-answer
-  independently.
+- `IOKind` (`Memory`, `File`, `Directory`, `Table`, `Namespace`, `Catalog`,
+  `Unknown`) is how a handle says what it addresses; `is_container` derives
+  from it - never re-answer independently. The last three are a table format's
+  container roles, answered by the value that adds the framing
+  (`iceberg::Table` through `IOBase::kind`, `Catalog::kind`,
+  `Namespace::kind`), never guessed from a listing: storage sees three
+  indistinguishable folders.
 - **`clear` empties, `remove(recursive)` deletes, and neither pre-calls.** A
   leaf clears to zero bytes and still exists; a container clears to empty and
   still exists; `remove` leaves nothing of the resource - a wrapping handle
@@ -143,6 +147,14 @@ layer compiling annotations into native values.
   without it is refused naming the location. The return is `Result<()>` - a
   bool or a count would force exactly that probe. The one exception is a
   generic `Path`, which routes on the `IOKind` it already resolves.
+- **A handle presents its value as bytes or as rows, and says which.**
+  `is_atomic` is the byte surface (`read_all_bytes` whole in, `write_all_bytes`
+  whole out); `is_tabular` is the record surface. Wherever bytes are held they
+  are complements; a container holding neither answers `false` to both. The
+  media type answers first - free, and about the representation rather than
+  about this build - then the kind; only a plain `Directory` is probed, and the
+  probe stops at the first leaf rather than listing the tree. `record_options`
+  stays the call that names an encoding this build cannot decode.
 - A wrapping handle mirrors the inner one via `delegate_iobase!`, overriding
   only what it changes (usually `open`/`close`) - so `Coded`, `Gzip`, `Ipc`,
   `Parquet`, `Media` expose raw bytes.
@@ -499,8 +511,8 @@ Keep exact; no alternate aliases:
   `from_str` accepts legacy `x-`; `from_mime_type`/`from_media_type`/
   `from_url`; `load`/`dump`/`reader`/`writer`. `Level` is one shared 0-9
   scale mapped to each codec's native range.
-- `IOKind`: `Memory`, `File`, `Directory`, `Unknown`; derived
-  `is_container`, `is_leaf`, `is_known`.
+- `IOKind`: `Memory`, `File`, `Directory`, `Table`, `Namespace`, `Catalog`,
+  `Unknown`; derived `is_container`, `is_leaf`, `is_known`.
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
   `to_arrow`, `into_arrow`, `to_json`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `to_scheme_compat`. Generic

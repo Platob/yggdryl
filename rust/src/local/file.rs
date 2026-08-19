@@ -356,6 +356,14 @@ impl IOBase for File {
         self.file_kind()
     }
 
+    fn is_atomic(&self) -> bool {
+        self.file_is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.file_is_tabular()
+    }
+
     fn media_type(&self) -> &MediaType {
         if let Some(declared) = &self.declared {
             return declared;

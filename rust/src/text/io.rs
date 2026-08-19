@@ -142,7 +142,7 @@ pub fn load(source: &impl IOBase) -> Result<Value> {
 ///
 /// Returns a read, decoding, or parse failure.
 pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value> {
-    let bytes = source.read_all()?;
+    let bytes = source.read_all_bytes()?;
     let plan = Plan::detect(source, &bytes)?;
     let decoded = plan.codec().load(&bytes)?;
     crate::text::from_slice_with_limits(&decoded, plan.format(), limits)
@@ -158,7 +158,7 @@ pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value> {
 ///
 /// Returns a read, decoding, or parse failure, or the substitution's refusal.
 pub fn load_with(source: &impl IOBase, loading: &crate::text::Loading) -> Result<Value> {
-    let bytes = source.read_all()?;
+    let bytes = source.read_all_bytes()?;
     let plan = Plan::detect(source, &bytes)?;
     let decoded = plan.codec().load(&bytes)?;
     crate::text::from_slice_with(&decoded, plan.format(), loading)
@@ -179,7 +179,7 @@ pub fn load_all(source: &impl IOBase) -> Result<Vec<Value>> {
 ///
 /// Returns a read, decoding, or parse failure.
 pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Value>> {
-    let bytes = source.read_all()?;
+    let bytes = source.read_all_bytes()?;
     let plan = Plan::detect(source, &bytes)?;
     let decoded = plan.codec().load(&bytes)?;
     crate::text::from_slice_all_with_limits(&decoded, plan.format(), limits)
@@ -228,7 +228,7 @@ pub fn dump_with_level(target: &mut impl IOBase, value: &Value, level: Level) ->
 /// let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
 ///
 /// dump_with(&mut handle, &value, Formatting::indented(2))?;
-/// assert_eq!(handle.read_all()?, b"{\n  \"id\": 1\n}");
+/// assert_eq!(handle.read_all_bytes()?, b"{\n  \"id\": 1\n}");
 ///
 /// // Formatting changes bytes, never meaning.
 /// assert_eq!(load(&handle)?, value);

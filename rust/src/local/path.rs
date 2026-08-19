@@ -32,7 +32,7 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 /// // The same type addresses a leaf, and reading a missing one is empty.
 /// let leaf = Path::new(std::env::temp_dir().join("yggdryl-absent.arrows"))?;
 /// assert_eq!(leaf.kind(), IOKind::Unknown);
-/// assert!(leaf.read_all()?.is_empty());
+/// assert!(leaf.read_all_bytes()?.is_empty());
 /// # Ok(())
 /// # }
 /// ```
@@ -254,6 +254,14 @@ impl IOBase for Path {
 
     fn kind(&self) -> IOKind {
         self.path_kind()
+    }
+
+    fn is_atomic(&self) -> bool {
+        self.path_is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.path_is_tabular()
     }
 
     fn flush(&mut self) -> Result<()> {

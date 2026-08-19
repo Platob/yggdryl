@@ -150,7 +150,7 @@ mod laziness {
 
         assert_eq!(handle.size(), 0);
         assert!(handle.is_empty());
-        assert!(handle.read_all().unwrap().is_empty());
+        assert!(handle.read_all_bytes().unwrap().is_empty());
         let mut probe = [0_u8; 8];
         assert_eq!(handle.pread(0, &mut probe).unwrap(), 0);
         assert_eq!(handle.kind(), IOKind::Unknown);
@@ -225,7 +225,7 @@ mod staging {
         handle.pwrite(4, b"ing").unwrap();
 
         // The handle presents the pending value...
-        assert_eq!(handle.read_all().unwrap(), b"pending");
+        assert_eq!(handle.read_all_bytes().unwrap(), b"pending");
         // ...while the filesystem still holds the old one.
         let mut stored = [0_u8; 6];
         filesystem
@@ -315,7 +315,7 @@ mod staging {
             .unwrap();
 
         // A closed handle holds nothing, so the next read sees the new value.
-        assert_eq!(handle.read_all().unwrap(), b"second value");
+        assert_eq!(handle.read_all_bytes().unwrap(), b"second value");
         assert_eq!(handle.size(), 12);
     }
 
@@ -357,7 +357,7 @@ mod staging {
         );
 
         // The refusal left the handle usable and empty.
-        assert!(handle.read_all().unwrap().is_empty());
+        assert!(handle.read_all_bytes().unwrap().is_empty());
     }
 
     #[test]
@@ -578,12 +578,12 @@ mod hierarchy {
             &url,
             "the same location, not an escaped one"
         );
-        assert_eq!(round.read_all().unwrap(), b"REAL-BYTES");
+        assert_eq!(round.read_all_bytes().unwrap(), b"REAL-BYTES");
 
         // The parent of a listed child resolves it the same way.
         let parent = listed[0].parent().expect("a listed leaf has a parent");
         let reopened = parent.child_by(name).unwrap();
-        assert_eq!(reopened.read_all().unwrap(), b"REAL-BYTES");
+        assert_eq!(reopened.read_all_bytes().unwrap(), b"REAL-BYTES");
     }
 
     #[test]
@@ -636,7 +636,7 @@ mod hierarchy {
         let mut folder = Folder::from_location(filesystem.clone(), "bucket/new").unwrap();
 
         assert_eq!(folder.size(), 0);
-        assert!(folder.read_all().unwrap().is_empty());
+        assert!(folder.read_all_bytes().unwrap().is_empty());
         let message = folder.pwrite(0, b"nope").unwrap_err().to_string();
         assert!(message.contains("expected a file"), "{message}");
         assert!(
@@ -663,7 +663,7 @@ mod hierarchy {
 
         let leaf = Path::from_location(filesystem.clone(), "bucket/lake/a.bin").unwrap();
         assert_eq!(leaf.kind(), IOKind::File);
-        assert_eq!(leaf.read_all().unwrap(), b"a");
+        assert_eq!(leaf.read_all_bytes().unwrap(), b"a");
         assert!(leaf.ls(true, false).unwrap().is_empty());
 
         // Nothing there yet has not decided what it is; a write settles it.
@@ -672,7 +672,7 @@ mod hierarchy {
         undecided.write_all_bytes(b"decided").unwrap();
         undecided.close().unwrap();
         assert_eq!(undecided.kind(), IOKind::File);
-        assert_eq!(undecided.read_all().unwrap(), b"decided");
+        assert_eq!(undecided.read_all_bytes().unwrap(), b"decided");
     }
 }
 
@@ -747,7 +747,7 @@ mod identity {
         // A raw filesystem name is reached through `from_location`, which is
         // the constructor that encodes; `child_by` takes URI-path text.
         let leaf = File::from_location(filesystem.clone(), "marché/données/prix€.bin").unwrap();
-        assert_eq!(leaf.read_all().unwrap(), b"euro");
+        assert_eq!(leaf.read_all_bytes().unwrap(), b"euro");
         assert_eq!(
             filesystem.file_info("marché/données").unwrap().kind,
             IOKind::Directory
@@ -786,11 +786,11 @@ mod wrappers {
         coded.close().unwrap();
 
         assert_eq!(coded.media_type().base(), &MimeType::JSON);
-        assert_eq!(coded.read_all().unwrap(), br#"{"symbol":"AAPL"}"#);
+        assert_eq!(coded.read_all_bytes().unwrap(), br#"{"symbol":"AAPL"}"#);
 
         // What actually landed on the filesystem is gzip, not the plain text.
         let stored = File::from_location(filesystem, "bucket/trades.json.gz").unwrap();
-        let bytes = stored.read_all().unwrap();
+        let bytes = stored.read_all_bytes().unwrap();
         assert_eq!(&bytes[..2], &[0x1f, 0x8b], "a gzip member header");
         assert_eq!(crate::gzip::load(&bytes).unwrap(), br#"{"symbol":"AAPL"}"#);
     }

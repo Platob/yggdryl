@@ -1118,7 +1118,7 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
     use crate::avro::datum::Cursor;
 
     let limits = crate::Limits::default();
-    let bytes = handle.read_all()?;
+    let bytes = handle.read_all_bytes()?;
     if bytes.len() > limits.max_input_bytes() {
         return Err(invalid(format_smolstr!(
             "expected a manifest of at most {} bytes, got {}",

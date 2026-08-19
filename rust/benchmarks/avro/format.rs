@@ -112,7 +112,7 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
             avro::read_container(&stored).expect("decodes").rows.len(),
             ROWS
         );
-        let encoded = stored.read_all().expect("the buffer reads").len() as u64;
+        let encoded = stored.read_all_bytes().expect("the buffer reads").len() as u64;
 
         group.throughput(Throughput::Elements(ROWS as u64));
         group.bench_function(format!("decode_rows/{label}"), |bencher| {

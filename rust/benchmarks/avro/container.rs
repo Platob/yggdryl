@@ -62,7 +62,7 @@ pub(crate) fn avro_benchmarks(criterion: &mut Criterion) {
     // Proven once outside the timers: the container round-trips.
     let container = avro::read_container(&stored).expect("the container decodes");
     assert_eq!(container.rows.len(), ROWS);
-    let encoded_len = stored.read_all().expect("the buffer reads").len();
+    let encoded_len = stored.read_all_bytes().expect("the buffer reads").len();
 
     let mut group = criterion.benchmark_group("codec/avro");
 

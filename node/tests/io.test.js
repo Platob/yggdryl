@@ -63,6 +63,25 @@ test('a missing location is empty rather than an error', (t) => {
   assert.equal(absent.size, 0)
 })
 
+test('a handle says whether it holds bytes or rows', (t) => {
+  const root = lake()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // The name is enough; neither location has been written to.
+  const notes = new IOBase(path.join(root, 'notes.txt'))
+  assert.ok(notes.isAtomic())
+  assert.ok(!notes.isTabular())
+
+  const trades = new IOBase(path.join(root, 'trades.parquet'))
+  assert.ok(trades.isTabular())
+  assert.ok(!trades.isAtomic())
+
+  // A folder is never one whole byte value, and reads as the table beneath it.
+  const handle = new IOBase(root)
+  assert.ok(!handle.isAtomic())
+  assert.ok(handle.isTabular())
+})
+
 test('children are resolved the way path segments are', (t) => {
   const root = lake()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

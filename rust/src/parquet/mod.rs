@@ -333,7 +333,7 @@ fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>>
 /// until then this is honest about buffering.
 fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
     reject_outer_coding(handle)?;
-    let bytes = Bytes::from(handle.read_all()?);
+    let bytes = Bytes::from(handle.read_all_bytes()?);
     Ok(ParquetRecordBatchReaderBuilder::try_new_with_options(
         bytes,
         ArrowReaderOptions::new(),
@@ -492,6 +492,18 @@ impl<H: IOBase> Parquet<H> {
 /// releases it, which is what a scoped context binds to.
 impl<H: IOBase> IOBase for Parquet<H> {
     crate::delegate_iobase!(handle, except_lifecycle);
+
+    /// Parquet is a record encoding, so this handle holds rows whatever media
+    /// type the bytes underneath happen to carry - no probe, no listing, no
+    /// read.
+    fn is_tabular(&self) -> bool {
+        true
+    }
+
+    /// A record encoding is never read as one whole byte value.
+    fn is_atomic(&self) -> bool {
+        false
+    }
 
     /// Materialize the handle and cache the footer.
     fn open(&mut self) -> crate::Result<()> {

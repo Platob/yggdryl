@@ -6,8 +6,9 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
 use super::Catalog;
 use crate::iceberg::Transform;
+use crate::io::IOBase;
 use crate::local::Folder;
-use crate::{DataType, Field};
+use crate::{DataType, Field, IOKind};
 
 /// Build a catalog over a scratch warehouse unique to this test and process.
 fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
@@ -95,6 +96,37 @@ fn constructing_a_catalog_touches_nothing() {
     assert_eq!(catalog.list_tables("nyc").unwrap(), Vec::<String>::new());
     assert!(!catalog.has_table("nyc.taxis").unwrap());
     assert!(!path.exists());
+}
+
+#[test]
+fn each_catalog_role_answers_the_kind_it_plays() {
+    let (_path, catalog) = warehouse("kinds");
+
+    // Storage sees three folders; the framing is what tells them apart, so
+    // each value answers for itself.
+    assert_eq!(catalog.kind(), IOKind::Catalog);
+    assert_eq!(catalog.namespace("nyc").kind(), IOKind::Namespace);
+    assert!(catalog.kind().is_container());
+    assert!(catalog.namespace("nyc").kind().is_container());
+
+    let table = catalog.create_table("nyc.taxis", taxi_schema()).unwrap();
+    assert_eq!(IOBase::kind(&table), IOKind::Table);
+    assert!(table.is_tabular());
+    assert!(!table.is_atomic());
+
+    // The plain folder route reaches the same shape by probing the location,
+    // where holding the table answers it outright.
+    let folder = catalog.warehouse().child_by("nyc/taxis").unwrap();
+    assert_eq!(folder.kind(), IOKind::Directory);
+    assert!(folder.is_tabular());
+    assert!(!folder.is_atomic());
+
+    // A namespace folder holds tables, not rows of its own - but a handle
+    // that is only a folder cannot know that, and says what it would read.
+    assert_eq!(
+        catalog.namespaces().get("nyc").unwrap().kind(),
+        IOKind::Namespace
+    );
 }
 
 #[test]

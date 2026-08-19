@@ -230,7 +230,7 @@ handle.write_all_bytes(plain)?;
 handle.flush()?;
 
 // The wrapper reads plain text and reports the decoded size.
-assert_eq!(handle.read_all()?, plain);
+assert_eq!(handle.read_all_bytes()?, plain);
 assert_eq!(handle.size(), plain.len() as u64);
 
 // The wrapped handle holds the compressed stream.
@@ -278,7 +278,7 @@ assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 
 handle.write_all_bytes(plain)?;
 handle.flush()?;
-assert_eq!(handle.read_all()?, plain);
+assert_eq!(handle.read_all_bytes()?, plain);
 assert_eq!(zlib::load(handle.handle().as_slice())?, plain);
 
 // Nothing to detect: a coding, not a file format.

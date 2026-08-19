@@ -751,7 +751,7 @@ mod buffered_handle {
             handle.url().unwrap().file_name(),
             path.file_name().and_then(std::ffi::OsStr::to_str)
         );
-        assert_eq!(handle.read_all().unwrap(), payload);
+        assert_eq!(handle.read_all_bytes().unwrap(), payload);
         assert_eq!(handle.cached_pages(), 10);
 
         // A write lands in the file and in the pages that held those bytes.
@@ -856,7 +856,7 @@ mod conformance {
             handle.pwrite(8, b"!").expect("a writable handle");
             assert_eq!(handle.size(), 9, "{name}");
             assert_eq!(
-                handle.read_all().expect("a readable handle"),
+                handle.read_all_bytes().expect("a readable handle"),
                 b"trade\0\0\0!",
                 "{name}"
             );
@@ -927,7 +927,10 @@ mod conformance {
                 "{name}"
             );
             assert!(
-                handle.read_all().expect("a readable handle").is_empty(),
+                handle
+                    .read_all_bytes()
+                    .expect("a readable handle")
+                    .is_empty(),
                 "{name}"
             );
         }
@@ -944,7 +947,7 @@ mod conformance {
 
             handle.truncate(4).expect("a resizable handle");
             assert_eq!(
-                handle.read_all().expect("a readable handle"),
+                handle.read_all_bytes().expect("a readable handle"),
                 b"0123",
                 "{name}"
             );
@@ -952,7 +955,7 @@ mod conformance {
             // Extending zero-fills rather than leaving stale bytes visible.
             handle.truncate(6).expect("a resizable handle");
             assert_eq!(
-                handle.read_all().expect("a readable handle"),
+                handle.read_all_bytes().expect("a readable handle"),
                 b"0123\0\0",
                 "{name}"
             );
@@ -998,7 +1001,7 @@ mod conformance {
                 "{name}"
             );
             assert_eq!(
-                handle.read_all().expect("a readable handle"),
+                handle.read_all_bytes().expect("a readable handle"),
                 b"firstsecond",
                 "{name}"
             );
@@ -1014,7 +1017,7 @@ mod conformance {
                 .expect("a writable handle");
             handle.write_all_bytes(b"short").expect("a writable handle");
             assert_eq!(
-                handle.read_all().expect("a readable handle"),
+                handle.read_all_bytes().expect("a readable handle"),
                 b"short",
                 "{name}"
             );
@@ -1077,8 +1080,8 @@ mod conformance {
 
                 assert_eq!(copied, source.size(), "{source_name} -> {target_name}");
                 assert_eq!(
-                    target.read_all().expect("a readable handle"),
-                    source.read_all().expect("a readable handle"),
+                    target.read_all_bytes().expect("a readable handle"),
+                    source.read_all_bytes().expect("a readable handle"),
                     "{source_name} -> {target_name}"
                 );
             }
@@ -1099,7 +1102,7 @@ mod conformance {
                 writer.flush().expect("a flushable adapter");
             }
             assert_eq!(
-                handle.read_all().expect("a readable handle"),
+                handle.read_all_bytes().expect("a readable handle"),
                 b"symbol,price",
                 "{name}"
             );
@@ -1286,7 +1289,7 @@ mod lifecycle {
         // The handle stays usable and lazy - a write recreates the resource.
         leaf.write_all_bytes(b"MSFT,2").expect("a write");
         leaf.flush().expect("a flush");
-        assert_eq!(leaf.read_all().expect("a read"), b"MSFT,2");
+        assert_eq!(leaf.read_all_bytes().expect("a read"), b"MSFT,2");
 
         Folder::new(&root).expect("a container").remove(true).ok();
     }
@@ -1408,7 +1411,7 @@ mod lifecycle {
 
         // Still usable and lazy afterwards.
         buffer.write_all_bytes(b"AAPL").expect("a write");
-        assert_eq!(buffer.read_all().expect("a read"), b"AAPL");
+        assert_eq!(buffer.read_all_bytes().expect("a read"), b"AAPL");
     }
 
     #[test]
@@ -1424,7 +1427,7 @@ mod lifecycle {
 
         coded.remove(false).expect("a removable coded resource");
         assert!(!path.exists(), "the .gz resource itself is gone");
-        assert_eq!(coded.read_all().expect("a read").len(), 0);
+        assert_eq!(coded.read_all_bytes().expect("a read").len(), 0);
 
         // A later flush must not resurrect it from a held decoded buffer.
         coded.flush().expect("a flush after removal");
@@ -1458,5 +1461,184 @@ mod lifecycle {
             "the cache is invalidated as part of the removal, not on the next open"
         );
         assert_eq!(media.size(), 0, "and the encoded bytes are gone");
+    }
+}
+
+/// Which of the two surfaces a handle answers: bytes whole, or rows.
+mod shape {
+    use super::{Buffer, IOBase};
+
+    use crate::buffered::tests::Counting;
+    use crate::generic::Holder;
+    use crate::io::Coded;
+    use crate::{Codec, IOKind, MediaType, MimeType};
+
+    /// A writable temporary root of this test's own.
+    fn root(label: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("yggdryl-shape-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).expect("a writable temporary root");
+        path
+    }
+
+    #[test]
+    fn a_leaf_answers_from_its_representation_and_the_two_are_complements() {
+        for (mime, tabular) in [
+            (MimeType::PLAIN_TEXT, false),
+            (MimeType::JSON, false),
+            (MimeType::PARQUET, true),
+            (MimeType::ARROW_FILE, true),
+            (MimeType::CSV, true),
+        ] {
+            let mut handle = Buffer::new();
+            handle.set_media_type(MediaType::from(mime.clone()));
+            assert_eq!(handle.is_tabular(), tabular, "{mime}");
+            // Exactly one of the two, because a leaf is read one way or the
+            // other and never both.
+            assert_eq!(handle.is_atomic(), !tabular, "{mime}");
+        }
+    }
+
+    #[test]
+    fn a_default_buffer_is_one_whole_byte_value() {
+        let handle = Buffer::from_bytes(b"AAPL".to_vec());
+        assert_eq!(handle.kind(), IOKind::Memory);
+        assert!(handle.is_atomic());
+        assert!(!handle.is_tabular());
+    }
+
+    #[test]
+    fn a_content_coding_answers_for_the_representation_underneath_it() {
+        // `trades.arrows.gz` is an Arrow file that happens to be compressed,
+        // so the coding never changes which surface reads it.
+        let media = MediaType::from_file_name("trades.arrows.gz");
+        assert_eq!(media.base(), &MimeType::ARROW_STREAM);
+        assert_eq!(media.encodings(), [MimeType::GZIP]);
+        let mut handle = Buffer::new();
+        handle.set_media_type(media);
+        assert!(handle.is_tabular());
+        assert!(!handle.is_atomic());
+
+        let coded = Coded::new(handle, Codec::Gzip);
+        assert!(coded.is_tabular());
+        assert!(!coded.is_atomic());
+    }
+
+    #[test]
+    fn a_named_location_answers_before_anything_exists() {
+        let path = root("named");
+
+        // Nothing has been written, so the kind is undecided - and the name
+        // still says which surface reads it, exactly as the media type does.
+        let missing = crate::local::Path::new(path.join("trades.parquet")).unwrap();
+        assert_eq!(missing.kind(), IOKind::Unknown);
+        assert!(missing.is_tabular());
+        assert!(!missing.is_atomic());
+
+        let notes = crate::local::Path::new(path.join("notes.txt")).unwrap();
+        assert_eq!(notes.kind(), IOKind::Unknown);
+        assert!(notes.is_atomic());
+        assert!(!notes.is_tabular());
+
+        // The leaf implementation answers the same, existing or not.
+        let leaf = crate::local::File::new(path.join("trades.arrows")).unwrap();
+        assert!(leaf.is_tabular());
+        assert!(!leaf.is_atomic());
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_folder_reads_as_the_table_beneath_it() {
+        let path = root("folder");
+        let lake = path.join("lake");
+        std::fs::create_dir_all(lake.join("year=2024/month=01")).unwrap();
+        std::fs::write(lake.join("year=2024/month=01/part-0.parquet"), b"PAR1").unwrap();
+
+        let folder = crate::local::Folder::new(&lake).unwrap();
+        assert_eq!(folder.kind(), IOKind::Directory);
+        assert!(folder.is_container());
+        // The probe descends to the first leaf; a folder is never one whole
+        // byte value whatever is under it.
+        assert!(folder.is_tabular());
+        assert!(!folder.is_atomic());
+
+        // A container of plain files is neither: no rows to read, and no one
+        // byte value to read whole.
+        let logs = path.join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("run.txt"), b"started").unwrap();
+        let folder = crate::local::Folder::new(&logs).unwrap();
+        assert!(!folder.is_tabular());
+        assert!(!folder.is_atomic());
+
+        // So is an empty one, and so is a folder that does not exist yet.
+        let empty = crate::local::Folder::new(path.join("empty")).unwrap();
+        assert!(!empty.is_tabular());
+        assert!(!empty.is_atomic());
+
+        // A location resolving to that lake answers exactly as the folder did.
+        let located = crate::local::Path::new(&lake).unwrap();
+        assert_eq!(located.kind(), IOKind::Directory);
+        assert!(located.is_tabular());
+        assert!(!located.is_atomic());
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_record_encoding_handle_answers_without_touching_its_bytes() {
+        // The buffer underneath carries no media type at all, so nothing but
+        // the encoding itself can be answering here.
+        let plain = Buffer::new();
+        assert!(plain.is_atomic());
+
+        let ipc = crate::ipc::Ipc::new(Buffer::new());
+        assert!(ipc.is_tabular());
+        assert!(!ipc.is_atomic());
+
+        #[cfg(feature = "parquet")]
+        {
+            let parquet = crate::parquet::Parquet::new(Buffer::new());
+            assert!(parquet.is_tabular());
+            assert!(!parquet.is_atomic());
+        }
+
+        let avro = crate::avro::Avro::new(Buffer::new());
+        assert!(avro.is_tabular());
+        assert!(!avro.is_atomic());
+    }
+
+    #[test]
+    fn asking_the_shape_of_a_leaf_reads_nothing() {
+        // The counting double is the measuring instrument the page cache uses:
+        // it reports every `pread` and every `size` that reaches the bytes.
+        let mut handle = Counting::from_bytes(b"PAR1".to_vec());
+        handle.set_media_type(MediaType::from(MimeType::PARQUET));
+
+        assert!(handle.is_tabular());
+        assert!(!handle.is_atomic());
+
+        // Both answers came from the representation, so nothing was read and
+        // nothing was even measured.
+        assert_eq!(handle.reads(), 0);
+        assert_eq!(handle.sizes(), 0);
+    }
+
+    #[test]
+    fn wrapping_a_handle_keeps_the_shape_it_wraps() {
+        let mut handle = Buffer::new();
+        handle.set_media_type(MediaType::from(MimeType::PARQUET));
+
+        // A page cache is invisible: it answers exactly what it wraps.
+        let cached = handle.buffered(crate::buffered::BufferedOptions::default());
+        assert!(cached.is_tabular());
+        assert!(!cached.is_atomic());
+
+        // So is the generic enum every listing hands back.
+        let held = Holder::from(Buffer::from_bytes(b"AAPL".to_vec()));
+        assert!(held.is_atomic());
+        assert!(!held.is_tabular());
     }
 }

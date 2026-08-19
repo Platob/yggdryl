@@ -1567,6 +1567,13 @@ table's schema is authoritative, where a folder of leaves ignores a column its
 batches do not carry. (The Python and JavaScript tables keep their own scan and
 commit vocabulary; there, the folder handle above is the generic route.)
 
+It says what it is, too: `IOBase::kind` on a `Table` is [`IOKind::Table`](enums.md)
+rather than the `Directory` its root folder would answer, because the files below
+a table are its storage and not its contents, and `is_tabular` is `true` without
+touching storage at all. The folder route reaches the same shape by probing the
+location for a metadata document; holding the table skips the probe, exactly as it
+skips it everywhere else.
+
 ```rust
 use yggdryl::generic::IORecordOptions;
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
@@ -1588,6 +1595,12 @@ let path = std::env::temp_dir().join("yggdryl-docs-iceberg-table-handle");
 let _ = std::fs::remove_dir_all(&path);
 let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+// The role is the table's own, and it costs nothing to say so.
+assert_eq!(IOBase::kind(&table), yggdryl::IOKind::Table);
+assert!(table.is_container());
+assert!(table.is_tabular());
+assert!(!table.is_atomic());
 
 // The record surface answers before a single data file exists: the encoding
 // from the metadata, the schema with its field identifiers.
@@ -1683,6 +1696,12 @@ assert_eq!(rows, 1);
 A caller who has rows and a dotted name should need nothing else. `Catalog` is that surface: one
 warehouse folder, namespaces as nested folders, and a table per name - `HadoopCatalog`'s layout,
 reached through [`IOBase`](io.md) and nothing else.
+
+Storage sees three indistinguishable folders there, so each value says which role it plays:
+`Catalog::kind` is [`IOKind::Catalog`](enums.md), `Namespace::kind` is `IOKind::Namespace`, and a
+`Table` answers `IOKind::Table` through `IOBase::kind`. The framing is what tells them apart, so it
+is the framing that answers - never a listing, and never a guess. (`IOKind` is Rust-only, as it is
+everywhere else; the bindings ask the questions rather than name the kinds.)
 
 === "Rust"
 

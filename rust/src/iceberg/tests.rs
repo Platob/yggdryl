@@ -1674,9 +1674,13 @@ mod handles {
         let mut table =
             Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
 
-        // The byte surface is the folder the table lives in.
-        assert_eq!(table.kind(), crate::IOKind::Directory);
+        // The byte surface is the folder the table lives in, but the role is
+        // the table's own: one tabular value, never a folder to be listed.
+        assert_eq!(table.kind(), crate::IOKind::Table);
         assert!(table.is_container());
+        assert!(table.is_tabular());
+        assert!(!table.is_atomic());
+        assert_eq!(table.root().kind(), crate::IOKind::Directory);
         assert_eq!(
             IOBase::url(&table).unwrap().to_string(),
             Folder::new(&path).unwrap().url().to_string()
@@ -3761,8 +3765,8 @@ mod manifest_planning {
 
     #[test]
     fn writing_the_same_manifest_twice_produces_the_same_bytes() {
-        let first = stored().read_all().unwrap();
-        let second = stored().read_all().unwrap();
+        let first = stored().read_all_bytes().unwrap();
+        let second = stored().read_all_bytes().unwrap();
         assert_eq!(
             first, second,
             "a manifest writer must be a pure function of its input"

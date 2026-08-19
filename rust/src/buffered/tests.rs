@@ -132,7 +132,7 @@ fn a_hit_asks_the_handle_for_nothing_at_all() {
     // cache and a cache that still pays per read.
     //
     // The claim is about `pread`, the primitive: the derived helpers over it
-    // - `read_range`, `read_all` - call `size` themselves, once per call,
+    // - `read_range`, `read_all_bytes` - call `size` themselves, once per call,
     // exactly as they do over any other handle.
     let mut target = [0_u8; 40];
     for _ in 0..8 {
@@ -154,11 +154,11 @@ fn a_value_that_grew_is_seen_when_a_read_reaches_the_end() {
     let mut handle = Buffered::new(counted(PAGE), options(8));
 
     // Warm the cache, so the size the cache knows is the old one.
-    assert_eq!(handle.read_all().unwrap().len(), PAGE);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), PAGE);
 
     // Growth through the wrapper is known immediately, without asking.
     handle.pwrite(PAGE as u64, b"tail").unwrap();
-    assert_eq!(handle.read_all().unwrap().len(), PAGE + 4);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), PAGE + 4);
     assert_eq!(
         handle.read_range(PAGE as u64, 4).unwrap(),
         b"tail",
@@ -214,7 +214,7 @@ fn an_empty_handle_reads_nothing_and_caches_nothing() {
     let mut target = [0_u8; 8];
     assert_eq!(handle.pread(0, &mut target).unwrap(), 0);
     assert_eq!(handle.size(), 0);
-    assert!(handle.read_all().unwrap().is_empty());
+    assert!(handle.read_all_bytes().unwrap().is_empty());
     assert_eq!(handle.cached_pages(), 0);
     assert_eq!(handle.handle().reads(), 0);
 }
@@ -224,7 +224,7 @@ fn a_write_is_seen_by_the_next_read() {
     let mut handle = Buffered::new(counted(4 * PAGE), options(8));
 
     // Warm every page, then write across two of them.
-    assert_eq!(handle.read_all().unwrap().len(), 4 * PAGE);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), 4 * PAGE);
     handle.pwrite(PAGE as u64 - 2, b"ABCD").unwrap();
 
     assert_eq!(handle.read_range(PAGE as u64 - 2, 4).unwrap(), b"ABCD");
@@ -240,7 +240,7 @@ fn a_write_is_seen_by_the_next_read() {
 fn a_write_extending_the_value_replaces_the_page_that_ended_it() {
     let mut handle = Buffered::new(counted(PAGE + 10), options(8));
 
-    assert_eq!(handle.read_all().unwrap().len(), PAGE + 10);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), PAGE + 10);
     assert!(handle.has_cached_page(1));
 
     // The short page gains bytes, so it cannot survive as it was cached.
@@ -253,7 +253,7 @@ fn a_write_extending_the_value_replaces_the_page_that_ended_it() {
 #[test]
 fn a_write_that_only_grows_the_value_invalidates_the_page_that_ended_it() {
     let mut handle = Buffered::new(counted(10), options(4));
-    assert_eq!(handle.read_all().unwrap(), expected(0, 10));
+    assert_eq!(handle.read_all_bytes().unwrap(), expected(0, 10));
     assert!(handle.has_cached_page(0));
 
     // A write of nothing past the end still grows the value and zero-fills
@@ -264,19 +264,19 @@ fn a_write_that_only_grows_the_value_invalidates_the_page_that_ended_it() {
 
     let mut expected_bytes = expected(0, 10);
     expected_bytes.extend_from_slice(&[0; 10]);
-    assert_eq!(handle.read_all().unwrap(), expected_bytes);
+    assert_eq!(handle.read_all_bytes().unwrap(), expected_bytes);
 }
 
 #[test]
 fn a_write_past_the_end_zero_fills_what_the_cache_shows() {
     let mut handle = Buffered::new(counted(8), options(4));
 
-    assert_eq!(handle.read_all().unwrap(), expected(0, 8));
+    assert_eq!(handle.read_all_bytes().unwrap(), expected(0, 8));
     handle.pwrite(12, b"!").unwrap();
 
     assert_eq!(handle.size(), 13);
     assert_eq!(
-        handle.read_all().unwrap(),
+        handle.read_all_bytes().unwrap(),
         b"\x00\x01\x02\x03\x04\x05\x06\x07\0\0\0\0!"
     );
 }
@@ -284,7 +284,7 @@ fn a_write_past_the_end_zero_fills_what_the_cache_shows() {
 #[test]
 fn truncation_invalidates_both_ways() {
     let mut handle = Buffered::new(counted(4 * PAGE), options(8));
-    assert_eq!(handle.read_all().unwrap().len(), 4 * PAGE);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), 4 * PAGE);
     assert_eq!(handle.cached_pages(), 4);
 
     // Shrinking drops everything at or past the new size.
@@ -292,7 +292,7 @@ fn truncation_invalidates_both_ways() {
     assert_eq!(handle.cached_pages(), 2);
     assert!(handle.has_cached_page(0));
     assert!(!handle.has_cached_page(2));
-    assert_eq!(handle.read_all().unwrap(), expected(0, 2 * PAGE));
+    assert_eq!(handle.read_all_bytes().unwrap(), expected(0, 2 * PAGE));
 
     // Growing zero-fills, and the page that used to end the value goes with
     // it: what it recorded as the end is no longer the end.
@@ -414,7 +414,7 @@ fn the_pin_follows_the_end_the_value_grows() {
     let mut target = [0_u8; 8];
 
     // Page 3 is the last one, so it is pinned.
-    handle.read_all().unwrap();
+    handle.read_all_bytes().unwrap();
     assert_eq!(handle.cached_pages(), 4);
 
     // Growing by four pages moves the end; page 3 is now an ordinary page.
@@ -439,7 +439,7 @@ fn the_pin_follows_the_end_the_value_grows() {
 fn truncating_below_the_footer_page_invalidates_it() {
     let mut handle = Buffered::new(counted(4 * PAGE), options(8));
 
-    handle.read_all().unwrap();
+    handle.read_all_bytes().unwrap();
     assert!(handle.has_cached_page(3));
 
     handle.truncate(2 * PAGE as u64 + 8).unwrap();
@@ -448,14 +448,14 @@ fn truncating_below_the_footer_page_invalidates_it() {
         "a pin is not immunity to a resize"
     );
     assert!(!handle.has_cached_page(2));
-    assert_eq!(handle.read_all().unwrap(), expected(0, 2 * PAGE + 8));
+    assert_eq!(handle.read_all_bytes().unwrap(), expected(0, 2 * PAGE + 8));
 }
 
 #[test]
 fn a_value_smaller_than_one_page_has_one_end() {
     let handle = Buffered::new(counted(10), options(4));
 
-    handle.read_all().unwrap();
+    handle.read_all_bytes().unwrap();
     assert_eq!(handle.cached_pages(), 1);
 
     // Head and tail are the same page; it is pinned once, not twice.
@@ -531,7 +531,7 @@ fn buffering_a_buffered_handle_re_wraps_it() {
         ),
         other => panic!("expected a buffered holder, got {other:?}"),
     }
-    assert_eq!(holder.read_all().unwrap(), vec![1_u8; 32]);
+    assert_eq!(holder.read_all_bytes().unwrap(), vec![1_u8; 32]);
 }
 
 #[test]
@@ -561,7 +561,7 @@ fn everything_but_the_reads_is_the_wrapped_handle() {
 fn closing_drops_every_page_and_the_handle_keeps_working() {
     let mut handle = Buffered::new(counted(4 * PAGE), options(8));
 
-    handle.read_all().unwrap();
+    handle.read_all_bytes().unwrap();
     assert_eq!(handle.cached_pages(), 4);
     let reads = handle.handle().reads();
 
@@ -577,7 +577,7 @@ fn closing_drops_every_page_and_the_handle_keeps_working() {
 #[test]
 fn reaching_the_inner_handle_mutably_drops_the_cache() {
     let mut handle = Buffered::new(counted(4 * PAGE), options(8));
-    handle.read_all().unwrap();
+    handle.read_all_bytes().unwrap();
     assert_eq!(handle.cached_pages(), 4);
 
     // Bytes written straight to the inner handle are invisible here, so the
@@ -587,7 +587,7 @@ fn reaching_the_inner_handle_mutably_drops_the_cache() {
     assert_eq!(handle.read_range(0, 3).unwrap(), b"XYZ");
 
     // And the explicit spelling of the same thing.
-    handle.read_all().unwrap();
+    handle.read_all_bytes().unwrap();
     handle.clear_cache();
     assert_eq!(handle.cached_pages(), 0);
 }
@@ -605,7 +605,7 @@ fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
     let mut handle = Buffered::new(counted(8 * PAGE), options(16));
 
     // A cache with something in it, and pinned pages among them.
-    assert_eq!(handle.read_all().unwrap().len(), 8 * PAGE);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), 8 * PAGE);
     assert!(handle.cached_pages() > 1);
 
     // Clearing empties the resource, and the pages describing it go with it -
@@ -613,15 +613,15 @@ fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
     handle.clear().unwrap();
     assert_eq!(handle.cached_pages(), 0);
     assert_eq!(handle.size(), 0);
-    assert_eq!(handle.read_all().unwrap(), b"");
+    assert_eq!(handle.read_all_bytes().unwrap(), b"");
 
     // The same for `remove`, which for a memory-backed handle is the same
     // emptying: what matters is that nothing cached outlives the call.
     let mut handle = Buffered::new(counted(8 * PAGE), options(16));
-    assert_eq!(handle.read_all().unwrap().len(), 8 * PAGE);
+    assert_eq!(handle.read_all_bytes().unwrap().len(), 8 * PAGE);
     handle.remove(false).unwrap();
     assert_eq!(handle.cached_pages(), 0);
-    assert_eq!(handle.read_all().unwrap(), b"");
+    assert_eq!(handle.read_all_bytes().unwrap(), b"");
 
     // And neither pre-calls: absence is a completed removal, so a second one
     // succeeds having done nothing rather than probing first.

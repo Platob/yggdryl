@@ -106,6 +106,18 @@ impl<H: IOBase> Catalog<H> {
         &self.warehouse
     }
 
+    /// The role this value plays: [`IOKind::Catalog`].
+    ///
+    /// The warehouse handle underneath answers [`IOKind::Directory`], because a
+    /// warehouse is a folder and storage has no way to tell that one folder is
+    /// a catalog while the next is not. Framing it as a catalog is what this
+    /// value adds, so it is this value that says so - the same way
+    /// [`Namespace::kind`] and [`Table`]'s own [`IOBase::kind`] do one level
+    /// down each.
+    pub const fn kind(&self) -> IOKind {
+        IOKind::Catalog
+    }
+
     /// The catalog's namespaces, as a lazy map-oriented view.
     ///
     /// Constructing the view performs no I/O; every question it answers is
@@ -494,6 +506,15 @@ impl<'catalog, H: IOBase> Namespace<'catalog, H> {
     /// The namespace's dotted name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The role this view plays: [`IOKind::Namespace`].
+    ///
+    /// A namespace is a folder that is not a table, which is all storage can
+    /// see; that it is a namespace rather than any other folder is what the
+    /// catalog framing adds, so the view is what answers it.
+    pub const fn kind(&self) -> IOKind {
+        IOKind::Namespace
     }
 
     /// This namespace's tables, as a lazy map-oriented view.

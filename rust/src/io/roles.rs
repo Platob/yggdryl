@@ -188,6 +188,20 @@ pub trait IOFolder: IOBase {
     fn folder_kind(&self) -> IOKind {
         IOKind::Directory
     }
+
+    /// A container is never one whole byte value, so this needs no probe.
+    fn folder_is_atomic(&self) -> bool {
+        false
+    }
+
+    /// A container reads as the table beneath it, so its leaves decide.
+    ///
+    /// The role knows what [`IOBase::is_tabular`] would have to establish
+    /// first - that this is a container - so the probe starts at the listing
+    /// instead of at a kind that is already settled.
+    fn folder_is_tabular(&self) -> bool {
+        crate::io::container_is_tabular(self)
+    }
 }
 
 /// A resource that holds bytes.
@@ -252,6 +266,20 @@ pub trait IOFile: IOBase {
         }
     }
 
+    /// A leaf is one whole byte value unless its representation holds rows.
+    ///
+    /// A leaf is never a container, so the role answers from the media type
+    /// alone where [`IOBase::is_atomic`] would also ask whether the resource
+    /// exists - and asking that is a call into the backing store.
+    fn file_is_atomic(&self) -> bool {
+        !self.media_type().is_tabular()
+    }
+
+    /// A leaf holds rows exactly when its representation does.
+    fn file_is_tabular(&self) -> bool {
+        self.media_type().is_tabular()
+    }
+
     /// Refuse to resolve a child, naming the leaf that was addressed.
     ///
     /// # Errors
@@ -311,5 +339,31 @@ pub trait IOPath: IOBase {
             return DIRECTORY_MEDIA_TYPE.clone();
         }
         self.path_url().media_type()
+    }
+
+    /// Whether the location is one whole byte value.
+    ///
+    /// A location's *handle* reports `inode/file` or `inode/directory` as its
+    /// media type - a borrowed answer cannot be derived per call - so the shape
+    /// questions read the location's name instead, which is what actually says
+    /// what would be there. The role settles container-or-not once, through
+    /// [`Self::path_kind`], and reads the name only after: one look at the file
+    /// system, no resolution, and nothing opened.
+    fn path_is_atomic(&self) -> bool {
+        if self.path_kind().is_container() {
+            return false;
+        }
+        !self.path_url().media_type().is_tabular()
+    }
+
+    /// Whether the location holds rows and columns.
+    ///
+    /// The same one look as [`Self::path_is_atomic`]: a container reads as the
+    /// table beneath it, and anything else is answered by its name.
+    fn path_is_tabular(&self) -> bool {
+        if self.path_kind().is_container() {
+            return crate::io::container_is_tabular(self);
+        }
+        self.path_url().media_type().is_tabular()
     }
 }

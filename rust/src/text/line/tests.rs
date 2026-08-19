@@ -1152,7 +1152,7 @@ mod linesep {
                 wanted.extend_from_slice(record.as_bytes());
                 wanted.extend_from_slice(expected);
             }
-            assert_eq!(handle.read_all().unwrap(), wanted, "{linesep:?}");
+            assert_eq!(handle.read_all_bytes().unwrap(), wanted, "{linesep:?}");
 
             // Round trip: what was written with L reads back as the same
             // records - and anything written under the default reads back
@@ -1197,7 +1197,7 @@ mod linesep {
         handle.append_lines([b"bytes".as_slice()]).unwrap();
         handle.append_lines([b"vector".to_vec()]).unwrap();
         assert_eq!(
-            handle.read_all().unwrap(),
+            handle.read_all_bytes().unwrap(),
             b"borrowed\nowned\nbytes\nvector\n"
         );
     }

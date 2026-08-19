@@ -280,6 +280,14 @@ impl IOBase for Path {
         self.probe()
     }
 
+    fn is_atomic(&self) -> bool {
+        self.path_is_atomic()
+    }
+
+    fn is_tabular(&self) -> bool {
+        self.path_is_tabular()
+    }
+
     fn flush(&mut self) -> Result<()> {
         self.with_resolved_mut(|handle| handle.flush())?
     }

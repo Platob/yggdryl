@@ -312,7 +312,7 @@ fn every_entry_point_carries_the_same_loading() {
     let mut target =
         Buffer::new().with_media_type(Url::from_str("file:///out.json").unwrap().media_type());
     text::dump(&mut target, &loaded).unwrap();
-    assert_eq!(target.read_all().unwrap(), br#"{"name":"app"}"#);
+    assert_eq!(target.read_all_bytes().unwrap(), br#"{"name":"app"}"#);
 }
 
 #[test]

@@ -39,12 +39,12 @@ use super::view::TextLine;
 /// // A constructor and one method call - no format strings, no mode flags.
 /// let mut handle = Buffer::new().into_text();
 /// handle.write_lines(["one", "two"])?;
-/// assert_eq!(handle.read_all()?, b"one\ntwo\n");
+/// assert_eq!(handle.read_all_bytes()?, b"one\ntwo\n");
 ///
 /// // A pinned terminator is written verbatim and read back exactly.
 /// let mut pinned = Buffer::new().into_text().with_linesep(LineSep::CRLF);
 /// pinned.write_lines(["one", "two"])?;
-/// assert_eq!(pinned.read_all()?, b"one\r\ntwo\r\n");
+/// assert_eq!(pinned.read_all_bytes()?, b"one\r\ntwo\r\n");
 /// # Ok(())
 /// # }
 /// ```
@@ -126,7 +126,7 @@ impl<H: IOBase> Text<H> {
     /// // Idempotent: the same handle, with the options it already carried.
     /// let twice = once.into_text();
     /// assert_eq!(twice.options().batch_size(), Some(7));
-    /// assert_eq!(twice.read_all()?, b"line\n");
+    /// assert_eq!(twice.read_all_bytes()?, b"line\n");
     /// # Ok(())
     /// # }
     /// ```
@@ -552,6 +552,11 @@ impl<R: Read> TextLines<R> {
 /// `close` are overridden, and they only manage the derivation cache.
 impl<H: IOBase> IOBase for Text<H> {
     crate::delegate_iobase!(handle, except_lifecycle);
+
+    // A `Text` reads its rows through the line options a caller supplies, not
+    // through a record encoding of its own, so both surface questions are the
+    // wrapped handle's answers.
+    crate::delegate_iobase!(handle: is_atomic, is_tabular);
 
     /// Materialize what repeated calls would re-derive.
     ///

@@ -121,7 +121,7 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     // Writing creates the resource, and any parent it needs.
     handle.write_all_bytes(b"symbol,price\n")?;
     assert_eq!(handle.kind(), IOKind::File);
-    assert_eq!(handle.read_all()?, b"symbol,price\n");
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
 
     handle.close()?;
     // Teardown through the abstraction: absence is a no-op success.
@@ -254,9 +254,101 @@ bytes change.
 
 `IOKind` is the vocabulary every backend answers in: `Memory` for bytes with no location, `File` for a
 leaf that holds bytes, `Directory` for a container that holds other resources, and `Unknown` for a
-location that does not exist yet. `is_container`, `is_leaf`, and `is_known` are the questions callers
-actually ask; the enum is documented with the rest of the shared enums in [enums.md](enums.md). The
-bindings expose the questions rather than the enum, as `exists`, `is_dir`, and `is_file`.
+location that does not exist yet. A table format adds `Table`, `Namespace`, and `Catalog` - all of
+them containers, all of them answered by the value that adds the framing rather than by storage,
+which sees three indistinguishable folders. `is_container`, `is_leaf`, and `is_known` are the
+questions callers actually ask; the enum is documented with the rest of the shared enums in
+[enums.md](enums.md). The bindings expose the questions rather than the enum, as `exists`, `is_dir`,
+and `is_file`.
+
+## Bytes or rows
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{MimeType, local};
+
+    // A leaf answers from its representation, and the two are complements.
+    let mut notes = Buffer::new();
+    notes.set_media_type(MimeType::PLAIN_TEXT.into());
+    assert!(notes.is_atomic());
+    assert!(!notes.is_tabular());
+
+    // The name is enough: nothing has been written to this location yet.
+    let trades = local::File::new(std::env::temp_dir().join("yggdryl-docs-shape.parquet"))?;
+    assert!(trades.is_tabular());
+    assert!(!trades.is_atomic());
+
+    // A container is neither one whole byte value nor - with nothing under
+    // it - a table.
+    let folder = local::Folder::new(std::env::temp_dir())?;
+    assert!(!folder.is_atomic());
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = IOBase(pathlib.Path(tempfile.mkdtemp()))
+
+    notes = root / "notes.txt"
+    assert notes.is_atomic()
+    assert not notes.is_tabular()
+
+    # The name is enough: nothing has been written to this location yet.
+    trades = root / "trades.parquet"
+    assert trades.is_tabular()
+    assert not trades.is_atomic()
+
+    assert not root.is_atomic()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = new IOBase(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')))
+
+    const notes = root.joinpath('notes.txt')
+    assert.ok(notes.isAtomic())
+    assert.ok(!notes.isTabular())
+
+    // The name is enough: nothing has been written to this location yet.
+    const trades = root.joinpath('trades.parquet')
+    assert.ok(trades.isTabular())
+    assert.ok(!trades.isAtomic())
+
+    assert.ok(!root.isAtomic())
+
+    fs.rmSync(root.toPath(), { recursive: true, force: true })
+    ```
+
+A handle presents its value one of two ways, and these are how a caller asks which. *Atomic* is the
+byte surface - `read_all_bytes` reads the value whole and `write_all_bytes` replaces it whole -
+while *tabular* is the record surface, [`read_arrow_batch_reader`](#arrow-batches) and its two
+writing siblings. Wherever bytes are held the two are complements; a container that holds neither
+rows nor one byte value - a plain folder of logs, a namespace, a catalog - answers `false` to both.
+
+The answers cost as little as they can. The media type settles every leaf and every location nothing
+has decided yet, without a call into the backing store, so a name that already spells a record
+encoding is answered from the name. `IOKind::Table` settles a table format's folder outright, and
+`Namespace` and `Catalog` settle the containers that hold only containers. Only a plain `Directory`
+is probed, and the probe stops at the first leaf that settles the question rather than listing the
+tree - a folder reads as the table beneath it, and a partitioned tree is one table in one encoding.
+
+`is_tabular` is about the representation, not about this build: a `.parquet` leaf is tabular whether
+or not the `parquet` feature is compiled in. [`record_options`](#arrow-batches) is the call that
+reports an encoding this build cannot decode, and it names it.
 
 ## Whole values
 
@@ -273,7 +365,7 @@ bindings expose the questions rather than the enum, as `exists`, `is_dir`, and `
     assert_eq!(handle.read_range(0, 6)?, b"symbol");
     // A range past the end yields what exists rather than failing.
     assert!(handle.read_range(100, 4)?.is_empty());
-    assert_eq!(handle.read_all()?.len(), 20);
+    assert_eq!(handle.read_all_bytes()?.len(), 20);
     ```
 
 === "Python"
@@ -309,10 +401,12 @@ bindings expose the questions rather than the enum, as `exists`, `is_dir`, and `
     assert.equal(handle.readBytes().length, 20)
     ```
 
-`read_all`, `read_range`, `pwrite_all`, `append`, `write_all_bytes`, and `clear` are the whole-value
-conveniences; the bindings spell the first two `read_bytes`/`read_text` and `pread`. `pread_exact`
-is the strict form of `pread`: it fails, naming the shortfall, when the value ends before the buffer
-is full.
+`read_all_bytes`, `read_range`, `pwrite_all`, `append`, `write_all_bytes`, and `clear` are the
+whole-value conveniences; the bindings spell the first two `read_bytes`/`read_text` and `pread`.
+`pread_exact` is the strict form of `pread`: it fails, naming the shortfall, when the value ends
+before the buffer is full. The pair that reads and replaces the whole value both say `bytes`
+because both are about the bytes rather than the rows; [`is_atomic`](#bytes-or-rows) is how a
+caller asks which surface a handle is for.
 
 `copy_into` moves bytes between two handles in chunks, so neither side is buffered whole, and it
 carries the media type across. It is `copy_into` in Python and `copyInto` in JavaScript.
@@ -605,12 +699,12 @@ holding it.
     // A lazy iterator, never a collected `Vec`.
     handle.write_lines((0..1_000).map(|index| format!("row-{index}")))?;
     handle.append_lines(["tail"])?;
-    assert!(handle.read_all()?.ends_with(b"row-999\ntail\n"));
+    assert!(handle.read_all_bytes()?.ends_with(b"row-999\ntail\n"));
 
     // A pinned terminator is written verbatim and read back exactly.
     let mut pinned = Buffer::new().into_text().with_linesep(LineSep::CRLF);
     pinned.write_lines(["one", "two"])?;
-    assert_eq!(pinned.read_all()?, b"one\r\ntwo\r\n");
+    assert_eq!(pinned.read_all_bytes()?, b"one\r\ntwo\r\n");
     ```
 
 === "Python"
@@ -1405,11 +1499,11 @@ has been read.
     // The coding is an argument here, and the target's name is one place to read it from.
     let codec = encoded.codec();
     plain.compress_into(&mut encoded, codec)?;
-    assert_eq!(&encoded.read_all()?[..2], b"\x1f\x8b");
+    assert_eq!(&encoded.read_all_bytes()?[..2], b"\x1f\x8b");
 
     let mut decoded = Buffer::new();
     encoded.decompress_into(&mut decoded)?;
-    assert_eq!(decoded.read_all()?, plain.read_all()?);
+    assert_eq!(decoded.read_all_bytes()?, plain.read_all_bytes()?);
     assert_eq!(decoded.codec(), Codec::Identity);
     ```
 
@@ -1547,7 +1641,7 @@ themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), 
     assert!(!handle.opened());
 
     // The handle stays usable; the next read re-materializes.
-    assert_eq!(handle.read_all()?, b"symbol,price\n");
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
     ```
 
 === "Python"
@@ -1818,7 +1912,7 @@ handle.write_all_bytes(&payload)?;
 handle.flush()?;
 
 // Reads decompress; the wrapped handle only ever holds the encoded form.
-assert_eq!(handle.read_all()?, payload);
+assert_eq!(handle.read_all_bytes()?, payload);
 assert!(handle.handle().size() < payload.len() as u64);
 ```
 
@@ -1909,7 +2003,7 @@ assert_eq!(existing.kind(), IOKind::Directory);
 
 let undecided = local::Path::new(std::env::temp_dir().join("yggdryl-docs-io-undecided"))?;
 assert_eq!(undecided.kind(), IOKind::Unknown);
-assert!(undecided.read_all()?.is_empty());
+assert!(undecided.read_all_bytes()?.is_empty());
 
 // A leaf is not a container: it lists nothing and resolves no child.
 let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
@@ -1955,7 +2049,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     wrapper.write_all_bytes(b"AAPL")?;
 
     assert_eq!(wrapper.opens, 1);
-    assert_eq!(wrapper.read_all()?, b"AAPL");
+    assert_eq!(wrapper.read_all_bytes()?, b"AAPL");
     assert_eq!(wrapper.handle.as_slice(), b"AAPL");
     Ok(())
 }

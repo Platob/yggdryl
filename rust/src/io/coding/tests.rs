@@ -39,7 +39,7 @@ fn every_coding_round_trips_through_the_handle() {
         handle.write_all_bytes(PAYLOAD).unwrap();
         handle.flush().unwrap();
 
-        assert_eq!(handle.read_all().unwrap(), PAYLOAD, "{codec}");
+        assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD, "{codec}");
         assert_eq!(handle.size(), PAYLOAD.len() as u64, "{codec}");
         // The wrapped handle holds the encoded form, which is not the payload.
         assert_ne!(handle.handle().as_slice(), PAYLOAD, "{codec}");
@@ -94,7 +94,7 @@ fn the_media_type_reported_is_the_decoded_one() {
 fn a_missing_resource_reads_as_empty_rather_than_failing() {
     let handle = Coded::new(Buffer::new(), Codec::Zstd);
     assert_eq!(handle.size(), 0);
-    assert!(handle.read_all().unwrap().is_empty());
+    assert!(handle.read_all_bytes().unwrap().is_empty());
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn open_materializes_and_close_publishes() {
     assert!(!handle.opened());
 
     // Closing published the write, so the encoded bytes are there.
-    assert_eq!(handle.read_all().unwrap(), PAYLOAD);
+    assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
 }
 
 #[test]
@@ -123,8 +123,8 @@ fn a_higher_level_does_not_change_what_is_read_back() {
     best.flush().unwrap();
     fast.flush().unwrap();
 
-    assert_eq!(best.read_all().unwrap(), PAYLOAD);
-    assert_eq!(fast.read_all().unwrap(), PAYLOAD);
+    assert_eq!(best.read_all_bytes().unwrap(), PAYLOAD);
+    assert_eq!(fast.read_all_bytes().unwrap(), PAYLOAD);
     assert!(best.handle().size() < PAYLOAD.len() as u64);
 }
 
@@ -134,11 +134,11 @@ fn truncation_shrinks_and_grows_the_decoded_value() {
     handle.write_all_bytes(PAYLOAD).unwrap();
 
     handle.truncate(6).unwrap();
-    assert_eq!(handle.read_all().unwrap(), b"symbol");
+    assert_eq!(handle.read_all_bytes().unwrap(), b"symbol");
 
     // Growing zero-fills, exactly as a positional write past the end does.
     handle.truncate(8).unwrap();
-    assert_eq!(handle.read_all().unwrap(), b"symbol\0\0");
+    assert_eq!(handle.read_all_bytes().unwrap(), b"symbol\0\0");
 }
 
 #[test]

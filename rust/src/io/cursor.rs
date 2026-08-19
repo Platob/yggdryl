@@ -231,7 +231,7 @@ mod tests {
 
         // The IOBase surface answers unchanged: positional reads ignore the
         // cursor's position, exactly as a second pread caller would.
-        assert_eq!(cursor.read_all().unwrap(), b"AAPL");
+        assert_eq!(cursor.read_all_bytes().unwrap(), b"AAPL");
         assert_eq!(cursor.tell(), 4);
     }
 }

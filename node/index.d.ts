@@ -794,6 +794,23 @@ export declare class IOBase {
   /** Return whether this resource holds bytes, as `Stats.isFile`. */
   isFile(): boolean
   /**
+   * Return whether this resource is one whole byte value.
+   *
+   * The byte surface - `readBytes` and `writeBytes` - is for an atomic
+   * resource; `isTabular` names the record surface instead. A container
+   * holding neither answers `false` to both.
+   */
+  isAtomic(): boolean
+  /**
+   * Return whether this resource holds rows and columns.
+   *
+   * The record surface - `readArrowBatchReader` and its two writing
+   * siblings - is for a tabular resource: a leaf whose media type names a
+   * record encoding, a folder that reads as the table beneath it, or a
+   * table format's own folder.
+   */
+  isTabular(): boolean
+  /**
    * Iterate the immediate children, as `fs.readdirSync`.
    *
    * Private entries - names beginning with a dot - are skipped unless

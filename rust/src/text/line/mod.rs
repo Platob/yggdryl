@@ -30,7 +30,7 @@
 //! assert!(lines.next().is_none());
 //!
 //! // The wrapped bytes are exactly what was written.
-//! assert_eq!(handle.read_all()?, b"first\nsecond\n");
+//! assert_eq!(handle.read_all_bytes()?, b"first\nsecond\n");
 //! # Ok(())
 //! # }
 //! ```
