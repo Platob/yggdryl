@@ -1265,12 +1265,16 @@ for the next reader to prune with.
     // The options already know the schema, so the table exists - partitioned
     // by `level` - before the first log line is parsed.
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
-    catalog.create_table("logs.app", options.schema().with_partition_fields(&["level"])?)?;
+    catalog
+        .tables()
+        .create("logs.app", options.schema().with_partition_fields(&["level"])?)?;
 
     // The append consumes the parse itself: a lazy reader over both leaves,
     // the gzip one decoded as a stream, routed row by row into `level=...`
     // partitions and committed as one snapshot.
-    let table = catalog.append("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
+    let table = catalog
+        .tables()
+        .append("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
 
     let snapshot = table.current_snapshot().expect("one commit");
     assert_eq!(snapshot.operation(), "append");
@@ -1281,7 +1285,9 @@ for the next reader to prune with.
     let mut day_two = yggdryl::io::Buffer::new()
         .with_media_type(yggdryl::Url::from_str("file:///c.log")?.media_type());
     day_two.write_all_bytes(b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n")?;
-    let table = catalog.append("logs.app", day_two.into_arrow_lines(&options)?)?;
+    let table = catalog
+        .tables()
+        .append("logs.app", day_two.into_arrow_lines(&options)?)?;
     assert_eq!(table.metadata().snapshots.len(), 2);
     assert_eq!(table.current_snapshot().unwrap().summary_value("total-records"), Some("4"));
     assert_eq!(table.manifests()?.len(), 2, "one manifest per append");

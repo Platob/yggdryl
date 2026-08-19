@@ -35,7 +35,7 @@
     ```
 
 Two names describe one type. [`DataTypeId`](datatype.md) is the parameter-free identity of a
-variant - 41 of them - and `DataTypeKind` is the family that variant belongs to, 14 of them.
+variant - 44 of them - and `DataTypeKind` is the family that variant belongs to, 16 of them.
 Behavior that is uniform across a family dispatches on the kind instead of re-listing variants.
 Python and JavaScript have no separate class for either: both arrive as the canonical lowercase
 strings `DataType.id` and `DataType.kind` return.
@@ -85,8 +85,8 @@ The predicates over the id itself are Rust-only.
 ```rust
 use yggdryl::{DataTypeId, DataTypeKind};
 
-assert_eq!(DataTypeId::ALL.len(), 41);
-assert_eq!(DataTypeKind::ALL.len(), 14);
+assert_eq!(DataTypeId::ALL.len(), 44);
+assert_eq!(DataTypeKind::ALL.len(), 16);
 
 assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
 assert_eq!(DataTypeId::Utf8.fixed_byte_width(), None);

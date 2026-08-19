@@ -214,11 +214,12 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Value]) -> Result<Arra
         DataType::Decimal256 { .. } => physical_primitive!(Decimal256Array, decimal256),
         DataType::Map(map) => map_array(map, values)?,
         DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
-        // A geospatial value *is* its WKB payload, so the array is the bytes.
+        // A geospatial value *is* its WKB payload, so the array is the bytes;
+        // both the canonical `Geospatial` spelling and plain bytes build it.
         DataType::Geometry(_) | DataType::Geography(_) => Arc::new(BinaryArray::from(
             values
                 .iter()
-                .map(|value| optional_bytes(value))
+                .map(|value| optional_wkb(value))
                 .collect::<Result<Vec<_>>>()?,
         )),
         // A variant value crosses this boundary as the Parquet Variant binary
@@ -448,8 +449,9 @@ pub(crate) fn value_from_array(
             Value::from_mapping(pairs)?
         }
         DataType::RunEndEncoded(encoded) => run_value(encoded, array, index)?,
+        // A geospatial column reads back in its canonical value spelling.
         DataType::Geometry(_) | DataType::Geography(_) => {
-            Value::from(downcast::<BinaryArray>(array)?.value(index).to_vec())
+            Value::Geospatial(Arc::from(downcast::<BinaryArray>(array)?.value(index)))
         }
         DataType::Variant => {
             return Err(unsupported(
@@ -1748,6 +1750,16 @@ fn optional_bytes(value: &Value) -> Result<Option<&[u8]>> {
         Value::Null => Ok(None),
         Value::Bytes(bytes) => Ok(Some(bytes)),
         _ => Err(invalid_value_kind("bytes", value)),
+    }
+}
+
+/// Read the WKB a geospatial column stores, in either value spelling.
+fn optional_wkb(value: &Value) -> Result<Option<&[u8]>> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Geospatial(bytes) => Ok(Some(bytes)),
+        Value::Bytes(bytes) => Ok(Some(bytes)),
+        _ => Err(invalid_value_kind("well-known binary", value)),
     }
 }
 

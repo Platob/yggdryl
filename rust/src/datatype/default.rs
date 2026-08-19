@@ -604,9 +604,9 @@ fn materialize(plan: DefaultPlan) -> Result<Value> {
         ])),
         DefaultPlan::EmptyMapping => Value::from_mapping([]),
         // Little-endian `POINT EMPTY`: the conventional empty geometry, spelled
-        // as a point whose coordinates are NaN. The value crosses as bytes -
-        // the geospatial value *is* its WKB payload.
-        DefaultPlan::PointEmpty => Ok(Value::from(POINT_EMPTY_WKB.to_vec())),
+        // as a point whose coordinates are NaN, in the canonical geospatial
+        // value spelling.
+        DefaultPlan::PointEmpty => Ok(Value::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
     }
 }
 
@@ -675,9 +675,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
                 && plan_matches_value(payload, actual_payload)
         }),
         DefaultPlan::EmptyMapping => value.as_mapping().is_some_and(<[(Value, Value)]>::is_empty),
-        DefaultPlan::PointEmpty => value
-            .as_bytes()
-            .is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
+        DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
     }
 }
 

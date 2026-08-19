@@ -8,6 +8,8 @@
 
 use std::collections::HashSet;
 
+use std::sync::Arc;
+
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::value_is_logically_null;
@@ -221,9 +223,15 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         }
         D::Map(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
-        // A variant value is any value - the tree describes itself - and a
-        // geospatial value is its WKB payload; both are already canonical.
-        D::Variant | D::Geometry(_) | D::Geography(_) => Ok((value.clone(), false)),
+        // A variant value is any value: the tree describes itself.
+        D::Variant => Ok((value.clone(), false)),
+        // The canonical geospatial spelling is `Value::Geospatial`; plain
+        // bytes are accepted on the way in and rewritten here.
+        D::Geometry(_) | D::Geography(_) => match value {
+            Value::Geospatial(_) => Ok((value.clone(), false)),
+            Value::Bytes(bytes) => Ok((Value::Geospatial(Arc::from(bytes.as_ref())), true)),
+            other => Ok((other.clone(), false)),
+        },
     }
 }
 
@@ -660,7 +668,7 @@ fn validate_data_type_value(
         // A geospatial value is Well-Known Binary, and the payload's own
         // framing is the validation: a buffer the WKB reader refuses is not a
         // geometry, whatever bytes it carries.
-        D::Geometry(_) | D::Geography(_) => match value.as_bytes() {
+        D::Geometry(_) | D::Geography(_) => match value.as_wkb() {
             Some(bytes) => crate::generic::wkb::Geometry::from_slice(bytes)
                 .map(|_| ())
                 .map_err(|error| expected_because(data_type.name(), value, &error)),

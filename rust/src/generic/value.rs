@@ -1135,6 +1135,18 @@ impl Value {
         }
     }
 
+    /// Return the Well-Known Binary payload without allocating.
+    ///
+    /// A geospatial column also accepts plain [`Self::Bytes`] on the way in -
+    /// canonicalization is what rewrites it - so this reads both spellings.
+    pub fn as_wkb(&self) -> Option<&[u8]> {
+        match self {
+            Self::Geospatial(value) => Some(value),
+            Self::Bytes(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Return sequence children without allocating.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {

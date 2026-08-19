@@ -634,10 +634,12 @@ mod semi_structured_and_geospatial {
         let variant = DataType::Variant.required_field("payload");
         assert_eq!(variant.default_value().unwrap(), Value::Null);
 
-        // The geospatial default is the conventional empty geometry.
+        // The geospatial default is the conventional empty geometry, in the
+        // canonical value spelling.
         let geometry = DataType::geometry(None).unwrap().required_field("shape");
         let default = geometry.default_value().unwrap();
-        let bytes = default.as_bytes().expect("a WKB payload");
+        assert!(matches!(default, Value::Geospatial(_)), "{default:?}");
+        let bytes = default.as_wkb().expect("a WKB payload");
         assert_eq!(
             crate::generic::wkb::to_wkt(bytes).unwrap(),
             "POINT EMPTY",

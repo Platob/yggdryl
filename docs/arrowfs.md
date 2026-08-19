@@ -597,8 +597,10 @@ directory lists empty, a read past the end is short, and a write replaces the wh
             })
         }
 
-        fn list(&self, _path: &str, _recursive: bool) -> Result<Vec<FileInfo>> {
-            Ok(vec![FileInfo::file("bucket/only.bin", 5)])
+        fn list(&self, _path: &str, _recursive: bool) -> yggdryl::arrowfs::FileInfos {
+            yggdryl::arrowfs::FileInfos::new(
+                [Ok(FileInfo::file("bucket/only.bin", 5))].into_iter(),
+            )
         }
 
         fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {

@@ -1928,7 +1928,10 @@ if (binding.IcebergNames) {
     },
   })
 }
-for (const collection of [binding.Namespaces, binding.Tables]) {
+// The classes live under the frozen `iceberg` namespace by the time this
+// runs - the raw exports above were deleted - so the wiring reaches them
+// through the namespace, which holds the same prototypes.
+for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
   if (!collection) continue
   Object.defineProperty(collection.prototype, Symbol.iterator, {
     configurable: true,

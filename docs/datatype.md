@@ -303,19 +303,22 @@ three signed widths, while `values` carries the actual type and its own nullabil
         Field::new("number", DataType::Int64, false),
         Field::new("text", DataType::Utf8, true),
     ];
-    let variant = DataType::variant(members.clone())?;
+    let members_union = DataType::dense_union(members.clone())?;
 
-    // `variant` is not a second logical type: it is the dense union with IDs 0..
+    // The member sugar is not a second logical type: it is the dense union
+    // with IDs 0.. - and bare `variant` is a datatype of its own, so the
+    // parenthesis is what disambiguates the two spellings.
     assert_eq!(
-        variant,
+        members_union,
         DataType::union(
             [(0, members[0].clone()), (1, members[1].clone())],
             UnionMode::Dense,
         )?
     );
-    assert_eq!(variant.name(), "union");
-    assert!(variant.to_string().starts_with("union(dense,"));
+    assert_eq!(members_union.name(), "union");
+    assert!(members_union.to_string().starts_with("union(dense,"));
     assert_eq!(DataType::from_str("variant(number:int64,text:string)")?.name(), "union");
+    assert_eq!(DataType::from_str("variant")?, DataType::Variant);
 
     // An explicit union picks its own mode and its own non-negative type IDs.
     let sparse = DataType::union(

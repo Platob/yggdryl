@@ -247,7 +247,7 @@ attribute whose price depends on the backend is classified by its worst case.
     }
 
     const lake = new IOBase(root)
-    const matched = lake.childrenMatching("&holder.partition['year'] = '2024'")
+    const matched = [...lake.childrenMatching("&holder.partition['year'] = '2024'")]
     assert.ok(matched.length > 0)
     for (const entry of matched) {
       assert.match(String(entry.url), /year=2024/)

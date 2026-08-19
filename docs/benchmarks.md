@@ -526,7 +526,7 @@ makes the line surface worth having.
     let marked = options.schema().with_partition_fields(&["level"])?;
 
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
-    let mut table = catalog.create_table("logs.app", marked)?;
+    let mut table = catalog.tables().create("logs.app", marked)?;
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     let older = TextLineOptions::with_pattern(archived)?
