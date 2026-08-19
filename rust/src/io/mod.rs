@@ -1221,6 +1221,123 @@ pub trait IOBase: Send {
         merge_leaf(self, batches, options)
     }
 
+    /// Carry out one statement, or a chain of them, over this resource.
+    ///
+    /// This is a **derived** method, and deliberately so: it adds one verb and
+    /// no entry point. Every statement lowers to a selection, a filter, and a
+    /// write mode - all three of which the record surface already has - so the
+    /// bytes are reached through exactly the same three methods every other
+    /// caller uses, and no encoding or backend implements anything new.
+    ///
+    /// The handle *is* the `FROM` clause. A statement's target may be omitted,
+    /// written as `.`, or named; there is no catalog here to resolve one
+    /// against, and pretending otherwise would be a second addressing model.
+    ///
+    /// A chain is one statement: it is typed end to end before anything runs,
+    /// fused into one selection and one filter, and carried out in **one read
+    /// and at most one write** - never a materialization between steps.
+    ///
+    /// ```
+    /// use yggdryl::expressions::{Applied, Statement};
+    /// use yggdryl::generic::{IORecordOptions, RecordOptions};
+    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{DataType, MimeType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let schema = DataType::from_fields([
+    ///     DataType::Int64.nullable_field("id"),
+    ///     DataType::Utf8.nullable_field("venue"),
+    /// ])?
+    /// .required_field("row");
+    /// let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
+    ///     .with_schema(schema);
+    ///
+    /// let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    /// // A resource that holds nothing has to be *given* a shape before rows
+    /// // can be put into it: this project never guesses one from the values.
+    /// handle.apply_expression_with(
+    ///     &"INSERT INTO . VALUES (1, \'XNAS\'), (2, \'XNYS\')".parse::<Statement>()?,
+    ///     &declared,
+    /// )?;
+    ///
+    /// // Once it holds rows, the media type answers for the settings.
+    /// let Applied::Rows(rows) = handle.apply_expression(
+    ///     &"SELECT id WHERE venue = \'XNAS\'".parse::<Statement>()?,
+    /// )? else {
+    ///     panic!("a SELECT reads");
+    /// };
+    /// assert_eq!(rows.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 1);
+    ///
+    /// // And a DELETE removes what it names, reporting what it did.
+    /// let Applied::Changed(report) = handle.apply_expression(
+    ///     &"DELETE WHERE venue = \'XNYS\'".parse::<Statement>()?,
+    /// )? else {
+    ///     panic!("a DELETE reports");
+    /// };
+    /// assert_eq!(report.rows_deleted, 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the statement names a column the resource does
+    /// not carry, when a guard refuses it, or whatever the read or the write
+    /// returns.
+    #[cfg(feature = "arrow")]
+    fn apply_expression(
+        &mut self,
+        statement: &crate::expressions::Statement,
+    ) -> Result<crate::expressions::Applied> {
+        let options = self.record_options()?;
+        crate::expressions::apply_statement(self, statement, &options)
+    }
+
+    /// Carry out one statement under settings the caller already holds.
+    ///
+    /// [`Self::apply_expression`] derives its settings from the media type,
+    /// exactly as [`Self::record_options`] does, which is all a statement over
+    /// a resource that already has a shape needs. This is the sibling for the
+    /// caller who has *declared* one - the shape a resource holding nothing has
+    /// to be given before rows can be put into it, because this project never
+    /// guesses a schema from the values.
+    ///
+    /// # Errors
+    ///
+    /// Returns exactly what [`Self::apply_expression`] returns.
+    #[cfg(feature = "arrow")]
+    fn apply_expression_with(
+        &mut self,
+        statement: &crate::expressions::Statement,
+        options: &RecordOptions,
+    ) -> Result<crate::expressions::Applied> {
+        crate::expressions::apply_statement(self, statement, options)
+    }
+
+    /// Report what a statement *would* do, without doing it.
+    ///
+    /// The lowering is what a caller is really asking about - which columns
+    /// survive, which rows, and whether anything is written - so this answers
+    /// it against the schema the resource actually has.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever lowering the statement returns.
+    #[cfg(feature = "arrow")]
+    fn explain_expression(
+        &self,
+        statement: &crate::expressions::Statement,
+    ) -> Result<crate::expressions::Lowered> {
+        use crate::generic::IORecordOptions;
+
+        let options = self.record_options()?;
+        let schema = match options.schema() {
+            Some(schema) => schema.clone(),
+            None => self.read_arrow_field(&options)?,
+        };
+        statement.lower(&schema)
+    }
+
     /// Add every batch `batches` yields after the rows this resource holds.
     ///
     /// The encodings here are whole-value containers - an Arrow IPC stream and a

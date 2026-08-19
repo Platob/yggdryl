@@ -44,6 +44,7 @@ mod graph;
 mod optimize;
 mod parser;
 mod select;
+mod statement;
 mod stats;
 #[cfg(test)]
 mod tests;
@@ -65,6 +66,9 @@ pub use graph::Node;
 pub use graph::{NodeId, Plan};
 pub use optimize::Explanation;
 pub use select::{BoundSelection, Selection, SelectionItem};
+#[cfg(feature = "arrow")]
+pub use statement::{Applied, StatementReport, apply_statement};
+pub use statement::{Lowered, Statement, WriteMode};
 pub use stats::{Certainty, ColumnStats, StatsSource};
 
 /// The prelude a Rust caller imports to write predicates in one line.

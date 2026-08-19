@@ -467,6 +467,175 @@ The **residual** is what a source did not settle, and it is the third answer tha
     assert!(predicate.residual(&Elsewhere).is_none());
     ```
 
+## Statements
+
+A statement says what to *do* with the rows a handle holds. Every one of them
+lowers to a **selection, a filter, and a write mode** - all three of which the
+record surface already has - so nothing here decodes or encodes anything, and
+every verb reaches the bytes through the same three record methods.
+
+| statement | lowers to |
+| --------- | --------- |
+| `SELECT <projection> [WHERE p]` | selection + filter, read |
+| `INSERT INTO . VALUES (…), (…)` | literal rows, append |
+| `UPDATE . SET c = e [WHERE p]` | selection where `c` becomes `CASE WHEN p THEN e ELSE c END`, every other column kept + overwrite |
+| `DELETE [FROM .] WHERE p` | filter `NOT (p) OR p IS NULL` + overwrite |
+| `DELETE [FROM .]` | overwrite with nothing |
+| `ALTER … ADD COLUMN c t [DEFAULT v] [AS e]` | selection with the value appended + overwrite |
+| `ALTER … DROP COLUMN c` | selection omitting `c` + overwrite |
+| `ALTER … RENAME COLUMN a TO b` | selection with `a AS b` + overwrite |
+| `ALTER … ALTER COLUMN c TYPE t` | selection with `CAST(c AS t) AS c` + overwrite |
+| `<statement>; <statement>; …` | a chain: each step typed against the last, fused into one pass |
+
+Someone who understands that table can predict what any statement will cost.
+
+The `DELETE` row is the one worth reading twice. The complement of a
+three-valued predicate keeps the rows the predicate did *not* match - including
+the ones it answered unknown for - so `DELETE WHERE price > 10` must not remove
+a row whose price is null, and `NOT p` alone would, because `NOT unknown` is
+unknown.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expressions::{Statement, WriteMode};
+    use yggdryl::{DataType, Field};
+
+    let schema = DataType::from_fields([
+        DataType::Int64.nullable_field("id"),
+        DataType::Int64.nullable_field("price"),
+    ])?
+    .required_field("row");
+
+    // The lowering is a real value, so a wrong UPDATE is caught as a wrong
+    // CASE rather than as wrong bytes.
+    let update: Statement = "UPDATE . SET price = price * 2 WHERE id > 1".parse()?;
+    let lowered = update.lower(&schema)?;
+    assert_eq!(lowered.mode, WriteMode::Overwrite);
+    assert!(lowered.selection.to_string().contains(
+        "CASE WHEN id > 1 THEN price * 2 ELSE price END AS price"
+    ));
+
+    // And the DELETE complement carries the null test that keeps an unknown.
+    let delete: Statement = "DELETE WHERE price > 10".parse()?;
+    let lowered = delete.lower(&schema)?;
+    assert!(lowered.filter.expect("a filter").to_string().contains("IS NULL"));
+    ```
+
+The guard that earns its place: a `WHERE` which is true for every row is
+refused as the typo it usually is, because the one thing worse than a mistyped
+filter is a mistyped filter that deletes. Spelling `WHERE TRUE` is a deliberate
+act and passes; omitting the clause entirely is a truncate and is allowed.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expressions::Statement;
+    use yggdryl::DataType;
+
+    let schema = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+        .required_field("row");
+
+    let error = "DELETE WHERE 1 = 1"
+        .parse::<Statement>()?
+        .lower(&schema)
+        .unwrap_err();
+    assert!(error.to_string().contains("WHERE TRUE"));
+
+    assert!("DELETE WHERE TRUE".parse::<Statement>()?.lower(&schema).is_ok());
+    assert!("DELETE FROM .".parse::<Statement>()?.lower(&schema).is_ok());
+    ```
+
+## Chain four statements into one pass
+
+A chain is itself a statement, so a chain of chains is a chain. It is typed end
+to end **before anything runs** - a step reading a column an earlier step
+dropped is refused by position - and then fused: adjacent projections compose
+into one, adjacent filters conjoin, and the whole thing becomes one selection,
+one filter, and one write mode. Four statements cost one read and at most one
+write, with nothing materialized between them.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expressions::{Statement, WriteMode};
+    use yggdryl::{DataType, Field};
+
+    let schema = DataType::from_fields([
+        DataType::Int64.nullable_field("id"),
+        DataType::Utf8.nullable_field("venue"),
+        DataType::Int64.nullable_field("price"),
+    ])?
+    .required_field("row");
+
+    let chain: Statement = "DELETE WHERE price > 20;                             ALTER TABLE . DROP COLUMN venue;                             ALTER TABLE . RENAME COLUMN price TO amount"
+        .parse()?;
+    assert_eq!(chain.steps().len(), 3);
+
+    // Three steps, one projection, one filter, one write.
+    let fused = chain.lower(&schema)?;
+    assert_eq!(fused.mode, WriteMode::Overwrite);
+    let names: Vec<&str> = fused.root.fields().iter().map(Field::name).collect();
+    assert_eq!(names, vec!["id", "amount"]);
+
+    // A step made unreachable by an earlier one is refused by position, with
+    // nothing applied.
+    let broken: Statement =
+        "ALTER TABLE . DROP COLUMN price; DELETE WHERE price > 10".parse()?;
+    let error = broken.lower(&schema).unwrap_err();
+    assert!(error.to_string().contains("step 2 of 2"));
+    assert!(error.to_string().contains("the previous step produces id, venue"));
+    ```
+
+## Run one on a handle
+
+`apply_expression` is one derived method over the three record methods, so no
+encoding gains an entry point and no backend implements anything new. The handle
+*is* the `FROM` clause: a target may be omitted, written as `.`, or named, and
+there is no catalog here to resolve one against.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::expressions::{Applied, Statement};
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{DataType, MimeType, arrow};
+
+    let schema = DataType::from_fields([
+        DataType::Int64.nullable_field("id"),
+        DataType::Utf8.nullable_field("venue"),
+    ])?
+    .required_field("row");
+    let batch = RecordBatch::try_new(
+        arrow::schema_from_field(&schema)?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2, 3])),
+            Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS"), None])),
+        ],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let options = handle.record_options()?;
+    handle.write_arrow_batch_reader(arrow::batch_reader(batch.schema(), [batch]), &options)?;
+
+    // See what a statement would do before it does it.
+    let statement: Statement = "DELETE WHERE venue = 'XNAS'".parse()?;
+    let planned = handle.explain_expression(&statement)?;
+    assert_eq!(planned.root.field_len(), 2);
+
+    // Then do it, and read the report.
+    let Applied::Changed(report) = handle.apply_expression(&statement)? else {
+        panic!("a DELETE reports rather than reading");
+    };
+    assert_eq!(report.rows_read, 3);
+    assert_eq!(report.rows_deleted, 1);
+    // The row whose venue is null survives: `venue = 'XNAS'` is unknown for it.
+    assert_eq!(report.rows_written, 2);
+    ```
+
 ## What the grammar accepts
 
 Precedence, loosest first:
@@ -519,6 +688,8 @@ SQL's meaning and deliberately not Iceberg's `years` transform, which counts fro
 | aggregates, `GROUP BY`, windows | all of them need more than one row in hand, which is a materialization this library does not do |
 | an open function registry | three evaluators cannot be promised to agree about a function none of them knows |
 | `bucket` pruning | the hash is Iceberg's Murmur3, which this library does not implement - the limit is named rather than emulated |
+| `DROP TABLE` | the storage contract has no delete or move, and this library names that limit rather than emulating it |
+| transactions across statements | a chain is one pass and one commit; two commits are two calls |
 
 ## Where it is used
 

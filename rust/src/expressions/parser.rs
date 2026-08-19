@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Accessor, ArithOp, CompareOp, Expr, Function, RECURSION_LIMIT};
+use super::{Accessor, ArithOp, CompareOp, Expr, Function, RECURSION_LIMIT, Statement};
 use crate::{DataType, Error, Result, Value};
 
 /// Parse one complete expression, refusing a trailing token.
@@ -150,6 +150,7 @@ enum Symbol {
     Dot,
     Colon,
     DoubleColon,
+    Semicolon,
 }
 
 impl Symbol {
@@ -175,6 +176,7 @@ impl Symbol {
             Self::Dot => ".",
             Self::Colon => ":",
             Self::DoubleColon => "::",
+            Self::Semicolon => ";",
         }
     }
 }
@@ -321,6 +323,7 @@ impl<'text> Parser<'text> {
                 ',' => (Symbol::Comma, 1),
                 '.' => (Symbol::Dot, 1),
                 ':' => (Symbol::Colon, 1),
+                ';' => (Symbol::Semicolon, 1),
                 _ => return None,
             })
         });
@@ -1351,4 +1354,294 @@ fn temporal_literal(keyword: &str, text: &str) -> std::result::Result<Value, Smo
     crate::generic::iso::parse_datetime(text)
         .map(|(count, unit)| Value::DateTime(count, unit))
         .map_err(|_| described("timestamp"))
+}
+
+/// Parse one statement, or a `;`-separated chain of them.
+///
+/// A chain is itself a statement, so a chain of chains is a chain - which is
+/// what makes "compose freely" cost nothing to say and nothing at run time.
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`] with the byte offset of the failure.
+pub(super) fn parse_statement(text: &str) -> Result<Statement> {
+    let mut parser = Parser {
+        text,
+        position: 0,
+        depth: 0,
+    };
+    let mut steps = Vec::new();
+    loop {
+        steps.push(parser.parse_one_statement()?);
+        // A trailing `;` ends the last statement rather than opening another.
+        let separated = parser.eat_symbol(Symbol::Semicolon)?;
+        parser.skip_trivia();
+        if !separated && parser.position < text.len() {
+            return Err(parser.error_at(
+                parser.position,
+                format_smolstr!(
+                    "expected ';' between statements, got {:?}",
+                    crate::text::elide_to(&text[parser.position..], 32)
+                ),
+            ));
+        }
+        if parser.position >= text.len() {
+            return Ok(Statement::chain(steps));
+        }
+        if !matches!(
+            parser.peek(Bracket::Identifier)?.0,
+            Token::Word(_) | Token::End
+        ) {
+            return Err(parser.error_at(
+                parser.position,
+                format_smolstr!(
+                    "expected ';' or the end of the statement, got {:?}",
+                    crate::text::elide_to(&text[parser.position..], 32)
+                ),
+            ));
+        }
+    }
+}
+
+impl Parser<'_> {
+    /// One statement, without its chain separator.
+    fn parse_one_statement(&mut self) -> Result<Statement> {
+        let at = {
+            self.skip_trivia();
+            self.position
+        };
+        let Token::Word(verb) = self.next(Bracket::Identifier)? else {
+            return Err(self.error_at(
+                at,
+                SmolStr::new_static(
+                    "expected a statement verb: SELECT, INSERT, UPDATE, DELETE, or ALTER",
+                ),
+            ));
+        };
+        if verb.eq_ignore_ascii_case("SELECT") {
+            return self.parse_select();
+        }
+        if verb.eq_ignore_ascii_case("DELETE") {
+            return self.parse_delete();
+        }
+        if verb.eq_ignore_ascii_case("UPDATE") {
+            return self.parse_update();
+        }
+        if verb.eq_ignore_ascii_case("INSERT") {
+            return self.parse_insert();
+        }
+        if verb.eq_ignore_ascii_case("ALTER") {
+            return self.parse_alter();
+        }
+        Err(self.error_at(
+            at,
+            crate::text::expected_got(
+                "one of SELECT, INSERT, UPDATE, DELETE, ALTER",
+                format_smolstr!("{verb:?}"),
+            ),
+        ))
+    }
+
+    /// The target a statement names, which the handle already answered.
+    ///
+    /// A handle *is* the `FROM` clause, so the target is accepted and checked
+    /// for shape rather than resolved: there is no catalog here to resolve it
+    /// against, and pretending otherwise would be a second addressing model.
+    fn parse_target(&mut self) -> Result<Option<SmolStr>> {
+        let saved = self.position;
+        if self.eat_symbol(Symbol::Dot)? {
+            return Ok(None);
+        }
+        match self.next(Bracket::Identifier)? {
+            Token::Quoted(name) => Ok(Some(name)),
+            Token::Word(word) if !is_reserved_word(&word) => Ok(Some(word)),
+            _ => {
+                self.position = saved;
+                Ok(None)
+            }
+        }
+    }
+
+    /// `SELECT <projection> [FROM .] [WHERE <expr>]`
+    fn parse_select(&mut self) -> Result<Statement> {
+        let selection = if self.eat_symbol(Symbol::Star)? {
+            super::Selection::everything()
+        } else {
+            let mut items = vec![self.parse_alias()?];
+            while self.eat_symbol(Symbol::Comma)? {
+                items.push(self.parse_alias()?);
+            }
+            super::Selection::from_exprs(items)
+        };
+        if self.eat_keyword("FROM")? {
+            self.parse_target()?;
+        }
+        let filter = self.parse_where()?;
+        Ok(Statement::Select { selection, filter })
+    }
+
+    /// `DELETE [FROM .] [WHERE <expr>]`
+    fn parse_delete(&mut self) -> Result<Statement> {
+        if self.eat_keyword("FROM")? {
+            self.parse_target()?;
+        }
+        Ok(Statement::Delete {
+            filter: self.parse_where()?,
+        })
+    }
+
+    /// `UPDATE . SET c = e [, ...] [WHERE <expr>]`
+    fn parse_update(&mut self) -> Result<Statement> {
+        self.parse_target()?;
+        self.expect_keyword("SET")?;
+        let mut assignments = Vec::new();
+        loop {
+            let column = self.parse_identifier()?;
+            self.expect_symbol(Symbol::Eq)?;
+            assignments.push((column, self.parse_or()?));
+            if !self.eat_symbol(Symbol::Comma)? {
+                break;
+            }
+        }
+        Ok(Statement::Update {
+            assignments: Arc::from(assignments),
+            filter: self.parse_where()?,
+        })
+    }
+
+    /// `INSERT INTO . [(a, b)] VALUES (…), (…)`
+    fn parse_insert(&mut self) -> Result<Statement> {
+        self.expect_keyword("INTO")?;
+        self.parse_target()?;
+        let mut columns = Vec::new();
+        // A parenthesized column list is optional; without one the values are
+        // positional, which is what a row already is.
+        let saved = self.position;
+        if self.eat_symbol(Symbol::OpenParen)? {
+            let mut named = Vec::new();
+            loop {
+                match self.parse_identifier() {
+                    Ok(name) => named.push(name),
+                    Err(_) => {
+                        self.position = saved;
+                        named.clear();
+                        break;
+                    }
+                }
+                if self.eat_symbol(Symbol::Comma)? {
+                    continue;
+                }
+                if self.eat_symbol(Symbol::CloseParen)? {
+                    columns = named;
+                } else {
+                    self.position = saved;
+                }
+                break;
+            }
+        }
+        self.expect_keyword("VALUES")?;
+        let mut rows = Vec::new();
+        loop {
+            self.expect_symbol(Symbol::OpenParen)?;
+            let mut values = Vec::new();
+            if !self.eat_symbol(Symbol::CloseParen)? {
+                loop {
+                    values.push(self.parse_or()?);
+                    if self.eat_symbol(Symbol::Comma)? {
+                        continue;
+                    }
+                    self.expect_symbol(Symbol::CloseParen)?;
+                    break;
+                }
+            }
+            rows.push(values);
+            if !self.eat_symbol(Symbol::Comma)? {
+                break;
+            }
+        }
+        Ok(Statement::Insert {
+            columns: Arc::from(columns),
+            rows: rows.into_iter().map(Arc::from).collect(),
+        })
+    }
+
+    /// `ALTER [TABLE .] ADD|DROP|RENAME|ALTER COLUMN …`
+    fn parse_alter(&mut self) -> Result<Statement> {
+        // `TABLE` is optional, and the target after it is the handle itself.
+        self.eat_keyword("TABLE")?;
+        self.parse_target()?;
+        let at = {
+            self.skip_trivia();
+            self.position
+        };
+        let Token::Word(action) = self.next(Bracket::Identifier)? else {
+            return Err(self.error_at(
+                at,
+                SmolStr::new_static("expected ADD, DROP, RENAME, or ALTER after ALTER TABLE"),
+            ));
+        };
+        // MySQL's `CHANGE`/`MODIFY` and Postgres's `ALTER` all name the same
+        // four actions; only the canonical spellings are emitted back out.
+        if action.eq_ignore_ascii_case("ADD") {
+            self.eat_keyword("COLUMN")?;
+            let name = self.parse_identifier()?;
+            let data_type = self.parse_data_type_run()?;
+            let mut default = None;
+            let mut computed = None;
+            if self.eat_keyword("DEFAULT")? {
+                default = Some(self.parse_or()?);
+            }
+            if self.eat_keyword("AS")? {
+                computed = Some(self.parse_or()?);
+            }
+            return Ok(Statement::AddColumn {
+                name,
+                data_type,
+                default,
+                computed,
+            });
+        }
+        if action.eq_ignore_ascii_case("DROP") {
+            self.eat_keyword("COLUMN")?;
+            return Ok(Statement::DropColumn {
+                name: self.parse_identifier()?,
+            });
+        }
+        if action.eq_ignore_ascii_case("RENAME") {
+            self.eat_keyword("COLUMN")?;
+            let from = self.parse_identifier()?;
+            self.expect_keyword("TO")?;
+            return Ok(Statement::RenameColumn {
+                from,
+                to: self.parse_identifier()?,
+            });
+        }
+        if action.eq_ignore_ascii_case("ALTER")
+            || action.eq_ignore_ascii_case("MODIFY")
+            || action.eq_ignore_ascii_case("CHANGE")
+        {
+            self.eat_keyword("COLUMN")?;
+            let name = self.parse_identifier()?;
+            self.eat_keyword("TYPE")?;
+            return Ok(Statement::AlterColumnType {
+                name,
+                data_type: self.parse_data_type_run()?,
+            });
+        }
+        Err(self.error_at(
+            at,
+            crate::text::expected_got(
+                "one of ADD, DROP, RENAME, ALTER",
+                format_smolstr!("{action:?}"),
+            ),
+        ))
+    }
+
+    /// `[WHERE <expr>]`
+    fn parse_where(&mut self) -> Result<Option<Expr>> {
+        if self.eat_keyword("WHERE")? {
+            return Ok(Some(self.parse_or()?));
+        }
+        Ok(None)
+    }
 }

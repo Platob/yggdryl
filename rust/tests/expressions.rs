@@ -14,3 +14,5 @@ mod matrix;
 mod optimizer;
 #[path = "expressions/parity.rs"]
 mod parity;
+#[path = "expressions/statements.rs"]
+mod statements;
