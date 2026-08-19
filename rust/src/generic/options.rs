@@ -428,7 +428,7 @@ impl RecordOptions {
         // Plain text reads and writes as lines: the projection is the
         // encoding, so a `.log` answers the record surface out of the box.
         if base == &MimeType::PLAIN_TEXT {
-            return Ok(Self::Text(Box::new(crate::text::TextOptions::new())));
+            return Ok(Self::Text(Box::default()));
         }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),

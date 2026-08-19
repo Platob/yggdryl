@@ -1457,7 +1457,7 @@ pub trait IOBase: Send {
     ///
     /// The extractor-first spelling of the record surface: text is a record
     /// encoding like any other, and [`Self::read_arrow_batch_reader`] under
-    /// [`RecordOptions::Text`](crate::generic::RecordOptions::Text) reaches
+    /// [`RecordOptions::Text`] reaches
     /// this very method - **not a fourth record method**. Decoding views
     /// (a [`Coded`] handle, [`Gzip`](crate::gzip::Gzip) and its siblings)
     /// override it to project a snapshot of the value they *present*, which
