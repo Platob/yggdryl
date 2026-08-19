@@ -92,6 +92,7 @@ cargo test --features "parquet iceberg" -p yggdryl --lib text::codec
 ```console
 python scripts/check_avro_interop.py
 python scripts/check_iceberg_interop.py
+python scripts/check_expression_interop.py
 ```
 
 The first exchanges Avro object containers with fastavro in both directions -
@@ -99,8 +100,23 @@ logical types included - and round-trips the same container through the
 `apache-avro` crate in a scratch project; both are checking tools of the
 script, never dependencies of the crate. The second exchanges whole Iceberg
 tables with PyIceberg in both directions, covering format versions 1, 2, and
-3 where PyIceberg can write them. Each driver fails when a half was skipped,
-so a skipped exchange can never read as a pass.
+3 where PyIceberg can write them.
+
+The third checks the [expression engine](expressions.md) against two outside
+implementations, because self-consistency proves nothing about a semantics: the
+three evaluators agreeing with *each other* is what the crate's own tests
+already assert, and all three could still be wrong together about what
+`venue <> 'XNAS'` does to a null. The Rust half writes one deliberately awkward
+corpus and, per predicate, the rows it selects and whether a file with given
+statistics may match; the driver asks PyArrow the same row questions over the
+same Parquet file and PyIceberg's own inclusive metrics evaluator the same
+pruning questions over the same numbers. A disagreement where this engine reads
+a file PyIceberg would skip is reported and allowed - that costs time, never
+correctness - while the other direction is a hard failure, because it is a lost
+row.
+
+Each driver fails when a half was skipped, so a skipped exchange can never read
+as a pass.
 
 The Iceberg module is also verified against Apache Spark, the format's
 reference implementation, over one shared Hadoop warehouse in both

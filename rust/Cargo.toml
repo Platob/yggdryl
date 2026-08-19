@@ -177,6 +177,13 @@ required-features = ["arrow"]
 name = "value_bounds"
 required-features = ["arrow"]
 
+# The expression exchange with an external implementation: the corpus and this
+# engine's answers, for PyArrow and PyIceberg to check. It needs Parquet, so it
+# is not compiled in a default build.
+[[test]]
+name = "expression_interop"
+required-features = ["parquet"]
+
 # The Iceberg exchange with an external implementation. It needs the table
 # format, which needs Parquet, so it is not compiled in a default build.
 [[test]]

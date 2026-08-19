@@ -365,7 +365,12 @@ meets all of these; a new media that cannot yet is not done:
   `scripts/check_iceberg_interop.py` + `rust/tests/iceberg_interop.rs` run
   the exchange with PyIceberg both directions and compare rows; the Rust half
   prints `SKIPPED` when the external table is absent (the driver fails on
-  that word), so a skipped half can never read as a pass.
+  that word), so a skipped half can never read as a pass. The same shape checks
+  a *semantics* rather than a wire:
+  `scripts/check_expression_interop.py` + `rust/tests/expression_interop.rs`
+  compare row selection against PyArrow and pruning decisions against
+  PyIceberg's inclusive metrics evaluator - a conservative disagreement (we read
+  a file they would skip) is reported, the other direction is a hard failure.
 
 ## Documentation organization
 
