@@ -1385,6 +1385,159 @@ fn negate_value(value: &crate::Value) -> Option<crate::Value> {
     })
 }
 
+/// Anything a call site may hand over where an expression is wanted.
+///
+/// Text *parses* here. That is the whole point of the trait: an `impl
+/// Into<Expression>` for `&str` would quietly make `"ccy = 'EUR'"` a string
+/// literal - a perfectly valid expression that filters nothing and reports no
+/// error - and a filter that silently matches everything is the worst failure
+/// this module could have. Parsing is fallible, so the conversion is fallible,
+/// and a typo arrives as a byte-positioned parse error at the call.
+pub trait IntoExpression {
+    /// Produce the expression this value stands for.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the value is text that is not an expression.
+    fn into_expression(self) -> Result<Expression>;
+}
+
+impl IntoExpression for Expression {
+    fn into_expression(self) -> Result<Self> {
+        Ok(self)
+    }
+}
+
+impl IntoExpression for &Expression {
+    fn into_expression(self) -> Result<Expression> {
+        Ok(self.clone())
+    }
+}
+
+impl IntoExpression for &str {
+    fn into_expression(self) -> Result<Expression> {
+        self.parse()
+    }
+}
+
+impl IntoExpression for &String {
+    fn into_expression(self) -> Result<Expression> {
+        self.parse()
+    }
+}
+
+impl IntoExpression for String {
+    fn into_expression(self) -> Result<Expression> {
+        self.parse()
+    }
+}
+
+impl Expression {
+    /// The predicate one column-equals-value pair spells about the *rows*.
+    ///
+    /// This is the sugar half of "one representation": the `(&str, &str)`
+    /// pairs every read option and every table method already take build an
+    /// expression here and are answered by the one evaluator, rather than by a
+    /// second comparison written per call site.
+    ///
+    /// The value is text because a directory name is text, so it is read
+    /// through the column's own datatype - the same reading a partitioned read
+    /// gives the directory - and read *safely*: a text the type cannot hold
+    /// becomes null, which makes the pair match nothing rather than fail a
+    /// whole scan. The literal folds at [`bind`](Self::bind), so the cast is
+    /// paid once and never per row.
+    ///
+    /// The text `null` names the absence of a value, exactly as a partition
+    /// directory spells it, so the pair `("price", "null")` becomes
+    /// `price is null` rather than a comparison against four letters.
+    #[must_use]
+    pub fn partition_equals(column: &str, value: &str, data_type: &DataType) -> Self {
+        let reference = Self::column(column);
+        if value == crate::io::partition::NULL_PARTITION {
+            return reference.is_null();
+        }
+        reference.eq(Self::literal(value).try_cast(data_type.clone()))
+    }
+
+    /// The predicate one column-equals-value pair spells about the *holder*.
+    ///
+    /// The same pair, asked of the path rather than of the rows. A listing can
+    /// answer this one without opening anything, which is why the two
+    /// spellings are kept apart instead of one guessing which was meant.
+    #[must_use]
+    pub fn holder_partition_equals(column: &str, value: &str) -> Self {
+        Self::attribute(Selector::Partition(column.into())).eq(Self::literal(value))
+    }
+
+    /// Conjoin every pair as a predicate about the rows of a schema.
+    ///
+    /// A pair naming a column the schema does not declare is left out rather
+    /// than refused: on a partitioned read the leaf's own path already
+    /// answered for it, and a filter that has been answered elsewhere is not
+    /// an error.
+    #[must_use]
+    pub fn all_partitions_equal<C: AsRef<str>, V: AsRef<str>>(
+        schema: &crate::Field,
+        pairs: impl IntoIterator<Item = (C, V)>,
+    ) -> Self {
+        Self::all(pairs.into_iter().filter_map(|(column, value)| {
+            schema.get_field_by_name(column.as_ref()).map(|field| {
+                Self::partition_equals(column.as_ref(), value.as_ref(), field.data_type())
+            })
+        }))
+    }
+
+    /// Conjoin every pair as a predicate about the holder.
+    #[must_use]
+    pub fn all_holder_partitions_equal<C: AsRef<str>, V: AsRef<str>>(
+        pairs: impl IntoIterator<Item = (C, V)>,
+    ) -> Self {
+        Self::all(
+            pairs.into_iter().map(|(column, value)| {
+                Self::holder_partition_equals(column.as_ref(), value.as_ref())
+            }),
+        )
+    }
+
+    /// The predicate that one holder's path *carries* a partition value.
+    ///
+    /// The difference from [`Self::holder_partition_equals`] is what happens
+    /// when the path does not spell the column at all, and it is the whole
+    /// difference between pruning and selecting. Pruning must keep what it
+    /// cannot rule out, so a missing partition leaves the equality unknown and
+    /// the file is read anyway. Selecting must return only what it can point
+    /// at, so a missing partition has to be a `false`. The two spellings are
+    /// kept apart rather than one of them guessing which was meant.
+    #[must_use]
+    pub fn holder_carries_partition(column: &str, value: &str) -> Self {
+        let attribute = Self::attribute(Selector::Partition(column.into()));
+        attribute
+            .clone()
+            .is_not_null()
+            .and(attribute.eq(Self::literal(value)))
+    }
+
+    /// Conjoin every pair as a predicate that the holder carries it.
+    #[must_use]
+    pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>(
+        pairs: impl IntoIterator<Item = (C, V)>,
+    ) -> Self {
+        Self::all(
+            pairs.into_iter().map(|(column, value)| {
+                Self::holder_carries_partition(column.as_ref(), value.as_ref())
+            }),
+        )
+    }
+}
+
+impl TryFrom<&str> for Expression {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        value.parse()
+    }
+}
+
 /// Build a column reference. The free spelling of [`Expression::column`].
 #[must_use]
 pub fn col(name: impl Into<SmolStr>) -> Expression {

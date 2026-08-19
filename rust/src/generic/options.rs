@@ -112,6 +112,36 @@ pub trait IORecordOptions: Sized {
     /// Set the partition equalities a read is pruned and filtered by.
     fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>);
 
+    /// The predicate these options' partition equalities spell about a *path*.
+    ///
+    /// One expression, built from the pairs, asked of the holder rather than
+    /// of the rows: `&holder.partition['year'] = '2024'`. This is what prunes
+    /// a listing before anything is opened, and it is the same predicate type
+    /// the rows are filtered with - the pairs are sugar over one
+    /// representation, not a second filter.
+    fn partition_filter(&self) -> crate::Expression {
+        crate::Expression::all_holder_partitions_equal(
+            self.filter_partitions()
+                .iter()
+                .map(|(column, value)| (column, value)),
+        )
+    }
+
+    /// The predicate these options' partition equalities spell about *rows*.
+    ///
+    /// The same pairs, read through the schema's own datatypes, which is what
+    /// makes `("price", "20")` an integer comparison on an `int32` column. A
+    /// pair naming a column the schema does not declare is left out: the path
+    /// answered for it already.
+    fn partition_predicate(&self, schema: &crate::Field) -> crate::Expression {
+        crate::Expression::all_partitions_equal(
+            schema,
+            self.filter_partitions()
+                .iter()
+                .map(|(column, value)| (column, value)),
+        )
+    }
+
     /// Borrow the declared schema, or say that one is required.
     ///
     /// # Errors
