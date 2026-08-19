@@ -13,9 +13,11 @@ iterator** instead of a collected `Vec`, so a folder or a catalog larger than
 memory can be listed at all; and **applying an expression becomes one trait the
 target implements**, so a new target never means another method on `Bound`.
 Record options gain `max_row_size` and `max_byte_size`, honored in the one
-place every media already routes through, and `IOBase::child_by` is renamed
-`child_by_path`. Nothing below works well until this is done, so it lands
-first.
+place every media already routes through; `IOBase::child_by` is renamed
+`child_by_path`; and **`Variant`, `Geometry`, and `Geography` become
+first-class `DataType` variants**, implemented through `datatype`, `field`,
+`generic::value`, the text codecs, Arrow, Parquet, and both bindings. Nothing
+below works well until this is done, so it lands first.
 
 **Part two** (section 2) makes Iceberg format version 3 fully readable and
 writable - deletion vectors over a new `rust/src/puffin/`, row lineage,
@@ -171,8 +173,9 @@ The last two are workspace-wide, not catalog-local: the existence audit of 1.4
 and the listing sweep of 1.5 touch `io`, `local`, `arrowfs`, and `generic` as
 much as `iceberg`. Three more shape changes belong in the same pass, because
 every part below is written against them and none of them is worth doing twice:
-a mechanical rename (1.6), the record-option limits (1.7), and one trait for
-applying an expression (1.8).
+a mechanical rename (1.6), the record-option limits (1.7), one trait for
+applying an expression (1.8), and three new datatypes (1.9) that parts two and
+four would otherwise each fake in their own way.
 
 Fix all of it first, in its own commits, before anything new leans on it. This
 section is complete work on its own if the task stops here (`AGENTS.md:9`).
@@ -511,7 +514,189 @@ Rules for the refactor, which are what make it worth doing:
   Measure it (`AGENTS.md:789`).
 - Land it as its own commit, before parts two through four use it.
 
-### 1.9 Tests, benchmarks, bindings, and docs for part one
+### 1.9 Three new datatypes, implemented everywhere a datatype reaches
+
+`Variant`, `Geometry`, and `Geography` become **first-class `DataType`
+variants**, not `Binary` columns wearing metadata. Iceberg v3 has them, Parquet
+has them, Doris has a variant, and a workspace whose whole premise is that
+`DataType` and `Field` are the domain model cannot represent three types its
+own formats declare.
+
+This section supersedes the mapping sketched in 2.4: v3's `variant`,
+`geometry`, and `geography` map to **these datatypes**, and nothing anywhere
+maps them to `Binary` plus a property.
+
+#### The variants
+
+```rust
+Variant,
+Geometry(Arc<GeospatialType>),
+Geography(Arc<GeospatialType>),
+```
+
+`Variant` takes no parameters: shredding is a physical layout, not part of the
+logical type. `GeospatialType` is one shared value beside `MapType`,
+`DictionaryType`, and `RunEndEncodedType` -
+
+```rust
+pub struct GeospatialType {
+    // None means the default CRS, "OGC:CRS84".
+    crs: Option<SmolStr>,
+    // None for Geometry; Geography defaults to Spherical.
+    algorithm: Option<EdgeAlgorithm>,
+}
+```
+
+- validated at construction: `Geometry` with an algorithm is refused by name,
+  and `Geography` fills `Spherical` when none is given;
+- `EdgeAlgorithm` is a **shared enum in `rust/src/enums/`** beside `TimeUnit`
+  and `UnionMode` (`AGENTS.md:17` - reuse them, no local copies), with
+  `Spherical`, `Vincenty`, `Thomas`, `Andoyer`, `Karney`, a `FromStr`, and a
+  canonical `Display`.
+
+#### The name collision, resolved before a line is written
+
+`DataType::variant(fields)` already exists as **dense-union sugar**
+(`datatype/nested.rs:529`, `AGENTS.md:708`), and `VariantField` is already a
+published typed marker for it (`.api-bindings.txt`). Decide once, at the top of
+the work, and record the decision in `docs/datatype.md`:
+
+- **Grammar**: bare `variant` is the new datatype; `variant(<fields>)` keeps
+  meaning the dense union. The parenthesis disambiguates, deterministically, in
+  one branch of the parser. The union spelling never round-trips anyway - its
+  canonical display is `union(dense, …)` - so nothing that reads canonical text
+  is affected.
+- **Typed marker**: the recommendation is to **rename the existing marker to
+  `DenseUnionField`**, which is what it has always described, and give
+  `VariantField` to the new type. That is a breaking change to a published
+  name: make it in its own commit and say so. If the reviewer prefers to keep
+  `VariantField` on the union, the new marker is `VariantValueField` - either
+  is fine, but the choice is written down, not left to the next reader.
+
+#### The full surface — this is what "generic" means here
+
+A new `DataType` variant is not three lines; it is every place a datatype is
+answered. Work the list, and treat a compiler error from a non-exhaustive match
+as the checklist:
+
+**`rust/src/datatype/`** - the variants and their constructors
+(`DataType::variant()`, `geometry(crs)`, `geography(crs, algorithm)`);
+canonical `Display` and the `FromStr` branch, recursion-limited and
+byte-positioned like every other (`AGENTS.md:708`); serde; `is_nested`
+(`Variant` is - it holds a tree; the geospatial pair is not);
+`default_value`; and the **compatibility matrix row for every target** in
+`datatype/compatibility.rs` - Arrow, Spark, Polars, Pandas, Iceberg, and the
+Doris target of 4.5 - each row saying widen, refuse, or pass unchanged.
+
+**`rust/src/enums/`** - three `DataTypeId` entries; `EdgeAlgorithm`; and two
+new `DataTypeKind` values, `Variant` and `Geospatial`, because `kind()`
+answering `Binary` for a geometry is the lie this section exists to remove.
+Adding a kind breaks every exhaustive match on it, which is the point: each one
+is a place that has to decide.
+
+**`rust/src/field/`** - the typed markers and their `*Field` aliases;
+`field/cast/plan.rs` rules (a variant casts to and from any type by encoding or
+decoding; a geometry casts to `Binary` losslessly and to `Utf8` as WKT, and
+**never** silently to a different CRS - a CRS change is a refusal naming both);
+`field/value.rs` validation and canonicalization; `field/arrow.rs`;
+`field/serde.rs`; `field/diff.rs`.
+
+**`rust/src/generic/value.rs`** - one new variant, `Geospatial(Arc<[u8]>)`
+holding WKB, with `Ord`, `Hash`, and a `Display` that renders **WKT**.
+
+**`Value::Variant` is deliberately not added**, and the module docs say why in
+one sentence: a variant value *is* a `Value` - a self-describing tree - so the
+binary form is an *encoding* of the one value model, not a second value model.
+`rust/src/variant/` (2.4) owns `Value` ⇄ Variant binary in both directions, and
+a `Variant` field validates any `Value`. One implementation, three callers:
+Iceberg v3, Parquet's variant logical type, and Doris.
+
+**`rust/src/text/`, `json/`, `yaml/`, `toml/`** - `Value::Geospatial` is
+outside JSON's model, so it needs its `$yggdryl` envelope payload, its
+`!yggdryl/*` tag, its TOML spelling, the escaping that keeps user data from
+being mistaken for it, and round-trip tests in all three
+(`AGENTS.md:663`). A new `Value` variant without an envelope is an incomplete
+one.
+
+**`rust/src/arrow/`** - `schema_from_field`, `scalar_array`, `scalar_value`,
+and the C Data Interface path. The mappings, from the specs:
+
+| datatype | Arrow | note |
+| --- | --- | --- |
+| `Variant` | the canonical extension type **`arrow.parquet.variant`**: a Struct with a non-nullable `metadata` field (Binary, LargeBinary, or BinaryView) and at least one of `value` / `typed_value`; extension metadata is the empty string | canonical, so no choice to make |
+| `Geometry` / `Geography` | **`geoarrow.wkb`** over Binary, LargeBinary, or BinaryView, extension metadata carrying `crs` and, for geography, the edge algorithm | **GeoArrow is a community extension and Arrow's own documentation says the specification is not finalized** - say that in the docs, and record the choice as revisitable rather than settled |
+
+Check what `arrow-schema` 59.2.0 exposes for extension types before writing
+anything: if it has a typed API, use it; if not, the extension name and
+metadata ride as the `ARROW:extension:name` and `ARROW:extension:metadata`
+field-metadata keys, which is the wire form either way. This is the **first
+real extension type the workspace owns**, so the compatibility walker's current
+rule - reject extension storage rather than relabeling (`AGENTS.md:789`) - has
+to be revisited in the same change and its new wording stated.
+
+**`rust/src/parquet/`** - the `GEOMETRY` and `GEOGRAPHY` logical types over
+`BYTE_ARRAY` holding WKB, `crs` defaulting to `"OGC:CRS84"`, `algorithm`
+defaulting to `SPHERICAL`; and the `VARIANT` group of required `metadata` and
+`value` binaries. One rule matters more than the rest: **Parquet writers must
+not write min/max statistics for geometry or geography**, and readers must
+ignore any they find. Bounds come from `GeospatialStatistics` - a bounding box
+plus the geometry types present - instead. That lands directly on the
+workspace's own statistics rule (`AGENTS.md:357`, bounds only where the
+encodings agree): a geospatial column emits counts and a bbox, never a min/max.
+
+**The bindings** - `DataType.variant()`, `.geometry(crs)`, `.geography(crs,
+algorithm)` and the `fields` factories in both languages, `_native.pyi`,
+`index.d.ts`, and the type tests. Same argument names and order across the
+three (`AGENTS.md:491`).
+
+#### One WKB implementation, serving four callers
+
+Geospatial support needs bytes understood, not just carried, and it is needed
+in four places at once: `Display` as WKT, the cast to `Utf8`, the Parquet
+bounding box, and Iceberg v3's geospatial bounds. Write **one** WKB reader -
+all seven geometry types, all four dimensionalities (XY, XYZ, XYM, XYZM), both
+byte orders, nested collections - in `rust/src/generic/` beside the other value
+machinery, and have all four call it. No dependency: WKB is a length-prefixed
+binary format and this is a few hundred lines.
+
+A WKT writer rides beside it. A WKT *parser* is optional - say which way you
+went and why, rather than half-adding one.
+
+#### Tests
+
+- Every new variant: `Display` round-trips through `FromStr`; serde round-trips;
+  `Eq`/`Ord`/`Hash` are consistent; `default_value` is what the docs claim.
+- Grammar: `variant` and `variant(a: int, b: string)` parse to *different*
+  types, asserted side by side in one test so the disambiguation can never be
+  broken silently; `geometry`, `geometry('EPSG:4326')`,
+  `geography('OGC:CRS84', 'vincenty')`, each spelling, plus adversarial ones -
+  an unknown algorithm, an unterminated CRS string, a `Geometry` given an
+  algorithm.
+- WKB: every geometry type and dimensionality, both byte orders, empty
+  geometries, a nested `GeometryCollection`, a truncated buffer refused by
+  byte position, and a bounding box asserted against hand-computed values.
+- Arrow: schema round-trips through `schema_from_field` and back, and through
+  the C Data Interface, with the extension name and metadata surviving both.
+- Parquet: a file written and read back with each type, and the assertion that
+  **no min/max statistic was written** for the geospatial columns.
+- Casts: variant to and from each scalar family; geometry to `Binary` and to
+  WKT; a CRS-changing cast refused by name.
+- Envelopes: `Value::Geospatial` round-trips through JSON, YAML, and TOML, and
+  a user mapping shaped like the envelope is escaped rather than mistaken for
+  one.
+- Compatibility: `to_scheme_compat` for every target, asserting the widening or
+  the refusal each matrix row promises.
+
+#### Benchmarks and docs
+
+`rust/benchmarks/datatype.rs` gains the three types in its parse and display
+groups, so the grammar's cost stays comparable; a new `geospatial` group
+measures WKB decode and bbox against payload size. `docs/datatype.md`,
+`docs/field.md`, and `docs/generic.md` gain them in Rust → Python → JavaScript
+tabs, with the collision decision, the GeoArrow caveat, and the
+`Value::Variant`-is-absent sentence each stated once where a reader will look.
+
+### 1.10 Tests, benchmarks, bindings, and docs for part one
 
 - **Tests** (`iceberg/catalog/tests.rs`): the cascade to depth; a dotted name
   and its cascaded form returning equal values; a table created into three
@@ -583,8 +768,12 @@ listing a folder of a hundred thousand entries and taking three costs three
 entries' worth of backend calls; a read with `max_row_size = 0` returns an
 empty reader carrying the right schema on every media, and one with
 `max_row_size = 10` stops decoding after ten rows; a new expression target is
-added without touching `expression/`; and the counting tests show fewer backend
-calls than before, with the numbers in the commit message.
+added without touching `expression/`; a schema carrying a `variant`, a
+`geometry('EPSG:4326')`, and a `geography('OGC:CRS84', 'vincenty')` column
+parses, displays, round-trips through Arrow and the C Data Interface, validates
+rows, casts, serializes to all three text formats, and is constructible from
+Python and JavaScript; and the counting tests show fewer backend calls than
+before, with the numbers in the commit message.
 
 ## 2. Part two: Iceberg v3, read and written in full, on the mechanisms that already exist
 
@@ -620,8 +809,8 @@ something was re-implemented.**
 | Equality deletes | `Expression` - an equality delete file *is* a predicate | nothing |
 | Position deletes (v2 read) | `rust/src/parquet/` through the three record methods | nothing |
 | Row lineage | `Field` reserved ids, `io/partition.rs`'s inherited-column precedent, the existing retrying commit gate | the id assignment arithmetic |
-| `variant` | the one shared `Value` tree and `TypedValue` | the Parquet Variant binary encoding, once, for three callers |
-| `geometry` / `geography` | `DataType::Binary` plus `iceberg:` protocol-view properties, the existing bounds extraction | WKB bounding-box computation |
+| `variant` | `DataType::Variant` and the one shared `Value` tree, both from 1.9 | the Parquet Variant binary encoding, once, for three callers |
+| `geometry` / `geography` | `DataType::Geometry` / `Geography` and the WKB reader, both from 1.9 | nothing - the bounds call the reader part one wrote |
 | `timestamp_ns` / `timestamptz_ns` | `TimeUnit` already owns nanoseconds; already mapped | nothing - finish the statistics and partition paths |
 | `unknown` | `DataType::Null` | nothing - enforce the rules |
 | Column defaults | `Field::default_value` and `IORecordOptions::cast_arrow_batch`'s completion step | nothing - one wire |
@@ -721,23 +910,31 @@ maximum position.
 
 ### 2.4 The v3 types, each on a mechanism that exists
 
-**`variant` - name the collision before writing a line.** `DataType::variant`
-in this workspace is dense-union sugar (`datatype/nested.rs:529`,
-`AGENTS.md:708`) and has nothing whatever to do with the Iceberg/Parquet
-VARIANT binary encoding. Do not overload it and do not rename it. The Iceberg
-variant is one *encoding* of the shared `Value` tree, so it lands as
-`rust/src/variant/`: `Value` ⇄ the Parquet Variant binary form (metadata buffer
-plus value buffer). **One implementation, three callers** - Iceberg v3 columns,
-Parquet's variant logical type, and the Doris `VARIANT` of section 4 - which is
-precisely the rule this part is written under. On the Arrow side it is `Binary`
-(or the two-field struct Parquet spells) carrying `iceberg:` metadata that
-names it; never a new `DataType` variant, because the value model already has
-one and it is `Value`.
+**`variant`, `geometry(C)`, and `geography(C, A)` are already datatypes by the
+time this part runs** - 1.9 adds `DataType::Variant`, `DataType::Geometry`, and
+`DataType::Geography` as first-class variants, with the `variant`-versus-union
+collision resolved, the Arrow extension mapping settled, and one WKB reader
+serving every caller. So the v3 work here is only the *Iceberg* half:
 
-**`geometry(C)` / `geography(C, A)`** are `Binary` holding WKB, with the CRS
-and the edge algorithm in `iceberg:` protocol-view properties. Their bounds are
-the spec's geospatial bounding box, computed from the WKB in the module that
-already extracts bounds - not in a new one.
+- the `PrimitiveType` entries and their grammar in `iceberg/types.rs`, mapping
+  straight to those datatypes and to nothing else;
+- the single-value serialization each one uses in `iceberg/value.rs`;
+- their bounds in `iceberg/statistics.rs` - the geospatial bounding box, from
+  the WKB reader 1.9 already wrote, and never a min/max
+  (`AGENTS.md:357`: bounds only where the encodings agree, and Parquet forbids
+  min/max on these);
+- `to_scheme_compat(&Scheme::ICEBERG)` rows for all three.
+
+If this section needs a new value representation, a second WKB reader, or a
+`Binary` column wearing an `iceberg:` property, part one was left unfinished -
+go back and finish it rather than working around it here.
+
+The `rust/src/variant/` encoder is the one piece that belongs to neither part
+cleanly: 1.9 declares the datatype and states that a variant value *is* a
+`Value`, and this part is where the `Value` ⇄ Variant binary encoding is
+actually written, because Iceberg is its first reader. **One implementation,
+three callers** - Iceberg v3 columns, Parquet's variant logical type, and the
+Doris `VARIANT` of section 4.
 
 **`timestamp_ns` / `timestamptz_ns`** are already parsed and already mapped
 (`types.rs:161`). What is missing is the rest of the path: single-value
@@ -1202,7 +1399,7 @@ sentence:
 | `TIME(p)` | `Time64(Micro)` | read-only: Doris 4.1 will not store a `TIME` column. Refuse it on the write path, naming the version. |
 | `CHAR(M)` / `VARCHAR(M)` | `Utf8` | `M` is in **bytes**, not characters. A declared length that a UTF-8 payload can exceed is a real failure mode: carry `M` in `doris:length` and validate on the write path. |
 | `STRING` | `Utf8` / `LargeUtf8` | the 1 MiB default is a Doris config, not a format limit; name the config key. |
-| `VARIANT` | `Utf8` (JSON text) or the template's `Struct` | with a template, the projection is exact and typed; without one, Doris infers - integers become `BIGINT`, decimals become `DOUBLE`, a path with mixed types is promoted to `JSONB`. Say that; do not pretend inference is stable. |
+| `VARIANT` | `DataType::Variant` (1.9), or the template's `Struct` when one is declared | with a template, the projection is exact and typed; without one, Doris infers - integers become `BIGINT`, decimals become `DOUBLE`, a path with mixed types is promoted to `JSONB`. Say that; do not pretend inference is stable. Doris's variant and the Parquet/Iceberg variant are not the same binary encoding: cross through `Value`, which is what `rust/src/variant/` is for, and never bytes-to-bytes. |
 | `BITMAP`/`HLL`/`QUANTILE_STATE`/`AGG_STATE` | `Binary` | bytes preserved, semantics not. |
 | `IPV4` / `IPV6` | `FixedSizeBinary(4)` / `FixedSizeBinary(16)` | with `doris:ip` recording which, so the reverse mapping is exact. |
 | `ARRAY<T>` | `List(T)` | Doris arrays are always nullable-element; a non-nullable Arrow list element is widened and the widening is reported. |
@@ -1414,8 +1611,11 @@ Behind `#[cfg(all(feature = "doris", feature = "iceberg"))]`:
 ## 5. Order of work (`AGENTS.md:9` — Rust first, fully)
 
 **Phase 0** — section 1: the catalog hierarchy, the existence audit, the
-listing sweep, the rename, the record-option limits, and the expression trait.
-Rust then both bindings then docs, landed and green.
+listing sweep, the rename, the record-option limits, the expression trait, and
+the three new datatypes. Rust then both bindings then docs, landed and green.
+Do the datatypes last within the phase and in their own commits - they touch
+the most files, and every compiler error from a non-exhaustive match is a place
+that has to decide something.
 → **Phase 1** — section 2: the delete path first, then Puffin, then the v3
 types, lineage, defaults, and transforms, with the PyIceberg v3 interop green.
 → **Phase 2** — section 3: `IOBase::remove` first, then `optimize` step by
