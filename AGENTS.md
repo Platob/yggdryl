@@ -192,6 +192,88 @@ layer compiling annotations into native values.
   compressed via `IOBase::codec`. Parquet compresses internally, so an outer
   coding on it is rejected, not double-compressed.
 
+## Existence and creation contract
+
+Every resource this workspace addresses - a file, a folder, a handle, a
+partition, a namespace, a table, a catalog - follows one rule: **assume it is
+there, act, and let the failure be the answer.** A probe before the act is
+refused everywhere, at every layer, in every language.
+
+- **Never pre-check.** No `exists` before a read, no `is_dir` before a listing,
+  no `contains` before a `get`, no `mkdir` before a write, no "ensure",
+  "prepare", or "init" step of any kind. A probe costs a second round trip, and
+  it *lies*: the answer is stale the instant it returns, so the act still has
+  to handle absence and the check bought nothing but a race. One attempt, one
+  answer.
+- **Creation is a consequence of a write, never a step before it.** Handles are
+  already lazy this way (`pwrite`, `truncate`, `reserve` make the resource and
+  its parents on first use); every higher resource inherits it. A table's first
+  metadata document brings its namespace folders into being; a partitioned
+  write brings its directories into being. Nothing walks an ancestry to create
+  it in advance, and no operation has a "make sure the parent is there" phase.
+- **Absence is a typed, distinguishable failure.** EAFP is only possible when
+  the error can be branched on, so absence and conflict are typed variants with
+  predicates - never a message a caller has to match. A backend that reports
+  absence its own way is normalized into them at its boundary, once.
+- **The absence path repairs, then retries the original act exactly once.** A
+  second absence is a real error, reported as it is: retrying past one means a
+  racing deleter can spin the call forever. Whatever the repair created is
+  named in the error when the retry still fails, so the caller can see what was
+  and was not done.
+- **`create` refuses an existing resource from the create, not from a probe.**
+  The conflict is what the attempt returns; `open_or_create` is that same
+  attempt with the conflict absorbed, and `get` is that same attempt with
+  absence raised. Three spellings, one round trip each, one code path.
+- **An existence question a caller *asked* is an answer, not a guard.**
+  `exists`, `is_dir`, `is_file`, `contains`, `has_*` are public because a
+  caller may genuinely want to know. They are never called by our own code on
+  the way to doing something else, and a review finding one there treats it as
+  a bug.
+- **Say what storage cannot promise.** `IOBase` has no compare-and-swap, so two
+  creators can both believe they won. Concurrent creation of the same resource
+  either converges (both see the same value) or raises the typed conflict for
+  one of them; it never corrupts and never silently picks. Wherever this
+  surfaces, the sentence appears beside it.
+
+## Listing and iteration contract
+
+A listing says what is there; it must never require holding all of it. The
+record surface already refuses a `Vec` of batches because a shape requiring
+materialization cannot describe a resource larger than memory. The same
+argument governs entries, and for the same reason.
+
+- **Every listing is a lazy iterator, never a collected `Vec`.**
+  `IOBase::ls`, `glob`, `children_where`; a catalog's namespaces and tables; a
+  table's data files; a manifest's entries; a plan's files - each yields one at
+  a time. A caller wanting a vector writes `.collect()`; the API never decides
+  that for them, and a folder with a million leaves is listed the same way as
+  one with three.
+- **The item is a `Result`, and the iterator is fused after the first error.**
+  A listing fails *at* the failing entry, naming it, without discarding what it
+  already yielded and without looping forever afterwards.
+- **Laziness is real, and whatever is held says what bounds it.** A recursive
+  walk holds its frontier, not its result; a glob descends fixed prefixes and
+  lists only what survives them; a scan yields files as manifests are read. A
+  held buffer with no stated bound is the bug this contract prevents.
+- **Order is deterministic and documented.** The same listing over the same
+  state yields the same sequence.
+- **A report of what an operation just did may be owned**, because the
+  operation bounds it: the snapshot ids an expiry removed, the counts a
+  compaction reports. So may anything bounded by construction, like the
+  partition pairs read off one URL path. The rule is the distinction:
+  *unbounded by the resource → iterator; bounded by the act, or already in
+  hand → owned.*
+- **An object-safe trait returns one named iterator type**, not `impl
+  Iterator` and not an ad-hoc `Box<dyn Iterator<..>>` in a public signature, so
+  `dyn` keeps working and a binding can name what it wraps. One such type per
+  item kind, no more.
+- **Bindings expose the language's own lazy protocol** - Python iterators and
+  generators, JavaScript iterables and `for...of` - and never collect on the
+  way across the boundary. A binding that must collect says why, in the place
+  it does it.
+- **Benchmark time to first entry, not only the full drain.** A benchmark that
+  measures only the drain hides the exact property this contract exists for.
+
 ## Media implementation standard
 
 Every record encoding (media) implementation - `Ipc`, `Parquet`, the next one -
