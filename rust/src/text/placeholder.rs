@@ -87,8 +87,8 @@ const OPEN: &[u8; 2] = b"{{";
 ///     .with_variable("PORT", Value::I64(8080));
 /// let loading = Loading::new().with_placeholders(placeholders);
 ///
-/// let document = r#"{"path": "{{ ROOT }}/app", "port": "{{ PORT }}"}"#;
-/// let value = yggdryl::text::from_str_with(document, Format::Json, &loading)?;
+/// let document = "path: \"{{ ROOT }}/app\"\nport: \"{{ PORT }}\"\n";
+/// let value = yggdryl::text::from_str_with(document, Format::Yaml, &loading)?;
 ///
 /// // Embedded: textual, and the result is a string.
 /// assert_eq!(value.get_key_str("path").and_then(Value::as_str), Some("/var/log/app"));

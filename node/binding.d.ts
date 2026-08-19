@@ -716,6 +716,15 @@ export interface CodecOptions {
   format?: SingleCodecFormat
   /** Maximum recursive container depth in the inclusive range 1..48. */
   maxDepth?: number
+}
+
+/**
+ * The options of a format with `{{ }}` placeholder support: YAML and TOML.
+ *
+ * JSON is a data interchange format and refuses the pair by name, which is
+ * why its methods take plain {@link CodecOptions}.
+ */
+export interface TemplateCodecOptions extends CodecOptions {
   /**
    * Resolve Jinja-style `{{ NAME }}` placeholders from this mapping.
    *
@@ -769,17 +778,17 @@ export type CodecSyncDestination = string | number | NodeURL
 export type CodecDestination = CodecSyncDestination | CodecWritable
 
 /** One-document byte codec. Caller-owned streams are never closed. */
-export interface SingleDocumentCodec {
-  loads<T = unknown>(content: CodecContent, options?: CodecOptions): T
-  load<T = unknown>(source: CodecReadable, options?: CodecOptions): Promise<T>
-  load<T = unknown>(source: CodecSyncSource, options?: CodecOptions): T
+export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
+  loads<T = unknown>(content: CodecContent, options?: O): T
+  load<T = unknown>(source: CodecReadable, options?: O): Promise<T>
+  load<T = unknown>(source: CodecSyncSource, options?: O): T
   dumps(value: unknown, options?: CodecOptions): Buffer
   dump(value: unknown, options?: CodecOptions): Buffer
   dump(value: unknown, destination: CodecWritable, options?: CodecOptions): Promise<void>
   dump(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
   loadStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
-    options?: CodecOptions,
+    options?: O,
   ): Promise<T>
   dumpStream(
     value: unknown,
@@ -789,7 +798,8 @@ export interface SingleDocumentCodec {
 }
 
 /** One-document operations plus JSON Lines/YAML collection operations. */
-export interface StructuredCodec extends SingleDocumentCodec {
+export interface StructuredCodec<O extends CodecOptions = CodecOptions>
+  extends SingleDocumentCodec<O> {
   loadsAll<T = unknown>(content: CodecContent, options?: CodecOptions): T[]
   loadAll<T = unknown>(source: CodecReadable, options?: CodecOptions): AsyncIterable<T>
   loadAll<T = unknown>(source: CodecSyncSource, options?: CodecOptions): T[]
@@ -817,9 +827,9 @@ export interface StructuredCodec extends SingleDocumentCodec {
 
 export interface GenericCodec {
   from<T = unknown>(source: CodecReadable, options: JsonLinesCodecOptions): AsyncIterable<T>
-  from<T = unknown>(source: CodecReadable, options?: CodecOptions): Promise<T>
+  from<T = unknown>(source: CodecReadable, options?: TemplateCodecOptions): Promise<T>
   from<T = unknown>(source: CodecSyncSource, options: JsonLinesCodecOptions): T[]
-  from<T = unknown>(source: CodecSyncSource, options?: CodecOptions): T
+  from<T = unknown>(source: CodecSyncSource, options?: TemplateCodecOptions): T
   into(
     values: Iterable<unknown>,
     options: JsonLinesCodecOptions,
@@ -848,7 +858,7 @@ export interface GenericCodec {
   ): AsyncIterable<T>
   fromStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
-    options?: CodecOptions,
+    options?: TemplateCodecOptions,
   ): Promise<T>
   intoStream(
     values: Iterable<unknown> | AsyncIterable<unknown>,
@@ -865,9 +875,9 @@ export interface GenericCodec {
 /** Byte-first JSON codec; multi-value methods use JSON Lines. */
 export declare const json: StructuredCodec
 /** Byte-first single-document TOML codec with collision-safe typed envelopes. */
-export declare const toml: SingleDocumentCodec
+export declare const toml: SingleDocumentCodec<TemplateCodecOptions>
 /** Byte-first YAML codec with tagged class comments and multi-document support. */
-export declare const yaml: StructuredCodec
+export declare const yaml: StructuredCodec<TemplateCodecOptions>
 /** Generic format-inferred byte codec. */
 export declare const codec: GenericCodec
 

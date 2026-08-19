@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator
 from typing import Any, Literal, TypeVar
 
 from .. import _codec
@@ -37,15 +37,12 @@ def loads(
     cls: type[_T] | None = None,
     safe: bool = True,
     errors: _ErrorPolicy = "raise",
-    placeholders: Mapping[str, Any] | None = None,
-    environment: bool = False,
 ) -> _T | Any:
     """Decode JSON bytes, content text, a path, or a readable file object.
 
-    `placeholders` turns Jinja-style `{{ NAME }}` substitution on, resolving
-    from the mapping it is given; `environment` additionally consults the
-    process environment, which is never read unless asked for. Both default to
-    off, and the mapping wins over the environment.
+    JSON is a data interchange format, so `{{ }}` placeholder substitution is
+    a YAML and TOML feature only - a configuration document that wants
+    templating is better written as one of those.
     """
 
     return _codec.loads(
@@ -54,8 +51,6 @@ def loads(
         cls=cls,
         safe=safe,
         errors=errors,
-        placeholders=placeholders,
-        environment=environment,
     )
 
 

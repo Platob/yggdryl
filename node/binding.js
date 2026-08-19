@@ -550,6 +550,27 @@ function fillingArguments(options) {
   ]
 }
 
+// `{{ }}` substitution is a YAML and TOML feature: JSON is a data
+// interchange format, and the core refuses the pair for it by name. The
+// refusal happens here too, so a JS caller learns at the call site rather
+// than from a native error.
+function refuseFillingForJson(format, options) {
+  if (options.placeholders !== undefined && options.placeholders !== null) {
+    throw new TypeError(`placeholders are a yaml/toml feature, not a ${format} one`)
+  }
+  if (options.environment !== undefined && options.environment !== false) {
+    throw new TypeError(`environment resolution is a yaml/toml feature, not a ${format} one`)
+  }
+}
+
+function loadArguments(format, options) {
+  if (format === FORMAT_JSON || format === FORMAT_JSON_LINES) {
+    refuseFillingForJson(format, options)
+    return []
+  }
+  return fillingArguments(options)
+}
+
 function toNativeContent(content) {
   if (typeof content === 'string' || Buffer.isBuffer(content)) return content
   if (utilTypes.isAnyArrayBuffer(content)) return Buffer.from(content)
@@ -846,7 +867,7 @@ function nativeLoads(content, format, options) {
     nativeFormat(format).loads(
       toNativeContent(content),
       options.maxDepth,
-      ...fillingArguments(options),
+      ...loadArguments(format, options),
     ),
   )
 }
@@ -870,7 +891,7 @@ function nativeLoadsAll(content, format, options) {
 function nativeLoadPath(path, format, options) {
   options = checkedOptions(options)
   return fromTransport(
-    nativeFormat(format).loadPath(path, options.maxDepth, ...fillingArguments(options)),
+    nativeFormat(format).loadPath(path, options.maxDepth, ...loadArguments(format, options)),
   )
 }
 

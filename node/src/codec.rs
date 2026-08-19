@@ -243,18 +243,18 @@ fn loading_from(
 }
 
 /// Decode one JSON value without generic format parsing or dispatch.
+///
+/// No placeholder parameters: `{{ }}` substitution is a YAML and TOML
+/// feature, and the core refuses it for JSON by name.
 #[napi(js_name = "jsonLoadsNative", skip_typescript)]
 pub fn json_loads_native(
     input: Either<Buffer, String>,
     max_depth: Option<u32>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
-    environment: Option<bool>,
 ) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
-    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
     let value = match &input {
-        Either::A(bytes) => text::from_slice_with(bytes.as_ref(), Format::Json, &loading),
-        Either::B(value) => text::from_str_with(value, Format::Json, &loading),
+        Either::A(bytes) => text::from_slice_with_limits(bytes.as_ref(), Format::Json, limits),
+        Either::B(value) => text::from_str_with_limits(value, Format::Json, limits),
     }
     .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())
@@ -429,19 +429,16 @@ pub fn yaml_dump_all_native(
 }
 
 /// Decode one JSON value from a path through the native reader boundary.
+///
+/// No placeholder parameters: `{{ }}` substitution is a YAML and TOML
+/// feature, and the core refuses it for JSON by name.
 #[napi(js_name = "jsonLoadPathNative", skip_typescript)]
-pub fn json_load_path_native(
-    path: String,
-    max_depth: Option<u32>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
-    environment: Option<bool>,
-) -> Result<serde_json::Value> {
+pub fn json_load_path_native(path: String, max_depth: Option<u32>) -> Result<serde_json::Value> {
     let limits = limits_with_depth(checked_depth(max_depth)?);
-    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
-    let value = text::from_reader_with(
+    let value = text::from_reader_with_limits(
         open_path(&path, limits.max_input_bytes())?,
         Format::Json,
-        &loading,
+        limits,
     )
     .map_err(napi_error)?;
     value_to_transport(&value, 0, limits.max_depth())

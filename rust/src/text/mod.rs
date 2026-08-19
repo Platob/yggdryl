@@ -76,10 +76,24 @@ impl Iterator for ValueIter<'_> {
 /// untouched - no walk, no allocation, no per-scalar inspection. The
 /// overwhelming majority of documents have no placeholders and must not pay for
 /// the feature.
-fn filled(value: Value, input: &[u8], loading: &Loading) -> Result<Value> {
+///
+/// JSON is refused, not skipped: JSON is a data interchange format, and a
+/// JSON document that wants configuration templating is better written as
+/// YAML or TOML. Refusing loudly here keeps a misconfigured caller from
+/// silently reading `{{ NAME }}` as literal text.
+fn filled(value: Value, input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
     let Some(placeholders) = loading.placeholders() else {
         return Ok(value);
     };
+    if matches!(format, Format::Json | Format::JsonLines) {
+        return Err(Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$.placeholders"),
+            reason: expected_got(
+                "a format with placeholder support (yaml, toml)",
+                format.as_str(),
+            ),
+        });
+    }
     if !placeholder::present(input) {
         return Ok(value);
     }
@@ -120,7 +134,7 @@ pub fn from_str_with_limits(input: &str, format: Format, limits: Limits) -> Resu
 /// unresolved variable, a malformed placeholder - naming where it sits.
 pub fn from_str_with(input: &str, format: Format, loading: &Loading) -> Result<Value> {
     let value = from_str_with_limits(input, format, loading.limits())?;
-    filled(value, input.as_bytes(), loading)
+    filled(value, input.as_bytes(), format, loading)
 }
 
 /// Decode one value using the selected format.
@@ -147,7 +161,7 @@ pub fn from_slice_with_limits(input: &[u8], format: Format, limits: Limits) -> R
 /// Returns the codec's parse failure, or the substitution's refusal.
 pub fn from_slice_with(input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
     let value = from_slice_with_limits(input, format, loading.limits())?;
-    filled(value, input, loading)
+    filled(value, input, format, loading)
 }
 
 /// Decode one value from a byte reader using the selected format.
