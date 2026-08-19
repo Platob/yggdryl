@@ -35,8 +35,9 @@
 use smol_str::SmolStr;
 
 use crate::Level;
+use crate::expressions::{IntoFilter, IntoProjection, Selection};
 use crate::ipc::IpcOptions;
-use crate::{Error, Field, MediaType, MimeType, Result};
+use crate::{Error, Expr, Field, MediaType, MimeType, Result};
 
 /// The read and write settings shared by every record encoding.
 ///
@@ -111,6 +112,85 @@ pub trait IORecordOptions: Sized {
 
     /// Set the partition equalities a read is pruned and filtered by.
     fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>);
+
+    /// Borrow the predicate a read is pruned and filtered by, if any.
+    ///
+    /// This is the general form of [`filter_partitions`](Self::filter_partitions):
+    /// the pairs are sugar that builds one equality each, and setting them
+    /// conjoins that onto whatever is already here. A read binds this once, at
+    /// the top, and then every layer below - a table's manifests, a folder's
+    /// directories, a Parquet footer's row groups, and finally the rows - reads
+    /// the same plan.
+    fn filter(&self) -> Option<&Expr>;
+
+    /// Set the predicate a read is pruned and filtered by.
+    ///
+    /// This clears [`filter_partitions`](Self::filter_partitions), because the
+    /// pairs would no longer describe the whole filter and two settings that
+    /// disagree are worse than one.
+    fn set_filter(&mut self, filter: Expr);
+
+    /// Borrow the projection a read or write is narrowed to, if any.
+    ///
+    /// This is the general form of [`select_by_names`](Self::select_by_names):
+    /// a list of names is a projection of bare columns, and a projection can
+    /// also compute, cast, and rename.
+    fn selection(&self) -> Option<&Selection>;
+
+    /// Set the projection a read or write is narrowed to.
+    ///
+    /// This clears [`select_by_names`](Self::select_by_names), for the same
+    /// reason [`set_filter`](Self::set_filter) clears the pairs.
+    fn set_selection(&mut self, selection: Selection);
+
+    /// Return these options with a predicate.
+    ///
+    /// A `&str` is accepted and parsed by the **core** parser, so a caller
+    /// writes `.with_filter("venue = \'XNAS\' AND price > 10")?` and never
+    /// builds an expression by hand.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] with a byte offset when the text is not an
+    /// expression this grammar reads.
+    fn with_filter(mut self, filter: impl IntoFilter) -> Result<Self> {
+        self.set_filter(filter.into_filter()?);
+        Ok(self)
+    }
+
+    /// Return these options with a projection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] with a byte offset when the text is not a
+    /// projection this grammar reads.
+    fn with_selection(mut self, selection: impl IntoProjection) -> Result<Self> {
+        self.set_selection(selection.into_projection()?);
+        Ok(self)
+    }
+
+    /// The one predicate a read actually applies.
+    ///
+    /// The two spellings compose rather than compete: whatever
+    /// [`filter`](Self::filter) holds is conjoined with the equalities
+    /// [`filter_partitions`](Self::filter_partitions) spells, so neither can
+    /// silently override the other.
+    fn resolved_filter(&self) -> Option<Expr> {
+        self.filter().cloned()
+    }
+
+    /// The one projection a read or write actually applies.
+    ///
+    /// A projection set as an expression wins over the name list, because
+    /// setting one clears the other - the name list is only ever what a caller
+    /// last spelled that way.
+    fn resolved_selection(&self) -> Option<Selection> {
+        if let Some(selection) = self.selection() {
+            return Some(selection.clone());
+        }
+        let names = self.select_by_names();
+        (!names.is_empty()).then(|| Selection::from_names(names))
+    }
 
     /// Borrow the declared schema, or say that one is required.
     ///
@@ -331,6 +411,9 @@ macro_rules! record_options_fields {
         }
 
         fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
+            // The names are the sugar; clearing the expression projection is
+            // what makes the last spelling the caller used the one that runs.
+            self.selection = None;
             self.select_by_names = select_by_names;
         }
 
@@ -339,7 +422,41 @@ macro_rules! record_options_fields {
         }
 
         fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
+            // The pairs are sugar: they build one equality each, conjoined
+            // onto whatever predicate is already set. Storing the expression
+            // is what stops the two spellings from ever disagreeing.
+            let pairs: Vec<(&str, &str)> = filter_partitions
+                .iter()
+                .map(|(column, value)| (column.as_str(), value.as_str()))
+                .collect();
+            let sugar = $crate::io::partition::pairs_to_expr(&pairs);
+            self.filter = match self.filter.take() {
+                Some(held) if !filter_partitions.is_empty() => {
+                    Some($crate::Expr::all([held, sugar]))
+                }
+                Some(held) => Some(held),
+                None if filter_partitions.is_empty() => None,
+                None => Some(sugar),
+            };
             self.filter_partitions = filter_partitions;
+        }
+
+        fn filter(&self) -> Option<&$crate::Expr> {
+            self.filter.as_ref()
+        }
+
+        fn set_filter(&mut self, filter: $crate::Expr) {
+            self.filter = Some(filter);
+            self.filter_partitions.clear();
+        }
+
+        fn selection(&self) -> Option<&$crate::Selection> {
+            self.selection.as_ref()
+        }
+
+        fn set_selection(&mut self, selection: $crate::Selection) {
+            self.selection = Some(selection);
+            self.select_by_names.clear();
         }
     };
 }
@@ -546,6 +663,42 @@ impl IORecordOptions for RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.filter_partitions(),
             Self::Avro(options) => options.filter_partitions(),
+        }
+    }
+
+    fn filter(&self) -> Option<&Expr> {
+        match self {
+            Self::Ipc(options) => options.filter(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.filter(),
+            Self::Avro(options) => options.filter(),
+        }
+    }
+
+    fn set_filter(&mut self, filter: Expr) {
+        match self {
+            Self::Ipc(options) => options.set_filter(filter),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_filter(filter),
+            Self::Avro(options) => options.set_filter(filter),
+        }
+    }
+
+    fn selection(&self) -> Option<&Selection> {
+        match self {
+            Self::Ipc(options) => options.selection(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.selection(),
+            Self::Avro(options) => options.selection(),
+        }
+    }
+
+    fn set_selection(&mut self, selection: Selection) {
+        match self {
+            Self::Ipc(options) => options.set_selection(selection),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_selection(selection),
+            Self::Avro(options) => options.set_selection(selection),
         }
     }
 

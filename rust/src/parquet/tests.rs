@@ -267,6 +267,117 @@ fn footer_statistics_expose_row_groups_bounds_and_split_offsets() {
     );
 }
 
+/// A read of one file under one set of options, counting the rows it decoded.
+fn decoded(media: &Parquet<crate::io::Buffer>, filter: &str) -> usize {
+    let options = media.options().clone().with_filter(filter).unwrap();
+    crate::parquet::read_batch_reader(media, None, &options)
+        .unwrap()
+        .map(|batch| batch.unwrap().num_rows())
+        .sum()
+}
+
+#[test]
+fn a_filter_skips_the_row_groups_its_statistics_refute() {
+    let field = root();
+    let ids: Vec<i64> = (0..2_048).collect();
+    let symbols: Vec<Option<&str>> = ids.iter().map(|_| Some("AAPL")).collect();
+    let mut media = Parquet::new(handle("prune.parquet"))
+        .with_options(ParquetOptions::new().with_max_row_group_size(512));
+    media
+        .write_batch_reader(reader(&field, [batch(&field, ids, symbols)]))
+        .unwrap();
+
+    // Four groups of 512 ids, so `id >= 1600` can only be satisfied by the
+    // last one: the other three are never located, decompressed, or decoded.
+    // A row group is the unit of *skipping*, not of selection, so the rows the
+    // surviving group holds below the bound are still decoded here - the row
+    // filter above this level is what drops them, and the next assertion is
+    // that the two together are exactly right.
+    assert_eq!(decoded(&media, "id >= 1600"), 512);
+
+    // A predicate no group can satisfy decodes nothing at all.
+    assert_eq!(decoded(&media, "id > 10000"), 0);
+
+    // And a predicate every group can satisfy skips nothing, because `Maybe`
+    // is what an unsettled group answers.
+    assert_eq!(decoded(&media, "id >= 0"), 2_048);
+}
+
+#[test]
+fn the_pruned_read_returns_exactly_what_an_unpruned_one_would() {
+    use crate::io::IOBase;
+
+    let field = root();
+    let ids: Vec<i64> = (0..2_048).collect();
+    let symbols: Vec<Option<&str>> = ids
+        .iter()
+        .map(|index| (index % 3 == 0).then_some("AAPL"))
+        .collect();
+    let mut media = Parquet::new(handle("prune-equivalence.parquet"))
+        .with_options(ParquetOptions::new().with_max_row_group_size(512));
+    media
+        .write_batch_reader(reader(&field, [batch(&field, ids.clone(), symbols)]))
+        .unwrap();
+
+    // The whole ladder: groups skipped on their footer statistics, then one
+    // mask per surviving batch. What comes out has to equal what a read with
+    // no pushdown at all returns and then filters, for every predicate.
+    for (text, expected) in [
+        ("id >= 1600", (1_600..2_048).collect::<Vec<i64>>()),
+        ("id < 3", vec![0, 1, 2]),
+        ("id BETWEEN 500 AND 503", vec![500, 501, 502, 503]),
+        ("id IN (1, 700, 2000)", vec![1, 700, 2_000]),
+        ("id > 10000", Vec::new()),
+        (
+            "symbol IS NULL",
+            ids.iter().copied().filter(|id| id % 3 != 0).collect(),
+        ),
+    ] {
+        let options = crate::generic::RecordOptions::Parquet(
+            media.options().clone().with_filter(text).unwrap(),
+        );
+        let read: Vec<i64> = media
+            .read_arrow_batch_reader(&options)
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let column = batch
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .clone();
+                (0..batch.num_rows())
+                    .map(move |row| column.value(row))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(read, expected, "pushdown changed the answer for {text:?}");
+    }
+}
+
+#[test]
+fn a_filter_on_a_column_the_file_does_not_carry_leaves_every_group() {
+    let field = root();
+    let mut media = Parquet::new(handle("absent-filter.parquet"))
+        .with_options(ParquetOptions::new().with_max_row_group_size(512));
+    media
+        .write_batch_reader(reader(
+            &field,
+            [batch(
+                &field,
+                (0..1_024).collect(),
+                vec![Some("AAPL"); 1_024],
+            )],
+        ))
+        .unwrap();
+
+    // A partition column lives in the path rather than the file, so a filter
+    // naming one must not prune the file away - whatever restores it answers.
+    assert_eq!(decoded(&media, "venue = 'XNAS'"), 1_024);
+}
+
 #[test]
 fn a_bounded_batch_size_splits_the_read() {
     let field = root();

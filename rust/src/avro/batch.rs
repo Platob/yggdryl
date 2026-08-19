@@ -77,6 +77,16 @@ pub struct AvroOptions {
     pub select_by_names: Vec<String>,
     /// Partition equalities a read is pruned and filtered by; empty keeps all.
     pub filter_partitions: Vec<(String, String)>,
+    /// The predicate a read is pruned and filtered by.
+    ///
+    /// This is the general form of `filter_partitions`, which stays as the
+    /// sugar that builds one equality per pair.
+    pub filter: Option<crate::Expr>,
+    /// The projection a read or write is narrowed to.
+    ///
+    /// This is the general form of `select_by_names`, which stays as the sugar
+    /// for a projection of bare columns.
+    pub selection: Option<crate::Selection>,
     /// The Avro codec name blocks are written with: `null`, `deflate`,
     /// `zstandard`, or - with the `parquet` feature - `snappy`.
     pub codec: SmolStr,
@@ -97,6 +107,8 @@ impl AvroOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
+            filter: None,
+            selection: None,
             codec: SmolStr::new_static("deflate"),
             sync_marker: None,
         }

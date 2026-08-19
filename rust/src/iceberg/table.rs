@@ -83,10 +83,12 @@ use super::manifest::{
 use super::metadata::{FormatVersion, TableMetadata, now_ms, uuid};
 use super::options::IcebergOptions;
 use super::partition::PartitionSpec;
-use super::scan::{Filter, ScanPart, ScanPlan, ScanTask};
+use super::scan::{ScanPart, ScanPlan, ScanTask};
 use super::snapshot::{Snapshot, SnapshotRef};
 use super::value::{compare_single, is_portable, single_value};
+use crate::Expr;
 use crate::arrow::BatchReader;
+use crate::expressions::BoundPredicate;
 use crate::field::cast::ArrowCast;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::IOBase;
@@ -417,6 +419,28 @@ impl<H: IOBase> Table<H> {
         self.planned(&resolved, false)
     }
 
+    /// Plan a scan under an expression rather than a list of equalities.
+    ///
+    /// This is what [`Self::plan`] is sugar for, and it is where the pruning
+    /// gets interesting: `venue = \'XNAS\' AND price BETWEEN 10 AND 20` skips
+    /// manifests on their summaries, files on their partition tuples, and more
+    /// files on their column bounds - all through the one
+    /// [`evaluate_stats`](crate::expressions::BoundPredicate::evaluate_stats),
+    /// so a range prunes exactly as well as an equality does.
+    ///
+    /// The expression is bound against the table\'s current schema, which is
+    /// why this takes the value a caller writes rather than an already-bound
+    /// plan: the caller does not have the schema, the table does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the filter names a column the schema does not
+    /// declare, or when a manifest that had to be read cannot be reached.
+    pub fn plan_matching(&self, filter: &Expr) -> Result<ScanPlan> {
+        let resolved = super::scan::filter_predicate(self.schema()?, filter)?;
+        self.planned(&resolved, false)
+    }
+
     /// Plan a scan of one retained snapshot rather than the current one.
     ///
     /// This is the planning half of time travel: the snapshot's manifest list
@@ -433,6 +457,25 @@ impl<H: IOBase> Table<H> {
         let snapshot = self.require_snapshot(snapshot_id)?;
         let schema = self.schema_of(snapshot)?;
         let resolved = super::scan::filters(schema, filters)?;
+        let manifests = self.manifests_at(snapshot)?;
+        self.plan_manifests(&manifests, &resolved, false)
+    }
+
+    /// Plan one retained snapshot under an expression.
+    ///
+    /// [`Self::plan_matching`] against a snapshot rather than the present, so
+    /// a filtered read of history prunes exactly what a filtered read of now
+    /// prunes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no retained snapshot carries `snapshot_id`, when
+    /// the filter names a column that snapshot\'s schema does not declare, or
+    /// when a manifest cannot be reached.
+    pub fn plan_at_matching(&self, snapshot_id: i64, filter: &Expr) -> Result<ScanPlan> {
+        let snapshot = self.require_snapshot(snapshot_id)?;
+        let schema = self.schema_of(snapshot)?;
+        let resolved = super::scan::filter_predicate(schema, filter)?;
         let manifests = self.manifests_at(snapshot)?;
         self.plan_manifests(&manifests, &resolved, false)
     }
@@ -460,7 +503,28 @@ impl<H: IOBase> Table<H> {
         let resolved = super::scan::filters(&stored, filters)?;
         let manifests = self.manifests_at(snapshot)?;
         let plan = self.plan_manifests(&manifests, &resolved, true)?;
-        self.reader(plan.tasks, &stored, field, resolved)
+        self.reader(plan.tasks, &stored, field, &resolved)
+    }
+
+    /// Time travel under an expression: [`Self::scan_matching`] at a snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no retained snapshot carries `snapshot_id`, when
+    /// the filter names a column that schema does not declare, or when a
+    /// manifest cannot be read.
+    pub fn scan_at_matching(
+        &self,
+        snapshot_id: i64,
+        filter: &Expr,
+        field: Option<&Field>,
+    ) -> Result<BatchReader> {
+        let snapshot = self.require_snapshot(snapshot_id)?;
+        let stored = self.schema_of(snapshot)?.clone();
+        let resolved = super::scan::filter_predicate(&stored, filter)?;
+        let manifests = self.manifests_at(snapshot)?;
+        let plan = self.plan_manifests(&manifests, &resolved, true)?;
+        self.reader(plan.tasks, &stored, field, &resolved)
     }
 
     /// Return one retained snapshot, or say which ids are retained.
@@ -498,16 +562,16 @@ impl<H: IOBase> Table<H> {
     /// scan never consults. A plan whose entries may be carried into a
     /// rewritten manifest - an overwrite, a merge, a compaction - must pass
     /// `false` so every carried entry keeps its statistics whole.
-    fn planned(&self, filters: &[Filter], for_read: bool) -> Result<ScanPlan> {
+    fn planned(&self, predicate: &BoundPredicate, for_read: bool) -> Result<ScanPlan> {
         let manifests = self.manifests()?;
-        self.plan_manifests(&manifests, filters, for_read)
+        self.plan_manifests(&manifests, predicate, for_read)
     }
 
     /// Plan one set of manifests under one set of resolved filters.
     fn plan_manifests(
         &self,
         manifests: &[ManifestFile],
-        filters: &[Filter],
+        predicate: &BoundPredicate,
         for_read: bool,
     ) -> Result<ScanPlan> {
         super::scan::plan(
@@ -519,7 +583,7 @@ impl<H: IOBase> Table<H> {
                     .unwrap_or_else(PartitionSpec::unpartitioned)
             },
             &|location| self.child_at(location),
-            filters,
+            predicate,
             for_read,
         )
     }
@@ -745,7 +809,44 @@ impl<H: IOBase> Table<H> {
         let stored = self.schema()?.clone();
         let resolved = super::scan::filters(&stored, filters)?;
         let plan = self.planned(&resolved, true)?;
-        self.reader(plan.tasks, &stored, field, resolved)
+        self.reader(plan.tasks, &stored, field, &resolved)
+    }
+
+    /// Read the rows an expression selects, keeping the columns `field` names.
+    ///
+    /// This is what [`Self::scan_where`] is sugar for. The predicate is bound
+    /// once against the table\'s schema and then answers at every level: the
+    /// manifest summaries, the partition tuples, the data files\' column
+    /// bounds, and finally - for whatever the metadata could not settle - the
+    /// rows themselves, through the same plan. A conjunct the statistics proved
+    /// true for every row of a file never runs against a single one of them.
+    ///
+    /// ```no_run
+    /// use yggdryl::iceberg::Table;
+    /// use yggdryl::local::Folder;
+    /// use yggdryl::Expr;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let table = Table::open(Folder::new("/lake/trades")?)?;
+    /// let filter: Expr = "venue = \'XNAS\' AND price BETWEEN 10 AND 20".parse()?;
+    /// let plan = table.plan_matching(&filter)?;
+    /// assert!(plan.files_skipped() >= 0);
+    /// let rows = table.scan_matching(&filter, None)?;
+    /// # let _ = rows;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the filter names a column the schema does not
+    /// declare, when a manifest cannot be read, or when the scan root cannot
+    /// be projected.
+    pub fn scan_matching(&self, filter: &Expr, field: Option<&Field>) -> Result<BatchReader> {
+        let stored = self.schema()?.clone();
+        let resolved = super::scan::filter_predicate(&stored, filter)?;
+        let plan = self.planned(&resolved, true)?;
+        self.reader(plan.tasks, &stored, field, &resolved)
     }
 
     /// Build the reader over one set of planned files.
@@ -754,10 +855,10 @@ impl<H: IOBase> Table<H> {
         tasks: Vec<ScanTask>,
         stored: &Field,
         field: Option<&Field>,
-        filters: Vec<Filter>,
+        predicate: &BoundPredicate,
     ) -> Result<BatchReader> {
         let root = field.map_or_else(|| stored.clone(), Clone::clone);
-        let read_root = super::scan::read_root(&root, stored, &filters)?;
+        let read_root = super::scan::read_root(&root, stored, predicate)?;
 
         let mut parts = Vec::new();
         for task in tasks {
@@ -780,7 +881,7 @@ impl<H: IOBase> Table<H> {
             });
         }
         let parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
-        super::scan::reader(parts, root, read_root, field.cloned(), filters, &parallel)
+        super::scan::reader(parts, root, read_root, field.cloned(), &parallel)
     }
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
@@ -842,7 +943,32 @@ impl<H: IOBase> Table<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
     ) -> Result<()> {
-        let plan = self.plan(filters)?;
+        self.overwrite_planned(self.plan(filters)?, batches)
+    }
+
+    /// Replace only the rows an expression selects, keeping every other file.
+    ///
+    /// This is what [`Self::overwrite_where`] is sugar for, and the same
+    /// statistics that let a read skip a file let a write leave one alone: a
+    /// file the predicate cannot touch is carried into the new snapshot
+    /// unchanged - the same location, the same statistics, the commit order it
+    /// was written with - and never read.
+    ///
+    /// With a reader holding nothing this is a **delete**: the rows the
+    /// predicate selects go and everything else is carried forward, which is
+    /// the one shape a filtered overwrite and a delete share.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the filter names a column the schema does not
+    /// declare, when the partition spec cannot place a row, when any read or
+    /// write fails, or a [`CommitConflict`] when a concurrent commit won.
+    pub fn overwrite_matching(&mut self, filter: &Expr, batches: BatchReader) -> Result<()> {
+        self.overwrite_planned(self.plan_matching(filter)?, batches)
+    }
+
+    /// Commit an overwrite that a plan already scoped.
+    fn overwrite_planned(&mut self, plan: ScanPlan, batches: BatchReader) -> Result<()> {
         self.commit(
             batches,
             "overwrite",
@@ -897,6 +1023,41 @@ impl<H: IOBase> Table<H> {
         if merge_by_names.is_empty() {
             return self.overwrite_where(filters, batches);
         }
+        let plan = self.plan(filters)?;
+        self.merge_planned(plan, batches, merge_by_names, safe)
+    }
+
+    /// Merge into the rows an expression selects, on the match-key columns.
+    ///
+    /// What [`Self::merge_where`] is sugar for. The scoping predicate prunes
+    /// through the same statistics a read prunes through, so a merge into one
+    /// partition of a thousand costs one partition.
+    ///
+    /// # Errors
+    ///
+    /// Returns exactly what [`Self::merge_where`] returns.
+    pub fn merge_matching(
+        &mut self,
+        filter: &Expr,
+        batches: BatchReader,
+        merge_by_names: &[String],
+        safe: bool,
+    ) -> Result<()> {
+        if merge_by_names.is_empty() {
+            return self.overwrite_matching(filter, batches);
+        }
+        let plan = self.plan_matching(filter)?;
+        self.merge_planned(plan, batches, merge_by_names, safe)
+    }
+
+    /// Merge into the files one plan already selected.
+    fn merge_planned(
+        &mut self,
+        plan: ScanPlan,
+        batches: BatchReader,
+        merge_by_names: &[String],
+        safe: bool,
+    ) -> Result<()> {
         let schema = self.schema()?.clone();
 
         // The incoming side is held, and this is why: the files a merge has to
@@ -914,7 +1075,6 @@ impl<H: IOBase> Table<H> {
         }
         let bounds = KeyBounds::of(&incoming, &schema, merge_by_names)?;
 
-        let plan = self.plan(filters)?;
         let mut selected = Vec::new();
         let mut carried = plan.excluded;
         for task in plan.tasks {
@@ -925,7 +1085,10 @@ impl<H: IOBase> Table<H> {
             }
         }
 
-        let stored = self.reader(selected, &schema, None, Vec::new())?;
+        // Nothing is filtered here - the whole file set was already chosen -
+        // so the predicate that keeps every row is what the reader takes.
+        let keep_all = super::scan::filters(&schema, &[])?;
+        let stored = self.reader(selected, &schema, None, &keep_all)?;
         let arrow_schema = crate::arrow::schema_from_field(&schema)?;
         let merged = crate::io::merge::merged(
             stored,
@@ -1011,7 +1174,8 @@ impl<H: IOBase> Table<H> {
             .sum();
 
         let schema = self.schema()?.clone();
-        let rows = self.reader(selected, &schema, None, Vec::new())?;
+        let keep_all = super::scan::filters(&schema, &[])?;
+        let rows = self.reader(selected, &schema, None, &keep_all)?;
         let files_after = self.commit(
             rows,
             "replace",
@@ -1656,14 +1820,16 @@ impl<H: IOBase> IOBase for Table<H> {
         Ok(self.schema()?.clone().with_name(options.root_name()))
     }
 
-    /// Scan the current snapshot, the options' filters answered by the plan.
+    /// Scan the current snapshot, the options' filter answered by the plan.
+    ///
+    /// Whatever the options carry - an expression, a list of `(column, value)`
+    /// pairs, or both conjoined - reaches the plan as one predicate, so a
+    /// range filter prunes manifests and files exactly as an equality does.
     fn read_arrow_batch_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
-        let filters = options.filter_partitions();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
-        let reader = self.scan_where(&pairs, options.schema())?;
+        let reader = match options.resolved_filter() {
+            Some(filter) => self.scan_matching(&filter, options.schema())?,
+            None => self.scan(options.schema())?,
+        };
         crate::io::select_reader(reader, options)
     }
 
@@ -1675,12 +1841,12 @@ impl<H: IOBase> IOBase for Table<H> {
         options: &RecordOptions,
     ) -> Result<()> {
         let batches = crate::io::select_reader(batches, options)?;
-        let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
-        self.merge_where(&pairs, batches, options.merge_by_names(), options.safe())
+        match options.resolved_filter() {
+            Some(filter) => {
+                self.merge_matching(&filter, batches, options.merge_by_names(), options.safe())
+            }
+            None => self.merge_where(&[], batches, options.merge_by_names(), options.safe()),
+        }
     }
 
     /// One `append` snapshot, keeping every manifest the last one had.

@@ -543,6 +543,65 @@ pub trait IOBase: Send {
         Ok(matched.into_iter())
     }
 
+    /// Yield the leaves below this handle whose path an expression admits.
+    ///
+    /// This is [`Self::children_where`] with a predicate instead of a pair
+    /// list, and it is the same pruning: a `column=value` directory is a
+    /// column whose lower and upper bound are the same value, so the one
+    /// [`evaluate_stats`](crate::expressions::BoundPredicate::evaluate_stats)
+    /// that skips an Iceberg manifest skips a directory too - which is why
+    /// `year >= 2024` works here at all, where a pair list can only ask for
+    /// one year at a time.
+    ///
+    /// Binding is tolerant, as the pair vocabulary has always been: a leaf
+    /// whose path does not name a filtered column is kept, because the leaf's
+    /// rows may still answer for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing failure, or a binding failure tolerance cannot
+    /// absorb.
+    #[cfg(feature = "arrow")]
+    fn children_matching(
+        &self,
+        filter: &crate::Expr,
+        include_private: bool,
+    ) -> Result<std::vec::IntoIter<Holder>> {
+        let leaves: Vec<Holder> = self
+            .ls(true, include_private)?
+            .into_iter()
+            .filter(|entry| !entry.is_container())
+            .collect();
+        // Every leaf shares one bound plan: a path-only schema types each
+        // partition column as the text a directory name literally is.
+        let mut fields: Vec<crate::Field> = Vec::new();
+        for leaf in &leaves {
+            for (column, _) in leaf.partitions() {
+                if !fields
+                    .iter()
+                    .any(|held| held.name().eq_ignore_ascii_case(&column))
+                {
+                    fields.push(crate::DataType::Utf8.nullable_field(column));
+                }
+            }
+        }
+        let mut matched = leaves;
+        if !fields.is_empty() {
+            let schema = crate::DataType::from_fields(fields)?.required_field("row");
+            let predicate = filter.bind_tolerant(&schema)?.into_predicate()?;
+            matched.retain(|leaf| {
+                let stats = crate::io::partition::PartitionStats::new(leaf.partitions());
+                predicate.evaluate_stats(&stats).is_possible()
+            });
+        }
+        matched.sort_by(|left, right| {
+            left.url()
+                .map(ToString::to_string)
+                .cmp(&right.url().map(ToString::to_string))
+        });
+        Ok(matched.into_iter())
+    }
+
     /// Return what kind of resource this handle addresses.
     ///
     /// A generic handle reads this to pick the specialized implementation to
@@ -1235,16 +1294,30 @@ pub(crate) fn select_reader(
 ) -> Result<crate::arrow::BatchReader> {
     use crate::generic::IORecordOptions;
 
-    let names = options.select_by_names();
-    if names.is_empty() {
+    let Some(selection) = options.resolved_selection() else {
         return Ok(reader);
-    }
+    };
     let root =
         crate::arrow::record_schema_from_arrow(options.root_name(), reader.schema().as_ref())?;
-    match crate::arrow::selected_root(&root, names, options.root_name())? {
-        Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
-        None => Ok(reader),
+    // A projection of bare columns keeps the path it has always taken: the
+    // selected root plus one cast, which preserves each column's datatype,
+    // metadata, and field id exactly. That is what makes the name-list
+    // spelling answer byte-identically after this change.
+    if selection.is_projection() {
+        let names: Vec<String> = selection
+            .items()
+            .iter()
+            .map(crate::expressions::SelectionItem::name)
+            .collect();
+        return match crate::arrow::selected_root(&root, &names, options.root_name())? {
+            Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
+            None => Ok(reader),
+        };
     }
+    // Anything that computes, casts, or renames goes through the expression
+    // engine, which evaluates it once per batch after the encoding's own
+    // projection has already narrowed what was decoded.
+    Ok(selection.bind(&root)?.project_batch_reader(reader)?)
 }
 
 #[cfg(feature = "arrow")]

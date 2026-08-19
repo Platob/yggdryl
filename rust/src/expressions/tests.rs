@@ -582,9 +582,16 @@ fn a_residual_drops_what_statistics_settled_and_keeps_the_rest() -> Result<()> {
         .bind(&schema())?
         .into_predicate()?;
     let settled = Table(vec![("venue", ColumnStats::constant(Value::from("XNAS")))]);
-    let residual = predicate.residual(&settled);
+    let residual = predicate
+        .residual(&settled)
+        .expect("the file can still match");
     assert_eq!(residual.len(), 1);
     assert_eq!(residual[0].to_string(), "price > 100.00");
+
+    // A source that refutes a conjunct answers `None` rather than an empty
+    // list, because an empty list means "every row matches".
+    let refuted = Table(vec![("venue", ColumnStats::constant(Value::from("XNYS")))]);
+    assert!(predicate.residual(&refuted).is_none());
     Ok(())
 }
 

@@ -107,6 +107,40 @@ pub(super) fn single_value(value: &Value, data_type: &DataType) -> Option<Vec<u8
     }
 }
 
+/// Read one manifest bound back as the scalar it encodes.
+///
+/// The inverse of [`single_value`], and it lives beside it for the reason the
+/// forward direction does: this module is the one authority on Iceberg's
+/// single-value encoding, and the expression engine that prunes with these
+/// bounds never learns the encoding exists. The datatype decides the reading,
+/// exactly as it decides the writing, so a column declared `Int32` reads back
+/// as the integer it is rather than as four bytes.
+pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Value> {
+    match data_type {
+        DataType::Boolean => bytes.first().map(|byte| Value::Bool(*byte != 0)),
+        DataType::Int32 => Some(Value::I64(i64::from(int32(bytes)))),
+        DataType::Date32 => Some(Value::Date(int32(bytes))),
+        DataType::Int64 => Some(Value::I64(int64(bytes))),
+        DataType::Time64(unit) => Some(Value::Time(int64(bytes), *unit)),
+        DataType::Timestamp(unit, zone) => Some(match zone {
+            Some(zone) => Value::Timestamp(int64(bytes), *unit, zone.clone()),
+            None => Value::DateTime(int64(bytes), *unit),
+        }),
+        DataType::Float32 => Some(Value::from(float32(bytes))),
+        DataType::Float64 => Some(Value::from(float64(bytes))),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => std::str::from_utf8(bytes)
+            .ok()
+            .map(|text| Value::String(smol_str::SmolStr::new(text))),
+        DataType::Binary
+        | DataType::LargeBinary
+        | DataType::BinaryView
+        | DataType::FixedSizeBinary(_) => Some(Value::Bytes(std::sync::Arc::from(bytes))),
+        // Everything `is_portable` refuses has no bound rather than a wrong
+        // one, which is what leaves the file to be read instead of skipped.
+        _ => None,
+    }
+}
+
 /// Read the integer count a value holds, whatever it counts.
 ///
 /// A date counts days, a time counts its unit since midnight, and a timestamp

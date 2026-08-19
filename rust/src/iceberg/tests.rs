@@ -1114,6 +1114,7 @@ mod planning {
         Field, FormatVersion, IOBase, PartitionSpec, Table, collect, root, trade_schema, trades,
     };
     use crate::DataType;
+    use crate::Expr;
     use crate::local::Folder;
 
     /// A table partitioned by venue, with one commit per venue.
@@ -1264,6 +1265,90 @@ mod planning {
             collect(table.scan_where(&[("venue", "null")], None).unwrap()),
             vec![(2, Some("MSFT".to_owned()), None)]
         );
+    }
+
+    #[test]
+    fn a_range_prunes_manifests_where_a_pair_could_only_ask_for_one_value() {
+        let (_path, table) = venues("plan-range");
+
+        // The pair vocabulary can only ask for one venue at a time; an
+        // expression asks a question the old filter could not spell at all,
+        // and it still prunes on the manifest summaries alone.
+        let filter: Expr = "venue >= 'XNYS'".parse().unwrap();
+        let plan = table.plan_matching(&filter).unwrap();
+        assert_eq!(plan.tasks.len(), 1);
+        assert_eq!(plan.manifests_skipped(), 2);
+        assert_eq!(
+            collect(table.scan_matching(&filter, None).unwrap()),
+            vec![(2, Some("MSFT".to_owned()), Some("XNYS".to_owned()))]
+        );
+
+        // And a set spanning two partitions keeps exactly those two.
+        let two: Expr = "venue IN ('XNAS', 'XLON')".parse().unwrap();
+        let plan = table.plan_matching(&two).unwrap();
+        assert_eq!(plan.tasks.len(), 2);
+        assert_eq!(plan.manifests_skipped(), 1);
+    }
+
+    #[test]
+    fn the_pair_form_and_the_expression_form_answer_identically() {
+        let (_path, table) = venues("plan-sugar");
+
+        let by_pair = table.plan(&[("venue", "XNYS")]).unwrap();
+        let by_expr = table
+            .plan_matching(&"venue = 'XNYS'".parse::<Expr>().unwrap())
+            .unwrap();
+        assert_eq!(by_pair.tasks.len(), by_expr.tasks.len());
+        assert_eq!(by_pair.manifests_skipped(), by_expr.manifests_skipped());
+        assert_eq!(by_pair.manifests_read, by_expr.manifests_read);
+        assert_eq!(
+            collect(table.scan_where(&[("venue", "XNYS")], None).unwrap()),
+            collect(
+                table
+                    .scan_matching(&"venue = 'XNYS'".parse::<Expr>().unwrap(), None)
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn pushing_a_filter_down_returns_exactly_what_filtering_in_memory_returns() {
+        let (_path, table) = venues("plan-equivalence");
+
+        // The property that makes the optimization safe: for every predicate,
+        // the rows a pruned read returns are the rows an unpruned read returns
+        // and then filters. A plan that skipped too much shows up here as a
+        // row difference rather than as a suspiciously good number.
+        for text in [
+            "venue = 'XNAS'",
+            "venue <> 'XNAS'",
+            "venue IN ('XNAS', 'XLON')",
+            "venue >= 'XNYS'",
+            "id > 1",
+            "id BETWEEN 2 AND 3",
+            "venue IS NULL",
+            "venue IS NOT NULL",
+            "symbol LIKE 'M%'",
+            "venue = 'XNAS' AND id > 1",
+            "venue = 'XNAS' OR id = 3",
+            "NOT (venue = 'XNAS')",
+        ] {
+            let filter: Expr = text.parse().unwrap();
+            let pushed = collect(table.scan_matching(&filter, None).unwrap());
+
+            let schema = table.schema().unwrap().clone();
+            let predicate = filter
+                .bind_declared(&schema)
+                .unwrap()
+                .into_predicate()
+                .unwrap();
+            let naive: Vec<_> = collect(
+                predicate
+                    .filter_batch_reader(table.scan(None).unwrap())
+                    .unwrap(),
+            );
+            assert_eq!(pushed, naive, "pushdown changed the answer for {text:?}");
+        }
     }
 
     #[test]

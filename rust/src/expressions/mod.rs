@@ -1156,7 +1156,7 @@ impl Expr {
     /// expression names one it does not, or naming both sides when a
     /// comparison has no common type.
     pub fn bind(&self, schema: &crate::Field) -> Result<Bound> {
-        Bound::new(self, schema, bound::Strictness::Strict)
+        Bound::new(self, schema, bound::Strictness::STRICT)
     }
 
     /// Bind the way the `(column, value)` pair vocabulary binds.
@@ -1173,7 +1173,24 @@ impl Expr {
     /// Returns an error for a failure tolerance cannot absorb, such as a
     /// comparison between two types with no common comparison type.
     pub fn bind_tolerant(&self, schema: &crate::Field) -> Result<Bound> {
-        Bound::new(self, schema, bound::Strictness::Tolerant)
+        Bound::new(self, schema, bound::Strictness::TOLERANT)
+    }
+
+    /// Bind the way a route with a *declared* schema binds.
+    ///
+    /// A column is a claim - naming one the schema does not declare is an
+    /// error listing what it does declare - while a value is still text, so a
+    /// literal the column's type cannot read makes the comparison match
+    /// nothing rather than failing the scan. That is exactly the split a table
+    /// format has always had, and it is a binding mode rather than a branch
+    /// inside the evaluator.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the columns the schema does have when this
+    /// expression names one it does not.
+    pub fn bind_declared(&self, schema: &crate::Field) -> Result<Bound> {
+        Bound::new(self, schema, bound::Strictness::DECLARED)
     }
 }
 
@@ -1181,6 +1198,116 @@ impl Default for Selection {
     fn default() -> Self {
         Self::everything()
     }
+}
+
+/// Anything that names a predicate: an expression, or text this grammar reads.
+///
+/// This exists rather than a bare [`TryInto<Expr>`] bound for one reason, and
+/// it is the most confusable pair in this API: [`From<&str>`](Expr::from)
+/// builds a **string literal**, exactly as [`Value::from`] does, so a
+/// `TryInto<Expr>` bound would have accepted `"venue = \'XNAS\'"` and quietly
+/// made it the seventeen-character string. A filter is a predicate, so text in
+/// filter position is *parsed*, and the trait is what says so at the type
+/// level.
+pub trait IntoFilter {
+    /// Read this as the predicate it names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] with a byte offset when text is not an
+    /// expression this grammar reads.
+    fn into_filter(self) -> Result<Expr>;
+}
+
+impl IntoFilter for Expr {
+    fn into_filter(self) -> Result<Self> {
+        Ok(self)
+    }
+}
+
+impl IntoFilter for &Expr {
+    fn into_filter(self) -> Result<Expr> {
+        Ok(self.clone())
+    }
+}
+
+impl IntoFilter for &str {
+    fn into_filter(self) -> Result<Expr> {
+        self.parse()
+    }
+}
+
+impl IntoFilter for String {
+    fn into_filter(self) -> Result<Expr> {
+        self.parse()
+    }
+}
+
+impl IntoFilter for &String {
+    fn into_filter(self) -> Result<Expr> {
+        self.parse()
+    }
+}
+
+/// Anything that names a projection: a selection, or text this grammar reads.
+///
+/// The same reasoning as [`IntoFilter`], for the same reason.
+pub trait IntoProjection {
+    /// Read this as the projection it names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] with a byte offset when text is not a
+    /// projection this grammar reads.
+    fn into_projection(self) -> Result<Selection>;
+}
+
+impl IntoProjection for Selection {
+    fn into_projection(self) -> Result<Self> {
+        Ok(self)
+    }
+}
+
+impl IntoProjection for &Selection {
+    fn into_projection(self) -> Result<Selection> {
+        Ok(self.clone())
+    }
+}
+
+impl IntoProjection for &str {
+    fn into_projection(self) -> Result<Selection> {
+        self.parse()
+    }
+}
+
+impl IntoProjection for String {
+    fn into_projection(self) -> Result<Selection> {
+        self.parse()
+    }
+}
+
+/// Read one text as the datatype names it, or answer that it cannot be.
+///
+/// This is what a `column=value` directory name and a `(column, value)` pair
+/// both need: the layout writes text, and a comparison has to happen in the
+/// column's own type. It is the one entry point for that, so a folder, a table
+/// format, and the pair sugar cannot read the same directory differently.
+#[must_use]
+pub fn coerce_text(text: &str, data_type: &DataType) -> Option<Value> {
+    coerce_value(&Value::from(text), data_type)
+}
+
+/// Read one value as the datatype names it, or answer that it cannot be.
+///
+/// The value-level sibling of [`ArrowCast`](crate::ArrowCast): the row
+/// evaluator, the statistics evaluator, and literal folding all run in builds
+/// with no Arrow at all, so the conversion they need cannot be an array cast.
+/// It is public because every statistics source outside this module needs it -
+/// a Parquet footer, an Iceberg manifest, and a partition directory each hold
+/// bounds in their own spelling and must present them in the column\'s type.
+#[must_use]
+pub fn coerce_value(value: &Value, data_type: &DataType) -> Option<Value> {
+    bound::coerce_value(value, data_type)
 }
 
 /// Render a value the way this grammar spells a literal.

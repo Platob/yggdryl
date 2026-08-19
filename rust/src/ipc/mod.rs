@@ -89,6 +89,16 @@ pub struct IpcOptions {
     pub select_by_names: Vec<String>,
     /// Partition equalities a read is pruned and filtered by; empty keeps all.
     pub filter_partitions: Vec<(String, String)>,
+    /// The predicate a read is pruned and filtered by.
+    ///
+    /// This is the general form of `filter_partitions`, which stays as the
+    /// sugar that builds one equality per pair.
+    pub filter: Option<crate::Expr>,
+    /// The projection a read or write is narrowed to.
+    ///
+    /// This is the general form of `select_by_names`, which stays as the sugar
+    /// for a projection of bare columns.
+    pub selection: Option<crate::Selection>,
 }
 
 impl IpcOptions {
@@ -103,6 +113,8 @@ impl IpcOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
+            filter: None,
+            selection: None,
         }
     }
 }

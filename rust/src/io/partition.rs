@@ -25,6 +25,7 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
 use crate::arrow::{BatchReader, record_schema_from_arrow, schema_from_field};
+use crate::expressions::{Apply, BoundColumn, ColumnStats, Expr, StatsSource};
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::IOBase;
 use crate::{Error, Field, Result, Url};
@@ -88,6 +89,113 @@ pub fn partition_text(value: &crate::Value) -> Result<smol_str::SmolStr> {
     let formatter =
         ArrayFormatter::try_new(array.as_ref(), &partition_format()).map_err(Error::Arrow)?;
     Ok(smol_str::SmolStr::new(formatter.value(0).to_string()))
+}
+
+/// Build the expression a `(column, value)` pair list means.
+///
+/// This is the *sugar*, spelled once: each pair becomes one equality against
+/// the text the layout writes, and the text [`NULL_PARTITION`] becomes
+/// `IS NULL`, because that is what a directory named `venue=null` means. The
+/// quoting goes through the expression grammar's own writer, so a partition
+/// column with a space in its name cannot become an unparseable filter.
+///
+/// ```
+/// use yggdryl::io::partition::pairs_to_expr;
+///
+/// assert_eq!(
+///     pairs_to_expr(&[("venue", "XNAS"), ("total amount", "3")]).to_string(),
+///     "venue = 'XNAS' AND \"total amount\" = '3'"
+/// );
+/// assert_eq!(pairs_to_expr(&[("venue", "null")]).to_string(), "venue IS NULL");
+/// ```
+#[must_use]
+pub fn pairs_to_expr(pairs: &[(&str, &str)]) -> Expr {
+    Expr::all(pairs.iter().map(|(column, value)| {
+        let column = Expr::column(*column);
+        if *value == NULL_PARTITION {
+            column.is_null()
+        } else {
+            column.eq(Expr::literal(*value))
+        }
+    }))
+}
+
+/// The `(column, value)` pair vocabulary, applied as the expression it builds.
+///
+/// The pairs bind *tolerantly*, exactly as the folder route has always treated
+/// them: a column the rows do not carry drops out, and a value the column's
+/// type cannot read matches nothing rather than failing the read.
+impl Apply for [(&str, &str)] {
+    fn program(&self, schema: &Field) -> Result<crate::expressions::Program> {
+        let bound = pairs_to_expr(self).bind_tolerant(schema)?;
+        Ok(crate::expressions::Program::Predicate(
+            bound.into_predicate()?,
+        ))
+    }
+}
+
+impl Apply for Vec<(String, String)> {
+    fn program(&self, schema: &Field) -> Result<crate::expressions::Program> {
+        let pairs: Vec<(&str, &str)> = self
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        <[(&str, &str)] as Apply>::program(&pairs, schema)
+    }
+}
+
+/// What a `column=value` directory knows about the rows beneath it.
+///
+/// Every row under `venue=XNAS` holds exactly that value, so the directory is a
+/// column whose lower and upper bound are the same - which makes directory
+/// pruning a *special case of statistics pruning* rather than a second code
+/// path. That unification is the point: the same
+/// [`evaluate_stats`](crate::expressions::BoundPredicate::evaluate_stats)
+/// answers a manifest summary, a Parquet row group, and a directory name.
+#[derive(Clone, Debug, Default)]
+pub struct PartitionStats {
+    pairs: Vec<(String, String)>,
+}
+
+impl PartitionStats {
+    /// Read the constants a path's `column=value` segments spell out.
+    #[must_use]
+    pub fn new(pairs: impl IntoIterator<Item = (String, String)>) -> Self {
+        Self {
+            pairs: pairs.into_iter().collect(),
+        }
+    }
+
+    /// Return whether the path named no partition column at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.pairs.is_empty()
+    }
+}
+
+impl StatsSource for PartitionStats {
+    fn stats(&self, column: &BoundColumn) -> Option<ColumnStats> {
+        let (_, text) = self
+            .pairs
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(column.name()))?;
+        if text == NULL_PARTITION {
+            // A path cannot tell the four letters from the absence of a value,
+            // and the convention picked absence - so the directory is a column
+            // of nothing but nulls.
+            return Some(ColumnStats {
+                lower: None,
+                upper: None,
+                null_count: Some(1),
+                value_count: Some(1),
+            });
+        }
+        // The directory name is text; the column's own type is what a bound
+        // has to be compared in, so an unreadable value says nothing rather
+        // than pruning on a comparison that never had a meaning.
+        let value = crate::expressions::coerce_text(text, column.data_type())?;
+        Some(ColumnStats::constant(value))
+    }
 }
 
 /// Build a constant column holding `value` for every row of a batch.
@@ -337,87 +445,105 @@ pub fn narrowed_reader(
     })
 }
 
-/// Wrap a reader so only rows matching the options' partition filters flow.
+/// Wrap a reader so only rows the options' predicate keeps flow.
 ///
-/// A column a batch does not carry is ignored - the leaf's path already
-/// answered for it, or the layout never had it - so path-partitioned and
-/// data-partitioned lakes answer the same equality the same way. Values
-/// compare as [`partition_text`] spells them, one boolean mask per batch,
-/// and nothing is collected.
+/// The predicate is bound **once**, against the reader's own schema, and then
+/// one boolean mask per batch selects the rows - where this used to render
+/// every value of every filtered column to text, once per row, through an
+/// `ArrayFormatter`. A column the batch does not carry is not an error: the
+/// leaf's path already answered for it, or the layout never had it, which is
+/// why the binding is the tolerant one.
 pub(crate) fn filtered_reader(inner: BatchReader, options: &RecordOptions) -> Result<BatchReader> {
-    let filters = options.filter_partitions();
-    if filters.is_empty() {
+    let Some(filter) = options.resolved_filter() else {
         return Ok(inner);
+    };
+    let root =
+        crate::arrow::record_schema_from_arrow(options.root_name(), inner.schema().as_ref())?;
+    // Tolerant, for the same reason the pair vocabulary is: a folder route has
+    // always accepted a filter naming a column its rows do not carry.
+    let predicate = filter.bind_tolerant(&root)?.into_predicate()?;
+    Ok(predicate.filter_batch_reader(inner)?)
+}
+
+/// Skip every leaf whose directory names cannot hold a matching row.
+///
+/// The predicate is bound against the *declared* schema when there is one, so
+/// `year >= 2024` on an `Int32` partition column compares two integers rather
+/// than two strings; without one the directory text is all there is, and the
+/// bound falls back to a text column. A subtree the statistics refute is
+/// dropped before anything under it is opened.
+///
+/// # Errors
+///
+/// Returns a binding failure the tolerant mode cannot absorb.
+fn prune_parts(
+    parts: &mut Vec<Holder>,
+    root: Option<&Url>,
+    options: &RecordOptions,
+    filter: &Expr,
+) -> Result<()> {
+    // Every leaf shares one bound plan: binding is a per-read cost, not a
+    // per-leaf one, which is the whole reason binding is separate from
+    // evaluating.
+    let schema = match options.schema() {
+        Some(schema) => schema.clone(),
+        None => match partition_schema(parts, root) {
+            Some(schema) => schema,
+            // Nothing names a partition column, so nothing can be pruned on
+            // one; the row filter still answers for every leaf.
+            None => return Ok(()),
+        },
+    };
+    let predicate = filter.bind_tolerant(&schema)?.into_predicate()?;
+    let mut failure = None;
+    parts.retain(|part| {
+        let stats = PartitionStats::new(pairs_under(part, root));
+        if stats.is_empty() {
+            return true;
+        }
+        let _ = &mut failure;
+        predicate.evaluate_stats(&stats).is_possible()
+    });
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(()),
     }
-    let schema = inner.schema();
-    Ok(Box::new(Filtered {
-        inner,
-        filters: filters.to_vec(),
-        schema,
-    }))
 }
 
-struct Filtered {
-    inner: BatchReader,
-    filters: Vec<(String, String)>,
-    schema: SchemaRef,
-}
-
-impl Iterator for Filtered {
-    type Item = std::result::Result<RecordBatch, ArrowError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let batch = match self.inner.next()? {
-            Ok(batch) => batch,
-            Err(error) => return Some(Err(error)),
-        };
-        Some(filter_rows(&batch, &self.filters))
-    }
-}
-
-impl arrow_array::RecordBatchReader for Filtered {
-    fn schema(&self) -> SchemaRef {
-        Arc::clone(&self.schema)
-    }
-}
-
-/// Keep the rows of one batch whose named columns spell the named values.
-fn filter_rows(
-    batch: &RecordBatch,
-    filters: &[(String, String)],
-) -> std::result::Result<RecordBatch, ArrowError> {
-    let mut mask: Option<Vec<bool>> = None;
-    for (column, value) in filters {
-        let Some(index) = batch
-            .schema()
-            .fields()
-            .iter()
-            .position(|field| field.name().eq_ignore_ascii_case(column))
-        else {
-            continue;
-        };
-        let array = batch.column(index);
-        let formatter = ArrayFormatter::try_new(array.as_ref(), &partition_format())?;
-        let rows = mask.get_or_insert_with(|| vec![true; batch.num_rows()]);
-        for (row, keep) in rows.iter_mut().enumerate() {
-            if !*keep {
-                continue;
+/// A schema of nothing but the partition columns the paths spell out.
+///
+/// Without a declared schema the directory names are the only thing that
+/// exists, so they are typed as the text they literally are - which still
+/// prunes an equality, and honestly refuses to prune an ordering it cannot
+/// mean.
+fn partition_schema(parts: &[Holder], root: Option<&Url>) -> Option<Field> {
+    let mut fields: Vec<Field> = Vec::new();
+    for part in parts {
+        for (column, _) in pairs_under(part, root) {
+            if !fields
+                .iter()
+                .any(|held| held.name().eq_ignore_ascii_case(&column))
+            {
+                fields.push(ArrowDataTypeText::text_field(&column));
             }
-            // Absence spells `null`, exactly as the path renderer spells it,
-            // so a filter on "null" selects the rows with no value.
-            let spelled = if array.is_null(row) {
-                "null".to_owned()
-            } else {
-                formatter.value(row).to_string()
-            };
-            *keep = spelled == *value;
         }
     }
-    let Some(mask) = mask else {
-        return Ok(batch.clone());
-    };
-    let mask = arrow_array::BooleanArray::from(mask);
-    arrow_select::filter::filter_record_batch(batch, &mask)
+    if fields.is_empty() {
+        return None;
+    }
+    crate::DataType::from_fields(fields)
+        .ok()
+        .map(|data_type| data_type.required_field("row"))
+}
+
+/// The one place a path-only partition column gets its datatype.
+struct ArrowDataTypeText;
+
+impl ArrowDataTypeText {
+    /// A nullable text column named for one partition segment.
+    fn text_field(column: &str) -> Field {
+        crate::DataType::Utf8.nullable_field(column)
+    }
 }
 
 /// Return the Hive pairs `part` spells out below `root`.
@@ -659,17 +785,8 @@ pub(crate) fn folder_reader(
     // A leaf whose path names a different value for a filtered column cannot
     // hold a matching row, so it is skipped before anything is decoded; a
     // leaf that does not name the column stays, and the row filter answers.
-    let filters = options.filter_partitions();
-    if !filters.is_empty() {
-        parts.retain(|part| {
-            let pairs = pairs_under(part, root.as_ref());
-            filters.iter().all(|(column, value)| {
-                pairs
-                    .iter()
-                    .find(|(key, _)| key.eq_ignore_ascii_case(column))
-                    .is_none_or(|(_, held)| held == value)
-            })
-        });
+    if let Some(filter) = options.resolved_filter() {
+        prune_parts(&mut parts, root.as_ref(), options, &filter)?;
     }
     let field = match options.schema() {
         Some(schema) => Some(schema.clone()),

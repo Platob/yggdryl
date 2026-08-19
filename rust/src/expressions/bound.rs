@@ -27,19 +27,42 @@ use super::stats::{Certainty, StatsSource};
 use super::{Accessor, Column, Expr};
 use crate::{DataType, Error, Field, Result, Value};
 
-/// Whether binding refuses what it cannot resolve, or tolerates it.
+/// What binding refuses and what it absorbs.
 ///
-/// Strictness belongs to the *caller's vocabulary*, not to the expression: the
-/// folder route has always tolerated a filter naming a column the rows do not
-/// carry, and a table route has always refused one, so the two modes are what
-/// keeps that difference where it has always been.
+/// Strictness belongs to the *caller's vocabulary*, not to the expression, and
+/// the two halves are genuinely independent: a folder route has always
+/// tolerated a filter naming a column its rows do not carry, while a table
+/// route refuses one - and *both* have always tolerated a value the column's
+/// type cannot read, because a filter value arrives as text and text that
+/// names nothing simply matches nothing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum Strictness {
-    /// A name the schema lacks, or a literal its type cannot hold, is an error.
-    Strict,
-    /// A name the schema lacks drops out; a literal the type cannot hold folds
-    /// its comparison to `FALSE`, which is exactly "matches nothing".
-    Tolerant,
+pub(super) struct Strictness {
+    /// Whether a column the schema lacks is an error rather than a drop-out.
+    columns: bool,
+    /// Whether a literal the type cannot hold is an error rather than a null.
+    literals: bool,
+}
+
+impl Strictness {
+    /// Everything is a claim: an absent column and an unreadable value both
+    /// fail. This is what an expression written against a known schema gets.
+    pub(super) const STRICT: Self = Self {
+        columns: true,
+        literals: true,
+    };
+
+    /// Nothing is a claim, which is how the `(column, value)` pair vocabulary
+    /// has always behaved on a folder route.
+    pub(super) const TOLERANT: Self = Self {
+        columns: false,
+        literals: false,
+    };
+
+    /// A column is a claim and a value is text - the table route's reading.
+    pub(super) const DECLARED: Self = Self {
+        columns: true,
+        literals: false,
+    };
 }
 
 /// One resolved step of a column path.
@@ -252,7 +275,7 @@ impl Bound {
         let root = plan.insert_expr_with(expr, &mut |column| match binder.resolve(column) {
             Ok(bound) => Some(Arc::new(ColumnRef::resolved(bound))),
             Err(error) => {
-                if binder.strictness == Strictness::Strict {
+                if binder.strictness.columns {
                     binder.failure.get_or_insert(error);
                 }
                 None
@@ -509,22 +532,28 @@ impl BoundPredicate {
         super::stats::evaluate(&self.0.plan, self.0.root, source)
     }
 
-    /// The conjuncts a statistics source did not settle.
+    /// The conjuncts a statistics source did not settle, or nothing at all.
     ///
-    /// A conjunct the source proves always true is dropped; one it proves
-    /// always false makes the whole residual `FALSE`; the rest are carried
-    /// forward for the rows themselves to answer.
+    /// A conjunct the source proves always true is dropped, because no row can
+    /// fail it; the rest are carried forward for the rows themselves to answer.
+    /// `None` is the third answer and it is the valuable one: one conjunct was
+    /// proved false for every row, so the file, manifest, or directory holds
+    /// nothing and is never opened.
+    ///
+    /// An empty `Some` therefore means "every row matches" and `None` means
+    /// "no row matches" - two answers a bare list could not tell apart, which
+    /// is exactly the confusion that would silently read every file.
     #[must_use]
-    pub fn residual(&self, source: &dyn StatsSource) -> Vec<Self> {
+    pub fn residual(&self, source: &dyn StatsSource) -> Option<Vec<Self>> {
         let mut residual = Vec::new();
         for conjunct in self.conjuncts() {
             match conjunct.evaluate_stats(source) {
                 Certainty::AlwaysTrue => {}
-                Certainty::AlwaysFalse => return vec![conjunct],
+                Certainty::AlwaysFalse => return None,
                 Certainty::Maybe => residual.push(conjunct),
             }
         }
-        residual
+        Some(residual)
     }
 }
 
@@ -1244,7 +1273,7 @@ impl Typer {
                 plan.set_data_type(new_id, target.clone());
                 Ok(new_id)
             }
-            None if self.strictness == Strictness::Tolerant => {
+            None if !self.strictness.literals => {
                 let new_id = plan.insert(Node::Literal(Value::Null));
                 plan.set_data_type(new_id, target.clone());
                 Ok(new_id)

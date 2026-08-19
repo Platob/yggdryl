@@ -345,6 +345,106 @@ mod lake {
     }
 
     #[test]
+    fn an_expression_prunes_directories_a_pair_list_could_not_ask_about() {
+        use crate::generic::IORecordOptions;
+
+        let (root, handle) = lake("expression-pruned");
+        seed(&root, "year=2023/month=12", &prices());
+        seed(&root, "year=2024/month=01", &prices());
+        seed(&root, "year=2024/month=02", &prices());
+        seed(&root, "year=2025/month=01", &prices());
+
+        let field = schema();
+        // A range over a partition column is a question the pair vocabulary
+        // cannot spell at all, and it prunes the same way an equality does -
+        // the `year=2023` subtree is never listed or decoded.
+        let filtered = options(Some(field.clone()))
+            .with_filter("year >= 2024")
+            .unwrap();
+        let mut years: Vec<i32> = Vec::new();
+        for batch in handle.read_arrow_batch_reader(&filtered).unwrap() {
+            let batch = batch.unwrap();
+            let column = batch
+                .column_by_name("year")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::Int32Array>()
+                .unwrap()
+                .clone();
+            for row in 0..batch.num_rows() {
+                years.push(column.value(row));
+            }
+        }
+        assert!(!years.is_empty());
+        assert!(years.iter().all(|year| *year >= 2024), "{years:?}");
+        assert!(!years.contains(&2023), "{years:?}");
+
+        // And a predicate mixing a path column with a stored one is answered
+        // by the directories and then by the rows, in one read.
+        let mixed = options(Some(field.clone()))
+            .with_filter("year = 2024 AND price > 10")
+            .unwrap();
+        let mut matched = 0;
+        for batch in handle.read_arrow_batch_reader(&mixed).unwrap() {
+            matched += batch.unwrap().num_rows();
+        }
+        assert!(matched > 0);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn pushing_a_folder_filter_down_returns_what_filtering_in_memory_returns() {
+        use crate::expressions::Apply;
+        use crate::generic::IORecordOptions;
+
+        let (root, handle) = lake("folder-equivalence");
+        seed(&root, "year=2023/month=12", &prices());
+        seed(&root, "year=2024/month=01", &prices());
+        seed(&root, "year=2024/month=02", &prices());
+
+        let field = schema();
+        let whole: Vec<crate::Value> = handle
+            .read_arrow_batch_reader(&options(Some(field.clone())))
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let rows = crate::arrow::batch_to_value(&batch).unwrap();
+                rows.as_sequence()
+                    .map(<[crate::Value]>::to_vec)
+                    .unwrap_or_default()
+            })
+            .collect();
+
+        for text in [
+            "year = 2024",
+            "year <> 2024",
+            "month IN ('01', '12')",
+            "price > 10",
+            "year = 2024 AND price > 10",
+            "year = 2024 OR price = 10",
+            "price IS NULL",
+        ] {
+            let pruned: usize = handle
+                .read_arrow_batch_reader(&options(Some(field.clone())).with_filter(text).unwrap())
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum();
+            // The naive answer: read everything, then filter the rows in
+            // memory with the same expression through the row evaluator.
+            let expected = text
+                .parse::<crate::Expr>()
+                .unwrap()
+                .apply_rows(&field, &whole)
+                .unwrap()
+                .len();
+            assert_eq!(pruned, expected, "pruning changed the answer for {text:?}");
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn an_overwrite_empties_a_partition_the_incoming_rows_no_longer_name() {
         let (root, mut handle) = lake("empty-partition");
         seed(&root, "year=2024/month=01", &prices());

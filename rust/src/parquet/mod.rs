@@ -99,6 +99,16 @@ pub struct ParquetOptions {
     pub select_by_names: Vec<String>,
     /// Partition equalities a read is pruned and filtered by; empty keeps all.
     pub filter_partitions: Vec<(String, String)>,
+    /// The predicate a read is pruned and filtered by.
+    ///
+    /// This is the general form of `filter_partitions`, which stays as the
+    /// sugar that builds one equality per pair.
+    pub filter: Option<crate::Expr>,
+    /// The projection a read or write is narrowed to.
+    ///
+    /// This is the general form of `select_by_names`, which stays as the sugar
+    /// for a projection of bare columns.
+    pub selection: Option<crate::Selection>,
 }
 
 impl ParquetOptions {
@@ -116,6 +126,8 @@ impl ParquetOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
+            filter: None,
+            selection: None,
         }
     }
 
@@ -247,6 +259,15 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         Some(size) => builder.with_batch_size(size),
         None => builder,
     };
+    // The footer already holds per-row-group bounds and null counts, so a
+    // filtered read can skip whole groups before a single page is located or
+    // decompressed. This is the cheapest rung of the read ladder that is not
+    // free: one bind against the file's own schema, then one three-valued
+    // question per group.
+    let builder = match options.resolved_filter() {
+        Some(filter) => prune_row_groups(builder, &filter, options)?,
+        None => builder,
+    };
     let projection = field.and_then(|field| projection_indices(field, builder.schema()));
     let builder = match projection {
         // Root indices, not leaf indices: a nested column is one root, and its
@@ -258,6 +279,164 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         None => builder,
     };
     Ok(Box::new(builder.build()?))
+}
+
+/// Narrow a builder to the row groups a predicate leaves room for.
+///
+/// A group the statistics refute is never located, decompressed, or decoded.
+/// The rule is the module-wide one: [`Certainty::Maybe`] keeps the group, and
+/// only a *provable* refusal drops it - a column with no recorded bounds, a
+/// predicate the group cannot answer, and a filter naming a column the file
+/// does not carry all keep every group.
+///
+/// # Errors
+///
+/// Returns a binding failure tolerance cannot absorb, or a schema failure.
+fn prune_row_groups<T: parquet::file::reader::ChunkReader + 'static>(
+    builder: ParquetRecordBatchReaderBuilder<T>,
+    filter: &crate::Expr,
+    options: &ParquetOptions,
+) -> Result<ParquetRecordBatchReaderBuilder<T>> {
+    let root = record_schema_from_arrow(options.root_name(), builder.schema().as_ref())?;
+    // Tolerant, because a filter naming a column this file does not carry is
+    // answered by whatever restores that column - a partition directory, or
+    // another file of the same table - rather than by failing the read.
+    let predicate = filter
+        .bind_tolerant(&root)?
+        .into_predicate()
+        .map_err(Error::from)?;
+    if predicate.is_always_true() {
+        return Ok(builder);
+    }
+    let metadata = builder.metadata().clone();
+    let kept: Vec<usize> = (0..metadata.num_row_groups())
+        .filter(|group| {
+            let stats = RowGroupSource {
+                group: metadata.row_group(*group),
+                schema: metadata.file_metadata().schema_descr(),
+            };
+            predicate.evaluate_stats(&stats).is_possible()
+        })
+        .collect();
+    if kept.len() == metadata.num_row_groups() {
+        // Nothing was refuted, so the builder is left exactly as it was rather
+        // than rebuilt around a list naming every group.
+        return Ok(builder);
+    }
+    Ok(builder.with_row_groups(kept))
+}
+
+/// What one Parquet row group's footer knows about a column.
+///
+/// The bounds come back typed from the `parquet` crate rather than as the
+/// encoded bytes [`ColumnStatistics`] carries, because the physical encoding is
+/// the file format's business and the expression engine compares values.
+struct RowGroupSource<'footer> {
+    group: &'footer parquet::file::metadata::RowGroupMetaData,
+    schema: &'footer parquet::schema::types::SchemaDescriptor,
+}
+
+impl crate::expressions::StatsSource for RowGroupSource<'_> {
+    fn stats(
+        &self,
+        column: &crate::expressions::BoundColumn,
+    ) -> Option<crate::expressions::ColumnStats> {
+        let wanted = leaf_path(column);
+        let index = (0..self.schema.num_columns()).find(|index| {
+            self.schema
+                .column(*index)
+                .path()
+                .string()
+                .eq_ignore_ascii_case(&wanted)
+        })?;
+        let chunk = self.group.column(index);
+        let statistics = chunk.statistics()?;
+        let data_type = column.data_type();
+        let null_count = statistics.null_count_opt();
+        let value_count = u64::try_from(self.group.num_rows()).ok();
+        let (lower, upper) = typed_bounds(statistics, data_type);
+        if lower.is_none() && upper.is_none() && null_count.is_none() {
+            return None;
+        }
+        Some(crate::expressions::ColumnStats {
+            lower,
+            upper,
+            null_count,
+            value_count,
+        })
+    }
+}
+
+/// The dotted leaf path a bound column names, the way Parquet spells one.
+fn leaf_path(column: &crate::expressions::BoundColumn) -> String {
+    let mut path = String::from(column.name());
+    for step in column.steps() {
+        if let crate::expressions::Step::Child { name, .. } = step {
+            path.push('.');
+            path.push_str(name);
+        }
+    }
+    path
+}
+
+/// Read a row group's recorded bounds as values of the column's own type.
+///
+/// A bound the column's datatype cannot hold answers `None`, which keeps the
+/// group rather than pruning on a comparison that never had a meaning.
+fn typed_bounds(
+    statistics: &parquet::file::statistics::Statistics,
+    data_type: &crate::DataType,
+) -> (Option<crate::Value>, Option<crate::Value>) {
+    use crate::Value;
+    use parquet::file::statistics::Statistics as S;
+
+    let read = |raw: Option<Value>| {
+        raw.and_then(|value| crate::expressions::coerce_value(&value, data_type))
+    };
+    let pair = |min: Option<Value>, max: Option<Value>| (read(min), read(max));
+    match statistics {
+        S::Boolean(held) => pair(
+            held.min_opt().map(|value| Value::Bool(*value)),
+            held.max_opt().map(|value| Value::Bool(*value)),
+        ),
+        S::Int32(held) => pair(
+            held.min_opt().map(|value| Value::I64(i64::from(*value))),
+            held.max_opt().map(|value| Value::I64(i64::from(*value))),
+        ),
+        S::Int64(held) => pair(
+            held.min_opt().map(|value| Value::I64(*value)),
+            held.max_opt().map(|value| Value::I64(*value)),
+        ),
+        S::Float(held) => pair(
+            held.min_opt().map(|value| Value::from(*value)),
+            held.max_opt().map(|value| Value::from(*value)),
+        ),
+        S::Double(held) => pair(
+            held.min_opt().map(|value| Value::from(*value)),
+            held.max_opt().map(|value| Value::from(*value)),
+        ),
+        S::ByteArray(held) => pair(
+            held.min_opt().and_then(byte_array_value),
+            held.max_opt().and_then(byte_array_value),
+        ),
+        S::FixedLenByteArray(held) => pair(
+            held.min_opt()
+                .map(|value| Value::Bytes(std::sync::Arc::from(value.data()))),
+            held.max_opt()
+                .map(|value| Value::Bytes(std::sync::Arc::from(value.data()))),
+        ),
+        // A 96-bit integer is a legacy timestamp encoding whose reading is
+        // ambiguous, so it says nothing rather than something wrong.
+        S::Int96(_) => (None, None),
+    }
+}
+
+/// Read a Parquet byte array as text where it is text, and as bytes otherwise.
+fn byte_array_value(value: &parquet::data_type::ByteArray) -> Option<crate::Value> {
+    match std::str::from_utf8(value.data()) {
+        Ok(text) => Some(crate::Value::String(smol_str::SmolStr::new(text))),
+        Err(_) => Some(crate::Value::Bytes(std::sync::Arc::from(value.data()))),
+    }
 }
 
 /// Replace the file `handle` holds with every batch `batches` yields.
