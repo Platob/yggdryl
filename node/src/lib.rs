@@ -10,6 +10,7 @@
 )]
 
 mod arrow;
+mod arrowfs;
 mod codec;
 pub mod codings;
 mod datatype;
@@ -33,6 +34,7 @@ use napi_derive::napi;
 use yggdryl::OwnedDifferences;
 
 pub use arrow::JsBatchReader;
+pub use arrowfs::ArrowFileInfo;
 pub use codec::{
     JsCodecValue, codec_infer_format, codec_loads_inferred_native, codec_normalize_format,
     json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
@@ -47,9 +49,11 @@ pub use expression::{JsBound, JsExpression, JsStatement};
 pub use field::{JsField, JsProtocolMetadata, MetadataEntry};
 pub use generic::JsRecordOptions;
 pub use iceberg::{
-    Compaction, FieldBound, FieldCount, JsCatalog, JsDataFile, JsPartitionSpec, JsSchemaUpdate,
-    JsTable, ManifestFileView, PartitionFieldView, SnapshotView, iceberg_assign_field_ids,
-    iceberg_can_promote, iceberg_schema_from_json, iceberg_schema_to_json,
+    Compaction, FieldBound, FieldCount, IcebergOptionsInput, JsCatalog, JsDataFile,
+    JsIcebergOptions, JsNamespace, JsNamespaces, JsPartitionSpec, JsScanPlan, JsSchemaUpdate,
+    JsTable, JsTables, ManifestFileView, PartitionFieldView, SnapshotRefView, SnapshotView,
+    iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
+    iceberg_schema_to_json,
 };
 pub use io::JsIOBase;
 pub use media::{JsMediaType, JsMimeType};

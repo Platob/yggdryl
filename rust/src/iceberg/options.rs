@@ -18,6 +18,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::manifest::FileFormat;
 use super::metadata::TableMetadata;
 use crate::{Error, Result};
 
@@ -60,6 +61,8 @@ pub struct IcebergOptions {
     read_parallel_min_file_size_bytes: Option<u64>,
     /// After how many data commits an automatic compaction runs, when set.
     compact_after_commits: Option<u32>,
+    /// The format new data files are written in, when set.
+    data_format: Option<FileFormat>,
 }
 
 impl IcebergOptions {
@@ -74,6 +77,11 @@ impl IcebergOptions {
     pub const COMPACT_AFTER_COMMITS_KEY: &'static str = "write.auto-compact.commit-interval";
     /// The property naming the size a data file aims for, in bytes.
     pub const TARGET_FILE_SIZE_KEY: &'static str = "write.target-file-size-bytes";
+    /// The property naming the format new data files are written in.
+    ///
+    /// This is the spec's own key, so a table whose property says `avro` writes
+    /// Avro data files here exactly as it would under Spark.
+    pub const DATA_FORMAT_KEY: &'static str = "write.format.default";
     /// The property naming how many data files a scan decodes at once.
     pub const READ_PARALLELISM_KEY: &'static str = "read.parallelism";
     /// The property naming how many large-enough files justify parallelism.
@@ -93,6 +101,8 @@ impl IcebergOptions {
     pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 16;
     /// The size floor nothing configures: 4 MiB recorded bytes.
     pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 4 * 1024 * 1024;
+    /// The data file format nothing configures: Parquet, the spec's default.
+    pub const DEFAULT_DATA_FORMAT: FileFormat = FileFormat::Parquet;
 
     /// Build an options value with nothing set, so every field defaults.
     pub fn new() -> Self {
@@ -168,6 +178,30 @@ impl IcebergOptions {
     pub fn read_parallel_min_file_size_bytes(&self) -> u64 {
         self.read_parallel_min_file_size_bytes
             .unwrap_or(Self::DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES)
+    }
+
+    /// Return the format new data files are written in. Default: Parquet.
+    ///
+    /// Only what a *write* produces is decided here: a scan decodes each data
+    /// file as the format its manifest entry records, so one table can mix
+    /// formats and still read as one shape.
+    pub fn data_format(&self) -> FileFormat {
+        self.data_format.unwrap_or(Self::DEFAULT_DATA_FORMAT)
+    }
+
+    /// Set the format new data files are written in.
+    ///
+    /// The build is checked when a write resolves the format, not here, so an
+    /// options value can carry a format one build encodes and another refuses.
+    pub fn set_data_format(&mut self, format: FileFormat) {
+        self.data_format = Some(format);
+    }
+
+    /// Set the format new data files are written in, persistently.
+    #[must_use]
+    pub fn with_data_format(mut self, format: FileFormat) -> Self {
+        self.set_data_format(format);
+        self
     }
 
     /// Set how many beaten commit attempts are retried; 0 disables retrying.
@@ -353,6 +387,7 @@ impl IcebergOptions {
                 explicit, metadata,
             )?,
             compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
+            data_format: data_format_layer(explicit, metadata)?,
         })
     }
 
@@ -392,6 +427,14 @@ impl IcebergOptions {
         Ok(target_file_size_layer(explicit, metadata)?
             .unwrap_or(Self::DEFAULT_TARGET_FILE_SIZE_BYTES))
     }
+
+    /// Resolve only the data file format, the field a write encodes with.
+    pub(super) fn write_format(
+        explicit: Option<&Self>,
+        metadata: &TableMetadata,
+    ) -> Result<FileFormat> {
+        Ok(data_format_layer(explicit, metadata)?.unwrap_or(Self::DEFAULT_DATA_FORMAT))
+    }
 }
 
 /// What a commit's retry ladder runs with, fully resolved.
@@ -414,6 +457,20 @@ pub(super) struct ReadSettings {
     pub(super) min_files: usize,
     /// The recorded size below which a file does not count, in bytes.
     pub(super) min_file_size_bytes: u64,
+}
+
+/// The one resolver for [`IcebergOptions::DATA_FORMAT_KEY`].
+fn data_format_layer(
+    explicit: Option<&IcebergOptions>,
+    metadata: &TableMetadata,
+) -> Result<Option<FileFormat>> {
+    layered(
+        explicit.and_then(|options| options.data_format),
+        metadata,
+        IcebergOptions::DATA_FORMAT_KEY,
+        "a data file format of parquet, avro, or orc",
+        |_| true,
+    )
 }
 
 /// The one resolver for [`IcebergOptions::COMPACT_AFTER_COMMITS_KEY`].

@@ -12,6 +12,14 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
+// Foreign Arrow filesystems behind the one storage trait. The vtable adds no
+// dependency, so the module is unconditional like the Avro value codec; the
+// record surface its handles answer is inherited and already gated by `arrow`.
+pub mod arrowfs;
+pub mod avro;
+// The page cache over any handle. It is a wrapping handle like the codings,
+// so it lives beside them rather than inside `io`, and it needs no Arrow.
+pub mod buffered;
 mod datatype;
 pub mod enums;
 mod error;
@@ -20,6 +28,15 @@ pub mod field;
 pub mod generic;
 pub mod gzip;
 #[cfg(feature = "iceberg")]
+pub mod iceberg;
+// The line projection consults the Iceberg type vocabulary even when the
+// table format itself is not compiled in, so the schema it accepts never
+// depends on the feature set. Without the feature the module is exactly the
+// vocabulary - the one self-contained `types.rs`, never a duplicate - and
+// enabling the feature only *adds* the rest of the format, so the features
+// stay additive.
+#[cfg(all(feature = "arrow", not(feature = "iceberg")))]
+#[path = "iceberg/types.rs"]
 pub mod iceberg;
 pub mod io;
 #[cfg(feature = "arrow")]

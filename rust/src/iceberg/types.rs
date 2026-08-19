@@ -134,10 +134,24 @@ impl PrimitiveType {
             DataType::Float64 => Self::Double,
             DataType::Decimal32 { precision, scale }
             | DataType::Decimal64 { precision, scale }
-            | DataType::Decimal128 { precision, scale } => Self::Decimal {
-                precision: *precision,
-                scale: *scale,
-            },
+            | DataType::Decimal128 { precision, scale } => {
+                // Arrow admits a negative scale; Iceberg's decimal grammar
+                // does not, and Parquet rejects one at write time - so it is
+                // refused here, before a schema carrying it is committed.
+                if *scale < 0 {
+                    return Err(Error::InvalidDataType {
+                        kind: "iceberg",
+                        reason: format_smolstr!(
+                            "expected a decimal scale of 0 or more (Iceberg spells no negative \
+                             scale), got decimal({precision}, {scale})"
+                        ),
+                    });
+                }
+                Self::Decimal {
+                    precision: *precision,
+                    scale: *scale,
+                }
+            }
             DataType::Date32 => Self::Date,
             DataType::Time64(TimeUnit::Microsecond) => Self::Time,
             DataType::Timestamp(TimeUnit::Microsecond, zone) => match zone {

@@ -5,7 +5,12 @@
 //! every one of them with [`IOBase::child_by`] and [`IOBase::ls`] against the
 //! handle a [`Table`] was constructed from. Nothing here opens a path or calls
 //! the file system, so the same code works over a local directory today and
-//! over an object store the moment a backend for one exists.
+//! over an object store the moment a backend for one exists. The relationship
+//! runs both ways: [`Table`] itself implements [`IOBase`], so the generic
+//! record surface ([`IOBase::read_arrow_batch_reader`],
+//! [`IOBase::write_arrow_batch_reader`], [`IOBase::append_arrow_batch_reader`])
+//! works on the table value directly, answered from the metadata it already
+//! holds rather than by probing the location again.
 //!
 //! The vocabulary is the crate's own. A schema is a non-null struct
 //! [`Field`](crate::Field) whose children carry `PARQUET:field_id`, a metadata
@@ -89,7 +94,6 @@
 //! table is unaffected, because a manifest already records which partition each
 //! file belongs to.
 
-mod avro;
 mod catalog;
 mod evolve;
 mod inspect;
@@ -105,11 +109,12 @@ mod table;
 mod types;
 mod value;
 
-pub use catalog::{Catalog, Namespace};
+pub use catalog::{Catalog, Namespace, Namespaces, Tables};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
     DataFile, EntryStatus, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,
-    read_manifest, read_manifest_list, read_manifest_spec, write_manifest, write_manifest_list,
+    read_manifest, read_manifest_for_plan, read_manifest_list, read_manifest_spec, write_manifest,
+    write_manifest_list,
 };
 pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
 pub use options::IcebergOptions;
@@ -236,11 +241,10 @@ impl Located {
 
     /// Return the encoding this table's data files are written in.
     ///
-    /// A table that has never been written to holds no data file to read a
-    /// media type off, and its encoding is still not a guess: this module
-    /// writes Parquet, so that is what an Iceberg table's rows are.
-    pub(crate) fn record_options(&self) -> RecordOptions {
-        RecordOptions::Parquet(crate::parquet::ParquetOptions::new())
+    /// Answered by the table's own [`IOBase::record_options`], so the one
+    /// place that knows what an Iceberg table's rows are is the table.
+    pub(crate) fn record_options(&self) -> Result<RecordOptions> {
+        self.table.record_options()
     }
 
     /// Borrow the located filters as the pairs a scan takes.

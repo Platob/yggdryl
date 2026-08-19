@@ -82,8 +82,45 @@ cargo test --features "parquet iceberg" -p yggdryl --lib generic::
 cargo test --features "parquet iceberg" -p yggdryl --lib field::cast
 cargo test --features "parquet iceberg" -p yggdryl --lib ipc::
 cargo test --features "parquet iceberg" -p yggdryl --lib parquet::
+cargo test --features "parquet iceberg" -p yggdryl --lib avro::
 cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::
 cargo test --features "parquet iceberg" -p yggdryl --lib text::codec
+```
+
+## Exchange formats meet an outside implementation
+
+```console
+python scripts/check_avro_interop.py
+python scripts/check_iceberg_interop.py
+```
+
+The first exchanges Avro object containers with fastavro in both directions -
+logical types included - and round-trips the same container through the
+`apache-avro` crate in a scratch project; both are checking tools of the
+script, never dependencies of the crate. The second exchanges whole Iceberg
+tables with PyIceberg in both directions, covering format versions 1, 2, and
+3 where PyIceberg can write them. Each driver fails when a half was skipped,
+so a skipped exchange can never read as a pass.
+
+The Iceberg module is also verified against Apache Spark, the format's
+reference implementation, over one shared Hadoop warehouse in both
+directions:
+
+```console
+python scripts/setup_spark_interop.py
+python -m pytest python/tests -m spark_interop
+```
+
+The suite carries its own pytest marker, is deselected from the default run,
+and skips itself - naming what is missing - when Java, `pyspark`, or the
+`iceberg-spark-runtime` jar is absent; the setup script provisions the latter
+two, and a dedicated CI job runs exactly this suite.
+
+The Avro fuzz sweeps run seeded mutations in the ordinary test pass; a longer
+sweep scales the same tests with `AVRO_FUZZ_ITERATIONS`:
+
+```console
+AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib avro::tests::fuzz_lite
 ```
 
 ## What a test looks like here

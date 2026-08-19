@@ -392,8 +392,6 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::{arrow, DataType, Value};
-
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::Utf8.nullable_field("venue"),
@@ -416,8 +414,6 @@ let record = Value::record(schema.clone(), [Value::I64(7), Value::Null])?;
 assert_eq!(record.data_type()?, schema);
 assert!(yggdryl::yaml::to_vec(&record).is_ok());
 assert!(yggdryl::toml::to_vec(&record).is_ok());
-# Ok(())
-# }
 ```
 
 ## One value against one datatype
@@ -494,7 +490,9 @@ assert!(dynamic.try_into_typed::<yggdryl::field::binary::Utf8>().is_err());
 The marker is zero-sized, so `Int64Value` is the same two words `TypedValue` is; it narrows what the
 type system will accept, not what the value costs. `AnyType` is the marker that accepts every
 datatype, and it is what a bare `TypedValue` carries - which is why `from_parts` and `from_value`
-stay the dynamic spellings and the narrowed ones are `try_from_parts` and `try_from_value`.
+stay the dynamic spellings and the narrowed ones are `try_from_parts` and `try_from_value`. The same
+split names the Arrow projection behind the default `arrow` feature - `to_arrow_array`,
+`from_arrow_array`, and the narrowed `try_from_arrow_array` - documented in [arrow.md](arrow.md).
 
 ## Four formats, one surface
 

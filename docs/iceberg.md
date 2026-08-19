@@ -530,11 +530,22 @@ must yield no rows rather than fail.
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
-Iceberg puts two levels of indirection between a snapshot and its rows, and both are Avro. That Avro
-is implemented in this module: a container is a header naming a writer schema, then blocks of records
-separated by a synchronization marker. Manifest rows cross the boundary as the same
-[`Value`](json.md) the JSON parser produces, so a manifest row and a metadata document are read with
-one vocabulary.
+Iceberg puts two levels of indirection between a snapshot and its rows, and both are Avro,
+implemented by the [`avro`](avro.md) codec module: a container is a header naming a writer schema,
+then blocks of records separated by a synchronization marker. Manifest rows cross the boundary as
+the same [`Value`](json.md) the JSON parser produces, so a manifest row and a metadata document are
+read with one vocabulary. The writer is deterministic - the marker is derived from the content - so
+two writers given the same entries produce the same bytes, which is what lets a conformance check
+diff manifests instead of only comparing what they mean.
+
+Two readers serve two needs. `read_manifest` decodes every field, and is what any path that may
+*carry an entry forward* - an overwrite, a merge, a compaction - must use, because a carried entry
+keeps its statistics. `read_manifest_for_plan` is the read-only planning fast path: it decodes
+through a compiled schema-resolution plan that keeps only what pruning consults - file identity, the
+partition tuple, sizes, and (for a filtered plan) the counts and bounds - and skips every other
+statistics map as raw bytes. On wide manifests it decodes several times faster than the full read;
+[the benchmarks](benchmarks.md) put numbers and outside baselines on that claim. A table's scans use
+it automatically; the function is public for callers walking manifests themselves.
 
 Statistics come from the Parquet footer the write just produced. Counts and sizes are emitted for
 every top-level column; *bounds* are emitted only for the types whose Parquet statistic bytes are
@@ -853,10 +864,11 @@ cheap; the cast is what makes a table whose schema evolved readable as one shape
 
 ## Planning a scan from the metadata
 
-!!! note "Rust only"
-    The Python and JavaScript packages do not expose the scan planner yet. What
-    they *do* get is the next section: a filtered read and an upsert through the
-    three record methods, which plan through this same code.
+!!! note "All three"
+    The planner is Rust, and both bindings report what it decided: `plan` and
+    `plan_at` answer a `ScanPlan` in each language.
+    [Filtered reads and filtered writes](#filtered-reads-and-filtered-writes)
+    shows the same numbers from Python and JavaScript.
 
 === "Rust"
 
@@ -1098,6 +1110,286 @@ retained snapshot), and `inspect_files` (path, format, spec, rendered `column=va
 chain, row count, and size per live data file). They are ordinary readers, so the same collect that
 drains a scan drains them.
 
+## Filtered reads and filtered writes
+
+!!! note "All three"
+    The whole surface crosses. Python spells it `plan`, `plan_at`,
+    `scan_where`, `overwrite_where`, `merge`, and `merge_where`; JavaScript
+    spells the same six `plan`, `planAt`, `scanWhere`, `overwriteWhere`,
+    `merge`, and `mergeWhere`; and `ScanPlan` reports the same five numbers in
+    each language's casing.
+
+A filter is a column name and a value as text - the vocabulary
+[`IOBase::children_where`](io.md) filters a lake with - and it crosses as a mapping or as a
+sequence of `(column, value)` pairs. `plan` reports what a read *would* open without opening
+anything; `scan_where` reads the rows that match; `overwrite_where` replaces only what matches;
+`merge` and `merge_where` upsert on a match key. They belong in one section because they are one
+mechanism: each decides what to touch through
+[the metadata chain the planning section walks](#planning-a-scan-from-the-metadata), and only then
+opens a data file. `plan_at` and `scan_at` do the same over a retained snapshot, and `scan_ref`
+over the snapshot a branch or tag names.
+
+=== "Rust"
+
+    ```rust
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::iceberg::{DataFile, FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
+    use yggdryl::{arrow, DataType};
+
+    let mut schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("venue"),
+        DataType::Int64.nullable_field("qty"),
+    ])?
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    let root = std::env::temp_dir().join("yggdryl-doc-filtered-writes");
+    let _ = std::fs::remove_dir_all(&root);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    let arrow_schema = schema.to_arrow_schema()?;
+    let rows = |ids: Vec<i64>, venues: Vec<&'static str>, quantities: Vec<i64>| {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![
+                Arc::new(Int64Array::from(ids)),
+                Arc::new(StringArray::from(venues)),
+                Arc::new(Int64Array::from(quantities)),
+            ],
+        )
+        .expect("a batch matching the root");
+        arrow::batch_reader(batch.schema(), [batch])
+    };
+
+    // One commit per venue, so the manifest list has three rows to prune.
+    for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON")] {
+        table.append(rows(vec![id], vec![venue], vec![10]))?;
+    }
+    let inserted = table.current_snapshot().expect("three commits").snapshot_id;
+
+    // Nothing is listed and no data file is opened: the manifest list's
+    // per-partition summaries exclude two manifests before either is read.
+    let plan = table.plan(&[("venue", "XNYS")])?;
+    assert_eq!(plan.tasks.len(), 1);
+    assert_eq!(plan.record_count(), 1);
+    assert_eq!(plan.manifests_read, 1);
+    assert_eq!(plan.manifests_skipped(), 2);
+    assert_eq!(table.scan_where(&[("venue", "XNYS")], None)?.count(), 1);
+
+    // A filter on a column the spec does not partition on prunes on the file's
+    // own recorded bounds instead, then filters the rows the survivors hold.
+    assert_eq!(table.plan(&[("id", "3")])?.files_skipped(), 2);
+
+    // A filtered overwrite replaces the files the filter selects and carries
+    // every other file into the new snapshot at its own path, statistics and all.
+    let paths = |files: Vec<(DataFile, PartitionSpec)>| -> BTreeSet<String> {
+        files.into_iter().map(|(file, _)| file.file_path.to_string()).collect()
+    };
+    let before = paths(table.data_files()?);
+    table.overwrite_where(&[("venue", "XNYS")], rows(vec![2], vec!["XNYS"], vec![99]))?;
+    let after = paths(table.data_files()?);
+    assert_eq!(before.difference(&after).count(), 1, "one partition was rewritten");
+    assert_eq!(before.intersection(&after).count(), 2, "the others were carried");
+
+    // A merge upserts on the key: 3 is stored and updates, 4 is new and appends.
+    table.merge(rows(vec![3, 4], vec!["XLON", "XLON"], vec![7, 8]), &["id".to_owned()], true)?;
+    let total: usize = table
+        .scan(None)?
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .sum::<Result<usize, _>>()?;
+    assert_eq!(total, 4);
+
+    // Narrowed first: a merge into one partition can read no other partition.
+    table.merge_where(
+        &[("venue", "XNAS")],
+        rows(vec![1], vec!["XNAS"], vec![42]),
+        &["id".to_owned()],
+        true,
+    )?;
+
+    // History plans the same way: the snapshot before the overwrite still
+    // selects one file for that partition.
+    assert_eq!(table.plan_at(inserted, &[("venue", "XNYS")])?.tasks.len(), 1);
+
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import shutil
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+        pa.field("qty", pa.int64()),
+    ])
+    rows = lambda ids, venues, quantities: pa.record_batch(
+        {"id": ids, "venue": venues, "qty": quantities}, schema=columns
+    )
+
+    root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
+    table = Table.create(IOBase(root), columns, ["venue"])
+
+    # One commit per venue, so the manifest list has three rows to prune.
+    for identifier, venue in [(1, "XNAS"), (2, "XNYS"), (3, "XLON")]:
+        table.append(rows([identifier], [venue], [10]))
+    inserted = table.current_snapshot.snapshot_id
+
+    # Nothing is listed and no data file is opened: the manifest list's
+    # per-partition summaries exclude two manifests before either is read.
+    plan = table.plan({"venue": "XNYS"})
+    assert (plan.files_planned, plan.record_count) == (1, 1)
+    assert (plan.manifests_read, plan.manifests_skipped) == (1, 2)
+    assert table.scan_where({"venue": "XNYS"}).read_all().num_rows == 1
+
+    # A filter on a column the spec does not partition on prunes on the file's
+    # own recorded bounds instead, then filters the rows the survivors hold.
+    assert table.plan([("id", "3")]).files_skipped == 2
+
+    # A filtered overwrite replaces the files the filter selects and carries
+    # every other file into the new snapshot at its own path, statistics and all.
+    before = {file.path for file, _ in table.data_files()}
+    table.overwrite_where({"venue": "XNYS"}, rows([2], ["XNYS"], [99]))
+    after = {file.path for file, _ in table.data_files()}
+    assert len(before - after) == 1, "one partition was rewritten"
+    assert len(before & after) == 2, "the other two were carried, not rewritten"
+
+    # A merge upserts on the key: 3 is stored and updates, 4 is new and appends.
+    table.merge(rows([3, 4], ["XLON", "XLON"], [7, 8]), ["id"])
+    merged = table.scan().read_all().sort_by("id").to_pydict()
+    assert merged["id"] == [1, 2, 3, 4]
+    assert merged["qty"] == [10, 99, 7, 8]
+
+    # Narrowed first: a merge into one partition can read no other partition.
+    table.merge_where({"venue": "XNAS"}, rows([1], ["XNAS"], [42]), ["id"])
+    assert table.scan_where({"venue": "XNAS"}).read_all().column("qty").to_pylist() == [42]
+
+    # History plans the same way: the snapshot before the overwrite still
+    # selects one file for that partition, and it is the file that held 10.
+    assert table.plan_at(inserted, {"venue": "XNYS"}).files_planned == 1
+    assert table.scan_at(inserted, {"venue": "XNYS"}).read_all().column(
+        "qty"
+    ).to_pylist() == [10]
+
+    shutil.rmtree(root.parent)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('venue: utf8'), Field.from('qty: int64')],
+      { nullable: false },
+    )
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+
+    const rows = (ids, venues, quantities) =>
+      new arrow.Table({
+        id: arrow.vectorFromArray(ids, new arrow.Int64()),
+        venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+        qty: arrow.vectorFromArray(quantities, new arrow.Int64()),
+      })
+
+    // One commit per venue, so the manifest list has three rows to prune.
+    for (const [id, venue] of [[1n, 'XNAS'], [2n, 'XNYS'], [3n, 'XLON']]) {
+      table.append(rows([id], [venue], [10n]))
+    }
+    const inserted = table.currentSnapshot.snapshotId
+
+    // Nothing is listed and no data file is opened: the manifest list's
+    // per-partition summaries exclude two manifests before either is read.
+    const plan = table.plan({ venue: 'XNYS' })
+    assert.equal(plan.filesPlanned, 1)
+    assert.equal(plan.recordCount, 1)
+    assert.equal(plan.manifestsRead, 1)
+    assert.equal(plan.manifestsSkipped, 2)
+    assert.equal(table.scanWhere({ venue: 'XNYS' }).toTable().numRows, 1)
+
+    // A filter on a column the spec does not partition on prunes on the file's
+    // own recorded bounds instead, then filters the rows the survivors hold.
+    assert.equal(table.plan([{ column: 'id', value: '3' }]).filesSkipped, 2)
+
+    // A filtered overwrite replaces the files the filter selects and carries
+    // every other file into the new snapshot at its own path, statistics and all.
+    const paths = () => new Set(table.dataFiles().map((file) => file.filePath))
+    const before = paths()
+    table.overwriteWhere({ venue: 'XNYS' }, rows([2n], ['XNYS'], [99n]))
+    const after = paths()
+    assert.equal([...before].filter((file) => !after.has(file)).length, 1)
+    assert.equal([...before].filter((file) => after.has(file)).length, 2)
+
+    // A merge upserts on the key: 3 is stored and updates, 4 is new and appends.
+    table.merge(rows([3n, 4n], ['XLON', 'XLON'], [7n, 8n]), ['id'])
+    const merged = new Map(table.scan().toTable().toArray().map((row) => [row.id, row.qty]))
+    assert.deepEqual([...merged.keys()].sort(), [1n, 2n, 3n, 4n])
+    assert.equal(merged.get(2n), 99n)
+    assert.equal(merged.get(4n), 8n)
+
+    // Narrowed first: a merge into one partition can read no other partition.
+    table.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS'], [42n]), ['id'])
+    assert.equal(table.scanWhere({ venue: 'XNAS' }).toTable().getChild('qty').get(0), 42n)
+
+    // History plans the same way: the snapshot before the overwrite still
+    // selects one file for that partition, and it is the file that held 10.
+    assert.equal(table.planAt(inserted, { venue: 'XNYS' }).filesPlanned, 1)
+    assert.equal(
+      table.scanAt(inserted, { venue: 'XNYS' }).toTable().getChild('qty').get(0),
+      10n,
+    )
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+**A filtered overwrite rewrites one partition, not the table.** The plan decides which data files
+the filter selects; every other file is carried into the new snapshot as its manifest entry
+already stands - same path, same statistics, same commit order - so nothing outside the selection
+is read, decoded, or re-encoded. Replacing one partition of a thousand costs one partition, and the
+carried files stay byte-identical, which is what lets the snapshot before the overwrite still be
+read: the rewrite wrote new files beside the old ones rather than over them. A delete is the same
+call with nothing incoming, which is why the [Spark quickstart](#the-spark-quickstart-locally)
+spells `DELETE FROM ... WHERE vendor_id = 1` as an `overwrite_where`: the selected partition is
+replaced by no rows, and the other partition's file is carried into the new snapshot untouched.
+
+**A merge reads the files whose statistics could hold an incoming key.** For each stored file the
+merge asks one question - could any incoming match key fall inside this file's recorded lower and
+upper bounds for the key columns? - and reads only the files that answer yes. The rest are carried
+forward unread. Correctness does not depend on how tight those bounds are: a file that is not read
+keeps every row it had, so coarse statistics make a merge read more files, never the wrong ones.
+That is what makes an upsert cost the files it can actually change rather than the table, and
+`merge_where` narrows the candidates once more before the bounds are consulted at all.
+
+Both are worth measuring rather than believing, which is what `ScanPlan` is for: `record_count`,
+`files_planned`, `files_skipped`, `manifests_read`, and `manifests_skipped` are what the metadata
+alone decided, reported before a single data file is opened. A plan that skips nothing says the
+filter is not one the layout can answer - a filter on a non-partition column can only prune on
+per-file bounds, and bounds on a column whose values are scattered across every file exclude
+nothing. Neither `overwrite_where` nor `merge` rebases after
+[a lost commit](#concurrent-writers-and-commit-retries): each planned against files the winner may
+have replaced, so both raise and leave the caller to re-plan.
+
 ## The three record methods over a table
 
 === "Rust"
@@ -1259,6 +1551,83 @@ methods keep their meanings, and each one is a single commit:
   coarse the statistics are, because a file that is not read keeps every row.
 - `append_arrow_batch_reader` writes new data files and keeps every manifest the
   last snapshot had, so nothing stored is read or rewritten.
+
+The relationship runs the other way too: a `Table` value is itself a handle, so
+the same three methods work on it directly. The folder route above probes the
+location for a table on every call; the `Table` implementation answers from the
+metadata the value already holds, and each answer is the better one.
+`record_options` names the data files' encoding before the first file exists,
+`read_arrow_field` is the stored schema with its field identifiers rather than a
+shape lifted off decoded batches, a `filter_partitions` pair prunes data files
+through the scan plan instead of filtering rows after they were decoded, and a
+write is one commit the value reports immediately - `current_snapshot` and
+`version` stay current without reopening anything. One deliberate difference: a
+filter naming a column the schema does not declare is an error, because a
+table's schema is authoritative, where a folder of leaves ignores a column its
+batches do not carry. (The Python and JavaScript tables keep their own scan and
+commit vocabulary; there, the folder handle above is the generic route.)
+
+```rust
+use yggdryl::generic::IORecordOptions;
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+use yggdryl::io::IOBase;
+use yggdryl::local::Folder;
+use yggdryl::{arrow, DataType, MimeType};
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use std::sync::Arc;
+
+let mut schema = DataType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::Utf8.nullable_field("venue"),
+])?
+.required_field("row");
+assign_field_ids(&mut schema, 1)?;
+
+let path = std::env::temp_dir().join("yggdryl-docs-iceberg-table-handle");
+let _ = std::fs::remove_dir_all(&path);
+let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+// The record surface answers before a single data file exists: the encoding
+// from the metadata, the schema with its field identifiers.
+let options = table.record_options()?;
+assert_eq!(options.mime_type(), MimeType::PARQUET);
+assert_eq!(
+    table.read_arrow_field(&options)?.fields()[0].parquet_field_id()?,
+    Some(1),
+);
+
+let arrow_schema = schema.to_arrow_schema()?;
+let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![
+            Arc::new(Int64Array::from(ids)),
+            Arc::new(StringArray::from(venues)),
+        ],
+    )
+    .expect("a batch matching the root");
+    arrow::batch_reader(batch.schema(), [batch])
+};
+
+// Each generic write is one commit, and the value's metadata follows it
+// without reopening anything.
+table.append_arrow_batch_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
+let merging = options.clone().with_merge_by_names(["id"]);
+table.write_arrow_batch_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
+assert_eq!(table.metadata().snapshots.len(), 2);
+assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
+
+// A partition filter is answered by the scan plan, so the other partitions'
+// files are never opened.
+let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
+let matching: usize = table
+    .read_arrow_batch_reader(&filtered)?
+    .map(|batch| batch.unwrap().num_rows())
+    .sum();
+assert_eq!(matching, 1);
+```
 
 A handle addressing one of the table's `column=value` directories addresses that
 partition of it, exactly as it would in a plain Hive lake - the difference is that
@@ -1458,14 +1827,19 @@ delete or move primitive, and a catalog must not emulate either by leaving a hal
 behind; and no catalog *service* client, because the module holds no network code. A REST catalog
 is future work behind an HTTP storage backend.
 
-### The map-like spelling
+### The object model: namespaces of tables
 
-A catalog is namespaces of tables, so it also reads as the mapping it is. `namespace(name)` hands
-back a lazy view - it exists whether or not the folder does, exactly as a handle describes a
-location without proof - and in Python the brackets do the rest: `catalog["ns"]["table"]` opens a
-table, a missing one is a `KeyError`, and *assigning* gets-or-creates. A schema-like value opens
-the table, creating it with that schema when absent; anything rows-like replaces the table's rows,
-creating it from the rows' own schema on first write.
+A catalog is namespaces of tables, and each collection is its own type: `catalog.namespaces` is a
+lazy view of the namespaces, indexing it answers a `Namespace`, and `namespace.tables` is the same
+shape one level down, indexing to a `Table`. A nested namespace is reached through its parent's
+`namespaces` view, so access chains - `catalog.namespaces["sales"].tables["orders"]` - and every
+collection operation has exactly one home. The views are cheap handles, not caches: constructing
+one performs no I/O, membership and iteration consult storage at the moment they are asked, two
+views over the same catalog observe each other's writes, and a missing name is a `KeyError` naming
+it. JavaScript has no indexing hook a native class can answer, so the same questions are spelled
+out there - `get`, `has`, `names`, `size`, `create`, `openOrCreate` - over the same views. The
+dotted-name conveniences on the catalog itself - `create_table("sales.orders", ...)` and friends -
+are one-line delegates over the same views.
 
 === "Rust"
 
@@ -1473,53 +1847,90 @@ creating it from the rows' own schema on first write.
     use yggdryl::iceberg::Catalog;
     use yggdryl::local::Folder;
 
-    let catalog = Catalog::new(Folder::new(std::env::temp_dir().join("warehouse"))?);
-    let analytics = catalog.namespace("analytics");
+    let root = std::env::temp_dir().join("yggdryl-doc-views");
+    let _ = std::fs::remove_dir_all(&root);
+    let catalog = Catalog::new(Folder::new(&root)?);
 
-    // The view resolves `analytics.trades` at the moment each call runs.
-    assert!(!analytics.has_table("trades")?);
-    assert_eq!(analytics.list_tables()?.len(), 0);
+    // Constructing the views touches nothing; every answer is storage's.
+    let namespaces = catalog.namespaces();
+    assert_eq!(namespaces.names()?.len(), 0);
+    let sales = namespaces.open_or_create("sales")?;
+    assert!(!sales.tables().contains("orders")?);
+    assert!(namespaces.contains("sales")?);
+
+    let _ = std::fs::remove_dir_all(&root);
     ```
 
 === "Python"
 
     ```python
+    import pathlib
+    import shutil
+    import tempfile
+
     import pyarrow as pa
 
-    from yggdryl import DataType, Field
     from yggdryl.iceberg import Catalog
 
-    catalog = Catalog("warehouse")
-    analytics = catalog["analytics"]
+    warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
+    catalog = Catalog(warehouse)
 
-    # Assigning a schema gets or creates; assigning again is the same table.
-    analytics["trades"] = Field(
-        "row",
-        DataType.from_fields([Field("id", "int64", nullable=False)]),
-        nullable=False,
-    )
-    # Assigning rows replaces them, creating the table on first write.
-    analytics["quotes"] = pa.table({"symbol": ["AAPL"], "price": [12.5]})
+    # The views are lazy: an empty warehouse answers empty, touching nothing.
+    assert len(catalog.namespaces) == 0
+    sales = catalog.namespaces.open_or_create("sales")
 
-    assert "trades" in analytics
-    assert sorted(analytics) == ["quotes", "trades"]
-    table = catalog["analytics"]["trades"]
+    # The write conveniences create a table on first write, from the rows'
+    # own schema; indexing chains a catalog to a namespace to a table.
+    sales.tables.append("orders", pa.table({"id": [1, 2], "qty": [5.0, 2.5]}))
+    assert "orders" in sales.tables
+    assert list(sales.tables) == ["orders"]
+
+    table = catalog.namespaces["sales"].tables["orders"]
+    assert table.scan().read_all().num_rows == 2
+
+    shutil.rmtree(warehouse.parent)
     ```
 
 === "JavaScript"
 
     ```javascript
-    const { Field, iceberg } = require('yggdryl')
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { iceberg } = require('yggdryl')
 
-    const catalog = new iceberg.Catalog('warehouse')
-    const analytics = catalog.namespace('analytics')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
+    const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
 
-    // set() gets or creates: a schema opens the table, rows replace them.
-    analytics.set('trades', new Field('row', 'struct<id: int64>', false))
-    analytics.set('quotes', rows)
+    // The views are lazy: an empty warehouse answers empty, touching nothing.
+    assert.equal(catalog.namespaces.size(), 0)
+    const sales = catalog.namespaces.openOrCreate('sales')
 
-    assert.ok(analytics.has('trades'))
-    const table = analytics.get('trades')
+    // The write conveniences create a table on first write, from the rows'
+    // own schema; the views chain a catalog to a namespace to a table.
+    sales.tables.append(
+      'orders',
+      new arrow.Table({
+        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+        qty: arrow.vectorFromArray([5, 2.5], new arrow.Float64()),
+      }),
+    )
+    assert.ok(sales.tables.has('orders'))
+    assert.deepEqual(sales.tables.names(), ['orders'])
+
+    const table = catalog.namespaces.get('sales').tables.get('orders')
+    assert.equal(table.scan().toTable().numRows, 2)
+
+    // A nested namespace is reached through its parent's own view.
+    sales.namespaces.create('eu')
+    assert.deepEqual(catalog.namespaces.get('sales').namespaces.names(), ['eu'])
+
+    // A missing name is refused naming it, never answered as an empty table.
+    assert.throws(() => catalog.namespaces.get('marketing'), /marketing/)
+
+    fs.rmSync(root, { recursive: true, force: true })
     ```
 
 ## Data files aim at a size
@@ -1660,18 +2071,20 @@ never rewrites history.
 
 ## One options value, three layers
 
-!!! note "Rust first"
-    `IcebergOptions` and the surfaces of this section and the next two are
-    Rust-first for now; the bindings gain them in a follow-up rather than
-    growing an untested spelling here.
+!!! note "All three"
+    `IcebergOptions` is the same value in every language. Python takes it as
+    `options=` and each field as its own keyword; JavaScript builds it from a
+    plain object and passes it as the trailing argument of the calls that
+    honour one.
 
 Every knob a table honors lives on one value, `IcebergOptions`, and every field of it resolves
 the same way: an explicit option set on the handle, then the table property of the same name
 (falling back to the schema root's `iceberg:`-prefixed protocol property), then the documented
 default. The keys are Iceberg's own spellings - `commit.retry.num-retries`,
 `commit.retry.min-wait-ms`, `commit.retry.max-wait-ms`, `write.target-file-size-bytes`,
-`read.parallelism`, `read.parallel.min-files`, `read.parallel.min-file-size-bytes` - so a property
-another engine wrote configures this reader too:
+`write.format.default`, `read.parallelism`, `read.parallel.min-files`,
+`read.parallel.min-file-size-bytes` - so a property another engine wrote configures this reader
+too:
 
 === "Rust"
 
@@ -1714,13 +2127,240 @@ another engine wrote configures this reader too:
     let _ = std::fs::remove_dir_all(&root);
     ```
 
+=== "Python"
+
+    ```python
+    import pathlib
+    import shutil
+    import tempfile
+
+    import pyarrow as pa
+    import pytest
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import IcebergOptions, Table
+
+    columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
+    table = Table.create(IOBase(root), columns)
+
+    # Nothing set: every field answers its documented default.
+    assert table.options().commit_retries == 4
+    assert table.options().target_file_size == 512 * 1024 * 1024
+
+    # The property layer is the table's own metadata, one commit away.
+    table.update_properties({"commit.retry.num-retries": "9"})
+    assert table.options().commit_retries == 9
+
+    # An explicit override shadows the property on this handle alone; nothing
+    # is written, and an unset field still resolves the other layers.
+    table.set_options(IcebergOptions(commit_retries=2))
+    assert table.options().commit_retries == 2
+    assert table.options().commit_min_backoff_ms == 100
+
+    # A keyword is the per-call layer: it configures this write and no later one.
+    table.append(pa.record_batch({"id": [1]}, schema=columns), target_file_size=1 << 20)
+    assert table.options().target_file_size == 512 * 1024 * 1024
+
+    # A misspelled keyword is a TypeError naming it, not a knob doing nothing.
+    with pytest.raises(TypeError, match="target_file_sze"):
+        table.append(pa.record_batch({"id": [2]}, schema=columns), target_file_sze=1)
+
+    shutil.rmtree(root.parent)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
+    const table = iceberg.Table.create(root, schema)
+
+    // Nothing set: every field answers its documented default.
+    assert.equal(table.options().commitRetries, 4)
+    assert.equal(table.options().targetFileSize, 512 * 1024 * 1024)
+
+    // The property layer is the table's own metadata, one commit away.
+    table.updateProperties({ 'commit.retry.num-retries': '9' })
+    assert.equal(table.options().commitRetries, 9)
+
+    // An explicit override shadows the property on this handle alone; nothing
+    // is written, and an unset field still resolves the other layers.
+    table.setOptions(new iceberg.IcebergOptions({ commitRetries: 2 }))
+    assert.equal(table.options().commitRetries, 2)
+    assert.equal(table.options().commitMinBackoffMs, 100)
+
+    // The trailing argument is the per-call layer: this write alone is sized.
+    const rows = new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) })
+    table.append(rows, new iceberg.IcebergOptions({ targetFileSize: 1 << 20 }))
+    assert.equal(table.options().targetFileSize, 512 * 1024 * 1024)
+
+    // A value the core refuses is refused at the boundary, naming it.
+    assert.throws(() => new iceberg.IcebergOptions({ targetFileSize: 0 }))
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
 A property that is present but does not parse is a typed error naming the key and the value, never
 a silent default - and because an explicit option never reads the property it shadows, a broken
 stored value can be shadowed first and repaired after, through the same handle. The resolvers are
 also scoped to what each operation consults: a commit resolves only the three `commit.retry.*`
 keys, so an unparseable `read.*` property cannot stop the metadata-only commit that fixes it.
 
+In Python, `IcebergOptions` is the same value, and every Iceberg method that takes it also takes
+each field as its own keyword - `table.append(rows, target_file_size=..., commit_retries=...)` -
+resolved by one rule: the `options=` argument (or the handle's stored override) is the base, an
+explicit keyword wins over the same field on it, the passed object is never mutated, and a
+misspelled keyword is a `TypeError` naming it. The generic `RecordOptions` is never accepted here:
+Iceberg is a table format over the record encodings, and its configuration is its own.
+
+JavaScript has no keyword arguments, so the value carries the whole surface instead: the
+constructor takes an object naming any of the nine fields, every field is also a getter and a
+setter, and a call that honours options takes one as its last argument -
+`table.scan(field, options)`, `table.scanAt(id, filters, field, options)`,
+`table.append(rows, options)`, `table.overwrite(rows, options)`, and the same trailing argument on
+the tables view's `append` and `overwrite`. A per-call value is put back after the call, so it
+never leaks into the handle's own override; `setOptions` is what changes that.
+
+## The data file format
+
+`write.format.default` - the spec's own property key - names the format new data files are written
+in: `parquet`, the default, or `avro`. Like every option it resolves per call, per handle, or per
+table, so one call can drop Avro files into a Parquet table; the manifest records the format each
+file was *actually* written in, and a scan decodes each file as its manifest entry says, so a
+table whose files mix formats still reads as one shape. A format the build cannot encode - `orc` -
+is a typed error naming the key and the format before anything is written, never a silent fall
+back to Parquet.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::iceberg::{FileFormat, FormatVersion, IcebergOptions, PartitionSpec, Table};
+    use yggdryl::local::Folder;
+    use yggdryl::DataType;
+
+    let root = std::env::temp_dir().join("yggdryl-doc-data-format");
+    let _ = std::fs::remove_dir_all(&root);
+
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let mut table = Table::create(
+        Folder::new(&root)?,
+        FormatVersion::V2,
+        schema.clone(),
+        PartitionSpec::unpartitioned(),
+    )?;
+
+    let batch = RecordBatch::try_new(
+        schema.to_arrow_schema()?,
+        vec![Arc::new(Int64Array::from(vec![1_i64]))],
+    )?;
+
+    // One Parquet append, then one Avro append via the explicit option.
+    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]))?;
+    table.set_options(IcebergOptions::new().with_data_format(FileFormat::Avro));
+    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+
+    // The manifest records what was written, and the mixed table scans whole.
+    let mut formats: Vec<FileFormat> = table
+        .data_files()?
+        .into_iter()
+        .map(|(file, _)| file.file_format)
+        .collect();
+    formats.sort();
+    assert_eq!(formats, [FileFormat::Parquet, FileFormat::Avro]);
+    assert_eq!(table.scan(None)?.count(), 2);
+
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import IcebergOptions, Table, assign_field_ids
+
+    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    table = Table.create(
+        IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"),
+        assign_field_ids(schema),
+    )
+
+    # One Parquet append, then one Avro append - the option is one keyword.
+    table.append(pa.table({"id": [1]}, schema=schema))
+    table.append(pa.table({"id": [2]}, schema=schema), data_format="avro")
+
+    formats = sorted(file.file_format for file, _ in table.data_files())
+    assert formats == ["AVRO", "PARQUET"]
+    assert table.scan().read_all().num_rows == 2
+
+    # Stored per table, the spec's own key configures every writer.
+    table.update_properties({"write.format.default": "avro"})
+    assert table.options().data_format == "AVRO"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
+    const table = iceberg.Table.create(root, schema)
+
+    const rows = (id) =>
+      new arrow.Table({ id: arrow.vectorFromArray([id], new arrow.Int64()) })
+
+    // One Parquet append, then one Avro append - the option is the trailing
+    // argument every write already takes.
+    table.append(rows(1n))
+    table.append(rows(2n), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+
+    const formats = table.dataFiles().map((file) => file.fileFormat).sort()
+    assert.deepEqual(formats, ['AVRO', 'PARQUET'])
+    assert.equal(table.scan().toTable().numRows, 2)
+
+    // Stored per table, the spec's own key configures every writer.
+    table.updateProperties({ 'write.format.default': 'avro' })
+    assert.equal(table.options().dataFormat, 'AVRO')
+
+    // A format the build cannot encode is named before anything is written.
+    assert.throws(
+      () => table.append(rows(3n), new iceberg.IcebergOptions({ dataFormat: 'orc' })),
+      /ORC/,
+    )
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
 ## Concurrent writers and commit retries
+
+!!! note "Rust only"
+    The commit gate is the core's, so every binding's writes retry through it
+    and every binding sets the three `commit.retry.*` keys - as
+    `commit_retries` and its two backoff neighbours, or as `commitRetries` and
+    theirs. The race itself is shown once, in Rust, because staging it needs
+    two handles and no rows.
 
 Two writers holding the same table race the moment both commit, and what this module can promise
 depends on what [`IOBase`](io.md) offers: positional reads and writes, no compare-and-swap. So the
@@ -1801,6 +2441,12 @@ visible change: at worst it leaves orphan data files no snapshot names.
 
 ## Branches and tags
 
+!!! note "All three"
+    The refs cross whole: `create_branch` / `createBranch`, `create_tag` /
+    `createTag`, `remove_ref` / `removeRef`, `fast_forward` / `fastForward`,
+    and `expire_snapshots` / `expireSnapshots` are the same five calls in each
+    language's casing.
+
 Named references are part of the metadata document: a **tag** is a name that never moves, a
 **branch** is a name meant to. Creating one is a metadata-only commit, reading one is an ordinary
 scan, and every ref keeps the snapshot it names retained past any expiry:
@@ -1867,6 +2513,105 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     let _ = std::fs::remove_dir_all(&root);
     ```
 
+=== "Python"
+
+    ```python
+    import pathlib
+    import shutil
+    import tempfile
+
+    import pyarrow as pa
+    import pytest
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import Table
+
+    columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
+    table = Table.create(IOBase(root), columns)
+
+    table.append(pa.record_batch({"id": [1]}, schema=columns))
+    audited = table.current_snapshot.snapshot_id
+
+    # The tag pins the audited state; the table keeps moving.
+    table.create_tag("audit-2026", audited)
+    table.append(pa.record_batch({"id": [2]}, schema=columns))
+    table.create_branch("review", audited)
+
+    # Every ref reads as the complete table it names.
+    assert table.scan_ref("audit-2026").read_all().num_rows == 1
+    assert table.scan_ref("review").read_all().num_rows == 1
+    assert table.scan().read_all().num_rows == 2
+
+    # A branch fast-forwards only along its own ancestry: the target must reach
+    # the branch's head by parent ids, so no history can be lost.
+    head = table.current_snapshot.snapshot_id
+    table.fast_forward("review", head)
+    assert table.snapshot_by_ref("review").snapshot_id == head
+
+    # Removing a ref removes the name; the snapshots stay retained, and a
+    # second removal is refused rather than committing nothing.
+    table.remove_ref("review")
+    with pytest.raises(ValueError, match="review"):
+        table.remove_ref("review")
+
+    # Expiry honors every ref's retention: the tagged snapshot survives a
+    # cutoff that would otherwise expire everything old.
+    assert table.expire_snapshots(2**62) == []
+    assert len(table.snapshots) == 2
+
+    shutil.rmtree(root.parent)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
+    const table = iceberg.Table.create(root, schema)
+
+    const rows = (id) =>
+      new arrow.Table({ id: arrow.vectorFromArray([id], new arrow.Int64()) })
+
+    table.append(rows(1n))
+    const audited = table.currentSnapshot.snapshotId
+
+    // The tag pins the audited state; the table keeps moving.
+    table.createTag('audit-2026', audited)
+    table.append(rows(2n))
+    table.createBranch('review', audited)
+
+    // Every ref reads as the complete table it names.
+    assert.equal(table.scanRef('audit-2026').toTable().numRows, 1)
+    assert.equal(table.scanRef('review').toTable().numRows, 1)
+    assert.equal(table.scan().toTable().numRows, 2)
+
+    // A branch fast-forwards only along its own ancestry: the target must reach
+    // the branch's head by parent ids, so no history can be lost.
+    const head = table.currentSnapshot.snapshotId
+    table.fastForward('review', head)
+    assert.equal(table.snapshotByRef('review').snapshotId, head)
+
+    // Removing a ref reports what it pointed at; the snapshots stay retained,
+    // and a second removal is refused rather than committing nothing.
+    assert.equal(table.removeRef('review').snapshotId, head)
+    assert.throws(() => table.removeRef('review'), /review/)
+
+    // Expiry honors every ref's retention: the tagged snapshot survives a
+    // cutoff that would otherwise expire everything old.
+    assert.deepEqual(table.expireSnapshots(Number.MAX_SAFE_INTEGER), [])
+    assert.equal(table.snapshots.length, 2)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
 Each ref carries its own retention - `min-snapshots-to-keep` and `max-snapshot-age-ms` for a
 branch's history, `max-ref-age-ms` for the ref itself - and `expire_snapshots` applies them before
 its own age cutoff; `main` itself never expires. A branch or tag commits through the same retrying
@@ -1875,6 +2620,13 @@ Writing *to* a branch other than `main` remains future work: a commit's parent i
 current snapshot, so today a branch is read with `scan_ref` and moved with `fast_forward`.
 
 ## Reading many files at once
+
+!!! note "Rust only"
+    The fan-out is inside the core scan, so every binding's scan gets it, and
+    the three thresholds are ordinary option fields there -
+    `read_parallelism` / `readParallelism` and their two neighbours. The
+    demonstration is Rust because what it asserts is that the fan-out changes
+    nothing observable.
 
 A scan over many files can decode them in parallel, and the decision is deliberately conservative:
 the fan-out starts only when `read.parallelism` is at least 2 **and** at least
@@ -2811,6 +3563,32 @@ different metadata file names, different manifest field ordering, deflate-compre
 opened by `Table::open` and compared the same way. `cargo test --features "parquet iceberg" --test
 iceberg_interop` is the Rust half; run alone it says on stdout that it skipped the external table
 rather than passing quietly.
+
+Apache Spark, the format's reference implementation, gets the same treatment at a larger scale.
+`python scripts/setup_spark_interop.py` provisions `pyspark` and the `iceberg-spark-runtime` jar,
+and `pytest -m spark_interop` (in `python/tests/test_spark_interop.py`) then exchanges tables over
+one shared Hadoop warehouse in both directions: creation and field ids, the primitive and nested
+types with nulls, identity and transform partitioning, snapshots with time travel and refs, schema
+evolution, table properties, Parquet and Avro data files including mixed-format tables, compaction,
+the metadata tables, and the statistics renderings. The suite is deselected from the default test
+run and skips itself, naming what is missing, when Java or Spark is absent.
+
+Two behaviors here were arbitrated against the spec by that exchange and are deliberate:
+
+- **Column resolution is by field id.** A data file written before a rename stores the column
+  under its old name; the scan renames decoded columns to the current schema's names wherever the
+  file's recorded field id matches, and a projected read pushes the file's *own* name down so the
+  encoding still skips what it should. Names alone would silently null the column, which is what
+  the spec's id-based resolution exists to prevent.
+- **Transformed partition fields restore no column.** `days(at)` or `bucket(4, id)` store a
+  derived value under a name that is not a schema column; the source column rides in the data file
+  itself, exactly as Spark writes it, so only `identity` partition values are restored from the
+  manifest.
+
+Where Spark's SQL surface cannot express a spec type - `uuid`, `fixed`, `time` have no Spark DDL
+spelling - the exchange covers the direction that exists, and the declared `uuid` spelling is
+preserved through a metadata round trip rather than demoted to the physically identical
+`fixed[16]`.
 
 ## What is not here
 

@@ -47,6 +47,14 @@ layer compiling annotations into native values.
 - Byte storage below `rust/src/io/`: the `IOBase` trait, in-memory `Buffer`,
   transparent-compression `Coded`. Shared record settings in
   `generic/options.rs` as `IORecordOptions` and `RecordSettings`.
+- The page cache below `rust/src/buffered/`: `Buffered<H>` wraps any handle and
+  serves reads from fixed-size pages under a byte budget and a time to live
+  counted from last access, writing through and invalidating what a write or a
+  resize touched. The value's first page and the page holding its last byte are
+  *pinned* - exempt from eviction and expiry - because both ends are where
+  discovery lives, and the pin follows the current end. Wrapping is idempotent:
+  `IOBase::buffered` is shadowed by inherent methods on `Buffered` and `Holder`,
+  so a cache is never stacked on a cache. No cache crate, no background thread.
 - One module per content coding - `rust/src/{gzip,zlib,zstd}/` - each with
   `load`/`dump`, `reader`/`writer`, and a transparent `IOBase` handle (`Gzip`,
   `Zlib`, `Zstd`). `Codec` in `enums/codec.rs` dispatches; never a fourth
@@ -63,13 +71,18 @@ layer compiling annotations into native values.
   `cast/mod.rs`). `arrow` feature is default; schema-only callers use
   `default-features = false`. Never a separate Arrow crate.
 - One module per record encoding: `rust/src/ipc/`, `rust/src/parquet/`
-  (non-default `parquet` feature). Each owns free functions over any `IOBase`
-  handle plus a stateful type (`Ipc`, `Parquet`) holding handle, options,
-  cache; `IOBase`'s record methods dispatch to those functions.
+  (non-default `parquet` feature), and the record surface of `rust/src/avro/`
+  (behind the default `arrow` feature; the Value-level codec beneath it is
+  unconditional). Each owns free functions over any `IOBase` handle plus a
+  stateful type (`Ipc`, `Parquet`, `Avro`) holding handle, options, cache;
+  `IOBase`'s record methods dispatch to those functions.
+- Apache Avro below `rust/src/avro/`: an unconditional codec module (it adds
+  no dependency) reading and writing object containers as the shared `Value`
+  over any `IOBase` handle. Iceberg sits on it, never the other way around.
 - Apache Iceberg below `rust/src/iceberg/` (non-default `iceberg` feature,
   implies `parquet`), one file per concern: `types.rs`, `schema.rs`,
   `partition.rs`, `snapshot.rs` (snapshots and refs), `metadata.rs`,
-  `manifest.rs`, `avro.rs`, `statistics.rs`, `value.rs` (Iceberg's text and
+  `manifest.rs`, `statistics.rs`, `value.rs` (Iceberg's text and
   single-value renderings of a scalar), `scan.rs`, `table.rs`, `options.rs`,
   `catalog.rs`, `evolve.rs`, `inspect.rs`. A table format sits on the record
   encodings; it never becomes one.
@@ -220,7 +233,7 @@ meets all of these; a new media that cannot yet is not done:
   first. Catalog-free location works like `HadoopTables`:
   `metadata/version-hint.text`, else highest-numbered `*.metadata.json`.
 - **No dependency for the format itself.** Metadata is JSON via
-  `rust/src/json/`; manifests are Avro via `iceberg/avro.rs`; data files are
+  `rust/src/json/`; manifests are Avro via `rust/src/avro/`; data files are
   what `rust/src/parquet/` wrote, with statistics from that footer. Never add
   an Iceberg/Avro/catalog crate or `serde_json` here. The published `iceberg`
   crate was rejected: it pins arrow/parquet 55 vs this workspace's 59, storage
@@ -236,7 +249,14 @@ meets all of these; a new media that cannot yet is not done:
 - **A table answers the same three record methods as a folder**: read through
   the snapshot, write/append as one commit each; `merge_by_names` upserts a table
   exactly as a leaf; a handle on a `column=value` directory addresses that
-  partition. Merge reads only files whose key-column bounds overlap incoming
+  partition. `Table` itself implements `IOBase` - bytes delegated to its root
+  folder via `delegate_iobase!`, record surface overridden to answer from the
+  parsed metadata: `read_arrow_field` is the stored schema with its field ids
+  (no file opened), `filter_partitions` prunes files through the plan (and a
+  filter naming an undeclared column errors, unlike the tolerant folder route),
+  commits update the value in place. The folder route reaches the same answers
+  through the `located` probe; `Located::record_options` delegates to the
+  table's, so the encoding answer is defined once. Merge reads only files whose key-column bounds overlap incoming
   keys; every other file is carried as an `existing` entry (same location,
   statistics, order) - correct however coarse the statistics, since an unread
   file keeps every row. The incoming side is held, and the comment says why.
@@ -338,8 +358,9 @@ meets all of these; a new media that cannot yet is not done:
   Several focused examples over one oversized one.
 - **One page per core module folder**: `docs/<module>.md` documents
   `yggdryl::<module>` and nothing else (`enums`, `datatype`, `field`,
-  `arrow`, `io`, `generic`, `local`, `gzip`, `zlib`, `zstd`, `ipc`,
-  `parquet`, `iceberg`, `uri`, `text`, `json`, `yaml`, `toml`).
+  `arrow`, `io`, `expression`, `buffered`, `generic`, `local`, `gzip`,
+  `zlib`, `zstd`, `ipc`, `parquet`, `avro`, `iceberg`, `uri`, `text`, `json`,
+  `yaml`, `toml`).
   `docs/extensions/{python,javascript}.md` document only their boundary.
 - Every page opens with one H1 and exactly one short sentence saying what the
   module is for.
@@ -373,7 +394,10 @@ meets all of these; a new media that cannot yet is not done:
   compiles rust blocks as tests, runs python blocks under `python/.venv`,
   runs javascript blocks with `yggdryl` rewired to the repo. Each block
   is self-contained with at least one assertion; a block that cannot stand
-  alone is tagged `<lang>,ignore` (reported, not hidden).
+  alone is tagged `ignore` in the brace form pymdownx.superfences highlights
+  (a fence opened with `{ .<lang> .ignore }`), and reported, not hidden. The
+  `<lang>,ignore` spelling is not one superfences reads: it renders as prose,
+  backticks and all, so the checker fails on it.
 - Notebooks under `docs/notebooks/` are generated by
   `python scripts/build_docs_notebooks.py` from the same blocks, committed,
   shipped unexecuted. Edit the block, never the notebook or the
@@ -536,7 +560,11 @@ Keep exact; no alternate aliases:
   construction, sharing Field's marker family - `TypedValue<K: FieldType>`,
   one alias per datatype (`Int64Value`, `Utf8Value`, ...), `AnyType` default.
   Narrowed: `try_from_parts`, `try_from_value`; dynamic: `from_parts`,
-  `from_value`; static datatypes add `new`. Never a second marker family.
+  `from_value`; static datatypes add `new`. Behind the `arrow` feature it is
+  the one scalar Arrow projection: `to_arrow_array`, `from_arrow_array`,
+  narrowed `try_from_arrow_array`; callers holding Field context use
+  `arrow::scalar_array` / `arrow::scalar_value` instead. Never a second
+  marker family, never a Field-owning scalar wrapper.
 - Codec values: `Value::from_sequence`, `Value::from_mapping`; `Float` has
   `as_f64`/`into_f64`. No application-tag carrier: a name over an untyped
   payload is not a type. Never reintroduce `Tag`, `TaggedValue`, or
@@ -726,11 +754,17 @@ actual, where.
   batch and IPC readers validate the stream schema once, decode lazily,
   retain at most one batch, stop at the first failing row; conversion is
   exhaustive and schema-directed - never JSON as an Arrow bridge.
-- `ArrowScalar` owns an exact Field and one immutable one-row `ArrayRef`;
-  `from_parts` validates foreign arrays, `from_value` caller values.
-  `DefaultArrowScalar` (on `DataType` and `Field`) uses the bounded core
-  default planner - no binding-side placeholder table or redundant
-  validation.
+- One scalar crosses the Arrow array boundary as `arrow::scalar_array`
+  (validated caller value in, exact one-row `ArrayRef` out) and
+  `arrow::scalar_value` (validated foreign one-row array in, canonical
+  `Value` out); the exact `Field` beside them is the authority on
+  nullability, dictionary options, and extension identity. `TypedValue`
+  projects the same boundary without a Field (`to_arrow_array`,
+  `from_arrow_array`, marker-narrowed `try_from_arrow_array`) through a
+  synthetic non-nullable Field with the canonical-default null exception.
+  Defaults are `DataType::default_arrow_array` / `Field::default_arrow_array`
+  over the bounded core default planner - no Field-owning scalar wrapper
+  struct, no binding-side placeholder table or redundant validation.
 - Casting: `ArrowCast` owns schema-directed array and RecordBatch casts;
   typed fields cast to their own array type
   (`Int64Field::cast_arrow_array -> Int64Array`) via `field::ArrowFieldType`.

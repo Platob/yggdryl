@@ -296,12 +296,20 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
     }
 }
 
-fn unknown_column(name: &str, schema: &Field) -> Error {
-    let mut available: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    available.sort_unstable();
+/// The error a column the schema does not declare produces.
+///
+/// One sentence, shared with [`bind`](super::bind), so the same typo reads the
+/// same way whether it was caught while typing or while resolving.
+pub(crate) fn unknown_column(name: &str, schema: &Field) -> Error {
+    let columns = schema
+        .fields()
+        .iter()
+        .map(Field::name)
+        .collect::<Vec<_>>()
+        .join(", ");
     typing_error(format_smolstr!(
-        "expected one of the columns {}, got {name:?}",
-        available.join(", ")
+        "expected a column the schema declares, got {name:?}; it has {}",
+        crate::text::elide_display(&columns)
     ))
 }
 

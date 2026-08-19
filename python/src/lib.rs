@@ -18,6 +18,7 @@ use crate::field::{PyField, PyFieldMetadataIterator, PyFieldPropertyIterator, Py
 use crate::media::{PyMediaType, PyMediaTypeIterator, PyMimeType};
 use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
+mod arrowfs;
 mod codec;
 mod codings;
 mod datatype;
@@ -120,14 +121,19 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUriPathIterator>()?;
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<io::PyIOBase>()?;
+    module.add_function(wrap_pyfunction!(io::schema_from_pattern, module)?)?;
     module.add_class::<crate::io::PyIOCursor>()?;
     module.add_class::<io::PyLineIterator>()?;
     module.add_class::<io::PyIOBaseIterator>()?;
     module.add_class::<record::PyRecordOptions>()?;
     module.add_class::<iceberg::PyCatalog>()?;
     module.add_class::<iceberg::PyNamespace>()?;
+    module.add_class::<iceberg::PyNamespaces>()?;
+    module.add_class::<iceberg::PyTables>()?;
+    module.add_class::<iceberg::PyIcebergOptions>()?;
     module.add_class::<iceberg::PyTable>()?;
     module.add_class::<iceberg::PySchemaUpdate>()?;
+    module.add_class::<iceberg::PyScanPlan>()?;
     module.add_class::<iceberg::PyCompaction>()?;
     module.add_class::<iceberg::PyPartitionSpec>()?;
     module.add_class::<iceberg::PyPartitionField>()?;
@@ -138,6 +144,8 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(codings::gzip_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zlib_loads, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zlib_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::zlib_loads_raw, module)?)?;
+    module.add_function(wrap_pyfunction!(codings::zlib_dumps_raw, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zstd_loads, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zstd_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_assign_field_ids, module)?)?;

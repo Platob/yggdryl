@@ -203,6 +203,16 @@ class MediaType:
     def __copy__(self) -> MediaType: ...
     def __deepcopy__(self, memo: Any) -> MediaType: ...
 
+def schema_from_pattern(
+    pattern: str,
+    *,
+    custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+    capture_types: (
+        Mapping[str, DataType | str | Any]
+        | Iterable[tuple[str, DataType | str | Any]]
+        | None
+    ) = None,
+) -> Field: ...
 def _codec_infer(data: bytes | bytearray | memoryview) -> str: ...
 def _codec_infer_path(value: str) -> str: ...
 def _codec_infer_text(data: str) -> str: ...
@@ -946,8 +956,14 @@ class Statement:
 
 class IOBase:
     def __init__(
-        self, value: IOBase | Url | Uri | Urn | str | PathLike[str] | IO[Any]
+        self,
+        value: IOBase | Url | Uri | Urn | str | PathLike[str] | IO[Any] | Any,
+        path: str | PathLike[str] | None = None,
     ) -> None: ...
+    @classmethod
+    def from_arrow_fs(
+        cls, filesystem: Any, path: str | PathLike[str]
+    ) -> IOBase: ...
     @classmethod
     def from_bytes(
         cls, data: bytes | bytearray | memoryview | None = None
@@ -960,6 +976,8 @@ class IOBase:
     def media_type(self) -> MediaType: ...
     @media_type.setter
     def media_type(self, media_type: MediaType | MimeType | str) -> None: ...
+    @property
+    def codec(self) -> str | None: ...
     @property
     def size(self) -> int: ...
     @property
@@ -1016,33 +1034,173 @@ class IOBase:
         traceback: Any | None = None,
     ) -> bool: ...
     def copy_into(self, target: IOBase) -> int: ...
+    def compress_into(
+        self, target: IOBase, codec: str | None = None, level: int | None = None
+    ) -> int: ...
+    def decompress_into(self, target: IOBase, codec: str | None = None) -> int: ...
     def record_options(self) -> RecordOptions: ...
     def read_lines(self, pattern: str | None = None) -> LineIterator: ...
-    def read_arrow_field(self, *, options: RecordOptionsLike | None = None) -> Field: ...
+    def read_arrow_lines(
+        self,
+        pattern: str,
+        *,
+        batch_size: int | None = None,
+        custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
+        capture_types: (
+            Mapping[str, DataType | str | Any]
+            | Iterable[tuple[str, DataType | str | Any]]
+            | None
+        ) = None,
+        timestamp_capture: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
+    def read_arrow_field(
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+    ) -> Field: ...
     def read_arrow_batch_reader(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> pyarrow.RecordBatchReader: ...
     def write_arrow_batch_reader(
-        self, batches: BatchesLike, *, options: RecordOptionsLike | None = None
+        self,
+        batches: BatchesLike,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def append_arrow_batch_reader(
-        self, batches: BatchesLike, *, options: RecordOptionsLike | None = None
+        self,
+        batches: BatchesLike,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def read_arrow(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> pyarrow.RecordBatchReader: ...
     def write_arrow(
-        self, data: RowsLike, *, options: RecordOptionsLike | None = None
+        self,
+        data: RowsLike,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def append_arrow(
-        self, data: RowsLike, *, options: RecordOptionsLike | None = None
+        self,
+        data: RowsLike,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def cursor(self, position: int = 0) -> IOCursor: ...
     def scan_polars(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Any: ...
     def scan_arrow(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Any: ...
     def read_records(
         self,
@@ -1051,6 +1209,16 @@ class IOBase:
         options: RecordOptionsLike | None = None,
         safe: bool = True,
         errors: Literal["raise", "default"] = "raise",
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Iterator[Any]: ...
     def write_records(
         self,
@@ -1059,6 +1227,16 @@ class IOBase:
         cls: type[Any] | None = None,
         options: RecordOptionsLike | None = None,
         safe: bool = True,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def append_records(
         self,
@@ -1067,30 +1245,148 @@ class IOBase:
         cls: type[Any] | None = None,
         options: RecordOptionsLike | None = None,
         safe: bool = True,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def read_pandas(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Iterator[Any]: ...
     def read_pandas_frame(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Any: ...
     def write_pandas(
-        self, frames: Any, *, options: RecordOptionsLike | None = None
+        self,
+        frames: Any,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def write_pandas_frame(
-        self, frame: Any, *, options: RecordOptionsLike | None = None
+        self,
+        frame: Any,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def read_polars(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Iterator[Any]: ...
     def read_polars_frame(
-        self, *, options: RecordOptionsLike | None = None
+        self,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Any: ...
     def write_polars(
-        self, frames: Any, *, options: RecordOptionsLike | None = None
+        self,
+        frames: Any,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def write_polars_frame(
-        self, frame: Any, *, options: RecordOptionsLike | None = None
+        self,
+        frame: Any,
+        *,
+        options: RecordOptionsLike | None = None,
+        schema: FieldLike | None = None,
+        root_name: str | None = None,
+        safe: bool | None = None,
+        batch_size: int | None = None,
+        level: int | None = None,
+        merge_by_names: Iterable[str] | None = None,
+        select_by_names: Iterable[str] | None = None,
+        filter_partitions: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        compression: str | None = None,
+        max_row_group_size: int | None = None,
+        key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> None: ...
     def __fspath__(self) -> str: ...
     def __len__(self) -> int: ...
@@ -1176,21 +1472,140 @@ def can_promote(
 def schema_from_json(name: str, document: Mapping[str, Any]) -> Field: ...
 def schema_to_json(schema: FieldLike) -> dict[str, Any]: ...
 
+class IcebergOptions:
+    """Configuration for one table's commits, writes, and reads.
+
+    The value records only what was set on it; every getter answers the
+    field's documented default when nothing was. A table resolves each field
+    as explicit option, then table property, then that default.
+    """
+
+    def __init__(
+        self,
+        *,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    @property
+    def commit_retries(self) -> int: ...
+    @commit_retries.setter
+    def commit_retries(self, retries: int) -> None: ...
+    @property
+    def commit_min_backoff_ms(self) -> int: ...
+    @commit_min_backoff_ms.setter
+    def commit_min_backoff_ms(self, wait_ms: int) -> None: ...
+    @property
+    def commit_max_backoff_ms(self) -> int: ...
+    @commit_max_backoff_ms.setter
+    def commit_max_backoff_ms(self, wait_ms: int) -> None: ...
+    @property
+    def target_file_size(self) -> int: ...
+    @target_file_size.setter
+    def target_file_size(self, bytes: int) -> None: ...
+    @property
+    def read_parallelism(self) -> int: ...
+    @read_parallelism.setter
+    def read_parallelism(self, threads: int) -> None: ...
+    @property
+    def read_parallel_min_files(self) -> int: ...
+    @read_parallel_min_files.setter
+    def read_parallel_min_files(self, files: int) -> None: ...
+    @property
+    def read_parallel_min_file_size(self) -> int: ...
+    @read_parallel_min_file_size.setter
+    def read_parallel_min_file_size(self, bytes: int) -> None: ...
+    @property
+    def compact_after_commits(self) -> int | None: ...
+    @compact_after_commits.setter
+    def compact_after_commits(self, commits: int) -> None: ...
+    @property
+    def data_format(self) -> str: ...
+    @data_format.setter
+    def data_format(self, format: str) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Namespace:
+    """One namespace of a catalog: identity, plus its two collection views."""
+
     @property
     def name(self) -> str: ...
-    def table(self, name: str) -> Table: ...
-    def has_table(self, name: str) -> bool: ...
-    def open_or_create_table(
-        self, name: str, schema: Field | DataType | str | Any
-    ) -> Table: ...
-    def list_tables(self) -> list[str]: ...
-    def list_namespaces(self) -> list[str]: ...
-    def __getitem__(self, name: str) -> Table: ...
-    def __setitem__(self, name: str, value: Any) -> None: ...
+    @property
+    def tables(self) -> Tables: ...
+    @property
+    def namespaces(self) -> Namespaces: ...
+    def __repr__(self) -> str: ...
+
+class Namespaces:
+    """The namespaces one level below a catalog or a namespace, as a lazy view.
+
+    Membership, iteration, and length consult storage when asked; indexing
+    answers a ``Namespace``, and a missing name is a ``KeyError`` naming it.
+    """
+
+    def __getitem__(self, name: str) -> Namespace: ...
     def __contains__(self, name: str) -> bool: ...
     def __iter__(self) -> Iterator[str]: ...
     def __len__(self) -> int: ...
+    def create(self, name: str) -> Namespace: ...
+    def open_or_create(self, name: str) -> Namespace: ...
+    def __repr__(self) -> str: ...
+
+class Tables:
+    """The tables of one namespace, as a lazy map-oriented view.
+
+    The same shape as ``Namespaces`` one level down: indexing opens a
+    ``Table``, a missing name is a ``KeyError`` naming it, and the write
+    conveniences create the table on first write.
+    """
+
+    def __getitem__(self, name: str) -> Table: ...
+    def __contains__(self, name: str) -> bool: ...
+    def __iter__(self) -> Iterator[str]: ...
+    def __len__(self) -> int: ...
+    def create(self, name: str, schema: FieldLike | Iterable[Field]) -> Table: ...
+    def open_or_create(
+        self, name: str, schema: FieldLike | Iterable[Field]
+    ) -> Table: ...
+    def append(
+        self,
+        name: str,
+        data: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> Table: ...
+    def overwrite(
+        self,
+        name: str,
+        data: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> Table: ...
+    def __repr__(self) -> str: ...
 
 class Catalog:
     """A warehouse folder of namespaces of Iceberg tables."""
@@ -1198,6 +1613,8 @@ class Catalog:
     def __init__(self, warehouse: IOBase | Url | str | PathLike[str]) -> None: ...
     @property
     def warehouse(self) -> IOBase: ...
+    @property
+    def namespaces(self) -> Namespaces: ...
     def create_table(
         self, name: str, schema: FieldLike | Iterable[Field]
     ) -> Table: ...
@@ -1206,15 +1623,40 @@ class Catalog:
     def open_or_create_table(
         self, name: str, schema: FieldLike | Iterable[Field]
     ) -> Table: ...
-    def append(self, name: str, data: BatchesLike) -> Table: ...
-    def overwrite(self, name: str, data: BatchesLike) -> Table: ...
+    def append(
+        self,
+        name: str,
+        data: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> Table: ...
+    def overwrite(
+        self,
+        name: str,
+        data: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> Table: ...
     def list_namespaces(self, parent: str | None = None) -> list[str]: ...
     def list_tables(self, namespace: str) -> list[str]: ...
-    def namespace(self, name: str) -> Namespace: ...
-    def __getitem__(self, name: str) -> Namespace: ...
-    def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> Iterator[Namespace]: ...
-    def __len__(self) -> int: ...
     def __repr__(self) -> str: ...
 
 class Table:
@@ -1267,8 +1709,56 @@ class Table:
     @property
     def schemas(self) -> list[Field]: ...
     def manifests(self) -> list[ManifestFile]: ...
+    def manifests_at(self, snapshot_id: int) -> list[ManifestFile]: ...
     def data_files(self) -> list[tuple[DataFile, PartitionSpec]]: ...
-    def scan(self, field: FieldLike | None = None) -> pyarrow.RecordBatchReader: ...
+    def scan(
+        self,
+        field: FieldLike | None = None,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
+    def scan_where(
+        self,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        field: FieldLike | None = None,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
+    def scan_ref(
+        self,
+        name: str,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        field: FieldLike | None = None,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> pyarrow.RecordBatchReader: ...
     def scan_matching(
         self,
         filter: Expression | str,
@@ -1280,12 +1770,130 @@ class Table:
         snapshot_id: int,
         filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
         schema: FieldLike | None = None,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
     ) -> pyarrow.RecordBatchReader: ...
+    def plan(
+        self, filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None
+    ) -> ScanPlan: ...
+    def plan_at(
+        self,
+        snapshot_id: int,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+    ) -> ScanPlan: ...
     def snapshot_by_ref(self, name: str) -> Snapshot: ...
+    def create_branch(self, name: str, snapshot_id: int) -> None: ...
+    def create_tag(self, name: str, snapshot_id: int) -> None: ...
+    def remove_ref(self, name: str) -> None: ...
+    def fast_forward(self, name: str, snapshot_id: int) -> None: ...
+    def expire_snapshots(self, older_than_ms: int) -> list[int]: ...
     @property
     def target_file_size(self) -> int: ...
-    def append(self, batches: BatchesLike) -> None: ...
-    def overwrite(self, batches: BatchesLike) -> None: ...
+    def append(
+        self,
+        batches: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def overwrite(
+        self,
+        batches: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def overwrite_where(
+        self,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
+        batches: BatchesLike,
+        *,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def merge(
+        self,
+        batches: BatchesLike,
+        merge_by_names: Iterable[str],
+        *,
+        safe: bool = True,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def merge_where(
+        self,
+        filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
+        batches: BatchesLike,
+        merge_by_names: Iterable[str],
+        *,
+        safe: bool = True,
+        options: IcebergOptions | None = None,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def set_options(
+        self,
+        options: IcebergOptions | None = None,
+        *,
+        commit_retries: int | None = None,
+        commit_min_backoff_ms: int | None = None,
+        commit_max_backoff_ms: int | None = None,
+        target_file_size: int | None = None,
+        read_parallelism: int | None = None,
+        read_parallel_min_files: int | None = None,
+        read_parallel_min_file_size: int | None = None,
+        compact_after_commits: int | None = None,
+        data_format: str | None = None,
+    ) -> None: ...
+    def options(self) -> IcebergOptions: ...
     def evolve_schema(self, schema: FieldLike) -> int: ...
     def compact(self) -> Compaction: ...
     def inspect_history(self) -> pyarrow.RecordBatchReader: ...
@@ -1318,6 +1926,21 @@ class SchemaUpdate:
         exception: object = None,
         traceback: object = None,
     ) -> bool: ...
+    def __repr__(self) -> str: ...
+
+class ScanPlan:
+    """What a scan decided to read, before a single row was read."""
+
+    @property
+    def record_count(self) -> int: ...
+    @property
+    def files_planned(self) -> int: ...
+    @property
+    def files_skipped(self) -> int: ...
+    @property
+    def manifests_read(self) -> int: ...
+    @property
+    def manifests_skipped(self) -> int: ...
     def __repr__(self) -> str: ...
 
 class Compaction:
@@ -1484,5 +2107,7 @@ def gzip_loads(data: bytes) -> bytes: ...
 def gzip_dumps(data: bytes, level: int | None = None) -> bytes: ...
 def zlib_loads(data: bytes) -> bytes: ...
 def zlib_dumps(data: bytes, level: int | None = None) -> bytes: ...
+def zlib_loads_raw(data: bytes) -> bytes: ...
+def zlib_dumps_raw(data: bytes, level: int | None = None) -> bytes: ...
 def zstd_loads(data: bytes) -> bytes: ...
 def zstd_dumps(data: bytes, level: int | None = None) -> bytes: ...

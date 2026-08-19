@@ -40,6 +40,15 @@ const WRITE_DEFAULT: &str = "write-default";
 /// The Iceberg property listing the identifier field ids of a schema root.
 const IDENTIFIER: &str = "identifier-field-ids";
 
+/// The Iceberg property preserving a declared type the physical datatype
+/// cannot distinguish.
+///
+/// `uuid` materializes as the same 16-byte fixed value `fixed[16]` does, so
+/// the declared spelling rides the field's metadata: a schema read from a
+/// table that says `uuid` writes `uuid` back, rather than quietly demoting
+/// the column to `fixed[16]` on the next metadata commit.
+const DECLARED_TYPE: &str = "type";
+
 /// Read an Iceberg schema object into a non-null struct root field.
 ///
 /// The root takes `name`, because an Iceberg schema names its columns but not
@@ -233,8 +242,15 @@ fn field_from_json(entry: &Value) -> Result<Field> {
 /// Build a field from an Iceberg type, primitive or nested.
 fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Result<Field> {
     if let Some(primitive) = type_json.as_str() {
-        let data_type = PrimitiveType::from_str(primitive)?.to_data_type()?;
-        return Ok(Field::new(name, data_type, nullable));
+        let parsed = PrimitiveType::from_str(primitive)?;
+        let data_type = parsed.to_data_type()?;
+        let mut field = Field::new(name, data_type, nullable);
+        // `uuid` and `fixed[16]` share one physical type, so the declared
+        // spelling is kept where the writer will find it again.
+        if parsed == PrimitiveType::Uuid {
+            field.iceberg_mut().insert(DECLARED_TYPE, "uuid")?;
+        }
+        return Ok(field);
     }
 
     if type_json.as_mapping().is_none() {
@@ -373,9 +389,17 @@ fn type_to_json(field: &Field) -> Result<Value> {
             ));
             Value::from_mapping(object)
         }
-        other => Ok(Value::from(
-            PrimitiveType::from_data_type(other)?.to_string(),
-        )),
+        other => {
+            let computed = PrimitiveType::from_data_type(other)?;
+            // The declared spelling wins only where the physical type agrees
+            // with it, so a stale marker can never misdescribe a column.
+            if computed == PrimitiveType::Fixed(16)
+                && field.iceberg().get(DECLARED_TYPE) == Some("uuid")
+            {
+                return Ok(Value::from("uuid"));
+            }
+            Ok(Value::from(computed.to_string()))
+        }
     }
 }
 

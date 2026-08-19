@@ -1667,6 +1667,20 @@ Object.defineProperty(IOBase.prototype, Symbol.iterator, {
   },
 })
 
+// `using` is the scope construct the binding contract binds to open/close, so
+// a handle leaving scope publishes what was written through it. That matters
+// most on a backend that replaces whole files - any Arrow file system - where
+// the bytes are staged until the handle closes. Node exposes the symbol only
+// from 20.11, so the binding is conditional rather than assumed.
+if (typeof Symbol.dispose === 'symbol') {
+  Object.defineProperty(IOBase.prototype, Symbol.dispose, {
+    configurable: true,
+    value: function dispose() {
+      this.close()
+    },
+  })
+}
+
 function pathParts(values) {
   const parts = []
   for (const value of values) {
@@ -1708,6 +1722,7 @@ installRecords({
   Namespace: binding.Namespace,
   RecordOptions,
   Table: binding.Table,
+  Tables: binding.Tables,
 })
 
 // A retained snapshot is read with the vocabulary the rest of the package
@@ -1716,8 +1731,8 @@ installRecords({
 const nativeScanAt = binding.Table.prototype.scanAt
 Object.defineProperty(binding.Table.prototype, 'scanAt', {
   configurable: true,
-  value(snapshotId, filters, schema) {
-    return nativeScanAt.call(this, snapshotId, partitionFilters(filters), schema)
+  value(snapshotId, filters, schema, options) {
+    return nativeScanAt.call(this, snapshotId, partitionFilters(filters), schema, options)
   },
 })
 
@@ -1786,8 +1801,8 @@ for (const name of ['append', 'overwrite']) {
   const native = binding.Catalog.prototype[name]
   Object.defineProperty(binding.Catalog.prototype, name, {
     configurable: true,
-    value(tableName, data) {
-      return native.call(this, tableName, BatchReader.from(data))
+    value(tableName, data, options) {
+      return native.call(this, tableName, BatchReader.from(data), options)
     },
   })
 }
@@ -1797,9 +1812,14 @@ for (const name of ['append', 'overwrite']) {
 const nativeSchemaFromJson = binding.icebergSchemaFromJsonNative
 const iceberg = Object.freeze({
   Catalog: binding.Catalog,
+  Namespace: binding.Namespace,
+  Namespaces: binding.Namespaces,
+  Tables: binding.Tables,
   Table: binding.Table,
+  IcebergOptions: binding.IcebergOptions,
   PartitionSpec: binding.PartitionSpec,
   DataFile: binding.DataFile,
+  ScanPlan: binding.ScanPlan,
   assignFieldIds: binding.icebergAssignFieldIdsNative,
   canPromote: binding.icebergCanPromoteNative,
   // A metadata document is whatever the JSON facade decoded, so a plain object
@@ -1819,15 +1839,25 @@ for (const name of [
   'Catalog',
   'DataFile',
   'DifferenceIterator',
+  'IcebergOptions',
   'JsCatalog',
   'JsDataFile',
   'JsDifferenceIterator',
+  'JsIcebergOptions',
+  'JsNamespace',
+  'JsNamespaces',
   'JsPartitionSpec',
+  'JsScanPlan',
   'JsSchemaUpdate',
   'JsTable',
+  'JsTables',
+  'Namespace',
+  'Namespaces',
   'PartitionSpec',
+  'ScanPlan',
   'SchemaUpdate',
   'Table',
+  'Tables',
   'icebergAssignFieldIdsNative',
   'icebergCanPromoteNative',
   'icebergSchemaFromJsonNative',
@@ -1853,6 +1883,89 @@ if (binding.LineIterator) {
   })
 }
 
+// The Arrow projection of matched line records. The native halves take the
+// constant columns and the capture declarations as parallel name and value
+// vectors; this coercion is where a plain object, a Map, or an iterable of
+// pairs becomes those, with each constant crossing through the one
+// JavaScript-to-core conversion and each declared type crossing as a native
+// `DataType` or a type-expression string.
+function lineColumnEntries(kind, source) {
+  if (source === undefined || source === null) {
+    return []
+  }
+  if (typeof source !== 'object') {
+    // A string is iterable and would silently become per-character columns;
+    // nothing non-object names columns.
+    throw new TypeError(
+      `${kind} must be a Map, an iterable of [name, value] pairs, or a plain object`,
+    )
+  }
+  return Symbol.iterator in source ? [...source] : Object.entries(source)
+}
+
+function lineColumnArguments(options) {
+  const { customFields, captureTypes } = options ?? {}
+  const customNames = []
+  const customValues = []
+  for (const [name, value] of lineColumnEntries('customFields', customFields)) {
+    customNames.push(name)
+    customValues.push(Value.fromJs(value))
+  }
+  const captureNames = []
+  const captureTypeInputs = []
+  for (const [name, type] of lineColumnEntries('captureTypes', captureTypes)) {
+    captureNames.push(name)
+    captureTypeInputs.push(type)
+  }
+  return { customNames, customValues, captureNames, captureTypeInputs }
+}
+
+{
+  const nativeReadArrowLines = IOBase.prototype._readArrowLinesNative
+  delete IOBase.prototype._readArrowLinesNative
+  Object.defineProperty(IOBase.prototype, 'readArrowLines', {
+    configurable: true,
+    value: function readArrowLines(pattern, options) {
+      const { batchSize, timestampCapture } = options ?? {}
+      if (
+        batchSize !== undefined &&
+        batchSize !== null &&
+        (!Number.isInteger(batchSize) || batchSize <= 0)
+      ) {
+        throw new TypeError(`batchSize must be a positive integer, got ${batchSize}`)
+      }
+      const parts = lineColumnArguments(options)
+      return nativeReadArrowLines.call(
+        this,
+        pattern,
+        batchSize ?? null,
+        parts.customNames,
+        parts.customValues,
+        parts.captureNames,
+        parts.captureTypeInputs,
+        timestampCapture ?? null,
+      )
+    },
+  })
+}
+
+// The standalone schema builder: the root Field the projection emits, off a
+// pattern alone, so a table can exist before the first log line does.
+{
+  const nativeSchemaFromPattern = binding._schemaFromPatternNative
+  delete binding._schemaFromPatternNative
+  binding.schemaFromPattern = function schemaFromPattern(pattern, options) {
+    const parts = lineColumnArguments(options)
+    return nativeSchemaFromPattern(
+      pattern,
+      parts.customNames,
+      parts.customValues,
+      parts.captureNames,
+      parts.captureTypeInputs,
+    )
+  }
+}
+
 // The three byte codings, grouped the way the documentation names them. The
 // native halves carry a leading underscore so only these namespaces are the
 // public spelling.
@@ -1861,7 +1974,18 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   const dumps = binding[`_${name}Dumps`]
   delete binding[`_${name}Loads`]
   delete binding[`_${name}Dumps`]
-  binding[name] = Object.freeze({ loads, dumps })
+  // zlib carries a second framing of the same algorithm - raw DEFLATE, with
+  // no header and no checksum - so its namespace has four halves where the
+  // others have two. The pair is named rather than inferred, because raw
+  // bytes carry nothing to sniff a framing from.
+  const raw = {}
+  if (binding[`_${name}LoadsRaw`]) {
+    raw.loadsRaw = binding[`_${name}LoadsRaw`]
+    raw.dumpsRaw = binding[`_${name}DumpsRaw`]
+    delete binding[`_${name}LoadsRaw`]
+    delete binding[`_${name}DumpsRaw`]
+  }
+  binding[name] = Object.freeze({ loads, dumps, ...raw })
 }
 
 binding.codec = codec

@@ -2,34 +2,97 @@
 
 Encode and decode RFC 8878 Zstandard frames as whole buffers, as streams, or through a handle that compresses transparently.
 
-!!! note "Rust only"
-    The Python and JavaScript packages do not expose this module yet.
+!!! note "Streams and handles are Rust only"
+    The whole-buffer pair crosses to Python and JavaScript as `loads`/`dumps`. The streaming
+    `reader`/`writer` and the transparent `Zstd<H>` handle are Rust only: both are built on
+    `Read`/`Write`, which neither binding has a native spelling for.
 
-```rust
-use yggdryl::zstd;
+=== "Rust"
 
-let frame = zstd::dump(b"symbol,price\nAAPL,1\n")?;
-assert_eq!(zstd::load(&frame)?, b"symbol,price\nAAPL,1\n");
-```
+    ```rust
+    use yggdryl::zstd;
+
+    let frame = zstd::dump(b"symbol,price\nAAPL,1\n")?;
+    assert_eq!(zstd::load(&frame)?, b"symbol,price\nAAPL,1\n");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import zstd
+
+    frame = zstd.dumps(b"symbol,price\nAAPL,1\n")
+    assert zstd.loads(frame) == b"symbol,price\nAAPL,1\n"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { zstd } = require('yggdryl')
+
+    const frame = zstd.dumps(Buffer.from('symbol,price\nAAPL,1\n'))
+    assert.deepEqual(zstd.loads(frame), Buffer.from('symbol,price\nAAPL,1\n'))
+    ```
 
 `dump` produces one complete frame and `load` consumes one. Both hold the whole input and the whole output in memory; the streaming forms below hold one window instead, whatever the payload size.
 
-```rust
-use yggdryl::zstd;
+=== "Rust"
 
-// Repetition is what zstd removes.
-let payload = "AAPL,1\n".repeat(64);
-let frame = zstd::dump(payload.as_bytes())?;
-assert!(frame.len() < payload.len());
+    ```rust
+    use yggdryl::zstd;
 
-// Framing costs bytes, so a short payload comes out larger than it went in.
-assert!(zstd::dump(b"AAPL,1\n")?.len() > 7);
+    // Repetition is what zstd removes.
+    let payload = "AAPL,1\n".repeat(64);
+    let frame = zstd::dump(payload.as_bytes())?;
+    assert!(frame.len() < payload.len());
 
-// A payload that is not a frame is reported, not silently returned.
-assert!(zstd::load(b"definitely not a compressed payload").is_err());
-```
+    // Framing costs bytes, so a short payload comes out larger than it went in.
+    assert!(zstd::dump(b"AAPL,1\n")?.len() > 7);
 
-The gain begins where the payload has repetition to remove; below that, framing dominates and the output grows. `load` decodes exactly one frame and rejects anything else, so a mis-routed payload fails at the codec rather than downstream.
+    // A payload that is not a frame is reported, not silently returned.
+    assert!(zstd::load(b"definitely not a compressed payload").is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import zstd
+
+    # Repetition is what zstd removes.
+    payload = b"AAPL,1\n" * 64
+    frame = zstd.dumps(payload)
+    assert len(frame) < len(payload)
+
+    # Framing costs bytes, so a short payload comes out larger than it went in.
+    assert len(zstd.dumps(b"AAPL,1\n")) > 7
+
+    # A payload that is not a frame is reported, not silently returned.
+    with pytest.raises(ValueError):
+        zstd.loads(b"definitely not a compressed payload")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { zstd } = require('yggdryl')
+
+    // Repetition is what zstd removes.
+    const payload = Buffer.from('AAPL,1\n'.repeat(64))
+    const frame = zstd.dumps(payload)
+    assert.ok(frame.length < payload.length)
+
+    // Framing costs bytes, so a short payload comes out larger than it went in.
+    assert.ok(zstd.dumps(Buffer.from('AAPL,1\n')).length > 7)
+
+    // A payload that is not a frame is reported, not silently returned.
+    assert.throws(() => zstd.loads(Buffer.from('definitely not a compressed payload')))
+    ```
+
+The gain begins where the payload has repetition to remove; below that, framing dominates and the output grows. `load` decodes exactly one frame and rejects anything else, so a mis-routed payload fails at the codec rather than downstream - and it fails the same way in all three languages, as the binding's own error type.
 
 ## Streams
 
@@ -166,6 +229,8 @@ When the coding is chosen at runtime rather than written into the type, [`Codec:
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/zstd-rust.ipynb){ download }.
+[Rust](notebooks/zstd-rust.ipynb){ download },
+[Python](notebooks/zstd-python.ipynb){ download },
+[JavaScript](notebooks/zstd-javascript.ipynb){ download }.
 
 <!-- /notebooks -->

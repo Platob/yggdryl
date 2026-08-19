@@ -275,6 +275,97 @@ test('readLines with a pattern groups log entries', (t) => {
   ])
 })
 
+test('readArrowLines projects matched records into typed batches', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-arrowlines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'app.log')
+  fs.writeFileSync(
+    target,
+    'preamble carried from rotation\n' +
+      '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n' +
+      '2024-02-01 10:00:01.500 [ii] [beta] fine\n',
+  )
+  const pattern =
+    '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S* \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]'
+  const table = new IOBase(target)
+    .readArrowLines(pattern, { customFields: { venue: 'XNAS' } })
+    .toTable()
+  assert.equal(table.numRows, 3)
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    [
+      'url',
+      'rownum',
+      'date',
+      'time',
+      'unix',
+      'hash',
+      'header',
+      'message',
+      'offset',
+      'lines',
+      'level',
+      'logger',
+      'venue',
+    ],
+  )
+  const messages = [...table.getChild('message')]
+  assert.deepEqual(messages, [
+    'preamble carried from rotation',
+    'boom\n  at frame one',
+    'fine',
+  ])
+  // The preamble has no header: its level is null, its unix is null; the
+  // matched rows carry naive nanoseconds and the constant venue stamp.
+  assert.deepEqual([...table.getChild('level')], [null, 'ee', 'ii'])
+  const unix = [...table.getChild('unix')]
+  assert.equal(unix[0], null)
+  assert.equal(unix[1], 1_706_781_600_000_000_000n)
+  assert.deepEqual([...table.getChild('venue')], ['XNAS', 'XNAS', 'XNAS'])
+
+  // A gzip log reads the same rows through its streaming decode.
+  const zlib = require('node:zlib')
+  const coded = path.join(root, 'app2.log.gz')
+  fs.writeFileSync(coded, zlib.gzipSync('2024-02-01 10:00:00 [ii] [a] fine\n'))
+  assert.equal(new IOBase(coded).readArrowLines(pattern).toTable().numRows, 1)
+
+  // Absence reads as zero rows with the schema still answered.
+  const empty = new IOBase(path.join(root, 'missing.log')).readArrowLines(pattern)
+  assert.equal(empty.toTable().numRows, 0)
+
+  // An in-memory handle parses exactly as a file does.
+  const memory = IOBase.fromBytes(Buffer.from('2024-02-01 12:00:00 [ww] [m] held\n'))
+  assert.equal(memory.readArrowLines(pattern).toTable().numRows, 1)
+
+  // Inputs that would silently misparse are refused instead.
+  assert.throws(() => new IOBase(target).readArrowLines(pattern, { customFields: 'venue' }), TypeError)
+  assert.throws(() => new IOBase(target).readArrowLines(pattern, { batchSize: -1 }), TypeError)
+  assert.throws(() => new IOBase(target).readArrowLines(pattern, { batchSize: 1.5 }), TypeError)
+})
+
+test('named captures type themselves and declarations override', (t) => {
+  const { schemaFromPattern } = require('yggdryl')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-typedlines-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = path.join(root, 'typed.log')
+  fs.writeFileSync(target, '2024-02-01 10:00:00 [42] (info) qty=1.50\n')
+  const pattern =
+    '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?<threadId>\\d+)\\] \\((?<logLevel>\\w+)\\) qty=(?<qty>[0-9.]+)'
+
+  // The standalone builder answers the emitted root without a reader:
+  // `threadId` typed off its own `\d+` sub-pattern, `qty` by declaration.
+  const schema = schemaFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+  assert.equal(schema.name, 'row')
+  assert.equal(String(schema.dataType.get('threadId').dataType), 'int64')
+  assert.equal(String(schema.dataType.get('qty').dataType), 'decimal128(9,2)')
+
+  const table = new IOBase(target)
+    .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+    .toTable()
+  assert.deepEqual([...table.getChild('threadId')], [42n])
+  assert.deepEqual([...table.getChild('logLevel')], ['info'])
+})
+
 test('a cursor shares the handle and owns its position', () => {
   const handle = IOBase.fromBytes()
   const cursor = handle.cursor()
@@ -294,4 +385,65 @@ test('a cursor shares the handle and owns its position', () => {
   const ahead = handle.cursor(7)
   assert.equal(ahead.read(5).toString(), 'price')
   assert.equal(cursor.tell(), 13)
+})
+
+test('a handle reports the content coding its own name declares', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // The question a caller asks here is whether there is anything to undo, so
+  // bytes carrying no coding answer null rather than the identity the core
+  // spells internally.
+  assert.equal(new IOBase(path.join(root, 'trades.json')).codec, null)
+  assert.equal(new IOBase(path.join(root, 'trades.json.gz')).codec, 'gzip')
+  assert.equal(new IOBase(path.join(root, 'trades.jsonl.zst')).codec, 'zstd')
+  // A resource that does not exist still has a name, and a buffer has none.
+  assert.equal(new IOBase(path.join(root, 'absent.txt.gz')).codec, 'gzip')
+  assert.equal(IOBase.fromBytes(Buffer.from('AAPL')).codec, null)
+})
+
+test('compressInto and decompressInto round-trip through a real .gz', (t) => {
+  const zlib = require('node:zlib')
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const plain = new IOBase(path.join(root, 'trades.json'))
+  plain.writeText('{"id":1}')
+
+  // The target's own name declares the coding, so gzip is never named twice.
+  const coded = new IOBase(path.join(root, 'trades.json.gz'))
+  const written = plain.compressInto(coded)
+  assert.equal(written, coded.size)
+  assert.deepEqual(zlib.gunzipSync(coded.readBytes()), Buffer.from('{"id":1}'))
+
+  const back = new IOBase(path.join(root, 'back.json'))
+  assert.equal(coded.decompressInto(back), 8)
+  assert.equal(back.readText(), '{"id":1}')
+
+  // A buffer has no name to declare anything, so it is told - and what it was
+  // told is recorded on its media type, so reading it back needs no argument.
+  const memory = IOBase.fromBytes()
+  assert.equal(plain.compressInto(memory, 'gzip', 9), memory.size)
+  assert.equal(memory.codec, 'gzip')
+  assert.equal(memory.decompressInto(IOBase.fromBytes()), 8)
+
+  // A target whose name declares nothing is refused rather than copied
+  // uncompressed, because a coding nobody named is a coding nobody can decode
+  // by name later; a coding no codec answers to is refused naming the ones
+  // that exist.
+  const flat = new IOBase(path.join(root, 'copy.json'))
+  assert.throws(
+    () => plain.compressInto(flat),
+    /expected a target declaring a content coding, got application\/json; pass a codec/,
+  )
+  assert.equal(fs.existsSync(path.join(root, 'copy.json')), false)
+  assert.throws(
+    () => plain.compressInto(flat, 'nonsense'),
+    /expected one of identity, gzip, zlib, deflate, zstd, got "nonsense"/,
+  )
+
+  // A name that lies is caught by the decoder rather than believed.
+  const lying = new IOBase(path.join(root, 'lying.json.gz'))
+  lying.writeText('not gzip at all')
+  assert.throws(() => lying.decompressInto(IOBase.fromBytes()), /invalid gzip header/)
 })

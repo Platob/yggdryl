@@ -385,6 +385,8 @@ pub enum RecordOptions {
     /// Apache Parquet file options.
     #[cfg(feature = "parquet")]
     Parquet(crate::parquet::ParquetOptions),
+    /// Apache Avro container options.
+    Avro(crate::avro::AvroOptions),
 }
 
 impl RecordOptions {
@@ -414,13 +416,16 @@ impl RecordOptions {
         if base == &MimeType::PARQUET {
             return Ok(Self::Parquet(crate::parquet::ParquetOptions::new()));
         }
+        if base == &MimeType::AVRO {
+            return Ok(Self::Avro(crate::avro::AvroOptions::new()));
+        }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: crate::text::expected_got(
                 if cfg!(feature = "parquet") {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet)"
+                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro)"
                 } else {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream; the `parquet` feature is not enabled)"
+                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro; the `parquet` feature is not enabled)"
                 },
                 base,
             ),
@@ -433,6 +438,7 @@ impl RecordOptions {
             Self::Ipc(_) => MimeType::ARROW_STREAM,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => MimeType::PARQUET,
+            Self::Avro(_) => MimeType::AVRO,
         }
     }
 }
@@ -443,6 +449,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.schema(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.schema(),
+            Self::Avro(options) => options.schema(),
         }
     }
 
@@ -451,6 +458,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_schema(schema),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_schema(schema),
+            Self::Avro(options) => options.set_schema(schema),
         }
     }
 
@@ -459,6 +467,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.root_name(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.root_name(),
+            Self::Avro(options) => options.root_name(),
         }
     }
 
@@ -467,6 +476,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_root_name(root_name),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_root_name(root_name),
+            Self::Avro(options) => options.set_root_name(root_name),
         }
     }
 
@@ -475,6 +485,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.safe(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.safe(),
+            Self::Avro(options) => options.safe(),
         }
     }
 
@@ -483,6 +494,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_safe(safe),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_safe(safe),
+            Self::Avro(options) => options.set_safe(safe),
         }
     }
 
@@ -491,6 +503,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.batch_size(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.batch_size(),
+            Self::Avro(options) => options.batch_size(),
         }
     }
 
@@ -499,6 +512,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_batch_size(batch_size),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_batch_size(batch_size),
+            Self::Avro(options) => options.set_batch_size(batch_size),
         }
     }
 
@@ -507,6 +521,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.level(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.level(),
+            Self::Avro(options) => options.level(),
         }
     }
 
@@ -515,6 +530,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_level(level),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_level(level),
+            Self::Avro(options) => options.set_level(level),
         }
     }
 
@@ -523,6 +539,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.merge_by_names(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.merge_by_names(),
+            Self::Avro(options) => options.merge_by_names(),
         }
     }
 
@@ -531,6 +548,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_merge_by_names(merge_by_names),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_merge_by_names(merge_by_names),
+            Self::Avro(options) => options.set_merge_by_names(merge_by_names),
         }
     }
 
@@ -539,6 +557,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.select_by_names(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.select_by_names(),
+            Self::Avro(options) => options.select_by_names(),
         }
     }
 
@@ -547,6 +566,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_select_by_names(select_by_names),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_select_by_names(select_by_names),
+            Self::Avro(options) => options.set_select_by_names(select_by_names),
         }
     }
 
@@ -555,6 +575,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.filter_partitions(),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.filter_partitions(),
+            Self::Avro(options) => options.filter_partitions(),
         }
     }
 
@@ -563,6 +584,7 @@ impl IORecordOptions for RecordOptions {
             Self::Ipc(options) => options.set_filter_partitions(filter_partitions),
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.set_filter_partitions(filter_partitions),
+            Self::Avro(options) => options.set_filter_partitions(filter_partitions),
         }
     }
 }
@@ -577,5 +599,11 @@ impl From<IpcOptions> for RecordOptions {
 impl From<crate::parquet::ParquetOptions> for RecordOptions {
     fn from(value: crate::parquet::ParquetOptions) -> Self {
         Self::Parquet(value)
+    }
+}
+
+impl From<crate::avro::AvroOptions> for RecordOptions {
+    fn from(value: crate::avro::AvroOptions) -> Self {
+        Self::Avro(value)
     }
 }

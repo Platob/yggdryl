@@ -14,21 +14,45 @@ pub(crate) const ERROR_TEXT_LIMIT: usize = 64;
 /// The suffix appended when bounded interpolation drops trailing text.
 const ELLIPSIS: char = '\u{2026}';
 
+/// The FNV-1a offset basis every stable hash starts from.
+const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
+
+/// Fold `bytes` into an FNV-1a state.
+const fn fnv1a_fold(mut state: u64, bytes: &[u8]) -> u64 {
+    let mut index = 0;
+    while index < bytes.len() {
+        state ^= bytes[index] as u64;
+        state = state.wrapping_mul(1_099_511_628_211);
+        index += 1;
+    }
+    state
+}
+
+/// Hash raw bytes with the stable Yggdryl FNV-1a contract.
+///
+/// This is the same 64-bit state every core value's `stable_hash` folds its
+/// canonical `Display` rendering through, exposed for a caller that already
+/// holds the bytes - hashing a `&str` here equals hashing its rendering
+/// there, so the two spellings can never disagree. It is the deterministic
+/// value the line projection's `hash` column carries (reinterpreted as
+/// `i64`, bit pattern preserved), so it is stable across runs, platforms,
+/// and releases by contract.
+pub const fn stable_hash_bytes(bytes: &[u8]) -> u64 {
+    fnv1a_fold(FNV_OFFSET_BASIS, bytes)
+}
+
 /// Hash canonical display output with the stable Yggdryl FNV-1a contract.
 pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
     struct StableHasher(u64);
 
     impl fmt::Write for StableHasher {
         fn write_str(&mut self, value: &str) -> fmt::Result {
-            for byte in value.as_bytes() {
-                self.0 ^= u64::from(*byte);
-                self.0 = self.0.wrapping_mul(1_099_511_628_211);
-            }
+            self.0 = fnv1a_fold(self.0, value.as_bytes());
             Ok(())
         }
     }
 
-    let mut hasher = StableHasher(14_695_981_039_346_656_037);
+    let mut hasher = StableHasher(FNV_OFFSET_BASIS);
     let result = fmt::write(&mut hasher, format_args!("{value}"));
     debug_assert!(result.is_ok(), "the stable hash sink is infallible");
     hasher.0
@@ -237,5 +261,22 @@ mod tests {
     #[test]
     fn expected_got_uses_the_contract_sentence() {
         assert_eq!(expected_got("int64", "utf8"), "expected int64, got utf8");
+    }
+
+    #[test]
+    fn byte_and_display_hashing_agree() {
+        use super::{stable_hash_bytes, stable_hash_display};
+
+        // A str's Display output is its bytes, so the two entry points are the
+        // same function reached two ways.
+        for text in ["", "x", "fill 100 @ 187.23", "é—both\nlines"] {
+            assert_eq!(
+                stable_hash_bytes(text.as_bytes()),
+                stable_hash_display(&text)
+            );
+        }
+        // The classic FNV-1a test vector pins the offset basis and prime.
+        assert_eq!(stable_hash_bytes(b""), 14_695_981_039_346_656_037);
+        assert_eq!(stable_hash_bytes(b"a"), 0xaf63_dc4c_8601_ec8c);
     }
 }

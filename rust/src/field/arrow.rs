@@ -74,6 +74,21 @@ impl Field {
         self.to_arrow_schema()
     }
 
+    /// Materializes [`Field::default_value`] as an exact one-row array.
+    ///
+    /// The bounded core default planner selects the value under this Field's
+    /// own nullability policy: a nullable Field materializes logical null and
+    /// a non-nullable one its datatype's present default.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no physically valid default exists or Arrow
+    /// cannot materialize the datatype.
+    #[cfg(feature = "arrow")]
+    pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
+        crate::arrow::default_scalar_array(self)
+    }
+
     /// Returns a cached shared Arrow field projection.
     pub fn to_arrow_ref(&self) -> Result<FieldRef> {
         if let Some(field) = self.arrow.get() {

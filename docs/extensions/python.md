@@ -39,13 +39,19 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
+| `schema_from_pattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
+| `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
 | `Record`, `record`, `from_dict`, `to_dict`, `schema_field`, `schema_fields` | this page |
 
-Compression handles are Rust-only today; the content coding a record encoding applies still comes
-from the handle's own name.
+The three coding modules carry the whole-buffer pair - `loads` and `dumps`, plus `loads_raw` and
+`dumps_raw` on `zlib` - under the standard library's own module names, so swapping `import gzip`
+for `from yggdryl import gzip` changes the engine and nothing else. Their streaming `reader`/
+`writer` and the transparent `Gzip<H>`-style handles stay Rust-only: both are built on Rust's
+`Read`/`Write`, which Python has no native spelling for. A handle still applies the coding its own
+name declares without being told, and `IOBase.codec` is what asks it which one that is.
 
 ## Inference at the boundary
 
@@ -376,7 +382,36 @@ assert url.relative_to(Url("file:///lake")) == "trades/part-0.tar.gz"
 Where a `Path` would raise, this raises the same thing: `relative_to` on a location outside the
 root is a `ValueError`, and `touch` on a directory is an `IsADirectoryError`. Where the two differ,
 the difference is the point - a URL carries a scheme, so the same code addresses a local directory
-and, when that backend lands, a bucket.
+and a bucket.
+
+That is not a promise about a future backend. `IOBase.from_arrow_fs` takes any
+`pyarrow.fs.FileSystem` and returns this same class, so everything above works unchanged over S3,
+GCS, Azure, a `SubTreeFileSystem`, or a filesystem you wrote yourself as a `FileSystemHandler` -
+which is also how an `fsspec` filesystem arrives. The boundary is only inference: the filesystem
+is recognized without importing `pyarrow`, handed to the core's seven-method vtable, and never
+seen again by the Python layer. [`arrowfs`](../arrowfs.md) documents the backend itself.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow.fs as pafs
+
+from yggdryl import IOBase
+
+root = pathlib.Path(tempfile.mkdtemp())
+handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix())
+
+# An Arrow filesystem replaces whole files, so the write publishes on close.
+with handle:
+    handle.write_bytes(b"AAPL")
+
+assert handle.read_bytes() == b"AAPL"
+assert (root / "trades.arrows").read_bytes() == b"AAPL"
+
+# IOBase(fs, path) infers the same thing the classmethod spells out.
+assert str(IOBase(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix()).url) == str(handle.url)
+```
 
 A Hive layout is readable from either side: `handle.partitions` and `url.partitions` return the
 `column=value` pairs the path spells out, and `handle.children_where({"year": "2024"})` yields the

@@ -430,7 +430,8 @@ where
 }
 
 pub(crate) fn arrow_scalar_to_ipc(
-    scalar: yggdryl::arrow::ArrowScalar,
+    field: &yggdryl::Field,
+    array: arrow_array::ArrayRef,
 ) -> Result<napi::bindgen_prelude::Buffer> {
     use std::sync::Arc;
 
@@ -438,7 +439,6 @@ pub(crate) fn arrow_scalar_to_ipc(
     use arrow_ipc::writer::StreamWriter;
     use arrow_schema::Schema;
 
-    let (field, array) = scalar.into_parts();
     let schema = Arc::new(Schema::new([field.to_arrow_ref().map_err(napi_error)?]));
     let options = RecordBatchOptions::new().with_row_count(Some(1));
     let batch =

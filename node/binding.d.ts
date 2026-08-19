@@ -976,6 +976,10 @@ declare module './index' {
 
   /** A native handle, a native `Url`, or anything that names a location. */
   type LocationInput = IOBase | Url | string
+  /** A caller-supplied Arrow file system: the vtable as a plain object. */
+  type ArrowFileSystemInput = ArrowFileSystemHandler
+  /** A location, or the file system one of its locations sits on. */
+  type LocationOrFileSystemInput = LocationInput | ArrowFileSystemHandler
   /** A partition spec, or the column names one would be built from. */
   type PartitionInput = PartitionSpec | readonly string[]
   /** A native zone wrapper or an IANA name, alias, or fixed offset. */
@@ -1000,7 +1004,7 @@ declare module './index' {
   type PropertyUpdates = FieldMetadataInput
 
   /** Iterating a handle lists its immediate children. */
-  interface IOBase extends Iterable<IOBase> {
+  interface IOBase extends Iterable<IOBase>, Disposable {
     /** Resolve a child of this resource, as `path.join`. */
     joinpath(...others: string[]): IOBase
     /** Leaves beneath this one carrying every requested partition pair. */
@@ -1010,6 +1014,25 @@ declare module './index' {
     readArrowField(options?: RecordOptionsInput | null): Field
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowBatchReader(options?: RecordOptionsInput | null): BatchReader
+    /**
+     * Project matched line records into a `BatchReader`.
+     *
+     * A text-line surface beside `readLines`, never a record method: lines
+     * group into records where `pattern` matches and each record becomes one
+     * typed row, with one nullable column per named capture group and the
+     * constant `customFields` columns after them. A capture whose whole
+     * sub-pattern is one of the closed inference table's exact spellings
+     * types itself - `(?<threadId>\d+)` is `int64` - and `captureTypes`
+     * declares the rest (a native `DataType` or a type-expression string),
+     * parsed strictly: a captured text the datatype cannot read is an
+     * error, never a silent null. `schemaFromPattern` answers the same
+     * schema without a reader. The boundary is the standard copied IPC one,
+     * never zero-copy.
+     */
+    readArrowLines(
+      pattern: string,
+      options?: LineRecordInput | null,
+    ): BatchReader
     /** Replace or merge this resource's rows with every batch `batches` yields. */
     writeArrowBatchReader(
       batches: BatchSource,
@@ -1177,3 +1200,93 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/** The options the line projection's reader and schema builder share. */
+export interface LineRecordInput {
+  batchSize?: number | null
+  customFields?:
+    | ReadonlyMap<string, unknown>
+    | Iterable<readonly [string, unknown]>
+    | Record<string, unknown>
+    | null
+  captureTypes?:
+    | ReadonlyMap<string, DataType | string>
+    | Iterable<readonly [string, DataType | string]>
+    | Record<string, DataType | string>
+    | null
+  timestampCapture?: string | null
+}
+
+/**
+ * Build the line projection's root Struct `Field` straight from a pattern.
+ *
+ * The schema `readArrowLines` emits, without a resource or a reader in
+ * sight: named captures become typed columns - `(?<threadId>\d+)` infers
+ * `int64`, a `captureTypes` entry declares - so a caller marks its partition
+ * columns and creates the Iceberg table before the first log line exists.
+ */
+export declare function schemaFromPattern(
+  pattern: string,
+  options?: Pick<LineRecordInput, 'customFields' | 'captureTypes'> | null,
+): Field
+
+/** What an Arrow file system reports one path to be. */
+export type ArrowFileKind = 'file' | 'directory' | 'unknown' | 'not-found'
+
+/** What an Arrow file system handler reports about one path. */
+export interface ArrowFileInfo {
+  /**
+   * The location, as the file system itself names it. A `fileInfo` answer
+   * may omit it - the path that was asked about is what it means - while a
+   * `list` entry stands for a location of its own and must name it.
+   */
+  path?: string
+  /** `'file'`, `'directory'`, or `'unknown'` for a path holding nothing. */
+  kind: ArrowFileKind
+  /**
+   * The byte length. Produce a `bigint`: a length is 64-bit, and an object
+   * larger than 2^53 bytes is a real object. A `number` is read where it is
+   * exact, so a handler over `fs.Stats` needs no conversion.
+   */
+  size?: bigint | number
+}
+
+/**
+ * A file system Yggdryl reads and writes through, supplied by the caller.
+ *
+ * Arrow JS ships no file system, so this is the vtable `pyarrow.fs` already
+ * implements, spelled in camelCase: implement it over a `Map`, `node:fs`, an
+ * S3 client, or anything else, and `IOBase.fromArrowFs` turns it into an
+ * ordinary handle - globs, Hive partitions, IPC, Parquet, and Iceberg tables
+ * included - with no code per backend.
+ *
+ * Every method is called synchronously, and only on the thread that supplied
+ * the handler: a JavaScript value belongs to one isolate, so a handle built
+ * from one cannot be read or written from a `Worker`. Absence is a normal
+ * answer rather than a failure - a missing file reads nothing, a missing
+ * directory lists empty, removing what is not there is done - and a handler
+ * that throws instead is asked what is at the path before its failure is
+ * surfaced, so `node:fs`'s own `ENOENT` needs no guarding.
+ */
+export interface ArrowFileSystemHandler {
+  /** This file system's own name, and the scheme its locations carry. */
+  readonly typeName?: string
+  /** What is at `path` right now. */
+  fileInfo(path: string): ArrowFileInfo
+  /** Every entry under `path`; `recursive` descends. */
+  list(path: string, recursive: boolean): readonly ArrowFileInfo[]
+  /**
+   * Bytes `[offset, offset + length)` of the file at `path`.
+   *
+   * `offset` is a `bigint` because a position in a file is 64-bit; `length`
+   * is a number because it is the size of one read. Returning fewer bytes is
+   * how the end of a file is reported, and nothing at all is how absence is.
+   */
+  readRange(path: string, offset: bigint, length: number): Uint8Array | null | undefined
+  /** Replace the file at `path` with exactly `bytes`. */
+  writeFull(path: string, bytes: Buffer): void
+  /** Create the directory at `path`; an existing one is success. */
+  createDir(path: string): void
+  /** Remove the file at `path`; a missing one is success. */
+  deleteFile(path: string): void
+}

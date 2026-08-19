@@ -97,7 +97,22 @@ impl<H: IOBase> Coded<H> {
             .ok_or_else(|| crate::Error::Io(std::io::Error::other("the decoded value was lost")))
     }
 
+    /// Borrow the decoded value when this handle is holding one.
+    ///
+    /// Between [`IOBase::open`] and [`IOBase::close`] the decoded value is
+    /// materialized, and every read-only accessor can answer straight out of
+    /// it. Asking through [`Self::peek`] instead would *copy* it - which,
+    /// over a value big enough to be worth compressing, is the whole payload
+    /// per call.
+    const fn materialized(&self) -> Option<&Vec<u8>> {
+        self.plain.as_ref()
+    }
+
     /// Decode without caching, for the read-only accessors.
+    ///
+    /// This is the path for a handle that is *not* open: nothing may be
+    /// cached as a side effect of an ordinary read, so the value is decoded
+    /// for this call and dropped after it.
     fn peek(&self) -> Result<Vec<u8>> {
         if let Some(plain) = &self.plain {
             return Ok(plain.clone());
@@ -121,6 +136,22 @@ impl<H: IOBase> Coded<H> {
         self.dirty = false;
         Ok(())
     }
+}
+
+/// Copy `buffer.len()` bytes of `plain` from `offset`, returning what fit.
+///
+/// Absence and the end of the value are both emptiness here, exactly as
+/// [`IOBase::pread`] spells them.
+fn copy_range(plain: &[u8], offset: u64, buffer: &mut [u8]) -> usize {
+    let Ok(offset) = usize::try_from(offset) else {
+        return 0;
+    };
+    let Some(available) = plain.len().checked_sub(offset) else {
+        return 0;
+    };
+    let read = available.min(buffer.len());
+    buffer[..read].copy_from_slice(&plain[offset..offset + read]);
+    read
 }
 
 /// Remove `codec` from a media type's encoding sequence.
@@ -165,17 +196,34 @@ impl<H: IOBase> IOBase for Coded<H> {
         Ok(super::Lines::over(stream))
     }
 
+    /// The borrowed projection reads a snapshot of the *decoded* value.
+    ///
+    /// The default reopens the handle's location, which for this decoding
+    /// view holds the encoded form - not the bytes these reads present - so
+    /// the projection snapshots the presented value instead, exactly what
+    /// this handle materializes to serve any read.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(
+        &self,
+        options: &super::LineRecordOptions,
+    ) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized,
+    {
+        super::lines::snapshot_arrow_lines(self, options)
+    }
+
+    /// Read the range out of the decoded value.
+    ///
+    /// An open handle answers from the value it already holds; a closed one
+    /// decodes for this call. Either way only the requested range is copied
+    /// into the caller's buffer - a positional read over a coded handle costs
+    /// the decode, never a second copy of the whole payload.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        let plain = self.peek()?;
-        let Ok(offset) = usize::try_from(offset) else {
-            return Ok(0);
-        };
-        let Some(available) = plain.len().checked_sub(offset) else {
-            return Ok(0);
-        };
-        let read = available.min(buffer.len());
-        buffer[..read].copy_from_slice(&plain[offset..offset + read]);
-        Ok(read)
+        if let Some(plain) = self.materialized() {
+            return Ok(copy_range(plain, offset, buffer));
+        }
+        Ok(copy_range(&self.peek()?, offset, buffer))
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
@@ -197,6 +245,9 @@ impl<H: IOBase> IOBase for Coded<H> {
     }
 
     fn size(&self) -> u64 {
+        if let Some(plain) = self.materialized() {
+            return plain.len() as u64;
+        }
         self.peek().map_or(0, |plain| plain.len() as u64)
     }
 

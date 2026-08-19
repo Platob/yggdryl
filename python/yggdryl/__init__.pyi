@@ -9,17 +9,22 @@ from ._native import (
     ProtocolMetadata as ProtocolMetadata,
     RecordOptions as RecordOptions,
     Statement as Statement,
+    Timezone as Timezone,
     Uri as Uri,
     Url as Url,
     Urn as Urn,
     __version__ as __version__,
+    schema_from_pattern as schema_from_pattern,
 )
 from . import (
     fields as fields,
+    gzip as gzip,
     iceberg as iceberg,
     json as json,
     toml as toml,
     yaml as yaml,
+    zlib as zlib,
+    zstd as zstd,
 )
 from .records import (
     Record as Record,

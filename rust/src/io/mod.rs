@@ -13,8 +13,11 @@
 //!
 //! The core ships [`Buffer`], an auto-scaling in-memory implementation, and
 //! [`crate::local`], whose [`File`](crate::local::File) is an auto-resizing
-//! memory-mapped local file. Anything else - an object store, an Arrow
-//! filesystem - implements the same trait outside the core.
+//! memory-mapped local file. Two wrapping handles sit over any of them and are
+//! handles themselves: [`Coded`] presents the decoded bytes of a compressed
+//! resource, and [`crate::buffered::Buffered`] serves reads from a page cache
+//! whose header and footer pages are pinned. Anything else - an object store,
+//! an Arrow filesystem - implements the same trait outside the core.
 //!
 //! ```
 //! use yggdryl::io::{Buffer, IOBase};
@@ -55,6 +58,10 @@ mod cursor;
 /// spelling every caller already uses keeps working.
 pub const NULL_PARTITION: &str = "null";
 
+// The Arrow projection of matched line records - a text-line surface beside
+// `read_lines`, never a fourth record method.
+#[cfg(feature = "arrow")]
+pub mod lines;
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
@@ -66,6 +73,8 @@ mod roles;
 pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
+#[cfg(feature = "arrow")]
+pub use lines::{LineRecordOptions, schema_from_pattern};
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -75,13 +84,13 @@ use crate::generic::RecordOptions;
 /// Bytes copied per step when moving between two handles.
 const TRANSFER_CHUNK: usize = 64 * 1024;
 
-/// Implement every [`IOBase`] byte method by forwarding to an inner handle.
+/// Implement [`IOBase`] methods by forwarding them to an inner handle.
 ///
-/// A type that wraps a handle - a media reader, a test double - mirrors that
-/// handle's bytes rather than owning bytes of its own. The macro expands to the
-/// forwarding bodies inside an `impl IOBase for` block, so anything the wrapper
-/// wants to override (typically [`IOBase::open`] and [`IOBase::close`], which
-/// usually also manage a cache) is simply written after the invocation.
+/// A type that wraps a handle - a media reader, a page cache, a test double -
+/// mirrors that handle rather than owning bytes of its own. The macro expands
+/// to the forwarding bodies inside an `impl IOBase for` block, so anything the
+/// wrapper wants to override (typically [`IOBase::open`] and [`IOBase::close`],
+/// which usually also manage a cache) is simply written after the invocation.
 ///
 /// ```
 /// use yggdryl::io::{Buffer, IOBase};
@@ -103,57 +112,132 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// # Ok(())
 /// # }
 /// ```
+///
+/// A wrapper that *changes* one of the methods above names the ones it still
+/// mirrors instead, because a method cannot be both expanded here and written
+/// out below. The list form is that spelling - it is exactly the same bodies,
+/// only chosen - and what it leaves out is what the wrapper owns:
+///
+/// ```
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+///
+/// use yggdryl::io::{Buffer, IOBase};
+///
+/// /// A handle that counts the reads reaching the one it wraps.
+/// struct Counted {
+///     handle: Buffer,
+///     reads: AtomicUsize,
+/// }
+///
+/// impl IOBase for Counted {
+///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
+///         truncate, url, media_type, set_media_type, flush, parent, child_by,
+///         ls, kind);
+///
+///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
+///     // the trait is `Send`, and a double is held across threads like any
+///     // other handle.
+///     fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
+///         self.reads.fetch_add(1, Ordering::Relaxed);
+///         self.handle.pread(offset, buffer)
+///     }
+/// }
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let counted = Counted {
+///     handle: Buffer::from_bytes(b"AAPL".to_vec()),
+///     reads: AtomicUsize::new(0),
+/// };
+/// assert_eq!(counted.read_all()?, b"AAPL");
+/// assert!(counted.reads.load(Ordering::Relaxed) > 0);
+/// # Ok(())
+/// # }
+/// ```
 #[macro_export]
 macro_rules! delegate_iobase {
     ($handle:ident) => {
+        $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            ls, kind);
+    };
+
+    ($handle:ident: $($method:ident),+ $(,)?) => {
+        $($crate::delegate_iobase!(@method $handle, $method);)+
+    };
+
+    (@method $handle:ident, pread) => {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> $crate::Result<usize> {
             $crate::io::IOBase::pread(&self.$handle, offset, buffer)
         }
+    };
 
+    (@method $handle:ident, pwrite) => {
         fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> $crate::Result<usize> {
             $crate::io::IOBase::pwrite(&mut self.$handle, offset, bytes)
         }
+    };
 
+    (@method $handle:ident, size) => {
         fn size(&self) -> u64 {
             $crate::io::IOBase::size(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, capacity) => {
         fn capacity(&self) -> u64 {
             $crate::io::IOBase::capacity(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, reserve) => {
         fn reserve(&mut self, capacity: u64) -> $crate::Result<()> {
             $crate::io::IOBase::reserve(&mut self.$handle, capacity)
         }
+    };
 
+    (@method $handle:ident, truncate) => {
         fn truncate(&mut self, size: u64) -> $crate::Result<()> {
             $crate::io::IOBase::truncate(&mut self.$handle, size)
         }
+    };
 
+    (@method $handle:ident, url) => {
         fn url(&self) -> Option<&$crate::Url> {
             $crate::io::IOBase::url(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, media_type) => {
         fn media_type(&self) -> &$crate::MediaType {
             $crate::io::IOBase::media_type(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, set_media_type) => {
         fn set_media_type(&mut self, media_type: $crate::MediaType) {
             $crate::io::IOBase::set_media_type(&mut self.$handle, media_type);
         }
+    };
 
+    (@method $handle:ident, flush) => {
         fn flush(&mut self) -> $crate::Result<()> {
             $crate::io::IOBase::flush(&mut self.$handle)
         }
+    };
 
+    (@method $handle:ident, parent) => {
         fn parent(&self) -> Option<$crate::generic::Holder> {
             $crate::io::IOBase::parent(&self.$handle)
         }
+    };
 
+    (@method $handle:ident, child_by) => {
         fn child_by(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
             $crate::io::IOBase::child_by(&self.$handle, name)
         }
+    };
 
+    (@method $handle:ident, ls) => {
         fn ls(
             &self,
             recursive: bool,
@@ -161,7 +245,9 @@ macro_rules! delegate_iobase {
         ) -> $crate::Result<Vec<$crate::generic::Holder>> {
             $crate::io::IOBase::ls(&self.$handle, recursive, include_private)
         }
+    };
 
+    (@method $handle:ident, kind) => {
         fn kind(&self) -> $crate::IOKind {
             $crate::io::IOBase::kind(&self.$handle)
         }
@@ -775,6 +861,40 @@ pub trait IOBase: Send {
         Cursor::at(self, position)
     }
 
+    /// Consume this handle into a page-cached [`Buffered`](crate::buffered::Buffered) one.
+    ///
+    /// Reads are served from fixed-size pages held under a byte budget, with
+    /// the first page and the page holding the last byte pinned so a
+    /// header-and-footer access pattern never re-reads either end. Everything
+    /// else answers exactly as this handle does.
+    ///
+    /// [`Buffered`](crate::buffered::Buffered) shadows this with an inherent
+    /// method of the same name, so
+    /// buffering an already-buffered handle re-wraps the handle it holds
+    /// rather than stacking a second cache.
+    ///
+    /// ```
+    /// use yggdryl::buffered::BufferedOptions;
+    /// use yggdryl::io::{Buffer, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"symbol,price\n".to_vec())
+    ///     .buffered(BufferedOptions::default());
+    /// assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    ///
+    /// // The second read of the same bytes reaches no further than memory.
+    /// assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    /// assert_eq!(handle.cached_pages(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn buffered(self, options: crate::buffered::BufferedOptions) -> crate::buffered::Buffered<Self>
+    where
+        Self: Sized,
+    {
+        crate::buffered::Buffered::new(self, options)
+    }
+
     /// Borrow a streaming writer positioned at `offset`.
     fn writer_at(&mut self, offset: u64) -> Writer<'_>
     where
@@ -837,6 +957,7 @@ pub trait IOBase: Send {
             lines: self.read_lines()?,
             pattern,
             pending: None,
+            pending_offset: 0,
             done: false,
         })
     }
@@ -861,6 +982,7 @@ pub trait IOBase: Send {
             lines: self.into_read_lines()?,
             pattern,
             pending: None,
+            pending_offset: 0,
             done: false,
         })
     }
@@ -886,6 +1008,69 @@ pub trait IOBase: Send {
     // (decoded_stream peels the codings for the owned variant; the borrowed
     // one inlines the same walk because its boxes carry no Send.)
 
+    /// Project the matched line records of this resource into Arrow batches.
+    ///
+    /// This is a text-line projection like [`Self::read_lines`], **not a
+    /// fourth record method**: the record surface stays exactly
+    /// [`Self::read_arrow_batch_reader`], [`Self::write_arrow_batch_reader`],
+    /// and [`Self::append_arrow_batch_reader`], and this method never touches
+    /// how a record encoding decodes rows. What it reads is text - the same
+    /// decoded lines [`Self::read_lines_matching`] yields, grouped into
+    /// records by the options' header pattern - and what it returns is those
+    /// records as one streaming [`BatchReader`](crate::arrow::BatchReader),
+    /// one batch in memory at a time. The columns are described on
+    /// [`LineRecordOptions`].
+    ///
+    /// [`IOKind`] decides the shape, never a second existence check:
+    ///
+    /// - A leaf ([`IOKind::File`], [`IOKind::Memory`]) parses that one
+    ///   resource's lines. This borrowed variant needs an owned view of the
+    ///   resource behind the reader it returns, so it reopens the same
+    ///   location through [`Self::parent`] and [`Self::child_by`]; a handle
+    ///   with no parent - an in-memory buffer - contributes a snapshot of its
+    ///   still-encoded bytes instead, which those handles already hold in
+    ///   memory. [`Self::into_arrow_lines`] avoids both by consuming the
+    ///   handle.
+    /// - A container ([`IOKind::Directory`]) streams across the leaf files
+    ///   beneath it in deterministic name-sorted order, each leaf opened
+    ///   lazily when the reader reaches it, each contributing its own `url`
+    ///   and restarting `rownum` at 1, and each decoded by its *own* media
+    ///   type - a folder mixing `a.log` and `b.log.gz` reads uniformly. A
+    ///   batch never spans two leaves.
+    /// - [`IOKind::Unknown`] - the resource does not exist - reads as an
+    ///   **empty** reader: zero batches, schema still answered, exactly as
+    ///   [`Self::read_lines`] yields no lines and [`Self::pread`] reads zero
+    ///   bytes. Absence is never an error on the read path.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing or reopen failure; each yielded batch carries the
+    /// read, decode, or parse failure of its rows.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(&self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized,
+    {
+        lines::read_arrow_lines(self, options)
+    }
+
+    /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
+    ///
+    /// This is the shape the bindings hand across FFI, and the one a Rust
+    /// caller needs when the batches outlive the scope that built the handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing failure; each yielded batch carries the read,
+    /// decode, or parse failure of its rows.
+    #[cfg(feature = "arrow")]
+    fn into_arrow_lines(self, options: &LineRecordOptions) -> Result<crate::arrow::BatchReader>
+    where
+        Self: Sized + 'static,
+    {
+        lines::into_arrow_lines(self, options)
+    }
+
     /// Return the record options this resource's encoding names.
     ///
     /// This is what a caller supplies when they have no options of their own,
@@ -905,7 +1090,7 @@ pub trait IOBase: Send {
         if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(self)? {
-                return Ok(table.record_options());
+                return table.record_options();
             }
             for child in self.children_where(&[], false)? {
                 if let Ok(options) = RecordOptions::for_media_type(child.media_type()) {
@@ -1077,6 +1262,8 @@ pub trait IOBase: Send {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
+        use crate::generic::IORecordOptions;
+
         // The same narrowing a write applies: an append is a write that keeps.
         let batches = select_reader(batches, options)?;
         if self.is_container() {
@@ -1086,7 +1273,16 @@ pub trait IOBase: Send {
             }
             return partition::write_folder(self, batches, options, true);
         }
-        append_leaf(self, batches, options)
+        // A merge key means "update the row that already has this key" - the
+        // folder path above has always honoured it, so a leaf that ignored it
+        // made one option mean two things depending on what the handle
+        // happened to address, and stored a second row under a key the caller
+        // said identifies one. Merging already keeps every stored row the
+        // incoming keys do not name, which is what makes it the append.
+        if options.merge_by_names().is_empty() {
+            return append_leaf(self, batches, options);
+        }
+        merge_leaf(self, batches, options)
     }
 }
 
@@ -1136,6 +1332,7 @@ pub(crate) fn leaf_reader(
         RecordOptions::Parquet(parquet) => {
             crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
+        RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
@@ -1160,6 +1357,7 @@ fn leaf_writer(
         RecordOptions::Parquet(parquet) => {
             crate::parquet::write_batch_reader(handle, batches, parquet)?;
         }
+        RecordOptions::Avro(avro) => crate::avro::write_batch_reader(handle, batches, avro)?,
     }
     Ok(())
 }
@@ -1334,10 +1532,20 @@ impl Read for Reader<'_> {
 /// pulled through a fixed-size buffer and any content codings the resource
 /// declares are peeled as streams, so one line is in memory at a time whether
 /// the resource is plain or compressed. A line is what `\n` ends, a trailing
-/// `\r` is part of the terminator, and the last line needs no terminator.
+/// `\r` is part of the terminator, and the last line needs no terminator. A
+/// UTF-8 byte-order mark opening the resource is an encoding signature rather
+/// than content, so it is stripped from the first line.
 pub struct Lines<R> {
     reader: std::io::BufReader<R>,
     buffer: Vec<u8>,
+    /// Byte offset in the decoded stream where the last yielded line starts.
+    ///
+    /// Tracked so a consumer that groups lines into records - the Arrow line
+    /// projection - can report where a record begins, which is the resume key
+    /// a tailing reader seeks back to.
+    start: u64,
+    /// Decoded bytes consumed so far, line terminators included.
+    consumed: u64,
     done: bool,
 }
 
@@ -1347,6 +1555,8 @@ impl<R: Read> Lines<R> {
         Self {
             reader: std::io::BufReader::with_capacity(TRANSFER_CHUNK, source),
             buffer: Vec::new(),
+            start: 0,
+            consumed: 0,
             done: false,
         }
     }
@@ -1367,7 +1577,9 @@ impl<R: Read> Iterator for Lines<R> {
                 self.done = true;
                 None
             }
-            Ok(_) => {
+            Ok(read) => {
+                self.start = self.consumed;
+                self.consumed += read as u64;
                 if self.buffer.last() == Some(&b'\n') {
                     self.buffer.pop();
                     if self.buffer.last() == Some(&b'\r') {
@@ -1375,7 +1587,18 @@ impl<R: Read> Iterator for Lines<R> {
                     }
                 }
                 match std::str::from_utf8(&self.buffer) {
-                    Ok(line) => Some(Ok(line.to_owned())),
+                    Ok(line) => {
+                        // A byte-order mark is an encoding signature, not
+                        // content: stripped off the first line so an anchored
+                        // pattern still opens the file's first record. The
+                        // byte offsets keep counting it, so seeks stay exact.
+                        let line = if self.start == 0 {
+                            line.strip_prefix('\u{feff}').unwrap_or(line)
+                        } else {
+                            line
+                        };
+                        Some(Ok(line.to_owned()))
+                    }
                     Err(error) => {
                         self.done = true;
                         Some(Err(Error::Io(std::io::Error::new(
@@ -1405,25 +1628,34 @@ pub struct LineRecords<R> {
     lines: Lines<R>,
     pattern: regex_lite::Regex,
     pending: Option<String>,
+    /// Where, in the decoded stream, the pending record's first line starts.
+    pending_offset: u64,
     done: bool,
 }
 
-impl<R: Read> Iterator for LineRecords<R> {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<R: Read> LineRecords<R> {
+    /// The next record with the byte offset its first line starts at.
+    ///
+    /// The offset counts decoded bytes - the stream after every content
+    /// coding is peeled - so it is the position a reader of the decoded value
+    /// seeks back to, and it is exact whatever the line terminators were.
+    /// This is the one grouping implementation; [`Iterator::next`] merely
+    /// drops the offset.
+    pub(crate) fn next_with_offset(&mut self) -> Option<Result<(u64, String)>> {
         if self.done {
             return None;
         }
         loop {
             match self.lines.next() {
                 Some(Ok(line)) => {
+                    let start = self.lines.start;
                     if self.pattern.is_match(&line) {
                         // A match opens the next record; whatever accumulated
                         // is the finished one.
                         let finished = self.pending.replace(line);
+                        let opened_at = std::mem::replace(&mut self.pending_offset, start);
                         if let Some(record) = finished {
-                            return Some(Ok(record));
+                            return Some(Ok((opened_at, record)));
                         }
                     } else {
                         match &mut self.pending {
@@ -1431,7 +1663,10 @@ impl<R: Read> Iterator for LineRecords<R> {
                                 pending.push('\n');
                                 pending.push_str(&line);
                             }
-                            None => self.pending = Some(line),
+                            None => {
+                                self.pending = Some(line);
+                                self.pending_offset = start;
+                            }
                         }
                     }
                 }
@@ -1441,10 +1676,19 @@ impl<R: Read> Iterator for LineRecords<R> {
                 }
                 None => {
                     self.done = true;
-                    return self.pending.take().map(Ok);
+                    let offset = self.pending_offset;
+                    return self.pending.take().map(|record| Ok((offset, record)));
                 }
             }
         }
+    }
+}
+
+impl<R: Read> Iterator for LineRecords<R> {
+    type Item = Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.next_with_offset()?.map(|(_, record)| record))
     }
 }
 

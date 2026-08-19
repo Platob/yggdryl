@@ -1,8 +1,13 @@
 //! Adversarial physical-materialization budget tests.
 
 use arrow_array::Array;
-use yggdryl::arrow::{ArrowScalar, schema_from_field};
+use yggdryl::arrow::{scalar_array, scalar_value, schema_from_field};
 use yggdryl::{DataType, Field, UnionMode, Value};
+
+fn round_trip(field: &Field, value: &Value) -> Value {
+    let array = scalar_array(field, value).expect("the value materializes");
+    scalar_value(field, array.as_ref()).expect("the array decodes")
+}
 
 fn union_value(type_id: i8, payload: Value) -> Value {
     Value::from_sequence([Value::from(type_id), payload])
@@ -23,7 +28,7 @@ fn nullable_fixed_list_rejects_hidden_slot_expansion_before_allocation() {
         DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 1_000_001).unwrap(),
         true,
     );
-    let error = ArrowScalar::from_value(field, Value::Null).unwrap_err();
+    let error = scalar_array(&field, &Value::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("expanded slots"), "{message}");
     assert!(message.contains("expected at most 1000000"), "{message}");
@@ -37,9 +42,9 @@ fn sparse_union_joins_selected_and_inactive_children_into_one_budget() {
         (2, fixed_list_field("inactive", 600_000, true)),
     ];
     let sparse = DataType::union(fields, UnionMode::Sparse).unwrap();
-    let error = ArrowScalar::from_value(
-        Field::new("choice", sparse, true),
-        union_value(1, Value::Null),
+    let error = scalar_array(
+        &Field::new("choice", sparse, true),
+        &union_value(1, Value::Null),
     )
     .unwrap_err();
     let message = error.to_string();
@@ -60,9 +65,8 @@ fn dense_union_does_not_visit_an_inactive_oversized_default() {
     )
     .unwrap();
     let expected = union_value(0, Value::from(11_i32));
-    let scalar =
-        ArrowScalar::from_value(Field::new("choice", dense, false), expected.clone()).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), expected);
+    let field = Field::new("choice", dense, false);
+    assert_eq!(round_trip(&field, &expected), expected);
 }
 
 #[test]
@@ -83,8 +87,8 @@ fn dense_union_remains_lazy_below_a_generated_struct_slot() {
     )
     .unwrap();
     let structure = DataType::from_fields([Field::new("choice", dense, false)]).unwrap();
-    let scalar = ArrowScalar::from_value(Field::new("row", structure, true), Value::Null).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), Value::Null);
+    let field = Field::new("row", structure, true);
+    assert_eq!(round_trip(&field, &Value::Null), Value::Null);
 }
 
 #[test]
@@ -95,8 +99,7 @@ fn nullable_struct_rejects_aggregate_fixed_physical_bytes() {
         Field::new("right", DataType::fixed_size_binary(width).unwrap(), false),
     ])
     .unwrap();
-    let error =
-        ArrowScalar::from_value(Field::new("wide", structure, true), Value::Null).unwrap_err();
+    let error = scalar_array(&Field::new("wide", structure, true), &Value::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
@@ -123,8 +126,7 @@ fn nullable_struct_aggregates_selected_dense_union_payloads() {
         Field::new("right", member(), false),
     ])
     .unwrap();
-    let error =
-        ArrowScalar::from_value(Field::new("wide", structure, true), Value::Null).unwrap_err();
+    let error = scalar_array(&Field::new("wide", structure, true), &Value::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
@@ -145,8 +147,7 @@ fn dictionary_and_run_end_wrappers_join_the_hidden_byte_budget() {
         Field::new("encoded", encoded, false),
     ])
     .unwrap();
-    let error =
-        ArrowScalar::from_value(Field::new("wide", structure, true), Value::Null).unwrap_err();
+    let error = scalar_array(&Field::new("wide", structure, true), &Value::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
@@ -197,13 +198,12 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
         || DataType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap();
 
     let structure = DataType::from_fields([Field::new("inner", impossible(), false)]).unwrap();
-    let scalar =
-        ArrowScalar::from_value(Field::new("outer", structure, true), Value::Null).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), Value::Null);
+    let field = Field::new("outer", structure, true);
+    assert_eq!(round_trip(&field, &Value::Null), Value::Null);
 
     let fixed = DataType::fixed_size_list(Field::new("item", impossible(), false), 2).unwrap();
-    let scalar = ArrowScalar::from_value(Field::new("outer", fixed, true), Value::Null).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), Value::Null);
+    let field = Field::new("outer", fixed, true);
+    assert_eq!(round_trip(&field, &Value::Null), Value::Null);
 
     let sparse = DataType::union(
         [
@@ -214,9 +214,8 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
     )
     .unwrap();
     let expected = union_value(1, Value::I64(7));
-    let scalar =
-        ArrowScalar::from_value(Field::new("choice", sparse, false), expected.clone()).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), expected);
+    let field = Field::new("choice", sparse, false);
+    assert_eq!(round_trip(&field, &expected), expected);
 
     let encoded = DataType::run_end_encoded(
         Field::new("run_ends", DataType::Int16, false),
@@ -224,6 +223,6 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
     )
     .unwrap();
     let nested = DataType::from_fields([Field::new("encoded", encoded, false)]).unwrap();
-    let scalar = ArrowScalar::from_value(Field::new("outer", nested, true), Value::Null).unwrap();
-    assert_eq!(scalar.to_value().unwrap(), Value::Null);
+    let field = Field::new("outer", nested, true);
+    assert_eq!(round_trip(&field, &Value::Null), Value::Null);
 }

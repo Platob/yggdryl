@@ -1097,17 +1097,10 @@ impl Binder<'_> {
                 ),
             });
         }
-        matches.first().copied().ok_or_else(|| {
-            let mut available: Vec<&str> = self.schema.fields().iter().map(Field::name).collect();
-            available.sort_unstable();
-            Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!(
-                    "expected one of the columns {}, got {name:?}",
-                    available.join(", ")
-                ),
-            }
-        })
+        matches
+            .first()
+            .copied()
+            .ok_or_else(|| super::typing::unknown_column(name, self.schema))
     }
 
     fn type_of(&self, expression: &Expression) -> Result<DataType> {

@@ -16,13 +16,16 @@
 //! - a **data file** carries per-column bounds and null counts, so a file whose
 //!   statistics cannot hold the value is skipped without being opened.
 //!
-//! A filter is a column name and a value as text, the same vocabulary
-//! [`IOBase::children_where`](crate::io::IOBase::children_where) filters a lake
-//! with. Against a partition column it is compared to the text the layout
-//! spells, and `null` therefore names the absence exactly as a directory name
-//! does; against any other column it is compared to the value a cast from that
-//! text produces, and the rows the file does hold are filtered after the file is
-//! read, because file statistics bound a file and do not select a row.
+//! A filter is an [`Expression`], the same one that filters a lake through
+//! [`IOBase::children_matching`](crate::io::IOBase::children_matching) and a
+//! batch through [`Bound::filter`](crate::expression::Bound::filter). Each
+//! level of the chain answers it from the statistics it carries, expressed as
+//! the [`Bounds`] every other container in this crate expresses them as: a
+//! partition tuple is a minimum equal to its maximum, so a conjunct it proves
+//! is dropped rather than re-tested, and a file's own path answers every free
+//! `&holder.*` attribute. What no level settles is filtered row by row after
+//! the file is read, because a statistic bounds a *file* and does not select a
+//! row.
 
 use std::sync::Arc;
 
@@ -295,6 +298,7 @@ pub(super) fn plan(
     manifest_at: &dyn Fn(&str) -> Result<Holder>,
     conjuncts: &[Bound],
     schema: &Field,
+    for_read: bool,
 ) -> Result<ScanPlan> {
     let mut plan = ScanPlan::default();
     for manifest in manifests {
@@ -313,7 +317,15 @@ pub(super) fn plan(
         plan.manifests_read += 1;
 
         let handle = manifest_at(&manifest.manifest_path)?;
-        for mut entry in super::manifest::read_manifest(&handle)? {
+        // A read-only plan decodes just the columns pruning consults; a plan
+        // whose entries may be carried into a rewritten manifest decodes
+        // everything, because a carried entry must keep its statistics.
+        let entries = if for_read {
+            super::manifest::read_manifest_for_plan(&handle, !conjuncts.is_empty())?
+        } else {
+            super::manifest::read_manifest(&handle)?
+        };
+        for mut entry in entries {
             if entry.status == EntryStatus::Deleted {
                 continue;
             }
@@ -404,7 +416,10 @@ impl Refine {
             .map(|(field, _)| field.name())
             .collect();
         match self.read_root.without_fields(&columns) {
-            Ok(stored) if stored.field_len() > 0 => Ok(options.with_schema(stored)),
+            Ok(stored) if stored.field_len() > 0 => {
+                let projected = file_projection(&part.handle, &options, &stored);
+                Ok(options.with_schema(projected))
+            }
             // A read root that is nothing but partition columns leaves the file
             // read unprojected; there is no column left to ask it for.
             _ => Ok(options),
@@ -417,7 +432,7 @@ impl Refine {
         crate::io::IOBase::read_arrow_batch_reader(&part.handle, &options)
     }
 
-    /// Restore, cast, filter, and project one decoded batch.
+    /// Restore, align, cast, filter, and project one decoded batch.
     fn batch(
         &self,
         batch: &RecordBatch,
@@ -425,6 +440,7 @@ impl Refine {
         residual: &[usize],
     ) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
         restore_partitions(batch, partition)
+            .and_then(|batch| align_by_field_id(batch, &self.read_root))
             .and_then(|batch| Ok(self.read_root.cast_arrow_batch(batch, false)?))
             .and_then(|batch| apply_predicates(batch, &self.predicates, residual))
             .and_then(|batch| {
@@ -718,10 +734,6 @@ fn read_part(
     let _ = sender.send((index, None));
 }
 
-/// Keep only the rows every residual filter accepts.
-///
-/// The filters are applied one after another rather than combined, because two
-/// masks applied in turn select exactly the rows their conjunction would and
 /// Keep the rows of one batch its file's statistics did not already settle.
 ///
 /// The conjuncts run through the one bound evaluator, so a residual test on a
@@ -747,6 +759,110 @@ pub(super) fn scan_error(error: Error) -> arrow_schema::ArrowError {
     arrow_schema::ArrowError::ExternalError(Box::new(error))
 }
 
+/// Translate a projection into the names one data file spells them with.
+///
+/// Iceberg resolves a column by field identifier, not by name, so a file
+/// written before a rename stores the column under its old name. The file's
+/// own root is read - a footer-only read - and every projected column whose
+/// identifier the file spells under a different name is asked for by *that*
+/// name, so the encoding's pushdown still skips what it should. The decoded
+/// batch is renamed back by [`align_by_field_id`] before the final cast.
+///
+/// A file whose schema cannot be read, or that carries no identifiers, keeps
+/// the name-based projection: nothing is worse than before, and the read
+/// itself will say what is wrong with the file.
+fn file_projection(
+    handle: &Holder,
+    options: &crate::generic::RecordOptions,
+    wanted: &Field,
+) -> Field {
+    let Ok(file_root) = crate::io::IOBase::read_arrow_field(handle, options) else {
+        return wanted.clone();
+    };
+    let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());
+    let mut renamed = false;
+    for child in wanted.fields() {
+        let Ok(Some(id)) = child.parquet_field_id() else {
+            children.push(child.clone());
+            continue;
+        };
+        let stored_name = file_root
+            .fields()
+            .iter()
+            .find(|candidate| matches!(candidate.parquet_field_id(), Ok(Some(candidate_id)) if candidate_id == id))
+            .map(|candidate| candidate.name().to_owned());
+        match stored_name {
+            Some(name) if name != child.name() => {
+                renamed = true;
+                children.push(child.clone().with_name(name));
+            }
+            _ => children.push(child.clone()),
+        }
+    }
+    if !renamed {
+        return wanted.clone();
+    }
+    DataType::from_fields(children)
+        .and_then(|data_type| {
+            Field::from_parts(
+                wanted.name(),
+                data_type,
+                wanted.is_nullable(),
+                wanted.metadata_iter(),
+            )
+        })
+        .unwrap_or_else(|_| wanted.clone())
+}
+
+/// Rename decoded columns to the read root's names, matched by field id.
+///
+/// This is the read half of Iceberg's id-based column resolution: a file
+/// written before a rename decodes under its old column names, and each of
+/// its columns whose `PARQUET:field_id` matches a read-root column is renamed
+/// to what the schema calls it now, so the cast that follows sees the column
+/// rather than inventing a null one. A column without an identifier - or one
+/// the read root does not declare - keeps its name.
+fn align_by_field_id(batch: RecordBatch, read_root: &Field) -> Result<RecordBatch> {
+    let by_id: Vec<(i32, &Field)> = read_root
+        .fields()
+        .iter()
+        .filter_map(|child| {
+            child
+                .parquet_field_id()
+                .ok()
+                .flatten()
+                .map(|id| (id, child))
+        })
+        .collect();
+    if by_id.is_empty() {
+        return Ok(batch);
+    }
+    let schema = batch.schema();
+    let mut changed = false;
+    let mut fields: Vec<Arc<arrow_schema::Field>> = Vec::with_capacity(schema.fields().len());
+    for field in schema.fields() {
+        let id = field
+            .metadata()
+            .get(crate::metadata::PARQUET_FIELD_ID_KEY)
+            .and_then(|text| text.trim().parse::<i32>().ok());
+        let target = id
+            .and_then(|id| by_id.iter().find(|(candidate, _)| *candidate == id))
+            .filter(|(_, target)| target.name() != field.name());
+        match target {
+            Some((_, target)) => {
+                changed = true;
+                fields.push(Arc::new(field.as_ref().clone().with_name(target.name())));
+            }
+            None => fields.push(Arc::clone(field)),
+        }
+    }
+    if !changed {
+        return Ok(batch);
+    }
+    let schema = Arc::new(ArrowSchema::new(fields).with_metadata(schema.metadata().clone()));
+    RecordBatch::try_new(schema, batch.columns().to_vec()).map_err(Error::Arrow)
+}
+
 /// Add the partition columns a data file left out, typed as declared.
 fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Result<RecordBatch> {
     let missing: Vec<&(Field, Value)> = partition
@@ -761,9 +877,9 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Resu
         batch.schema().fields().iter().map(Arc::clone).collect();
     let mut columns = batch.columns().to_vec();
     for (field, value) in missing {
-        let scalar = crate::arrow::ArrowScalar::from_value(field.clone(), value.clone())
+        let scalar = crate::arrow::scalar_array(field, value)
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
-        columns.push(repeat(&scalar.to_array(), batch.num_rows())?);
+        columns.push(repeat(&scalar, batch.num_rows())?);
         fields.push(field.to_arrow_ref()?);
     }
     let schema =
@@ -777,7 +893,14 @@ fn repeat(value: &ArrayRef, rows: usize) -> Result<ArrayRef> {
     arrow_select::take::take(value.as_ref(), &indices, None).map_err(Error::Arrow)
 }
 
-/// Pair each partition column's Field with the value the manifest recorded.
+/// Pair each identity partition column's Field with the manifest's value.
+///
+/// Only [`Transform::Identity`] restores a column: its partition value *is*
+/// the column value, so a data file that left the column out reads it back
+/// from the manifest. A transformed field - `days(at)`, `bucket(4, id)` -
+/// stores a derived value under a name that is not a schema column at all,
+/// so restoring it would add a column no reader asked for; the source column
+/// itself is stored in the data file, as Spark stores it.
 pub(super) fn partition_columns(
     spec: &PartitionSpec,
     schema: &Field,
@@ -788,7 +911,9 @@ pub(super) fn partition_columns(
         .fields()
         .iter()
         .zip(file.partition.iter())
-        .map(|(field, value)| (field.clone(), value.clone()))
+        .zip(spec.fields.iter())
+        .filter(|(_, spec_field)| spec_field.transform == Transform::Identity)
+        .map(|((field, value), _)| (field.clone(), value.clone()))
         .collect())
 }
 

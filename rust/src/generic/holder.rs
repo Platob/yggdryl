@@ -1,5 +1,6 @@
 //! One concrete value for any [`IOBase`] implementation.
 
+use crate::buffered::{Buffered, BufferedOptions};
 use crate::{MediaType, Result, Url};
 
 use crate::io::{Buffer, IOBase};
@@ -44,6 +45,18 @@ pub enum Holder {
     Path(crate::local::Path),
     /// A memory-mapped local file.
     File(File),
+    /// A directory on a foreign Arrow filesystem.
+    ArrowFolder(crate::arrowfs::Folder),
+    /// A foreign-filesystem location that resolves to whatever it turns out
+    /// to be.
+    ArrowPath(crate::arrowfs::Path),
+    /// A staged whole-value file on a foreign Arrow filesystem.
+    ArrowFile(crate::arrowfs::File),
+    /// Any of the others, read through a page cache.
+    ///
+    /// The box is what keeps the enum a fixed size: this variant holds a
+    /// handle of the very type it belongs to.
+    Buffered(Box<Buffered<Self>>),
 }
 
 impl Holder {
@@ -91,6 +104,21 @@ impl Holder {
         }
     }
 
+    /// Hold this resource behind a page cache.
+    ///
+    /// A holder that is already buffered is re-wrapped with the new options
+    /// rather than nested, so there is never a second cache layer. This is the
+    /// inherent spelling of [`IOBase::buffered`], and it wins method
+    /// resolution over it.
+    #[must_use]
+    pub fn buffered(self, options: BufferedOptions) -> Self {
+        let held = match self {
+            Self::Buffered(buffered) => buffered.into_handle(),
+            other => other,
+        };
+        Self::Buffered(Box::new(Buffered::new(held, options)))
+    }
+
     /// Borrow the held implementation as a trait object.
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
@@ -98,6 +126,10 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
+            Self::ArrowFolder(inner) => inner,
+            Self::ArrowPath(inner) => inner,
+            Self::ArrowFile(inner) => inner,
+            Self::Buffered(inner) => inner.as_ref(),
         }
     }
 
@@ -108,6 +140,10 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
+            Self::ArrowFolder(inner) => inner,
+            Self::ArrowPath(inner) => inner,
+            Self::ArrowFile(inner) => inner,
+            Self::Buffered(inner) => inner.as_mut(),
         }
     }
 }
@@ -197,5 +233,29 @@ impl From<Folder> for Holder {
 impl From<File> for Holder {
     fn from(value: File) -> Self {
         Self::File(value)
+    }
+}
+
+impl From<crate::arrowfs::Folder> for Holder {
+    fn from(value: crate::arrowfs::Folder) -> Self {
+        Self::ArrowFolder(value)
+    }
+}
+
+impl From<crate::arrowfs::Path> for Holder {
+    fn from(value: crate::arrowfs::Path) -> Self {
+        Self::ArrowPath(value)
+    }
+}
+
+impl From<crate::arrowfs::File> for Holder {
+    fn from(value: crate::arrowfs::File) -> Self {
+        Self::ArrowFile(value)
+    }
+}
+
+impl From<Buffered<Holder>> for Holder {
+    fn from(value: Buffered<Self>) -> Self {
+        Self::Buffered(Box::new(value))
     }
 }

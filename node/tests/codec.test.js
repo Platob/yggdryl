@@ -1092,3 +1092,22 @@ test('the byte codings round-trip and read node:zlib output', () => {
   assert.deepEqual(zlib.loads(zlib.dumps(payload)), payload)
   assert.deepEqual(zstd.loads(zstd.dumps(payload, 9)), payload)
 })
+
+test('raw DEFLATE round-trips, reads node:zlib, and shares no framing with zlib', () => {
+  const zlibNative = require('node:zlib')
+  const { zlib } = require('yggdryl')
+  const payload = Buffer.from('{"id":1}\n'.repeat(512))
+
+  assert.deepEqual(zlib.loadsRaw(zlib.dumpsRaw(payload)), payload)
+  assert.deepEqual(zlib.loadsRaw(zlibNative.deflateRawSync(payload)), payload)
+  assert.deepEqual(zlibNative.inflateRawSync(zlib.dumpsRaw(payload, 9)), payload)
+  // The raw output is the framed output without the two-byte header and the
+  // four-byte checksum, which is the whole of the difference.
+  assert.equal(zlib.dumpsRaw(payload).length + 6, zlib.dumps(payload).length)
+
+  // Nothing in unframed bytes says which framing they are, so the pair is
+  // named rather than sniffed - and each half refuses the other's output
+  // instead of decoding it into something plausible.
+  assert.throws(() => zlib.loads(zlib.dumpsRaw(payload)), /deflate/)
+  assert.throws(() => zlib.loadsRaw(zlib.dumps(payload)), /deflate/)
+})

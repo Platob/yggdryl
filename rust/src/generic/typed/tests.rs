@@ -196,3 +196,96 @@ fn a_narrowed_pairing_serializes_as_the_two_halves_and_reads_back_checked() {
     assert!(serde_json::from_slice::<TypedValue>(text).is_ok());
     assert!(serde_json::from_slice::<Int64Value>(text).is_err());
 }
+
+#[cfg(feature = "arrow")]
+mod arrow {
+    use super::{DataType, Field, TypedValue, Value};
+
+    #[test]
+    fn a_pairing_round_trips_through_its_one_row_arrow_array() {
+        let typed = TypedValue::from_parts(DataType::Int64, Value::from(7_i64)).unwrap();
+        let array = typed.to_arrow_array().unwrap();
+        assert_eq!(array.len(), 1);
+        assert_eq!(
+            TypedValue::from_arrow_array(DataType::Int64, array.as_ref()).unwrap(),
+            typed
+        );
+    }
+
+    #[test]
+    fn the_narrowed_decode_checks_the_marker_before_the_array() {
+        use crate::generic::{Int64Value, Utf8Value};
+
+        let array = Int64Value::new(Value::from(7_i64))
+            .unwrap()
+            .to_arrow_array()
+            .unwrap();
+        let typed = Int64Value::try_from_arrow_array(DataType::Int64, array.as_ref()).unwrap();
+        assert_eq!(typed.value(), &Value::I64(7));
+
+        let refused = Utf8Value::try_from_arrow_array(DataType::Int64, array.as_ref())
+            .expect_err("an int64 is not a utf8");
+        let message = refused.to_string();
+        assert!(
+            message.contains("utf8") && message.contains("int64"),
+            "the failure must name both markers, got {message}"
+        );
+    }
+
+    #[test]
+    fn a_decode_refuses_a_foreign_array_that_is_not_one_exact_row() {
+        let array = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))
+            .unwrap()
+            .to_arrow_array()
+            .unwrap();
+        // Two rows are not a scalar, and neither is a different datatype.
+        let error = TypedValue::from_arrow_array(DataType::Int64, array.slice(0, 0).as_ref())
+            .expect_err("zero rows are not a scalar")
+            .to_string();
+        assert!(error.contains("exactly one value"), "{error}");
+        let error = TypedValue::from_arrow_array(DataType::Int32, array.as_ref())
+            .expect_err("an int64 array is not an int32 scalar")
+            .to_string();
+        assert!(error.contains("differs from expected"), "{error}");
+    }
+
+    #[test]
+    fn a_null_projects_only_when_the_datatype_default_spells_it() {
+        // Null's canonical default is null, so the projection holds...
+        let nothing = TypedValue::from_parts(DataType::Null, Value::Null).unwrap();
+        let array = nothing.to_arrow_array().unwrap();
+        assert_eq!(array.len(), 1);
+        assert_eq!(
+            TypedValue::from_arrow_array(DataType::Null, array.as_ref()).unwrap(),
+            nothing
+        );
+
+        // ...while an int64 null belongs to a nullable column, which is a
+        // Field's business rather than a bare datatype's.
+        let absent = TypedValue::from_parts(DataType::Int64, Value::Null).unwrap();
+        assert!(absent.to_arrow_array().is_err());
+        let column = Field::new("value", DataType::Int64, true);
+        let array = crate::arrow::scalar_array(&column, &Value::Null).unwrap();
+        assert_eq!(
+            TypedValue::from_arrow_array(DataType::Int64, array.as_ref()).unwrap(),
+            absent
+        );
+    }
+
+    #[test]
+    fn a_struct_pairing_decodes_and_reprojects_its_canonical_row_spelling() {
+        let structure = DataType::from_fields([
+            Field::new("id", DataType::Int64, false),
+            Field::new("name", DataType::Utf8, true),
+        ])
+        .unwrap();
+        let row = Value::from_sequence([Value::from(7_i64), Value::from("XNAS")]);
+        let typed = TypedValue::from_parts(structure.clone(), row.clone()).unwrap();
+        let array = typed.to_arrow_array().unwrap();
+        // The Arrow reading spells the row as its typed record; the decode
+        // canonicalizes it back to the plain sequence the validator speaks.
+        let decoded = TypedValue::from_arrow_array(structure, array.as_ref()).unwrap();
+        assert_eq!(decoded.value(), &row);
+        assert_eq!(decoded.to_arrow_array().unwrap().as_ref(), array.as_ref());
+    }
+}

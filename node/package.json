@@ -37,9 +37,11 @@
     "apache-arrow": "^21.1.0"
   },
   "scripts": {
+    "bench:arrowfs": "node benchmarks/arrowfs.js",
     "bench:codec": "node benchmarks/codec.js",
     "bench:defaults": "node benchmarks/defaults.js",
     "bench:io": "node benchmarks/io.js",
+    "bench:lines": "node benchmarks/lines.js",
     "bench:records": "node benchmarks/records.js",
     "bench:schema": "node benchmarks/schema.js",
     "build": "napi build --platform --release && node scripts/local-binding-only.js && node scripts/hide-private-types.js",

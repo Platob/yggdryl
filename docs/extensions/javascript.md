@@ -41,13 +41,38 @@ declarations are checked against the tests that use them.
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
+| `schemaFromPattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `codec`, `json`, `toml`, `yaml`, `Value` | [text](../text.md) and the format pages |
+| `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
 
-The compression codings are Rust-only today; a handle applies the one its name declares without
-being told, so [gzip](../gzip.md), [zlib](../zlib.md), and [zstd](../zstd.md) are
-reachable through `IOBase` even though their modules are not.
+Each coding namespace carries the whole-buffer pair - `loads` and `dumps`, plus `loadsRaw` and
+`dumpsRaw` on `zlib` - over `Buffer`, reading and writing exactly what `node:zlib` does. Their
+streaming `reader`/`writer` and the transparent handle wrappers stay Rust-only: both are built on
+Rust's `Read`/`Write`, which has no JavaScript spelling here. A handle still applies the coding its
+name declares without being told, and `IOBase.codec` is what asks it which one that is.
+
+## A filesystem is whatever answers six calls
+
+Arrow JS ships no filesystem, so where Python hands the core a `pyarrow.fs.FileSystem` that already
+exists, JavaScript supplies the vtable itself: a plain object whose methods are Arrow's own
+`FileSystem` calls in camelCase - `fileInfo`, `list`, `readRange`, `writeFull`, `createDir`,
+`deleteFile`, plus a `typeName`. `IOBase.fromArrowFs(handler, path)` turns one into an ordinary
+handle, so a `Map`, `node:fs`, an S3 client, or a caching layer over any of them becomes storage
+the rest of the package can read and write. [`arrowfs`](../arrowfs.md) documents the backend and
+shows a complete handler.
+
+Two things belong to this boundary rather than to the backend. Sizes cross as `bigint`, because a
+64-bit length is what an object store reports and a JavaScript number cannot hold one exactly - an
+exact `number` is accepted, since a handler over `fs.Stats` already has one. And the handler is
+called **synchronously, on the thread that supplied it**: Node-API's only cross-thread call is
+asynchronous, while every method here has to answer in the middle of a native read, so a
+handler-backed handle refuses a `Worker` by name instead of pretending. A worker that needs its own
+view builds its own handler; only the location string has to travel.
+
+`using` binds to `open`/`close`, which is what publishes a staged whole value - the shape every
+Arrow filesystem writes in.
 
 ## Inference at the boundary
 
