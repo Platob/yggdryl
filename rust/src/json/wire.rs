@@ -47,6 +47,7 @@ impl Serialize for JsonRef<'_> {
             }
             Value::String(value) => serializer.serialize_str(value),
             Value::Bytes(value) => JsonEnvelopeRef::Bytes(value).serialize(serializer),
+            Value::Geospatial(value) => JsonEnvelopeRef::Geospatial(value).serialize(serializer),
             // A temporal is its classic ISO string, the spelling every other
             // JSON reader already reads; a reading with no classic spelling
             // keeps the enveloped structural one.
@@ -109,6 +110,7 @@ fn is_plain_json_mapping(entries: &[(Value, Value)]) -> bool {
 
 enum JsonEnvelopeRef<'a> {
     Bytes(&'a [u8]),
+    Geospatial(&'a [u8]),
     I128(i128),
     U128(u128),
     Float(f64),
@@ -143,6 +145,7 @@ impl Serialize for JsonEnvelopeBody<'_> {
         mapping.serialize_entry("version", &WIRE_VERSION)?;
         let kind = match self.0 {
             JsonEnvelopeRef::Bytes(_) => "bytes",
+            JsonEnvelopeRef::Geospatial(_) => "geospatial",
             JsonEnvelopeRef::I128(_) => "i128",
             JsonEnvelopeRef::U128(_) => "u128",
             JsonEnvelopeRef::Float(_) => "float",
@@ -155,10 +158,13 @@ impl Serialize for JsonEnvelopeBody<'_> {
         };
         mapping.serialize_entry("type", kind)?;
         match self.0 {
-            JsonEnvelopeRef::Bytes(value) => mapping.serialize_entry(
-                "value",
-                &base64::engine::general_purpose::STANDARD.encode(value),
-            )?,
+            // WKB is bytes on the wire, so a geometry's payload travels the
+            // way the bytes envelope's does.
+            JsonEnvelopeRef::Bytes(value) | JsonEnvelopeRef::Geospatial(value) => mapping
+                .serialize_entry(
+                    "value",
+                    &base64::engine::general_purpose::STANDARD.encode(value),
+                )?,
             JsonEnvelopeRef::I128(value) => {
                 mapping.serialize_entry("value", &value.to_string())?;
             }

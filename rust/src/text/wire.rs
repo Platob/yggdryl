@@ -6,6 +6,7 @@ use crate::{Error, Result, TimeUnit};
 pub(crate) const JSON_MARKER: &str = "$yggdryl";
 const YAML_MAPPING: &str = "yggdryl/map";
 const YAML_BYTES: &str = "yggdryl/bytes";
+const YAML_GEOSPATIAL: &str = "yggdryl/geospatial";
 const YAML_I128: &str = "yggdryl/i128";
 const YAML_U128: &str = "yggdryl/u128";
 const YAML_FLOAT: &str = "yggdryl/float";
@@ -194,6 +195,7 @@ fn is_envelope_kind(kind: &str) -> bool {
     matches!(
         kind,
         "bytes"
+            | "geospatial"
             | "i128"
             | "u128"
             | "float"
@@ -420,6 +422,22 @@ fn decode_envelope_payload(
                     .map_err(|_| codec_error(state.format, "invalid base64 bytes envelope"))
             },
         ),
+        // A geometry payload is the bytes payload under its own kind, so the
+        // WKB comes back as the geospatial value it left as, not as bytes.
+        "geospatial" => raw_string(value).map_or_else(
+            || {
+                Err(codec_error(
+                    state.format,
+                    "geospatial envelope value must be base64 text",
+                ))
+            },
+            |value| {
+                base64::engine::general_purpose::STANDARD
+                    .decode(value)
+                    .map(|decoded| Value::Geospatial(decoded.into()))
+                    .map_err(|_| codec_error(state.format, "invalid base64 geospatial envelope"))
+            },
+        ),
         "i128" => parse_i128_for(value, state.format),
         "u128" => parse_u128_for(value, state.format),
         "float" => parse_special_float(value, state.format),
@@ -450,7 +468,7 @@ fn decode_yaml_tag(
     let tag = tag.trim_start_matches('!');
     if matches!(
         tag,
-        YAML_MAPPING | YAML_BYTES | YAML_I128 | YAML_U128 | YAML_FLOAT
+        YAML_MAPPING | YAML_BYTES | YAML_GEOSPATIAL | YAML_I128 | YAML_U128 | YAML_FLOAT
     ) {
         if let Some(fields) = raw_mapping(&value) {
             if let Some(decoded) = decode_yaml_envelope(fields, depth, state) {
@@ -470,6 +488,18 @@ fn decode_yaml_tag(
                     .decode(encoded)
                     .map(Value::from)
                     .map_err(|_| codec_error("yaml", "invalid base64 bytes payload"))
+            }
+            YAML_GEOSPATIAL => {
+                let RawValue::String(encoded) = value else {
+                    return Err(codec_error(
+                        "yaml",
+                        "yggdryl geospatial payload must be base64 text",
+                    ));
+                };
+                base64::engine::general_purpose::STANDARD
+                    .decode(encoded)
+                    .map(|decoded| Value::Geospatial(decoded.into()))
+                    .map_err(|_| codec_error("yaml", "invalid base64 geospatial payload"))
             }
             YAML_I128 => parse_i128_for(&value, "yaml"),
             YAML_U128 => parse_u128_for(&value, "yaml"),

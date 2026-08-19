@@ -1378,7 +1378,9 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         Value::F32(value) => float_transport(value.as_f64()),
         Value::F64(value) => float_transport(value.as_f64()),
         Value::String(value) => Ok(JsonValue::String(value.to_string())),
-        Value::Bytes(value) => Ok(marker(
+        // A geometry has no JavaScript binding surface yet, so its WKB crosses
+        // as its plain shape: the bytes transport that becomes a Buffer.
+        Value::Bytes(value) | Value::Geospatial(value) => Ok(marker(
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value)))],
         )),

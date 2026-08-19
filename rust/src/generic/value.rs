@@ -12,7 +12,9 @@
 //! Every kind that carries a unit or a scale carries it as a typed field rather
 //! than as a free-form name over an untyped payload, because a name nothing
 //! validates is not a type. [`Value::data_type`] reads the datatype straight
-//! off the variant for exactly that reason.
+//! off the variant for exactly that reason. There is deliberately no `Variant`
+//! kind: a variant value is a `Value` - a self-describing tree - so the binary
+//! form is an encoding of the one value model, not a second value model.
 //!
 //! ```
 //! use yggdryl::Value;
@@ -387,6 +389,12 @@ pub enum Value {
     String(SmolStr),
     /// Arbitrary bytes.
     Bytes(Arc<[u8]>),
+    /// A geometry or geography value, as Well-Known Binary.
+    ///
+    /// WKB rather than a parsed coordinate tree because WKB is what every
+    /// geospatial encoding stores and exchanges; [`crate::generic::wkb`] reads
+    /// the bytes wherever a text spelling or a bound is needed.
+    Geospatial(Arc<[u8]>),
     /// A count of days since the Unix epoch.
     Date(i32),
     /// A count of `TimeUnit` since midnight.
@@ -494,6 +502,7 @@ impl Serialize for Value {
             Self::Decimal(unscaled, scale) => tagged(serializer, "decimal", &Pair(unscaled, scale)),
             Self::String(value) => tagged(serializer, "string", value),
             Self::Bytes(value) => tagged(serializer, "bytes", value),
+            Self::Geospatial(value) => tagged(serializer, "geospatial", value),
             // A temporal is its classic ISO spelling wherever it has one; a
             // reading with no classic spelling keeps its structural parts.
             Self::Date(days) => match super::iso::format_date(*days) {
@@ -585,6 +594,7 @@ impl<'de> Deserialize<'de> for Value {
             Decimal(i128, i8),
             String(SmolStr),
             Bytes(Arc<[u8]>),
+            Geospatial(Arc<[u8]>),
             Date(DatePayload),
             Time(CountPayload),
             Timestamp(StampPayload),
@@ -614,6 +624,7 @@ impl<'de> Deserialize<'de> for Value {
             StructuralValue::Decimal(unscaled, scale) => Ok(Self::Decimal(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::String(value)),
             StructuralValue::Bytes(value) => Ok(Self::from(value)),
+            StructuralValue::Geospatial(value) => Ok(Self::Geospatial(value)),
             StructuralValue::Date(DatePayload::Days(days)) => Ok(Self::Date(days)),
             StructuralValue::Date(DatePayload::Iso(spelled)) => super::iso::parse_date(&spelled)
                 .map(Self::Date)
@@ -726,6 +737,7 @@ impl Ord for Value {
             ),
             Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
+            Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
             Self::Date(left) => same_kind!(Self::Date(right) => left.cmp(right)),
             Self::Time(count, unit) => same_kind!(
                 Self::Time(other_count, other_unit) =>
@@ -792,6 +804,7 @@ impl Hash for Value {
             Self::Decimal(unscaled, scale) => decimal::normalize(*unscaled, *scale).hash(state),
             Self::String(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
+            Self::Geospatial(value) => value.hash(state),
             Self::Date(value) => value.hash(state),
             Self::Time(count, unit) | Self::DateTime(count, unit) | Self::Duration(count, unit) => {
                 temporal_key(*count, *unit).hash(state);
@@ -897,6 +910,9 @@ const fn value_rank(value: &Value) -> u8 {
         // is kept, so it takes the next free number rather than the slot
         // beside its zoned sibling.
         Value::DateTime(..) => 14,
+        // A geometry arrived later still, and takes the next free number
+        // rather than the slot beside its bytes sibling, for the same reason.
+        Value::Geospatial(_) => 15,
     }
 }
 
@@ -925,6 +941,7 @@ impl Value {
             Self::Decimal(..) => "decimal",
             Self::String(_) => "string",
             Self::Bytes(_) => "bytes",
+            Self::Geospatial(_) => "geospatial",
             Self::Date(_) => "date",
             Self::Time(..) => "time",
             Self::Timestamp(..) => "timestamp",
@@ -1650,6 +1667,41 @@ mod tests {
         assert_eq!(removed.keys(), vec!["symbol", "legs"]);
         // Removing something absent changes nothing.
         assert_eq!(removed.without_key("absent").unwrap(), removed);
+    }
+
+    #[test]
+    fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
+        use std::hash::{Hash, Hasher};
+
+        fn hash_of(value: &Value) -> u64 {
+            let mut hasher = std::hash::DefaultHasher::new();
+            value.hash(&mut hasher);
+            hasher.finish()
+        }
+
+        let wkb: &[u8] = &[1, 1, 0, 0, 0];
+        let point = Value::Geospatial(wkb.into());
+        assert_eq!(point.kind(), "geospatial");
+
+        // The same bytes under the bytes kind are a different value: the kind
+        // is part of the identity, exactly as it is for string versus bytes.
+        let bytes = Value::from(wkb);
+        assert_ne!(point, bytes);
+        assert_ne!(hash_of(&point), hash_of(&bytes));
+
+        // Within the kind, the bytes compare, and equal values hash equal.
+        assert_eq!(point, Value::Geospatial(wkb.into()));
+        assert_eq!(hash_of(&point), hash_of(&Value::Geospatial(wkb.into())));
+        assert!(point < Value::Geospatial([1u8, 2].as_slice().into()));
+    }
+
+    #[test]
+    fn the_structural_wire_round_trips_a_geospatial_value() {
+        let point = Value::Geospatial([1u8, 1, 0, 0, 0].as_slice().into());
+        let encoded = serde_json::to_string(&point).unwrap();
+        assert!(encoded.contains("\"type\":\"geospatial\""), "{encoded}");
+        let decoded: Value = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, point);
     }
 
     #[test]

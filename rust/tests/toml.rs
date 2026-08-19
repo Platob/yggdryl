@@ -194,6 +194,63 @@ fn every_root_value_shape_round_trips() {
 }
 
 #[test]
+fn geospatial_values_round_trip_through_the_typed_envelope() {
+    // One valid little-endian WKB `POINT (1 2)`.
+    let mut wkb = vec![0x01_u8, 0x01, 0x00, 0x00, 0x00];
+    wkb.extend_from_slice(&1.0_f64.to_le_bytes());
+    wkb.extend_from_slice(&2.0_f64.to_le_bytes());
+    let point = Value::Geospatial(wkb.into());
+
+    // At the root, nested in a sequence, and nested in a mapping alike.
+    let root = toml::from_slice(&toml::to_vec(&point).unwrap()).unwrap();
+    assert_eq!(root, point);
+    assert!(matches!(root, Value::Geospatial(_)));
+
+    let nested = Value::from_mapping([
+        (Value::from("shape"), point.clone()),
+        (
+            Value::from("shapes"),
+            Value::from_sequence([point.clone(), Value::Bool(true)]),
+        ),
+    ])
+    .unwrap();
+    let encoded = toml::to_vec(&nested).unwrap();
+    let text = std::str::from_utf8(&encoded).unwrap();
+    assert!(text.contains("type = \"geospatial\""), "{text}");
+    let decoded = toml::from_slice(&encoded).unwrap();
+    assert_eq!(decoded, nested);
+    assert!(matches!(
+        decoded.get_key_str("shape"),
+        Some(Value::Geospatial(_))
+    ));
+
+    // A user mapping shaped exactly like the envelope is escaped, so it comes
+    // back as the mapping it is rather than as a geometry.
+    let body = Value::from_mapping([
+        (Value::from("version"), Value::I64(1)),
+        (Value::from("type"), Value::from("geospatial")),
+        (
+            Value::from("value"),
+            Value::from("AQEAAAAAAAAAAADwPwAAAAAAAABA"),
+        ),
+    ])
+    .unwrap();
+    let collision = Value::from_mapping([(Value::from("$yggdryl"), body)]).unwrap();
+    let encoded = toml::to_vec(&collision).unwrap();
+    let decoded = toml::from_slice(&encoded).unwrap();
+    assert_eq!(decoded, collision);
+    assert!(matches!(decoded, Value::Mapping(_)));
+
+    // The recognized envelope still refuses a payload that is not base64.
+    assert!(
+        toml::from_str(r#""$yggdryl" = { version = 1, type = "geospatial", value = "?" }"#)
+            .unwrap_err()
+            .to_string()
+            .contains("base64")
+    );
+}
+
+#[test]
 fn exact_envelope_collisions_are_escaped_and_non_exact_shapes_stay_plain() {
     let body = Value::from_mapping([
         (Value::from("version"), Value::I64(1)),

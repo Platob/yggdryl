@@ -431,6 +431,9 @@ pub(crate) fn literal_text(data_type: &DataType, value: &Value) -> Option<SmolSt
         Value::Decimal(unscaled, scale) => Some(decimal_text(*unscaled, *scale)),
         Value::String(held) => Some(held.clone()),
         Value::Bytes(held) => Some(SmolStr::new(hex_text(held))),
+        // A geometry literal spells its WKB the way a bytes literal does: the
+        // expression grammar reads hex back losslessly, which WKT is not.
+        Value::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
         Value::Date(days) => iso::format_date(*days),
         Value::Time(count, unit) => iso::format_time(*count, *unit),
         Value::Timestamp(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
