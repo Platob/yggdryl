@@ -223,6 +223,45 @@ refused everywhere, at every layer, in every language.
   one of them; it never corrupts and never silently picks. Wherever this
   surfaces, the sentence appears beside it.
 
+## Listing and iteration contract
+
+A listing says what is there; it must never require holding all of it. The
+record surface already refuses a `Vec` of batches because a shape requiring
+materialization cannot describe a resource larger than memory. The same
+argument governs entries, and for the same reason.
+
+- **Every listing is a lazy iterator, never a collected `Vec`.**
+  `IOBase::ls`, `glob`, `children_where`; a catalog's namespaces and tables; a
+  table's data files; a manifest's entries; a plan's files - each yields one at
+  a time. A caller wanting a vector writes `.collect()`; the API never decides
+  that for them, and a folder with a million leaves is listed the same way as
+  one with three.
+- **The item is a `Result`, and the iterator is fused after the first error.**
+  A listing fails *at* the failing entry, naming it, without discarding what it
+  already yielded and without looping forever afterwards.
+- **Laziness is real, and whatever is held says what bounds it.** A recursive
+  walk holds its frontier, not its result; a glob descends fixed prefixes and
+  lists only what survives them; a scan yields files as manifests are read. A
+  held buffer with no stated bound is the bug this contract prevents.
+- **Order is deterministic and documented.** The same listing over the same
+  state yields the same sequence.
+- **A report of what an operation just did may be owned**, because the
+  operation bounds it: the snapshot ids an expiry removed, the counts a
+  compaction reports. So may anything bounded by construction, like the
+  partition pairs read off one URL path. The rule is the distinction:
+  *unbounded by the resource → iterator; bounded by the act, or already in
+  hand → owned.*
+- **An object-safe trait returns one named iterator type**, not `impl
+  Iterator` and not an ad-hoc `Box<dyn Iterator<..>>` in a public signature, so
+  `dyn` keeps working and a binding can name what it wraps. One such type per
+  item kind, no more.
+- **Bindings expose the language's own lazy protocol** - Python iterators and
+  generators, JavaScript iterables and `for...of` - and never collect on the
+  way across the boundary. A binding that must collect says why, in the place
+  it does it.
+- **Benchmark time to first entry, not only the full drain.** A benchmark that
+  measures only the drain hides the exact property this contract exists for.
+
 ## Media implementation standard
 
 Every record encoding (media) implementation - `Ipc`, `Parquet`, the next one -
