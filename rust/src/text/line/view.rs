@@ -25,7 +25,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Result};
 
-use regex_lite::CaptureLocations;
+use regex::CaptureLocations;
 
 use super::options::TextLineOptions;
 
@@ -81,10 +81,11 @@ pub(crate) struct Matched {
 
 /// The buffers a matched record borrows instead of allocating.
 ///
-/// Both would otherwise be one allocation per *record*: `regex-lite` builds a
-/// fresh `Captures` for every `captures` call, and the span vector is one per
-/// match. A record is a view, so neither belongs to it - they belong to the
-/// reader, which holds exactly one of each and rewrites them as records go by.
+/// Both would otherwise be one allocation per *record*: the engine's
+/// `captures` builds a fresh `Captures` for every call, and the span vector is
+/// one per match. A record is a view, so neither belongs to it - they belong
+/// to the reader, which holds exactly one of each and rewrites them as records
+/// go by.
 ///
 /// That is sound because exactly one record is alive at a time:
 /// [`TextLines::next`](super::TextLines::next) borrows the reader for the
@@ -98,18 +99,29 @@ pub(crate) struct Scratch {
     /// Each named capture's span, in group order; `None` when it did not
     /// participate in the match. Cleared and refilled per record.
     spans: RefCell<Vec<Option<Range<usize>>>>,
+    /// Each capture column's group index within the header expression, resolved
+    /// once here rather than by a name walk per record. `None` for a column the
+    /// header expression does not capture.
+    indices: Vec<Option<usize>>,
 }
 
 impl Scratch {
     /// The buffers `options` needs, sized once for the whole read.
     pub(crate) fn for_options(options: &TextLineOptions) -> Self {
+        let expression = options.header_expression();
         Self {
-            locations: RefCell::new(
-                options
-                    .header_expression()
-                    .map(regex_lite::Regex::capture_locations),
-            ),
+            locations: RefCell::new(expression.map(regex::Regex::capture_locations)),
             spans: RefCell::new(Vec::with_capacity(options.capture_names().count())),
+            indices: options
+                .capture_names()
+                .map(|name| {
+                    expression.and_then(|expression| {
+                        expression
+                            .capture_names()
+                            .position(|held| held == Some(name))
+                    })
+                })
+                .collect(),
         }
     }
 }
@@ -169,12 +181,10 @@ impl<'window> TextLine<'window> {
                     let locations = held.as_mut()?;
                     expression.captures_read(locations, opening)?;
                     let whole = locations.get(0)?;
-                    // Group order, resolved through the expression's own index
-                    // so a name the pattern does not have stays `None`.
-                    spans.extend(self.options.capture_names().map(|name| {
-                        expression
-                            .capture_names()
-                            .position(|held| held == Some(name))
+                    // Group order, through the index table resolved once per
+                    // read - a name the expression does not have stays `None`.
+                    spans.extend(self.scratch.indices.iter().map(|index| {
+                        index
                             .and_then(|index| locations.get(index))
                             .map(|(start, end)| start..end)
                     }));

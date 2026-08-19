@@ -46,8 +46,11 @@ bytes = { version = "1", optional = true }
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 half.workspace = true
 memmap2 = "0.9"
-# The light engine: line-anchoring patterns need no unicode tables.
-regex-lite = "0.1"
+# The full engine: literal prefilters and the lazy DFA are what let the line
+# projection outrun CPython's C `re` loop on the same corpus. `memchr` rides
+# in regex's own tree, so naming it for the line scan costs no extra crate.
+memchr = "2.7"
+regex = "1.11"
 serde = { version = "1.0", features = ["derive", "rc"] }
 saphyr-parser = "=0.0.11"
 parquet = { version = "59.2.0", default-features = false, features = [

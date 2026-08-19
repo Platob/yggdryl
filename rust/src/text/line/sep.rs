@@ -271,36 +271,19 @@ fn flexible_break(window: &[u8], complete: bool) -> Option<Break> {
 
 /// The first offset of `needle` in `window`.
 ///
-/// A plain scan rather than a vectorized search: the workspace keeps a
-/// deliberately small dependency profile, and the benchmark in
-/// `benchmarks/text.rs` is what decides whether a `memchr` dependency pays.
+/// `memchr` rather than a scalar loop: the byte scan is the floor under every
+/// record read, the crate is already in the tree under the regex engine, and
+/// its vectorized search is what keeps line splitting off the profile.
 fn find_byte(window: &[u8], needle: u8) -> Option<usize> {
-    window.iter().position(|byte| *byte == needle)
+    memchr::memchr(needle, window)
 }
 
 /// The first offset of either needle in `window`, in one pass.
 fn find_either(window: &[u8], first: u8, second: u8) -> Option<usize> {
-    window
-        .iter()
-        .position(|byte| *byte == first || *byte == second)
+    memchr::memchr2(first, second, window)
 }
 
 /// The first offset of `needle` in `window`, for a multi-byte terminator.
 fn find_slice(window: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.len() > window.len() {
-        return None;
-    }
-    let first = needle[0];
-    let mut from = 0;
-    while let Some(offset) = find_byte(&window[from..], first) {
-        let at = from + offset;
-        if window.len() - at < needle.len() {
-            return None;
-        }
-        if &window[at..at + needle.len()] == needle {
-            return Some(at);
-        }
-        from = at + 1;
-    }
-    None
+    memchr::memmem::find(window, needle)
 }
