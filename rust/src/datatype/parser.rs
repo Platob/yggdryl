@@ -784,7 +784,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error_at(
                     algorithm_position,
                     format_smolstr!(
-                        "expected no edge algorithm for geometry, got {name:?};                          geography is the type whose edges take one"
+                        "expected no edge algorithm for geometry, got {name:?}; geography is the type whose edges take one"
                     ),
                 ));
             }

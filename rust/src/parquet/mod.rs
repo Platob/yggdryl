@@ -76,10 +76,12 @@ use arrow_schema::Schema;
 use bytes::Bytes;
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::ProjectionMask;
-use parquet::arrow::arrow_reader::{ArrowReaderOptions, ParquetRecordBatchReaderBuilder};
+use parquet::arrow::arrow_reader::{
+    ArrowReaderMetadata, ArrowReaderOptions, ParquetRecordBatchReaderBuilder,
+};
 use parquet::arrow::arrow_writer::ArrowWriterOptions;
 use parquet::basic::{Compression, ZstdLevel};
-use parquet::file::metadata::ParquetMetaData;
+use parquet::file::metadata::{ParquetMetaData, ParquetMetaDataReader};
 use parquet::file::properties::WriterProperties;
 
 use crate::arrow::schema_from_field;
@@ -277,7 +279,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             schema,
         )));
     }
-    let builder = open_builder(handle)?;
+    let builder = match bounded_builder(handle, options)? {
+        Some(builder) => builder,
+        None => open_builder(handle)?,
+    };
     let builder = match options.batch_size() {
         Some(size) => builder.with_batch_size(size),
         None => builder,
@@ -368,9 +373,10 @@ fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>>
 
 /// Open a reader builder over a handle's complete bytes.
 ///
-/// Parquet reads its footer last, so the value is fetched whole. A range-
-/// reading `ChunkReader` over [`IOBase::pread`] is the optimization path;
-/// until then this is honest about buffering.
+/// Parquet reads its footer last, so the value is fetched whole. A read with
+/// a row bound goes through [`bounded_builder`] instead, which fetches only
+/// the leading row groups the bound needs; this path is honest about
+/// buffering everything else.
 fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
     reject_outer_coding(handle)?;
     let bytes = Bytes::from(handle.read_all_bytes()?);
@@ -378,6 +384,85 @@ fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchRead
         bytes,
         ArrowReaderOptions::new(),
     )?)
+}
+
+/// Open a reader builder over only the leading row groups a row bound needs.
+///
+/// The footer is range-read and decoded first; the leading row groups whose
+/// counts cover [`max_row_size`](IORecordOptions::max_row_size) are then
+/// fetched as one prefix, and the rest of the value is never read. The bound
+/// is a fetch plan here, not the limit itself: the record methods above still
+/// trim the result to the exact row count, so this changes what is *read*,
+/// never what a limited read yields. Answers `None` - falling back to
+/// [`open_builder`] - when no row bound is set, when a partition filter means
+/// stored rows and result rows differ, when the bound spares no group, or
+/// when the tail is not a Parquet footer, so every malformed file is reported
+/// by the one whole-value path.
+///
+/// # Errors
+///
+/// Returns a read failure, or a footer whose embedded Arrow schema cannot be
+/// interpreted.
+fn bounded_builder<H: IOBase + ?Sized>(
+    handle: &H,
+    options: &ParquetOptions,
+) -> Result<Option<ParquetRecordBatchReaderBuilder<Bytes>>> {
+    let Some(max_rows) = options.max_row_size() else {
+        return Ok(None);
+    };
+    if !options.filter_partitions().is_empty() {
+        return Ok(None);
+    }
+    reject_outer_coding(handle)?;
+    // The footer length and the closing magic.
+    const TAIL: u64 = 8;
+    let size = handle.size();
+    if size < TAIL {
+        return Ok(None);
+    }
+    let tail = handle.read_range(size - TAIL, TAIL as usize)?;
+    if tail.len() < TAIL as usize || &tail[4..] != b"PAR1" {
+        return Ok(None);
+    }
+    let footer_length = u64::from(u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]));
+    let (Some(footer_start), Ok(footer_length)) = (
+        (size - TAIL).checked_sub(footer_length),
+        usize::try_from(footer_length),
+    ) else {
+        return Ok(None);
+    };
+    let footer = handle.read_range(footer_start, footer_length)?;
+    let Ok(metadata) = ParquetMetaDataReader::decode_metadata(&footer) else {
+        return Ok(None);
+    };
+    let mut selected = Vec::new();
+    let mut covered = 0_u64;
+    let mut end = 0_u64;
+    for (index, group) in metadata.row_groups().iter().enumerate() {
+        if covered >= max_rows {
+            break;
+        }
+        selected.push(index);
+        covered = covered.saturating_add(u64::try_from(group.num_rows()).unwrap_or(0));
+        for column in group.columns() {
+            let (offset, length) = column.byte_range();
+            end = end.max(offset.saturating_add(length));
+        }
+    }
+    if selected.len() == metadata.num_row_groups() {
+        // The bound spares no group; the whole-value read is the same fetch.
+        return Ok(None);
+    }
+    let Ok(end) = usize::try_from(end) else {
+        return Ok(None);
+    };
+    let prefix = Bytes::from(handle.read_range(0, end)?);
+    let arrow_metadata =
+        ArrowReaderMetadata::try_new(Arc::new(metadata), ArrowReaderOptions::new())?;
+    Ok(Some(
+        ParquetRecordBatchReaderBuilder::new_with_metadata(prefix, arrow_metadata)
+            .with_row_groups(selected),
+    ))
 }
 
 /// An Apache Parquet file bound to one [`IOBase`] handle.

@@ -202,6 +202,16 @@ impl<H: IOBase> Catalog<H> {
         &self.warehouse
     }
 
+    /// The catalog's name: its warehouse folder's own name.
+    ///
+    /// This is the identity [`Catalogs::iter`] lists the warehouse under -
+    /// the same answer [`Namespace::name`] gives one level down - read off
+    /// the warehouse handle's URL, so an in-memory warehouse answers its
+    /// identity segment and a handle reporting no URL has no name to give.
+    pub fn name(&self) -> Option<&str> {
+        self.warehouse.url().and_then(crate::Url::file_name)
+    }
+
     /// The role this value plays: [`IOKind::Catalog`].
     ///
     /// The warehouse handle underneath answers [`IOKind::Directory`], because

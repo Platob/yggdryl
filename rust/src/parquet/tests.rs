@@ -427,14 +427,17 @@ mod pushdown {
 }
 
 mod limits {
-    use arrow_array::RecordBatchReader;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::{batch, handle, reader, root};
+    use arrow_array::RecordBatchReader;
+    use parquet::basic::Compression;
+
+    use super::{Parquet, ParquetOptions, batch, handle, reader, root};
     use crate::generic::{IORecordOptions, RecordOptions};
     use crate::io::{Buffer, IOBase};
 
     /// The total rows a handle yields under `options`.
-    fn rows(handle: &Buffer, options: &RecordOptions) -> usize {
+    fn rows<H: IOBase + ?Sized>(handle: &H, options: &RecordOptions) -> usize {
         handle
             .read_arrow_batch_reader(options)
             .unwrap()
@@ -494,6 +497,93 @@ mod limits {
             )
             .unwrap();
         assert_eq!(rows(&handle, &options), 2);
+    }
+
+    /// A handle counting the read calls and bytes that reach the one it
+    /// wraps, so a test can say what a read actually fetched.
+    struct Counting {
+        handle: Buffer,
+        reads: AtomicUsize,
+        bytes: AtomicUsize,
+    }
+
+    impl Counting {
+        fn new(handle: Buffer) -> Self {
+            Self {
+                handle,
+                reads: AtomicUsize::new(0),
+                bytes: AtomicUsize::new(0),
+            }
+        }
+
+        /// One measured run: the reads and bytes `operation` costs.
+        fn cost(&self, operation: impl FnOnce()) -> (usize, usize) {
+            let reads = self.reads.load(Ordering::Relaxed);
+            let bytes = self.bytes.load(Ordering::Relaxed);
+            operation();
+            (
+                self.reads.load(Ordering::Relaxed) - reads,
+                self.bytes.load(Ordering::Relaxed) - bytes,
+            )
+        }
+    }
+
+    impl IOBase for Counting {
+        crate::delegate_iobase!(handle: pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
+            ls, kind, clear, remove, is_atomic, is_tabular);
+
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+            let read = self.handle.pread(offset, buffer)?;
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            self.bytes.fetch_add(read, Ordering::Relaxed);
+            Ok(read)
+        }
+    }
+
+    #[test]
+    fn a_small_row_bound_over_many_row_groups_stops_reading_early() {
+        // Thirty-two uncompressed row groups, so one group is a small
+        // fraction of the file and the fraction shows up in bytes read.
+        let field = root();
+        let total = 16_384_usize;
+        let mut media = Parquet::new(handle("grouped.parquet")).with_options(
+            ParquetOptions::new()
+                .with_compression(Compression::UNCOMPRESSED)
+                .with_max_row_group_size(512),
+        );
+        media
+            .write_batch_reader(reader(
+                &field,
+                [batch(
+                    &field,
+                    (0..total as i64).collect(),
+                    vec![None; total],
+                )],
+            ))
+            .unwrap();
+        assert_eq!(media.read_statistics().unwrap().row_groups.len(), 32);
+
+        let counting = Counting::new(media.into_handle());
+        let options = counting.record_options().unwrap();
+
+        // The full drain fetches the complete value: one whole-value read.
+        let (full_reads, full_bytes) = counting.cost(|| {
+            assert_eq!(rows(&counting, &options), total);
+        });
+        assert_eq!(full_reads, 1, "one whole-value read");
+        assert_eq!(full_bytes as u64, counting.size());
+
+        // Five rows out of 16,384: the tail, the footer, and one leading
+        // row-group prefix - the other thirty-one groups are never read.
+        let (limited_reads, limited_bytes) = counting.cost(|| {
+            assert_eq!(rows(&counting, &options.clone().with_max_row_size(5)), 5);
+        });
+        assert_eq!(limited_reads, 3, "tail, footer, one-group prefix");
+        assert!(
+            limited_bytes * 4 < full_bytes,
+            "{limited_bytes} bytes under the bound vs {full_bytes} for the drain"
+        );
     }
 }
 

@@ -527,7 +527,13 @@ mod semi_structured_and_geospatial {
             .parse::<DataType>()
             .unwrap_err()
             .to_string();
-        assert!(error.contains("geography"), "{error}");
+        assert!(
+            error.contains(
+                "expected no edge algorithm for geometry, got \"vincenty\"; \
+                 geography is the type whose edges take one"
+            ),
+            "{error}"
+        );
 
         // An unknown algorithm reports the accepted vocabulary.
         let error = "geography('OGC:CRS84', 'euclidean')"

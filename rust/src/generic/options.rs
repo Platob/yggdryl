@@ -358,8 +358,10 @@ pub trait IORecordOptions: Sized {
     /// order is declared schema, then selection, then completion cast, then
     /// partition filter, then the limit, so the limit counts result rows and
     /// never rows an earlier layer dropped or reshaped. No media implements a
-    /// limit and none checks one - the record methods wrap the shaped reader
-    /// here, exactly once per call.
+    /// limit - the record methods wrap the shaped reader here, exactly once
+    /// per call. A media may read a row bound as a fetch plan (Parquet
+    /// fetches only the leading row groups that cover it), but the trim to
+    /// the exact count happens only here.
     ///
     /// The wrapper holds at most one batch and stops pulling the moment it is
     /// satisfied, so the rest of the source is never decoded. With neither

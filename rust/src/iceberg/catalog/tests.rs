@@ -600,6 +600,103 @@ fn properties_round_trip_at_all_three_levels() {
 }
 
 #[test]
+fn an_absent_properties_document_answers_empty_at_every_level() {
+    let (path, catalog) = warehouse("absent-properties");
+
+    // A fresh catalog over an empty warehouse: no folder, no document, and
+    // still an answer - absent means empty, never a missing-file failure.
+    assert!(catalog.properties().unwrap().is_empty());
+    assert!(!path.exists());
+
+    // A namespace a table write brought into being carries no document of its
+    // own, and it answers the same way.
+    catalog.tables().create("nyc.taxis", taxi_schema()).unwrap();
+    assert!(!path.join("nyc/metadata/namespace.json").exists());
+    let nyc = catalog.namespaces().get("nyc").unwrap();
+    assert!(nyc.properties().unwrap().is_empty());
+}
+
+#[test]
+fn a_malformed_properties_document_is_refused_naming_what_was_found() {
+    let (path, catalog) = warehouse("malformed-properties");
+    catalog.namespaces().create("sales").unwrap();
+    let document = path.join("sales/metadata/namespace.json");
+    let read = || {
+        catalog
+            .namespaces()
+            .get("sales")
+            .unwrap()
+            .properties()
+            .unwrap_err()
+            .to_string()
+    };
+
+    // A document without the one expected key - here a JSON array.
+    std::fs::write(&document, "[1, 2]").unwrap();
+    let error = read();
+    assert!(
+        error.contains("expected a {\"properties\": ...} document at"),
+        "{error}"
+    );
+    assert!(error.contains("got one without the key"), "{error}");
+    assert!(error.contains("namespace.json"), "{error}");
+
+    // The key is there, but it holds a sequence rather than a mapping.
+    std::fs::write(&document, "{\"properties\": [1, 2]}").unwrap();
+    let error = read();
+    assert!(
+        error.contains("expected \"properties\" to hold a mapping at"),
+        "{error}"
+    );
+    assert!(error.contains("namespace.json"), "{error}");
+
+    // The mapping is there, but a value is not a string.
+    std::fs::write(&document, "{\"properties\": {\"threshold\": 10}}").unwrap();
+    let error = read();
+    assert!(
+        error.contains("expected string property pairs at"),
+        "{error}"
+    );
+    assert!(error.contains("threshold"), "{error}");
+}
+
+#[test]
+fn the_reserved_prefix_is_refused_at_the_catalog_level_too() {
+    let (_path, catalog) = warehouse("reserved-catalog");
+
+    // The same refusal the namespace level gives, one level up, and the
+    // refusal changes nothing: the document stays absent.
+    let refused = catalog
+        .update_properties([("iceberg:spec".to_owned(), "x".to_owned())], [])
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("reserved"), "{refused}");
+    assert!(refused.contains("iceberg:"), "{refused}");
+    assert!(catalog.properties().unwrap().is_empty());
+}
+
+#[test]
+fn a_catalog_names_itself_after_its_warehouse_folder() {
+    let (path, catalog) = warehouse("named");
+
+    // The name is the warehouse folder's own, the identity `Catalogs::iter`
+    // lists it under - answered from the handle, no I/O.
+    assert_eq!(
+        catalog.name(),
+        path.file_name().and_then(|name| name.to_str())
+    );
+    assert!(!path.exists());
+
+    // An in-memory warehouse names itself after its identity URL the same
+    // way, so every warehouse has the answer its handle can give.
+    let memory = Catalog::new(crate::io::Buffer::new());
+    assert_eq!(
+        memory.name(),
+        memory.warehouse().url().and_then(crate::Url::file_name)
+    );
+}
+
+#[test]
 fn two_creators_of_one_table_converge_or_one_gets_the_typed_conflict() {
     let (path, _catalog) = warehouse("racing-creates");
 
