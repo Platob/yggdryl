@@ -107,6 +107,37 @@ pub(super) fn single_value(value: &Value, data_type: &DataType) -> Option<Vec<u8
     }
 }
 
+/// Read one scalar back out of the single value a manifest bound carries.
+///
+/// The inverse of [`single_value`], and the reason a manifest bound can be
+/// handed to the crate's own statistics pruner: the pruner compares values,
+/// not bytes, so a bound has to become a value exactly once. A type whose
+/// encoding [`is_portable`] does not cover has no value rather than a wrong
+/// one, and the pruner then simply declines.
+pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Value> {
+    match data_type {
+        DataType::Boolean => bytes.first().map(|byte| Value::Bool(*byte != 0)),
+        DataType::Int32 => Some(Value::I32(int32(bytes))),
+        DataType::Date32 => Some(Value::Date(int32(bytes))),
+        DataType::Int64 => Some(Value::I64(int64(bytes))),
+        DataType::Time64(unit) => Some(Value::Time(int64(bytes), *unit)),
+        DataType::Timestamp(unit, Some(zone)) => {
+            Some(Value::Timestamp(int64(bytes), *unit, zone.clone()))
+        }
+        DataType::Timestamp(unit, None) => Some(Value::DateTime(int64(bytes), *unit)),
+        DataType::Float32 => Some(Value::F32(crate::Float32::from_f32(float32(bytes)))),
+        DataType::Float64 => Some(Value::F64(crate::Float::from_f64(float64(bytes)))),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
+            std::str::from_utf8(bytes).ok().map(Value::from)
+        }
+        DataType::Binary
+        | DataType::LargeBinary
+        | DataType::BinaryView
+        | DataType::FixedSizeBinary(_) => Some(Value::from(bytes)),
+        _ => None,
+    }
+}
+
 /// Read the integer count a value holds, whatever it counts.
 ///
 /// A date counts days, a time counts its unit since midnight, and a timestamp

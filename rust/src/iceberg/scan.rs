@@ -16,27 +16,31 @@
 //! - a **data file** carries per-column bounds and null counts, so a file whose
 //!   statistics cannot hold the value is skipped without being opened.
 //!
-//! A filter is a column name and a value as text, the same vocabulary
-//! [`IOBase::children_where`](crate::io::IOBase::children_where) filters a lake
-//! with. Against a partition column it is compared to the text the layout
-//! spells, and `null` therefore names the absence exactly as a directory name
-//! does; against any other column it is compared to the value a cast from that
-//! text produces, and the rows the file does hold are filtered after the file is
-//! read, because file statistics bound a file and do not select a row.
+//! A filter is an [`Expression`], the same one that filters a lake through
+//! [`IOBase::children_matching`](crate::io::IOBase::children_matching) and a
+//! batch through [`Bound::filter`](crate::expression::Bound::filter). Each
+//! level of the chain answers it from the statistics it carries, expressed as
+//! the [`Bounds`] every other container in this crate expresses them as: a
+//! partition tuple is a minimum equal to its maximum, so a conjunct it proves
+//! is dropped rather than re-tested, and a file's own path answers every free
+//! `&holder.*` attribute. What no level settles is filtered row by row after
+//! the file is read, because a statistic bounds a *file* and does not select a
+//! row.
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, BooleanArray, RecordBatch, Scalar, StringArray, UInt32Array};
+use arrow_array::{ArrayRef, RecordBatch, UInt32Array};
 use arrow_schema::{Schema as ArrowSchema, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{DataFile, EntryStatus, ManifestContent, ManifestEntry, ManifestFile};
 use super::partition::{PartitionSpec, Transform};
-use super::value::{NULL_TEXT, compare_single, single_value};
+use super::value::single_to_value;
 use crate::arrow::BatchReader;
+use crate::expression::{Bound, Bounds, Selector};
 use crate::field::cast::ArrowCast;
 use crate::generic::Holder;
-use crate::{DataType, Error, Field, Result, Value};
+use crate::{DataType, Error, Expression, Field, Result, Value};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
 #[derive(Clone, Debug)]
@@ -94,213 +98,174 @@ impl ScanPlan {
     }
 }
 
-/// One resolved filter: a schema column and the value it must hold.
-#[derive(Clone, Debug)]
-pub(super) struct Filter {
-    /// The schema column the filter names.
-    field: Field,
-    /// The column's field identifier, which is what statistics are keyed by.
-    id: i32,
-    /// The value exactly as the caller spelled it.
-    text: SmolStr,
-    /// The value the text names, read through the column's own datatype.
-    value: Value,
-    /// Whether the text names the absence of a value.
-    is_null: bool,
-    /// The value encoded as a single value, when the type has that encoding.
-    encoded: Option<Vec<u8>>,
-    /// The value as a one-element array, for comparing it against rows.
-    scalar: ArrayRef,
-}
-
-impl Filter {
-    /// Resolve one `(column, value)` pair against the table schema.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the columns the schema does have when the filter
-    /// names one it does not, or when the column carries no field identifier.
-    pub(super) fn resolve(schema: &Field, column: &str, text: &str) -> Result<Self> {
-        let field = schema.get_field_by_name(column).cloned().ok_or_else(|| {
-            let columns = schema
-                .fields()
-                .iter()
-                .map(|field| field.name())
-                .collect::<Vec<_>>()
-                .join(", ");
-            // The contract sentence is spelled out rather than built by
-            // `expected_got`, because what follows the name is the list of
-            // columns that do exist, not a second "got" - routing it through
-            // the two-slot helper renders "it has, got id, venue".
-            invalid(format_smolstr!(
-                "expected a filter column the table schema declares, got {column:?}; it has {}",
-                crate::text::elide_display(&columns),
-            ))
-        })?;
-        let id = field.parquet_field_id()?.ok_or_else(|| {
-            invalid(format_smolstr!(
-                "expected a PARQUET:field_id on the filter column {column:?}, got none"
-            ))
-        })?;
-
-        // The value is parsed the way a partition directory's text is parsed
-        // everywhere else in the crate: one text array, cast to the column's own
-        // type. A value the type cannot read becomes null, which is what makes
-        // it match nothing rather than fail a scan.
-        let nullable = field.clone().with_nullable(true);
-        let text_array: ArrayRef = Arc::new(StringArray::from(vec![text]));
-        let scalar = arrow_cast::cast(&text_array, nullable.to_arrow()?.data_type())
-            .map_err(Error::Arrow)?;
-        let value = crate::arrow::scalar_value(&nullable, scalar.as_ref())
-            .map_err(|error| invalid(format_smolstr!("{error}")))?;
-
-        Ok(Self {
-            encoded: single_value(&value, field.data_type()),
-            id,
-            is_null: text == NULL_TEXT,
-            text: SmolStr::new(text),
-            value,
-            field,
-            scalar,
-        })
-    }
-
-    /// Borrow the column name this filter reads.
-    fn column(&self) -> &str {
-        self.field.name()
-    }
-}
-
-/// Resolve every `(column, value)` pair against the table schema.
+/// Resolve one predicate into the conjuncts a scan prunes and filters with.
+///
+/// A scan tests conjuncts rather than one expression because pruning is
+/// per-conjunct: a file whose partition tuple settles the first conjunct still
+/// has to test the second against its rows, and the list is what carries that
+/// distinction from the planner to the reader.
 ///
 /// # Errors
 ///
-/// Returns the first unresolvable filter's failure.
-pub(super) fn filters(schema: &Field, pairs: &[(&str, &str)]) -> Result<Vec<Filter>> {
-    pairs
+/// Returns an error when the predicate names a column the schema does not
+/// declare, or two operands that share no type.
+pub(super) fn conjuncts(schema: &Field, filter: &Expression) -> Result<Vec<Bound>> {
+    filter
+        .conjuncts()
         .iter()
-        .map(|(column, text)| Filter::resolve(schema, column, text))
+        .map(|conjunct| conjunct.bind(schema))
         .collect()
 }
 
-/// Return the position of the partition field one filter is settled by.
+/// The column a partition field is the identity of, with its own datatype.
 ///
-/// Only [`Transform::Identity`] settles a filter: it is the one transform whose
+/// Only [`Transform::Identity`] answers: it is the one transform whose
 /// partition value *is* the column value, so every row of a file whose tuple
-/// matches holds the filter's value. A bucket, a truncation, or a calendar
-/// transform stores something else, so a filter on its source column falls
-/// through to the file's statistics and then to the rows themselves.
-fn partition_index(spec: &PartitionSpec, filter: &Filter) -> Option<usize> {
-    spec.fields
-        .iter()
-        .position(|field| field.transform == Transform::Identity && field.source_id == filter.id)
-}
-
-/// Return whether a manifest's summaries leave room for every filter.
-///
-/// This is the cheapest level: the summary is a row of the manifest list, so a
-/// manifest excluded here is never opened at all.
-fn manifest_matches(manifest: &ManifestFile, spec: &PartitionSpec, filters: &[Filter]) -> bool {
-    for filter in filters {
-        let Some(position) = partition_index(spec, filter) else {
-            continue;
-        };
-        let Some(summary) = manifest.partitions.get(position) else {
-            // A manifest list written without summaries says nothing, so
-            // nothing may be skipped on it.
-            continue;
-        };
-        let data_type = partition_type(spec, position, filter);
-        if filter.is_null {
-            if !summary.contains_null {
-                return false;
-            }
-            continue;
-        }
-        let Some(encoded) = filter.encoded.as_deref() else {
-            continue;
-        };
-        if let Some(lower) = summary.lower_bound.as_deref() {
-            if compare_single(encoded, lower, &data_type).is_lt() {
-                return false;
-            }
-        }
-        if let Some(upper) = summary.upper_bound.as_deref() {
-            if compare_single(encoded, upper, &data_type).is_gt() {
-                return false;
-            }
-        }
+/// holds it holds it. A bucket, a truncation, or a calendar transform stores
+/// something else, so a predicate on its source column falls through to the
+/// file's own statistics and then to the rows themselves.
+fn identity_column<'schema>(
+    spec: &PartitionSpec,
+    position: usize,
+    schema: &'schema Field,
+) -> Option<&'schema Field> {
+    let source = spec.fields.get(position)?;
+    if source.transform != Transform::Identity {
+        return None;
     }
-    true
+    schema
+        .fields()
+        .iter()
+        .find(|column| column.parquet_field_id().ok().flatten() == Some(source.source_id))
 }
 
-/// Return the datatype one partition field's values are encoded with.
+/// The statistics a manifest-list row states about the files it names.
 ///
-/// An identity transform keeps the source column's type, which is the only
-/// transform a summary is consulted for; anything else falls back to the
-/// filter's own column so the comparison at least stays self-consistent.
-fn partition_type(spec: &PartitionSpec, position: usize, filter: &Filter) -> DataType {
-    spec.fields
-        .get(position)
-        .and_then(|field| field.transform.result_type(filter.field.data_type()).ok())
-        .unwrap_or_else(|| filter.field.data_type().clone())
-}
-
-/// Return whether one data file can hold a row matching every filter.
-///
-/// The filters the partition tuple settles are answered exactly; the rest are
-/// answered from the file's own statistics, which bound the file rather than
-/// select a row - so the ones that survive are handed back as `residual` for the
-/// read to apply to the rows.
-fn file_matches(file: &DataFile, spec: &PartitionSpec, filters: &[Filter]) -> Option<Vec<usize>> {
-    let mut residual = Vec::new();
-    for (position, filter) in filters.iter().enumerate() {
-        if let Some(index) = partition_index(spec, filter) {
-            let value = file.partition.get(index).cloned().unwrap_or(Value::Null);
-            // The manifest holds the value, so the values are what agree or
-            // disagree. The text is compared too, because a filter spelled the
-            // way the directory spells it is the other way a caller addresses a
-            // partition, and a table written before this renderer settled can
-            // still hold a value whose text is the only thing that matches.
-            if value != filter.value && super::value::scalar_text(&value) != filter.text {
-                return None;
+/// This is the cheapest level there is: a summary is one row of the manifest
+/// list, so a manifest ruled out here is never opened at all. Only identity
+/// partition fields contribute, because only they bound a schema column.
+pub(super) fn manifest_bounds(
+    manifest: &ManifestFile,
+    spec: &PartitionSpec,
+    schema: &Field,
+) -> Bounds {
+    let mut bounds = Bounds::new(None);
+    for (position, summary) in manifest.partitions.iter().enumerate() {
+        let Some(column) = identity_column(spec, position, schema) else {
+            continue;
+        };
+        let data_type = column.data_type();
+        let decode = |held: &Option<Vec<u8>>| {
+            held.as_deref()
+                .and_then(|bytes| single_to_value(bytes, data_type))
+        };
+        let (minimum, maximum) = (decode(&summary.lower_bound), decode(&summary.upper_bound));
+        // A partition column is spelled in the path too, so the summary bounds
+        // it as an attribute as well - but only when the two ends meet. A range
+        // of values does not bound the *text* of those values, because text
+        // does not order the way a number does.
+        if let (Some(low), Some(high)) = (&minimum, &maximum) {
+            if low == high {
+                let text = Value::from(super::value::scalar_text(low).as_str());
+                bounds = bounds.with_attribute(
+                    Selector::Partition(column.name().into()),
+                    Some(text.clone()),
+                    Some(text),
+                    Some(0),
+                );
             }
+        }
+        bounds = bounds.with_column(
+            column.name(),
+            minimum,
+            maximum,
+            // A summary says whether a null is present, never how many, so the
+            // only count it can state is zero.
+            (!summary.contains_null).then_some(0),
+        );
+    }
+    bounds
+}
+
+/// The statistics a manifest entry states about one data file.
+///
+/// The partition tuple is the tighter of the two sources and wins: a value
+/// every row of the file shares is a minimum equal to its maximum, which is
+/// what lets a partition predicate settle a file outright rather than merely
+/// fail to rule it out.
+pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field) -> Bounds {
+    let rows = u64::try_from(file.record_count).ok();
+    let mut bounds = Bounds::new(rows);
+    // The file's own path answers every free holder attribute exactly, so a
+    // predicate about the file - its name, its extension, its partition
+    // directories - is settled here without opening it.
+    if let Ok(url) = crate::Url::from_str(&file.file_path) {
+        bounds = bounds.with(Bounds::from_url(&url));
+    }
+    let mut settled: Vec<&str> = Vec::new();
+    for position in 0..spec.fields.len() {
+        let Some(column) = identity_column(spec, position, schema) else {
+            continue;
+        };
+        let value = file.partition.get(position).cloned().unwrap_or(Value::Null);
+        settled.push(column.name());
+        if value.is_null() {
+            bounds = bounds.with_column(column.name(), None, None, rows);
             continue;
         }
-        if !statistics_allow(file, filter) {
-            return None;
+        // The manifest is the authority on the value, and a path spells the
+        // same one, so both spellings are recorded from the same source.
+        let text = Value::from(super::value::scalar_text(&value).as_str());
+        bounds = bounds
+            .with_attribute(
+                Selector::Partition(column.name().into()),
+                Some(text.clone()),
+                Some(text),
+                Some(0),
+            )
+            .with_column(column.name(), Some(value.clone()), Some(value), Some(0));
+    }
+    for column in schema.fields() {
+        if settled.contains(&column.name()) {
+            continue;
         }
-        residual.push(position);
+        let Ok(Some(id)) = column.parquet_field_id() else {
+            continue;
+        };
+        let data_type = column.data_type();
+        let decode =
+            |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, data_type));
+        let nulls = lookup(&file.null_value_counts, id).and_then(|count| u64::try_from(count).ok());
+        let minimum = decode(bound(&file.lower_bounds, id));
+        let maximum = decode(bound(&file.upper_bounds, id));
+        if minimum.is_none() && maximum.is_none() && nulls.is_none() {
+            continue;
+        }
+        bounds = bounds.with_column(column.name(), minimum, maximum, nulls);
+    }
+    bounds
+}
+
+/// Return which conjuncts a file's statistics leave for its rows to answer.
+///
+/// `None` means the file cannot hold a matching row at all. Otherwise the
+/// answer is the conjuncts the statistics did not settle outright - a conjunct
+/// every row provably satisfies is dropped here rather than re-tested per row.
+fn file_residual(bounds: &Bounds, conjuncts: &[Bound]) -> Option<Vec<usize>> {
+    let mut residual = Vec::new();
+    for (position, conjunct) in conjuncts.iter().enumerate() {
+        match conjunct.statistics_certainty(bounds) {
+            Some(false) => return None,
+            Some(true) => {}
+            // A conjunct the rows cannot answer - one that asks only about the
+            // file - has had its only chance here. Unsettled, it keeps the file
+            // rather than being handed to a row filter that would answer
+            // unknown for every row and drop them all.
+            None if !conjunct.reads_rows() => {}
+            None => residual.push(position),
+        }
     }
     Some(residual)
-}
-
-/// Return whether a file's column statistics leave room for one filter.
-fn statistics_allow(file: &DataFile, filter: &Filter) -> bool {
-    let nulls = lookup(&file.null_value_counts, filter.id);
-    if filter.is_null {
-        // A column with a recorded null count of zero holds no null anywhere in
-        // the file. Without that count the file has to be read.
-        return nulls != Some(0);
-    }
-    if nulls == Some(file.record_count) && file.record_count > 0 {
-        return false;
-    }
-    let Some(encoded) = filter.encoded.as_deref() else {
-        return true;
-    };
-    let data_type = filter.field.data_type();
-    if let Some(lower) = bound(&file.lower_bounds, filter.id) {
-        if compare_single(encoded, lower, data_type).is_lt() {
-            return false;
-        }
-    }
-    if let Some(upper) = bound(&file.upper_bounds, filter.id) {
-        if compare_single(encoded, upper, data_type).is_gt() {
-            return false;
-        }
-    }
-    true
 }
 
 /// Read one integer statistic by field id.
@@ -331,7 +296,8 @@ pub(super) fn plan(
     manifests: &[ManifestFile],
     spec_of: &dyn Fn(i32) -> PartitionSpec,
     manifest_at: &dyn Fn(&str) -> Result<Holder>,
-    filters: &[Filter],
+    conjuncts: &[Bound],
+    schema: &Field,
     for_read: bool,
 ) -> Result<ScanPlan> {
     let mut plan = ScanPlan::default();
@@ -340,7 +306,11 @@ pub(super) fn plan(
             continue;
         }
         let spec = spec_of(manifest.partition_spec_id);
-        if !manifest_matches(manifest, &spec, filters) {
+        let summary = manifest_bounds(manifest, &spec, schema);
+        if !conjuncts
+            .iter()
+            .all(|conjunct| conjunct.statistics_prune(&summary))
+        {
             plan.skipped.push(manifest.clone());
             continue;
         }
@@ -351,7 +321,7 @@ pub(super) fn plan(
         // whose entries may be carried into a rewritten manifest decodes
         // everything, because a carried entry must keep its statistics.
         let entries = if for_read {
-            super::manifest::read_manifest_for_plan(&handle, !filters.is_empty())?
+            super::manifest::read_manifest_for_plan(&handle, !conjuncts.is_empty())?
         } else {
             super::manifest::read_manifest(&handle)?
         };
@@ -366,7 +336,7 @@ pub(super) fn plan(
             if entry.data_file.record_count == 0 {
                 continue;
             }
-            let matched = file_matches(&entry.data_file, &spec, filters);
+            let matched = file_residual(&file_bounds(&entry.data_file, &spec, schema), conjuncts);
             let task = ScanTask {
                 entry,
                 spec: spec.clone(),
@@ -418,8 +388,8 @@ struct Refine {
     project: bool,
     /// The column pushdown handed to each file, when the caller gave one.
     target: Option<Field>,
-    /// The filters, indexed by every part's residual list.
-    filters: Vec<Filter>,
+    /// The conjuncts, indexed by every part's residual list.
+    predicates: Vec<Bound>,
 }
 
 impl Refine {
@@ -472,7 +442,7 @@ impl Refine {
         restore_partitions(batch, partition)
             .and_then(|batch| align_by_field_id(batch, &self.read_root))
             .and_then(|batch| Ok(self.read_root.cast_arrow_batch(batch, false)?))
-            .and_then(|batch| apply_filters(batch, &self.filters, residual))
+            .and_then(|batch| apply_predicates(batch, &self.predicates, residual))
             .and_then(|batch| {
                 if self.project {
                     return Ok(self.root.cast_arrow_batch(batch, false)?);
@@ -517,7 +487,7 @@ pub(super) fn reader(
     root: Field,
     read_root: Field,
     target: Option<Field>,
-    filters: Vec<Filter>,
+    predicates: Vec<Bound>,
     parallel: &super::options::ReadSettings,
 ) -> Result<BatchReader> {
     let schema = crate::arrow::schema_from_field(&root)?;
@@ -526,7 +496,7 @@ pub(super) fn reader(
         read_root,
         root,
         target,
-        filters,
+        predicates,
     });
     let qualifying = parts
         .iter()
@@ -764,38 +734,22 @@ fn read_part(
     let _ = sender.send((index, None));
 }
 
-/// Keep only the rows every residual filter accepts.
+/// Keep the rows of one batch its file's statistics did not already settle.
 ///
-/// The filters are applied one after another rather than combined, because two
-/// masks applied in turn select exactly the rows their conjunction would and
-/// each one narrows what the next has to test.
-fn apply_filters(
+/// The conjuncts run through the one bound evaluator, so a residual test on a
+/// data file is the same comparison a listing filter, a row scan, and a
+/// vectorized filter make - there is no Iceberg-specific row filter.
+fn apply_predicates(
     batch: RecordBatch,
-    filters: &[Filter],
+    predicates: &[Bound],
     residual: &[usize],
 ) -> Result<RecordBatch> {
     let mut batch = batch;
     for position in residual {
-        let Some(filter) = filters.get(*position) else {
+        let Some(predicate) = predicates.get(*position) else {
             continue;
         };
-        let Ok(index) = batch.schema().index_of(filter.column()) else {
-            continue;
-        };
-        let column = batch.column(index);
-        let mask = if filter.is_null {
-            BooleanArray::from(
-                (0..column.len())
-                    .map(|row| column.is_null(row))
-                    .collect::<Vec<bool>>(),
-            )
-        } else {
-            // A null never equals a value, so the comparison's own null mask is
-            // already the answer for a row that holds nothing.
-            arrow_ord::cmp::eq(&column, &Scalar::new(Arc::clone(&filter.scalar)))
-                .map_err(Error::Arrow)?
-        };
-        batch = arrow_select::filter::filter_record_batch(&batch, &mask).map_err(Error::Arrow)?;
+        batch = predicate.filter(&batch)?;
     }
     Ok(batch)
 }
@@ -968,13 +922,16 @@ pub(super) fn partition_columns(
 /// A filter may name a column the caller never asked for, and the rows still
 /// have to be tested against it, so the column is read and then dropped by the
 /// final cast rather than left out of the pushdown.
-pub(super) fn read_root(root: &Field, schema: &Field, filters: &[Filter]) -> Result<Field> {
+pub(super) fn read_root(root: &Field, schema: &Field, filter: &Expression) -> Result<Field> {
     let mut children: Vec<Field> = root.fields().to_vec();
-    for filter in filters {
-        if children.iter().any(|child| child.name() == filter.column()) {
+    for name in filter.columns() {
+        if children
+            .iter()
+            .any(|child| child.name().eq_ignore_ascii_case(&name))
+        {
             continue;
         }
-        let Some(column) = schema.get_field_by_name(filter.column()) else {
+        let Some(column) = schema.get_field_by_name(&name) else {
             continue;
         };
         children.push(column.clone());

@@ -1159,6 +1159,85 @@ mod planning {
     }
 
     #[test]
+    fn an_expression_prunes_manifests_before_a_byte_is_read() {
+        let (_path, table) = venues("plan-expression");
+
+        // The same three-level pruning, driven by the crate's one filter type
+        // rather than by an equality pair.
+        let filtered = table.plan_matching("venue = 'XNYS'").unwrap();
+        assert_eq!(filtered.tasks.len(), 1);
+        assert_eq!(filtered.manifests_skipped(), 2);
+        assert_eq!(filtered.manifests_read, 1);
+
+        // A question about the *file* prunes at the same level, because a Hive
+        // path is a statistic and an identity partition writes one.
+        let by_path = table
+            .plan_matching("&holder.partition['venue'] = 'XNYS'")
+            .unwrap();
+        assert_eq!(by_path.tasks.len(), 1);
+        assert_eq!(by_path.manifests_skipped(), 2);
+
+        // A range the summaries cannot settle still reads every manifest, and
+        // still answers correctly from the rows.
+        let ranged = table.plan_matching("id >= 2").unwrap();
+        assert_eq!(ranged.manifests_read, 3);
+
+        let rows = collect(table.scan_matching("id >= 2", None).unwrap());
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|(id, _, _)| *id >= 2));
+    }
+
+    #[test]
+    fn one_predicate_mixes_the_file_and_the_rows() {
+        let (_path, mut table) = venues("scan-mixed");
+        // A second row in a partition that already exists is what makes the row
+        // half of the predicate load-bearing: with one row per venue, a
+        // conjunct over the rows is settled by the partition and the test would
+        // pass even if the rows were never consulted.
+        let batch = trades(&[4], &[Some("BP")], &[Some("XLON")]);
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+
+        let rows = collect(
+            table
+                .scan_matching(
+                    "id >= 4 and symbol is not null and &holder.partition['venue'] = 'XLON'",
+                    None,
+                )
+                .unwrap(),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, 4);
+        assert_eq!(rows[0].2.as_deref(), Some("XLON"));
+
+        // Each half on its own keeps more, so neither was dropped above.
+        let held = collect(
+            table
+                .scan_matching("&holder.partition['venue'] = 'XLON'", None)
+                .unwrap(),
+        );
+        assert_eq!(held.iter().map(|row| row.0).collect::<Vec<_>>(), vec![3, 4]);
+        let ranged = collect(table.scan_matching("id >= 4", None).unwrap());
+        assert_eq!(ranged.iter().map(|row| row.0).collect::<Vec<_>>(), vec![4]);
+
+        // A predicate the metadata proves empty reads nothing at all.
+        let empty = table.plan_matching("id > 1000").unwrap();
+        assert_eq!(empty.tasks.len(), 0);
+        assert_eq!(empty.files_skipped(), 4);
+
+        // The pair spelling and the expression spelling are one plan. Each side
+        // is pinned to the measured number, so two broken sides cannot agree
+        // their way past this.
+        let by_pair = table.plan(&[("venue", "XLON")]).unwrap();
+        let by_text = table.plan_matching("venue = 'XLON'").unwrap();
+        assert_eq!(by_pair.tasks.len(), 2);
+        assert_eq!(by_text.tasks.len(), 2);
+        assert_eq!(by_pair.manifests_skipped(), 2);
+        assert_eq!(by_text.manifests_skipped(), 2);
+    }
+
+    #[test]
     fn a_filtered_read_never_opens_the_files_the_metadata_excluded() {
         let (path, table) = venues("plan-untouched");
         let excluded = table
@@ -1273,10 +1352,12 @@ mod planning {
         // The whole clause, not just the two names in it: asserting only that
         // the column list appears somewhere let a stray ", got" sit between
         // "it has" and the list, which is what a reader would actually see.
+        // The sentence now comes from the one binder every filter in the
+        // workspace goes through, so it says "the schema" rather than "the
+        // table schema" - a lake reaches the same words.
         assert!(
             message.contains(
-                "expected a filter column the table schema declares, got \"exchange\"; it has id, \
-                 symbol, venue"
+                "expected a column the schema declares, got \"exchange\"; it has id, symbol, venue"
             ),
             "{message}"
         );

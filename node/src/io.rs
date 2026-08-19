@@ -382,6 +382,33 @@ impl JsIOBase {
         partition_entries(self.inner.partitions())
     }
 
+    /// Iterate the entries beneath this one a predicate does not rule out.
+    ///
+    /// The predicate is asked of the holder, not of the rows: `&holder.name`,
+    /// `&holder.partition['year']`, `&holder.size`. A conjunct that reads a
+    /// row column cannot be answered by a listing, so it is dropped rather
+    /// than guessed at - this may keep a file the rows later discard and can
+    /// never discard one they would have kept.
+    ///
+    /// `filter` is an `Expression` or the text of one, which parses.
+    #[napi]
+    pub fn children_matching(
+        &self,
+        filter: napi::bindgen_prelude::Either<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsExpression>,
+            String,
+        >,
+        include_private: Option<bool>,
+    ) -> Result<Vec<JsIOBase>> {
+        let filter = crate::expression::expression_from_input(filter)?;
+        Ok(self
+            .inner
+            .children_matching(&filter, include_private.unwrap_or(false))
+            .map_err(napi_error)?
+            .map(Self::from_core)
+            .collect())
+    }
+
     /// Iterate the leaves beneath this one carrying every given partition.
     ///
     /// `filters` is a mapping or a sequence of pairs, so a partitioned write

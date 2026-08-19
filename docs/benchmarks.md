@@ -64,6 +64,7 @@ machine against release artifacts, and compare like-for-like toolchains.
 | `field` | Construction, metadata mutation and cache invalidation, comparison, typed views |
 | `enums` | MIME and media parsing, compound filename inference, content-coding recovery |
 | `uri` | Parsing, component access, path segments, path interop |
+| `expression` | Parse, bind, and display once; mask, filter, row-scan, and prune per batch - each against the raw `arrow-ord` / `arrow-select` call |
 | `text` | Value construction, format inference, display and elision helpers |
 | `json`, `toml`, `yaml` | Whole-value and streaming encode and decode |
 | `avro` | Container decode and encode by type family, codec x block-size sweep, projection skips, resolution plans, the varint floor |
@@ -112,6 +113,26 @@ against something a reader already trusts:
 - `python/benchmarks/arrowfs.py` times a handle over a `pyarrow.fs.LocalFileSystem` beside
   PyArrow's own calls against that same filesystem. The baseline is the implementation the wrapper
   delegates to, so the difference is the seven-method boundary and nothing else.
+- `benchmarks/expression.rs` carries the raw `arrow-ord` / `arrow-select` call as its baseline: the
+  same predicate written by hand against the kernels, with no expression involved. The
+  `expression_mask` group and the `kernel_mask` group share their case IDs, so the two are read side
+  by side and the gap between them is the price of the grammar.
+
+Indicative expression numbers from one containerized x86_64 Linux run, 65,536 rows,
+`--measurement-time 1`:
+
+```text
+                       expression   kernel
+utf8_equality             181.5 us  177.2 us
+int64_range                41.1 us   36.9 us
+decimal_range              48.6 us   51.0 us
+set_membership            347.3 us  349.1 us
+conjunction               277.6 us  271.4 us
+```
+
+Parsing and binding are the other half, and they happen once per stream rather than once per batch:
+`expression_parse` runs 0.5-2.4 us per predicate and `expression_bind` 0.5-4.5 us. A batch of 65,536
+rows therefore pays the grammar back in the first few microseconds of the first batch.
 
 Indicative numbers from one containerized x86_64 Linux run (Python 3.11.15, PyArrow 25.0.1,
 yggdryl 0.1.1 **release** wheel; run the commands above on your own hardware before drawing

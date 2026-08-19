@@ -7,13 +7,16 @@ underneath and nothing else.
 """
 
 from ._native import (
+    Bound,
     DataType,
+    Expression,
     Field,
     IOBase,
     MediaType,
     MimeType,
     ProtocolMetadata,
     RecordOptions,
+    Statement,
     Timezone,
     Uri,
     Url,
@@ -25,7 +28,9 @@ from . import fields, gzip, iceberg, json, toml, yaml, zlib, zstd
 from .records import Record, from_dict, record, schema_field, schema_fields, to_dict
 
 __all__ = [
+    "Bound",
     "DataType",
+    "Expression",
     "Field",
     "IOBase",
     "MediaType",
@@ -33,6 +38,7 @@ __all__ = [
     "ProtocolMetadata",
     "Record",
     "RecordOptions",
+    "Statement",
     "Timezone",
     "Uri",
     "Url",

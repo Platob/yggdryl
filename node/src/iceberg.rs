@@ -1141,6 +1141,51 @@ impl JsTable {
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
+    /// Read the rows matching one predicate as a `BatchReader`.
+    ///
+    /// `filter` is an `Expression` or the text of one, which parses. It is the
+    /// whole expression language rather than equality pairs: ranges, null
+    /// tests, `in` lists, nested paths, and `&holder.*` questions about the
+    /// files themselves. Planning prunes with the metadata chain, and only the
+    /// conjuncts it could not settle are tested against the rows.
+    #[napi]
+    pub fn scan_matching(
+        &self,
+        filter: napi::bindgen_prelude::Either<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsExpression>,
+            String,
+        >,
+        field: Option<&JsField>,
+    ) -> Result<JsBatchReader> {
+        let root_name = self.root_name()?;
+        let filter = crate::expression::expression_from_input(filter)?;
+        let reader = self
+            .inner
+            .scan_matching(filter, field.map(|field| &field.inner))
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, &root_name))
+    }
+
+    /// Report what one predicate lets the scan leave alone.
+    #[napi]
+    pub fn plan_matching(
+        &self,
+        filter: napi::bindgen_prelude::Either<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsExpression>,
+            String,
+        >,
+    ) -> Result<ScanPlanCounts> {
+        let filter = crate::expression::expression_from_input(filter)?;
+        let plan = self.inner.plan_matching(filter).map_err(napi_error)?;
+        Ok(ScanPlanCounts {
+            tasks: i64::try_from(plan.tasks.len()).unwrap_or(i64::MAX),
+            files_skipped: i64::try_from(plan.files_skipped()).unwrap_or(i64::MAX),
+            manifests_read: i64::try_from(plan.manifests_read).unwrap_or(i64::MAX),
+            manifests_skipped: i64::try_from(plan.manifests_skipped()).unwrap_or(i64::MAX),
+            record_count: plan.record_count(),
+        })
+    }
+
     /// Read the rows matching `filters`, keeping the columns `field` names.
     ///
     /// A filter on a partition column is answered by [`plan`](Self::plan)
@@ -1717,6 +1762,21 @@ impl JsSchemaUpdate {
         self.ops.push(SchemaOp::UpdateType { path, data_type });
         Ok(())
     }
+}
+
+/// What one predicate let a scan leave alone.
+#[napi(object)]
+pub struct ScanPlanCounts {
+    /// Data files the scan will open.
+    pub tasks: i64,
+    /// Live data files the metadata excluded.
+    pub files_skipped: i64,
+    /// Manifests that had to be read.
+    pub manifests_read: i64,
+    /// Manifests excluded on their summary alone, never opened.
+    pub manifests_skipped: i64,
+    /// Rows the planned files hold, as the manifests counted them.
+    pub record_count: i64,
 }
 
 /// A warehouse folder of namespaces of Iceberg tables.

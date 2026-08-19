@@ -84,6 +84,21 @@ read and write.
 There is no row-to-Arrow conversion layer between them: converting a batch to values is a caller's
 decision with a caller's cost, not something the storage path does implicitly.
 
+## One filter, three tiers
+
+There is exactly one way to say which rows: [`Expression`](expression.md). It parses through one
+grammar, types itself against a schema, compiles once, and then answers three ways - row at a time
+over a `Value`, vectorized over an Arrow batch, and three-valued over container statistics.
+
+The three tiers share one resolved tree, which is the mechanism rather than the intention behind
+their agreeing. Where Arrow owns a kernel the kernel runs; where it does not, the row evaluator runs
+and its answers are gathered, which is slower and cannot disagree. The statistics tier answers
+`false` only when it can prove no row matches, so everything it cannot prove costs a read rather than
+a lost row.
+
+The `(column, value)` pairs the older surfaces take are sugar that builds an expression. There is no
+second implementation behind them, in the listing, in the record options, or in the table scan.
+
 ## Bindings are views
 
 The Rust crate is the only implementation. [Python](extensions/python.md) and
@@ -99,6 +114,7 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 | `field` | [Names, nullability, metadata, protocol views, partition marks, validation, casting](field.md) |
 | `arrow` | [Scalars, schema projection, batch readers](arrow.md) |
 | `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](io.md) |
+| `expression` | [The one filter and projection tree, its grammar, its bind, and its three tiers](expression.md) |
 | `generic` | [`Holder`, `Media`, `Codec`, `RecordOptions`, `Value`, `TypedValue`](generic.md) |
 | `local` | [`Path`, `Folder`, `File`](local.md) |
 | `gzip`, `zlib`, `zstd` | [Content codings and transparent handles](gzip.md) |

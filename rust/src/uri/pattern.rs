@@ -256,6 +256,24 @@ fn hive_pair(segment: &str) -> Option<(String, String)> {
 }
 
 /// Match path segments against pattern segments, honouring `**`.
+/// Return whether `text` matches `pattern` under the same `.gitignore` rule.
+///
+/// The rule a listing uses, applied to plain text: a pattern with no separator
+/// speaks about the last segment at any depth, and a pattern with one is
+/// anchored at the start. Sharing the walk with [`Url::matches_glob`] is what
+/// makes `&holder.url glob '**/*.parquet'` and a folder listing agree - the
+/// expression layer has no glob of its own.
+pub(crate) fn matches_glob_text(text: &str, pattern: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
+    let segments: Vec<&str> = text.split('/').filter(|part| !part.is_empty()).collect();
+    if parts.len() == 1 {
+        return segments
+            .last()
+            .is_some_and(|name| matches_segment(name, parts[0]));
+    }
+    matches_segments(&segments, &parts)
+}
+
 fn matches_segments(segments: &[&str], pattern: &[&str]) -> bool {
     match pattern.split_first() {
         // An exhausted pattern matches an exhausted path.

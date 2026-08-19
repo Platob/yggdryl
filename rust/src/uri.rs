@@ -13,7 +13,7 @@ use smol_str::{SmolStr, SmolStrBuilder};
 use crate::enums::{MediaType, MimeType, Scheme};
 use crate::{Error, Result, stable_hash_display};
 
-mod pattern;
+pub(crate) mod pattern;
 
 fn parse_error(target: &'static str, position: usize, reason: &'static str) -> Error {
     Error::Parse {

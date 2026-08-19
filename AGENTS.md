@@ -358,9 +358,9 @@ meets all of these; a new media that cannot yet is not done:
   Several focused examples over one oversized one.
 - **One page per core module folder**: `docs/<module>.md` documents
   `yggdryl::<module>` and nothing else (`enums`, `datatype`, `field`,
-  `arrow`, `io`, `buffered`, `generic`, `local`, `gzip`, `zlib`, `zstd`,
-  `ipc`, `parquet`, `avro`, `iceberg`, `uri`, `text`, `json`, `yaml`,
-  `toml`).
+  `arrow`, `io`, `expression`, `buffered`, `generic`, `local`, `gzip`,
+  `zlib`, `zstd`, `ipc`, `parquet`, `avro`, `iceberg`, `uri`, `text`, `json`,
+  `yaml`, `toml`).
   `docs/extensions/{python,javascript}.md` document only their boundary.
 - Every page opens with one H1 and exactly one short sentence saying what the
   module is for.
