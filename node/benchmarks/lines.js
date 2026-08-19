@@ -9,14 +9,13 @@
 // encodes each batch and Arrow JS decodes it again before a single column can
 // be read. Every row printed below therefore carries a per-batch encode and
 // decode that the Rust Criterion `io`/`lines_arrow` groups and the Python
-// `log_lines.py` rows - which cross the Arrow C Stream interface, lazily and
+// `read_lines.py` rows - which cross the Arrow C Stream interface, lazily and
 // without a copy - never pay. Read these rows against each other, never
 // against a Rust or Python number for the same corpus.
 //
-// That copied boundary is also why the default corpus is 250,000 records
-// rather than the 1,000,000 the Rust and Python targets default to: the same
-// wall-clock budget buys fewer records here. The record count is printed in
-// the header so nobody reads a Node row beside a 1M-record Rust row.
+// The default corpus is the same 200,000 records the Rust and Python targets
+// read, so the three languages' rows describe the same work; the record count
+// is printed in the header either way.
 //
 // Throughput is reported in DECODED bytes - the text the parser actually
 // consumes - and in rows/s. The gzip wire size is printed once, labelled, and
@@ -26,7 +25,7 @@
 // HOW TO READ A DIFFERENCE BETWEEN TWO ROWS. Every pass over the whole corpus
 // is timed on its own and a row prints the MEDIAN and the BEST of
 // `YGGDRYL_BENCH_ITERATIONS` passes (5 by default), the way
-// `python/benchmarks/log_lines.py` reports, plus the SPREAD - the slowest pass
+// `python/benchmarks/read_lines.py` reports, plus the SPREAD - the slowest pass
 // minus the fastest, over the median. Read the spread before reading any
 // difference: on a shared machine one row here moves by a few percent between
 // runs, which is the same size as the coding, folder-shape, and cast deltas
@@ -60,17 +59,16 @@
 //                                media-type inference, and the batch boundary
 //                                forced at every leaf - and nothing else.
 //   readArrowLines folder utf8   the same drain of the same gzip folder with
-//                                `captureTypes` declaring `thread_id` and
-//                                `latency_us` as `utf8`, which turns the strict
-//                                native cast OFF. Nothing but the cast differs
-//                                from the first row, so that difference is what
-//                                typing two captures on every row costs
-//                                (2 x RECORDS values) - the same pairing the
-//                                Rust `lines_gzip/casts/typed` and
+//                                `captureTypes` declaring `port` as `utf8`,
+//                                which turns the strict native cast OFF.
+//                                Nothing but the cast differs from the first
+//                                row, so that difference is what typing a
+//                                capture on every row costs - the same pairing
+//                                the Rust `lines_gzip/casts/typed` and
 //                                `lines_gzip/casts/text` cases make, both of
 //                                which only count rows too.
 //   typed accessors              the FIRST row's parse plus an aggregate read
-//                                through the typed column. `latency_us` infers
+//                                through the typed column. `port` infers
 //                                `int64` from its own `\d+` sub-pattern, so
 //                                Arrow JS hands out BigInt and the sum is
 //                                BigInt arithmetic with no per-row string
@@ -84,17 +82,17 @@
 //
 // The two aggregate rows are not each other's baseline and their difference is
 // not the price of the typed accessor: they parse differently (cast on against
-// cast off) and they convert different volumes - the native side types BOTH
-// captures on EVERY row, while the JavaScript side converts `latency_us` alone
-// and only on the one row in three where `level` is `ee`. Each aggregate row is
-// read against the parse-only row it shares its options with; the cast itself
-// is row 1 against row 4.
+// cast off) and they convert different volumes - the native side types the
+// capture on EVERY row, while the JavaScript side converts only the one row in
+// three where `level` is `WARNING`. Each aggregate row is read against the
+// parse-only row it shares its options with; the cast itself is row 1 against
+// row 4.
 //
 // Nothing quadratic is claimed from one corpus size: `--records` sweeps it
 // (throughput per decoded byte should stay flat), and the Rust `io` target
 // carries the scale sweep as a Criterion group.
 //
-//     node benchmarks/lines.js [--records 250000]
+//     node benchmarks/lines.js [--records 200000]
 //     YGGDRYL_BENCH_ITERATIONS=15 node benchmarks/lines.js
 //
 // A binding benchmark measures a RELEASE addon; a debug build understates the
@@ -128,45 +126,93 @@ if (!Number.isSafeInteger(iterations) || iterations <= 0) {
 }
 
 const LEAVES = 8
-const RECORDS = integerFlag('--records', 250_000)
+const RECORDS = integerFlag('--records', 200_000)
 if (RECORDS % LEAVES !== 0) {
   throw new RangeError(`--records must divide evenly across ${LEAVES} rotated leaves`)
 }
 
-// The shared corpus pattern, spelled identically in Rust, Python, and here.
-// `level` and `logger` are utf8; `thread_id` and `latency_us` type themselves
-// as int64 off their own `\d+` sub-patterns - that inference is the claim the
-// last two rows price.
+// The shared corpus pattern, spelled identically in Rust, Python, and here:
+// `(?P<name>...)` groups, which every engine involved reads. `port` types
+// itself as int64 off its own `\d+` sub-pattern - that inference is the
+// claim the last two rows price.
 const PATTERN =
-  '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S*' +
-  ' \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]' +
-  ' \\[(?<thread_id>\\d+)\\] took=(?<latency_us>\\d+)'
+  '^(?P<stamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}_\\d{3})' +
+  ' \\[(?P<thread>\\d+-[^\\]]*:(?P<port>\\d+))\\]' +
+  ' \\[(?P<logger>[^\\]]+)\\]' +
+  ' \\((?P<level>[A-Z]+)\\)'
 
-const LEVELS = ['ii', 'ww', 'ee']
-const LOGGERS = ['engine', 'router', 'ledger', 'feed']
+const LEVELS = ['DEBUG', 'INFO', 'WARNING']
+const LOGGERS = [
+  'OrderFlow_Enrichment',
+  'Regulatory_Timestamps',
+  'GatewayBridge',
+  'OrderFlow',
+  'RiskManager',
+  'MarketDataManager',
+  'TagWrapper',
+  'RouteCheck',
+]
+
+/** One of the eight anonymized message shapes, chosen by `index`. */
+function message(index) {
+  const shape = index % 8
+  const isin = String(index % 10_000).padStart(10, '0')
+  switch (shape) {
+    case 0:
+      return (
+        '-> [S] (trade || cancel || tradecancel || replace || new)' +
+        ` - ExecType=required, cumQty=${index % 100}, CompositeID=null`
+      )
+    case 1:
+      return `CLIENTID set to ROUTE${String(index % 50).padStart(2, '0')}`
+    case 2:
+      return (
+        'After Enrichment -> #ROUTINGINDICATOR=yes #CFICODE=ESXXXX' +
+        ` #GROUP=GRP${index % 9} #ISINCODE=XX${isin}`
+      )
+    case 3:
+      return (
+        'Message received: Message type [executionreport] from' +
+        ` [gateway as FU${String(index % 1_000_000).padStart(6, '0')}] forwarded to` +
+        ' [(null) as (null)] [Direct reject]'
+      )
+    case 4:
+      return 'Message rejected because : Ignoring expiry message from fully filled orders'
+    case 5:
+      return (
+        'Setting last event id for order , 1 to' +
+        ` 20260814-2206${String(index % 100).padStart(2, '0')}-906-02-1`
+      )
+    case 6:
+      return (
+        'Expression from TCRPRICE=xpath("/event/action/trade/capturereport/@price")' +
+        ' gives no result, no mapping is done'
+      )
+    default:
+      return `Found code(db: XX${isin}_XNAS_USD) from instrument(db: XX${isin} XNAS USD)`
+  }
+}
 
 /** The shared corpus generator: byte-for-byte the Rust and Python one. */
 function record(index) {
-  const minute = Math.floor(index / 3_600) % 60
-  const second = Math.floor(index / 60) % 60
+  const minute = String(Math.floor(index / 3_600) % 60).padStart(2, '0')
+  const second = String(Math.floor(index / 60) % 60).padStart(2, '0')
   const micro = index % 1_000_000
-  const level = LEVELS[index % 3]
-  const logger = LOGGERS[index % 4]
-  const thread = index % 16
-  const latency = 40 + (index % 960)
-  const qty = 100 + (index % 900)
-  const symbol = index % 128
-  const price = 187 + (index % 400) / 100
+  const ms = String(Math.floor(micro / 1_000)).padStart(3, '0')
+  const us = String(micro % 1_000).padStart(3, '0')
+  const pool = 250 + (index % 4)
+  const hexA = ((index * 2654435761) % 4294967296).toString(16).padStart(8, '0')
+  const hexB = ((index * 40503) % 65536).toString(16).padStart(4, '0')
+  const port = 72_500 + (index % 8)
   let line =
-    `2024-02-01 10:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}` +
-    `.${String(micro).padStart(6, '0')} [${level}] [${logger}] [${thread}]` +
-    ` took=${latency} fill ${qty} SYMB-${String(symbol).padStart(4, '0')}` +
-    ` @ ${price.toFixed(2)} order=${String(index).padStart(8, '0')}\n`
+    `2026-08-14 00:${minute}:${second}.${ms}_${us}` +
+    ` [${pool}-${hexA}:${hexB}:${port}]` +
+    ` [${LOGGERS[index % 8]}] (${LEVELS[index % 3]}) ${message(index)}\n`
   // Every 50th record is a stack trace whose two continuation lines fold into
   // the SAME row (`lines` reads 3). A naive splitlines loop would count them
   // as rows of their own, which is why the row count is asserted below.
   if (index % 50 === 49) {
-    line += '    at engine::match(order.rs:118)\n    at engine::step(order.rs:64)\n'
+    line += '    at core::enrich(order.rs:118)\n    at core::route(order.rs:64)\n'
   }
   return line
 }
@@ -208,9 +254,9 @@ try {
   const gzipHandle = new IOBase(gzipFolder)
   const plainHandle = new IOBase(plainFolder)
   const singleHandle = new IOBase(single)
-  // Declaring the two inferred captures as utf8 turns the strict native cast
-  // off, which is exactly what the JavaScript-side conversion then replaces.
-  const asText = { captureTypes: { thread_id: 'utf8', latency_us: 'utf8' } }
+  // Declaring the inferred capture as utf8 turns the strict native cast off,
+  // which is exactly what the JavaScript-side conversion then replaces.
+  const asText = { captureTypes: { port: 'utf8' } }
 
   /** Drain the projection, counting rows the way a consumer would. */
   function count(handle, options) {
@@ -230,12 +276,12 @@ try {
     let total = 0n
     for (const batch of handle.readArrowLines(PATTERN)) {
       const level = batch.getChild('level')
-      const latency = batch.getChild('latency_us')
+      const port = batch.getChild('port')
       rows += batch.numRows
       for (let index = 0; index < batch.numRows; index += 1) {
-        if (level.get(index) !== 'ee') continue
+        if (level.get(index) !== 'WARNING') continue
         matched += 1
-        total += latency.get(index)
+        total += port.get(index)
       }
     }
     return { matched, rows, total }
@@ -250,12 +296,12 @@ try {
     let total = 0n
     for (const batch of handle.readArrowLines(PATTERN, asText)) {
       const level = batch.getChild('level')
-      const latency = batch.getChild('latency_us')
+      const port = batch.getChild('port')
       rows += batch.numRows
       for (let index = 0; index < batch.numRows; index += 1) {
-        if (level.get(index) !== 'ee') continue
+        if (level.get(index) !== 'WARNING') continue
         matched += 1
-        total += BigInt(latency.get(index))
+        total += BigInt(port.get(index))
       }
     }
     return { matched, rows, total }
@@ -277,7 +323,7 @@ try {
   // cheaper because it computed something else.
   assert.equal(typed.matched, text.matched)
   assert.equal(typed.total, text.total)
-  // `ee` is the third entry of the level cycle, so exactly one record in
+  // `WARNING` is the third entry of the level cycle, so exactly one record in
   // every whole cycle of three carries it.
   assert.equal(typed.matched, Math.floor(RECORDS / 3))
 
@@ -316,7 +362,7 @@ try {
 
   console.log(
     `Node ${process.version}; ${RECORDS.toLocaleString('en-US')} records` +
-      ` (NOT the 1,000,000 the Rust and Python targets default to),` +
+      ` (the same corpus the Rust and Python targets read),` +
       ` ${LEAVES} rotated leaves`,
   )
   console.log(
