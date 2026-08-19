@@ -76,6 +76,116 @@ impl GeospatialType {
     }
 }
 
+/// The canonical Arrow extension name of the variant type.
+///
+/// The storage is a struct of a non-nullable `metadata` Binary and a
+/// non-nullable `value` Binary, and the extension metadata is the empty
+/// string, exactly as the canonical `arrow.parquet.variant` extension spells
+/// them.
+pub(crate) const VARIANT_EXTENSION_NAME: &str = "arrow.parquet.variant";
+
+/// The community GeoArrow extension name of the geospatial pair.
+///
+/// The storage is a Binary column of WKB payloads and the extension metadata
+/// is the GeoArrow JSON document: `{"crs": <crs>}` for a geometry and
+/// `{"crs": <crs>, "edges": "<algorithm>"}` for a geography. GeoArrow is a
+/// community specification whose own documents say it is not finalized, so
+/// this spelling is revisitable if the published one moves.
+pub(crate) const GEOARROW_WKB_EXTENSION_NAME: &str = "geoarrow.wkb";
+
+impl GeospatialType {
+    /// Renders the GeoArrow extension metadata document this type projects.
+    ///
+    /// A geometry writes `{"crs": <crs>}`; a geography adds its edge
+    /// algorithm as `"edges"`. The CRS is always written, defaults included,
+    /// so the projected document never depends on what the reader would fill.
+    pub(crate) fn to_geoarrow_json(&self) -> String {
+        let mut document = serde_json::Map::with_capacity(2);
+        document.insert(
+            "crs".to_owned(),
+            serde_json::Value::String(self.crs.to_string()),
+        );
+        if let Some(algorithm) = self.algorithm {
+            document.insert(
+                "edges".to_owned(),
+                serde_json::Value::String(algorithm.as_str().to_owned()),
+            );
+        }
+        serde_json::Value::Object(document).to_string()
+    }
+
+    /// Parses a GeoArrow extension metadata document back into parameters.
+    ///
+    /// An absent or empty document is a geometry with the default CRS. A
+    /// present `"edges"` string selects a geography and its algorithm; an
+    /// absent one a geometry, exactly the distinction the projection writes.
+    /// A `"crs"` that is absent or `null` fills the shared default.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the document is not a JSON object, when `"crs"`
+    /// or `"edges"` holds something other than a string, or when the edge
+    /// algorithm is not in the shared vocabulary.
+    pub(crate) fn from_geoarrow_json(document: Option<&str>) -> Result<Self> {
+        let text = document.unwrap_or("").trim();
+        if text.is_empty() {
+            return Self::geometry(None);
+        }
+        let value: serde_json::Value =
+            serde_json::from_str(text).map_err(|error| Error::InvalidDataType {
+                kind: "geospatial",
+                reason: SmolStr::new(format!(
+                    "expected a GeoArrow JSON metadata object, got unparsable JSON: {error}"
+                )),
+            })?;
+        let Some(object) = value.as_object() else {
+            return Err(geoarrow_metadata_error(format!(
+                "expected a GeoArrow JSON metadata object, got {}",
+                crate::text::elide_display(&value)
+            )));
+        };
+        let crs = match object.get("crs") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(crs)) => Some(crs.as_str()),
+            Some(other) => {
+                return Err(geoarrow_metadata_error(format!(
+                    "expected a JSON string \"crs\", got {}",
+                    crate::text::elide_display(other)
+                )));
+            }
+        };
+        match object.get("edges") {
+            None | Some(serde_json::Value::Null) => Self::geometry(crs),
+            Some(serde_json::Value::String(edges)) => {
+                Self::geography(crs, Some(EdgeAlgorithm::from_str(edges)?))
+            }
+            Some(other) => Err(geoarrow_metadata_error(format!(
+                "expected a JSON string \"edges\", got {}",
+                crate::text::elide_display(other)
+            ))),
+        }
+    }
+}
+
+fn geoarrow_metadata_error(reason: String) -> Error {
+    Error::InvalidDataType {
+        kind: "geospatial",
+        reason: SmolStr::new(reason),
+    }
+}
+
+/// The Arrow extension name and metadata one of the three extension-typed
+/// variants projects, `None` for every other datatype.
+pub(crate) fn arrow_extension_parts(data_type: &DataType) -> Option<(&'static str, String)> {
+    match data_type {
+        DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
+        DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
+            Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.to_geoarrow_json()))
+        }
+        _ => None,
+    }
+}
+
 /// Fill or validate the CRS: `None` is the shared default, empty is refused.
 fn validated_crs(crs: Option<&str>) -> Result<SmolStr> {
     match crs {

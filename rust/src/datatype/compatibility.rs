@@ -674,6 +674,14 @@ fn field_with_data_type(
     Ok(transformed)
 }
 
+/// Reports whether a field still carries a *foreign* Arrow extension label.
+///
+/// The extensions this workspace owns never reach here: `arrow.parquet.variant`
+/// and `geoarrow.wkb` import as the first-class `variant`, `geometry`, and
+/// `geography` datatypes with their `ARROW:extension:*` keys stripped, so a
+/// field carrying these keys names an extension the workspace does not model.
+/// Rewriting its storage would silently relabel that foreign type, so the
+/// walker rejects the rewrite instead.
 fn has_extension_storage(field: &Field) -> bool {
     field.has_metadata(ARROW_EXTENSION_NAME_KEY) || field.has_metadata(ARROW_EXTENSION_METADATA_KEY)
 }

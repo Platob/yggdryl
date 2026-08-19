@@ -87,3 +87,31 @@ fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
         serde_json::from_str::<TypedField<field::decimal::Decimal128>>(invalid_decimal).is_err()
     );
 }
+
+#[test]
+fn the_extension_typed_markers_narrow_their_exact_variants() {
+    assert_typed_marker::<yggdryl::field::nested::Variant>(DataType::variant());
+    assert_typed_marker::<yggdryl::field::geospatial::Geometry>(DataType::geometry(None).unwrap());
+    assert_typed_marker::<yggdryl::field::geospatial::Geography>(
+        DataType::geography(None, None).unwrap(),
+    );
+
+    // The static variant constructor exists because the datatype carries no
+    // parameters; the geospatial pair always goes through validation.
+    let variant = yggdryl::field::VariantField::new("payload", true);
+    assert_eq!(variant.data_type(), &DataType::Variant);
+
+    // A marker refuses the storage type and its geospatial sibling alike.
+    assert!(yggdryl::field::GeometryField::try_new("bad", DataType::Binary, true).is_err());
+    assert!(
+        yggdryl::field::GeographyField::try_new("bad", DataType::geometry(None).unwrap(), true)
+            .is_err()
+    );
+    let geography = yggdryl::field::GeographyField::try_new(
+        "region",
+        DataType::geography(None, None).unwrap(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(geography.data_type().name(), "geography");
+}

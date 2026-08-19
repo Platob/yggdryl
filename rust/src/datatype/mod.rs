@@ -22,13 +22,16 @@ mod scalar;
 pub(crate) mod serde;
 mod temporal;
 
-pub(crate) use arrow::arrow_data_type_to_ffi;
+pub(crate) use arrow::{arrow_data_type_to_ffi, is_variant_storage};
 
 pub use crate::enums::{TimeUnit, UnionMode};
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
 };
 pub use geospatial::GeospatialType;
+pub(crate) use geospatial::{
+    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,
+};
 pub use nested::{DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields};
 
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.

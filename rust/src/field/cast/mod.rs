@@ -139,6 +139,11 @@ typed_array!(
 typed_array!(super::nested::Struct, arrow_array::StructArray);
 typed_array!(super::nested::Union, arrow_array::UnionArray);
 typed_array!(super::nested::Map, arrow_array::MapArray);
+// A variant's storage is the canonical struct of two required binaries, and a
+// geospatial value is its WKB payload, so their physical arrays are fixed.
+typed_array!(super::nested::Variant, arrow_array::StructArray);
+typed_array!(super::geospatial::Geometry, arrow_array::BinaryArray);
+typed_array!(super::geospatial::Geography, arrow_array::BinaryArray);
 
 // A unit decides the physical width of a temporal value, and a key type decides
 // the physical width of a dictionary index, so these have no single array type.

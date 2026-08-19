@@ -449,3 +449,4 @@ static_field_constructor!(super::binary::BinaryView, DataType::BinaryView);
 static_field_constructor!(super::binary::Utf8, DataType::Utf8);
 static_field_constructor!(super::binary::LargeUtf8, DataType::LargeUtf8);
 static_field_constructor!(super::binary::Utf8View, DataType::Utf8View);
+static_field_constructor!(super::nested::Variant, DataType::Variant);

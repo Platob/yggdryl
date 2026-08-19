@@ -53,6 +53,7 @@ pub mod cast;
 pub mod decimal;
 mod diff;
 pub mod floating;
+pub mod geospatial;
 pub mod integer;
 pub mod nested;
 mod parser;
@@ -64,6 +65,8 @@ mod typed;
 mod value;
 
 pub(crate) use arrow::arrow_field_to_ffi;
+#[cfg(feature = "arrow")]
+pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};
 #[cfg(feature = "arrow")]
 pub use cast::{ArrowCast, ArrowFieldType};
 pub(crate) use diff::push_field_name_path;
@@ -155,6 +158,12 @@ pub type Decimal256Field = TypedField<decimal::Decimal256>;
 pub type MapField = TypedField<nested::Map>;
 /// A run-end-encoded-typed field.
 pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
+/// A variant-typed field.
+pub type VariantField = TypedField<nested::Variant>;
+/// A geometry-typed field.
+pub type GeometryField = TypedField<geospatial::Geometry>;
+/// A geography-typed field.
+pub type GeographyField = TypedField<geospatial::Geography>;
 
 /// A shared Arrow field projection.
 pub type FieldRef = Arc<ArrowField>;

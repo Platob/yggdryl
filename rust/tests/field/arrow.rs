@@ -117,3 +117,51 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
             .is_err()
     );
 }
+
+#[test]
+fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
+    let geography = Field::from_parts(
+        "region",
+        DataType::geography(Some("EPSG:4326"), None).unwrap(),
+        true,
+        [("owner", "core")],
+    )
+    .unwrap();
+
+    let schema = geography.to_arrow_ffi().unwrap();
+    let metadata = schema.metadata().unwrap();
+    assert_eq!(
+        metadata.get("ARROW:extension:name"),
+        Some(&"geoarrow.wkb".to_owned())
+    );
+    let document = metadata.get("ARROW:extension:metadata").unwrap();
+    assert!(document.contains("EPSG:4326"), "{document}");
+    assert!(document.contains("spherical"), "{document}");
+    assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
+
+    // A round trip through the C schema restores the exact field.
+    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    assert_eq!(imported, geography);
+
+    // The cached projection path serves the same identity.
+    geography.to_arrow_ref().unwrap();
+    let cached = geography.to_arrow_ffi().unwrap();
+    assert_eq!(
+        cached.metadata().unwrap().get("ARROW:extension:name"),
+        Some(&"geoarrow.wkb".to_owned())
+    );
+
+    // A bare datatype carries the identity too, variant included.
+    let schema = DataType::variant().to_arrow_ffi().unwrap();
+    let metadata = schema.metadata().unwrap();
+    assert_eq!(
+        metadata.get("ARROW:extension:name"),
+        Some(&"arrow.parquet.variant".to_owned())
+    );
+    assert_eq!(
+        metadata.get("ARROW:extension:metadata"),
+        Some(&String::new())
+    );
+    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    assert_eq!(imported.data_type(), &DataType::Variant);
+}

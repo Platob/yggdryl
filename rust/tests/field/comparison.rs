@@ -291,3 +291,31 @@ fn return_equal_never_appears_when_values_differ() {
         "{lines:?}"
     );
 }
+
+#[test]
+fn geospatial_and_variant_differences_render_their_canonical_display() {
+    let geometry = DataType::geometry(None).unwrap().nullable_field("shape");
+    let geography = DataType::geography(None, None)
+        .unwrap()
+        .nullable_field("shape");
+    assert!(!geometry.equals(&geography, false));
+    let diff = geometry.show_diff(&geography, false, false);
+    assert!(diff.contains("geometry"), "{diff}");
+    assert!(diff.contains("geography"), "{diff}");
+
+    let default_crs = DataType::geometry(None).unwrap().nullable_field("shape");
+    let web_mercator = DataType::geometry(Some("EPSG:3857"))
+        .unwrap()
+        .nullable_field("shape");
+    let diff = default_crs.show_diff(&web_mercator, false, false);
+    assert!(diff.contains("EPSG:3857"), "{diff}");
+
+    let variant = DataType::variant().nullable_field("payload");
+    let text = DataType::Utf8.nullable_field("payload");
+    let diff = variant.show_diff(&text, false, false);
+    assert!(diff.contains("variant"), "{diff}");
+    assert_eq!(
+        variant.show_diff(&variant.clone(), false, true),
+        "\u{2713} equal"
+    );
+}
