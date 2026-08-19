@@ -630,6 +630,86 @@ fn bounds_of(schema: &Field, rows: &[Value]) -> Bounds {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn substring_takes_the_window_the_standard_names() {
+    let schema = rows_schema();
+    for (text, expected) in [
+        ("substring(s, 1, 5)", "alpha"),
+        // The window starts before the string, and the part before it is not
+        // there to take: four characters, not five.
+        ("substring(s, 0, 5)", "alph"),
+        ("substring(s, 2)", "lpha"),
+        ("substring(s, -3, 5)", "pha"),
+        ("substring(s, 9, 4)", ""),
+    ] {
+        let bound = text.parse::<Expression>().unwrap().bind(&schema).unwrap();
+        assert_eq!(
+            bound.eval(&rows()[0]).unwrap(),
+            Value::from(expected),
+            "{text}"
+        );
+    }
+    let bound = "substring(s, 1, -1)"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert!(bound.eval(&rows()[0]).is_err());
+}
+
+#[test]
+fn a_pattern_with_no_wildcard_becomes_an_equality() {
+    let schema = rows_schema();
+    let bound = "s like 'alpha'"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(bound.expression().to_string(), "s = 'alpha'");
+    assert!(bound.matches(&rows()[0]).unwrap());
+    // An escaped wildcard is a literal, so it folds too.
+    let escaped = "s like 'a!%b' escape '!'"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(escaped.expression().to_string(), "s = 'a%b'");
+}
+
+#[test]
+fn a_column_named_twice_in_two_cases_is_ambiguous() {
+    let schema = Field::new(
+        "rows",
+        DataType::from_fields([
+            Field::new("Value", DataType::Int64, true),
+            Field::new("value", DataType::Int64, true),
+        ])
+        .unwrap(),
+        false,
+    );
+    let error = "value = 1".parse::<Expression>().unwrap().bind(&schema);
+    let message = format!("{}", error.unwrap_err());
+    assert!(message.contains("one column"), "{message}");
+    assert!(message.contains("quote the one meant"), "{message}");
+}
+
+#[test]
+fn an_exact_quotient_keeps_room_to_be_a_quotient() {
+    let schema = rows_schema();
+    let bound = "d / decimal128(9,2) '3.00'"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(
+        bound.field().data_type().to_string(),
+        "decimal128(15,6)",
+        "a quotient at the operands' own scale would be a rounding"
+    );
+    // 1.50 / 3.00 is exactly 0.5, and it stays exact.
+    assert_eq!(bound.eval(&rows()[0]).unwrap(), Value::Decimal(500_000, 6));
+}
+
+#[test]
 fn binds_and_evaluates_rows() {
     let schema = Field::new(
         "trades",

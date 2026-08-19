@@ -976,7 +976,7 @@ impl<'input> Parser<'input> {
         let Expression::Literal(held) = key else {
             return Err(parse_error(
                 position,
-                "expected a constant key; use element_at for a computed one",
+                "expected a constant key; use get(container, key) for a computed one",
             ));
         };
         Ok(Segment::Key(held))

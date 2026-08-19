@@ -34,6 +34,9 @@ use crate::{DataType, Error, Field, Result, TimeUnit, Value};
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
 
+/// The fewest fractional places an exact quotient keeps.
+const MIN_QUOTIENT_SCALE: i8 = 6;
+
 impl Expression {
     /// The [`Field`] this expression produces against a struct root schema.
     ///
@@ -633,24 +636,51 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
         _ => {}
     }
     let shared = common_type(left, right)?;
-    if let Some((precision, scale)) = decimal_parts(&shared) {
-        let (left_scale, right_scale) = (
-            decimal_parts(left).map_or(0, |parts| parts.1),
-            decimal_parts(right).map_or(0, |parts| parts.1),
-        );
-        let scale = match operator {
-            // Multiplying exact numbers adds their scales; every other
-            // operation keeps the wider one.
-            Operator::Mul => left_scale.checked_add(right_scale)?,
-            _ => scale,
+    if decimal_parts(&shared).is_some() {
+        let (left_precision, left_scale) = exact_parts(left)?;
+        let (right_precision, right_scale) = exact_parts(right)?;
+        let integral = |precision: u8, scale: i8| {
+            precision.saturating_sub(u8::try_from(scale.max(0)).unwrap_or(0))
+        };
+        // The three shapes an exact result takes. Each says how many
+        // fractional places the operation can produce and how many integral
+        // ones it needs to hold them, so the declared type can always hold
+        // every value the operation can compute.
+        let (precision, scale) = match operator {
+            Operator::Mul => (
+                left_precision.saturating_add(right_precision),
+                left_scale.checked_add(right_scale)?,
+            ),
+            Operator::Div => {
+                let scale = left_scale.max(right_scale).max(MIN_QUOTIENT_SCALE);
+                let whole = integral(left_precision, left_scale)
+                    .saturating_add(u8::try_from(right_scale.max(0)).unwrap_or(0))
+                    .max(1);
+                (
+                    whole.saturating_add(u8::try_from(scale.max(0)).unwrap_or(0)),
+                    scale,
+                )
+            }
+            other => {
+                let scale = left_scale.max(right_scale);
+                let whole = integral(left_precision, left_scale)
+                    .max(integral(right_precision, right_scale))
+                    // A sum of two n-digit numbers needs one more digit; a
+                    // remainder never needs more than its narrower operand.
+                    .saturating_add(u8::from(matches!(other, Operator::Add | Operator::Sub)));
+                (
+                    whole.saturating_add(u8::try_from(scale.max(0)).unwrap_or(0)),
+                    scale,
+                )
+            }
         };
         if scale > i8::try_from(DECIMAL_LIMIT).ok()? {
             return None;
         }
         return DataType::decimal128(
             precision
-                .max(u8::try_from(scale.max(0)).unwrap_or(0))
-                .min(DECIMAL_LIMIT),
+                .min(DECIMAL_LIMIT)
+                .max(u8::try_from(scale.max(0)).unwrap_or(1).max(1)),
             scale,
         )
         .ok();
@@ -659,6 +689,27 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
         return Some(shared);
     }
     None
+}
+
+/// The precision and scale a datatype holds as an exact number.
+///
+/// A whole number is an exact number of scale zero, and its precision is the
+/// digits its width can actually hold - which is what keeps `int32 + decimal`
+/// from claiming the 38 digits a decimal could have had.
+fn exact_parts(data_type: &DataType) -> Option<(u8, i8)> {
+    let data_type = unwrap_dictionary(data_type);
+    if let Some(parts) = decimal_parts(data_type) {
+        return Some(parts);
+    }
+    Some(match data_type {
+        DataType::Int8 | DataType::UInt8 => (3, 0),
+        DataType::Int16 | DataType::UInt16 => (5, 0),
+        DataType::Int32 | DataType::UInt32 => (10, 0),
+        DataType::Int64 => (19, 0),
+        DataType::UInt64 => (20, 0),
+        DataType::Null => (1, 0),
+        _ => return None,
+    })
 }
 
 /// The output field of one function call.
@@ -760,10 +811,10 @@ fn function_field(
             }
             DataType::Int64
         }
-        Function::ElementAt => {
+        Function::Get => {
             let key = fields
                 .get(1)
-                .ok_or_else(|| typing_error("expected a key for element_at"))?;
+                .ok_or_else(|| typing_error("expected a key for get"))?;
             let segment = match key.data_type() {
                 data_type if is_integer(data_type) => Segment::Index(0),
                 _ => Segment::Key(

@@ -669,21 +669,39 @@ fn call(
             let Some(text) = first.as_str() else {
                 return Ok(Value::Null);
             };
-            // SQL counts from one here, deliberately unlike the zero-based
-            // `[]` path step, because both spellings are what their own
-            // notation means everywhere else.
-            let start = values.get(1).and_then(Value::as_i64).unwrap_or(1);
+            // SQL counts from one here, deliberately unlike the zero-based `[]`
+            // path step, because both spellings are what their own notation
+            // means everywhere else. The window is the standard's: the
+            // half-open interval [start, start + length) intersected with the
+            // characters that exist, which is why `substring(s, 0, 5)` yields
+            // four characters and not five - the window starts before the
+            // string and the part before it is not there to take.
             let characters: Vec<char> = text.chars().collect();
-            let offset = usize::try_from(start.max(1) - 1).unwrap_or(0);
-            let taken = match values.get(2).and_then(Value::as_i64) {
-                Some(length) => usize::try_from(length.max(0)).unwrap_or(0),
-                None => characters.len().saturating_sub(offset),
+            let length = i64::try_from(characters.len()).unwrap_or(i64::MAX);
+            let written = values.get(1).and_then(Value::as_i64).unwrap_or(1);
+            // A negative start counts back from the end before the window is
+            // taken, which is what a caller who writes one always means.
+            let start = if written < 0 {
+                length + written + 1
+            } else {
+                written
             };
+            let end = match values.get(2).and_then(Value::as_i64) {
+                Some(count) if count < 0 => {
+                    return Err(missing("a substring length that is not negative"));
+                }
+                Some(count) => start.saturating_add(count),
+                None => length.saturating_add(1),
+            };
+            let from = usize::try_from(start.max(1) - 1).unwrap_or(0);
+            let until = usize::try_from(end.max(1) - 1)
+                .unwrap_or(0)
+                .min(characters.len());
             Value::String(SmolStr::new(
                 characters
-                    .into_iter()
-                    .skip(offset)
-                    .take(taken)
+                    .get(from..until.max(from))
+                    .unwrap_or_default()
+                    .iter()
                     .collect::<String>(),
             ))
         }
@@ -715,10 +733,10 @@ fn call(
             }
             _ => Value::Null,
         },
-        Function::ElementAt => {
+        Function::Get => {
             let container = arguments
                 .first()
-                .ok_or_else(|| missing("a container for element_at"))?;
+                .ok_or_else(|| missing("a container for get"))?;
             let key = values.get(1).cloned().unwrap_or(Value::Null);
             let segment = match key.as_i64() {
                 Some(index) if !matches!(key, Value::String(_)) => Segment::Index(index),

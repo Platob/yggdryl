@@ -382,9 +382,14 @@ pub enum Function {
     IfNull,
     /// How many items a list or a map holds.
     Size,
-    /// `element_at(container, key_or_index)` - the functional spelling of a
+    /// `get(container, key_or_index)` - the functional spelling of a
     /// [`Segment`], for when the key is computed rather than written.
-    ElementAt,
+    ///
+    /// Spelled `get` rather than `element_at` deliberately: several engines
+    /// ship an `element_at` and they disagree about whether its index is
+    /// 0-based or 1-based, so the familiar name cannot be used without
+    /// inheriting an argument about what it means.
+    Get,
 }
 
 impl Function {
@@ -407,7 +412,7 @@ impl Function {
         Self::Coalesce,
         Self::IfNull,
         Self::Size,
-        Self::ElementAt,
+        Self::Get,
     ];
 
     /// The canonical lowercase name of this function.
@@ -431,7 +436,7 @@ impl Function {
             Self::Coalesce => "coalesce",
             Self::IfNull => "if_null",
             Self::Size => "size",
-            Self::ElementAt => "element_at",
+            Self::Get => "get",
         }
     }
 
@@ -461,7 +466,7 @@ impl Function {
             "coalesce" => Self::Coalesce,
             "if_null" | "ifnull" | "nvl" | "isnull" => Self::IfNull,
             "size" | "cardinality" => Self::Size,
-            "element_at" => Self::ElementAt,
+            "get" => Self::Get,
             _ => return None,
         })
     }
@@ -478,7 +483,7 @@ impl Function {
             | Self::Contains
             | Self::Truncate
             | Self::IfNull
-            | Self::ElementAt => (2, 2),
+            | Self::Get => (2, 2),
             _ => (1, 1),
         }
     }

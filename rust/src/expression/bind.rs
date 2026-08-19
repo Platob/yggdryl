@@ -844,6 +844,25 @@ impl Binder<'_> {
             } => {
                 let value = self.lower(value, Some(&DataType::Utf8))?;
                 let pattern = self.constant_pattern(pattern, "like")?;
+                // A pattern with no wildcard left in it is an equality, and
+                // saying so here is what lets it reach a comparison kernel and
+                // a statistics bound instead of a character walk.
+                if !*case_insensitive && !has_wildcard(&pattern, *escape) {
+                    let literal = Node {
+                        field: Field::new("pattern", DataType::Utf8, false),
+                        kind: Kind::Literal(Value::String(unescape(&pattern, *escape))),
+                        cost: 0,
+                    };
+                    let (nullable, cost) = (value.field.is_nullable(), value.cost);
+                    return self.coerce(
+                        Node {
+                            field: named(expression, DataType::Boolean, nullable),
+                            kind: Kind::Compare(Box::new(value), Comparison::Eq, Box::new(literal)),
+                            cost,
+                        },
+                        want,
+                    );
+                }
                 let (nullable, cost) = (value.field.is_nullable(), value.cost);
                 Node {
                     field: named(expression, DataType::Boolean, nullable),
@@ -1054,22 +1073,41 @@ impl Binder<'_> {
 
     /// The column index a name resolves to, ASCII case-insensitively.
     fn index_of(&self, name: &str) -> Result<usize> {
-        self.schema
+        // A schema that declares two columns differing only in case makes an
+        // unquoted reference genuinely ambiguous, and first-match-wins is the
+        // one resolution rule nobody can debug. Both names are reported.
+        let matches: Vec<usize> = self
+            .schema
             .fields()
             .iter()
-            .position(|field| field.name().eq_ignore_ascii_case(name))
-            .ok_or_else(|| {
-                let mut available: Vec<&str> =
-                    self.schema.fields().iter().map(Field::name).collect();
-                available.sort_unstable();
-                Error::InvalidRecord {
-                    path: SmolStr::new_static("$"),
-                    reason: format_smolstr!(
-                        "expected one of the columns {}, got {name:?}",
-                        available.join(", ")
-                    ),
-                }
-            })
+            .enumerate()
+            .filter(|(_, field)| field.name().eq_ignore_ascii_case(name))
+            .map(|(index, _)| index)
+            .collect();
+        if matches.len() > 1 {
+            let names: Vec<&str> = matches
+                .iter()
+                .filter_map(|index| self.schema.get_field(*index).map(Field::name))
+                .collect();
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!(
+                    "expected {name:?} to name one column, got {}; quote the one meant",
+                    names.join(" and ")
+                ),
+            });
+        }
+        matches.first().copied().ok_or_else(|| {
+            let mut available: Vec<&str> = self.schema.fields().iter().map(Field::name).collect();
+            available.sort_unstable();
+            Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!(
+                    "expected one of the columns {}, got {name:?}",
+                    available.join(", ")
+                ),
+            }
+        })
     }
 
     fn type_of(&self, expression: &Expression) -> Result<DataType> {
@@ -1198,6 +1236,40 @@ fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
         ),
         _ => (None, None),
     }
+}
+
+/// Return whether a `like` pattern still holds a wildcard after escaping.
+fn has_wildcard(pattern: &str, escape: Option<char>) -> bool {
+    let mut characters = pattern.chars();
+    while let Some(character) = characters.next() {
+        if Some(character) == escape {
+            let _ = characters.next();
+            continue;
+        }
+        if character == '%' || character == '_' {
+            return true;
+        }
+    }
+    false
+}
+
+/// The literal text a wildcard-free `like` pattern names.
+fn unescape(pattern: &str, escape: Option<char>) -> SmolStr {
+    let Some(escape) = escape else {
+        return SmolStr::new(pattern);
+    };
+    let mut text = String::with_capacity(pattern.len());
+    let mut characters = pattern.chars();
+    while let Some(character) = characters.next() {
+        if character == escape {
+            if let Some(escaped) = characters.next() {
+                text.push(escaped);
+            }
+            continue;
+        }
+        text.push(character);
+    }
+    SmolStr::new(text)
 }
 
 fn named(expression: &Expression, data_type: DataType, nullable: bool) -> Field {
