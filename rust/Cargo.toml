@@ -89,6 +89,11 @@ path = "benchmarks/uri.rs"
 harness = false
 
 [[bench]]
+name = "expression"
+path = "benchmarks/expression.rs"
+harness = false
+
+[[bench]]
 name = "json"
 path = "benchmarks/json.rs"
 harness = false
