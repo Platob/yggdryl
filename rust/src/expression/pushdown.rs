@@ -318,14 +318,9 @@ impl Bound {
     /// satisfies a conjunct does not have to re-test it row by row.
     #[must_use]
     pub fn statistics_certainty(&self, bounds: &Bounds) -> Option<bool> {
-        if bounds.row_count() == Some(0) {
-            return Some(false);
-        }
-        match prune(self.node(), self.schema(), bounds) {
-            Certainty::Always => Some(true),
-            Certainty::Never => Some(false),
-            Certainty::Unknown => None,
-        }
+        // The statistics target never fails: a statistic it cannot read only
+        // widens the answer to unknown, which is already the conservative one.
+        super::ApplyExpression::apply_expression(bounds, self).unwrap_or(None)
     }
 
     /// Split this predicate into the part a partition layout answers and the
@@ -355,6 +350,27 @@ impl Bound {
             answerable: Expression::all(answerable),
             remaining: Expression::all(remaining),
         }
+    }
+}
+
+/// One container's statistics apply to the three-valued certainty pruning
+/// runs on.
+///
+/// The implementation lives here rather than beside the trait because it is
+/// the pruning rules below asked as one question, and the rules and their
+/// caller belong on the same page.
+impl super::ApplyExpression for Bounds {
+    type Output = Option<bool>;
+
+    fn apply_expression(&self, bound: &Bound) -> crate::Result<Option<bool>> {
+        if self.row_count() == Some(0) {
+            return Ok(Some(false));
+        }
+        Ok(match prune(bound.node(), bound.schema(), self) {
+            Certainty::Always => Some(true),
+            Certainty::Never => Some(false),
+            Certainty::Unknown => None,
+        })
     }
 }
 

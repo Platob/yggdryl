@@ -38,11 +38,14 @@
 //! 4. **Evaluate** - the one [`Bound`] answers three ways: row at a time over
 //!    [`Value`](crate::Value), vectorized over an Arrow `RecordBatch`, and
 //!    three-valued over container statistics so a file, a manifest, or a
-//!    directory is skipped without being read.
+//!    directory is skipped without being read. Each way is one target's
+//!    [`ApplyExpression`] implementation - the target owns how an expression
+//!    applies to it, and `Bound`'s verbs are compositions over that.
 //!
 //! The scalar tier compiles with no Arrow at all; only the vectorized tier is
 //! behind the `arrow` feature.
 
+mod apply;
 mod bind;
 mod display;
 mod eval;
@@ -64,6 +67,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Result, TypedValue};
 
+pub use apply::{ApplyExpression, ApplyExpressionStream};
 pub use bind::{Bound, BoundStatement};
 pub use parser::{Direction, NullsOrder, Order, Projection, Statement, needs_quoting};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
