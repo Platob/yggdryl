@@ -95,6 +95,9 @@ impl Value {
             Self::Decimal(unscaled, scale) => decimal_data_type(*unscaled, *scale),
             Self::String(_) => Ok(DataType::Utf8),
             Self::Bytes(_) => Ok(DataType::Binary),
+            // The datatype model has no geospatial family yet, so a geometry
+            // names what it stores: the WKB bytes.
+            Self::Geospatial(_) => Ok(DataType::Binary),
             Self::Date(_) => Ok(DataType::Date32),
             Self::Time(_, unit) => DataType::time(*unit),
             Self::Timestamp(_, unit, zone) => {

@@ -9,6 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Field, Result};
 
 use super::{DataType, TimeUnit, UnionMode};
+use crate::enums::EdgeAlgorithm;
 
 impl DataType {
     /// Maximum nesting accepted by the recursive string parser.
@@ -130,6 +131,30 @@ impl fmt::Display for DataType {
                 fmt_field(formatter, &encoded.run_ends)?;
                 formatter.write_char(',')?;
                 fmt_field(formatter, &encoded.values)?;
+                formatter.write_char(')')
+            }
+            D::Variant => formatter.write_str("variant"),
+            // The defaults display bare, so `geometry` round-trips as itself
+            // and a parameter appears exactly when it says something.
+            D::Geometry(geospatial) => {
+                if geospatial.has_default_crs() {
+                    return formatter.write_str("geometry");
+                }
+                formatter.write_str("geometry(")?;
+                fmt_quoted(formatter, geospatial.crs())?;
+                formatter.write_char(')')
+            }
+            D::Geography(geospatial) => {
+                let algorithm = geospatial.algorithm().unwrap_or_default();
+                if geospatial.has_default_crs() && algorithm == EdgeAlgorithm::Spherical {
+                    return formatter.write_str("geography");
+                }
+                formatter.write_str("geography(")?;
+                fmt_quoted(formatter, geospatial.crs())?;
+                if algorithm != EdgeAlgorithm::Spherical {
+                    formatter.write_char(',')?;
+                    fmt_quoted(formatter, algorithm.as_str())?;
+                }
                 formatter.write_char(')')
             }
         }
@@ -318,9 +343,19 @@ impl<'a> Parser<'a> {
                 self.parse_list(ListKind::LargeListView, depth + 1)?
             }
             "struct" | "row" | "record" => self.parse_struct(depth + 1)?,
-            "union" | "denseunion" | "sparseunion" | "variant" => {
-                self.parse_union(&keyword, depth + 1)?
+            "union" | "denseunion" | "sparseunion" => self.parse_union(&keyword, depth + 1)?,
+            // The parenthesis disambiguates, deterministically: bare `variant`
+            // is the self-describing semi-structured datatype, and
+            // `variant(...)` with members stays the dense-union input sugar.
+            "variant" => {
+                if self.peek_opening().is_some() {
+                    self.parse_union(&keyword, depth + 1)?
+                } else {
+                    DataType::Variant
+                }
             }
+            "geometry" => self.parse_geospatial(false)?,
+            "geography" => self.parse_geospatial(true)?,
             "dictionary" | "dict" => self.parse_dictionary(depth + 1)?,
             "decimal" | "numeric" => {
                 let (precision, scale) = self.parse_decimal_parameters(38)?;
@@ -717,6 +752,52 @@ impl<'a> Parser<'a> {
         DataType::run_end_encoded(run_ends, values)
     }
 
+    /// Parse the optional `('crs')` / `('crs', 'algorithm')` parameters.
+    ///
+    /// Bare `geometry` and `geography` fill the defaults, so the parameters
+    /// appear exactly when they say something. A geometry given an edge
+    /// algorithm is refused by name at the algorithm's own position -
+    /// straight planar lines need none - and an unknown algorithm reports the
+    /// accepted vocabulary.
+    fn parse_geospatial(&mut self, geography: bool) -> Result<DataType> {
+        let build = |crs: Option<&str>, algorithm: Option<EdgeAlgorithm>| {
+            if geography {
+                DataType::geography(crs, algorithm)
+            } else {
+                DataType::geometry(crs)
+            }
+        };
+        let Some(close) = self.consume_opening() else {
+            return build(None, None).map_err(|error| self.error_here(format_smolstr!("{error}")));
+        };
+        // Empty parentheses are the bare spelling with punctuation.
+        if self.consume_symbol(close) {
+            return build(None, None).map_err(|error| self.error_here(format_smolstr!("{error}")));
+        }
+        let crs_position = self.current_position();
+        let crs = self.parse_text("a coordinate reference system")?;
+        let mut algorithm = None;
+        if self.consume_separator() {
+            let algorithm_position = self.current_position();
+            let name = self.parse_text("an edge algorithm")?;
+            if !geography {
+                return Err(self.error_at(
+                    algorithm_position,
+                    format_smolstr!(
+                        "expected no edge algorithm for geometry, got {name:?}; geography is the type whose edges take one"
+                    ),
+                ));
+            }
+            algorithm =
+                Some(EdgeAlgorithm::from_str(&name).map_err(|error| {
+                    self.error_at(algorithm_position, format_smolstr!("{error}"))
+                })?);
+        }
+        self.expect_symbol(close)?;
+        build(Some(&crs), algorithm)
+            .map_err(|error| self.error_at(crs_position, format_smolstr!("{error}")))
+    }
+
     fn parse_union(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
         let is_variant = keyword == "variant";
         let close = self
@@ -808,7 +889,7 @@ impl<'a> Parser<'a> {
             self.expect_symbol(close)?;
         }
         if is_variant {
-            DataType::variant(fields.into_iter().map(|(_, field)| field))
+            DataType::dense_union(fields.into_iter().map(|(_, field)| field))
         } else {
             DataType::union(fields, mode)
         }

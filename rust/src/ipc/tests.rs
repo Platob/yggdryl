@@ -237,3 +237,161 @@ mod pushdown {
         assert_eq!(whole.schema().fields().len(), 2);
     }
 }
+
+mod limits {
+    use std::sync::Arc;
+
+    use arrow_array::RecordBatchReader;
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::Int64Type;
+
+    use super::{Buffer, handle, reader, schema};
+    use crate::DataType;
+    use crate::generic::IORecordOptions;
+    use crate::io::IOBase;
+
+    /// Four stored rows whose symbols alternate, so a filter has rows to skip.
+    fn stored() -> Buffer {
+        let mut handle = handle("limited.arrows");
+        let batch = arrow_array::RecordBatch::try_new(
+            crate::arrow::schema_from_field(&schema()).unwrap(),
+            vec![
+                Arc::new(arrow_array::Int64Array::from(vec![1, 2, 3, 4])),
+                Arc::new(arrow_array::StringArray::from(vec![
+                    Some("MSFT"),
+                    Some("AAPL"),
+                    Some("MSFT"),
+                    Some("AAPL"),
+                ])),
+            ],
+        )
+        .unwrap();
+        let options = handle.record_options().unwrap();
+        handle
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        handle
+    }
+
+    /// The total rows a handle yields under `options`.
+    fn rows(handle: &Buffer, options: &crate::generic::RecordOptions) -> usize {
+        handle
+            .read_arrow_batch_reader(options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum()
+    }
+
+    #[test]
+    fn a_zero_limit_reads_the_declared_schema_and_no_batches() {
+        let handle = stored();
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_schema(schema())
+            .with_max_row_size(0);
+
+        let mut limited = handle.read_arrow_batch_reader(&options).unwrap();
+        // The schema is asserted, not only the emptiness: `Some(0)` is a
+        // valid ask that still says what the rows would have been.
+        assert_eq!(
+            limited.schema(),
+            crate::arrow::schema_from_field(&schema()).unwrap()
+        );
+        assert!(limited.next().is_none());
+    }
+
+    #[test]
+    fn a_zero_limit_without_a_declared_schema_reads_the_stored_one() {
+        let handle = stored();
+        let options = handle.record_options().unwrap().with_max_row_size(0);
+
+        let mut limited = handle.read_arrow_batch_reader(&options).unwrap();
+        assert_eq!(
+            limited.schema(),
+            crate::arrow::schema_from_field(&schema()).unwrap()
+        );
+        assert!(limited.next().is_none());
+    }
+
+    #[test]
+    fn a_zero_limit_flows_through_the_three_record_methods() {
+        let mut handle = handle("zero.arrows");
+        let options = handle.record_options().unwrap().with_schema(schema());
+        let zero = options.clone().with_max_row_size(0);
+
+        // A limited write truncates data the caller offered - here to
+        // nothing, so only the schema lands.
+        handle.write_arrow_batch_reader(reader(), &zero).unwrap();
+        assert_eq!(rows(&handle, &options), 0);
+
+        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        handle.append_arrow_batch_reader(reader(), &zero).unwrap();
+        assert_eq!(rows(&handle, &options), 2);
+    }
+
+    #[test]
+    fn a_limited_write_truncates_what_the_caller_offered() {
+        let mut handle = handle("truncated.arrows");
+        let options = handle.record_options().unwrap().with_schema(schema());
+
+        handle
+            .write_arrow_batch_reader(reader(), &options.clone().with_max_row_size(1))
+            .unwrap();
+        assert_eq!(rows(&handle, &options), 1);
+    }
+
+    #[test]
+    fn a_limit_counts_result_rows_after_projection_and_cast() {
+        let handle = stored();
+        // The declared root both projects the stream down to `id` and casts
+        // it to text, so what the limit counts is the shaped result.
+        let declared = DataType::from_fields([DataType::Utf8.required_field("id")])
+            .unwrap()
+            .required_field("row");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_schema(declared)
+            .with_max_row_size(2);
+
+        let batches: Vec<arrow_array::RecordBatch> = handle
+            .read_arrow_batch_reader(&options)
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].num_columns(), 1);
+        assert_eq!(batches[0].num_rows(), 2);
+        assert_eq!(batches[0].column(0).as_string::<i32>().value(1), "2");
+    }
+
+    #[test]
+    fn a_limit_with_a_filter_means_the_first_matching_rows() {
+        let handle = stored();
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_schema(schema())
+            .with_filter_partitions([("symbol", "AAPL")])
+            .with_max_row_size(1);
+
+        let batches: Vec<arrow_array::RecordBatch> = handle
+            .read_arrow_batch_reader(&options)
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect();
+        // The first stored row does not match, so a limit of one means the
+        // first *matching* row - id 2 - never simply the first row.
+        let total: usize = batches.iter().map(arrow_array::RecordBatch::num_rows).sum();
+        assert_eq!(total, 1);
+        let first = batches
+            .iter()
+            .find(|batch| batch.num_rows() > 0)
+            .expect("one matching row");
+        assert_eq!(first.column(0).as_primitive::<Int64Type>().value(0), 2);
+    }
+}

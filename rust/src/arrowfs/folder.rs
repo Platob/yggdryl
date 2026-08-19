@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFolder};
+use crate::io::{IOBase, IOFolder, Listing};
 use crate::{IOKind, MediaType, Result, Url};
 
 use super::system::{ArrowFileSystem, encoded_relative, filesystem_location};
@@ -13,7 +13,7 @@ use super::{File, location_url};
 ///
 /// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
 /// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
-/// [`IOBase::child_by`], and [`IOBase::parent`] - answered through one
+/// [`IOBase::child_by_path`], and [`IOBase::parent`] - answered through one
 /// [`ArrowFileSystem::list`] and [`ArrowFileSystem::file_info`] per ask.
 ///
 /// On an object store a directory is a prefix, so existence here is what the
@@ -81,19 +81,19 @@ impl Folder {
     pub fn create(&self) -> Result<()> {
         self.filesystem.create_dir(&self.location)
     }
+}
 
-    /// Return `entry`'s path relative to this directory, when it is beneath.
-    fn relative<'entry>(&self, entry: &'entry str) -> Option<&'entry str> {
-        let base = self.location.trim_matches('/');
-        let entry = entry.trim_matches('/');
-        if base.is_empty() {
-            return (!entry.is_empty()).then_some(entry);
-        }
-        entry
-            .strip_prefix(base)?
-            .strip_prefix('/')
-            .filter(|rest| !rest.is_empty())
+/// The part of `entry` that lies below `base`, or `None` when it does not.
+fn relative_to<'entry>(base: &str, entry: &'entry str) -> Option<&'entry str> {
+    let base = base.trim_matches('/');
+    let entry = entry.trim_matches('/');
+    if base.is_empty() {
+        return (!entry.is_empty()).then_some(entry);
     }
+    entry
+        .strip_prefix(base)?
+        .strip_prefix('/')
+        .filter(|rest| !rest.is_empty())
 }
 
 /// A foreign directory is the container role over an Arrow filesystem.
@@ -108,10 +108,13 @@ impl IOFolder for Folder {
         match self.filesystem.file_info(&self.location) {
             Ok(info) if info.kind == IOKind::Directory => true,
             Ok(info) if info.kind == IOKind::File => false,
+            // One entry is enough, and the listing is lazy, so this asks the
+            // filesystem for the first one and stops there.
             _ => self
                 .filesystem
                 .list(&self.location, false)
-                .is_ok_and(|entries| !entries.is_empty()),
+                .next()
+                .is_some_and(|entry| entry.is_ok()),
         }
     }
 
@@ -119,32 +122,41 @@ impl IOFolder for Folder {
         self.create()
     }
 
-    fn list_folder(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
-        let entries = self.filesystem.list(&self.location, recursive)?;
-        let mut found = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let Some(relative) = self.relative(&entry.path) else {
-                continue;
-            };
-            // A dot-prefixed name is private, and an entry inside a private
-            // directory stays private however deep the listing went.
-            if !include_private && relative.split('/').any(|segment| segment.starts_with('.')) {
-                continue;
-            }
-            let url = self.url.joinpath(&encoded_relative(relative))?;
-            found.push(match entry.kind {
-                IOKind::Directory => Holder::ArrowFolder(Self::new(self.filesystem.clone(), url)),
-                _ => Holder::ArrowFile(File::new(self.filesystem.clone(), url)),
-            });
-        }
-        // The vtable's listing order is the filesystem's own; sort so
-        // listings are stable.
-        found.sort_by(|left, right| {
-            left.url()
-                .map(ToString::to_string)
-                .cmp(&right.url().map(ToString::to_string))
-        });
-        Ok(found)
+    fn list_folder(&self, recursive: bool, include_private: bool) -> Listing {
+        // The vtable's own listing is already lazy and already ordered, so this
+        // is a projection of each entry as it arrives and holds nothing.
+        let filesystem = self.filesystem.clone();
+        let root = self.url.clone();
+        let location = self.location.clone();
+        Listing::new(
+            self.filesystem
+                .list(&self.location, recursive)
+                .filter_map(move |entry| {
+                    let entry = match entry {
+                        Ok(entry) => entry,
+                        Err(error) => return Some(Err(error)),
+                    };
+                    let relative = relative_to(&location, &entry.path)?;
+                    // A dot-prefixed name is private, and an entry inside a
+                    // private directory stays private however deep the listing
+                    // went.
+                    if !include_private
+                        && relative.split('/').any(|segment| segment.starts_with('.'))
+                    {
+                        return None;
+                    }
+                    let url = match root.joinpath(&encoded_relative(relative)) {
+                        Ok(url) => url,
+                        Err(error) => return Some(Err(error)),
+                    };
+                    Some(Ok(match entry.kind {
+                        IOKind::Directory => {
+                            Holder::ArrowFolder(Self::new(filesystem.clone(), url))
+                        }
+                        _ => Holder::ArrowFile(File::new(filesystem.clone(), url)),
+                    }))
+                }),
+        )
     }
 
     /// Delete the directory marker itself, leaving its entries alone.
@@ -165,12 +177,13 @@ impl IOFolder for Folder {
     ///
     /// An Arrow filesystem's delete does not distinguish an empty prefix from a
     /// populated one, so the emptiness answer cannot come from the store's own
-    /// failure here. The listing is one call and it is the *only* extra one -
-    /// the recursive path never makes it.
+    /// failure here. The listing is lazy, so it costs the *first entry* and
+    /// stops - and the recursive path never asks at all.
     fn folder_remove(&mut self, recursive: bool) -> Result<()> {
         if recursive {
             self.folder_clear()?;
-        } else if !self.list_folder(false, true)?.is_empty() {
+        } else if let Some(entry) = self.list_folder(false, true).next() {
+            entry?;
             return Err(crate::io::not_empty(&self.url));
         }
         self.delete_folder()
@@ -224,12 +237,12 @@ impl IOBase for Folder {
         )))
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         // `name` is URI-path text, not a raw object name: that is what the
         // reference backend resolves, what the trait documents (`.` and `..`
         // behave as `UriPath::joinpath` makes them), and what every generic
         // caller hands over - `read_arrow_lines` reopens a leaf through
-        // `parent().child_by(url.file_name())`, and a folder write routes
+        // `parent().child_by_path(url.file_name())`, and a folder write routes
         // rows by the segments under its root. Encoding here would escape
         // those escapes and address a different object. A caller holding a
         // raw filesystem name reaches it through `from_location`, which is
@@ -248,7 +261,7 @@ impl IOBase for Folder {
         )))
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         self.folder_ls(recursive, include_private)
     }
 

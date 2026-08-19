@@ -244,10 +244,10 @@ class TestBytesAndFolders:
 
         folder = IOBase.from_arrow_fs(local, lake.as_posix())
         assert folder.is_dir()
-        assert len(folder.iterdir()) == 2
-        assert len(folder.ls(recursive=True)) == 6
+        assert len(list(folder.iterdir())) == 2
+        assert len(list(folder.ls(recursive=True))) == 6
 
-        parts = folder.glob("**/*.parquet")
+        parts = list(folder.glob("**/*.parquet"))
         assert len(parts) == 2
 
         # A child still carries the filesystem, so it reads through it.
@@ -256,7 +256,7 @@ class TestBytesAndFolders:
         assert child.parent.name == "year=2024"
 
         # Hive partitions come off the location, as they do anywhere else.
-        selected = folder.children_where({"year": "2024"})
+        selected = list(folder.children_where({"year": "2024"}))
         assert len(selected) == 2
 
     def test_a_missing_location_reads_empty_rather_than_raising(
@@ -335,7 +335,7 @@ class TestCustomFilesystems:
 
         folder = IOBase.from_arrow_fs(filesystem, "lake")
         assert folder.is_dir()
-        assert len(folder.glob("**/*.parquet")) == 2
+        assert len(list(folder.glob("**/*.parquet"))) == 2
 
     def test_a_subtree_filesystem_is_transparent(
         self, local: pafs.LocalFileSystem, root: str
@@ -407,7 +407,7 @@ class TestCustomFilesystems:
         root_handle = stored.root
         assert root_handle.is_dir()
         assert "metadata" in [entry.name for entry in root_handle.iterdir()]
-        assert len(root_handle.glob("data/**/*.parquet")) == 1
+        assert len(list(root_handle.glob("data/**/*.parquet"))) == 1
 
     def test_a_handler_that_raises_surfaces_its_own_message(self) -> None:
         class Broken(MemoryHandler):

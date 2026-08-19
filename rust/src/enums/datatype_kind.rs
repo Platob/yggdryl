@@ -44,11 +44,24 @@ pub enum DataTypeKind {
     Dictionary,
     /// Run-end encoded values over run boundaries.
     RunEndEncoded,
+    /// Self-describing semi-structured values.
+    ///
+    /// A variant holds a tree that declares its own types per value, which is
+    /// why it is its own family: it is not `Binary` wearing metadata, and no
+    /// binary-family behavior is correct for it.
+    Variant,
+    /// Geometries and geographies carried as Well-Known Binary.
+    ///
+    /// One family for both: a geometry lives on a planar coordinate system
+    /// and a geography on a sphere or spheroid, and everything family-uniform
+    /// (WKB payloads, bounding-box statistics, the refusal of min/max) is the
+    /// same for the pair.
+    Geospatial,
 }
 
 impl DataTypeKind {
     /// Every category in canonical order.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::Null,
         Self::Boolean,
         Self::Integer,
@@ -63,6 +76,8 @@ impl DataTypeKind {
         Self::Map,
         Self::Dictionary,
         Self::RunEndEncoded,
+        Self::Variant,
+        Self::Geospatial,
     ];
 
     /// Parse a canonical lowercase category name.
@@ -93,6 +108,8 @@ impl DataTypeKind {
             Self::Map => "map",
             Self::Dictionary => "dictionary",
             Self::RunEndEncoded => "run_end_encoded",
+            Self::Variant => "variant",
+            Self::Geospatial => "geospatial",
         }
     }
 
@@ -102,7 +119,12 @@ impl DataTypeKind {
     /// nested only when their value type is, so this predicate reports `false`
     /// for them and [`Self::is_wrapper`] identifies them instead.
     pub const fn is_nested(self) -> bool {
-        matches!(self, Self::List | Self::Struct | Self::Union | Self::Map)
+        // A variant is nested - it holds a tree - where the geospatial pair
+        // is not: a geometry is one value however many vertices it carries.
+        matches!(
+            self,
+            Self::List | Self::Struct | Self::Union | Self::Map | Self::Variant
+        )
     }
 
     /// Return whether the category transparently encodes another value type.
@@ -122,7 +144,10 @@ impl DataTypeKind {
 
     /// Return whether values of the category have a total order.
     pub const fn is_ordered(self) -> bool {
-        !matches!(self, Self::Union | Self::Map | Self::Struct | Self::List)
+        !matches!(
+            self,
+            Self::Union | Self::Map | Self::Struct | Self::List | Self::Variant | Self::Geospatial
+        )
     }
 }
 

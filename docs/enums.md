@@ -35,7 +35,7 @@
     ```
 
 Two names describe one type. [`DataTypeId`](datatype.md) is the parameter-free identity of a
-variant - 41 of them - and `DataTypeKind` is the family that variant belongs to, 14 of them.
+variant - 44 of them - and `DataTypeKind` is the family that variant belongs to, 16 of them.
 Behavior that is uniform across a family dispatches on the kind instead of re-listing variants.
 Python and JavaScript have no separate class for either: both arrive as the canonical lowercase
 strings `DataType.id` and `DataType.kind` return.
@@ -85,8 +85,8 @@ The predicates over the id itself are Rust-only.
 ```rust
 use yggdryl::{DataTypeId, DataTypeKind};
 
-assert_eq!(DataTypeId::ALL.len(), 41);
-assert_eq!(DataTypeKind::ALL.len(), 14);
+assert_eq!(DataTypeId::ALL.len(), 44);
+assert_eq!(DataTypeKind::ALL.len(), 16);
 
 assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
 assert_eq!(DataTypeId::Utf8.fixed_byte_width(), None);
@@ -576,8 +576,47 @@ assert_eq!(UnionMode::Dense.to_string(), "dense");
 assert_ne!(UnionMode::Sparse, UnionMode::Dense);
 ```
 
-`DataType::union` takes the mode explicitly; `DataType::variant` - the constructor the bindings
-expose - always builds a dense union.
+`DataType::union` takes the mode explicitly; `DataType::dense_union` - the member-list sugar the
+bindings expose as `DataType.variant(fields)` - always builds a dense union. Bare
+`DataType::variant` is the self-describing [Variant datatype](datatype.md#variant-geometry-and-geography);
+the parenthesis disambiguates.
+
+## Edge algorithms
+
+`EdgeAlgorithm` names how the edge between two geography vertices is interpolated - the vocabulary
+Parquet's `GEOGRAPHY` logical type and Iceberg v3 share. A geometry connects vertices with straight
+planar lines, so it needs no algorithm, and a
+[geography](datatype.md#variant-geometry-and-geography) given none fills `Spherical`, the default
+both formats fill.
+
+!!! note "Rust only"
+    The bindings take the canonical lowercase name as the `algorithm` string of
+    `DataType.geography(crs, algorithm)`; the enum itself does not cross.
+
+```rust
+use yggdryl::{DataType, EdgeAlgorithm};
+
+assert_eq!(EdgeAlgorithm::ALL.len(), 5);
+assert_eq!(EdgeAlgorithm::default(), EdgeAlgorithm::Spherical);
+assert_eq!(EdgeAlgorithm::Vincenty.as_str(), "vincenty");
+
+// Parsing is ASCII case-insensitive; display is the canonical lowercase name.
+assert_eq!(EdgeAlgorithm::from_str("KARNEY")?, EdgeAlgorithm::Karney);
+assert_eq!(EdgeAlgorithm::Andoyer.to_string(), "andoyer");
+
+// An unknown name reports the input and the whole accepted vocabulary.
+let error = EdgeAlgorithm::from_str("euclidean").unwrap_err();
+assert!(error.to_string().contains("expected one of spherical"));
+
+// The value lives on a geography datatype and nowhere else.
+let vincenty = DataType::geography(None, Some(EdgeAlgorithm::Vincenty))?;
+assert_eq!(vincenty.to_string(), "geography(\"OGC:CRS84\",\"vincenty\")");
+```
+
+`Spherical` is great-circle edges on a perfect sphere; the other four are geodesic edges on a
+spheroid, named for their methods: Vincenty's iterative formulae, the Thomas cubic-series and
+Andoyer first-order approximations, and Karney's exact algorithm. The workspace stores and spells
+the choice; it does not evaluate geodesics.
 
 ## Timezone
 

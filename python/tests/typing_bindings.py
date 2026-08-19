@@ -33,7 +33,10 @@ from yggdryl import (
     zstd,
 )
 from yggdryl.fields import (
+    DenseUnionField,
     FixedSizeListField,
+    GeographyField,
+    GeometryField,
     Int32Field,
     ListField,
     TimeField,
@@ -136,19 +139,33 @@ typed_struct_value: Record | Mapping[str, object] | None = (
 typed_struct_data_type_value: Record | Mapping[str, object] = (
     typed_struct.data_type.default_pyvalue()
 )
-variant_data_type: DataType = DataType.variant(
+dense_union_data_type: DataType = DataType.variant(
     [
         fields.int64("integer", nullable=False),
         fields.utf8("text", nullable=False),
     ]
 )
-typed_variant: VariantField = fields.variant(
+typed_dense_union: DenseUnionField = fields.dense_union(
     "payload",
-    tuple(variant_data_type),
+    tuple(dense_union_data_type),
     nullable=False,
 )
-typed_variant_kind: Literal["union"] = typed_variant.data_type.id
-typed_variant_value: object = typed_variant.default_pyvalue()
+typed_dense_union_kind: Literal["union"] = typed_dense_union.data_type.id
+typed_dense_union_value: object = typed_dense_union.default_pyvalue()
+
+# The parenthesis disambiguates: a bare DataType.variant() is the Variant
+# datatype, and the three geospatial-era factories carry their own literals.
+bare_variant_data_type: DataType = DataType.variant()
+typed_variant: VariantField = fields.variant("payload", nullable=False)
+typed_variant_kind: Literal["variant"] = typed_variant.data_type.id
+geometry_data_type: DataType = DataType.geometry("EPSG:3857")
+typed_geometry: GeometryField = fields.geometry("shape", nullable=False)
+typed_geometry_kind: Literal["geometry"] = typed_geometry.data_type.id
+typed_geometry_value: bytes = typed_geometry.data_type.default_pyvalue()
+geography_data_type: DataType = DataType.geography("OGC:CRS84", "karney")
+typed_geography: GeographyField = fields.geography("region", "OGC:CRS84", "vincenty")
+typed_geography_kind: Literal["geography"] = typed_geography.data_type.id
+typed_geography_value: bytes | None = typed_geography.default_pyvalue()
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
 # becomes unused if a typed view regresses to ``Any`` or drops its nullable /
@@ -569,8 +586,8 @@ statement_projections: list[str] = statement.projections
 statement_predicate: Expression | None = statement.predicate
 statement_limit: int | None = statement.limit
 
-expression_matched: list[IOBase] = IOBase("file:///lake").children_matching(
-    "&holder.partition['year'] = '2024'"
+expression_matched: list[IOBase] = list(
+    IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
 )
 
 assert str(expression)

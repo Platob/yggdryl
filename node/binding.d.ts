@@ -6,6 +6,7 @@ export {
   Field,
   IOBase,
   LineIterator,
+  Listing,
   MediaType,
   MimeType,
   ProtocolMetadata,
@@ -33,6 +34,7 @@ import type {
   Field,
   IOBase,
   LineIterator,
+  Listing,
   MediaType,
   MetadataEntry,
   MimeType,
@@ -138,6 +140,9 @@ export type DataTypeId =
   | 'decimal256'
   | 'map'
   | 'run_end_encoded'
+  | 'variant'
+  | 'geometry'
+  | 'geography'
 
 /**
  * The coarse family one datatype variant belongs to.
@@ -160,6 +165,8 @@ export type DataTypeKind =
   | 'map'
   | 'dictionary'
   | 'run_end_encoded'
+  | 'variant'
+  | 'geospatial'
 
 interface DataTypeKindById {
   null: 'null'
@@ -203,6 +210,9 @@ interface DataTypeKindById {
   decimal256: 'decimal'
   map: 'map'
   run_end_encoded: 'run_end_encoded'
+  variant: 'variant'
+  geometry: 'geospatial'
+  geography: 'geospatial'
 }
 
 /** The family a variant identity belongs to, as the native core reports it. */
@@ -347,8 +357,14 @@ export type UnionValue<V = unknown, I extends number = number> = Readonly<{
   value: V
 }>
 export type UnionField<V = UnionValue> = FieldOf<'union', V>
-/** A finite Variant is the existing dense Arrow Union field representation. */
-export type VariantField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
+/** The dense Arrow Union with sequential type IDs, as one field type. */
+export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
+/** The self-describing semi-structured Variant datatype, as one field type. */
+export type VariantField = FieldOf<'variant', unknown>
+/** A planar geometry column carrying Well-Known Binary payloads. */
+export type GeometryField = FieldOf<'geometry', Uint8Array>
+/** A geography column: WKB features on a sphere or spheroid. */
+export type GeographyField = FieldOf<'geography', Uint8Array>
 export type DictionaryField<V = unknown> = FieldOf<'dictionary', V>
 export type Decimal32Field = FieldOf<'decimal32', bigint>
 export type Decimal64Field = FieldOf<'decimal64', bigint>
@@ -505,11 +521,22 @@ export interface FieldsNamespace {
     members: Iterable<readonly [number, Field]>,
     options: FieldOptions,
   ): UnionField
-  variant(
+  denseUnion(
     name: string,
     members: Iterable<Field>,
     options?: FieldOptions,
-  ): VariantField
+  ): DenseUnionField
+  variant(name: string, options?: FieldOptions): VariantField
+  geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
+  geometry(name: string, options: FieldOptions): GeometryField
+  geography(
+    name: string,
+    crs?: string,
+    algorithm?: string,
+    options?: FieldOptions,
+  ): GeographyField
+  geography(name: string, crs: string, options: FieldOptions): GeographyField
+  geography(name: string, options: FieldOptions): GeographyField
   dictionary(
     name: string,
     key: DataTypeInput,
@@ -618,7 +645,7 @@ type TuplePositions<T extends readonly unknown[]> = Exclude<
   keyof readonly unknown[]
 >
 type TuplePositionNumber<P> = P extends `${infer I extends number}` ? I : never
-type VariantMembersValue<Fs extends readonly AnyField[]> =
+type DenseUnionMembersValue<Fs extends readonly AnyField[]> =
   number extends Fs['length']
     ? UnionValue<TypedFieldValue<Fs[number]>, number>
     : {
@@ -626,7 +653,7 @@ type VariantMembersValue<Fs extends readonly AnyField[]> =
           ? UnionValue<TypedFieldValue<Fs[P]>, TuplePositionNumber<P>>
           : never
       }[TuplePositions<Fs>]
-type VariantMembersInput<Fs extends readonly AnyField[]> =
+type DenseUnionMembersInput<Fs extends readonly AnyField[]> =
   number extends Fs['length']
     ? UnionValue<TypedFieldInput<Fs[number]>, number>
     : {
@@ -690,7 +717,13 @@ export interface FieldsNamespace {
   struct<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, children: Fs, options?: O): NamedField<'struct', StructValue<Fs>, N, O, StructInputValue<Fs>>
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput = undefined>(name: N, members: Ms, mode?: 'sparse' | 'dense', options?: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput>(name: N, members: Ms, options: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
-  variant<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', VariantMembersValue<Fs>, N, O, VariantMembersInput<Fs>>
+  denseUnion<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', DenseUnionMembersValue<Fs>, N, O, DenseUnionMembersInput<Fs>>
+  variant<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'variant', unknown, N, O>
+  geometry<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, options?: O): NamedField<'geometry', Uint8Array, N, O>
+  geometry<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geometry', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, algorithm?: string, options?: O): NamedField<'geography', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput>(name: N, crs: string, options: O): NamedField<'geography', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geography', Uint8Array, N, O>
   dictionary<const N extends string, K extends DataTypeInput, V extends DataTypeInput, const O extends FieldOptionsInput = undefined>(name: N, key: K, value: V, options?: O): NamedField<'dictionary', TypedDataTypeValue<V>, N, O, TypedDataTypeInput<V>>
   decimal<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
   decimal<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
@@ -887,12 +920,15 @@ declare module './index' {
   namespace DataType {
     function fromArrow(value: DataType | string | ArrowStringCompatible): DataType
     function fromFields(fields: Iterable<Field>): DataType
+    // The parenthesis disambiguates: bare `variant()` is the self-describing
+    // Variant datatype; `variant(fields)` stays the dense-union sugar.
+    function variant(): TypedDataType<'variant', unknown>
     function variant<const Fs extends readonly AnyField[]>(
       fields: Fs,
     ): TypedDataType<
       'union',
-      VariantMembersValue<Fs>,
-      VariantMembersInput<Fs>
+      DenseUnionMembersValue<Fs>,
+      DenseUnionMembersInput<Fs>
     >
     function variant(fields: Iterable<Field>): DataType
   }
@@ -1021,12 +1057,19 @@ declare module './index' {
   /** Property updates as an object, a `Map`, or an entry sequence. */
   type PropertyUpdates = FieldMetadataInput
 
+  /**
+   * A listing is a JavaScript iterable and iterator at once, so `for...of`
+   * walks it and `[...listing]` drains it. Nothing is collected on the way
+   * across the boundary: the walk runs as the iterator is drained.
+   */
+  interface Listing extends Iterable<IOBase> {}
+
   /** Iterating a handle lists its immediate children. */
   interface IOBase extends Iterable<IOBase>, Disposable {
     /** Resolve a child of this resource, as `path.join`. */
     joinpath(...others: string[]): IOBase
     /** Leaves beneath this one carrying every requested partition pair. */
-    childrenWhere(filters: PartitionFilters, includePrivate?: boolean): IOBase[]
+    childrenWhere(filters: PartitionFilters, includePrivate?: boolean): Listing
 
     /** Read the canonical non-null struct root `Field` of this resource. */
     readArrowField(options?: RecordOptionsInput | null): Field
@@ -1138,6 +1181,27 @@ declare module './index' {
   namespace BatchReader {
     /** Build a reader from a reader, an Arrow JS value, or Arrow IPC bytes. */
     function from(source: BatchSource, rootName?: string): BatchReader
+  }
+
+  /**
+   * The catalog's names iterator is a JS iterable and iterator at once, so
+   * `for...of` walks it and `[...keys]` drains it - nothing is collected on
+   * the way across the boundary.
+   */
+  interface IcebergNames extends Iterable<string> {}
+
+  /**
+   * The collection views are Map-like: `for...of` yields the names lazily,
+   * and `values`/`entries` open each named resource through `get`, one at a
+   * time.
+   */
+  interface Namespaces extends Iterable<string> {
+    values(): IterableIterator<Namespace>
+    entries(): IterableIterator<readonly [string, Namespace]>
+  }
+  interface Tables extends Iterable<string> {
+    values(): IterableIterator<Table>
+    entries(): IterableIterator<readonly [string, Table]>
   }
 
   interface Table {

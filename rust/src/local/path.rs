@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use super::File;
 use super::Folder;
 use crate::generic::Holder;
-use crate::io::{IOBase, IOPath};
+use crate::io::{IOBase, IOPath, Listing};
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 
 /// A local location that resolves to the implementation it turns out to need.
@@ -286,7 +286,7 @@ impl IOBase for Path {
         Self::from_url(parent).ok().map(Holder::Path)
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         Ok(Holder::Path(Self::from_url(self.url.joinpath(name)?)?))
     }
 
@@ -324,11 +324,14 @@ impl IOBase for Path {
         }
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         if !self.kind().is_container() {
             // A leaf contains nothing; that is not an error.
-            return Ok(Vec::new());
+            return Listing::empty();
         }
-        self.as_directory()?.ls(recursive, include_private)
+        match self.as_directory() {
+            Ok(directory) => directory.ls(recursive, include_private),
+            Err(error) => Listing::failing(error),
+        }
     }
 }

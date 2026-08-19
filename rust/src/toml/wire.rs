@@ -45,8 +45,8 @@ fn decode_envelope(body: &Value) -> Option<Result<Value>> {
     // mapping is written back through the `mapping` envelope unchanged.
     let names: &[&str] = match kind {
         "null" => &["version", "type"],
-        "bytes" | "u64" | "i128" | "u128" | "decimal" | "date" | "time" | "timestamp"
-        | "duration" | "mapping" | "value" => &["version", "type", "value"],
+        "bytes" | "geospatial" | "u64" | "i128" | "u128" | "decimal" | "date" | "time"
+        | "timestamp" | "duration" | "mapping" | "value" => &["version", "type", "value"],
         _ => return None,
     };
     if !has_exact_fields(fields, names) {
@@ -56,6 +56,7 @@ fn decode_envelope(body: &Value) -> Option<Result<Value>> {
     Some(match kind {
         "null" => Ok(Value::Null),
         "bytes" => decode_bytes(fields),
+        "geospatial" => decode_geospatial(fields),
         "u64" => decode_integer(fields, "u64", str::parse::<u64>).map(Value::U64),
         "i128" => decode_integer(fields, "i128", str::parse::<i128>).map(Value::I128),
         "u128" => decode_integer(fields, "u128", str::parse::<u128>).map(Value::U128),
@@ -78,6 +79,17 @@ fn decode_bytes(fields: &[(Value, Value)]) -> Result<Value> {
         .decode(encoded)
         .map(Value::from)
         .map_err(|_| codec_error("invalid base64 bytes envelope"))
+}
+
+/// Read the base64 WKB a geospatial envelope carries, keeping its kind.
+fn decode_geospatial(fields: &[(Value, Value)]) -> Result<Value> {
+    let encoded = field(fields, "value")
+        .and_then(Value::as_str)
+        .ok_or_else(|| codec_error("geospatial envelope value must be base64 text"))?;
+    base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map(|decoded| Value::Geospatial(decoded.into()))
+        .map_err(|_| codec_error("invalid base64 geospatial envelope"))
 }
 
 fn decode_integer<T>(
@@ -569,6 +581,7 @@ fn is_enveloped(value: &Value) -> bool {
         | Value::I128(_)
         | Value::U128(_)
         | Value::Bytes(_)
+        | Value::Geospatial(_)
         | Value::Decimal(..) => true,
     }
 }
@@ -659,6 +672,7 @@ fn check_value_depth(value: &Value, parent_depth: usize, maximum: usize) -> Resu
         | Value::I128(_)
         | Value::U128(_)
         | Value::Bytes(_)
+        | Value::Geospatial(_)
         | Value::Decimal(..)
         | Value::Date(_)
         | Value::Time(..)
@@ -819,6 +833,7 @@ fn write_value<W: Write>(
         | Value::I128(_)
         | Value::U128(_)
         | Value::Bytes(_)
+        | Value::Geospatial(_)
         | Value::Decimal(..)
         | Value::Mapping(_) => write_wrapped_envelope(writer, value)?,
     }
@@ -842,6 +857,16 @@ fn write_envelope_body<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
         Value::Null => writer.write_all(b"{ version = 1, type = \"null\" }")?,
         Value::Bytes(value) => {
             writer.write_all(b"{ version = 1, type = \"bytes\", value = ")?;
+            write_quoted(
+                writer,
+                &base64::engine::general_purpose::STANDARD.encode(value),
+            )?;
+            writer.write_all(b" }")?;
+        }
+        // A geometry is the bytes envelope under its own kind, so the WKB
+        // reads back as the geospatial value it left as.
+        Value::Geospatial(value) => {
+            writer.write_all(b"{ version = 1, type = \"geospatial\", value = ")?;
             write_quoted(
                 writer,
                 &base64::engine::general_purpose::STANDARD.encode(value),

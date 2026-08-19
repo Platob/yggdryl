@@ -293,7 +293,13 @@ class DataType:
     @staticmethod
     def _union(fields: Iterable[tuple[int, Field]], mode: str) -> DataType: ...
     @staticmethod
-    def variant(fields: Iterable[Field]) -> DataType: ...
+    def variant(fields: Iterable[Field] | None = None) -> DataType: ...
+    @staticmethod
+    def geometry(crs: str | None = None) -> DataType: ...
+    @staticmethod
+    def geography(
+        crs: str | None = None, algorithm: str | None = None
+    ) -> DataType: ...
     @staticmethod
     def _dictionary(key: object, value: object) -> DataType: ...
     def _dictionary_value_type(self) -> DataType: ...
@@ -1086,26 +1092,22 @@ class IOBase:
     def is_file(self) -> bool: ...
     def is_atomic(self) -> bool: ...
     def is_tabular(self) -> bool: ...
-    def iterdir(self, include_private: bool = False) -> list[IOBase]: ...
+    def iterdir(self, include_private: bool = False) -> Listing: ...
     def ls(
         self, recursive: bool = False, include_private: bool = False
-    ) -> list[IOBase]: ...
-    def glob(
-        self, pattern: str, include_private: bool = False
-    ) -> list[IOBase]: ...
-    def rglob(
-        self, pattern: str, include_private: bool = False
-    ) -> list[IOBase]: ...
+    ) -> Listing: ...
+    def glob(self, pattern: str, include_private: bool = False) -> Listing: ...
+    def rglob(self, pattern: str, include_private: bool = False) -> Listing: ...
     def children_matching(
         self,
         filter: Expression | str,
         include_private: bool = False,
-    ) -> list[IOBase]: ...
+    ) -> Listing: ...
     def children_where(
         self,
         filters: Mapping[str, str] | Iterable[tuple[str, str]],
         include_private: bool = False,
-    ) -> list[IOBase]: ...
+    ) -> Listing: ...
     def read_bytes(self) -> bytes: ...
     def read_text(self) -> str: ...
     # The write side takes `bytes` alone because the binding borrows the buffer
@@ -1200,6 +1202,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1216,6 +1220,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1233,6 +1239,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1250,6 +1258,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1266,6 +1276,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1283,6 +1295,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1300,6 +1314,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1317,6 +1333,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1333,6 +1351,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1351,6 +1371,8 @@ class IOBase:
         schema: FieldLike | None = None,
         root_name: str | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1369,6 +1391,8 @@ class IOBase:
         schema: FieldLike | None = None,
         root_name: str | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1387,6 +1411,8 @@ class IOBase:
         schema: FieldLike | None = None,
         root_name: str | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1403,6 +1429,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1419,6 +1447,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1436,6 +1466,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1453,6 +1485,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1469,6 +1503,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1485,6 +1521,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1502,6 +1540,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1519,6 +1559,8 @@ class IOBase:
         root_name: str | None = None,
         safe: bool | None = None,
         batch_size: int | None = None,
+        max_row_size: int | None = None,
+        max_byte_size: int | None = None,
         level: int | None = None,
         merge_by_names: Iterable[str] | None = None,
         select_by_names: Iterable[str] | None = None,
@@ -1570,6 +1612,14 @@ class RecordOptions:
     def batch_size(self) -> int | None: ...
     @batch_size.setter
     def batch_size(self, batch_size: int | None) -> None: ...
+    @property
+    def max_row_size(self) -> int | None: ...
+    @max_row_size.setter
+    def max_row_size(self, max_row_size: int | None) -> None: ...
+    @property
+    def max_byte_size(self) -> int | None: ...
+    @max_byte_size.setter
+    def max_byte_size(self, max_byte_size: int | None) -> None: ...
     @property
     def level(self) -> int: ...
     @level.setter
@@ -1670,8 +1720,19 @@ class IcebergOptions:
     def data_format(self, format: str) -> None: ...
     def __repr__(self) -> str: ...
 
+class IcebergNames:
+    """The lazy names iterator every catalog collection view walks.
+
+    Nothing is collected crossing the boundary; wrap it in ``list()`` when a
+    sequence is wanted, and that costs the whole listing.
+    """
+
+    def __iter__(self) -> IcebergNames: ...
+    def __next__(self) -> str: ...
+
 class Namespace:
-    """One namespace of a catalog: identity, plus its two collection views."""
+    """One namespace of a catalog: identity, properties, plus its two
+    collection views."""
 
     @property
     def name(self) -> str: ...
@@ -1679,6 +1740,13 @@ class Namespace:
     def tables(self) -> Tables: ...
     @property
     def namespaces(self) -> Namespaces: ...
+    @property
+    def properties(self) -> dict[str, str]: ...
+    def update_properties(
+        self,
+        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        removes: Iterable[str] | None = None,
+    ) -> None: ...
     def __repr__(self) -> str: ...
 
 class Namespaces:
@@ -1690,8 +1758,11 @@ class Namespaces:
 
     def __getitem__(self, name: str) -> Namespace: ...
     def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> Iterator[str]: ...
+    def __iter__(self) -> IcebergNames: ...
     def __len__(self) -> int: ...
+    def keys(self) -> IcebergNames: ...
+    def values(self) -> Iterator[Namespace]: ...
+    def items(self) -> Iterator[tuple[str, Namespace]]: ...
     def create(self, name: str) -> Namespace: ...
     def open_or_create(self, name: str) -> Namespace: ...
     def __repr__(self) -> str: ...
@@ -1706,8 +1777,11 @@ class Tables:
 
     def __getitem__(self, name: str) -> Table: ...
     def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> Iterator[str]: ...
+    def __iter__(self) -> IcebergNames: ...
     def __len__(self) -> int: ...
+    def keys(self) -> IcebergNames: ...
+    def values(self) -> Iterator[Table]: ...
+    def items(self) -> Iterator[tuple[str, Table]]: ...
     def create(self, name: str, schema: FieldLike | Iterable[Field]) -> Table: ...
     def open_or_create(
         self, name: str, schema: FieldLike | Iterable[Field]
@@ -1754,14 +1828,17 @@ class Catalog:
     def warehouse(self) -> IOBase: ...
     @property
     def namespaces(self) -> Namespaces: ...
-    def create_table(
-        self, name: str, schema: FieldLike | Iterable[Field]
-    ) -> Table: ...
+    @property
+    def tables(self) -> Tables: ...
+    @property
+    def properties(self) -> dict[str, str]: ...
+    def update_properties(
+        self,
+        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        removes: Iterable[str] | None = None,
+    ) -> None: ...
     def table(self, name: str) -> Table: ...
-    def has_table(self, name: str) -> bool: ...
-    def open_or_create_table(
-        self, name: str, schema: FieldLike | Iterable[Field]
-    ) -> Table: ...
+    def namespace(self, name: str) -> Namespace: ...
     def append(
         self,
         name: str,
@@ -1794,8 +1871,6 @@ class Catalog:
         compact_after_commits: int | None = None,
         data_format: str | None = None,
     ) -> Table: ...
-    def list_namespaces(self, parent: str | None = None) -> list[str]: ...
-    def list_tables(self, namespace: str) -> list[str]: ...
     def __repr__(self) -> str: ...
 
 class Table:
@@ -2241,6 +2316,16 @@ class LineIterator:
 
     def __iter__(self) -> LineIterator: ...
     def __next__(self) -> str: ...
+
+class Listing:
+    """The entries of one listing, one at a time, exactly as `pathlib` walks.
+
+    Lazy: the walk runs as the iterator is drained, so wrap it in `list()`
+    when a sequence is wanted - and that costs the whole walk.
+    """
+
+    def __iter__(self) -> Listing: ...
+    def __next__(self) -> IOBase: ...
 
 def gzip_loads(data: bytes) -> bytes: ...
 def gzip_dumps(data: bytes, level: int | None = None) -> bytes: ...

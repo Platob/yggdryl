@@ -67,9 +67,12 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "run_end_encoded": fields.run_end_encoded(
             "value", run_ends, values
         ),
+        "variant": fields.variant("value"),
+        "geometry": fields.geometry("value"),
+        "geography": fields.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 41
+    assert len(values_by_kind) == 44
     assert set(values_by_kind) == {
         value.data_type.id for value in values_by_kind.values()
     }
@@ -100,13 +103,13 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     assert values.to_arrow().metadata == {b"owner": b"events"}
 
 
-def test_variant_factory_is_a_typed_union_alias_with_native_ids() -> None:
+def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
     members = (
         fields.int64("integer", nullable=False, metadata={"branch": "number"}),
         fields.utf8("text", nullable=False),
     )
 
-    value: fields.VariantField = fields.variant(
+    value: fields.DenseUnionField = fields.dense_union(
         "payload",
         (member for member in members),
         nullable=False,
@@ -115,7 +118,7 @@ def test_variant_factory_is_a_typed_union_alias_with_native_ids() -> None:
     arrow = value.to_arrow()
 
     assert type(value) is Field
-    assert fields.VariantField is Field
+    assert fields.DenseUnionField is Field
     assert value.data_type.id == "union"
     assert tuple(value.data_type) == members
     assert arrow.type.mode == "dense"

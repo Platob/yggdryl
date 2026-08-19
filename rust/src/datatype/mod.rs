@@ -14,6 +14,7 @@ mod comparison;
 mod compatibility;
 mod default;
 mod floating;
+mod geospatial;
 mod integer;
 mod nested;
 mod parser;
@@ -21,11 +22,17 @@ mod scalar;
 pub(crate) mod serde;
 mod temporal;
 
-pub(crate) use arrow::arrow_data_type_to_ffi;
+pub(crate) use arrow::{arrow_data_type_to_ffi, is_variant_storage};
 
 pub use crate::enums::{TimeUnit, UnionMode};
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
+};
+#[cfg(feature = "parquet")]
+pub(crate) use geospatial::DEFAULT_CRS;
+pub use geospatial::GeospatialType;
+pub(crate) use geospatial::{
+    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,
 };
 pub use nested::{DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields};
 
@@ -125,6 +132,18 @@ pub enum DataType {
     Map(Arc<MapType>),
     /// Run-end encoding child fields.
     RunEndEncoded(Arc<RunEndEncodedType>),
+    /// Self-describing semi-structured values.
+    ///
+    /// A variant value is a [`crate::Value`] - a tree that declares its own
+    /// types per value - so the type takes no parameters: shredding is a
+    /// physical layout, not part of the logical type. Bare `variant` is this
+    /// type; `variant(...)` with members stays the dense-union input sugar,
+    /// and the parenthesis is what disambiguates.
+    Variant,
+    /// Planar geospatial features, carried as Well-Known Binary.
+    Geometry(Arc<GeospatialType>),
+    /// Geospatial features on a sphere or spheroid, carried as WKB.
+    Geography(Arc<GeospatialType>),
 }
 
 #[cfg(test)]

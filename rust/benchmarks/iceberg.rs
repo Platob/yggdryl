@@ -662,6 +662,163 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// Name resolution through the catalog hierarchy, with backend calls counted.
+///
+/// Removing a probe is a round-trip saving before it is a CPU saving, so the
+/// group prints the exact number of Arrow-filesystem calls each operation
+/// makes once per run beside Criterion's wall time - a regression in either
+/// is a regression.
+fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use yggdryl::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, MemoryFileSystem};
+    use yggdryl::iceberg::Catalog;
+
+    /// A memory filesystem that counts every vtable call reaching it.
+    #[derive(Debug, Default)]
+    struct Counting {
+        inner: MemoryFileSystem,
+        calls: AtomicUsize,
+    }
+
+    impl Counting {
+        fn count(&self) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    impl ArrowFileSystem for Counting {
+        fn type_name(&self) -> &str {
+            self.inner.type_name()
+        }
+
+        fn file_info(&self, path: &str) -> yggdryl::Result<FileInfo> {
+            self.count();
+            self.inner.file_info(path)
+        }
+
+        fn list(&self, path: &str, recursive: bool) -> FileInfos {
+            self.count();
+            self.inner.list(path, recursive)
+        }
+
+        fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
+            self.count();
+            self.inner.read_range(path, offset, buffer)
+        }
+
+        fn write_full(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+            self.count();
+            self.inner.write_full(path, bytes)
+        }
+
+        fn create_dir(&self, path: &str) -> yggdryl::Result<()> {
+            self.count();
+            self.inner.create_dir(path)
+        }
+
+        fn delete_file(&self, path: &str) -> yggdryl::Result<()> {
+            self.count();
+            self.inner.delete_file(path)
+        }
+    }
+
+    let schema = || {
+        DataType::from_fields([DataType::Int64.required_field("id")])
+            .expect("a valid struct root")
+            .required_field("row")
+    };
+    let counted = || {
+        let filesystem = Arc::new(Counting::default());
+        let warehouse = yggdryl::arrowfs::Folder::from_location(
+            Arc::clone(&filesystem) as Arc<dyn ArrowFileSystem>,
+            "warehouse",
+        )
+        .expect("a valid location");
+        (filesystem, Catalog::new(warehouse))
+    };
+
+    let mut group = criterion.benchmark_group("catalog_resolve");
+
+    // One populated catalog for the two read legs.
+    let (filesystem, catalog) = counted();
+    catalog
+        .tables()
+        .create("sales.eu.orders", schema())
+        .expect("a creatable table");
+
+    // The backend-call counts, printed once per leg so the round trips are a
+    // number in the report rather than a claim in a comment.
+    let cost = |operation: &dyn Fn()| {
+        let before = filesystem.calls.load(Ordering::Relaxed);
+        operation();
+        filesystem.calls.load(Ordering::Relaxed) - before
+    };
+    println!(
+        "catalog_resolve backend calls: dotted get = {}, cascaded get = {}",
+        cost(&|| {
+            catalog.table("sales.eu.orders").expect("an openable table");
+        }),
+        cost(&|| {
+            catalog
+                .namespaces()
+                .get("sales")
+                .expect("a namespace")
+                .namespaces()
+                .get("eu")
+                .expect("a namespace")
+                .tables()
+                .get("orders")
+                .expect("an openable table");
+        }),
+    );
+
+    group.bench_function("get/dotted", |bencher| {
+        bencher.iter(|| {
+            black_box(&catalog)
+                .table("sales.eu.orders")
+                .expect("an openable table")
+        });
+    });
+
+    group.bench_function("get/cascade", |bencher| {
+        bencher.iter(|| {
+            black_box(&catalog)
+                .namespaces()
+                .get("sales")
+                .expect("a namespace")
+                .namespaces()
+                .get("eu")
+                .expect("a namespace")
+                .tables()
+                .get("orders")
+                .expect("an openable table")
+        });
+    });
+
+    // The create leg builds a fresh warehouse per iteration: the point is the
+    // missing three-level ancestry coming into being from the metadata write.
+    let mut ancestry_calls = None;
+    group.bench_function("create/missing-ancestry", |bencher| {
+        bencher.iter_batched(
+            counted,
+            |(filesystem, catalog)| {
+                let before = filesystem.calls.load(Ordering::Relaxed);
+                catalog
+                    .tables()
+                    .create("a.b.c.orders", schema())
+                    .expect("a creatable table");
+                ancestry_calls.get_or_insert(filesystem.calls.load(Ordering::Relaxed) - before);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    if let Some(calls) = ancestry_calls {
+        println!("catalog_resolve backend calls: create into missing ancestry = {calls}");
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     iceberg,
     plan_benchmarks,
@@ -671,7 +828,8 @@ criterion_group!(
     compact_benchmarks,
     merge_benchmarks,
     read_benchmarks,
-    contended_commit_benchmarks
+    contended_commit_benchmarks,
+    catalog_resolve_benchmarks
 );
 
 fn main() {

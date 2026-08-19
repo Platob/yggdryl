@@ -216,11 +216,13 @@ can ignore recursive metadata with `equals(other, false)`, while `showDiffs`
 returns a UTF-8 iterator and `showDiff` joins its terminal-readable lines.
 
 Finite alternatives can use `DataType.variant(fields)` or
-`fields.variant(name, fields, options)`. Both assign dense Arrow Union type IDs
-in declaration order and retain the ordinary `union` kind; Record values use
-the explicit `{ typeId, value }` shape. Iceberg/Parquet Variant and PostgreSQL
-`json/jsonb` remain explicit adapter formats, not aliases for this tagged Arrow
-layout.
+`fields.denseUnion(name, fields, options)`. Both assign dense Arrow Union type
+IDs in declaration order and retain the ordinary `union` kind; Record values
+use the explicit `{ typeId, value }` shape. Bare `DataType.variant()` and
+`fields.variant(name, options)` are different - the parenthesis disambiguates:
+they build the first-class self-describing Variant datatype, which the Parquet
+writer stores as its `VARIANT` logical type. PostgreSQL `json/jsonb` remains an
+explicit adapter format, not an alias for either.
 
 ```javascript
 const fs = require('node:fs')

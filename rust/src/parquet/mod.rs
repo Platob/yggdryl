@@ -20,6 +20,32 @@
 //! which is what lets a downstream Iceberg or Delta layer resolve columns by
 //! id rather than by position.
 //!
+//! # Geospatial and variant columns
+//!
+//! A column whose Arrow field metadata declares the `geoarrow.wkb` extension
+//! writes Parquet's own `GEOMETRY` or `GEOGRAPHY` logical type over
+//! `BYTE_ARRAY` WKB - CRS and edge algorithm included - and one declaring
+//! `arrow.parquet.variant` writes its metadata/value storage struct with the
+//! `VARIANT` logical type attached. (GeoArrow is a community specification
+//! whose own documents say it is not finalized; the `geoarrow.wkb` spelling
+//! here is revisitable if it changes.) The writer then refuses min/max value
+//! bounds for geospatial columns - their sort order is undefined, so a bound
+//! would be a lie - and records the format's own geospatial statistics
+//! instead: bounding box and geometry types, computed from the WKB bytes by
+//! [`crate::generic::wkb`] and readable back through
+//! [`ColumnStatistics::geospatial`] or recomputable by
+//! [`read_geospatial_statistics`]. Geography columns record no bounding box:
+//! a planar fold of the vertices under-covers non-planar edges.
+//!
+//! Two named limits remain. Reading a *foreign* file whose columns carry
+//! `GEOMETRY`/`GEOGRAPHY`/`VARIANT` surfaces plain `Binary`/`Struct` Arrow
+//! types without extension metadata, because the pinned parquet crate only
+//! maps those logical types to Arrow extensions behind crate features that
+//! pull new dependencies; files written here round-trip their extension
+//! metadata through the embedded Arrow schema. And a variant *value* cannot
+//! cross an Arrow array boundary yet - the variant binary encoding lands with
+//! the Iceberg v3 layer - so variant columns are schema-level until it does.
+//!
 //! ```
 //! use yggdryl::io::{Buffer, IOBase};
 //! use yggdryl::parquet::Parquet;
@@ -50,9 +76,12 @@ use arrow_schema::Schema;
 use bytes::Bytes;
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::ProjectionMask;
-use parquet::arrow::arrow_reader::{ArrowReaderOptions, ParquetRecordBatchReaderBuilder};
+use parquet::arrow::arrow_reader::{
+    ArrowReaderMetadata, ArrowReaderOptions, ParquetRecordBatchReaderBuilder,
+};
+use parquet::arrow::arrow_writer::ArrowWriterOptions;
 use parquet::basic::{Compression, ZstdLevel};
-use parquet::file::metadata::ParquetMetaData;
+use parquet::file::metadata::{ParquetMetaData, ParquetMetaDataReader};
 use parquet::file::properties::WriterProperties;
 
 use crate::arrow::schema_from_field;
@@ -63,8 +92,10 @@ use crate::generic::IORecordOptions;
 use crate::io::IOBase;
 use crate::{Error as CoreError, Field};
 
+mod geospatial;
 mod metadata;
 
+pub use geospatial::{GeospatialStatistics, read_geospatial_statistics};
 pub use metadata::{ColumnStatistics, FileStatistics, RowGroupStatistics};
 
 /// The settings a Parquet read or write takes.
@@ -91,6 +122,10 @@ pub struct ParquetOptions {
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
     pub batch_size: Option<usize>,
+    /// Most result rows in total - a count of rows, not a per-row byte cap.
+    pub max_row_size: Option<u64>,
+    /// Most Arrow in-memory bytes of result rows, never encoded bytes.
+    pub max_byte_size: Option<u64>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// Column names forming a write's match key; empty means overwrite.
@@ -112,6 +147,8 @@ impl ParquetOptions {
             root_name: smol_str::SmolStr::new_static("row"),
             safe: false,
             batch_size: None,
+            max_row_size: None,
+            max_byte_size: None,
             level: crate::Level::DEFAULT,
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
@@ -242,7 +279,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             schema,
         )));
     }
-    let builder = open_builder(handle)?;
+    let builder = match bounded_builder(handle, options)? {
+        Some(builder) => builder,
+        None => open_builder(handle)?,
+    };
     let builder = match options.batch_size() {
         Some(size) => builder.with_batch_size(size),
         None => builder,
@@ -282,11 +322,16 @@ where
     let schema = batches.schema();
 
     let mut encoded = Vec::new();
-    let mut writer = ArrowWriter::try_new(
-        &mut encoded,
-        Arc::clone(&schema),
-        Some(options.to_properties()),
-    )?;
+    let mut writer_options = ArrowWriterOptions::new().with_properties(options.to_properties());
+    if let Some(descriptor) = geospatial::extension_schema(schema.as_ref())? {
+        // A geospatial or variant extension column: hand the writer a Parquet
+        // schema carrying the matching logical type, and make sure the WKB
+        // statistics factory is in place before the first geospatial page.
+        geospatial::install_wkb_statistics();
+        writer_options = writer_options.with_parquet_schema(descriptor);
+    }
+    let mut writer =
+        ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)?;
     for (index, batch) in batches.enumerate() {
         let batch = batch.map_err(from_reader_error)?;
         if batch.schema() != schema {
@@ -328,9 +373,10 @@ fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>>
 
 /// Open a reader builder over a handle's complete bytes.
 ///
-/// Parquet reads its footer last, so the value is fetched whole. A range-
-/// reading `ChunkReader` over [`IOBase::pread`] is the optimization path;
-/// until then this is honest about buffering.
+/// Parquet reads its footer last, so the value is fetched whole. A read with
+/// a row bound goes through [`bounded_builder`] instead, which fetches only
+/// the leading row groups the bound needs; this path is honest about
+/// buffering everything else.
 fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
     reject_outer_coding(handle)?;
     let bytes = Bytes::from(handle.read_all_bytes()?);
@@ -338,6 +384,85 @@ fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchRead
         bytes,
         ArrowReaderOptions::new(),
     )?)
+}
+
+/// Open a reader builder over only the leading row groups a row bound needs.
+///
+/// The footer is range-read and decoded first; the leading row groups whose
+/// counts cover [`max_row_size`](IORecordOptions::max_row_size) are then
+/// fetched as one prefix, and the rest of the value is never read. The bound
+/// is a fetch plan here, not the limit itself: the record methods above still
+/// trim the result to the exact row count, so this changes what is *read*,
+/// never what a limited read yields. Answers `None` - falling back to
+/// [`open_builder`] - when no row bound is set, when a partition filter means
+/// stored rows and result rows differ, when the bound spares no group, or
+/// when the tail is not a Parquet footer, so every malformed file is reported
+/// by the one whole-value path.
+///
+/// # Errors
+///
+/// Returns a read failure, or a footer whose embedded Arrow schema cannot be
+/// interpreted.
+fn bounded_builder<H: IOBase + ?Sized>(
+    handle: &H,
+    options: &ParquetOptions,
+) -> Result<Option<ParquetRecordBatchReaderBuilder<Bytes>>> {
+    let Some(max_rows) = options.max_row_size() else {
+        return Ok(None);
+    };
+    if !options.filter_partitions().is_empty() {
+        return Ok(None);
+    }
+    reject_outer_coding(handle)?;
+    // The footer length and the closing magic.
+    const TAIL: u64 = 8;
+    let size = handle.size();
+    if size < TAIL {
+        return Ok(None);
+    }
+    let tail = handle.read_range(size - TAIL, TAIL as usize)?;
+    if tail.len() < TAIL as usize || &tail[4..] != b"PAR1" {
+        return Ok(None);
+    }
+    let footer_length = u64::from(u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]));
+    let (Some(footer_start), Ok(footer_length)) = (
+        (size - TAIL).checked_sub(footer_length),
+        usize::try_from(footer_length),
+    ) else {
+        return Ok(None);
+    };
+    let footer = handle.read_range(footer_start, footer_length)?;
+    let Ok(metadata) = ParquetMetaDataReader::decode_metadata(&footer) else {
+        return Ok(None);
+    };
+    let mut selected = Vec::new();
+    let mut covered = 0_u64;
+    let mut end = 0_u64;
+    for (index, group) in metadata.row_groups().iter().enumerate() {
+        if covered >= max_rows {
+            break;
+        }
+        selected.push(index);
+        covered = covered.saturating_add(u64::try_from(group.num_rows()).unwrap_or(0));
+        for column in group.columns() {
+            let (offset, length) = column.byte_range();
+            end = end.max(offset.saturating_add(length));
+        }
+    }
+    if selected.len() == metadata.num_row_groups() {
+        // The bound spares no group; the whole-value read is the same fetch.
+        return Ok(None);
+    }
+    let Ok(end) = usize::try_from(end) else {
+        return Ok(None);
+    };
+    let prefix = Bytes::from(handle.read_range(0, end)?);
+    let arrow_metadata =
+        ArrowReaderMetadata::try_new(Arc::new(metadata), ArrowReaderOptions::new())?;
+    Ok(Some(
+        ParquetRecordBatchReaderBuilder::new_with_metadata(prefix, arrow_metadata)
+            .with_row_groups(selected),
+    ))
 }
 
 /// An Apache Parquet file bound to one [`IOBase`] handle.
@@ -481,6 +606,21 @@ impl<H: IOBase> Parquet<H> {
             Some(metadata) => Ok(FileStatistics::from_metadata(metadata)),
             None => read_statistics(&self.handle),
         }
+    }
+
+    /// Compute one geospatial column's statistics by scanning its stored WKB.
+    ///
+    /// [`Self::read_statistics`] exposes what the footer recorded; this
+    /// decodes the named column and computes the same bounding-box-and-types
+    /// answer from the values, so it also serves files whose writer recorded
+    /// no geospatial statistics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read, when `column` does not
+    /// name a stored WKB binary column, or when a stored value is malformed.
+    pub fn read_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics> {
+        read_geospatial_statistics(&self.handle, column)
     }
 }
 

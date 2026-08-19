@@ -98,6 +98,29 @@ fn an_embedded_placeholder_substitutes_textually_and_stays_a_string() {
 }
 
 #[test]
+fn an_embedded_geometry_renders_as_wkt_and_malformed_wkb_as_lossless_hex() {
+    // One valid little-endian WKB `POINT (1 2)`.
+    let mut wkb = vec![0x01_u8, 0x01, 0x00, 0x00, 0x00];
+    wkb.extend_from_slice(&1.0_f64.to_le_bytes());
+    wkb.extend_from_slice(&2.0_f64.to_le_bytes());
+    let placeholders = Placeholders::new()
+        .with_variable("SHAPE", Value::Geospatial(wkb.into()))
+        .with_variable(
+            "BROKEN",
+            Value::Geospatial([0xff_u8, 0x00].as_slice().into()),
+        );
+
+    // A geometry's canonical text is WKT, the spelling geospatial readers read.
+    for value in resolved("shape={{ SHAPE }}", placeholders.clone()) {
+        assert_eq!(value.unwrap(), Value::from("shape=POINT (1 2)"));
+    }
+    // Malformed WKB still embeds losslessly, as the hex of its bytes.
+    for value in resolved("shape={{ BROKEN }}", placeholders) {
+        assert_eq!(value.unwrap(), Value::from("shape=ff00"));
+    }
+}
+
+#[test]
 fn a_missing_variable_is_a_typed_error_naming_it_and_its_position() {
     for value in resolved("{{ ROOT }}/app", Placeholders::new()) {
         let refused = value.unwrap_err().to_string();

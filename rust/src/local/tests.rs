@@ -97,6 +97,45 @@ mod mapped {
     }
 
     #[test]
+    fn a_write_into_a_missing_ancestry_creates_it_from_the_write_itself() {
+        // No `mkdir` step runs first: the open fails with the typed absence,
+        // the ancestry is repaired once, and the same open is retried once.
+        let mut root = std::env::temp_dir();
+        root.push(format!("yggdryl-ancestry-{}", std::process::id()));
+        crate::local::Folder::new(&root)
+            .expect("a local folder")
+            .remove(true)
+            .expect("a removable folder");
+
+        let deep = root.join("a").join("b").join("c").join("trades.bin");
+        let mut leaf = File::new(&deep).expect("a local leaf");
+        leaf.write_all_bytes(b"rows").expect("a created ancestry");
+
+        assert_eq!(
+            File::new(&deep)
+                .expect("a local leaf")
+                .read_all_bytes()
+                .expect("the written bytes"),
+            b"rows"
+        );
+
+        crate::local::Folder::new(&root)
+            .expect("a local folder")
+            .remove(true)
+            .expect("a removable folder");
+    }
+
+    #[test]
+    fn a_read_of_a_missing_file_is_empty_rather_than_an_absence() {
+        // The open *is* the existence question; nothing probes before it, and
+        // a read that finds nothing is emptiness rather than a failure.
+        let path = path("absent-read");
+        let leaf = File::new(&path).expect("a local leaf");
+        assert_eq!(leaf.size(), 0);
+        assert!(leaf.read_all_bytes().expect("an empty read").is_empty());
+    }
+
+    #[test]
     fn a_complete_write_publishes_its_length_to_another_handle() {
         let path = path("published");
 
@@ -174,8 +213,20 @@ mod hierarchy {
         assert_eq!(directory.size(), 0);
 
         // Listing a directory that does not exist is empty, not an error.
-        assert!(directory.ls(false, false).unwrap().is_empty());
-        assert!(directory.ls(true, false).unwrap().is_empty());
+        assert!(
+            directory
+                .ls(false, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            directory
+                .ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .is_empty()
+        );
         assert!(!path.exists());
     }
 
@@ -186,24 +237,30 @@ mod hierarchy {
         directory.create().unwrap();
 
         // A write through a child creates the leaf.
-        let mut leaf = directory.child_by("trades.arrows").unwrap();
+        let mut leaf = directory.child_by_path("trades.arrows").unwrap();
         leaf.pwrite(0, b"payload").unwrap();
         leaf.flush().unwrap();
         assert!(matches!(leaf, Holder::File(_)));
         assert!(!leaf.is_container());
 
         // A nested child creates its parent directory on write.
-        let mut nested = directory.child_by("sub/inner.bin").unwrap();
+        let mut nested = directory.child_by_path("sub/inner.bin").unwrap();
         nested.pwrite(0, b"deep").unwrap();
         nested.flush().unwrap();
 
-        let listed = directory.ls(false, false).unwrap();
+        let listed = directory
+            .ls(false, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(listed.len(), 2, "{listed:?}");
         assert!(listed.iter().any(Holder::is_container));
         assert!(listed.iter().any(|entry| !entry.is_container()));
 
         // Recursion reaches the nested leaf.
-        let deep = directory.ls(true, false).unwrap();
+        let deep = directory
+            .ls(true, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(deep.len(), 3, "{deep:?}");
 
         Folder::new(&path)
@@ -218,7 +275,7 @@ mod hierarchy {
         let directory = Folder::new(&path).unwrap();
         directory.create().unwrap();
 
-        let mut leaf = directory.child_by("leaf.bin").unwrap();
+        let mut leaf = directory.child_by_path("leaf.bin").unwrap();
         leaf.pwrite(0, b"x").unwrap();
         leaf.flush().unwrap();
 
@@ -235,7 +292,7 @@ mod hierarchy {
     fn a_relative_child_resolves_dot_segments() {
         let path = root("relative");
         let directory = Folder::new(&path).unwrap();
-        let sideways = directory.child_by("sub/../beside.bin").unwrap();
+        let sideways = directory.child_by_path("sub/../beside.bin").unwrap();
 
         let url = sideways.url().unwrap().to_string();
         assert!(url.ends_with("/beside.bin"), "{url}");
@@ -267,7 +324,7 @@ mod hierarchy {
         let directory = Folder::new(&path).unwrap();
         directory.create().unwrap();
 
-        let mut leaf = directory.child_by("cached.bin").unwrap();
+        let mut leaf = directory.child_by_path("cached.bin").unwrap();
         assert!(!leaf.opened());
 
         leaf.pwrite(0, b"cached").unwrap();
@@ -279,7 +336,7 @@ mod hierarchy {
         assert_eq!(leaf.read_all_bytes().unwrap(), b"cached");
 
         // Opening a handle for a missing file caches nothing and creates nothing.
-        let mut absent = directory.child_by("absent.bin").unwrap();
+        let mut absent = directory.child_by_path("absent.bin").unwrap();
         absent.open().unwrap();
         assert!(!absent.opened());
 
@@ -357,16 +414,35 @@ mod generic_path {
         std::fs::write(path.join("a.bin"), b"a").unwrap();
 
         let directory = Path::new(&path).unwrap();
-        assert_eq!(directory.ls(false, false).unwrap().len(), 2);
-        assert_eq!(directory.ls(true, false).unwrap().len(), 2);
+        assert_eq!(
+            directory
+                .ls(false, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            directory
+                .ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .len(),
+            2
+        );
 
         let leaf = Path::new(path.join("a.bin")).unwrap();
         assert_eq!(leaf.kind(), IOKind::File);
-        assert!(leaf.ls(true, false).unwrap().is_empty());
+        assert!(
+            leaf.ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(leaf.read_all_bytes().unwrap(), b"a");
 
         // Children resolve as further generic locations.
-        let child = directory.child_by("a.bin").unwrap();
+        let child = directory.child_by_path("a.bin").unwrap();
         assert_eq!(child.read_all_bytes().unwrap(), b"a");
         assert_eq!(child.parent().unwrap().kind(), IOKind::Directory);
 
@@ -441,8 +517,8 @@ mod roles {
         let leaf = File::new(path.join("trades.bin")).unwrap();
 
         // A leaf contains nothing and resolves no children.
-        assert!(leaf.file_ls().unwrap().is_empty());
-        let message = leaf.file_child_by("child").unwrap_err().to_string();
+        assert!(leaf.file_ls().count() == 0);
+        let message = leaf.file_child_by_path("child").unwrap_err().to_string();
         assert!(message.contains("got the file"), "{message}");
 
         // Its kind follows from whether it exists yet.
@@ -531,16 +607,28 @@ mod privacy {
 
         let folder = Folder::new(&path).unwrap();
 
-        let public = folder.ls(false, false).unwrap();
+        let public = folder
+            .ls(false, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(public.len(), 2, "{public:?}");
 
-        let everything = folder.ls(false, true).unwrap();
+        let everything = folder
+            .ls(false, true)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(everything.len(), 4, "{everything:?}");
 
         // A private directory is not descended into either.
-        let deep_public = folder.ls(true, false).unwrap();
+        let deep_public = folder
+            .ls(true, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(deep_public.len(), 2, "{deep_public:?}");
-        let deep_all = folder.ls(true, true).unwrap();
+        let deep_all = folder
+            .ls(true, true)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert!(deep_all.len() >= 5, "{deep_all:?}");
 
         Folder::new(&path)
@@ -588,12 +676,16 @@ mod globbing {
         let root = lake("select");
         let folder = Folder::new(&root).unwrap();
 
-        let parts = folder.glob("**/*.parquet", false).unwrap();
+        let parts = folder
+            .glob("**/*.parquet", false)
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(parts.len(), 4, "{:?}", names(&parts));
         assert!(names(&parts).iter().all(|url| url.ends_with(".parquet")));
 
         // One plain segment stays at one level, where there are no leaves.
-        assert!(folder.glob("*.parquet", false).unwrap().is_empty());
+        assert_eq!(folder.glob("*.parquet", false).unwrap().count(), 0);
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -603,7 +695,11 @@ mod globbing {
         let root = lake("prefix");
         let folder = Folder::new(&root).unwrap();
 
-        let selected = folder.glob("year=2024/**/*.parquet", false).unwrap();
+        let selected = folder
+            .glob("year=2024/**/*.parquet", false)
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(selected.len(), 2, "{:?}", names(&selected));
         assert!(names(&selected).iter().all(|url| url.contains("year=2024")));
 
@@ -611,6 +707,8 @@ mod globbing {
         assert!(
             folder
                 .glob("year=1999/**/*.parquet", false)
+                .unwrap()
+                .collect::<crate::Result<Vec<_>>>()
                 .unwrap()
                 .is_empty()
         );
@@ -625,11 +723,15 @@ mod globbing {
 
         let found = folder
             .glob("year=2025/month=02/part-0.parquet", false)
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(found.len(), 1, "{:?}", names(&found));
         assert!(
             folder
                 .glob("year=2025/month=02/absent.parquet", false)
+                .unwrap()
+                .collect::<crate::Result<Vec<_>>>()
                 .unwrap()
                 .is_empty()
         );
@@ -642,10 +744,18 @@ mod globbing {
         let root = lake("privacy");
         let folder = Folder::new(&root).unwrap();
 
-        let public = folder.glob("**/*.parquet", false).unwrap();
+        let public = folder
+            .glob("**/*.parquet", false)
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(public.len(), 4, "{:?}", names(&public));
 
-        let everything = folder.glob("**/*.parquet", true).unwrap();
+        let everything = folder
+            .glob("**/*.parquet", true)
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(everything.len(), 5, "{:?}", names(&everything));
 
         let _ = std::fs::remove_dir_all(&root);
@@ -666,12 +776,22 @@ mod globbing {
         assert_eq!(path.kind(), IOKind::Directory);
         assert!(path.is_container());
 
-        let listed = path.ls(false, false).unwrap();
+        let listed = path
+            .ls(false, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(listed.len(), 4, "{:?}", names(&listed));
 
         // The same holds for a folder handle built straight on the pattern.
         let folder = Folder::from_url(url).unwrap();
-        assert_eq!(folder.ls(true, false).unwrap().len(), 4);
+        assert_eq!(
+            folder
+                .ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .len(),
+            4
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -684,13 +804,15 @@ mod globbing {
         let year: Vec<_> = folder
             .children_where(&[("year", "2024")], false)
             .unwrap()
-            .collect();
+            .collect::<crate::Result<_>>()
+            .unwrap();
         assert_eq!(year.len(), 4, "{:?}", names(&year));
 
         let one: Vec<_> = folder
             .children_where(&[("year", "2024"), ("month", "01")], false)
             .unwrap()
-            .collect();
+            .collect::<crate::Result<_>>()
+            .unwrap();
         assert_eq!(one.len(), 2, "{:?}", names(&one));
         assert!(one.iter().all(|entry| !entry.is_container()));
         assert_eq!(

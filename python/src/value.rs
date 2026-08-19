@@ -81,7 +81,11 @@ pub(crate) fn as_py(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
         Value::F64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
         Value::Decimal(unscaled, scale) => decimal_to_python(py, *unscaled, *scale),
         Value::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
-        Value::Bytes(value) => Ok(PyBytes::new(py, value).into_any().unbind()),
+        // A geometry has no Python binding surface yet, so its WKB crosses as
+        // its plain shape: bytes.
+        Value::Bytes(value) | Value::Geospatial(value) => {
+            Ok(PyBytes::new(py, value).into_any().unbind())
+        }
         Value::Date(days) => date_to_python(py, *days),
         Value::Time(..) => time_to_python(py, value),
         Value::Timestamp(..) | Value::DateTime(..) => timestamp_to_python(py, value),

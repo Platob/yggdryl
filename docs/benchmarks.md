@@ -60,7 +60,7 @@ machine against release artifacts, and compare like-for-like toolchains.
 
 | Target | Isolates |
 | --- | --- |
-| `datatype` | Parsing, decimal and time selection, Arrow projection, defaults, compatibility rewriting |
+| `datatype` | Parsing, decimal and time selection, Arrow projection, defaults, compatibility rewriting, and (`geospatial`) the WKB reader against payload size: decode and the single-pass bounding box |
 | `field` | Construction, metadata mutation and cache invalidation, comparison, typed views |
 | `enums` | MIME and media parsing, compound filename inference, content-coding recovery |
 | `uri` | Parsing, component access, path segments, path interop |
@@ -73,7 +73,7 @@ machine against release artifacts, and compare like-for-like toolchains.
 | `lines` (JavaScript) | The same corpus at the copied-IPC boundary, with median, best, and spread |
 | `arrowfs` | What wrapping a foreign Arrow filesystem costs: bytes, ranged reads, record round trips, and listing, each beside the native handle holding the same bytes |
 | `arrowfs` (Python) | The same boundary against PyArrow's own calls on the same filesystem - the implementation the wrapper delegates to |
-| `iceberg` | Plan, metadata, manifests (full against the planning fast path, at scale), partitioning, compaction, merge, contended commits |
+| `iceberg` | Plan, metadata, manifests (full against the planning fast path, at scale), partitioning, compaction, merge, contended commits, and (`catalog_resolve`) name resolution through the catalog hierarchy, the backend calls each operation makes printed beside the wall time |
 | `compression` (Python) | The byte codings against the standard library's, same wire, same payload |
 
 ## Rules
@@ -526,7 +526,7 @@ makes the line surface worth having.
     let marked = options.schema().with_partition_fields(&["level"])?;
 
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
-    let mut table = catalog.create_table("logs.app", marked)?;
+    let mut table = catalog.tables().create("logs.app", marked)?;
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     let older = TextLineOptions::with_pattern(archived)?
@@ -630,7 +630,7 @@ makes the line surface worth having.
     # 1. The table exists before the first record does.
     marked = schema_from_pattern(options=extractor).with_partition_fields(["level"])
     catalog = Catalog(root / "warehouse")
-    table = catalog.create_table("logs.app", marked)
+    table = catalog.tables.create("logs.app", marked)
 
     # 2, 3, 4. One handle per folder, and one lazy combine over the two: both
     # schemas are answered without pulling a batch, so nothing is read yet.
@@ -720,7 +720,7 @@ makes the line surface worth having.
     // 1. The table exists before the first record does.
     const marked = schemaFromPattern(extractor).withPartitionFields(['level'])
     const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
-    const table = catalog.createTable('logs.app', marked)
+    const table = catalog.tables.create('logs.app', marked)
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     const stream = new IOBase(incoming)

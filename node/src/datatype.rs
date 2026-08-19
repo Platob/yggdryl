@@ -3,8 +3,8 @@
 use napi::bindgen_prelude::{ClassInstance, Either, Either3, Env, Error, Result, Unknown};
 use napi_derive::napi;
 use yggdryl::{
-    DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
-    UnionMode as CoreUnionMode,
+    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
+    Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
 use crate::{
@@ -232,11 +232,41 @@ impl JsDataType {
         Ok(Self::from_core(inner))
     }
 
-    /// Internal finite-variant constructor assigning dense Union IDs in order.
+    /// Internal variant constructor: bare, it is the self-describing Variant
+    /// datatype; given members, the dense-union sugar assigning IDs in order.
+    /// The loader's `DataType.variant` keeps the parenthesis disambiguation.
     #[napi(factory, js_name = "_variant", skip_typescript)]
-    pub fn variant(fields: Vec<ClassInstance<'_, JsField>>) -> Result<Self> {
-        let inner = CoreDataType::variant(fields.into_iter().map(|field| field.inner.clone()))
+    pub fn variant(fields: Option<Vec<ClassInstance<'_, JsField>>>) -> Result<Self> {
+        let inner = match fields {
+            None => CoreDataType::variant(),
+            Some(fields) => {
+                CoreDataType::dense_union(fields.into_iter().map(|field| field.inner.clone()))
+                    .map_err(napi_error)?
+            }
+        };
+        Ok(Self::from_core(inner))
+    }
+
+    /// Creates a geometry datatype: planar features as Well-Known Binary.
+    /// Omitting `crs` fills the `OGC:CRS84` default shared with Parquet and
+    /// Iceberg; a geometry takes no edge algorithm.
+    #[napi(factory)]
+    pub fn geometry(crs: Option<String>) -> Result<Self> {
+        let inner = CoreDataType::geometry(crs.as_deref()).map_err(napi_error)?;
+        Ok(Self::from_core(inner))
+    }
+
+    /// Creates a geography datatype: features on a sphere or spheroid.
+    /// Omitting `crs` fills the `OGC:CRS84` default and omitting `algorithm`
+    /// fills `spherical`; `algorithm` accepts the canonical lowercase names.
+    #[napi(factory)]
+    pub fn geography(crs: Option<String>, algorithm: Option<String>) -> Result<Self> {
+        let algorithm = algorithm
+            .as_deref()
+            .map(CoreEdgeAlgorithm::from_str)
+            .transpose()
             .map_err(napi_error)?;
+        let inner = CoreDataType::geography(crs.as_deref(), algorithm).map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }
 

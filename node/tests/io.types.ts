@@ -33,18 +33,18 @@ const isFile: boolean = handle.isFile()
 const isAtomic: boolean = handle.isAtomic()
 const isTabular: boolean = handle.isTabular()
 
-const children: IOBase[] = handle.iterdir()
-const privateChildren: IOBase[] = handle.iterdir(true)
-const listed: IOBase[] = handle.ls(true, false)
-const globbed: IOBase[] = handle.glob('**/*.parquet')
-const recursed: IOBase[] = handle.rglob('*.parquet', true)
+const children: IOBase[] = [...handle.iterdir()]
+const privateChildren: IOBase[] = [...handle.iterdir(true)]
+const listed: IOBase[] = [...handle.ls(true, false)]
+const globbed: IOBase[] = [...handle.glob('**/*.parquet')]
+const recursed: IOBase[] = [...handle.rglob('*.parquet', true)]
 const iterated: IOBase[] = [...handle]
 
 const partitions: PartitionEntry[] = handle.partitions
 const filters: PartitionFilters = { year: '2024' }
-const selected: IOBase[] = handle.childrenWhere(filters)
-const byMap: IOBase[] = handle.childrenWhere(new Map([['year', '2024']]))
-const byEntries: IOBase[] = handle.childrenWhere([['year', '2024']], true)
+const selected: IOBase[] = [...handle.childrenWhere(filters)]
+const byMap: IOBase[] = [...handle.childrenWhere(new Map([['year', '2024']]))]
+const byEntries: IOBase[] = [...handle.childrenWhere([['year', '2024']], true)]
 
 const bytes: Buffer = handle.readBytes()
 const text: string = handle.readText()

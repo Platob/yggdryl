@@ -148,6 +148,52 @@ fn yaml_decodes_a_plain_envelope_without_a_custom_tag() {
 }
 
 #[test]
+fn geospatial_values_round_trip_through_the_flat_envelope_and_the_tag() {
+    // One valid little-endian WKB `POINT (1 2)`.
+    let mut wkb = vec![0x01_u8, 0x01, 0x00, 0x00, 0x00];
+    wkb.extend_from_slice(&1.0_f64.to_le_bytes());
+    wkb.extend_from_slice(&2.0_f64.to_le_bytes());
+    let point = Value::Geospatial(wkb.into());
+
+    // At the root, nested in a sequence, and nested in a mapping alike, and
+    // always as the flat `$yggdryl` envelope rather than a custom tag.
+    let nested = Value::from_mapping([
+        (Value::from("shape"), point.clone()),
+        (
+            Value::from("shapes"),
+            Value::from_sequence([point.clone(), Value::Null]),
+        ),
+    ])
+    .unwrap();
+    let encoded = yaml::to_vec(&nested).unwrap();
+    let text = std::str::from_utf8(&encoded).unwrap();
+    assert!(!text.contains('!'), "{text}");
+    assert!(text.contains("\"$yggdryl\": \"geospatial\""), "{text}");
+    let decoded = yaml::from_slice(&encoded).unwrap();
+    assert_eq!(decoded, nested);
+    assert!(matches!(
+        decoded.get_key_str("shape"),
+        Some(Value::Geospatial(_))
+    ));
+    assert_eq!(
+        yaml::from_slice(&yaml::to_vec(&point).unwrap()).unwrap(),
+        point
+    );
+
+    // The `!yggdryl/geospatial` machine tag reads the same payload in.
+    assert_eq!(
+        yaml::from_slice(b"!yggdryl/geospatial AQEAAAAAAAAAAADwPwAAAAAAAABA\n").unwrap(),
+        point
+    );
+    assert!(
+        yaml::from_slice(b"!yggdryl/geospatial ????\n")
+            .unwrap_err()
+            .to_string()
+            .contains("base64")
+    );
+}
+
+#[test]
 fn a_plain_mapping_that_looks_like_an_envelope_still_round_trips() {
     // Emission double-wraps a colliding mapping, so user data holding
     // `$yggdryl` keys is never silently reinterpreted on the way back.
@@ -160,6 +206,14 @@ fn a_plain_mapping_that_looks_like_an_envelope_still_round_trips() {
         Value::from_mapping([
             (Value::from("$yggdryl"), Value::from("float")),
             (Value::from("value"), Value::from("nan")),
+        ])
+        .unwrap(),
+        Value::from_mapping([
+            (Value::from("$yggdryl"), Value::from("geospatial")),
+            (
+                Value::from("value"),
+                Value::from("AQEAAAAAAAAAAADwPwAAAAAAAABA"),
+            ),
         ])
         .unwrap(),
     ] {

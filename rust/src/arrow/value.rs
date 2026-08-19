@@ -214,6 +214,24 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Value]) -> Result<Arra
         DataType::Decimal256 { .. } => physical_primitive!(Decimal256Array, decimal256),
         DataType::Map(map) => map_array(map, values)?,
         DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
+        // A geospatial value *is* its WKB payload, so the array is the bytes;
+        // both the canonical `Geospatial` spelling and plain bytes build it.
+        DataType::Geometry(_) | DataType::Geography(_) => Arc::new(BinaryArray::from(
+            values
+                .iter()
+                .map(|value| optional_wkb(value))
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        // A variant value crosses this boundary as the Parquet Variant binary
+        // encoding, which the Iceberg v3 layer owns; until that codec lands a
+        // variant column refuses by name rather than inventing a second
+        // encoding here.
+        DataType::Variant => {
+            return Err(unsupported(
+                data_type,
+                "the variant binary encoding lands with the Iceberg v3 layer",
+            ));
+        }
     };
     Ok(array)
 }
@@ -431,6 +449,16 @@ pub(crate) fn value_from_array(
             Value::from_mapping(pairs)?
         }
         DataType::RunEndEncoded(encoded) => run_value(encoded, array, index)?,
+        // A geospatial column reads back in its canonical value spelling.
+        DataType::Geometry(_) | DataType::Geography(_) => {
+            Value::Geospatial(Arc::from(downcast::<BinaryArray>(array)?.value(index)))
+        }
+        DataType::Variant => {
+            return Err(unsupported(
+                data_type,
+                "the variant binary encoding lands with the Iceberg v3 layer",
+            ));
+        }
     };
     Ok(value)
 }
@@ -738,7 +766,19 @@ impl MaterializationBudget {
             DataType::Interval(_) => {
                 return Err(unsupported(data_type, "invalid interval layout"));
             }
-            DataType::Binary | DataType::Utf8 | DataType::List(_) | DataType::Map(_) => {
+            DataType::Binary
+            | DataType::Utf8
+            | DataType::List(_)
+            | DataType::Map(_)
+            // A geospatial column is one binary column of WKB payloads.
+            | DataType::Geometry(_)
+            | DataType::Geography(_) => {
+                self.add_offsets(rows, 4)?;
+            }
+            // The variant's storage is two required binary children, so the
+            // worst-case buffer charge is two offset runs.
+            DataType::Variant => {
+                self.add_offsets(rows, 4)?;
                 self.add_offsets(rows, 4)?;
             }
             DataType::LargeBinary | DataType::LargeUtf8 | DataType::LargeList(_) => {
@@ -819,7 +859,19 @@ impl MaterializationBudget {
             DataType::Interval(_) => {
                 return Err(unsupported(data_type, "invalid interval layout"));
             }
-            DataType::Binary | DataType::Utf8 | DataType::List(_) | DataType::Map(_) => {
+            DataType::Binary
+            | DataType::Utf8
+            | DataType::List(_)
+            | DataType::Map(_)
+            // A geospatial column is one binary column of WKB payloads.
+            | DataType::Geometry(_)
+            | DataType::Geography(_) => {
+                self.add_offsets(rows, 4)?;
+            }
+            // The variant's storage is two required binary children, so the
+            // worst-case buffer charge is two offset runs.
+            DataType::Variant => {
+                self.add_offsets(rows, 4)?;
                 self.add_offsets(rows, 4)?;
             }
             DataType::LargeBinary | DataType::LargeUtf8 | DataType::LargeList(_) => {
@@ -1698,6 +1750,16 @@ fn optional_bytes(value: &Value) -> Result<Option<&[u8]>> {
         Value::Null => Ok(None),
         Value::Bytes(bytes) => Ok(Some(bytes)),
         _ => Err(invalid_value_kind("bytes", value)),
+    }
+}
+
+/// Read the WKB a geospatial column stores, in either value spelling.
+fn optional_wkb(value: &Value) -> Result<Option<&[u8]>> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Geospatial(bytes) => Ok(Some(bytes)),
+        Value::Bytes(bytes) => Ok(Some(bytes)),
+        _ => Err(invalid_value_kind("well-known binary", value)),
     }
 }
 

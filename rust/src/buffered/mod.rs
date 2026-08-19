@@ -5,7 +5,7 @@
 //! handle and keeps them; a hit copies out of memory and touches nothing. It
 //! is a wrapping handle like [`Coded`](crate::io::Coded): it owns its inner
 //! handle, mirrors everything it does not change, and is invisible except for
-//! speed - `size`, `url`, `media_type`, `kind`, `parent`, `child_by`, and `ls`
+//! speed - `size`, `url`, `media_type`, `kind`, `parent`, `child_by_path`, and `ls`
 //! all answer exactly what the wrapped handle answers.
 //!
 //! ```
@@ -387,7 +387,7 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // the `clear`/`remove` pair - a cache that outlived either would answer a
     // later read with bytes that are gone.
     crate::delegate_iobase!(handle: size, capacity, reserve, url, media_type,
-        set_media_type, flush, parent, child_by, ls, kind, is_atomic,
+        set_media_type, flush, parent, child_by_path, ls, kind, is_atomic,
         is_tabular);
 
     /// Serve the range from the pages holding it, fetching what is missing.

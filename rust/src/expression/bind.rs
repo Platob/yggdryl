@@ -293,14 +293,15 @@ impl Bound {
     ///
     /// The row is a [`Value::Sequence`] of column values in schema order, or a
     /// [`Value::Record`], which is the same thing carrying its own datatype.
+    /// This is the row target's [`ApplyExpression`](super::ApplyExpression),
+    /// spelled from the expression's side.
     ///
     /// # Errors
     ///
     /// Returns an error when the row does not match the bound schema, or when
     /// a strict cast refuses a value.
     pub fn eval(&self, row: &Value) -> Result<Value> {
-        let values = row_values(row, &self.schema)?;
-        self.node.eval(&Row::new(Some(values), None))
+        super::ApplyExpression::apply_expression(row, self)
     }
 
     /// Evaluate this expression for one row alongside a holder.
@@ -336,34 +337,22 @@ impl Bound {
 
     /// Return whether a holder is *not ruled out* by this predicate.
     ///
-    /// Only the conjuncts a holder can answer are evaluated - the ones that
-    /// read no column. Every other conjunct is unknown at this point, and an
-    /// unknown conjunct excludes nothing, which is what keeps a listing filter
-    /// conservative: it may keep a file it will later discard, and it may
-    /// never discard a file that would have matched.
-    ///
-    /// The conjuncts run cheapest-first and stop at the first `false`, so a
-    /// predicate answerable from the path alone performs no backend call.
+    /// The holder target's [`ApplyExpression`](super::ApplyExpression) answers
+    /// three-valued - what the holder alone settles - and this reads its
+    /// answer conservatively: only a proven `false` excludes, so an unknown
+    /// keeps the holder. It may keep a file the rows will later discard, and
+    /// it may never discard a file that would have matched.
     ///
     /// # Errors
     ///
     /// Returns the holder's failure when a stat attribute cannot be read.
     pub fn matches_holder(&self, holder: &dyn Attributes) -> Result<bool> {
-        let row = Row::new(None, Some(holder));
-        for conjunct in self.node.conjuncts() {
-            if conjunct.reads_rows() {
-                continue;
-            }
-            if conjunct.eval(&row)?.as_bool() == Some(false) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        Ok(super::ApplyExpression::apply_expression(holder, self)?.as_bool() != Some(false))
     }
 }
 
 /// Borrow one row's column values, whichever row spelling was handed over.
-fn row_values<'row>(row: &'row Value, schema: &Field) -> Result<&'row [Value]> {
+pub(crate) fn row_values<'row>(row: &'row Value, schema: &Field) -> Result<&'row [Value]> {
     let values = match row {
         Value::Record(_, values) => values.as_ref(),
         other => other.as_sequence().ok_or_else(|| Error::InvalidRecord {

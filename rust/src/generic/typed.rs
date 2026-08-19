@@ -51,7 +51,7 @@ use serde::de::Error as _;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::field::{binary, decimal, floating, integer, nested, scalar, temporal};
+use crate::field::{binary, decimal, floating, geospatial, integer, nested, scalar, temporal};
 use crate::{AnyType, DataType, Error, FieldType, Result, Value};
 
 /// A datatype and one value it accepts.
@@ -478,6 +478,9 @@ typed_value_alias!(Decimal64Value, decimal::Decimal64, "decimal64");
 typed_value_alias!(Decimal128Value, decimal::Decimal128, "decimal128");
 typed_value_alias!(Decimal256Value, decimal::Decimal256, "decimal256");
 typed_value_alias!(MapValue, nested::Map, "map");
+typed_value_alias!(VariantValue, nested::Variant, "variant");
+typed_value_alias!(GeometryValue, geospatial::Geometry, "geometry");
+typed_value_alias!(GeographyValue, geospatial::Geography, "geography");
 typed_value_alias!(RunEndEncodedValue, nested::RunEndEncoded, "run_end_encoded");
 
 static_value_constructor!(scalar::Null, DataType::Null);
@@ -501,6 +504,7 @@ static_value_constructor!(binary::BinaryView, DataType::BinaryView);
 static_value_constructor!(binary::Utf8, DataType::Utf8);
 static_value_constructor!(binary::LargeUtf8, DataType::LargeUtf8);
 static_value_constructor!(binary::Utf8View, DataType::Utf8View);
+static_value_constructor!(nested::Variant, DataType::Variant);
 
 #[cfg(test)]
 mod tests;

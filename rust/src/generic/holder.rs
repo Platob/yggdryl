@@ -10,7 +10,7 @@ use crate::local::File;
 
 /// A concrete, sized value holding any core [`IOBase`] implementation.
 ///
-/// Hierarchy accessors such as [`IOBase::parent`], [`IOBase::child_by`], and
+/// Hierarchy accessors such as [`IOBase::parent`], [`IOBase::child_by_path`], and
 /// [`IOBase::ls`] have to return *some* handle without knowing which kind it
 /// will be, and `Box<dyn IOBase>` would erase the concrete type a caller needs
 /// to match on. `Holder` is that return type: an enum over the implementations
@@ -29,7 +29,7 @@ use crate::local::File;
 /// assert!(root.is_container());
 ///
 /// // A leaf is a mapped file, and it need not exist yet.
-/// let leaf = root.child_by("yggdryl-holder-doc.bin")?;
+/// let leaf = root.child_by_path("yggdryl-holder-doc.bin")?;
 /// assert!(!leaf.is_container());
 /// # Ok(())
 /// # }
@@ -213,11 +213,11 @@ impl IOBase for Holder {
         self.as_io().parent()
     }
 
-    fn child_by(&self, name: &str) -> Result<Self> {
-        self.as_io().child_by(name)
+    fn child_by_path(&self, name: &str) -> Result<Self> {
+        self.as_io().child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Self>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
         self.as_io().ls(recursive, include_private)
     }
 

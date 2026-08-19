@@ -2,8 +2,9 @@
 //!
 //! Reading rows out of an Arrow IPC stream and reading them out of a Parquet
 //! file need the same handful of answers - what schema, what to call an
-//! inferred root, how strict a cast may be, how many rows per batch, how hard
-//! to compress, and what makes two rows the same row - and each encoding then
+//! inferred root, how strict a cast may be, how many rows per batch, how much
+//! may flow at all, how hard to compress, and what makes two rows the same
+//! row - and each encoding then
 //! adds its own. [`IORecordOptions`] is that shared surface, each encoding
 //! stores those settings as its own flat fields, and [`RecordOptions`] is the
 //! enum naming every encoding's options.
@@ -67,6 +68,41 @@ pub trait IORecordOptions: Sized {
 
     /// Set the row-per-batch bound.
     fn set_batch_size(&mut self, batch_size: Option<usize>);
+
+    /// Return the bound on how many result rows flow in total, if any - a
+    /// **count of rows**, never a per-row byte cap, because the name reads
+    /// both ways.
+    ///
+    /// The limit is the last transform of the shaping pipeline - declared
+    /// schema, then selection, then completion cast, then partition filter,
+    /// then the limit - so it counts *result* rows: a limit of ten combined
+    /// with a filter means the first ten matching rows. `Some(0)` yields a
+    /// reader with the shaped schema and no batches rather than an error;
+    /// `None` is unlimited. The bound is exact: the batch it lands inside is
+    /// cut with [`RecordBatch::slice`](arrow_array::RecordBatch::slice), a
+    /// view over the same buffers rather than a copy.
+    fn max_row_size(&self) -> Option<u64>;
+
+    /// Set the bound on how many result rows flow in total.
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>);
+
+    /// Return the bound on the result rows' Arrow in-memory bytes, if any.
+    ///
+    /// Bytes are counted as
+    /// [`get_array_memory_size`](arrow_array::RecordBatch::get_array_memory_size)
+    /// counts them - the same accounting the Iceberg target-file-size rolling
+    /// uses - never as encoded bytes, so a Parquet file written under a byte
+    /// limit lands well under it: the format compresses what this measures
+    /// uncompressed. The flow stops at the last row that keeps the running
+    /// total at or under the limit, and a non-zero limit always yields at
+    /// least one row rather than silently losing everything to one wide row -
+    /// only `Some(0)` yields nothing. When
+    /// [`max_row_size`](Self::max_row_size) is also set, whichever bound binds
+    /// first wins.
+    fn max_byte_size(&self) -> Option<u64>;
+
+    /// Set the bound on the result rows' Arrow in-memory bytes.
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>);
 
     /// Return the compression level applied to a declared content coding.
     fn level(&self) -> Level;
@@ -181,6 +217,20 @@ pub trait IORecordOptions: Sized {
     #[must_use]
     fn with_batch_size(mut self, batch_size: usize) -> Self {
         self.set_batch_size(Some(batch_size));
+        self
+    }
+
+    /// Return these options with a bound on how many result rows flow.
+    #[must_use]
+    fn with_max_row_size(mut self, max_row_size: u64) -> Self {
+        self.set_max_row_size(Some(max_row_size));
+        self
+    }
+
+    /// Return these options with a bound on the result rows' Arrow bytes.
+    #[must_use]
+    fn with_max_byte_size(mut self, max_byte_size: u64) -> Self {
+        self.set_max_byte_size(Some(max_byte_size));
         self
     }
 
@@ -299,11 +349,181 @@ pub trait IORecordOptions: Sized {
             None => Ok(reader),
         }
     }
+
+    /// Bound a reader by [`max_row_size`](Self::max_row_size) and
+    /// [`max_byte_size`](Self::max_byte_size).
+    ///
+    /// This is one more transform of the same option-driven shaping seam as
+    /// [`cast_arrow_reader`](Self::cast_arrow_reader), applied *last*: the
+    /// order is declared schema, then selection, then completion cast, then
+    /// partition filter, then the limit, so the limit counts result rows and
+    /// never rows an earlier layer dropped or reshaped. No media implements a
+    /// limit - the record methods wrap the shaped reader here, exactly once
+    /// per call. A media may read a row bound as a fetch plan (Parquet
+    /// fetches only the leading row groups that cover it), but the trim to
+    /// the exact count happens only here.
+    ///
+    /// The wrapper holds at most one batch and stops pulling the moment it is
+    /// satisfied, so the rest of the source is never decoded. With neither
+    /// bound set the reader is returned as it stands.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming both settings when a limit is combined with a
+    /// non-empty [`merge_by_names`](Self::merge_by_names): a truncated merge
+    /// would update the matched keys it kept and silently drop the rest,
+    /// which corrupts the resource rather than shortening the write.
+    fn limit_arrow_reader(
+        &self,
+        reader: crate::arrow::BatchReader,
+    ) -> Result<crate::arrow::BatchReader> {
+        let max_rows = self.max_row_size();
+        let max_bytes = self.max_byte_size();
+        if max_rows.is_none() && max_bytes.is_none() {
+            return Ok(reader);
+        }
+        if !self.merge_by_names().is_empty() {
+            let mut limits = String::new();
+            if let Some(rows) = max_rows {
+                limits.push_str(&format!("max_row_size = {rows}"));
+            }
+            if let Some(bytes) = max_bytes {
+                if !limits.is_empty() {
+                    limits.push_str(" and ");
+                }
+                limits.push_str(&format!("max_byte_size = {bytes}"));
+            }
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: crate::text::expected_got(
+                    "max_row_size and max_byte_size without merge_by_names - a truncated merge \
+                     updates the matched keys it kept and silently drops the rest, corrupting \
+                     rather than shortening",
+                    format!("{limits} with merge_by_names {:?}", self.merge_by_names()),
+                ),
+            });
+        }
+        use arrow_array::RecordBatchReader as _;
+        let schema = reader.schema();
+        Ok(Box::new(Limited {
+            inner: reader,
+            schema,
+            remaining_rows: max_rows,
+            remaining_bytes: max_bytes,
+            yielded: false,
+            // `Some(0)` on either bound admits nothing: the reader still
+            // reports its shaped schema, and the first `next` is `None`
+            // without the source ever being touched.
+            satisfied: max_rows == Some(0) || max_bytes == Some(0),
+        }))
+    }
+}
+
+/// A reader bounding the rows and Arrow bytes that flow through it.
+///
+/// One batch is held at a time - pulled, cut if a bound lands inside it,
+/// handed on - and the moment the bounds are met the source is never pulled
+/// again, because a limit exists precisely so the rest of a file is not
+/// decoded.
+struct Limited {
+    inner: crate::arrow::BatchReader,
+    schema: arrow_schema::SchemaRef,
+    /// Rows the row bound still admits; `None` when no row bound is set.
+    remaining_rows: Option<u64>,
+    /// Bytes the byte bound still admits; `None` when no byte bound is set.
+    remaining_bytes: Option<u64>,
+    /// Whether any row went out yet, for the at-least-one-row rule.
+    yielded: bool,
+    /// Set the moment the bounds are met, so `next` never touches `inner`
+    /// again.
+    satisfied: bool,
+}
+
+impl Iterator for Limited {
+    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.satisfied {
+            return None;
+        }
+        let batch = match self.inner.next()? {
+            Ok(batch) => batch,
+            Err(error) => {
+                // Fused after the first error, per the listing contract.
+                self.satisfied = true;
+                return Some(Err(error));
+            }
+        };
+        let rows = batch.num_rows() as u64;
+        if rows == 0 {
+            // An empty batch carries no rows to count and no row bytes to
+            // charge, and swallowing it would end the stream early.
+            return Some(Ok(batch));
+        }
+        // How many leading rows each bound admits; the smaller answer wins.
+        let mut take = rows;
+        if let Some(remaining) = self.remaining_rows {
+            take = take.min(remaining);
+        }
+        // Priced only when a byte bound exists, because sizing a batch walks
+        // every one of its arrays.
+        let mut size = 0_u64;
+        if let Some(remaining) = self.remaining_bytes {
+            size = u64::try_from(batch.get_array_memory_size()).unwrap_or(u64::MAX);
+            if size > remaining {
+                // The whole batch does not fit, so the rows that keep the
+                // running total at or under the limit are prorated from the
+                // batch's own size - Arrow cannot price one row alone.
+                let fits = u64::try_from(
+                    u128::from(remaining) * u128::from(rows) / u128::from(size.max(1)),
+                )
+                .unwrap_or(u64::MAX);
+                // A non-zero byte limit always yields at least one row: a
+                // first row wider than the whole budget would otherwise turn
+                // a bounded read into a silent total loss.
+                let fits = if fits == 0 && !self.yielded { 1 } else { fits };
+                take = take.min(fits);
+            }
+        }
+        if take == 0 {
+            self.satisfied = true;
+            return None;
+        }
+        if take < rows {
+            // A bound landed inside this batch, so nothing after it can fit:
+            // the cut is a `slice`, a view over the same buffers, never a
+            // copy.
+            self.satisfied = true;
+            self.yielded = true;
+            let take = usize::try_from(take).unwrap_or(usize::MAX);
+            return Some(Ok(batch.slice(0, take)));
+        }
+        if let Some(remaining) = &mut self.remaining_rows {
+            *remaining -= rows;
+            if *remaining == 0 {
+                self.satisfied = true;
+            }
+        }
+        if let Some(remaining) = &mut self.remaining_bytes {
+            *remaining = remaining.saturating_sub(size);
+            if *remaining == 0 {
+                self.satisfied = true;
+            }
+        }
+        self.yielded = true;
+        Some(Ok(batch))
+    }
+}
+
+impl arrow_array::RecordBatchReader for Limited {
+    fn schema(&self) -> arrow_schema::SchemaRef {
+        std::sync::Arc::clone(&self.schema)
+    }
 }
 
 /// Implement [`IORecordOptions`] over one struct's own fields.
 ///
-/// Every encoding stores the same five settings under the same names, so the
+/// Every encoding stores the same shared settings under the same names, so the
 /// accessors are mechanical; what differs is the fields an encoding adds.
 #[macro_export]
 macro_rules! record_options_fields {
@@ -338,6 +558,22 @@ macro_rules! record_options_fields {
 
         fn set_batch_size(&mut self, batch_size: Option<usize>) {
             self.batch_size = batch_size;
+        }
+
+        fn max_row_size(&self) -> Option<u64> {
+            self.max_row_size
+        }
+
+        fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
+            self.max_row_size = max_row_size;
+        }
+
+        fn max_byte_size(&self) -> Option<u64> {
+            self.max_byte_size
+        }
+
+        fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
+            self.max_byte_size = max_byte_size;
         }
 
         fn level(&self) -> $crate::Level {
@@ -516,6 +752,42 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
+    fn max_row_size(&self) -> Option<u64> {
+        match self {
+            Self::Ipc(options) => options.max_row_size(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.max_row_size(),
+            Self::Avro(options) => options.max_row_size(),
+        }
+    }
+
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
+        match self {
+            Self::Ipc(options) => options.set_max_row_size(max_row_size),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_max_row_size(max_row_size),
+            Self::Avro(options) => options.set_max_row_size(max_row_size),
+        }
+    }
+
+    fn max_byte_size(&self) -> Option<u64> {
+        match self {
+            Self::Ipc(options) => options.max_byte_size(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.max_byte_size(),
+            Self::Avro(options) => options.max_byte_size(),
+        }
+    }
+
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
+        match self {
+            Self::Ipc(options) => options.set_max_byte_size(max_byte_size),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_max_byte_size(max_byte_size),
+            Self::Avro(options) => options.set_max_byte_size(max_byte_size),
+        }
+    }
+
     fn level(&self) -> Level {
         match self {
             Self::Ipc(options) => options.level(),
@@ -607,3 +879,6 @@ impl From<crate::avro::AvroOptions> for RecordOptions {
         Self::Avro(value)
     }
 }
+
+#[cfg(test)]
+mod tests;

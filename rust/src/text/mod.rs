@@ -532,6 +532,7 @@ pub(crate) fn check_encode_depth(value: &Value, format: &'static str) -> Result<
             | Value::Decimal(..)
             | Value::String(_)
             | Value::Bytes(_)
+            | Value::Geospatial(_)
             | Value::Date(_)
             | Value::Time(..)
             | Value::Timestamp(..)

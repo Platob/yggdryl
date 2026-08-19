@@ -108,13 +108,13 @@ def test_a_lake_is_filtered_by_the_same_predicate(tmp_path) -> None:
 
     # A listing yields whatever the predicate does not rule out, containers
     # included; nothing under `year=2025` survives.
-    matched = handle.children_matching("&holder.partition['year'] = '2024'")
+    matched = list(handle.children_matching("&holder.partition['year'] = '2024'"))
     assert matched
     assert all("year=2024" in str(entry.url) for entry in matched)
 
     # The pair spelling selects the leaves rather than the directories, and it
     # selects the same ones.
-    pairs = handle.children_where({"year": "2024"})
+    pairs = list(handle.children_where({"year": "2024"}))
     assert len(pairs) == 1
     assert str(pairs[0].url).endswith("year=2024/part-0.parquet")
 

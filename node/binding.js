@@ -410,6 +410,10 @@ Object.defineProperty(DataType, 'fromFields', {
 
 Object.defineProperty(DataType, 'variant', {
   value(values) {
+    // The parenthesis disambiguates, exactly as it does in the grammar: a
+    // bare call is the self-describing Variant datatype, and a member list
+    // keeps building the dense-union sugar.
+    if (values === undefined) return internalDataType.variant()
     return internalDataType.variant(collectFields(values))
   },
 })
@@ -1746,7 +1750,6 @@ installRecords({
   BatchReader,
   Field,
   IOBase,
-  Namespace: binding.Namespace,
   RecordOptions,
   Table: binding.Table,
   Tables: binding.Tables,
@@ -1765,17 +1768,20 @@ Object.defineProperty(binding.Table.prototype, 'scanAt', {
 
 // Property updates arrive as whatever spells string pairs - an object, a Map,
 // or entries - through the same normalization Field metadata updates use.
-const nativeUpdateProperties = binding.Table.prototype.updateProperties
-Object.defineProperty(binding.Table.prototype, 'updateProperties', {
-  configurable: true,
-  value(updates, removes) {
-    return nativeUpdateProperties.call(
-      this,
-      updates == null ? undefined : normalizeMetadata(updates),
-      removes,
-    )
-  },
-})
+// Every level of the hierarchy that carries properties widens the same way.
+for (const Owner of [binding.Table, binding.Catalog, binding.Namespace]) {
+  const nativeUpdateProperties = Owner.prototype.updateProperties
+  Object.defineProperty(Owner.prototype, 'updateProperties', {
+    configurable: true,
+    value(updates, removes) {
+      return nativeUpdateProperties.call(
+        this,
+        updates == null ? undefined : normalizeMetadata(updates),
+        removes,
+      )
+    },
+  })
+}
 
 // A schema evolution reads as one chained sentence. The native recorder holds
 // the operations and the native commit replays them, so this wrapper only adds
@@ -1892,6 +1898,67 @@ for (const name of [
 ]) {
   delete binding[name]
 }
+// A listing is a JS iterable and iterator at once: `next()` is native, the
+// protocol wrappers live here, so `for...of handle.ls(true)` works and so does
+// spreading. Nothing is collected on the way across - the walk runs as the
+// iterator is drained. The native `next` returns null at the end; the protocol
+// spells that as done.
+if (binding.Listing) {
+  const nativeNext = binding.Listing.prototype.next
+  binding.Listing.prototype.next = function next() {
+    const entry = nativeNext.call(this)
+    return entry === null ? { value: undefined, done: true } : { value: entry, done: false }
+  }
+  Object.defineProperty(binding.Listing.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function entries() {
+      return this
+    },
+  })
+}
+
+// The catalog collections are Map-like: `keys()` is a lazy native iterator,
+// and the loader supplies the protocol plus `values()` and `entries()` so
+// `for...of namespaces.keys()` and spreading both work. `values` and
+// `entries` open each named resource through `get`, one at a time.
+if (binding.IcebergNames) {
+  const nativeNext = binding.IcebergNames.prototype.next
+  binding.IcebergNames.prototype.next = function next() {
+    const name = nativeNext.call(this)
+    return name === null ? { value: undefined, done: true } : { value: name, done: false }
+  }
+  Object.defineProperty(binding.IcebergNames.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function names() {
+      return this
+    },
+  })
+}
+// The classes live under the frozen `iceberg` namespace by the time this
+// runs - the raw exports above were deleted - so the wiring reaches them
+// through the namespace, which holds the same prototypes.
+for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
+  if (!collection) continue
+  Object.defineProperty(collection.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function keys() {
+      return this.keys()[Symbol.iterator]()
+    },
+  })
+  Object.defineProperty(collection.prototype, 'values', {
+    configurable: true,
+    value: function* values() {
+      for (const name of this.keys()) yield this.get(name)
+    },
+  })
+  Object.defineProperty(collection.prototype, 'entries', {
+    configurable: true,
+    value: function* entries() {
+      for (const name of this.keys()) yield [name, this.get(name)]
+    },
+  })
+}
+
 // A line iterator is a JS iterable and iterator at once: `next()` is native,
 // the protocol wrappers live here, so `for...of handle.readLines()` works and
 // so does spreading. The native `next` returns null at the end; the protocol

@@ -165,6 +165,61 @@ test('a match key updates a stored row and appends a new one', () => {
   assert.deepEqual(table.getChild('symbol').toArray(), ['AAPL', 'MSFT.O', 'NVDA'])
 })
 
+test('a zero row limit reads the schema and no batches', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  handle.writeArrowBatchReader(trades())
+
+  // `0` is a valid ask, not an error: the shaped schema still answers.
+  const reader = handle.readArrowBatchReader(handle.recordOptions().withMaxRowSize(0))
+  assert.ok(reader.field.equals(schema()))
+  assert.equal(reader.toTable().numRows, 0)
+})
+
+test('a row limit is exact over a bigger file', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const file = new IOBase(path.join(root, 'trades.parquet'))
+  const count = 100
+  const many = rows(
+    Array.from({ length: count }, (_, index) => BigInt(index)),
+    Array.from({ length: count }, () => 'AAPL'),
+    Array.from({ length: count }, () => 'XNAS'),
+  )
+  file.writeArrowBatchReader(BatchReader.from(many))
+
+  const options = file.recordOptions()
+  options.maxRowSize = 10
+  assert.equal(options.maxRowSize, 10)
+  assert.equal(file.readArrowBatchReader(options).toTable().numRows, 10)
+})
+
+test('a small byte limit still yields at least one row', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  handle.writeArrowBatchReader(trades())
+
+  // One byte admits no whole row, but a bounded read must never be a silent
+  // total loss: only a limit of zero yields nothing.
+  const options = handle.recordOptions().withMaxByteSize(1)
+  assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 1)
+})
+
+test('a limit with a match key is refused naming both settings', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  handle.writeArrowBatchReader(trades())
+
+  // A truncated merge would update the matched keys it kept and silently drop
+  // the rest, so the combination is refused rather than corrupting.
+  const limited = handle.recordOptions().withMergeByNames(['id']).withMaxRowSize(10)
+  assert.throws(
+    () => handle.writeArrowBatchReader(trades(), limited),
+    /max_row_size = 10.*merge_by_names/,
+  )
+})
+
 test('a folder is one table, and a write routes rows to their partition', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

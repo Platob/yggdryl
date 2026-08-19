@@ -872,7 +872,7 @@ mod tables {
         let relative = file.rsplit("/data/").next().unwrap().to_owned();
         let handle = Folder::new(&path)
             .unwrap()
-            .child_by(&format!("data/{relative}"))
+            .child_by_path(&format!("data/{relative}"))
             .unwrap();
         let options = handle.record_options().unwrap();
         assert_eq!(handle.read_arrow_field(&options).unwrap().field_len(), 3);
@@ -1085,7 +1085,7 @@ mod tables {
             .to_owned();
         let handle = Folder::new(&path)
             .unwrap()
-            .child_by(&format!("metadata/{name}"))
+            .child_by_path(&format!("metadata/{name}"))
             .unwrap();
 
         // The spec comes back out of the manifest's own Avro header.
@@ -1255,7 +1255,7 @@ mod planning {
         let relative = excluded.rsplit("/data/").next().unwrap().to_owned();
         let mut handle = Folder::new(&path)
             .unwrap()
-            .child_by(&format!("data/{relative}"))
+            .child_by_path(&format!("data/{relative}"))
             .unwrap();
         handle.write_all_bytes(b"not a parquet file").unwrap();
 
@@ -1646,7 +1646,7 @@ mod handles {
     fn a_folder_that_is_not_a_table_still_reads_as_the_leaves_beneath_it() {
         let path = root("handle-plain");
         let lake = Folder::new(&path).unwrap();
-        let mut leaf = lake.child_by("part-0.parquet").unwrap();
+        let mut leaf = lake.child_by_path("part-0.parquet").unwrap();
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         let options = RecordOptions::for_media_type(leaf.media_type())
             .unwrap()
@@ -1685,7 +1685,7 @@ mod handles {
             IOBase::url(&table).unwrap().to_string(),
             Folder::new(&path).unwrap().url().to_string()
         );
-        assert!(table.child_by("metadata").is_ok());
+        assert!(table.child_by_path("metadata").is_ok());
 
         // The record surface is answered before a single data file exists:
         // the encoding from what this module writes, the schema from the
@@ -1826,6 +1826,58 @@ mod handles {
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.version(), table.version());
         assert_eq!(reopened.metadata().snapshots.len(), 3);
+    }
+
+    #[test]
+    fn the_table_value_honours_the_row_limit_like_every_handle() {
+        let path = root("handle-table-limit");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let options = IOBase::record_options(&table).unwrap();
+
+        // A limited write truncates data the caller offered, so only the
+        // first row of the two lands in the commit.
+        let batch = trades(
+            &[1, 2],
+            &[Some("AAPL"), Some("MSFT")],
+            &[Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options.clone().with_max_row_size(1),
+            )
+            .unwrap();
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&options).unwrap()).len(),
+            1
+        );
+
+        // A limited read counts result rows, and `Some(0)` is a valid ask.
+        let limited = options.clone().with_max_row_size(0);
+        assert_eq!(
+            collect(table.read_arrow_batch_reader(&limited).unwrap()).len(),
+            0
+        );
+
+        // A limit combined with a match key is refused naming both settings,
+        // on a table exactly as on a leaf.
+        let merging = options
+            .clone()
+            .with_merge_by_names(["id"])
+            .with_max_row_size(1);
+        let batch = trades(&[3], &[Some("VOD")], &[Some("XLON")]);
+        let Err(error) = table.write_arrow_batch_reader(
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+            &merging,
+        ) else {
+            panic!("a limited merge must be refused");
+        };
+        let message = error.to_string();
+        assert!(message.contains("max_row_size = 1"), "{message}");
+        assert!(message.contains("merge_by_names [\"id\"]"), "{message}");
     }
 }
 
@@ -3432,7 +3484,7 @@ mod line_projection {
         let thread_id = schema.get_field_by_name("thread_id").unwrap();
         assert_eq!(thread_id.data_type(), &crate::DataType::Int64);
         let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
-        catalog.create_table("logs.threads", schema).unwrap();
+        catalog.tables().create("logs.threads", schema).unwrap();
 
         let options = crate::text::TextLineOptions::with_pattern(pattern).unwrap();
         let day = named(
@@ -3440,6 +3492,7 @@ mod line_projection {
             b"2024-02-01 10:00:00 [7] (info) fill\n2024-02-01 10:00:01 [42] (warn) partial\n",
         );
         let table = catalog
+            .tables()
             .append("logs.threads", day.into_arrow_lines(&options).unwrap())
             .unwrap();
 
@@ -3510,7 +3563,7 @@ mod line_projection {
 
         let warehouse = path.join("warehouse");
         let catalog = super::super::Catalog::new(Folder::new(&warehouse).unwrap());
-        let created = catalog.create_table("logs.app", schema).unwrap();
+        let created = catalog.tables().create("logs.app", schema).unwrap();
         let spec = created.metadata().default_spec().unwrap();
         assert_eq!(spec.fields.len(), 1);
         assert_eq!(spec.fields[0].name, "level");
@@ -3520,6 +3573,7 @@ mod line_projection {
         // reader is the parse, never a collected vector of batches.
         let folder = crate::local::Folder::new(&logs).unwrap();
         let table = catalog
+            .tables()
             .append("logs.app", folder.into_arrow_lines(&options).unwrap())
             .unwrap();
 
@@ -3612,6 +3666,7 @@ mod line_projection {
             b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n",
         );
         let table = catalog
+            .tables()
             .append("logs.app", day_two.into_arrow_lines(&options).unwrap())
             .unwrap();
         assert_eq!(table.metadata().snapshots.len(), 2);

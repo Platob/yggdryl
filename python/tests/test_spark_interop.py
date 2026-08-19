@@ -170,7 +170,7 @@ class TestTableCreationAndFieldIds:
                 pa.field("note", pa.string()),
             ]
         )
-        catalog.create_table("ids.ygg_made", schema)
+        catalog.tables.create("ids.ygg_made", schema)
         described = {
             row[0]: row[1]
             for row in spark_rows(spark, f"DESCRIBE TABLE {CATALOG}.ids.ygg_made")

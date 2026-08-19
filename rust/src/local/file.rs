@@ -127,26 +127,49 @@ impl File {
     /// Returns `Ok(false)` when the file does not exist and creation was not
     /// requested, which is how a read of a missing file becomes empty rather
     /// than an error.
+    ///
+    /// The open *is* the existence question, per the existence contract: one
+    /// attempt, then the failure is the answer. A read that finds nothing is
+    /// empty; a write whose parent directory is missing repairs that ancestry
+    /// once and retries the open exactly once, and a second absence is
+    /// reported as it is, naming what the repair created.
     fn materialize(state: &mut Option<Mapped>, path: &Path, create: bool) -> Result<bool> {
         if state.is_some() {
             return Ok(true);
         }
-        if !create && !path.exists() {
-            return Ok(false);
-        }
-        if create {
-            if let Some(parent) = path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    std::fs::create_dir_all(parent)?;
+        let file = match Self::open_at(path, create) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if !create {
+                    // Absence is emptiness on the read side.
+                    return Ok(false);
                 }
+                // `create(true)` still fails when the *parent* is missing, so
+                // that is the only absence left to repair.
+                let Some(parent) = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                else {
+                    return Err(Error::from_io_at(error, "file", path.display()));
+                };
+                std::fs::create_dir_all(parent)?;
+                Self::open_at(path, create).map_err(|retry| {
+                    if retry.kind() == std::io::ErrorKind::NotFound {
+                        Error::absent(
+                            "file",
+                            format!(
+                                "{} (its parent {} was created)",
+                                path.display(),
+                                parent.display()
+                            ),
+                        )
+                    } else {
+                        Error::Io(retry)
+                    }
+                })?
             }
-        }
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(create)
-            .truncate(false)
-            .open(path)?;
+            Err(error) => return Err(Error::from_io_at(error, "file", path.display())),
+        };
         let size = file.metadata()?.len();
         *state = Some(Mapped {
             file,
@@ -154,6 +177,16 @@ impl File {
             size,
         });
         Ok(true)
+    }
+
+    /// One open attempt, with no question asked first.
+    fn open_at(path: &Path, create: bool) -> std::io::Result<StdFile> {
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(create)
+            .truncate(false)
+            .open(path)
     }
 }
 

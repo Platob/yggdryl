@@ -881,6 +881,102 @@ row group recorded any, which is what distinguishes "no nulls" from "nobody coun
 and the per-column null counts and bounds are what a manifest entry stores next to it, so a planner
 can skip whole files it never has to open.
 
+## Geospatial and variant columns
+
+!!! note "Rust only"
+    The bindings declare [geometry, geography, and variant fields](datatype.md)
+    and write them through the same record methods, but the statistics surface
+    below is Rust only, like the rest of the footer above.
+
+A column whose schema declares [geometry or geography](datatype.md) writes Parquet's own `GEOMETRY`
+or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB, from the schema's own declaration: the CRS and,
+for a geography, the edge algorithm ride along, and the defaults - `OGC:CRS84`, `spherical` - fold
+to the format's absent spellings, so a bare declaration writes the bare logical type. A variant
+field writes its metadata/value storage struct with the `VARIANT` logical type attached, at the
+schema level only: a variant *value* cannot cross an Arrow array boundary yet - the variant binary
+encoding lands with the Iceberg v3 layer - so variant columns stay schema-level until it does.
+
+A geospatial column's sort order is undefined, so the writer never records min/max value bounds for
+it - a bound would be a lie - while sibling columns keep theirs, and a min/max a foreign writer
+recorded anyway is ignored on read rather than surfaced. What a geometry records instead is the
+format's own geospatial statistics: the WKB bounding box and the sorted ISO geometry type codes
+present, in the footer, readable from `ColumnStatistics::geospatial` and recomputable by scanning
+the stored WKB through `read_geospatial_statistics` - which also answers for files whose writer
+recorded none. A geography records no box at all: its bounds are edge-algorithm-aware, and a planar
+fold of the vertices would under-cover them.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{BinaryArray, Int64Array, RecordBatch};
+use yggdryl::arrow;
+use yggdryl::io::Buffer;
+use yggdryl::parquet::Parquet;
+use yggdryl::{DataType, MimeType};
+
+/// One little-endian ISO WKB point.
+fn wkb_point(x: f64, y: f64) -> Vec<u8> {
+    let mut bytes = vec![1u8];
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&x.to_le_bytes());
+    bytes.extend_from_slice(&y.to_le_bytes());
+    bytes
+}
+
+// The declaration is the schema's own: `None` fills the `OGC:CRS84` default,
+// which folds to Parquet's bare `GEOMETRY` spelling.
+let field = DataType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::geometry(None)?.nullable_field("shape"),
+])?
+.required_field("row");
+
+let arrow_schema = field.to_arrow_schema()?;
+let batch = RecordBatch::try_new(
+    Arc::clone(&arrow_schema),
+    vec![
+        Arc::new(Int64Array::from(vec![1, 2, 3])),
+        Arc::new(BinaryArray::from_opt_vec(vec![
+            Some(&wkb_point(1.0, 2.0)[..]),
+            None,
+            Some(&wkb_point(-3.0, 7.0)[..]),
+        ])),
+    ],
+)?;
+
+let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+
+let statistics = media.read_statistics()?;
+let columns = &statistics.row_groups[0].columns;
+let id = columns.iter().find(|column| column.path == "id").unwrap();
+let shape = columns.iter().find(|column| column.path == "shape").unwrap();
+
+// The sibling keeps its value bounds; the geometry never records any.
+assert!(id.min_bytes.is_some() && id.max_bytes.is_some());
+assert!(shape.min_bytes.is_none() && shape.max_bytes.is_none());
+assert_eq!(shape.null_count, Some(1));
+
+// What a geometry records instead: the WKB bounds and type codes.
+let geospatial = shape.geospatial.as_ref().unwrap();
+let bounds = geospatial.bounding_box.unwrap();
+assert_eq!(
+    (bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax),
+    (-3.0, 1.0, 2.0, 7.0)
+);
+assert_eq!(geospatial.geometry_types, vec![1]); // an XY point is code 1
+
+// A fresh scan of the stored WKB answers the same statistics.
+assert_eq!(media.read_geospatial_statistics("shape")?, *geospatial);
+```
+
+One read-side limit is named rather than hidden: a *foreign* file whose columns carry
+`GEOMETRY`/`GEOGRAPHY`/`VARIANT` surfaces plain `Binary`/`Struct` Arrow types without extension
+metadata, because the pinned parquet crate only maps those logical types to Arrow extensions behind
+crate features that pull new dependencies; files written here round-trip their extension identity
+through the embedded Arrow schema. And GeoArrow's own documents say the specification is not
+finalized, so the `geoarrow.wkb` spelling the writer reads is revisitable if it changes.
+
 ## The handle underneath
 
 !!! note "Rust only"

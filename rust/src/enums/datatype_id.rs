@@ -101,11 +101,17 @@ pub enum DataTypeId {
     Map,
     /// Run-end encoded values.
     RunEndEncoded,
+    /// Self-describing semi-structured values.
+    Variant,
+    /// Geospatial features on a planar coordinate system.
+    Geometry,
+    /// Geospatial features on the surface of a sphere or spheroid.
+    Geography,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 41] = [
+    pub const ALL: [Self; 44] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -147,6 +153,9 @@ impl DataTypeId {
         Self::Decimal256,
         Self::Map,
         Self::RunEndEncoded,
+        Self::Variant,
+        Self::Geometry,
+        Self::Geography,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -207,6 +216,9 @@ impl DataTypeId {
             Self::Decimal256 => "decimal256",
             Self::Map => "map",
             Self::RunEndEncoded => "run_end_encoded",
+            Self::Variant => "variant",
+            Self::Geometry => "geometry",
+            Self::Geography => "geography",
         }
     }
 
@@ -248,6 +260,8 @@ impl DataTypeId {
             Self::Map => DataTypeKind::Map,
             Self::Dictionary => DataTypeKind::Dictionary,
             Self::RunEndEncoded => DataTypeKind::RunEndEncoded,
+            Self::Variant => DataTypeKind::Variant,
+            Self::Geometry | Self::Geography => DataTypeKind::Geospatial,
         }
     }
 
@@ -278,6 +292,8 @@ impl DataTypeId {
                 | Self::Decimal256
                 | Self::Map
                 | Self::RunEndEncoded
+                | Self::Geometry
+                | Self::Geography
         )
     }
 

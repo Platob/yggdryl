@@ -227,7 +227,7 @@ def test_data_type_variant_assigns_dense_type_ids_in_member_order() -> None:
     variant = DataType.variant(one_shot())
     arrow = variant.to_arrow()
 
-    assert str(inspect.signature(DataType.variant)) == "(fields)"
+    assert str(inspect.signature(DataType.variant)) == "(fields=None)"
     assert consumed == ["count", "label", "missing"]
     assert variant.id == "union"
     assert tuple(variant) == members
@@ -244,6 +244,49 @@ def test_data_type_variant_assigns_dense_type_ids_in_member_order() -> None:
         DataType.variant(
             Field(f"member_{index}", "null") for index in range(129)
         )
+
+
+def test_bare_variant_is_the_self_describing_datatype_not_the_union_sugar() -> None:
+    variant = DataType.variant()
+
+    assert variant.id == "variant"
+    assert variant.kind == "variant"
+    assert str(variant) == "variant"
+    assert variant == DataType("variant")
+    assert DataType(str(variant)) == variant
+    # The parenthesis disambiguates: members keep building the dense union.
+    assert DataType.variant([Field("only", "int64")]).id == "union"
+    assert DataType("variant(only:int64)").id == "union"
+
+
+def test_geometry_and_geography_fill_and_display_their_defaults() -> None:
+    geometry = DataType.geometry()
+
+    assert geometry.id == "geometry"
+    assert geometry.kind == "geospatial"
+    assert str(geometry) == "geometry"
+    assert geometry == DataType.geometry("OGC:CRS84")
+    assert DataType("geometry") == geometry
+
+    projected = DataType.geometry("EPSG:3857")
+    assert str(projected) == 'geometry("EPSG:3857")'
+    assert DataType(str(projected)) == projected
+
+    geography = DataType.geography()
+    assert geography.id == "geography"
+    assert geography.kind == "geospatial"
+    assert str(geography) == "geography"
+    assert geography == DataType.geography("OGC:CRS84", "spherical")
+
+    vincenty = DataType.geography("OGC:CRS84", "vincenty")
+    assert str(vincenty) == 'geography("OGC:CRS84","vincenty")'
+    assert DataType("geography('OGC:CRS84', 'vincenty')") == vincenty
+    assert DataType(str(vincenty)) == vincenty
+
+    with pytest.raises(ValueError, match="expected a coordinate reference system"):
+        DataType.geometry("")
+    with pytest.raises(ValueError, match="expected one of spherical"):
+        DataType.geography("OGC:CRS84", "euclidean")
 
 
 def test_data_type_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> None:

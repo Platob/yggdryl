@@ -44,7 +44,8 @@ type, with Arrow itself kept out of the value model.
     assert.ok(DataType.fromJSON(value.toJSON()).equals(value))
     ```
 
-There are 41 variants, one per Arrow logical type. The parser accepts the Arrow, SQL, Hive, and
+There are 44 variants: one per Arrow logical type, plus Variant and the geospatial pair, which
+cross Arrow as extension-typed storage. The parser accepts the Arrow, SQL, Hive, and
 Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`, `row(...)`,
 `double precision` - and normalizes to one canonical form, so `to_string` is a losslessly
 re-parseable value rather than a debug rendering. `to_json` is a separate, structural encoding:
@@ -292,7 +293,7 @@ still reports the wrapper. Dictionary ordering and the Arrow dictionary id live 
 Run-end children keep Arrow's names and constraints: `run_ends` must be non-null and one of the
 three signed widths, while `values` carries the actual type and its own nullability.
 
-## Unions and the variant alias
+## Unions and the dense-union sugar
 
 === "Rust"
 
@@ -303,19 +304,22 @@ three signed widths, while `values` carries the actual type and its own nullabil
         Field::new("number", DataType::Int64, false),
         Field::new("text", DataType::Utf8, true),
     ];
-    let variant = DataType::variant(members.clone())?;
+    let members_union = DataType::dense_union(members.clone())?;
 
-    // `variant` is not a second logical type: it is the dense union with IDs 0..
+    // The member sugar is not a second logical type: it is the dense union
+    // with IDs 0.. - and bare `variant` is a datatype of its own, so the
+    // parenthesis is what disambiguates the two spellings.
     assert_eq!(
-        variant,
+        members_union,
         DataType::union(
             [(0, members[0].clone()), (1, members[1].clone())],
             UnionMode::Dense,
         )?
     );
-    assert_eq!(variant.name(), "union");
-    assert!(variant.to_string().starts_with("union(dense,"));
+    assert_eq!(members_union.name(), "union");
+    assert!(members_union.to_string().starts_with("union(dense,"));
     assert_eq!(DataType::from_str("variant(number:int64,text:string)")?.name(), "union");
+    assert_eq!(DataType::from_str("variant")?, DataType::Variant);
 
     // An explicit union picks its own mode and its own non-negative type IDs.
     let sparse = DataType::union(
@@ -372,16 +376,170 @@ three signed widths, while `values` carries the actual type and its own nullabil
     )
     ```
 
-A union pairs each member with an explicit Arrow type ID; a variant is the case where those IDs are
+A union pairs each member with an explicit Arrow type ID; the sugar is the case where those IDs are
 just `0..` in declaration order, so a caller lists members and nothing else. It is not a second
-logical type: `variant` builds a `DataType::Union` with `UnionMode::Dense`, and display, JSON, Arrow
-projection, and defaults all go through the union contract - which is why the canonical form of a
-variant reads `union(dense, ...)`. It is also the only union constructor on `DataType` itself in
-Python and JavaScript; an explicit mode goes through the `fields.union` factories there, and through
-`DataType::union` in Rust.
+logical type: `DataType::dense_union` builds a `DataType::Union` with `UnionMode::Dense`, and
+display, JSON, Arrow projection, and defaults all go through the union contract - which is why the
+canonical form reads `union(dense, ...)`. In Python and JavaScript the sugar is the member-taking
+call `DataType.variant(fields)` and the `fields.dense_union` / `fields.denseUnion` factories (the
+typed alias is `DenseUnionField`); an explicit mode goes through the `fields.union` factories
+there, and through `DataType::union` in Rust.
 
-Type IDs are `i8` and must be unique and non-negative, so a variant caps at 128 members. The parser
+The `variant` spelling collides with a datatype of its own, and the parenthesis is the whole
+disambiguation: bare `variant` is the self-describing [Variant datatype](#variant-geometry-and-geography),
+while `variant(...)` with members stays this dense-union input sugar - in the grammar and in the
+`DataType.variant` call of both bindings alike.
+
+Type IDs are `i8` and must be unique and non-negative, so the sugar caps at 128 members. The parser
 accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonicalizes all of them.
+
+## Variant, geometry, and geography
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, DataTypeKind, EdgeAlgorithm};
+
+    // Bare `variant` is the self-describing semi-structured datatype; the
+    // parenthesis selects the dense-union sugar instead.
+    let variant = DataType::variant();
+    assert_eq!(variant.to_string(), "variant");
+    assert_eq!(variant.kind(), DataTypeKind::Variant);
+    assert_eq!(DataType::from_str("variant")?, variant);
+    assert_eq!(DataType::from_str("variant(n:int64)")?.name(), "union");
+
+    // The bare geospatial spellings fill the defaults Parquet and Iceberg
+    // share - `OGC:CRS84`, and spherical edges for a geography - so a
+    // parameter appears exactly when it says something.
+    let geometry = DataType::geometry(None)?;
+    assert_eq!(geometry.to_string(), "geometry");
+    assert_eq!(geometry, DataType::geometry(Some("OGC:CRS84"))?);
+    assert_eq!(geometry.kind(), DataTypeKind::Geospatial);
+    assert_eq!(
+        DataType::geometry(Some("EPSG:3857"))?.to_string(),
+        "geometry(\"EPSG:3857\")"
+    );
+
+    let geography = DataType::geography(None, None)?;
+    assert_eq!(geography.to_string(), "geography");
+    assert_eq!(
+        geography,
+        DataType::geography(Some("OGC:CRS84"), Some(EdgeAlgorithm::Spherical))?
+    );
+
+    let vincenty = DataType::geography(None, Some(EdgeAlgorithm::Vincenty))?;
+    assert_eq!(vincenty.to_string(), "geography(\"OGC:CRS84\",\"vincenty\")");
+    assert_eq!(DataType::from_str("geography('OGC:CRS84', 'vincenty')")?, vincenty);
+
+    // A geometry has no edge algorithm, and an empty CRS names nothing.
+    assert!(DataType::from_str("geometry('OGC:CRS84', 'vincenty')").is_err());
+    assert!(DataType::geometry(Some("")).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType, fields
+
+    variant = DataType.variant()
+    assert variant.id == "variant"
+    assert variant.kind == "variant"
+    assert str(variant) == "variant"
+    assert DataType("variant") == variant
+    assert DataType("variant(n:int64)").id == "union"
+    assert fields.variant("payload").data_type == variant
+
+    geometry = DataType.geometry()
+    assert str(geometry) == "geometry"
+    assert geometry == DataType.geometry("OGC:CRS84")
+    assert geometry.kind == "geospatial"
+    assert str(DataType.geometry("EPSG:3857")) == 'geometry("EPSG:3857")'
+
+    geography = DataType.geography()
+    assert str(geography) == "geography"
+    assert geography == DataType.geography("OGC:CRS84", "spherical")
+
+    vincenty = DataType.geography("OGC:CRS84", "vincenty")
+    assert str(vincenty) == 'geography("OGC:CRS84","vincenty")'
+    assert DataType(str(vincenty)) == vincenty
+    assert fields.geography("region", "OGC:CRS84", "vincenty").data_type == vincenty
+
+    with pytest.raises(ValueError, match="expected no edge algorithm"):
+        DataType("geometry('OGC:CRS84', 'vincenty')")
+    with pytest.raises(ValueError, match="expected one of spherical"):
+        DataType.geography("OGC:CRS84", "euclidean")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields } = require('yggdryl')
+
+    const variant = DataType.variant()
+    assert.equal(variant.id, 'variant')
+    assert.equal(variant.kind, 'variant')
+    assert.equal(variant.toString(), 'variant')
+    assert.ok(new DataType('variant').equals(variant))
+    assert.equal(DataType.fromString('variant(n:int64)').id, 'union')
+    assert.ok(fields.variant('payload').dataType.equals(variant))
+
+    const geometry = DataType.geometry()
+    assert.equal(geometry.toString(), 'geometry')
+    assert.ok(DataType.geometry('OGC:CRS84').equals(geometry))
+    assert.equal(geometry.kind, 'geospatial')
+    assert.equal(DataType.geometry('EPSG:3857').toString(), 'geometry("EPSG:3857")')
+
+    const geography = DataType.geography()
+    assert.equal(geography.toString(), 'geography')
+    assert.ok(DataType.geography('OGC:CRS84', 'spherical').equals(geography))
+
+    const vincenty = DataType.geography('OGC:CRS84', 'vincenty')
+    assert.equal(vincenty.toString(), 'geography("OGC:CRS84","vincenty")')
+    assert.ok(DataType.fromString(vincenty.toString()).equals(vincenty))
+    assert.ok(
+      fields.geography('region', 'OGC:CRS84', 'vincenty').dataType.equals(vincenty),
+    )
+
+    assert.throws(
+      () => new DataType("geometry('OGC:CRS84', 'vincenty')"),
+      /expected no edge algorithm/,
+    )
+    assert.throws(
+      () => DataType.geography('OGC:CRS84', 'euclidean'),
+      /expected one of spherical/,
+    )
+    ```
+
+A variant is a self-describing tree: each value declares its own types, which is why the datatype
+takes no parameters - shredding is a physical layout, not part of the logical type - and why the
+grammar's bare `variant` parses to it while `variant(...)` stays the
+[dense-union sugar](#unions-and-the-dense-union-sugar) above. A variant *value* is the one
+[`Value`](generic.md) model; its Parquet binary encoding lands with the Iceberg v3 layer, so paths
+that would need it today refuse by name.
+
+The geospatial pair shares one parameter value: a coordinate reference system, and - only on a
+geography - the edge interpolation. Bare `geometry` and `geography` fill the defaults Parquet's
+`GEOMETRY`/`GEOGRAPHY` logical types and Iceberg v3 share (`OGC:CRS84`, spherical edges), and
+display emits a parameter exactly when it differs from that default, so every spelling round-trips
+through `from_str`. An empty CRS is refused - the absent spelling is `None`, which fills the
+default - and a geometry given an edge algorithm is refused by name: straight planar lines need
+none. The algorithm vocabulary is the five canonical lowercase names of
+[`EdgeAlgorithm`](enums.md#edge-algorithms) - `spherical`, `vincenty`, `thomas`, `andoyer`,
+`karney` - parsed case-insensitively; the Python and JavaScript `algorithm` arguments accept those
+strings.
+
+Across an Arrow boundary the three are extension-typed storage: a variant is a struct of
+non-nullable `metadata` and `value` binaries under the canonical `arrow.parquet.variant` extension
+name, and both geospatial types are WKB bytes under the community `geoarrow.wkb` name, whose
+GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm. The identities
+ride the `ARROW:extension:name` / `ARROW:extension:metadata` field-metadata keys. GeoArrow's own
+documentation says the specification is not finalized, so the `geoarrow.wkb` mapping is a
+community choice that may be revisited when it stabilizes. The geospatial *values* travel as
+Well-Known Binary through [`Value::Geospatial`](generic.md#the-wkb-reader), read back for display
+and bounds by the one WKB reader documented there.
 
 ## Identity and family
 
@@ -437,7 +595,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
     assert.equal(fields.decimal('amount', 38, 4).dataType.kind, 'decimal')
     ```
 
-`id` names the variant and `kind` names the family it belongs to - 41 ids across 14 kinds. Both are
+`id` names the variant and `kind` names the family it belongs to - 44 ids across 16 kinds. Both are
 parameter-free, so they compare and hash without touching nested state, which is what makes them the
 cheap way to branch. Dispatch on the kind when the behavior is uniform across a family, on the id
 when it is not; `name()` is the Rust spelling of `id().as_str()`. The two vocabularies and the
@@ -569,7 +727,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
     assert.equal(new DataType('int32').defaultArrowScalar(), 0)
     ```
 
-Every one of the 41 variants has a canonical default, and it is computed from the schema rather than
+Every one of the 44 variants has a canonical default, and it is computed from the schema rather than
 looked up per language: the core produces one value and each binding projects it. Rust yields a
 [`Value`](generic.md); Python yields a dataclass record or a Python scalar from `default_pyvalue`
 and a `pyarrow.Scalar` from `default_arrow_scalar`; JavaScript yields a plain array, `Buffer`,

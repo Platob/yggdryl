@@ -2,7 +2,7 @@
 //!
 //! **An Iceberg table is a folder.** `metadata/` holds the JSON documents and
 //! the Avro manifests, `data/` holds the Parquet files, and this module reaches
-//! every one of them with [`IOBase::child_by`] and [`IOBase::ls`] against the
+//! every one of them with [`IOBase::child_by_path`] and [`IOBase::ls`] against the
 //! handle a [`Table`] was constructed from. Nothing here opens a path or calls
 //! the file system, so the same code works over a local directory today and
 //! over an object store the moment a backend for one exists. The relationship
@@ -109,7 +109,7 @@ mod table;
 mod types;
 mod value;
 
-pub use catalog::{Catalog, Namespace, Namespaces, Tables};
+pub use catalog::{Catalog, Catalogs, Names, Namespace, Namespaces, Tables};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
     DataFile, EntryStatus, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,
@@ -173,7 +173,7 @@ impl Located {
             } else {
                 vec![".."; climbed].join("/")
             };
-            if let Some(table) = Table::locate(handle.child_by(&relative)?)? {
+            if let Some(table) = Table::locate(handle.child_by_path(&relative)?)? {
                 filters.reverse();
                 return Ok(Some(Self { table, filters }));
             }

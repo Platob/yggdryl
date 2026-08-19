@@ -3,6 +3,7 @@
 pub(crate) mod codec;
 mod datatype_id;
 mod datatype_kind;
+mod edge_algorithm;
 mod io_kind;
 mod magic;
 mod media_type;
@@ -15,6 +16,7 @@ mod union_mode;
 pub use codec::{Codec, Encoder, Level};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;
+pub use edge_algorithm::EdgeAlgorithm;
 pub use io_kind::IOKind;
 pub use magic::MAGIC_PROBE_LEN;
 pub use media_type::MediaType;

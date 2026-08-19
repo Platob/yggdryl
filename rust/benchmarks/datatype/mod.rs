@@ -1,6 +1,7 @@
 pub(crate) mod arrow;
 pub(crate) mod default;
 pub(crate) mod floating;
+pub(crate) mod geospatial;
 pub(crate) mod nested;
 pub(crate) mod parser;
 pub(crate) mod temporal;

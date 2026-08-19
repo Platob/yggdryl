@@ -944,11 +944,13 @@ fn compression_name(compression: parquet::basic::Compression) -> String {
 /// `root_name` is applied before `schema` because coercing a schema names an
 /// unnamed root with the options' root name, so a call passing both means the
 /// schema under that name whichever order the keywords were typed in.
-const RECORD_KWARGS: [&str; 11] = [
+const RECORD_KWARGS: [&str; 13] = [
     "root_name",
     "schema",
     "safe",
     "batch_size",
+    "max_row_size",
+    "max_byte_size",
     "level",
     "merge_by_names",
     "select_by_names",
@@ -994,6 +996,8 @@ fn set_record_option(
         }
         "safe" => options.set_safe(value.extract::<bool>()?),
         "batch_size" => set_batch_size_option(options, value.extract::<Option<usize>>()?)?,
+        "max_row_size" => options.set_max_row_size(value.extract::<Option<u64>>()?),
+        "max_byte_size" => options.set_max_byte_size(value.extract::<Option<u64>>()?),
         "level" => options.set_level(Level::new(value.extract::<u8>()?)),
         "merge_by_names" => {
             options.set_merge_by_names(crate::media::strings_from_iterable(
@@ -1205,6 +1209,35 @@ impl PyRecordOptions {
     #[setter]
     fn set_batch_size(&mut self, batch_size: Option<usize>) -> PyResult<()> {
         set_batch_size_option(&mut self.inner, batch_size)
+    }
+
+    /// The bound on how many result rows flow in total, when one is set.
+    ///
+    /// A count of rows, applied last - after the declared schema, selection,
+    /// completion cast, and partition filter - so `0` is a valid ask: the
+    /// shaped schema with no batches, rather than an error.
+    #[getter]
+    fn max_row_size(&self) -> Option<u64> {
+        self.inner.max_row_size()
+    }
+
+    #[setter]
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
+        self.inner.set_max_row_size(max_row_size);
+    }
+
+    /// The bound on the result rows' Arrow in-memory bytes, when one is set.
+    ///
+    /// Counted uncompressed, never as encoded bytes; a non-zero bound always
+    /// yields at least one row, and only `0` yields nothing.
+    #[getter]
+    fn max_byte_size(&self) -> Option<u64> {
+        self.inner.max_byte_size()
+    }
+
+    #[setter]
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
+        self.inner.set_max_byte_size(max_byte_size);
     }
 
     /// The compression level applied to a content coding, on the 0-to-9 scale.

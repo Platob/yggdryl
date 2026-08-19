@@ -30,3 +30,4 @@ node_modules/
 
 # The Spark interop suite's provisioned iceberg-spark-runtime jar
 python/.spark-interop/
+.claude/

@@ -16,7 +16,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl::arrowfs::{ArrowFileSystem, FileInfo};
+use yggdryl::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
 use yggdryl::{Error, IOKind, Result};
 
 /// A held `pyarrow.fs.FileSystem`, presented as the core vtable.
@@ -106,8 +106,13 @@ impl ArrowFileSystem for PyArrowFileSystem {
         })
     }
 
-    fn list(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
-        self.with_gil(|filesystem| {
+    fn list(&self, path: &str, recursive: bool) -> FileInfos {
+        // `pyarrow.fs` answers a selector with a *list* of file infos, so the
+        // foreign call is what collects, not this wrapper: there is no shape
+        // in that API to pull one entry at a time from. The bound is the
+        // foreign call's own answer, and it is stated here because this is
+        // where the collection happens.
+        let entries: Result<Vec<FileInfo>> = self.with_gil(|filesystem| {
             let py = filesystem.py();
             // A selector is how pyarrow.fs asks for the contents of a prefix,
             // and `allow_not_found` is what makes a missing directory list
@@ -123,7 +128,11 @@ impl ArrowFileSystem for PyArrowFileSystem {
                 .try_iter()?
                 .map(|entry| file_info_from_py(&entry?))
                 .collect()
-        })
+        });
+        match entries {
+            Ok(entries) => FileInfos::new(entries.into_iter().map(Ok)),
+            Err(error) => FileInfos::failing(error),
+        }
     }
 
     fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {

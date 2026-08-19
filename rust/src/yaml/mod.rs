@@ -546,6 +546,16 @@ fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
             )?;
             writer.write_all(b"}")?;
         }
+        // A geometry is the bytes envelope under its own kind, so the WKB
+        // reads back as the geospatial value it left as.
+        Value::Geospatial(value) => {
+            writer.write_all(b"{\"$yggdryl\": \"geospatial\", \"value\": ")?;
+            write_quoted(
+                writer,
+                &base64::engine::general_purpose::STANDARD.encode(value),
+            )?;
+            writer.write_all(b"}")?;
+        }
         Value::Date(days) => match crate::generic::iso::format_date(*days) {
             Some(spelled) => write_scalar_string(writer, &spelled)?,
             None => {
@@ -803,7 +813,7 @@ fn is_yaml_envelope_collision(entries: &[(Value, Value)]) -> bool {
             .flatten()
     });
     match marker {
-        Some("bytes" | "i128" | "u128" | "float" | "mapping") => {
+        Some("bytes" | "geospatial" | "i128" | "u128" | "float" | "mapping") => {
             exact_value_keys(entries, &["$yggdryl", "value"])
         }
         _ => false,

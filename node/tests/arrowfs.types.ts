@@ -55,8 +55,8 @@ const inferred: IOBase = new IOBase(handler, 'bucket/key.arrows')
 // What comes back is an ordinary handle, so the whole surface is the same.
 const bytes: Buffer = handle.readBytes()
 const written: number = handle.writeText('AAPL')
-const children: IOBase[] = handle.parent?.ls(true) ?? []
-const globbed: IOBase[] = handle.glob('**/*.arrows')
+const children: IOBase[] = [...(handle.parent?.ls(true) ?? [])]
+const globbed: IOBase[] = [...handle.glob('**/*.arrows')]
 const joined: IOBase = handle.joinpath('year=2024', 'part-0.arrows')
 const schema: Field = handle.readArrowField()
 const rows: BatchReader = handle.readArrowBatchReader()

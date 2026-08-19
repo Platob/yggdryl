@@ -433,6 +433,26 @@ impl DiffEngine {
                 self.push_field_property(left.values(), right.values(), &path, "values");
                 self.push_field_property(left.run_ends(), right.run_ends(), &path, "run_ends");
             }
+            (D::Geometry(left), D::Geometry(right)) | (D::Geography(left), D::Geography(right)) => {
+                if left.crs() != right.crs() {
+                    self.pending.push_back(changed_debug(
+                        &property_path(&path, "crs"),
+                        left.crs(),
+                        right.crs(),
+                    ));
+                }
+                if let (Some(left_algorithm), Some(right_algorithm)) =
+                    (left.algorithm(), right.algorithm())
+                {
+                    if left_algorithm != right_algorithm {
+                        self.pending.push_back(changed_display(
+                            &property_path(&path, "algorithm"),
+                            left_algorithm,
+                            right_algorithm,
+                        ));
+                    }
+                }
+            }
             _ if left.id() != right.id() => self.pending.push_back(changed_display(
                 &property_path(&path, "kind"),
                 left.name(),

@@ -5,7 +5,8 @@ One enum per contract, so a caller can hold *some* handle, *some* coding, *some*
 !!! note "Rust only"
     The bindings hold one handle class and one record settings value rather
     than the enums behind them; `RecordOptions` is the one section below that
-    crosses, and it says so. `TypedValue` is Rust-only too.
+    crosses, and it says so. `TypedValue` and the `wkb` reader are Rust-only
+    too; a geospatial value crosses the bindings as its plain WKB bytes.
 
 ```rust
 use yggdryl::generic::Holder;
@@ -19,7 +20,7 @@ assert_eq!(handle.read_all_bytes()?, b"AAPL,1\n");
 assert_eq!(handle.kind(), yggdryl::IOKind::Memory);
 ```
 
-A trait says what an implementation must do; the enum beside it says which implementations exist. The two are not interchangeable: `Box<dyn IOBase>` erases the concrete type, and [`IOBase::parent`, `child_by`, and `ls`](io.md) have to return *some* handle that a caller can still match on. Their signatures name `Holder`, so the enum has to be sized, `Send`, and a full implementation of the contract itself.
+A trait says what an implementation must do; the enum beside it says which implementations exist. The two are not interchangeable: `Box<dyn IOBase>` erases the concrete type, and [`IOBase::parent`, `child_by_path`, and `ls`](io.md) have to return *some* handle that a caller can still match on. Their signatures name `Holder`, so the enum has to be sized, `Send`, and a full implementation of the contract itself.
 
 That last part is what makes the enums invisible in use. Each one delegates every method of its contract to the variant it holds, so code written against the enum behaves exactly as code written against the implementation would - and a variant is still there to match when the concrete type matters.
 
@@ -50,7 +51,7 @@ let root = Holder::folder(std::env::temp_dir())?;
 assert!(root.is_container());
 
 // A child need not exist. Naming one yields a leaf handle, and nothing is created.
-let leaf = root.child_by("yggdryl-generic-child.bin")?;
+let leaf = root.child_by_path("yggdryl-generic-child.bin")?;
 assert!(matches!(leaf, Holder::File(_)));
 assert!(!leaf.is_container());
 assert_eq!(leaf.size(), 0);
@@ -347,6 +348,69 @@ assert!(Int64Value::new(Value::from("seven")).is_err());
 ```
 
 The markers are the same family a [typed field](field.md) uses, so a value and a field spell one datatype the same way. Both are covered in full under [structured text](text.md#a-typed-value-per-datatype). Behind the default `arrow` feature the pairing is also the one scalar Arrow projection - `to_arrow_array` materializes one row and `from_arrow_array` decodes one back - documented with the rest of the array boundary in [arrow.md](arrow.md).
+
+## The WKB reader
+
+`generic::wkb` is the one Well-Known Binary reader: displaying a geometry column as WKT, casting
+it to text, and bounding it for Parquet and Iceberg statistics all need the same decoding, and
+none of them needs a geometry engine, so the workspace reads WKB with no dependency and adds no
+second implementation anywhere else. A WKT *parser* is deliberately absent: the workspace
+displays and bounds geometries; it does not accept text geometry input yet.
+
+```rust
+use yggdryl::generic::wkb::{self, Geometry};
+
+// A little-endian XY point: order byte, type code 1, then x and y.
+let mut point = vec![1, 1, 0, 0, 0];
+point.extend(10.0_f64.to_le_bytes());
+point.extend(20.0_f64.to_le_bytes());
+
+let decoded = Geometry::from_slice(&point)?;
+assert_eq!(decoded.to_wkt(), "POINT (10 20)");
+assert_eq!(decoded.type_id(), 1);
+assert!(!decoded.is_empty());
+
+// The free functions answer without materializing the geometry.
+assert_eq!(wkb::to_wkt(&point)?, "POINT (10 20)");
+assert_eq!(wkb::geometry_type_ids(&point)?, [1]);
+let bounds = wkb::bounding_box(&point)?;
+assert_eq!((bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax), (10.0, 10.0, 20.0, 20.0));
+```
+
+`Geometry::from_slice` decodes one geometry - the seven simple-feature shapes, in either byte
+order, with both type-code spellings: the ISO one, where Z, M, and ZM add 1000, 2000, or 3000 to
+the base code, and the PostGIS EWKB one, where high bits flag the extra axes and an embedded SRID
+that is read past rather than modeled. The whole slice must be one geometry - trailing bytes are
+refused - and malformed input errors name their byte position. `POINT EMPTY` has no zero-count
+spelling in WKB, so its conventional NaN coordinates read back as the empty point, and emptiness
+is a shape (`coordinate: None`) rather than a value to test for.
+
+`wkb::bounding_box` streams coordinates through a min/max fold in one pass - nothing is
+materialized per vertex - and an empty geometry yields the fold's identity, which
+`BoundingBox::is_empty` names so a statistics writer can skip the box instead of storing it.
+`wkb::geometry_type_ids` collects the distinct ISO type codes a payload holds, and `wkb::to_wkt`
+spells canonical WKT whose coordinates print the shortest decimal that reads back as the same
+double, so the text loses nothing.
+
+```rust
+use yggdryl::generic::wkb;
+
+// Truncated input: the error names the byte position.
+let error = wkb::bounding_box(&[1, 1, 0, 0, 0]).unwrap_err();
+assert!(error.to_string().contains("byte 5"), "{error}");
+```
+
+The value these bytes travel in is `Value::Geospatial`: the canonical spelling of one WKB payload
+inside the shared [`Value`](text.md) model, which
+[geometry and geography columns](datatype.md#variant-geometry-and-geography) read back, which
+canonicalization rewrites plain `Value::Bytes` into on the way in, and whose `as_wkb` accessor
+reads both spellings so an inbound payload is never rejected for arriving as plain bytes. There is
+deliberately no `Value::Variant` beside it: a variant value *is* the self-describing `Value` tree
+itself, and its Parquet binary encoding lands with the Iceberg v3 layer. Across Arrow boundaries
+the geospatial pair is Binary storage under the community `geoarrow.wkb` extension name, whose
+GeoArrow JSON metadata carries the CRS and edge algorithm - GeoArrow's own documentation says the
+specification is not finalized, so that mapping is a community choice the workspace may revisit
+when it stabilizes.
 
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 

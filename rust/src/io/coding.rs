@@ -304,11 +304,11 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.handle.parent()
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
-        self.handle.child_by(name)
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
+        self.handle.child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
         self.handle.ls(recursive, include_private)
     }
 
