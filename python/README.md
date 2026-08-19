@@ -190,9 +190,12 @@ base-10 numeric strings, selecting Decimal128 through precision 38 and
 Decimal256 through precision 76.
 `DataType.time(unit)` accepts the shared native unit aliases and selects
 Time32 for seconds/milliseconds or Time64 for microseconds/nanoseconds.
-`DataType.variant(fields)` builds the canonical dense Union with sequential
-native type IDs; `fields.variant` adds the containing Field state, while
-explicit `fields.union` remains available for custom IDs or sparse layout.
+Bare `DataType.variant()` is the self-describing semi-structured Variant
+datatype; `DataType.variant(fields)` stays the dense-union sugar building the
+canonical dense Union with sequential native type IDs - the parenthesis
+disambiguates. `fields.variant` builds the bare Variant field,
+`fields.dense_union` the union one, and explicit `fields.union` remains
+available for custom IDs or sparse layout.
 
 Start with the [Python guide](https://platob.github.io/yggdryl/extensions/python/)
 and the [records guide](RECORDS.md).
