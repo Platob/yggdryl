@@ -989,8 +989,8 @@ actually contain a placeholder are rebuilt.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/benchmarks-rust.ipynb){ download },
-[Python](notebooks/benchmarks-python.ipynb){ download },
-[JavaScript](notebooks/benchmarks-javascript.ipynb){ download }.
+[Rust](notebooks/rust/benchmarks.ipynb){ download },
+[Python](notebooks/python/benchmarks.ipynb){ download },
+[JavaScript](notebooks/javascript/benchmarks.ipynb){ download }.
 
 <!-- /notebooks -->

@@ -721,8 +721,8 @@ as literal text.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/json-rust.ipynb){ download },
-[Python](notebooks/json-python.ipynb){ download },
-[JavaScript](notebooks/json-javascript.ipynb){ download }.
+[Rust](notebooks/rust/json.ipynb){ download },
+[Python](notebooks/python/json.ipynb){ download },
+[JavaScript](notebooks/javascript/json.ipynb){ download }.
 
 <!-- /notebooks -->

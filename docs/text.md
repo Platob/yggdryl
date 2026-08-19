@@ -1132,8 +1132,8 @@ round trip through load-then-dump yields the resolved document; templates do not
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/text-rust.ipynb){ download },
-[Python](notebooks/text-python.ipynb){ download },
-[JavaScript](notebooks/text-javascript.ipynb){ download }.
+[Rust](notebooks/rust/text.ipynb){ download },
+[Python](notebooks/python/text.ipynb){ download },
+[JavaScript](notebooks/javascript/text.ipynb){ download }.
 
 <!-- /notebooks -->

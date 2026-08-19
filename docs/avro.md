@@ -318,6 +318,6 @@ crate reports.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/avro-rust.ipynb){ download }.
+[Rust](notebooks/rust/avro.ipynb){ download }.
 
 <!-- /notebooks -->

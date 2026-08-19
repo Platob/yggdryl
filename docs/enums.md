@@ -675,8 +675,8 @@ a schema and re-exporting it moves no bytes.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/enums-rust.ipynb){ download },
-[Python](notebooks/enums-python.ipynb){ download },
-[JavaScript](notebooks/enums-javascript.ipynb){ download }.
+[Rust](notebooks/rust/enums.ipynb){ download },
+[Python](notebooks/python/enums.ipynb){ download },
+[JavaScript](notebooks/javascript/enums.ipynb){ download }.
 
 <!-- /notebooks -->

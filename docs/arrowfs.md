@@ -729,8 +729,8 @@ already reach answers them:
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/arrowfs-rust.ipynb){ download },
-[Python](notebooks/arrowfs-python.ipynb){ download },
-[JavaScript](notebooks/arrowfs-javascript.ipynb){ download }.
+[Rust](notebooks/rust/arrowfs.ipynb){ download },
+[Python](notebooks/python/arrowfs.ipynb){ download },
+[JavaScript](notebooks/javascript/arrowfs.ipynb){ download }.
 
 <!-- /notebooks -->

@@ -3637,8 +3637,8 @@ which partition each file belongs to.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/iceberg-rust.ipynb){ download },
-[Python](notebooks/iceberg-python.ipynb){ download },
-[JavaScript](notebooks/iceberg-javascript.ipynb){ download }.
+[Rust](notebooks/rust/iceberg.ipynb){ download },
+[Python](notebooks/python/iceberg.ipynb){ download },
+[JavaScript](notebooks/javascript/iceberg.ipynb){ download }.
 
 <!-- /notebooks -->

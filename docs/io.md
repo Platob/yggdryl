@@ -3201,8 +3201,8 @@ overwrite without buffering the whole write first.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/io-rust.ipynb){ download },
-[Python](notebooks/io-python.ipynb){ download },
-[JavaScript](notebooks/io-javascript.ipynb){ download }.
+[Rust](notebooks/rust/io.ipynb){ download },
+[Python](notebooks/python/io.ipynb){ download },
+[JavaScript](notebooks/javascript/io.ipynb){ download }.
 
 <!-- /notebooks -->

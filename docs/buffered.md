@@ -349,6 +349,6 @@ only how much the fetch it removes was worth.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/buffered-rust.ipynb){ download }.
+[Rust](notebooks/rust/buffered.ipynb){ download }.
 
 <!-- /notebooks -->

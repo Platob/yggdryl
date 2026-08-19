@@ -321,8 +321,8 @@ assert!(zlib::load(&body).is_err());
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/zlib-rust.ipynb){ download },
-[Python](notebooks/zlib-python.ipynb){ download },
-[JavaScript](notebooks/zlib-javascript.ipynb){ download }.
+[Rust](notebooks/rust/zlib.ipynb){ download },
+[Python](notebooks/python/zlib.ipynb){ download },
+[JavaScript](notebooks/javascript/zlib.ipynb){ download }.
 
 <!-- /notebooks -->

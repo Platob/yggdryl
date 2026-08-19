@@ -498,8 +498,8 @@ deep - so both are checked once, before any walk, and a walk never has to check.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/expression-rust.ipynb){ download },
-[Python](notebooks/expression-python.ipynb){ download },
-[JavaScript](notebooks/expression-javascript.ipynb){ download }.
+[Rust](notebooks/rust/expression.ipynb){ download },
+[Python](notebooks/python/expression.ipynb){ download },
+[JavaScript](notebooks/javascript/expression.ipynb){ download }.
 
 <!-- /notebooks -->

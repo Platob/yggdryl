@@ -607,6 +607,6 @@ page shows each of these steps beside its Rust and JavaScript form.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Python](../notebooks/extensions_python-python.ipynb){ download }.
+[Python](../notebooks/python/extensions_python.ipynb){ download }.
 
 <!-- /notebooks -->

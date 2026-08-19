@@ -837,8 +837,8 @@ type expression nor a structural JSON schema can buy unbounded recursion.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/datatype-rust.ipynb){ download },
-[Python](notebooks/datatype-python.ipynb){ download },
-[JavaScript](notebooks/datatype-javascript.ipynb){ download }.
+[Rust](notebooks/rust/datatype.ipynb){ download },
+[Python](notebooks/python/datatype.ipynb){ download },
+[JavaScript](notebooks/javascript/datatype.ipynb){ download }.
 
 <!-- /notebooks -->

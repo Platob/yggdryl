@@ -502,8 +502,8 @@ the unquoted form into the one you meant. You get the mapping YAML says you aske
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/yaml-rust.ipynb){ download },
-[Python](notebooks/yaml-python.ipynb){ download },
-[JavaScript](notebooks/yaml-javascript.ipynb){ download }.
+[Rust](notebooks/rust/yaml.ipynb){ download },
+[Python](notebooks/python/yaml.ipynb){ download },
+[JavaScript](notebooks/javascript/yaml.ipynb){ download }.
 
 <!-- /notebooks -->

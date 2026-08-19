@@ -1039,8 +1039,8 @@ and the statistics are there with no rows behind them.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/parquet-rust.ipynb){ download },
-[Python](notebooks/parquet-python.ipynb){ download },
-[JavaScript](notebooks/parquet-javascript.ipynb){ download }.
+[Rust](notebooks/rust/parquet.ipynb){ download },
+[Python](notebooks/python/parquet.ipynb){ download },
+[JavaScript](notebooks/javascript/parquet.ipynb){ download }.
 
 <!-- /notebooks -->

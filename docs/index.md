@@ -114,8 +114,8 @@ the shape of the whole thing first.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/index-rust.ipynb){ download },
-[Python](notebooks/index-python.ipynb){ download },
-[JavaScript](notebooks/index-javascript.ipynb){ download }.
+[Rust](notebooks/rust/index.ipynb){ download },
+[Python](notebooks/python/index.ipynb){ download },
+[JavaScript](notebooks/javascript/index.ipynb){ download }.
 
 <!-- /notebooks -->

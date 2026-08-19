@@ -1118,8 +1118,8 @@ binding adds on top of this field.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/field-rust.ipynb){ download },
-[Python](notebooks/field-python.ipynb){ download },
-[JavaScript](notebooks/field-javascript.ipynb){ download }.
+[Rust](notebooks/rust/field.ipynb){ download },
+[Python](notebooks/python/field.ipynb){ download },
+[JavaScript](notebooks/javascript/field.ipynb){ download }.
 
 <!-- /notebooks -->

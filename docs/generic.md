@@ -354,8 +354,8 @@ The markers are the same family a [typed field](field.md) uses, so a value and a
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/generic-rust.ipynb){ download },
-[Python](notebooks/generic-python.ipynb){ download },
-[JavaScript](notebooks/generic-javascript.ipynb){ download }.
+[Rust](notebooks/rust/generic.ipynb){ download },
+[Python](notebooks/python/generic.ipynb){ download },
+[JavaScript](notebooks/javascript/generic.ipynb){ download }.
 
 <!-- /notebooks -->

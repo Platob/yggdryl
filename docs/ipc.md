@@ -1054,8 +1054,8 @@ without naming which.
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/ipc-rust.ipynb){ download },
-[Python](notebooks/ipc-python.ipynb){ download },
-[JavaScript](notebooks/ipc-javascript.ipynb){ download }.
+[Rust](notebooks/rust/ipc.ipynb){ download },
+[Python](notebooks/python/ipc.ipynb){ download },
+[JavaScript](notebooks/javascript/ipc.ipynb){ download }.
 
 <!-- /notebooks -->
