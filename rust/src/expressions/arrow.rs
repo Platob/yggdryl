@@ -21,10 +21,17 @@
 //!
 //! Arithmetic, the scalar functions, and `CASE` have no kernel in the crates
 //! the `arrow` feature already links. Those nodes fall back to the row path
-//! *for that node only*, at the cost of one `Value` per row per operand plus
-//! one one-row array per result row. That cost is real and is a benchmark leg;
-//! it is paid instead of adding `arrow-arith` and `arrow-string` to three
-//! manifests for kernels a filter rarely reaches.
+//! *for that node only*: each operand is read once into a column of values and
+//! the node itself runs per row, so nothing above or below it pays. On the
+//! `expression_by_family` benchmark that is roughly **two orders of magnitude**
+//! slower per row than a kernel-backed comparison, which is exactly why the
+//! predicates a read pushes down are the ones that have kernels.
+//!
+//! It is paid instead of adding `arrow-arith` and `arrow-string` to three
+//! manifests for kernels a *filter* rarely reaches - a predicate is
+//! overwhelmingly comparisons, null tests, and set membership, all of which are
+//! kernel-backed here. A caller whose filter is mostly arithmetic is better
+//! served by a computed column in the selection, which runs once per batch.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -613,16 +620,14 @@ impl<'batch> Vectorizer<'batch> {
 }
 
 /// Materialize a column of values under one field.
+///
+/// One pass through the crate's own schema-directed builder rather than one
+/// one-row array per row plus a concatenation - the difference is a factor of
+/// tens on the fallback path, which is the path that needed it most.
 fn values_to_array(field: &Field, values: &[Value], rows: usize) -> Result<ArrayRef> {
-    if rows == 0 {
-        return crate::arrow::scalar_array(field, &Value::Null).map(|array| array.slice(0, 0));
-    }
-    let mut parts = Vec::with_capacity(values.len());
-    for value in values {
-        parts.push(crate::arrow::scalar_array(field, value)?);
-    }
-    let refs: Vec<&dyn Array> = parts.iter().map(AsRef::as_ref).collect();
-    arrow_select::concat::concat(&refs).map_err(Error::from)
+    debug_assert_eq!(values.len(), rows, "one value per row");
+    let borrowed: Vec<&Value> = values.iter().collect();
+    crate::arrow::value::array_from_values(field, &borrowed)
 }
 
 /// Run one comparison kernel.

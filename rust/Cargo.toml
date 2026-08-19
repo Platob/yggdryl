@@ -119,6 +119,15 @@ name = "avro"
 path = "benchmarks/avro.rs"
 harness = false
 
+# The expression engine: parsing, binding, both evaluation paths against the
+# kernels they compile to and the string filter they replaced, and statistics
+# pruning. The module is unconditional, so this target compiles in a default
+# build.
+[[bench]]
+name = "expressions"
+path = "benchmarks/expressions.rs"
+harness = false
+
 # Record I/O over a handle, including the column pushdown comparison. It needs
 # the Parquet encoding, because Parquet is where a projection also skips
 # reading rather than only skipping allocation.
