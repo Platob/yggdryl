@@ -187,7 +187,7 @@ function createFields(DataType, Field, native) {
         value,
       )
     },
-    variant(name, members, value) {
+    denseUnion(name, members, value) {
       return field(name, DataType.variant(members), value)
     },
     dictionary(name, key, encodedValue, value) {

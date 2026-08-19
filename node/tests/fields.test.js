@@ -77,7 +77,7 @@ test('Variant assigns deterministic dense Union IDs through one native builder',
     ),
   )
   assert.ok(
-    fields.variant('payload', [text, code], { nullable: false })
+    fields.denseUnion('payload', [text, code], { nullable: false })
       .dataType.equals(dataType),
   )
   assert.equal(

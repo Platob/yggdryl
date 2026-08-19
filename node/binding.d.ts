@@ -349,8 +349,8 @@ export type UnionValue<V = unknown, I extends number = number> = Readonly<{
   value: V
 }>
 export type UnionField<V = UnionValue> = FieldOf<'union', V>
-/** A finite Variant is the existing dense Arrow Union field representation. */
-export type VariantField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
+/** The dense Arrow Union with sequential type IDs, as one field type. */
+export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
 export type DictionaryField<V = unknown> = FieldOf<'dictionary', V>
 export type Decimal32Field = FieldOf<'decimal32', bigint>
 export type Decimal64Field = FieldOf<'decimal64', bigint>
@@ -507,11 +507,11 @@ export interface FieldsNamespace {
     members: Iterable<readonly [number, Field]>,
     options: FieldOptions,
   ): UnionField
-  variant(
+  denseUnion(
     name: string,
     members: Iterable<Field>,
     options?: FieldOptions,
-  ): VariantField
+  ): DenseUnionField
   dictionary(
     name: string,
     key: DataTypeInput,
@@ -620,7 +620,7 @@ type TuplePositions<T extends readonly unknown[]> = Exclude<
   keyof readonly unknown[]
 >
 type TuplePositionNumber<P> = P extends `${infer I extends number}` ? I : never
-type VariantMembersValue<Fs extends readonly AnyField[]> =
+type DenseUnionMembersValue<Fs extends readonly AnyField[]> =
   number extends Fs['length']
     ? UnionValue<TypedFieldValue<Fs[number]>, number>
     : {
@@ -628,7 +628,7 @@ type VariantMembersValue<Fs extends readonly AnyField[]> =
           ? UnionValue<TypedFieldValue<Fs[P]>, TuplePositionNumber<P>>
           : never
       }[TuplePositions<Fs>]
-type VariantMembersInput<Fs extends readonly AnyField[]> =
+type DenseUnionMembersInput<Fs extends readonly AnyField[]> =
   number extends Fs['length']
     ? UnionValue<TypedFieldInput<Fs[number]>, number>
     : {
@@ -692,7 +692,7 @@ export interface FieldsNamespace {
   struct<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, children: Fs, options?: O): NamedField<'struct', StructValue<Fs>, N, O, StructInputValue<Fs>>
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput = undefined>(name: N, members: Ms, mode?: 'sparse' | 'dense', options?: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput>(name: N, members: Ms, options: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
-  variant<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', VariantMembersValue<Fs>, N, O, VariantMembersInput<Fs>>
+  denseUnion<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', DenseUnionMembersValue<Fs>, N, O, DenseUnionMembersInput<Fs>>
   dictionary<const N extends string, K extends DataTypeInput, V extends DataTypeInput, const O extends FieldOptionsInput = undefined>(name: N, key: K, value: V, options?: O): NamedField<'dictionary', TypedDataTypeValue<V>, N, O, TypedDataTypeInput<V>>
   decimal<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
   decimal<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
@@ -893,8 +893,8 @@ declare module './index' {
       fields: Fs,
     ): TypedDataType<
       'union',
-      VariantMembersValue<Fs>,
-      VariantMembersInput<Fs>
+      DenseUnionMembersValue<Fs>,
+      DenseUnionMembersInput<Fs>
     >
     function variant(fields: Iterable<Field>): DataType
   }

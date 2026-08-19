@@ -37,7 +37,7 @@ from yggdryl.fields import (
     Int32Field,
     ListField,
     TimeField,
-    VariantField,
+    DenseUnionField,
 )
 
 file_uri: Uri = Uri.from_path(Path("data/events.parquet"))
@@ -136,19 +136,19 @@ typed_struct_value: Record | Mapping[str, object] | None = (
 typed_struct_data_type_value: Record | Mapping[str, object] = (
     typed_struct.data_type.default_pyvalue()
 )
-variant_data_type: DataType = DataType.variant(
+dense_union_data_type: DataType = DataType.variant(
     [
         fields.int64("integer", nullable=False),
         fields.utf8("text", nullable=False),
     ]
 )
-typed_variant: VariantField = fields.variant(
+typed_dense_union: DenseUnionField = fields.dense_union(
     "payload",
-    tuple(variant_data_type),
+    tuple(dense_union_data_type),
     nullable=False,
 )
-typed_variant_kind: Literal["union"] = typed_variant.data_type.id
-typed_variant_value: object = typed_variant.default_pyvalue()
+typed_dense_union_kind: Literal["union"] = typed_dense_union.data_type.id
+typed_dense_union_value: object = typed_dense_union.default_pyvalue()
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
 # becomes unused if a typed view regresses to ``Any`` or drops its nullable /

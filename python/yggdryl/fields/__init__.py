@@ -61,6 +61,7 @@ from .integer import (
     uint64,
 )
 from .nested import (
+    DenseUnionField,
     DictionaryField,
     FixedSizeListField,
     LargeListField,
@@ -71,7 +72,7 @@ from .nested import (
     RunEndEncodedField,
     StructField,
     UnionField,
-    VariantField,
+    dense_union,
     dictionary,
     fixed_size_list,
     large_list,
@@ -83,7 +84,6 @@ from .nested import (
     run_end_encoded,
     struct,
     union,
-    variant,
 )
 from .scalar import BooleanField, NullField, boolean, null
 from .temporal import (
@@ -116,6 +116,7 @@ __all__ = [
     "Decimal128Field",
     "Decimal256Field",
     "DecimalField",
+    "DenseUnionField",
     "DictionaryField",
     "DurationField",
     "FixedSizeBinaryField",
@@ -149,7 +150,6 @@ __all__ = [
     "UInt32Field",
     "UInt64Field",
     "UnionField",
-    "VariantField",
     "Utf8Field",
     "Utf8ViewField",
     "binary",
@@ -162,6 +162,7 @@ __all__ = [
     "decimal64",
     "decimal128",
     "decimal256",
+    "dense_union",
     "dictionary",
     "duration",
     "fixed_size_binary",
@@ -194,7 +195,6 @@ __all__ = [
     "uint32",
     "uint64",
     "union",
-    "variant",
     "utf8",
     "utf8_view",
 ]
