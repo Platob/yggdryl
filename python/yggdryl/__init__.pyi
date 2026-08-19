@@ -17,6 +17,7 @@ from ._native import (
     schema_from_pattern as schema_from_pattern,
 )
 from . import (
+    enums as enums,
     fields as fields,
     gzip as gzip,
     iceberg as iceberg,

@@ -883,6 +883,9 @@ function nativeLoadsInferred(content, options) {
 
 function nativeLoadsAll(content, format, options) {
   options = checkedOptions(options)
+  if (format === FORMAT_JSON || format === FORMAT_JSON_LINES) {
+    refuseFillingForJson(format, options)
+  }
   return nativeFormat(format)
     .loadsAll(toNativeContent(content), options.maxDepth)
     .map((value) => fromTransport(value))
@@ -897,6 +900,9 @@ function nativeLoadPath(path, format, options) {
 
 function nativeLoadAllPath(path, format, options) {
   options = checkedOptions(options)
+  if (format === FORMAT_JSON || format === FORMAT_JSON_LINES) {
+    refuseFillingForJson(format, options)
+  }
   return nativeFormat(format)
     .loadAllPath(path, options.maxDepth)
     .map((value) => fromTransport(value))
@@ -1109,6 +1115,10 @@ function isJsonWhitespace(bytes) {
 }
 
 async function* jsonLinesStream(stream, options) {
+  // Refused here, before the first chunk: deferring to the per-line load
+  // would surface the misconfiguration as a mid-stream parse error - or not
+  // at all on an empty stream.
+  refuseFillingForJson(FORMAT_JSON_LINES, checkedOptions(options))
   let lineParts = []
   let lineLength = 0
   let lineOffset = 0

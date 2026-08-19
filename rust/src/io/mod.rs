@@ -1455,12 +1455,14 @@ pub trait IOBase: Send {
 
     /// Project the resource's text records into Arrow batches.
     ///
-    /// A convenience spelling of the record surface: text is a record
-    /// encoding like any other, so this is exactly
-    /// [`Self::read_arrow_batch_reader`] under
-    /// [`RecordOptions::Text`](crate::generic::RecordOptions::Text) - **not a
-    /// fourth record method**. The columns are described on
-    /// [`TextLineOptions`](crate::text::TextLineOptions).
+    /// The extractor-first spelling of the record surface: text is a record
+    /// encoding like any other, and [`Self::read_arrow_batch_reader`] under
+    /// [`RecordOptions::Text`](crate::generic::RecordOptions::Text) reaches
+    /// this very method - **not a fourth record method**. Decoding views
+    /// (a [`Coded`] handle, [`Gzip`](crate::gzip::Gzip) and its siblings)
+    /// override it to project a snapshot of the value they *present*, which
+    /// is what keeps a pending write visible to the record surface too. The
+    /// columns are described on [`TextLineOptions`](crate::text::TextLineOptions).
     ///
     /// # Errors
     ///
@@ -1471,9 +1473,7 @@ pub trait IOBase: Send {
         &self,
         options: &crate::text::TextLineOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        self.read_arrow_batch_reader(&RecordOptions::Text(Box::new(
-            crate::text::TextOptions::with_lines(options.clone()),
-        )))
+        crate::text::line::arrow::read_arrow_lines(self, options)
     }
 
     /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
@@ -1517,10 +1517,21 @@ pub trait IOBase: Send {
             if let Some(table) = crate::iceberg::located(self)? {
                 return table.record_options();
             }
+            // Text answers last: plain text maps to the line projection, so
+            // a stray README or marker file must not re-type a lake whose
+            // data files are a structured encoding.
+            let mut lines = None;
             for child in self.children_where(&[], false)? {
                 if let Ok(options) = RecordOptions::for_media_type(child.media_type()) {
+                    if matches!(options, RecordOptions::Text(_)) {
+                        lines.get_or_insert(options);
+                        continue;
+                    }
                     return Ok(options);
                 }
+            }
+            if let Some(options) = lines {
+                return Ok(options);
             }
         }
         RecordOptions::for_media_type(self.media_type())
@@ -1758,9 +1769,10 @@ pub(crate) fn leaf_reader(
             crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
-        RecordOptions::Text(text) => {
-            crate::text::line::arrow::read_arrow_lines(handle, &text.lines)?
-        }
+        // Through the trait method rather than the free function, so a
+        // decoding view's snapshot override is honored: the record surface
+        // must see the value a handle presents, pending writes included.
+        RecordOptions::Text(text) => handle.read_arrow_lines(&text.lines)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),

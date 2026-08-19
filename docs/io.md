@@ -1369,7 +1369,7 @@ starts, because a parser that split the multi-line records would just look fast.
 ### What the record shape costs
 
 The `lines_shape` group prices the extractor's own options against one corpus whose record sizes
-swing by two orders of magnitude - a ~4 KB stack trace next to short neighbours - so the batch
+swing by an order of magnitude - a ~2 KB stack trace next to ~180-byte neighbours - so the batch
 bounds have something to disagree about:
 
 ```text
@@ -1587,7 +1587,7 @@ for the next reader to prune with.
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-### The pipeline those numbers measure, end to end
+### The full pipeline, small enough to run
 
 The same read, small enough to run, and carried through to a table: a folder of rotated leaves -
 one gzip, one plain, one zstd - parsed into batches, combined with a second parse whose schema is

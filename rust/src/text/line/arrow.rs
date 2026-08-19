@@ -662,7 +662,9 @@ pub(crate) fn write_arrow_lines(
 
 /// Add `batches` after a handle's current lines.
 ///
-/// An uncoded handle appends in place at its current end. A content coding is
+/// A stored final line without its terminator is closed first, so the first
+/// appended row never merges into it. An uncoded handle appends in place at
+/// its current end. A content coding is
 /// not appendable, so a coded handle decodes its value, extends it, and
 /// stores the whole coding again - stated rather than hidden, because it is
 /// the coding's cost, not the append's.
@@ -679,9 +681,21 @@ pub(crate) fn append_arrow_lines(
     use crate::generic::IORecordOptions;
 
     let rendered = rendered_lines(batches, &options.lines)?;
+    let linesep = options.lines.write_linesep();
     let codec = handle.codec();
     if matches!(codec, crate::Codec::Identity) {
-        let offset = handle.size();
+        let mut offset = handle.size();
+        // A stored final line may lack its terminator; appending straight
+        // after it would merge the first new row into it, so the terminator
+        // is supplied first.
+        if offset > 0 {
+            let mut last = [0_u8; 1];
+            handle.pread_exact(offset - 1, &mut last)?;
+            if Some(&last[0]) != linesep.last() {
+                handle.pwrite_all(offset, linesep)?;
+                offset += linesep.len() as u64;
+            }
+        }
         handle.pwrite_all(offset, &rendered)?;
         return handle.flush();
     }
@@ -690,6 +704,9 @@ pub(crate) fn append_arrow_lines(
     } else {
         codec.load(&handle.read_all_bytes()?)?
     };
+    if decoded.last().is_some() && decoded.last() != linesep.last() {
+        decoded.extend_from_slice(linesep);
+    }
     decoded.extend_from_slice(&rendered);
     let encoded = codec.dump_with_level(&decoded, options.level())?;
     handle.write_all_bytes(&encoded)?;

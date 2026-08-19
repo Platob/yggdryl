@@ -120,7 +120,7 @@
 //! knows they hold a compressed value should still
 //! [`open`](IOBase::open) it - that materializes the decoded value once and
 //! `close` releases it, which is cheaper again. The page cache is what makes
-//! an *unopened* coded handle behave; `docs/benchmarks.md` measures all three.
+//! an *unopened* coded handle behave; `docs/buffered.md` measures all three.
 //!
 //! # Wrapping is idempotent
 //!

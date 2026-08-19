@@ -2192,6 +2192,81 @@ mod record_surface {
     }
 
     #[test]
+    fn an_append_closes_an_unterminated_final_line_first() {
+        let read = named("in.log", b"beta\n");
+        let mut target = named("out.log", b"alpha");
+        let options = read.record_options().unwrap();
+        let batches = read.read_arrow_batch_reader(&options).unwrap();
+        target.append_arrow_batch_reader(batches, &options).unwrap();
+        // Never "alphabeta": the stored line is closed before the new row.
+        assert_eq!(target.read_all_bytes().unwrap(), b"alpha\nbeta\n");
+    }
+
+    #[test]
+    fn a_stray_text_leaf_does_not_retype_a_structured_lake() {
+        let root = std::env::temp_dir().join(format!(
+            "yggdryl-lake-probe-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        // `_SUCCESS.txt` sorts before the data file; the probe must still
+        // answer with the structured encoding.
+        std::fs::write(root.join("_SUCCESS.txt"), b"ok\n").unwrap();
+        let mut leaf = crate::local::File::new(root.join("part-0.arrows")).unwrap();
+        let schema = crate::DataType::from_fields([crate::DataType::Int64.required_field("id")])
+            .unwrap()
+            .required_field("row");
+        let arrow_schema = crate::arrow::schema_from_field(&schema).unwrap();
+        let batch = arrow_array::RecordBatch::try_new(
+            std::sync::Arc::clone(&arrow_schema),
+            vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![1_i64]))],
+        )
+        .unwrap();
+        let reader = crate::arrow::batch_reader(arrow_schema, [batch]);
+        let ipc = RecordOptions::Ipc(crate::ipc::IpcOptions::new());
+        leaf.write_arrow_batch_reader(reader, &ipc).unwrap();
+
+        let folder = crate::local::Folder::new(&root).unwrap();
+        let options = folder.record_options().unwrap();
+        assert!(matches!(options, RecordOptions::Ipc(_)));
+
+        // A folder of only text leaves still answers text.
+        let logs = root.join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("a.log"), b"one\n").unwrap();
+        let folder = crate::local::Folder::new(&logs).unwrap();
+        assert!(matches!(
+            folder.record_options().unwrap(),
+            RecordOptions::Text(_)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_decoding_view_reads_records_from_the_value_it_presents() {
+        // A Gzip view presents decoded bytes its location does not hold; the
+        // record surface must reach its snapshot override rather than the
+        // reopen-the-location route, which would parse the encoded frame.
+        let mut inner = named("app.log.gz", b"");
+        inner
+            .write_all_bytes(&crate::gzip::dump(b"first\nsecond\n").unwrap())
+            .unwrap();
+        let view = crate::gzip::Gzip::new(inner);
+        let options = view.record_options().unwrap();
+        assert!(matches!(options, RecordOptions::Text(_)));
+        let batches = rows(view.read_arrow_batch_reader(&options).unwrap());
+        assert_eq!(batches.iter().map(|batch| batch.num_rows()).sum::<usize>(), 2);
+        let messages = batches[0]
+            .column_by_name("message")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .unwrap();
+        assert_eq!(messages.value(0), "first");
+    }
+
+    #[test]
     fn a_text_holder_reads_lines_under_the_extractor_it_carries() {
         // The bindings spell reads as `into_text_with(built).into_read_lines()`;
         // the inherent Holder methods must keep the built extractor rather

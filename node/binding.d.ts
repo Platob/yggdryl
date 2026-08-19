@@ -800,9 +800,9 @@ export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
 /** One-document operations plus JSON Lines/YAML collection operations. */
 export interface StructuredCodec<O extends CodecOptions = CodecOptions>
   extends SingleDocumentCodec<O> {
-  loadsAll<T = unknown>(content: CodecContent, options?: CodecOptions): T[]
-  loadAll<T = unknown>(source: CodecReadable, options?: CodecOptions): AsyncIterable<T>
-  loadAll<T = unknown>(source: CodecSyncSource, options?: CodecOptions): T[]
+  loadsAll<T = unknown>(content: CodecContent, options?: O): T[]
+  loadAll<T = unknown>(source: CodecReadable, options?: O): AsyncIterable<T>
+  loadAll<T = unknown>(source: CodecSyncSource, options?: O): T[]
   dumpAll(values: Iterable<unknown>, options?: CodecOptions): Buffer
   dumpAll(
     values: Iterable<unknown> | AsyncIterable<unknown>,
@@ -816,7 +816,7 @@ export interface StructuredCodec<O extends CodecOptions = CodecOptions>
   ): void
   loadAllStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
-    options?: CodecOptions,
+    options?: O,
   ): AsyncIterable<T>
   dumpAllStream(
     values: Iterable<unknown> | AsyncIterable<unknown>,

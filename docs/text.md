@@ -1221,12 +1221,12 @@ the feature off and on, at three placeholder densities. From one containerized x
 (`cargo bench --bench text -- codec/placeholder`; Criterion medians with 95% intervals):
 
 ```text
-codec/placeholder/none/off   77.052 us   [76.681 us 77.471 us]
-codec/placeholder/none/on    76.804 us   [76.518 us 77.098 us]
-codec/placeholder/few/off    79.516 us   [78.879 us 80.122 us]
-codec/placeholder/few/on    122.020 us   [121.44 us 122.66 us]
-codec/placeholder/most/off   77.777 us   [77.305 us 78.246 us]
-codec/placeholder/most/on   198.300 us   [196.77 us 200.83 us]
+codec/placeholder/none/off  272.81 us   [271.30 us 274.52 us]
+codec/placeholder/none/on   266.07 us   [265.12 us 267.21 us]
+codec/placeholder/few/off   265.58 us   [264.58 us 266.86 us]
+codec/placeholder/few/on    327.80 us   [325.00 us 330.56 us]
+codec/placeholder/most/off  264.84 us   [262.10 us 268.46 us]
+codec/placeholder/most/on   386.80 us   [384.48 us 389.17 us]
 ```
 
 **The guard is free.** `none/off` against `none/on` is indistinguishable - one vectorized

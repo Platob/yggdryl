@@ -333,7 +333,7 @@ fn tables_written_by_pyiceberg_at_other_versions_read_here() {
 /// Leave a wide deterministic manifest for the baseline readers.
 ///
 /// `scripts/bench_avro_baseline.py` times fastavro and PyIceberg's manifest
-/// reader over this exact file, so the numbers in `docs/benchmarks.md`
+/// reader over this exact file, so the numbers in `docs/avro.md`
 /// compare implementations on identical bytes.
 #[test]
 fn a_large_manifest_is_left_for_baseline_readers() {
@@ -373,7 +373,7 @@ fn a_large_manifest_is_left_for_baseline_readers() {
 }
 
 /// Time this crate's readers over the baseline manifest, for the comparison
-/// table in `docs/benchmarks.md`.
+/// table in `docs/avro.md`.
 ///
 /// Gated behind `YGGDRYL_BASELINE_TIMING` because a timing only means
 /// something in a release build on a quiet machine; the baseline script sets

@@ -46,7 +46,7 @@
 //                                gzip-coded on local storage, not the inflate
 //                                in isolation: the plain leaves move the whole
 //                                decoded payload off disk while the coded ones
-//                                move about a fifth of it and then inflate, and
+//                                move about a ninth of it and then inflate, and
 //                                those two effects have opposite signs. It is
 //                                the trade a production reader actually makes;
 //                                for inflate alone, both sides have to move
@@ -201,7 +201,9 @@ function record(index) {
   const ms = String(Math.floor(micro / 1_000)).padStart(3, '0')
   const us = String(micro % 1_000).padStart(3, '0')
   const pool = 250 + (index % 4)
-  const hexA = ((index * 2654435761) % 4294967296).toString(16).padStart(8, '0')
+  // BigInt keeps the product exact however large --records grows; a Number
+  // product would drift past 2^53 and break the cross-language byte identity.
+  const hexA = ((BigInt(index) * 2654435761n) % 4294967296n).toString(16).padStart(8, '0')
   const hexB = ((index * 40503) % 65536).toString(16).padStart(4, '0')
   const port = 72_500 + (index % 8)
   let line =

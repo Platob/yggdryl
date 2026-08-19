@@ -12,7 +12,7 @@
 //! hash cases isolate the stable FNV-1a fold the `hash` column pays, on the
 //! same messages the parse hashes: hashing measured beside the whole parse is
 //! what justifies keeping the dependency-free hash (regex and UTF-8 dominate;
-//! the recorded numbers in `docs/benchmarks.md` say by how much).
+//! the recorded numbers in `docs/io.md` say by how much).
 //!
 //! `lines_gzip` measures the same projection over the production shape:
 //! rotated log files on local storage, 200k records split across eight
@@ -26,7 +26,7 @@
 //!   the parser consumes the same text either way, but the two sides do not
 //!   move the same *source* bytes: [`File`] maps its leaf, so `folder/plain`
 //!   pulls the whole decoded payload through the mapping while `folder/gzip`
-//!   pulls about a fifth of it and inflates. The delta is inflate work minus
+//!   pulls about a ninth of it and inflates. The delta is inflate work minus
 //!   the source traffic it saves, two effects of opposite sign that nearly
 //!   cancel here - near enough that which side is faster has not been stable
 //!   between runs on one box, so read the pair as "coded storage costs about
@@ -509,9 +509,9 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 
 /// Byte-sized batching against fixed-row batching on uneven records.
 ///
-/// The corpus mixes 40-byte lines with 4 KB stack traces in the same file,
+/// The corpus mixes short lines with ~2 KB stack traces in the same file,
 /// which is what makes the two bounds behave differently: a row bound produces
-/// batches whose size swings by two orders of magnitude, while a byte bound
+/// batches whose sizes swing widely, while a byte bound
 /// produces comparably sized ones whatever the records look like. The cases
 /// report the batch-size spread alongside the timing, because the *point* of
 /// byte sizing is the spread rather than the speed.
@@ -519,7 +519,7 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 /// `detect/*` is the ninth task's comparison: timestamp-anchored detection
 /// against the equivalent anchored regex, on the same corpus. Detection has no
 /// expression to compile or run, and its cheap first-byte guard rejects a
-/// continuation line in one byte - `docs/benchmarks.md` records by how much
+/// continuation line in one byte - `docs/io.md` records by how much
 /// that pays, or whether it does.
 ///
 /// `zone/*` isolates what reading a naive timestamp in a zone costs: unset
@@ -529,12 +529,12 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
 pub(crate) fn lines_shape_benchmarks(criterion: &mut Criterion) {
     use yggdryl::text::{Opening, Strip};
 
-    // A corpus whose record sizes swing by two orders of magnitude.
+    // A corpus whose record sizes swing by an order of magnitude.
     let mut text = String::new();
     for index in 0..20_000_usize {
         record(&mut text, index, true);
         if index % 25 == 0 {
-            // A stack trace: ~4 KB in one record, against ~40-byte neighbours.
+            // A stack trace: ~2 KB in one record, against short neighbours.
             for frame in 0..40 {
                 text.push_str("\tat com.example.service.Handler.invoke(Handler.java:");
                 text.push_str(&frame.to_string());

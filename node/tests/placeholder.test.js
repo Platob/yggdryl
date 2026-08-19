@@ -119,12 +119,23 @@ test('a document without placeholders parses identically either way', (t) => {
   assert.throws(() => yaml.loads(document, { environment: 'yes' }), TypeError)
 })
 
-test('JSON refuses placeholders by name at the call site', () => {
+test('JSON refuses placeholders by name at the call site', async () => {
   assert.throws(
     () => json.loads('{"a": "{{ NAME }}"}', { placeholders: { NAME: 'app' } }),
     /yaml\/toml feature/,
   )
   assert.throws(() => json.loads('{"a": 1}', { environment: true }), /yaml\/toml feature/)
+  // The multi-document spellings refuse the same way, the streaming one as a
+  // clean TypeError on the first pull - even over an empty stream.
+  assert.throws(
+    () => json.loadsAll('{"a": 1}\n', { placeholders: { NAME: 'app' } }),
+    /yaml\/toml feature/,
+  )
+  async function* empty() {}
+  await assert.rejects(
+    json.loadAllStream(empty(), { placeholders: { NAME: 'app' } }).next(),
+    /yaml\/toml feature/,
+  )
   // And a plain JSON load reads braces as the text they are.
   assert.equal(json.loads('{"a": "{{ NAME }}"}').a, '{{ NAME }}')
 })

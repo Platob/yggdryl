@@ -30,16 +30,15 @@ read as a stream. Every case below is one claim:
     type, and batch boundaries.
 ``read folder utf8``
     The same drain of the same gzip folder with ``capture_types`` declaring
-    ``thread_id`` and ``latency_us`` as ``utf8``, which turns the strict
-    native cast off. Only the cast differs from ``read folder gzip``, and
-    both rows only count rows, so *that* difference is what typing two
-    captures on every record costs - 2 x RECORDS values. This is the same
-    pairing the Rust ``lines_gzip/casts/{typed,text}`` cases make.
+    ``port`` as ``utf8``, which turns the strict native cast off. Only the
+    cast differs from ``read folder gzip``, and both rows only count rows, so
+    *that* difference is what typing a capture on every record costs. This is
+    the same pairing the Rust ``lines_gzip/casts/{typed,text}`` cases make.
 ``typed accessors``
-    Parse *and aggregate*. ``(?<thread_id>\\d+)`` and ``(?<latency_us>\\d+)``
-    infer ``int64`` from the closed inference table, so the aggregate is
-    ``pyarrow.compute`` over already-typed columns with no Python-side
-    conversion at all. Minus ``read folder gzip``, that is the aggregation.
+    Parse *and aggregate*. ``(?P<port>\\d+)`` infers ``int64`` from the
+    closed inference table, so the aggregate is ``pyarrow.compute`` over an
+    already-typed column with no Python-side conversion at all. Minus
+    ``read folder gzip``, that is the aggregation.
 ``text captures + py cast``
     The identical aggregate over the ``utf8`` parse, so the conversion falls
     to the consumer. Minus ``read folder utf8``, that is the aggregation plus
@@ -47,13 +46,13 @@ read as a stream. Every case below is one claim:
 
     Read these two aggregate rows against *their own* parse row, never
     against each other: the two sides do not convert the same volume. The
-    native cast types every record's two captures (2,000,000 values), while
-    the consumer converts only the rows that survive the ``level`` filter
-    (about a third of them). Subtracting one aggregate row from the other
-    would compare a whole-corpus cast against a filtered one and call the
-    difference a verdict. The consumer side uses ``pyarrow.compute.cast``,
-    the fastest conversion a Python caller has - C-speed and vectorized - so
-    its cost is a floor; an ``int()`` loop over ``to_pylist()`` is far worse.
+    native cast types the capture on every record, while the consumer
+    converts only the rows that survive the ``level`` filter (about a third
+    of them). Subtracting one aggregate row from the other would compare a
+    whole-corpus cast against a filtered one and call the difference a
+    verdict. The consumer side uses ``pyarrow.compute.cast``, the fastest
+    conversion a Python caller has - C-speed and vectorized - so its cost is
+    a floor; an ``int()`` loop over ``to_pylist()`` is far worse.
 
 Then a scale sweep over 1/8, 1/4, 1/2 and 1/1 of the corpus. The claim there
 is not a speed but a *shape*: throughput per decoded byte stays flat as the
