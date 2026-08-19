@@ -2541,6 +2541,146 @@ the stored shape is preserved exactly and no cast runs at all.
 `read_arrow_field` answers with the same shape this read produces, so the schema a caller reads and
 the batches a caller gets can never disagree.
 
+## Limiting a read or a write
+
+`max_row_size` bounds how many result rows flow in total - a count of rows,
+never a per-row byte cap - and `max_byte_size` bounds their Arrow in-memory
+bytes, counted uncompressed. Either bound applies *last*, after the fixed
+shaping order - declared schema, then selection, then completion cast, then
+partition filter - so a limit of ten combined with a filter means the first ten
+matching rows. A satisfied limit stops pulling, so the rest of the resource is
+never decoded.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
+    use yggdryl::arrow;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{DataType, MimeType};
+
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let arrow_schema = schema.to_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![Arc::new(Int64Array::from_iter_values(0..1_000))],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let plain = handle.record_options()?;
+    handle.write_arrow_batch_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
+
+    // Ten result rows, exactly: the batch the bound lands inside is sliced.
+    let first = handle.read_arrow_batch_reader(&plain.clone().with_max_row_size(10))?;
+    assert_eq!(first.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 10);
+
+    // Zero is a valid ask: the shaped schema answers, and no batch flows.
+    let mut none = handle.read_arrow_batch_reader(&plain.clone().with_max_row_size(0))?;
+    assert_eq!(none.schema().fields().len(), 1);
+    assert!(none.next().is_none());
+
+    // A non-zero byte bound always yields at least one row.
+    let narrow = handle.read_arrow_batch_reader(&plain.clone().with_max_byte_size(1))?;
+    assert_eq!(narrow.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 1);
+
+    // A limited write truncates the data the caller offered: three rows land,
+    // and what the bound cut off is never pulled from the reader.
+    let mut copy = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    copy.write_arrow_batch_reader(
+        handle.read_arrow_batch_reader(&plain)?,
+        &plain.clone().with_max_row_size(3),
+    )?;
+    let kept = copy.read_arrow_batch_reader(&plain)?;
+    assert_eq!(kept.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes()
+    handle.media_type = "application/vnd.apache.arrow.stream"
+    handle.write_arrow_batch_reader(pa.table({"id": list(range(1_000))}))
+
+    # Ten result rows, exactly: the batch the bound lands inside is sliced.
+    assert handle.read_arrow_batch_reader(max_row_size=10).read_all().num_rows == 10
+
+    # Zero is a valid ask: the shaped schema answers, and no batch flows.
+    empty = handle.read_arrow_batch_reader(max_row_size=0)
+    assert empty.schema.names == ["id"]
+    assert empty.read_all().num_rows == 0
+
+    # A non-zero byte bound always yields at least one row.
+    assert handle.read_arrow_batch_reader(max_byte_size=1).read_all().num_rows == 1
+
+    # A limited write truncates the data the caller offered: three rows land,
+    # and what the bound cut off is never pulled from the reader.
+    copy = IOBase.from_bytes()
+    copy.media_type = "application/vnd.apache.arrow.stream"
+    copy.write_arrow_batch_reader(handle.read_arrow_batch_reader(), max_row_size=3)
+    assert copy.read_arrow_batch_reader().read_all().num_rows == 3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, IOBase, MimeType } = require('yggdryl')
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray(
+        Array.from({ length: 1000 }, (_, index) => BigInt(index)),
+        new arrow.Int64(),
+      ),
+    })
+
+    const handle = IOBase.fromBytes()
+    handle.mediaType = MimeType.ARROW_STREAM
+    handle.writeArrowBatchReader(BatchReader.from(table))
+    const options = handle.recordOptions()
+
+    // Ten result rows, exactly: the batch the bound lands inside is sliced.
+    assert.equal(handle.readArrowBatchReader(options.withMaxRowSize(10)).toTable().numRows, 10)
+
+    // Zero is a valid ask: the shaped schema answers, and no batch flows.
+    const empty = handle.readArrowBatchReader(options.withMaxRowSize(0))
+    assert.equal(empty.field.dataType.length, 1)
+    assert.equal(empty.toTable().numRows, 0)
+
+    // A non-zero byte bound always yields at least one row.
+    assert.equal(handle.readArrowBatchReader(options.withMaxByteSize(1)).toTable().numRows, 1)
+
+    // A limited write truncates the data the caller offered: three rows land,
+    // and what the bound cut off is never pulled from the reader.
+    const copy = IOBase.fromBytes()
+    copy.mediaType = MimeType.ARROW_STREAM
+    copy.writeArrowBatchReader(handle.readArrowBatchReader(), options.withMaxRowSize(3))
+    assert.equal(copy.readArrowBatchReader().toTable().numRows, 3)
+    ```
+
+A limit of zero yields a reader with the shaped schema and no batches rather
+than an error, so "just the schema, cheaply" is a valid ask. The row bound is
+exact: the batch it lands inside is cut with a slice, a view over the same
+buffers rather than a copy. The byte bound stops at the last row that keeps the
+running total at or under the limit, and a non-zero byte limit always yields at
+least one row rather than silently losing everything to one wide row. When both
+are set, whichever bound binds first wins.
+
+A limited write truncates the data the caller offered: the bounds cap the
+incoming reader exactly as they cap a read, and what they cut off is never
+pulled from it. A limit combined with a non-empty `merge_by_names` is refused
+naming both settings, because a truncated merge would update the matched keys
+it kept and silently drop the rest - corrupting the resource rather than
+shortening the write.
+
 ## Appending and merging
 
 A write with no match key replaces the resource, which is what an IPC stream or

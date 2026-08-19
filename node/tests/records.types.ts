@@ -25,17 +25,25 @@ const declared: Field | null = options.schema
 const rootName: string = options.rootName
 const safe: boolean = options.safe
 const batchSize: number | null = options.batchSize
+const maxRowSize: number | null = options.maxRowSize
+const maxByteSize: number | null = options.maxByteSize
 const level: number = options.level
 options.rootName = 'trade'
 options.safe = true
 options.batchSize = 1024
 options.batchSize = null
+options.maxRowSize = 10
+options.maxRowSize = null
+options.maxByteSize = 1024
+options.maxByteSize = null
 options.level = 9
 const chained: RecordOptions = options
   .withSchema(Field.from('row: struct<id: int64> not null'))
   .withRootName('trade')
   .withSafe(false)
   .withBatchSize(512)
+  .withMaxRowSize(10)
+  .withMaxByteSize(1024)
   .withLevel(1)
 const printed: string = chained.toString()
 

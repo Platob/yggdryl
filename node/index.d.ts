@@ -1461,6 +1461,25 @@ export declare class RecordOptions {
    * none. `null` is how "no bound" is spelled.
    */
   set batchSize(batchSize: number | undefined | null)
+  /**
+   * The bound on how many result rows flow in total, when one is set.
+   *
+   * A count of rows, applied last - after the declared schema, selection,
+   * completion cast, and partition filter - so `0` is a valid ask: the
+   * shaped schema with no batches, rather than an error.
+   */
+  get maxRowSize(): number | null
+  /** Set the bound on how many result rows flow in total. */
+  set maxRowSize(maxRowSize: number | undefined | null)
+  /**
+   * The bound on the result rows' Arrow in-memory bytes, when one is set.
+   *
+   * Counted uncompressed, never as encoded bytes; a non-zero bound always
+   * yields at least one row, and only `0` yields nothing.
+   */
+  get maxByteSize(): number | null
+  /** Set the bound on the result rows' Arrow in-memory bytes. */
+  set maxByteSize(maxByteSize: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -1510,6 +1529,10 @@ export declare class RecordOptions {
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
   withBatchSize(batchSize: number): RecordOptions
+  /** Return these options with a bound on how many result rows flow. */
+  withMaxRowSize(maxRowSize: number): RecordOptions
+  /** Return these options with a bound on the result rows' Arrow bytes. */
+  withMaxByteSize(maxByteSize: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with a match key for a write. */
