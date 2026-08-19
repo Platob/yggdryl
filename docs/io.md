@@ -2794,6 +2794,11 @@ looking for a directory literally named `**`.
 the three record methods use when a handle addresses a folder, and it is there for a caller who wants
 to reach one partition directly instead.
 
+The pairs are sugar. Each one builds `&holder.partition['column'] = 'value'` and the whole thing is
+answered by `children_matching`, which takes the [expression](expression.md) language itself: ranges,
+null tests, `in` lists, and every other `&holder.*` attribute. There is no second filter behind the
+pairs.
+
 ## Partition pruning and filtering
 
 One option answers the same equality wherever the value lives.
@@ -2802,6 +2807,12 @@ paths spell them: a folder read *prunes* - a leaf whose directory names a
 different value is never listed or decoded - and a column the data carries is
 *filtered* row by row, so a path-partitioned lake and a data-partitioned one
 answer identically.
+
+Both halves are one [expression](expression.md), bound once. The pruning half asks the path
+(`&holder.partition['year'] = '2024'`) and the filtering half asks the rows (`year = 2024`), with the
+text read through the column's own datatype - so a pair on an `int32` column is an integer
+comparison, and the pair `("price", "null")` is `price is null` rather than a comparison against four
+letters.
 
 === "Rust"
 

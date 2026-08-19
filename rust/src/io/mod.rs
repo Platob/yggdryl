@@ -45,6 +45,19 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 mod buffer;
 mod coding;
 mod cursor;
+/// How a directory name spells a value that is not there.
+///
+/// A path cannot distinguish the absence of a value from the four letters, so
+/// the convention has to pick one spelling and say what it costs: reading such a
+/// partition back yields the text `null` unless a declared schema types the
+/// column as something a cast turns back into a null.
+///
+/// It lives here rather than in [`partition`] because the expression layer's
+/// scalar tier reads it and that tier compiles with no Arrow at all, while the
+/// partition projection is Arrow's own. `partition` re-exports it, so the
+/// spelling every caller already uses keeps working.
+pub const NULL_PARTITION: &str = "null";
+
 // The table formats join on a match key through exactly this implementation:
 // one merge, whether the rows live in one leaf or in a snapshot's data files.
 #[cfg(feature = "arrow")]
@@ -632,12 +645,83 @@ pub trait IOBase: Send {
         self.url().map(Url::hive_partitions).unwrap_or_default()
     }
 
+    /// Iterate the entries beneath this one a predicate does not rule out.
+    ///
+    /// The predicate is asked of the *holder*, not of the rows: `&holder.name`,
+    /// `&holder.partition['year']`, `&holder.size`, and anything built from
+    /// them. A conjunct that reads a row column is not answerable from a
+    /// listing, so it is dropped rather than guessed at - which means this can
+    /// keep a file the rows will later discard, and can never discard a file
+    /// the rows would have kept.
+    ///
+    /// Cost drives the order. [`bind`](crate::Expression::bind) puts the free
+    /// attributes - the ones a URL answers - in front of the ones that cost a
+    /// stat, and evaluation stops at the first `false`, so a listing filtered
+    /// by path alone performs no call into the backing store at all.
+    ///
+    /// ```no_run
+    /// use yggdryl::io::IOBase;
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    ///
+    /// let filter = "&holder.partition['year'] = '2024' and &holder.extension = 'parquet'"
+    ///     .parse()?;
+    /// for part in lake.children_matching(&filter, false)? {
+    ///     let _ = part;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a bind failure when the predicate names something a holder
+    /// cannot answer, or the backing store's listing failure.
+    fn children_matching(
+        &self,
+        filter: &crate::Expression,
+        include_private: bool,
+    ) -> Result<std::vec::IntoIter<Holder>> {
+        // Only the conjuncts a listing can settle are kept. Dropping a conjunct
+        // from a conjunction only ever widens what is kept, which is the whole
+        // reason this is sound.
+        let answerable = crate::Expression::all(
+            filter
+                .conjuncts()
+                .into_iter()
+                .filter(|conjunct| conjunct.columns().is_empty()),
+        );
+        let bound = answerable.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
+        let mut matched: Vec<Holder> = Vec::new();
+        for entry in self.ls(true, include_private)? {
+            if bound.matches_holder(&crate::expression::Handle(&entry))? {
+                matched.push(entry);
+            }
+        }
+        matched.sort_by(|left, right| {
+            left.url()
+                .map(ToString::to_string)
+                .cmp(&right.url().map(ToString::to_string))
+        });
+        Ok(matched.into_iter())
+    }
+
     /// Iterate the leaves beneath this one that carry every given partition.
     ///
     /// This is the handle a partitioned write reaches for: select the parts of
     /// a lake that hold one partition, then overwrite or upsert them directly
     /// instead of rewriting the table. Containers are not yielded - only the
     /// resources that hold bytes - and an empty filter yields every leaf.
+    ///
+    /// The pairs are sugar: each one builds
+    /// `&holder.partition['column'] is not null and`
+    /// `&holder.partition['column'] = 'value'` and the whole thing is answered
+    /// by [`children_matching`](Self::children_matching). There is no second
+    /// filter behind them. The null test is what makes this *select* rather
+    /// than *prune*: a leaf whose path never names the column is not one of
+    /// the leaves that carry it.
     ///
     /// ```no_run
     /// use yggdryl::io::IOBase;
@@ -661,24 +745,11 @@ pub trait IOBase: Send {
         filters: &[(&str, &str)],
         include_private: bool,
     ) -> Result<std::vec::IntoIter<Holder>> {
-        let mut matched: Vec<Holder> = self
-            .ls(true, include_private)?
-            .into_iter()
+        let filter = crate::Expression::all_holder_partitions_carried(filters.iter().copied());
+        let matched: Vec<Holder> = self
+            .children_matching(&filter, include_private)?
             .filter(|entry| !entry.is_container())
-            .filter(|entry| {
-                let partitions = entry.partitions();
-                filters.iter().all(|(column, value)| {
-                    partitions
-                        .iter()
-                        .any(|(key, held)| key == column && held == value)
-                })
-            })
             .collect();
-        matched.sort_by(|left, right| {
-            left.url()
-                .map(ToString::to_string)
-                .cmp(&right.url().map(ToString::to_string))
-        });
         Ok(matched.into_iter())
     }
 

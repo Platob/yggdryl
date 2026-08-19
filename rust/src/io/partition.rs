@@ -32,13 +32,7 @@ use crate::{Error, Field, Result, Url};
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
 
-/// How a directory name spells a value that is not there.
-///
-/// A path cannot distinguish the absence of a value from the four letters, so
-/// the convention has to pick one spelling and say what it costs: reading such a
-/// partition back yields the text `null` unless a declared schema types the
-/// column as something a cast turns back into a null.
-pub const NULL_PARTITION: &str = "null";
+pub use super::NULL_PARTITION;
 
 /// How every partition value in the project is rendered as directory text.
 ///
@@ -339,85 +333,21 @@ pub fn narrowed_reader(
 
 /// Wrap a reader so only rows matching the options' partition filters flow.
 ///
-/// A column a batch does not carry is ignored - the leaf's path already
-/// answered for it, or the layout never had it - so path-partitioned and
-/// data-partitioned lakes answer the same equality the same way. Values
-/// compare as [`partition_text`] spells them, one boolean mask per batch,
-/// and nothing is collected.
+/// The pairs are sugar for a predicate: each one builds `column = 'value'` -
+/// or `column is null`, because a path spells absence with four letters - and
+/// the predicate is bound once against the reader's own schema and applied by
+/// the one evaluator. A column the batch does not carry is left out of the
+/// predicate entirely, because the leaf's path already answered for it.
 pub(crate) fn filtered_reader(inner: BatchReader, options: &RecordOptions) -> Result<BatchReader> {
-    let filters = options.filter_partitions();
-    if filters.is_empty() {
+    if options.filter_partitions().is_empty() {
         return Ok(inner);
     }
-    let schema = inner.schema();
-    Ok(Box::new(Filtered {
-        inner,
-        filters: filters.to_vec(),
-        schema,
-    }))
-}
-
-struct Filtered {
-    inner: BatchReader,
-    filters: Vec<(String, String)>,
-    schema: SchemaRef,
-}
-
-impl Iterator for Filtered {
-    type Item = std::result::Result<RecordBatch, ArrowError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let batch = match self.inner.next()? {
-            Ok(batch) => batch,
-            Err(error) => return Some(Err(error)),
-        };
-        Some(filter_rows(&batch, &self.filters))
+    let schema = record_schema_from_arrow("row", inner.schema().as_ref())?;
+    let predicate = options.partition_predicate(&schema);
+    if predicate.is_always_true() {
+        return Ok(inner);
     }
-}
-
-impl arrow_array::RecordBatchReader for Filtered {
-    fn schema(&self) -> SchemaRef {
-        Arc::clone(&self.schema)
-    }
-}
-
-/// Keep the rows of one batch whose named columns spell the named values.
-fn filter_rows(
-    batch: &RecordBatch,
-    filters: &[(String, String)],
-) -> std::result::Result<RecordBatch, ArrowError> {
-    let mut mask: Option<Vec<bool>> = None;
-    for (column, value) in filters {
-        let Some(index) = batch
-            .schema()
-            .fields()
-            .iter()
-            .position(|field| field.name().eq_ignore_ascii_case(column))
-        else {
-            continue;
-        };
-        let array = batch.column(index);
-        let formatter = ArrayFormatter::try_new(array.as_ref(), &partition_format())?;
-        let rows = mask.get_or_insert_with(|| vec![true; batch.num_rows()]);
-        for (row, keep) in rows.iter_mut().enumerate() {
-            if !*keep {
-                continue;
-            }
-            // Absence spells `null`, exactly as the path renderer spells it,
-            // so a filter on "null" selects the rows with no value.
-            let spelled = if array.is_null(row) {
-                "null".to_owned()
-            } else {
-                formatter.value(row).to_string()
-            };
-            *keep = spelled == *value;
-        }
-    }
-    let Some(mask) = mask else {
-        return Ok(batch.clone());
-    };
-    let mask = arrow_array::BooleanArray::from(mask);
-    arrow_select::filter::filter_record_batch(batch, &mask)
+    Ok(predicate.bind(&schema)?.filter_reader(inner))
 }
 
 /// Return the Hive pairs `part` spells out below `root`.
@@ -659,17 +589,19 @@ pub(crate) fn folder_reader(
     // A leaf whose path names a different value for a filtered column cannot
     // hold a matching row, so it is skipped before anything is decoded; a
     // leaf that does not name the column stays, and the row filter answers.
-    let filters = options.filter_partitions();
-    if !filters.is_empty() {
-        parts.retain(|part| {
-            let pairs = pairs_under(part, root.as_ref());
-            filters.iter().all(|(column, value)| {
-                pairs
-                    .iter()
-                    .find(|(key, _)| key.eq_ignore_ascii_case(column))
-                    .is_none_or(|(_, held)| held == value)
-            })
-        });
+    let filter = options.partition_filter();
+    if !filter.is_always_true() {
+        // The same predicate a listing answers, asked of each leaf's own path.
+        // A leaf that does not name a filtered column is unknown rather than
+        // false, so it stays and the row filter answers for it.
+        let bound = filter.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
+        let mut kept = Vec::with_capacity(parts.len());
+        for part in parts {
+            if bound.matches_holder(&crate::expression::Handle(&part))? {
+                kept.push(part);
+            }
+        }
+        parts = kept;
     }
     let field = match options.schema() {
         Some(schema) => Some(schema.clone()),

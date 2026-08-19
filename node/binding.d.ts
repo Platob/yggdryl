@@ -1,6 +1,8 @@
 export {
   BatchReader,
+  Bound,
   DataType,
+  Expression,
   Field,
   IOBase,
   LineIterator,
@@ -8,6 +10,7 @@ export {
   MimeType,
   ProtocolMetadata,
   RecordOptions,
+  Statement,
   Timezone,
   Uri,
   Url,

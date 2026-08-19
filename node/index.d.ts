@@ -35,6 +35,32 @@ export declare class BatchReader {
 }
 export type JsBatchReader = BatchReader
 
+/** One expression resolved against one schema, ready to answer. */
+export declare class Bound {
+  /** The expression as it stands after substitution, folding, and ordering. */
+  get expression(): Expression
+  /** The output field this expression produces. */
+  get field(): JsField
+  /** Return whether this expression answers a boolean. */
+  get isPredicate(): boolean
+  /** The schema column names this expression reads, in index order. */
+  get columns(): Array<string>
+  /** Return whether answering this expression requires reading rows. */
+  get readsRows(): boolean
+  /** Evaluate this expression for one row of column values, in schema order. */
+  eval(row: Value): Value
+  /**
+   * Answer this predicate for one row, reading unknown as "no".
+   *
+   * Unknown is not true, so a row whose value is null does not pass a
+   * comparison against it.
+   */
+  matches(row: Value): boolean
+  /** The canonical text of the expression this resolved. */
+  toString(): string
+}
+export type JsBound = Bound
+
 /**
  * A warehouse folder of namespaces of Iceberg tables.
  *
@@ -224,6 +250,62 @@ export declare class DifferenceIterator {
 
 }
 export type JsDifferenceIterator = DifferenceIterator
+
+/** One recursive, typed filter and projection tree. */
+export declare class Expression {
+  /** Parse one expression from its canonical text, or clone one. */
+  constructor(value: Expression | string)
+  /** Parse one expression from its canonical text. */
+  static parse(text: string): Expression
+  /** Read one expression from its structural JSON document. */
+  static fromJson(document: string): Expression
+  /** Name one top-level column. */
+  static column(name: string): Expression
+  /**
+   * Hold one constant.
+   *
+   * The constant is a `Value`, which is the JavaScript spelling of the
+   * values JavaScript itself has none of - an exact decimal, a date, a
+   * timestamp at a resolution a `Date` cannot hold. `Value.fromJs` makes
+   * one out of an ordinary JavaScript value.
+   */
+  static literal(value: Value): Expression
+  /** Name one holder attribute, such as `size`, or `partition` with a column. */
+  static attribute(name: string, key?: string | undefined | null): Expression
+  /** Name one late-bound value. */
+  static parameter(name: string): Expression
+  /** The expression that is true for every row. */
+  static alwaysTrue(): Expression
+  /** The expression that is true for no row. */
+  static alwaysFalse(): Expression
+  /** Every top-level column this expression reads, in first-seen order. */
+  get columns(): Array<string>
+  /** Every holder attribute this expression reads, in first-seen order. */
+  get attributes(): Array<string>
+  /** Every parameter this expression names, in first-seen order. */
+  get parameters(): Array<string>
+  /** The top-level `and` operands, flattened. */
+  conjuncts(): Array<Expression>
+  /** How deep this expression nests, counting itself as one level. */
+  get depth(): number
+  /** Build `this and other`. */
+  and(other: Expression | string): Expression
+  /** Build `this or other`. */
+  or(other: Expression | string): Expression
+  /** Build `not this`. */
+  not(): Expression
+  /** Write this expression as a structural JSON document. */
+  toJson(): string
+  /** Resolve this expression against a struct root schema. */
+  bind(schema: JsField): JsBound
+  /** The output field this expression produces against a schema. */
+  field(schema: JsField): JsField
+  /** The canonical text, which re-parses to this expression. */
+  toString(): string
+  /** Return whether two expressions are the same tree. */
+  equals(other: Expression | string): boolean
+}
+export type JsExpression = Expression
 
 /** An Arrow field whose metadata and cache invariants are owned by Rust. */
 export declare class Field {
@@ -726,6 +808,18 @@ export declare class IOBase {
   rglob(pattern: string, includePrivate?: boolean | undefined | null): Array<IOBase>
   /** The Hive partition pairs this resource's location spells out. */
   get partitions(): Array<PartitionEntry>
+  /**
+   * Iterate the entries beneath this one a predicate does not rule out.
+   *
+   * The predicate is asked of the holder, not of the rows: `&holder.name`,
+   * `&holder.partition['year']`, `&holder.size`. A conjunct that reads a
+   * row column cannot be answered by a listing, so it is dropped rather
+   * than guessed at - this may keep a file the rows later discard and can
+   * never discard one they would have kept.
+   *
+   * `filter` is an `Expression` or the text of one, which parses.
+   */
+  childrenMatching(filter: Expression | string, includePrivate?: boolean | undefined | null): Array<IOBase>
   /**
    * Iterate the leaves beneath this one carrying every given partition.
    *
@@ -1426,6 +1520,25 @@ export declare class SchemaUpdate {
 }
 export type JsSchemaUpdate = SchemaUpdate
 
+/** A projection list, a predicate, an ordering, and a limit. */
+export declare class Statement {
+  /** Parse one statement from its canonical text. */
+  constructor(text: string)
+  /** Read one statement from its structural JSON document. */
+  static fromJson(document: string): Statement
+  /** The names this statement publishes, in output order. Empty means `*`. */
+  get projections(): Array<string>
+  /** The predicate, when the statement had a `where`. */
+  get predicate(): Expression | null
+  /** The row limit, when the statement had one. */
+  get limit(): number | null
+  /** Write this statement as a structural JSON document. */
+  toJson(): string
+  /** The canonical text, which re-parses to this statement. */
+  toString(): string
+}
+export type JsStatement = Statement
+
 /** An Iceberg table reached entirely through one container handle. */
 export declare class Table {
   /**
@@ -1506,6 +1619,18 @@ export declare class Table {
    * call and is put back afterwards, so the handle's own override survives.
    */
   scan(field?: Field | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  /**
+   * Read the rows matching one predicate as a `BatchReader`.
+   *
+   * `filter` is an `Expression` or the text of one, which parses. It is the
+   * whole expression language rather than equality pairs: ranges, null
+   * tests, `in` lists, nested paths, and `&holder.*` questions about the
+   * files themselves. Planning prunes with the metadata chain, and only the
+   * conjuncts it could not settle are tested against the rows.
+   */
+  scanMatching(filter: Expression | string, field?: Field | undefined | null): BatchReader
+  /** Report what one predicate lets the scan leave alone. */
+  planMatching(filter: Expression | string): ScanPlanCounts
   /**
    * Read the rows matching `filters`, keeping the columns `field` names.
    *
@@ -2356,6 +2481,20 @@ export interface PartitionFieldView {
   name: string
   /** The transform applied to the source column. */
   transform: string
+}
+
+/** What one predicate let a scan leave alone. */
+export interface ScanPlanCounts {
+  /** Data files the scan will open. */
+  tasks: number
+  /** Live data files the metadata excluded. */
+  filesSkipped: number
+  /** Manifests that had to be read. */
+  manifestsRead: number
+  /** Manifests excluded on their summary alone, never opened. */
+  manifestsSkipped: number
+  /** Rows the planned files hold, as the manifests counted them. */
+  recordCount: number
 }
 
 /**

@@ -9,7 +9,9 @@ from typing import Any, Literal
 import pyarrow as pa  # type: ignore[import-untyped]
 
 from yggdryl import (
+    Bound,
     DataType,
+    Expression,
     Field,
     IOBase,
     MediaType,
@@ -17,6 +19,7 @@ from yggdryl import (
     ProtocolMetadata,
     Record,
     RecordOptions,
+    Statement,
     Uri,
     Url,
     Urn,
@@ -518,3 +521,73 @@ assert bytes_written >= 0
 assert bytes_levelled >= 0
 assert bytes_read >= 0
 assert bytes_decoded >= 0
+
+# The filter, in the same three languages the schema is in.
+expression_schema: Field = Field(
+    "trades",
+    DataType.from_fields(
+        [
+            Field("ccy", "utf8", True),
+            Field("price", "decimal128(9,2)", True),
+        ]
+    ),
+    False,
+)
+expression: Expression = Expression("ccy = 'EUR' and price > 100")
+expression_parsed: Expression = Expression.parse("ccy = 'EUR'")
+expression_restored: Expression = Expression.from_json(expression.to_json())
+expression_named: Expression = Expression.column("ccy")
+expression_constant: Expression = Expression.literal("EUR")
+expression_held: Expression = Expression.attribute("partition", "year")
+expression_stat: Expression = Expression.attribute("size")
+expression_late: Expression = Expression.parameter("floor")
+expression_true: Expression = Expression.always_true()
+expression_false: Expression = Expression.always_false()
+expression_columns: list[str] = expression.columns()
+expression_attributes: list[str] = expression_held.attributes()
+expression_parameters: list[str] = expression_late.parameters()
+expression_conjuncts: list[Expression] = expression.conjuncts()
+expression_depth: int = expression.depth()
+expression_document: str = expression.to_json()
+expression_both: Expression = expression_named & expression_constant
+expression_either: Expression = expression_named | "price > 1"
+expression_negated: Expression = ~expression_named
+expression_field: Field = expression_named.field(expression_schema)
+expression_bound: Bound = expression.bind(expression_schema)
+expression_bound_text: Expression = expression_bound.expression
+expression_bound_field: Field = expression_bound.field
+expression_is_predicate: bool = expression_bound.is_predicate
+expression_bound_columns: list[str] = expression_bound.columns
+expression_reads_rows: bool = expression_bound.reads_rows
+expression_matches: bool = expression_bound.matches(["EUR", None])
+expression_value: object = expression_bound.eval({"ccy": "EUR"})
+expression_split: tuple[Expression, Expression] = expression_bound.partition_split()
+
+statement: Statement = Statement("select ccy where ccy = 'EUR' limit 10")
+statement_restored: Statement = Statement.from_json(statement.to_json())
+statement_projections: list[str] = statement.projections
+statement_predicate: Expression | None = statement.predicate
+statement_limit: int | None = statement.limit
+
+expression_matched: list[IOBase] = IOBase("file:///lake").children_matching(
+    "&holder.partition['year'] = '2024'"
+)
+
+assert str(expression)
+assert expression_parsed and expression_restored
+assert expression_named and expression_constant and expression_held
+assert expression_stat and expression_late and expression_true and expression_false
+assert expression_columns == ["ccy", "price"]
+assert expression_attributes and not expression_parameters or expression_parameters
+assert expression_conjuncts and expression_depth >= 1
+assert expression_document and expression_both and expression_either
+assert expression_negated and expression_field and expression_bound_text
+assert expression_bound_field and expression_is_predicate
+assert expression_bound_columns and not expression_reads_rows is None
+assert expression_matches or not expression_matches
+assert expression_value is None or expression_value
+assert expression_split
+assert statement_restored and statement_projections
+assert statement_predicate is None or statement_predicate
+assert statement_limit is None or statement_limit
+assert expression_matched == [] or expression_matched

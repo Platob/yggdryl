@@ -26,7 +26,7 @@ module, so the site tree and the source tree are the same tree:
 | Area | Pages |
 | --- | --- |
 | Schema | [enums](docs/enums.md), [datatype](docs/datatype.md), [field](docs/field.md), [arrow](docs/arrow.md) |
-| Storage | [io](docs/io.md), [generic](docs/generic.md), [local](docs/local.md) |
+| Storage | [io](docs/io.md), [expression](docs/expression.md), [generic](docs/generic.md), [local](docs/local.md) |
 | Content codings | [gzip](docs/gzip.md), [zlib](docs/zlib.md), [zstd](docs/zstd.md) |
 | Record encodings | [ipc](docs/ipc.md), [parquet](docs/parquet.md) |
 | Table format | [iceberg](docs/iceberg.md) |
@@ -55,6 +55,7 @@ rust/                    The core crate
   src/metadata.rs        Immutable shared metadata value
   src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
   src/io/                The IOBase storage trait, Buffer, and Coded
+  src/expression/        The one filter and projection tree, and its three tiers
   src/generic/           Holder, Media, RecordOptions, and the shared Value
   src/local/             Local Path, Folder, and memory-mapped File
   src/arrowfs/           Any Arrow filesystem (S3, GCS, Azure, your own) as a handle
