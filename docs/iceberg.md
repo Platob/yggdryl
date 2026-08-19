@@ -922,16 +922,43 @@ A scan is planned entirely from the metadata, and every level of it prunes:
 | Manifest entry | the file's partition tuple | one data file, unopened |
 | Data file | per-column bounds and null counts | one data file, unopened |
 
-A filter is a column name and a value as text - the same vocabulary
-[`IOBase::children_where`](io.md) filters a lake with. Against an `identity`
-partition column it is compared to the text the layout spells, so `null` names
-the absence exactly as a directory name does, and the tuple settles it: every row
-of a file whose tuple matches holds that value. Against any other column it is
-compared to the value a cast from that text produces, and the surviving files are
-filtered row by row afterwards - because a statistic bounds a *file* and does not
-select a row. `ScanPlan` reports both numbers, so "a filtered read touches only
-the files the metadata says it must" is something a caller can assert on rather
-than believe.
+A filter is an [expression](expression.md), and it is the same expression that filters a lake, a
+batch, and a row. Every level of the chain answers it from the statistics it carries: a file's
+partition tuple becomes a minimum equal to its maximum, so a conjunct the tuple *proves* is dropped
+rather than re-tested per row, and a file's own path answers every free `&holder.*` attribute, so
+`&holder.partition['venue'] = 'XNYS'` skips manifests before a byte is read. What no level settles is
+filtered row by row afterwards - because a statistic bounds a *file* and does not select a row.
+
+`scan_matching` and `plan_matching` take the whole language; `scan_where` and `plan` keep the
+`(column, value)` pairs and build an expression from them, with the text read through the column's
+own datatype. `ScanPlan` reports what was skipped at each level, so "a filtered read touches only the
+files the metadata says it must" is something a caller can assert on rather than believe.
+
+=== "Rust"
+
+    ```rust,ignore
+    // Ranges, null tests, and questions about the file, in one predicate.
+    let reader = table.scan_matching(
+        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
+        None,
+    )?;
+    ```
+
+=== "Python"
+
+    ```python,ignore
+    reader = table.scan_matching(
+        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
+    )
+    ```
+
+=== "JavaScript"
+
+    ```javascript,ignore
+    const reader = table.scanMatching(
+      "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
+    )
+    ```
 
 ## Time travel and the inspection tables
 
