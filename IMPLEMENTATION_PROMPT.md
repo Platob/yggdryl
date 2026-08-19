@@ -1,7 +1,7 @@
 # Prompt: the catalog as a service hierarchy, Iceberg v3 in full, and Apache Doris 4.1 as the outside implementation that checks both
 
-This prompt has three parts, in this order, each complete work on its own if
-the task stops there. Each one is the ground the next stands on.
+This prompt has four parts, in this order, each complete work on its own if the
+task stops there. Each one is the ground the next stands on.
 
 **Part one** (section 1) refactors `iceberg::Catalog` into a real service
 hierarchy - `catalogs`/`catalog`, `namespaces`/`namespace`, `tables`/`table`,
@@ -22,7 +22,16 @@ before a line is written.** It also fixes something worse than a gap: the scan
 skips delete manifests today (`iceberg/scan.rs:305`), so a v2 table with
 deletes already returns too many rows.
 
-**Part three** (section 3 onward) implements `rust/src/doris/`: the module that
+**Part three** (section 3) gives a table one maintenance method,
+`table.optimize()`, that compacts data files, folds position deletes into
+deletion vectors, rewrites and partition-clusters manifests, expires snapshots,
+trims the metadata log, removes the documents it drops, and clears orphans -
+spec-compliant throughout, but **aggressive by default about metadata a reader
+cannot see, and never about history a reader can**. It needs part two for the
+deletion vectors, and it needs the storage contract to gain a real `remove`,
+which is where it starts.
+
+**Part four** (section 4 onward) implements `rust/src/doris/`: the module that
 lets Yggdryl speak Apache Doris 4.1 - its type system, its DDL, its Stream Load
 wire, its export layout, its table-value functions, and its Iceberg catalog -
 and then **uses Doris as the outside implementation** that proves the Parquet
@@ -36,7 +45,7 @@ correctness signal available: if Doris reads every row and every nested value
 of what `rust/src/parquet/` and `rust/src/iceberg/` wrote, and Yggdryl reads
 back every row of what Doris wrote, both protocols are settled.
 
-Deliver all three complete: fully implemented, edge-case tested - on every
+Deliver all four complete: fully implemented, edge-case tested - on every
 Doris type including the deeply nested ones, and on every v3 feature including
 the delete shapes - benchmarked against implementations the reader already
 trusts, interop-checked in both directions against PyIceberg *and* a real
@@ -55,7 +64,7 @@ Work on branch `claude/catalog-v3-doris`; commit and push there.
 - **Use the fast loop while working, the matrix only before handoff.**
   `docs/testing.md` lists the narrow commands -
   `cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::`,
-  `… --lib io::`, `cargo test --test iceberg_interop`, and the rest. Section 12
+  `… --lib io::`, `cargo test --test iceberg_interop`, and the rest. Section 13
   is the pre-handoff matrix, not the inner loop.
 - **Commit in coherent steps**, listed at the end of each part. A mechanical
   rename is its own commit; a rename and a behavior change never share one.
@@ -71,7 +80,7 @@ Work on branch `claude/catalog-v3-doris`; commit and push there.
   soften an assertion to get green. Say in the handoff exactly which half did
   not run.
 - **A change that needs a new dependency is the wrong change.** Re-read section
-  13 and find the mechanism that already exists; that is what most of this
+  14 and find the mechanism that already exists; that is what most of this
   prompt is about.
 - **Measure before you claim.** No "optimized", "fast", or "zero-copy" in a
   comment, a doc line, or a commit message without a number from a release
@@ -126,15 +135,20 @@ Work on branch `claude/catalog-v3-doris`; commit and push there.
 9. `rust/src/iceberg/scan.rs` — `plan`, and line 305, where every manifest
    whose content is not `Data` is skipped. Understand what that costs before
    section 2 asks you to fix it.
-10. **The Iceberg table spec and the Puffin spec, from the source**, not from a
+10. `rust/src/iceberg/table.rs` — `compact` (line 1051), `expire_snapshots`
+   (1225), `commit_changes` (613), and the `Compaction` report (1782): the
+   whole of today's maintenance surface, and one seventh of what section 3
+   asks for. Read `metadata.rs`'s `metadata_log` (218) too - it is written and
+   never trimmed.
+11. **The Iceberg table spec and the Puffin spec, from the source**, not from a
    summary: `format/spec.md` and `format/puffin-spec.md` in `apache/iceberg`.
    Every field id, magic byte, and framing rule quoted in section 2 was
    transcribed and must be re-verified against those two documents before it is
    relied on.
-11. `scripts/check_iceberg_interop.py` and `rust/tests/iceberg_interop.rs` — the
+12. `scripts/check_iceberg_interop.py` and `rust/tests/iceberg_interop.rs` — the
    exact interop harness pattern to copy, including the `SKIPPED` word the
    driver fails on so a skipped half can never read as a pass.
-12. `docs/iceberg.md`, `docs/parquet.md`, `docs/io.md`, `docs/benchmarks.md` —
+13. `docs/iceberg.md`, `docs/parquet.md`, `docs/io.md`, `docs/benchmarks.md` —
    the documentation register to match.
 
 ---
@@ -290,7 +304,7 @@ caller has to match, and **no third enum** (`AGENTS.md:660`). Every backend
 normalizes its own spelling into them once, at its boundary:
 `std::io::ErrorKind::NotFound` and `AlreadyExists`, Arrow's and the object
 stores' equivalents, and Doris's own `Label Already Exists` status when the
-`LoadReport` of 3.9 lands.
+`LoadReport` of 4.9 lands.
 
 **Prove the reduction, do not describe it.** A counting mock handle asserts the
 exact number of backend calls: `tables.get` on an existing table, `tables.get`
@@ -555,7 +569,7 @@ VARIANT binary encoding. Do not overload it and do not rename it. The Iceberg
 variant is one *encoding* of the shared `Value` tree, so it lands as
 `rust/src/variant/`: `Value` ⇄ the Parquet Variant binary form (metadata buffer
 plus value buffer). **One implementation, three callers** - Iceberg v3 columns,
-Parquet's variant logical type, and the Doris `VARIANT` of section 3 - which is
+Parquet's variant logical type, and the Doris `VARIANT` of section 4 - which is
 precisely the rule this part is written under. On the Arrow side it is `Binary`
 (or the two-field struct Parquet spells) carrying `iceberg:` metadata that
 names it; never a new `DataType` variant, because the value model already has
@@ -647,7 +661,7 @@ both sides, and each is a test:
   version that actually writes v3 deletion vectors in the driver and name it in
   the output, so a green run says *which* implementation agreed; an older
   PyIceberg silently writing v2 is a pass that proves nothing. Then the Doris
-  interop of section 6 reads the same v3 table, because Doris 4.1 reads V3
+  interop of section 7 reads the same v3 table, because Doris 4.1 reads V3
   Puffin deletion vectors. A v3 table two unrelated engines agree on is
   settled; one only PyIceberg agrees with is not.
 - **Benchmarks**: `rust/benchmarks/iceberg.rs` gains `v3_deletes` - building a
@@ -676,9 +690,230 @@ by Apache Doris 4.1; a v2 table carrying position and equality deletes finally
 returns the right rows; and the benchmark table says what a deletion vector
 costs against the raw Arrow kernel and saves against a position delete file.
 
-## 3. Part three: the Doris module, in architecture
+## 3. Part three: `Table::optimize` — one method that keeps a table and its metadata small
 
-### 3.1 Feature and module layout
+A table that is written to accumulates on every axis at once: small data files
+from every append, a manifest entry per commit, snapshots that never expire, a
+`metadata-log` that only grows, and `*.metadata.json` documents that are never
+removed because `write.metadata.delete-after-commit.enabled` defaults to
+`false`. This workspace can fix exactly one of those today - `Table::compact`
+rewrites small data files (`iceberg/table.rs:1051`) - and even that leaves
+every other kind of growth alone.
+
+Part three is one method that does all of it, well, by default:
+
+```rust
+let report = table.optimize()?;
+```
+
+### 3.1 First, the storage contract has to gain a delete
+
+Say it plainly, because it decides everything below: **a table cannot be
+cleaned without removing files.** `IOBase` has no delete - `AGENTS.md:310`
+names exactly that as the reason catalog drop and rename are absent - and what
+both bindings expose as `unlink` is `clear()`, which truncates to zero bytes
+and leaves the entry behind (`python/src/io.rs:697`, `node/src/io.rs:544`).
+A zero-byte `*.metadata.json` is *worse* than a large one: it still costs a
+listing entry, and it now parses as nothing where before it parsed as a table.
+
+So part three opens by adding one method to the trait:
+
+```rust
+fn remove(&mut self) -> Result<()>;
+```
+
+- It removes the resource. A container removes **only when empty** and says so
+  when it is not. Recursive removal is not added: a recursive delete is the
+  operation that turns one wrong URL into a lost warehouse.
+- It obeys the existence contract (`AGENTS.md:183`): removing something already
+  gone **succeeds**, because the postcondition already holds. No probe first.
+- Every backend implements it - `local` (`remove_file` / `remove_dir`),
+  `arrowfs` (the file system's own delete, or a typed refusal naming the
+  backend when it has none), `Buffer` (drop the bytes) - and the wrapping
+  handles get it through `delegate_iobase!`.
+- **`unlink` in both bindings is repointed to `remove`**, because that is what
+  `Path.unlink` and `fs.unlinkSync` mean everywhere else; the truncate-to-zero
+  behavior stays reachable as `clear`, which both already expose. This is a
+  behavior change to a published surface - say so in the commit, in the docs,
+  and in the release notes.
+- Update `AGENTS.md:310` in the same change: delete now exists, move still does
+  not, and catalog `drop`/`rename` become a stated next step rather than a
+  permanent absence.
+
+### 3.2 Plan, then apply — and the plan is the report
+
+```rust
+let plan   = table.optimize_plan()?;   // reads metadata, commits nothing
+let report = table.optimize()?;        // the same plan, applied
+```
+
+- **A settled table plans to nothing and commits nothing.** Two `optimize()`
+  calls in a row produce exactly one round of commits. That is the first test.
+- **One commit per step, never one commit for the run.** Each step goes through
+  the existing retrying gate (`AGENTS.md:310`), so a failure halfway leaves a
+  valid table with fewer steps applied and a re-run finishes the job. One giant
+  commit would lose the whole run to any single failure.
+- **`Optimization` is a report, so it is owned** - bounded by the run, which is
+  the listing contract's own exemption (`AGENTS.md:226`). It carries per-step
+  counts and bytes: files before and after, bytes rewritten, manifests before
+  and after, snapshots expired, metadata documents removed, delete files
+  merged, orphans removed, bytes reclaimed. It doubles as the dry-run output,
+  so it must read well to a human and parse cleanly to a machine.
+
+### 3.3 The steps, in the order they must run
+
+The order *is* the design. Run these in the wrong order and they either do
+nothing or remove something live.
+
+1. **Compact data files** - today's `Table::compact`, now one step of several.
+   It rewrites what every later step references, so it goes first.
+2. **Compact deletes.** Where the table is v3, v2 position delete files are
+   rewritten as deletion vectors - exactly what part two makes possible;
+   several deletion vectors against one data file merge into the single one the
+   spec allows; a delete whose data file is no longer live is dropped outright.
+   Sized by `write.delete.target-file-size-bytes` (spec default 64 MiB).
+3. **Rewrite manifests.** Bin-pack toward `commit.manifest.target-size-bytes`
+   (spec default 8 MiB), merging once there are at least
+   `commit.manifest.min-count-to-merge` (spec default 100) and
+   `commit.manifest-merge.enabled` is on (spec default true). Drop the entries
+   compaction made dead. **Cluster entries by partition**, because a manifest
+   whose `FieldSummary` spans every partition prunes nothing - and since
+   `Table::plan` already reports read against skipped, this step's value is
+   that number moving, which the benchmark must show.
+4. **Expire snapshots**, honoring the per-ref retention already implemented
+   (`min-snapshots-to-keep`, `max-snapshot-age-ms`, `max-ref-age-ms`) and never
+   expiring the current snapshot of `main`.
+5. **Trim the metadata log and remove the documents that fall off it.**
+   `write.metadata.previous-versions-max` decides how many entries stay;
+   `write.metadata.delete-after-commit.enabled` governs whether the superseded
+   `*.metadata.json` documents are actually removed. This is the step that
+   stops a long-lived table's metadata folder from growing without bound, and
+   it is the one that could not exist before 3.1.
+6. **Remove orphans - last, and behind a window.** Walk the table's location,
+   subtract everything any *retained* snapshot references, remove the rest -
+   but only files older than the orphan window, because an in-flight writer's
+   files look exactly like orphans. The walk is an iterator (`AGENTS.md:226`);
+   the reference set is the one thing held, and a comment says so and says what
+   bounds it. **Never remove a file a retained snapshot names, and never remove
+   one newer than the window.** Both are invariants, and each gets an
+   adversarial test.
+
+### 3.4 Defaults are aggressive; the write path is not touched
+
+This is the judgment call the request asks for, and it is written down so it is
+not rediscovered: **`optimize()` is aggressive, and ordinary commits are
+not.** Iceberg's write-path defaults are conservative because they apply to
+every commit; a maintenance run is explicit, asked for, and rewrites rather
+than discards.
+
+| knob | spec default | `optimize()` default | why it differs |
+| --- | --- | --- | --- |
+| `write.metadata.previous-versions-max` | 100 | **10** | ten documents is more history than any recovery uses; a hundred is a hundred listing entries, forever |
+| `write.metadata.delete-after-commit.enabled` | `false` | **`true`** | trimming the log while leaving the files behind is not cleaning |
+| `commit.manifest.min-count-to-merge` | 100 | **8** | merging sooner is what keeps planning fast, and the cost is one rewrite |
+| `commit.manifest.target-size-bytes` | 8 MiB | 8 MiB | the spec's size is already right |
+| `history.expire.max-snapshot-age-ms` | 5 days | 5 days | time travel is a feature; shortening it silently is a data-visible change, not a cleanup |
+| `history.expire.min-snapshots-to-keep` | 1 | 1 | the spec's floor is already the floor |
+| `write.delete.target-file-size-bytes` | 64 MiB | 64 MiB | |
+| `write.target-file-size-bytes` | 512 MiB | 512 MiB | |
+| orphan window | — | **3 days** | shorter than that races real writers |
+
+Two rules govern the table:
+
+- **Aggression is per-run, never ambient.** The commit path keeps every spec
+  default; an `optimize()` that quietly changed what ordinary writers do would
+  be a surprise nobody asked for. Put that sentence in the module docs.
+- **Retention that hides data is never made more aggressive by default.**
+  Every row above that stays at the spec value is one where a shorter setting
+  would remove a snapshot a reader could still want. Aggression applies to
+  *metadata a reader cannot see*, not to history a reader can.
+
+Resolution is the one `IcebergOptions` already implements - explicit → table
+property → default - with one resolver function per field and no second config
+value (`AGENTS.md:310`). Keys the spec defines use the spec's spelling exactly.
+The two it does not define, the orphan window and which steps run, get keys
+under a namespace that cannot collide with a future spec key, documented as
+this project's.
+
+### 3.5 Fully configurable: every step, individually, with its own knobs
+
+```rust
+table.optimize()?;                                    // everything, aggressive defaults
+table.optimize_with(Optimize::new().manifests_only())?;
+table.optimize_with(
+    Optimize::new()
+        .without_orphans()                   // the destructive step, off
+        .with_previous_versions_max(3)
+        .with_snapshot_age_ms(86_400_000),
+)?;
+```
+
+`Optimize` is a consuming builder (`with_*` per `AGENTS.md:491`) over which
+steps run and with what. It holds no knob that `IcebergOptions` does not
+resolve; it selects and overrides, it does not duplicate. Every step is
+individually addressable and every step is on by default - and the docs make
+plain which one removes files a human might want back. A caller who wants the
+report and no action calls `optimize_plan`.
+
+**A catalog-level `optimize` is deliberately not added.** One method that
+rewrites every table in a warehouse is a footgun; the loop belongs to the
+caller, who knows which tables matter. Say that rather than leaving the absence
+to look like an oversight.
+
+### 3.6 The invariants, which are the tests
+
+- **No row is lost.** Every row readable before `optimize()` is readable after,
+  at every snapshot that survives. Property test over a table built from a
+  randomized sequence of appends, merges, deletes, and overwrites.
+- **Nothing live is removed.** For every retained snapshot, every file it
+  references still exists - asserted after *each* step, not only at the end.
+- **Idempotence.** A second run commits nothing and reports zeros.
+- **Interruption is safe.** Fail the commit gate at each step boundary in turn;
+  the table stays readable and correct, and a re-run completes the job.
+- **Concurrency.** An append racing an `optimize()` either wins and survives or
+  loses and retries - never a snapshot naming a removed file. Restate the
+  workspace's own sentence here: `IOBase` has no compare-and-swap, so a lost
+  race can strand a file, and the orphan window is what makes that safe instead
+  of accidental.
+- **Pruning actually improved.** After the manifest step, `Table::plan` skips
+  at least as many files as before for the same predicate. A number, not a
+  claim.
+- **Outside agreement.** PyIceberg reads the optimized table, and its own
+  `expire_snapshots` and `rewrite_manifests` find nothing left to do on it.
+  That is the interop half, and it goes in the existing driver.
+
+### 3.7 Benchmarks, bindings, docs
+
+- `rust/benchmarks/iceberg.rs` gains `optimize`: a table of 200 commits of
+  small files, measuring each step alone and the whole run, reporting
+  **metadata bytes and file count before and after** beside wall time - the
+  point of this feature is the ratio, not the seconds. Add a planning
+  measurement before and after the manifest rewrite, which is where the work
+  pays for itself. `rust/benchmarks/io.rs` gains `remove` beside the existing
+  write groups.
+- **Python**: `table.optimize()`, `table.optimize_plan()`, and
+  `table.optimize(orphans=False, previous_versions_max=3, ...)` with real
+  keyword defaults (`AGENTS.md:956`). **JavaScript**: `table.optimize()`,
+  `table.optimizePlan()`, `table.optimize({ orphans: false, ... })`.
+  `Optimization` crosses as a plain object - it records, it does not behave -
+  with 64-bit counts as `bigint` (`AGENTS.md:1146`).
+- `docs/iceberg.md` gains a maintenance section built on `optimize()` in three
+  tabs, the knob table of 3.4 verbatim, and the sentence about the write path
+  being untouched. `docs/io.md` documents `remove` and the `unlink` change, and
+  `docs/extensions/{python,javascript}.md` note it as a behavior change.
+
+**Definition of done, part three**: a table hammered with two hundred small
+appends, updates, and deletes is handed to `table.optimize()` in any of the
+three languages; one call leaves it with compacted data files, deletion vectors
+instead of position deletes, partition-clustered manifests, an expired history
+inside its retention, ten metadata documents instead of two hundred, and no
+orphans older than the window; `Table::plan` skips more files than before for
+the same predicate; PyIceberg reads it and finds nothing left to maintain; and
+a second `optimize()` commits nothing.
+
+## 4. Part four: the Doris module, in architecture
+
+### 4.1 Feature and module layout
 
 New non-default feature in `rust/Cargo.toml`:
 
@@ -714,7 +949,7 @@ real implementation, never empty shells around a monolith (`AGENTS.md:17`):
 `Doris`, `DorisType`, `DorisOptions`, `StreamLoad`, `LoadReport` are re-exported
 from `rust/src/lib.rs` behind the feature, beside the Iceberg exports.
 
-### 3.2 What this module is, and what it is emphatically not
+### 4.2 What this module is, and what it is emphatically not
 
 Say this in the module docs, in one short paragraph, so the next reader does
 not re-open it:
@@ -743,7 +978,7 @@ the REST catalog and non-`main` branch writes):
   internal indexes are engine internals; the exchange surface is Parquet, ORC,
   CSV, JSON, Arrow IPC, and Iceberg.
 
-### 3.3 `DorisType`: one closed enum, complete for 4.1
+### 4.3 `DorisType`: one closed enum, complete for 4.1
 
 `DorisType` is a `#[non_exhaustive]` enum covering **every** type Doris 4.1
 spells, grouped and documented as groups, with `Display` canonical and
@@ -783,7 +1018,7 @@ limit, every error carries a byte position and context. It never re-implements
 Arrow type parsing - where a Doris type is spelled with an Arrow-compatible
 inner type, the text goes to `DataType::from_str`.
 
-### 3.4 The mapping is total, two-way, and honest about what it loses
+### 4.4 The mapping is total, two-way, and honest about what it loses
 
 `types.rs` owns two functions and one table, and nothing else decides a type:
 
@@ -819,9 +1054,9 @@ Arrow types Doris has no home for - `Interval`, `Duration`, `Union`,
 `RunEndEncoded`, `Float16`, `Dictionary` of a non-string value, `Decimal256`
 beyond 38 digits - are each refused **by name** with `expected X, got Y`
 (`AGENTS.md:660`), except where the compatibility walker can widen them
-losslessly (see 3.5).
+losslessly (see 4.5).
 
-### 3.5 Doris as the sixth compatibility target
+### 4.5 Doris as the sixth compatibility target
 
 Add `Scheme::DORIS` to `COMPATIBILITY_TARGETS` (`enums/scheme.rs:91`) and a
 Doris row to the per-target scalar matrix in
@@ -847,7 +1082,7 @@ and metadata, and invalidate a populated Arrow cache exactly once.
 `doris:default`, `doris:comment`. It is a *view* over the one shared snapshot,
 not a second map (`AGENTS.md:17`).
 
-### 3.6 `schema.rs` and `ddl.rs`: a `Field` is the table
+### 4.6 `schema.rs` and `ddl.rs`: a `Field` is the table
 
 A struct root `Field` is the schema (`AGENTS.md:17`); `ddl.rs` renders it and
 parses it back.
@@ -880,7 +1115,7 @@ assert_eq!(back, schema);
   every branch gets a round-trip test and an adversarial test
   (`AGENTS.md:708`).
 
-### 3.7 `sql.rs`: the one predicate, rendered for Doris
+### 4.7 `sql.rs`: the one predicate, rendered for Doris
 
 `Expression` is already the workspace's single filter representation. `sql.rs`
 renders a `Bound` predicate as Doris SQL, and renders **nothing else**:
@@ -902,7 +1137,7 @@ assert_eq!(doris::sql::predicate(&predicate)?, "`ccy` = 'EUR' AND `price` > 100 
 - The refusal list is documented: what Doris will be asked, what stays behind,
   and why.
 
-### 3.8 `tvf.rs` and `export.rs`: the round trip that validates the encodings
+### 4.8 `tvf.rs` and `export.rs`: the round trip that validates the encodings
 
 This is the pair the whole task exists for.
 
@@ -943,7 +1178,7 @@ silently.
 exports → rows read back must be identical, value for value, including nulls,
 decimals to the scale, timestamps to the unit, and every nested level.
 
-### 3.9 `load.rs`: Stream Load, composed not sent
+### 4.9 `load.rs`: Stream Load, composed not sent
 
 ```rust
 let load = doris::StreamLoad::new("trades", "orders")
@@ -985,7 +1220,7 @@ let (headers, body) = load.compose(reader)?;   // body is an IOBase handle
   error carrying the message and the error URL, so a caller can fix the input
   without reading source.
 
-### 3.10 `catalog.rs`: the Iceberg bridge
+### 4.10 `catalog.rs`: the Iceberg bridge
 
 Behind `#[cfg(all(feature = "doris", feature = "iceberg"))]`:
 
@@ -1017,28 +1252,31 @@ Behind `#[cfg(all(feature = "doris", feature = "iceberg"))]`:
 
 ---
 
-## 4. Order of work (`AGENTS.md:9` — Rust first, fully)
+## 5. Order of work (`AGENTS.md:9` — Rust first, fully)
 
-**Phase 0** — section 1: the catalog hierarchy and the existence audit, Rust
-then both bindings then docs, landed and green. → **Phase 1** — section 2: the
-delete path first, then Puffin, then the v3 types, lineage, defaults, and
-transforms, with the PyIceberg v3 interop green. → **Phase 2** research note
-for Doris → **Phase 3** Rust core of `doris/` complete (types, mapping, compat
-target, schema, DDL, variant, SQL, TVF, load, export, catalog, options, tests,
-interop, benches, docs) → **Phase 4** optimization pass → **Phase 5** Python →
-**Phase 6** JavaScript → **Phase 7** docs and benchmark tables → **Phase 8**
-required checks.
+**Phase 0** — section 1: the catalog hierarchy, the existence audit, the
+listing sweep, the rename. Rust then both bindings then docs, landed and green.
+→ **Phase 1** — section 2: the delete path first, then Puffin, then the v3
+types, lineage, defaults, and transforms, with the PyIceberg v3 interop green.
+→ **Phase 2** — section 3: `IOBase::remove` first, then `optimize` step by
+step, each step landing with its own tests before the next starts. →
+**Phase 3** research note for Doris → **Phase 4** Rust core of `doris/`
+complete (types, mapping, compat target, schema, DDL, variant, SQL, TVF, load,
+export, catalog, options, tests, interop, benches, docs) → **Phase 5**
+optimization pass → **Phase 6** Python → **Phase 7** JavaScript → **Phase 8**
+docs and benchmark tables → **Phase 9** required checks.
 
-Phases 0, 1, and 3 each stop as complete work. Do not run them out of order or
-in parallel: the Doris bridge is the first new caller of the catalog hierarchy
-and the second reader of v3, so it should be written against shapes that are
-staying. In particular, **do not write the Doris interop before v3 writing
-works** - the strongest thing that interop can prove is that Doris reads the
-v3 deletion vectors this workspace produced.
+Phases 0, 1, 2, and 4 each stop as complete work. Do not run them out of order
+or in parallel. Part three folds position deletes into deletion vectors, which
+part two is what makes possible; the Doris bridge is the first new caller of
+the catalog hierarchy and the second reader of v3, so it should be written
+against shapes that are staying. In particular, **do not write the Doris
+interop before v3 writing works** - the strongest thing that interop can prove
+is that Doris reads the v3 deletion vectors this workspace produced.
 
 ---
 
-## 5. Phase 2: pin the target, from the sources
+## 6. Phase 3: pin the target, from the sources
 
 Before writing the enum, spend one pass on the primary sources and write
 `docs/doris.md`'s design section from it - short, cited, opinionated, not a
@@ -1096,12 +1334,12 @@ V3) are deliberately out of scope with the reason.
 
 ---
 
-## 6. Phase 3 details: tests
+## 7. Phase 4 details: tests
 
 `rust/src/doris/tests.rs` plus per-file test modules where the existing modules
 keep them, and the interop target below. Cover, at minimum:
 
-### 6.1 Every type, exhaustively
+### 7.1 Every type, exhaustively
 
 A single table-driven test walks **every** `DorisType` variant and asserts, for
 each: `Display` round-trips through `FromStr`; `to_data_type` then
@@ -1117,7 +1355,7 @@ Parameters are boundary-tested, not sampled: `CHAR(1)`, `CHAR(255)`,
 `DATETIME(6)`, `DATETIME(7)` refused; `LARGEINT` at ±(2^127−1) and the refusal
 at `i128::MIN`.
 
-### 6.2 Deep nesting
+### 7.2 Deep nesting
 
 The nesting tests are not decoration - they are where a mapping fails in
 production. Build and round-trip, in **both** directions and through **both**
@@ -1139,7 +1377,7 @@ Parquet and Iceberg:
   `variant_max_subcolumns_count`, and a nested object inside an array (which
   Doris flattens differently - assert what it actually does, do not assume).
 
-### 6.3 DDL and SQL
+### 7.3 DDL and SQL
 
 Round trip `Field` → `CREATE TABLE` → `Field` for every key model, every
 distribution, range/list/auto partitioning, and every property. Parse real
@@ -1151,7 +1389,7 @@ not in the schema, trailing tokens. Every error carries a byte position.
 Predicate rendering: an assertion table of `Expression` → Doris SQL for every
 node kind, plus the residual split for every node Doris cannot take.
 
-### 6.4 Stream Load and export
+### 7.4 Stream Load and export
 
 Header composition for every format and every option combination, with a
 golden-file assertion. Body bytes for `parquet`, `arrow`, `json`, and `csv`
@@ -1166,7 +1404,7 @@ folder of CSV with and without the header variants, a Hive-partitioned export
 whose partition columns must come back typed, an empty export, and a folder
 containing one unrecognized file (reported, not skipped).
 
-### 6.5 Interop, both directions — `rust/tests/doris_interop.rs`
+### 7.5 Interop, both directions — `rust/tests/doris_interop.rs`
 
 Copy the Iceberg harness pattern exactly (`AGENTS.md:310` - exchange formats
 are validated against an outside implementation):
@@ -1176,7 +1414,7 @@ are validated against an outside implementation):
   readiness, and runs both halves.
 - **Half one, Yggdryl → Doris.** The cargo target writes, into
   `target/doris-interop/from-rust`: a Parquet file with every scalar type; a
-  Parquet file with the deep-nested fixtures from 6.2; a partitioned Parquet
+  Parquet file with the deep-nested fixtures from 7.2; a partitioned Parquet
   folder; and an Iceberg V2 table with an append and a key-matched merge. The
   driver then makes Doris read each one - the Parquet through
   `SELECT ... FROM LOCAL()/S3()`, the Iceberg through a `hadoop` catalog it
@@ -1199,7 +1437,7 @@ are validated against an outside implementation):
 
 ---
 
-## 7. Phase 3 benchmarks — where the protocols get validated
+## 8. Phase 4 benchmarks — where the protocols get validated
 
 `rust/benchmarks/doris.rs` with the dispatcher pattern
 (`#[path = "doris/mod.rs"] mod benchmarks;`, stable Criterion group IDs), plus
@@ -1260,7 +1498,7 @@ would otherwise take.
 
 ---
 
-## 8. Phase 4: the optimization pass (find them, measure them, then land them)
+## 9. Phase 5: the Doris optimization pass (find them, measure them, then land them)
 
 This is a distinct phase with a distinct rule from `AGENTS.md:789`: **measure
 before claiming any optimization**, and an optimization that changes observable
@@ -1314,7 +1552,7 @@ silent cap - a top-N, a sampling, a truncation - is worse than none.
 
 ---
 
-## 9. Phase 5: Python binding
+## 10. Phase 6: Python binding
 
 `python/src/doris.rs` exposing a `yggdryl.doris` namespace over the native
 module - no Python-side type mapping, no Python-side SQL rendering
@@ -1341,7 +1579,7 @@ module - no Python-side type mapping, no Python-side SQL rendering
   configured, exercising Stream Load and the TVF round trip against the same
   container the interop driver uses.
 
-## 10. Phase 6: JavaScript binding
+## 11. Phase 7: JavaScript binding
 
 `node/src/doris.rs`, mirroring the Python surface with camelCase names in a
 `doris` loader namespace, the way `iceberg` already is a namespace
@@ -1356,14 +1594,14 @@ round trips, and type-level checks for the builder.
 
 ---
 
-## 11. Phase 7: documentation
+## 12. Phase 8: documentation
 
 - New page `docs/doris.md` — one H1, exactly one opening sentence, then
   example-first sections: map a schema; the full type table (generated, not
   hand-kept); create a table; render a TVF read; compose a Stream Load; read an
-  export; the Iceberg bridge; the decision list from Phase 2; the scope note
-  from 3.2 saying plainly what is not here and why; the optimization findings
-  from Phase 4.
+  export; the Iceberg bridge; the decision list from Phase 3; the scope note
+  from 4.2 saying plainly what is not here and why; the optimization findings
+  from Phase 5.
 - Every example in **Rust → Python → JavaScript tabs, in that order**, each
   idiomatic, self-contained, with at least one assertion, all passing
   `python scripts/check_docs_examples.py`. Check `.api-bindings.txt` before
@@ -1382,7 +1620,7 @@ round trips, and type-level checks for the builder.
 
 ---
 
-## 12. Phase 8: required checks (all must pass before handoff)
+## 13. Phase 9: required checks (all must pass before handoff)
 
 Per `AGENTS.md:1210`: `cargo fmt --check`; warning-free
 `cargo clippy --locked --workspace --all-targets -- -D warnings` **twice**
@@ -1400,7 +1638,7 @@ containers and volumes, and `node_modules` after validation.
 
 ---
 
-## 13. Hard constraints, restated
+## 14. Hard constraints, restated
 
 - **No new dependency** in any of the three manifests. No HTTP client, no
   MySQL driver, no gRPC or Flight stack, no `serde_json` beyond what is already
@@ -1423,6 +1661,9 @@ containers and volumes, and `node_modules` after validation.
   `get`, no `mkdir` before a write, no "ensure" step anywhere. Act, branch on
   the typed absence or conflict, repair once, retry once. A review finding a
   probe on the way to doing something else treats it as a bug.
+- **A maintenance step never removes what a retained snapshot names**, and
+  never removes a file inside the orphan window. Those two invariants are
+  asserted after every step, not at the end of the run.
 - **Name the mechanism before writing the feature.** Every v3 capability is
   built on something the workspace already owns, per the table in 2.1. A
   private re-implementation of masking, casting, defaulting, parsing, or
@@ -1433,7 +1674,7 @@ containers and volumes, and `node_modules` after validation.
 - **Total or refused.** A type mapping either round-trips, or widens with the
   widening documented, or errors naming both sides. There is no third outcome
   and no silent coercion.
-- **Measure before claiming.** Every optimization in Phase 4 carries a number
+- **Measure before claiming.** Every optimization in Phase 5 carries a number
   or a note saying it did not pay.
 - Method names follow the exact vocabulary (`AGENTS.md:491`); Rust
   `create_table`/`schema_from_create_table`/`check_readable` ↔ Python the same
