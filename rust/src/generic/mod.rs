@@ -18,6 +18,8 @@
 //! belongs to.
 //! - [`Media`] names every record encoding bound to a handle.
 //! - [`RecordOptions`] names every encoding's read and write settings.
+//! - [`wkb`] reads Well-Known Binary geometries: their bounds, their type
+//!   codes, and their WKT spelling.
 //!
 //! Each one delegates the whole contract to the variant it holds, so code
 //! written against the enum behaves exactly as code written against the
@@ -36,6 +38,7 @@ mod temporal;
 mod text;
 mod typed;
 pub mod value;
+pub mod wkb;
 
 pub use codec::Codec;
 pub use holder::Holder;

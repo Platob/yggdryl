@@ -678,8 +678,8 @@ mod call_counts {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{Catalog, taxi_schema};
-    use crate::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, Folder, MemoryFileSystem};
     use crate::Result;
+    use crate::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, Folder, MemoryFileSystem};
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]
