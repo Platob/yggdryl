@@ -1,4 +1,15 @@
-import { Bound, Expression, Field, IOBase, Statement, Value } from '..'
+import {
+  BatchReader,
+  Bound,
+  Expression,
+  Field,
+  IOBase,
+  Statement,
+  Value,
+  iceberg,
+  type Table,
+} from '..'
+import { type ScanPlanCounts } from '../index'
 
 const filter: Expression = new Expression("ccy = 'EUR' and price > 100")
 const parsed: Expression = Expression.parse("ccy = 'EUR'")
@@ -46,6 +57,13 @@ const handle = new IOBase('file:///lake')
 const matching: Array<IOBase> = handle.childrenMatching(filter)
 const matchingText: Array<IOBase> = handle.childrenMatching("&holder.size > 0", true)
 
+const table: Table = iceberg.Table.create('file:///lake/trades', schema, ['ccy'])
+const rows: BatchReader = table.scanMatching(filter)
+const projectedRows: BatchReader = table.scanMatching("ccy = 'EUR'", schema)
+const counts: ScanPlanCounts = table.planMatching(filter)
+const tasks: number = counts.tasks
+const manifestsSkipped: number = counts.manifestsSkipped
+
 export {
   always,
   answered,
@@ -59,6 +77,7 @@ export {
   columns,
   conjuncts,
   constant,
+  counts,
   depth,
   document,
   either,
@@ -69,6 +88,7 @@ export {
   kept,
   late,
   limit,
+  manifestsSkipped,
   matching,
   matchingText,
   named,
@@ -78,13 +98,17 @@ export {
   parameters,
   parsed,
   predicate,
+  projectedRows,
   projections,
   readsRows,
   restored,
+  rows,
   same,
   schema,
   statement,
   statementText,
   stat,
+  table,
+  tasks,
   text,
 }

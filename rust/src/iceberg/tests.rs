@@ -1189,30 +1189,52 @@ mod planning {
 
     #[test]
     fn one_predicate_mixes_the_file_and_the_rows() {
-        let (_path, table) = venues("scan-mixed");
+        let (_path, mut table) = venues("scan-mixed");
+        // A second row in a partition that already exists is what makes the row
+        // half of the predicate load-bearing: with one row per venue, a
+        // conjunct over the rows is settled by the partition and the test would
+        // pass even if the rows were never consulted.
+        let batch = trades(&[4], &[Some("BP")], &[Some("XLON")]);
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
 
         let rows = collect(
             table
                 .scan_matching(
-                    "id >= 2 and symbol is not null and &holder.partition['venue'] = 'XLON'",
+                    "id >= 4 and symbol is not null and &holder.partition['venue'] = 'XLON'",
                     None,
                 )
                 .unwrap(),
         );
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, 3);
+        assert_eq!(rows[0].0, 4);
         assert_eq!(rows[0].2.as_deref(), Some("XLON"));
+
+        // Each half on its own keeps more, so neither was dropped above.
+        let held = collect(
+            table
+                .scan_matching("&holder.partition['venue'] = 'XLON'", None)
+                .unwrap(),
+        );
+        assert_eq!(held.iter().map(|row| row.0).collect::<Vec<_>>(), vec![3, 4]);
+        let ranged = collect(table.scan_matching("id >= 4", None).unwrap());
+        assert_eq!(ranged.iter().map(|row| row.0).collect::<Vec<_>>(), vec![4]);
 
         // A predicate the metadata proves empty reads nothing at all.
         let empty = table.plan_matching("id > 1000").unwrap();
         assert_eq!(empty.tasks.len(), 0);
-        assert_eq!(empty.files_skipped(), 3);
+        assert_eq!(empty.files_skipped(), 4);
 
-        // The pair spelling and the expression spelling are one plan.
+        // The pair spelling and the expression spelling are one plan. Each side
+        // is pinned to the measured number, so two broken sides cannot agree
+        // their way past this.
         let by_pair = table.plan(&[("venue", "XLON")]).unwrap();
         let by_text = table.plan_matching("venue = 'XLON'").unwrap();
-        assert_eq!(by_pair.tasks.len(), by_text.tasks.len());
-        assert_eq!(by_pair.manifests_skipped(), by_text.manifests_skipped());
+        assert_eq!(by_pair.tasks.len(), 2);
+        assert_eq!(by_text.tasks.len(), 2);
+        assert_eq!(by_pair.manifests_skipped(), 2);
+        assert_eq!(by_text.manifests_skipped(), 2);
     }
 
     #[test]

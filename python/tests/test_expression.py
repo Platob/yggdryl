@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pyarrow as pa
 import pytest
 
 import yggdryl
 from yggdryl import DataType, Expression, Field, Statement
+from yggdryl.iceberg import Table
 
 
 def trades_schema() -> Field:
@@ -115,3 +117,73 @@ def test_a_lake_is_filtered_by_the_same_predicate(tmp_path) -> None:
     pairs = handle.children_where({"year": "2024"})
     assert len(pairs) == 1
     assert str(pairs[0].url).endswith("year=2024/part-0.parquet")
+
+
+def trades_table(root) -> Table:
+    """A venue-partitioned table whose XLON partition holds two rows.
+
+    One commit is one manifest, so three commits give the manifest list rows to
+    prune. The fourth adds a second row to a partition that already exists, which
+    is what lets a predicate over the rows discriminate *within* a surviving file
+    rather than being answered by the partition alone.
+    """
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("venue", pa.string()),
+        ]
+    )
+    table = Table.create(yggdryl.IOBase(root / "trades"), schema, ["venue"])
+    for identifier, venue in ((1, "XNAS"), (2, "XNYS"), (3, "XLON"), (4, "XLON")):
+        batch = pa.record_batch({"id": [identifier], "venue": [venue]}, schema=schema)
+        table.append(batch)
+    return table
+
+
+def test_a_partitioned_table_prunes_manifests_before_a_byte_is_read(tmp_path) -> None:
+    table = trades_table(tmp_path)
+
+    # The baseline: a predicate no summary can settle opens every manifest, so
+    # the numbers below are pruning rather than a constant.
+    whole = table.plan_matching("id >= 1")
+    assert whole["manifests_read"] == 4
+    assert whole["manifests_skipped"] == 0
+    assert whole["tasks"] == 4
+
+    # A manifest-list summary bounds each manifest's partition values, so a
+    # question about the file is settled without opening the Avro.
+    held = table.plan_matching("&holder.partition['venue'] = 'XNYS'")
+    assert held["manifests_skipped"] == 3
+    assert held["manifests_read"] == 1
+    assert held["tasks"] == 1
+    assert held["record_count"] == 1
+
+
+def test_one_predicate_mixes_the_file_and_the_rows(tmp_path) -> None:
+    table = trades_table(tmp_path)
+
+    # Both halves are load-bearing: the holder conjunct leaves the two XLON rows
+    # and the row conjunct keeps one of them, so neither can be dropped without
+    # changing the answer.
+    mixed = "id >= 4 and &holder.partition['venue'] = 'XLON'"
+    rows = table.scan_matching(mixed).read_all()
+    assert rows.column("id").to_pylist() == [4]
+    assert table.scan_matching(
+        "&holder.partition['venue'] = 'XLON'"
+    ).read_all().column("id").to_pylist() == [3, 4]
+    assert table.scan_matching("id >= 4").read_all().column("id").to_pylist() == [4]
+
+
+def test_the_pair_spelling_and_the_expression_spelling_are_one_plan(tmp_path) -> None:
+    table = trades_table(tmp_path)
+
+    by_pair = table.plan([("venue", "XLON")])
+    by_text = table.plan_matching("venue = 'XLON'")
+    assert by_pair.files_planned == by_text["tasks"] == 2
+    assert by_pair.manifests_skipped == by_text["manifests_skipped"] == 2
+    assert by_pair.record_count == by_text["record_count"] == 2
+    assert (
+        table.scan_where({"venue": "XLON"}).read_all().column("id").to_pylist()
+        == table.scan_matching("venue = 'XLON'").read_all().column("id").to_pylist()
+        == [3, 4]
+    )
