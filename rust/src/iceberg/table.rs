@@ -842,13 +842,32 @@ impl<H: IOBase> Table<H> {
         filter: &crate::Expression,
     ) -> Result<BatchReader> {
         let root = field.map_or_else(|| stored.clone(), Clone::clone);
-        let read_root = super::scan::read_root(&root, stored, filter)?;
+        // The read root carries the filter's and the equality deletes' own
+        // columns even when the caller projected them away: both are tested
+        // against the rows, then dropped by the final cast.
+        let equality = super::scan::equality_columns(&tasks, stored);
+        let read_root = super::scan::read_root(&root, stored, filter, &equality)?;
         // The residual conjuncts run against the read root, which carries the
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
 
+        // Every delete file is read here, once, before any data file opens;
+        // each task's mask and predicate are built once per file.
+        let deletes = super::scan::file_deletes(
+            &tasks,
+            &|file| {
+                let mut handle = self.child_at(&file.file_path)?;
+                if let Some(base) = mime_of(file.file_format) {
+                    handle.set_media_type(crate::MediaType::new(base));
+                }
+                Ok(handle)
+            },
+            stored,
+            &read_root,
+        )?;
+
         let mut parts = Vec::new();
-        for task in tasks {
+        for (task, deletes) in tasks.into_iter().zip(deletes) {
             let mut handle = self.child_at(&task.entry.data_file.file_path)?;
             // The manifest is the authority on a file's format, not its name:
             // a table whose files mix formats - or name them without an
@@ -865,6 +884,7 @@ impl<H: IOBase> Table<H> {
                     &task.entry.data_file,
                 )?,
                 residual: task.residual,
+                deletes,
             });
         }
         let parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
@@ -938,11 +958,16 @@ impl<H: IOBase> Table<H> {
         batches: BatchReader,
     ) -> Result<()> {
         let plan = self.plan(filters)?;
+        // The delete manifests stay in the list: they must keep subtracting
+        // from the files this overwrite carries, and they cannot touch what it
+        // writes - a new file's sequence number is above every delete's.
+        let mut manifests = plan.skipped;
+        manifests.extend(plan.delete_manifests);
         self.commit(
             batches,
             "overwrite",
             Retained::Only {
-                manifests: plan.skipped,
+                manifests,
                 entries: plan.excluded,
             },
         )?;
@@ -1029,11 +1054,16 @@ impl<H: IOBase> Table<H> {
             merge_by_names,
             safe,
         )?;
+        // Deletes applied while reading the selected files are baked into the
+        // merged rows; the delete manifests are carried for the files that
+        // were not read, whose rows still need the subtraction.
+        let mut manifests = plan.skipped;
+        manifests.extend(plan.delete_manifests);
         self.commit(
             merged,
             "overwrite",
             Retained::Only {
-                manifests: plan.skipped,
+                manifests,
                 entries: carried,
             },
         )?;
@@ -1107,11 +1137,15 @@ impl<H: IOBase> Table<H> {
 
         let schema = self.schema()?.clone();
         let rows = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
+        // The rewritten rows have their deletes applied; the carried files do
+        // not, so the delete manifests stay in the list for them.
+        let mut manifests = plan.skipped;
+        manifests.extend(plan.delete_manifests);
         let files_after = self.commit(
             rows,
             "replace",
             Retained::Only {
-                manifests: plan.skipped,
+                manifests,
                 entries: carried,
             },
         )?;

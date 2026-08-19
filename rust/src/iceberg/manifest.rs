@@ -100,6 +100,53 @@ impl EntryStatus {
     }
 }
 
+/// What one manifest row's file contributes to a scan.
+///
+/// This is the `content` integer of the `data_file` struct, not the manifest's
+/// own [`ManifestContent`]: a delete manifest says *which* kind of delete each
+/// of its files is through this value, and a v3 deletion vector travels as
+/// [`Self::PositionDeletes`] with `content_offset`/`content_size_in_bytes`
+/// pointing into a Puffin file.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum DataFileContent {
+    /// Rows the table holds.
+    #[default]
+    Data,
+    /// Row positions a delete removed, per referenced data file.
+    PositionDeletes,
+    /// Column values a delete removed, matched by equality.
+    EqualityDeletes,
+}
+
+impl DataFileContent {
+    /// Return the integer Iceberg stores for this content.
+    pub const fn code(self) -> i32 {
+        match self {
+            Self::Data => 0,
+            Self::PositionDeletes => 1,
+            Self::EqualityDeletes => 2,
+        }
+    }
+
+    /// Read the content one stored integer names.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the value when it is outside zero through two.
+    pub fn from_code(code: i64) -> Result<Self> {
+        match code {
+            0 => Ok(Self::Data),
+            1 => Ok(Self::PositionDeletes),
+            2 => Ok(Self::EqualityDeletes),
+            other => Err(invalid(format_smolstr!(
+                "expected a data file content of 0 (data), 1 (position deletes), or 2 (equality \
+                 deletes), got {other}"
+            ))),
+        }
+    }
+}
+
 /// The encoding one data file uses.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -171,6 +218,25 @@ pub struct DataFile {
     pub sort_order_id: Option<i32>,
     /// First assigned row identifier, added in v3 for row lineage.
     pub first_row_id: Option<i64>,
+    /// Field ids equality deletes match rows by; required when `content` is 2.
+    pub equality_ids: Vec<i32>,
+    /// The one data file every delete in this file references, when named.
+    pub referenced_data_file: Option<SmolStr>,
+    /// Byte offset of a deletion-vector blob inside a Puffin file (v3).
+    pub content_offset: Option<i64>,
+    /// Byte length of that deletion-vector blob (v3).
+    pub content_size_in_bytes: Option<i64>,
+}
+
+impl DataFile {
+    /// Return what this file contributes to a scan, decoded from `content`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the value when it is outside zero through two.
+    pub fn content_kind(&self) -> Result<DataFileContent> {
+        DataFileContent::from_code(i64::from(self.content))
+    }
 }
 
 /// One manifest row: a data file plus what the snapshot did to it.
@@ -348,6 +414,22 @@ pub fn write_manifest<H: IOBase + ?Sized>(
     let partition = spec.partition_field(schema)?;
     let avro_schema = manifest_entry_schema(version, &partition)?;
 
+    // A manifest lists data files or delete files, never both; the header's
+    // `content` says which, derived from the entries so a test writing a
+    // delete manifest goes through this one writer.
+    let deletes = entries
+        .iter()
+        .filter(|entry| entry.data_file.content != 0)
+        .count();
+    if deletes != 0 && deletes != entries.len() {
+        return Err(invalid(format_smolstr!(
+            "expected a manifest of only data files or only delete files, got {deletes} delete \
+             files among {} entries",
+            entries.len()
+        )));
+    }
+    let content = if deletes == 0 { "data" } else { "deletes" };
+
     let mut rows = Vec::with_capacity(entries.len());
     for entry in entries {
         rows.push(entry_to_value(entry, version, &partition)?);
@@ -371,7 +453,7 @@ pub fn write_manifest<H: IOBase + ?Sized>(
         ("partition-spec", spec_text.as_str()),
         ("partition-spec-id", spec_id.as_str()),
         ("format-version", format_version.as_str()),
-        ("content", "data"),
+        ("content", content),
     ];
     crate::avro::write_container(handle, &avro_schema, &metadata, &rows)
 }
@@ -744,7 +826,18 @@ fn entry_to_value(
         },
     ));
     if version >= FormatVersion::V2 {
-        data_file.push((Value::from("equality_ids"), Value::Null));
+        data_file.push((
+            Value::from("equality_ids"),
+            if file.equality_ids.is_empty() {
+                Value::Null
+            } else {
+                Value::from_sequence(
+                    file.equality_ids
+                        .iter()
+                        .map(|id| Value::from(i64::from(*id))),
+                )
+            },
+        ));
     }
     data_file.push((
         Value::from("sort_order_id"),
@@ -756,9 +849,20 @@ fn entry_to_value(
             Value::from("first_row_id"),
             file.first_row_id.map_or(Value::Null, Value::from),
         ));
-        data_file.push((Value::from("referenced_data_file"), Value::Null));
-        data_file.push((Value::from("content_offset"), Value::Null));
-        data_file.push((Value::from("content_size_in_bytes"), Value::Null));
+        data_file.push((
+            Value::from("referenced_data_file"),
+            file.referenced_data_file
+                .as_ref()
+                .map_or(Value::Null, |path| Value::from(path.clone())),
+        ));
+        data_file.push((
+            Value::from("content_offset"),
+            file.content_offset.map_or(Value::Null, Value::from),
+        ));
+        data_file.push((
+            Value::from("content_size_in_bytes"),
+            file.content_size_in_bytes.map_or(Value::Null, Value::from),
+        ));
     }
 
     let mut row = vec![(
@@ -853,6 +957,23 @@ fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
                 .and_then(Value::as_i64)
                 .and_then(|id| i32::try_from(id).ok()),
             first_row_id: file.get_key_str("first_row_id").and_then(Value::as_i64),
+            equality_ids: file
+                .get_key_str("equality_ids")
+                .map(|ids| {
+                    ids.sequence_iter()
+                        .filter_map(Value::as_i64)
+                        .filter_map(|id| i32::try_from(id).ok())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            referenced_data_file: file
+                .get_key_str("referenced_data_file")
+                .and_then(Value::as_str)
+                .map(SmolStr::new),
+            content_offset: file.get_key_str("content_offset").and_then(Value::as_i64),
+            content_size_in_bytes: file
+                .get_key_str("content_size_in_bytes")
+                .and_then(Value::as_i64),
         },
     })
 }

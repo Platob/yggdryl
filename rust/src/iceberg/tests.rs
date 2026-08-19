@@ -4222,3 +4222,636 @@ fn a_uuid_column_keeps_its_declared_type_through_a_round_trip() {
     assert!(rendered.contains(r#""type":"uuid""#), "{rendered}");
     assert!(rendered.contains(r#""type":"fixed[16]""#), "{rendered}");
 }
+
+mod deletes {
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use smol_str::SmolStr;
+
+    use super::{FormatVersion, PartitionSpec, Table, collect, root, trade_schema, trades};
+    use crate::generic::IORecordOptions;
+    use crate::iceberg::{
+        DataFile, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,
+        read_manifest_list, write_manifest, write_manifest_list,
+    };
+    use crate::io::IOBase;
+    use crate::local::Folder;
+    use crate::{DataType, Field, Value};
+
+    /// The reserved field id of a position delete file's `file_path` column.
+    const PATH_ID: i32 = 2_147_483_546;
+
+    /// Build an unpartitioned v2 table holding one data file of five trades.
+    fn five_trades(label: &str) -> (std::path::PathBuf, Table<Folder>) {
+        let path = root(label);
+        let schema = trade_schema();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let batch = trades(
+            &[1, 2, 3, 4, 5],
+            &[Some("AAPL"), Some("MSFT"), Some("AAPL"), None, Some("VOD")],
+            &[Some("XNAS"), Some("XNYS"), Some("XNAS"), None, Some("XLON")],
+        );
+        table
+            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        (path, table)
+    }
+
+    /// The recorded location of the table's one data file.
+    fn only_data_file(table: &Table<Folder>) -> SmolStr {
+        let plan = table.plan(&[]).unwrap();
+        assert_eq!(plan.tasks.len(), 1);
+        plan.tasks[0].entry.data_file.file_path.clone()
+    }
+
+    /// Write `batch` as a bare Parquet leaf below the table's data folder.
+    ///
+    /// Returns the recorded absolute location, the byte size, and the rows.
+    fn write_parquet_leaf(
+        path: &std::path::Path,
+        location: &str,
+        name: &str,
+        schema: &Field,
+        batch: RecordBatch,
+    ) -> (SmolStr, i64, i64) {
+        let rows = i64::try_from(batch.num_rows()).unwrap();
+        let mut handle = Folder::new(path)
+            .unwrap()
+            .child_by_path(&format!("data/{name}"))
+            .unwrap();
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_schema(schema.clone())
+            .with_safe(false);
+        handle
+            .write_arrow_batch_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        handle.flush().unwrap();
+        let size = i64::try_from(handle.size()).unwrap();
+        (
+            SmolStr::new(format!("{}/data/{name}", location.trim_end_matches('/'))),
+            size,
+            rows,
+        )
+    }
+
+    /// The two columns of a position delete file, as the spec fixes them.
+    fn position_delete_schema() -> Field {
+        DataType::from_fields([
+            DataType::Utf8.required_field("file_path"),
+            DataType::Int64.required_field("pos"),
+        ])
+        .unwrap()
+        .required_field("file_position_delete")
+    }
+
+    /// Write a position delete Parquet naming `positions` of `target`.
+    fn write_position_delete(
+        path: &std::path::Path,
+        location: &str,
+        name: &str,
+        target: &str,
+        positions: &[i64],
+    ) -> (SmolStr, i64, i64) {
+        let schema = position_delete_schema();
+        let batch = RecordBatch::try_new(
+            schema.to_arrow_schema().unwrap(),
+            vec![
+                std::sync::Arc::new(StringArray::from(vec![target; positions.len()])),
+                std::sync::Arc::new(Int64Array::from(positions.to_vec())),
+            ],
+        )
+        .unwrap();
+        write_parquet_leaf(path, location, name, &schema, batch)
+    }
+
+    /// Write an equality delete Parquet over the `symbol` column (id 2).
+    fn write_symbol_delete(
+        path: &std::path::Path,
+        location: &str,
+        name: &str,
+        symbols: &[Option<&str>],
+    ) -> (SmolStr, i64, i64) {
+        let symbol = trade_schema().fields()[1].clone();
+        let schema = DataType::from_fields([symbol])
+            .unwrap()
+            .required_field("equality_delete");
+        let batch = RecordBatch::try_new(
+            schema.to_arrow_schema().unwrap(),
+            vec![std::sync::Arc::new(StringArray::from(symbols.to_vec()))],
+        )
+        .unwrap();
+        write_parquet_leaf(path, location, name, &schema, batch)
+    }
+
+    /// Splice one delete manifest into the current snapshot's manifest list.
+    ///
+    /// `sequence_number` is the delete's commit order, which is what the scope
+    /// rules compare against each data file's; the snapshot itself is left as
+    /// it is, so a test dials the boundary cases directly.
+    fn attach_deletes(
+        path: &std::path::Path,
+        table: &Table<Folder>,
+        name: &str,
+        spec: &PartitionSpec,
+        entries: &[ManifestEntry],
+        sequence_number: i64,
+        partitions: Vec<FieldSummary>,
+    ) {
+        attach_deletes_as(
+            path,
+            table,
+            name,
+            spec,
+            entries,
+            sequence_number,
+            partitions,
+            FormatVersion::V2,
+        );
+    }
+
+    /// [`attach_deletes`] under a chosen manifest format version - v3 is what
+    /// carries a deletion vector's `content_offset` fields.
+    #[allow(clippy::too_many_arguments)]
+    fn attach_deletes_as(
+        path: &std::path::Path,
+        table: &Table<Folder>,
+        name: &str,
+        spec: &PartitionSpec,
+        entries: &[ManifestEntry],
+        sequence_number: i64,
+        partitions: Vec<FieldSummary>,
+        version: FormatVersion,
+    ) {
+        let folder = Folder::new(path).unwrap();
+        let location = table.metadata().location.clone();
+        let schema = table.schema().unwrap().clone();
+        let mut manifest = folder.child_by_path(&format!("metadata/{name}")).unwrap();
+        write_manifest(&mut manifest, version, &schema, spec, entries).unwrap();
+        manifest.flush().unwrap();
+
+        let snapshot = table.current_snapshot().unwrap().clone();
+        let list_name = snapshot.manifest_list.rsplit('/').next().unwrap();
+        let mut list = folder
+            .child_by_path(&format!("metadata/{list_name}"))
+            .unwrap();
+        let mut manifests = read_manifest_list(&list).unwrap();
+        manifests.push(ManifestFile {
+            manifest_path: SmolStr::new(format!(
+                "{}/metadata/{name}",
+                location.trim_end_matches('/')
+            )),
+            manifest_length: i64::try_from(manifest.size()).unwrap(),
+            partition_spec_id: spec.spec_id,
+            content: ManifestContent::Deletes,
+            sequence_number,
+            min_sequence_number: sequence_number,
+            added_snapshot_id: snapshot.snapshot_id,
+            added_files_count: i32::try_from(entries.len()).unwrap(),
+            existing_files_count: 0,
+            deleted_files_count: 0,
+            added_rows_count: entries
+                .iter()
+                .map(|entry| entry.data_file.record_count)
+                .sum(),
+            existing_rows_count: 0,
+            deleted_rows_count: 0,
+            partitions,
+            first_row_id: None,
+        });
+        write_manifest_list(
+            &mut list,
+            FormatVersion::V2,
+            snapshot.snapshot_id,
+            snapshot.parent_snapshot_id,
+            snapshot.sequence_number.unwrap_or(1),
+            &manifests,
+        )
+        .unwrap();
+        list.flush().unwrap();
+    }
+
+    /// A position delete file's manifest entry, unpartitioned.
+    fn position_entry(file_path: SmolStr, size: i64, rows: i64) -> ManifestEntry {
+        ManifestEntry::added(
+            9_001,
+            DataFile {
+                content: 1,
+                file_path,
+                file_format: FileFormat::Parquet,
+                record_count: rows,
+                file_size_in_bytes: size,
+                ..DataFile::default()
+            },
+        )
+    }
+
+    /// An equality delete file's manifest entry over `symbol`, unpartitioned.
+    fn symbol_entry(file_path: SmolStr, size: i64, rows: i64) -> ManifestEntry {
+        ManifestEntry::added(
+            9_002,
+            DataFile {
+                content: 2,
+                file_path,
+                file_format: FileFormat::Parquet,
+                record_count: rows,
+                file_size_in_bytes: size,
+                equality_ids: vec![2],
+                ..DataFile::default()
+            },
+        )
+    }
+
+    #[test]
+    fn a_position_delete_file_subtracts_exactly_its_named_rows() {
+        let (path, table) = five_trades("delete-positions");
+        let location = table.metadata().location.clone();
+        let target = only_data_file(&table);
+        let (file, size, rows) =
+            write_position_delete(&path, &location, "pd-1.parquet", &target, &[0, 2]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[position_entry(file, size, rows)],
+            2,
+            Vec::new(),
+        );
+
+        let plan = table.plan(&[]).unwrap();
+        assert_eq!(plan.delete_manifests_read, 1);
+        assert_eq!(plan.deletes_applied(), 1);
+        let ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![2, 4, 5]);
+    }
+
+    #[test]
+    fn a_position_delete_at_the_data_files_own_sequence_number_applies() {
+        // The spec's same-commit case: a position delete whose sequence number
+        // equals the data file's still subtracts.
+        let (path, table) = five_trades("delete-positions-equal");
+        let location = table.metadata().location.clone();
+        let target = only_data_file(&table);
+        let (file, size, rows) =
+            write_position_delete(&path, &location, "pd-1.parquet", &target, &[0]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[position_entry(file, size, rows)],
+            1,
+            Vec::new(),
+        );
+
+        let ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn a_delete_older_than_the_data_file_never_applies() {
+        let (path, table) = five_trades("delete-positions-older");
+        let location = table.metadata().location.clone();
+        let target = only_data_file(&table);
+        let (file, size, rows) =
+            write_position_delete(&path, &location, "pd-1.parquet", &target, &[0]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[position_entry(file, size, rows)],
+            0,
+            Vec::new(),
+        );
+
+        let plan = table.plan(&[]).unwrap();
+        assert_eq!(
+            plan.deletes_applied(),
+            0,
+            "an older delete scopes to nothing"
+        );
+        assert_eq!(collect(table.scan(None).unwrap()).len(), 5);
+    }
+
+    #[test]
+    fn an_equality_delete_file_subtracts_matching_rows() {
+        let (path, table) = five_trades("delete-equality");
+        let location = table.metadata().location.clone();
+        let (file, size, rows) =
+            write_symbol_delete(&path, &location, "eq-1.parquet", &[Some("AAPL")]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[symbol_entry(file, size, rows)],
+            2,
+            Vec::new(),
+        );
+
+        assert_eq!(table.plan(&[]).unwrap().deletes_applied(), 1);
+        let ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![2, 4, 5]);
+    }
+
+    #[test]
+    fn an_equality_delete_at_the_same_sequence_number_does_not_apply() {
+        // Position deletes apply at the data file's own sequence number;
+        // equality deletes apply strictly after it. This is the boundary.
+        let (path, table) = five_trades("delete-equality-equal");
+        let location = table.metadata().location.clone();
+        let (file, size, rows) =
+            write_symbol_delete(&path, &location, "eq-1.parquet", &[Some("AAPL")]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[symbol_entry(file, size, rows)],
+            1,
+            Vec::new(),
+        );
+
+        assert_eq!(table.plan(&[]).unwrap().deletes_applied(), 0);
+        assert_eq!(collect(table.scan(None).unwrap()).len(), 5);
+    }
+
+    #[test]
+    fn an_equality_delete_row_with_null_matches_is_null() {
+        let (path, table) = five_trades("delete-equality-null");
+        let location = table.metadata().location.clone();
+        let (file, size, rows) = write_symbol_delete(&path, &location, "eq-1.parquet", &[None]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[symbol_entry(file, size, rows)],
+            2,
+            Vec::new(),
+        );
+
+        let ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![1, 2, 3, 5], "only the null-symbol row is deleted");
+    }
+
+    #[test]
+    fn both_delete_kinds_compose_with_a_residual_filter_in_one_pass() {
+        let (path, table) = five_trades("delete-composed");
+        let location = table.metadata().location.clone();
+        let target = only_data_file(&table);
+        let (file, size, rows) =
+            write_position_delete(&path, &location, "pd-1.parquet", &target, &[4]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[position_entry(file, size, rows)],
+            2,
+            Vec::new(),
+        );
+        let (file, size, rows) =
+            write_symbol_delete(&path, &location, "eq-1.parquet", &[Some("AAPL")]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m2.avro",
+            &PartitionSpec::unpartitioned(),
+            &[symbol_entry(file, size, rows)],
+            2,
+            Vec::new(),
+        );
+
+        assert_eq!(table.plan(&[]).unwrap().deletes_applied(), 2);
+        // Rows 1 and 3 fall to the equality delete, row 5 to the position
+        // delete, and the residual filter then keeps only id 2.
+        let ids: Vec<i64> = collect(table.scan_where(&[("id", "2")], None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![2]);
+        let ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![2, 4]);
+    }
+
+    #[test]
+    fn an_equality_delete_column_the_caller_projected_away_is_still_tested() {
+        let (path, table) = five_trades("delete-projected");
+        let location = table.metadata().location.clone();
+        let (file, size, rows) =
+            write_symbol_delete(&path, &location, "eq-1.parquet", &[Some("AAPL")]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[symbol_entry(file, size, rows)],
+            2,
+            Vec::new(),
+        );
+
+        let target = DataType::from_fields([DataType::Int64.required_field("id")])
+            .unwrap()
+            .required_field("row");
+        let batches: Vec<RecordBatch> = table
+            .scan(Some(&target))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        // The symbol column was read for the delete's test, then dropped.
+        assert!(batches.iter().all(|batch| batch.num_columns() == 1));
+        let ids: Vec<i64> = batches
+            .iter()
+            .flat_map(|batch| {
+                batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids, vec![2, 4, 5]);
+    }
+
+    #[test]
+    fn a_deletion_vector_entry_is_refused_by_name() {
+        let (path, table) = five_trades("delete-vector");
+        let location = table.metadata().location.clone();
+        let target = only_data_file(&table);
+        let mut entry = position_entry(SmolStr::new(format!("{location}/data/dv.puffin")), 64, 1);
+        entry.data_file.referenced_data_file = Some(target);
+        entry.data_file.content_offset = Some(4);
+        entry.data_file.content_size_in_bytes = Some(32);
+        // A deletion vector only exists in a v3 manifest, whose entry schema
+        // is what carries the `content_offset` fields.
+        attach_deletes_as(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[entry],
+            2,
+            Vec::new(),
+            FormatVersion::V3,
+        );
+
+        let message = table.plan(&[]).unwrap_err().to_string();
+        assert!(
+            message.contains("expected a position or equality delete file, got a deletion vector"),
+            "{message}"
+        );
+        assert!(message.contains("dv.puffin"), "{message}");
+    }
+
+    #[test]
+    fn a_delete_scoped_to_a_pruned_partition_costs_nothing_extra() {
+        let path = root("delete-pruned");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec.clone(),
+        )
+        .unwrap();
+        for (id, symbol, venue) in [(1_i64, "AAPL", "XNAS"), (3, "VOD", "XLON")] {
+            let batch = trades(&[id], &[Some(symbol)], &[Some(venue)]);
+            table
+                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+        let location = table.metadata().location.clone();
+        let xlon = table
+            .plan(&[("venue", "XLON")])
+            .unwrap()
+            .tasks
+            .remove(0)
+            .entry
+            .data_file
+            .file_path
+            .clone();
+        let (file, size, rows) =
+            write_position_delete(&path, &location, "pd-xlon.parquet", &xlon, &[0]);
+        let mut entry = position_entry(file.clone(), size, rows);
+        entry.data_file.partition = vec![Value::from("XLON")];
+        entry.data_file.lower_bounds = vec![(PATH_ID, xlon.as_bytes().to_vec())];
+        entry.data_file.upper_bounds = vec![(PATH_ID, xlon.as_bytes().to_vec())];
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &spec,
+            &[entry],
+            9,
+            vec![FieldSummary {
+                contains_null: false,
+                contains_nan: None,
+                lower_bound: Some(b"XLON".to_vec()),
+                upper_bound: Some(b"XLON".to_vec()),
+            }],
+        );
+
+        // Replacing the delete file's bytes with nonsense proves the filtered
+        // read never reaches it: its manifest is pruned by summary, so it is
+        // never even listed against the surviving file.
+        let relative = file.rsplit("/data/").next().unwrap().to_owned();
+        let mut handle = Folder::new(&path)
+            .unwrap()
+            .child_by_path(&format!("data/{relative}"))
+            .unwrap();
+        handle.write_all_bytes(b"not a parquet file").unwrap();
+
+        let plan = table.plan(&[("venue", "XNAS")]).unwrap();
+        assert_eq!(plan.delete_manifests_skipped, 1);
+        assert_eq!(plan.delete_manifests_read, 0);
+        assert_eq!(plan.deletes_applied(), 0);
+        assert_eq!(
+            collect(table.scan_where(&[("venue", "XNAS")], None).unwrap()).len(),
+            1
+        );
+        // Unfiltered, the delete does apply, and building its mask now has to
+        // read the corrupted file - the proof the filtered scan's cheapness
+        // was real.
+        assert_eq!(table.plan(&[]).unwrap().deletes_applied(), 1);
+        assert!(table.scan(None).is_err());
+    }
+
+    #[test]
+    fn an_equality_delete_from_an_unpartitioned_spec_is_global() {
+        let path = root("delete-global");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        for (id, symbol, venue) in [
+            (1_i64, "AAPL", "XNAS"),
+            (2, "MSFT", "XNYS"),
+            (3, "VOD", "XLON"),
+        ] {
+            let batch = trades(&[id], &[Some(symbol)], &[Some(venue)]);
+            table
+                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+        let location = table.metadata().location.clone();
+        let (file, size, rows) =
+            write_symbol_delete(&path, &location, "eq-global.parquet", &[Some("VOD")]);
+        attach_deletes(
+            &path,
+            &table,
+            "delete-m1.avro",
+            &PartitionSpec::unpartitioned(),
+            &[symbol_entry(file, size, rows)],
+            9,
+            Vec::new(),
+        );
+
+        // The delete's spec is unpartitioned, so it subtracts across every
+        // partition rather than only its own.
+        let ids: Vec<i64> = collect(table.scan(None).unwrap())
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn the_delete_side_holding_states_its_bound() {
+        // The listing contract requires whatever a plan holds to say what
+        // bounds it; the delete side's holding is delete-file metadata, and
+        // the comments saying so are load-bearing.
+        let source = include_str!("scan.rs");
+        assert!(source.contains("What is held here is bounded"));
+        assert!(source.contains("bounded by the delete files themselves"));
+    }
+}

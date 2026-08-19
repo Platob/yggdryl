@@ -972,6 +972,28 @@ files the metadata says it must" is something a caller can assert on rather than
     )
     ```
 
+### Row-level deletes subtract at read time
+
+A v2 table written by another engine may carry *delete files* beside its data files: whole
+manifests whose `content` is `deletes`, each entry a Parquet file that removes rows rather than
+adding them. Planning attaches to every data file exactly the deletes the specification's scope
+rules say apply to it, and the read subtracts them:
+
+| Delete kind | Applies to a data file when | How it subtracts |
+| --- | --- | --- |
+| Position delete (`content` 1) | its sequence number is *at or above* the file's own, the partition (spec and tuple) matches, and its referenced file - `referenced_data_file`, or `file_path` bounds that meet on one value - is this file or unnamed | its `(file_path, pos)` rows become one keep-mask over the file, built once and sliced per batch |
+| Equality delete (`content` 2) | its sequence number is *strictly above* the file's own, and the partition matches - or its spec is unpartitioned, which makes it global | each row becomes `column = value` conjoined over `equality_ids` (a null value meaning `is null`), the rows or together, and the negation binds once per file through the same expression layer every filter uses |
+| Deletion vector (v3, `content_offset` set) | - | refused by name: `expected a position or equality delete file, got a deletion vector at ..., reading deletion vectors from Puffin files is not implemented yet` - a v3 table is never silently misread |
+
+The mask and the residual filter compose by AND into one pass of the shared selection kernel, so a
+row removed by either is compacted exactly once, and `ScanPlan` reports the delete side the way it
+reports pruning: `delete_manifests_read`, `delete_manifests_skipped`, and `deletes_applied()` - the
+distinct delete files that scope to a planned read. A delete scoped to a partition the filters
+excluded is never opened, and its manifest is skipped on its summary alone. Rewrites stay correct
+the same way: `overwrite_where`, `merge`, and `compact` read their inputs with the deletes applied
+and carry the delete manifests forward for the files they leave untouched. This build reads delete
+files and never writes one - a delete spelled through this crate is still a filtered overwrite.
+
 ## Time travel and the inspection tables
 
 !!! note "All three"

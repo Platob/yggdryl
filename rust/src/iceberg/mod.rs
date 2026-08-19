@@ -112,9 +112,9 @@ mod value;
 pub use catalog::{Catalog, Catalogs, Names, Namespace, Namespaces, Tables};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
-    DataFile, EntryStatus, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,
-    read_manifest, read_manifest_for_plan, read_manifest_list, read_manifest_spec, write_manifest,
-    write_manifest_list,
+    DataFile, DataFileContent, EntryStatus, FieldSummary, FileFormat, ManifestContent,
+    ManifestEntry, ManifestFile, read_manifest, read_manifest_for_plan, read_manifest_list,
+    read_manifest_spec, write_manifest, write_manifest_list,
 };
 pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
 pub use options::IcebergOptions;

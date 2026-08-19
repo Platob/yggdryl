@@ -330,6 +330,79 @@ def write_versions_with_pyiceberg() -> list[int]:
     return written
 
 
+def write_deletes_with_pyiceberg() -> None:
+    """Write a v2 table with a merge-on-read delete, when PyIceberg can.
+
+    PyIceberg through at least 0.11 falls back to copy-on-write ("Merge on
+    read is not yet supported") and writes no position or equality delete
+    file, so there is nothing external to read our delete subtraction
+    against. That half prints SKIPPED and proves nothing rather than passing
+    quietly; when a PyIceberg that writes delete files lands in the venv,
+    this same code exercises the exchange with no edits.
+    """
+    import pyarrow as pa
+    from pyiceberg.catalog.sql import SqlCatalog
+    from pyiceberg.manifest import ManifestContent
+
+    target = INTEROP / "from-pyiceberg-deletes"
+    shutil.rmtree(target, ignore_errors=True)
+    warehouse = INTEROP / "py-warehouse-deletes"
+    shutil.rmtree(warehouse, ignore_errors=True)
+    warehouse.mkdir(parents=True, exist_ok=True)
+    catalog = SqlCatalog(
+        "interop-deletes",
+        uri=f"sqlite:///{warehouse / 'catalog.db'}",
+        warehouse=file_uri(warehouse),
+    )
+    catalog.create_namespace("ns")
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("symbol", pa.string()),
+            pa.field("venue", pa.string()),
+        ]
+    )
+    table = catalog.create_table(
+        "ns.trades",
+        schema=schema,
+        location=file_uri(target),
+        properties={"format-version": "2", "write.delete.mode": "merge-on-read"},
+    )
+    table.append(
+        pa.table(
+            {
+                "id": [row[0] for row in APPENDED],
+                "symbol": [row[1] for row in APPENDED],
+                "venue": [row[2] for row in APPENDED],
+            },
+            schema=schema,
+        )
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        table.delete("id = 2")
+
+    manifests = table.current_snapshot().manifests(table.io)
+    if not any(manifest.content == ManifestContent.DELETES for manifest in manifests):
+        print(
+            "pyiceberg: SKIPPED the delete half; this PyIceberg version deletes by "
+            "copy-on-write and wrote no position or equality delete file"
+        )
+        shutil.rmtree(target, ignore_errors=True)
+        return
+
+    import yggdryl.iceberg
+
+    ours = yggdryl.iceberg.Table.open(str(target))
+    rows = sorted(
+        (row["id"], row["symbol"], row["venue"])
+        for row in ours.scan().read_all().to_pylist()
+    )
+    expected = sorted(row for row in APPENDED if row[0] != 2)
+    assert rows == expected, f"deletes: {rows} != {expected}"
+    print("pyiceberg: wrote a merge-on-read delete, and the Rust reader subtracted it")
+
+
 def main() -> int:
     if VENV_PYTHON.exists() and Path(sys.executable).resolve() != VENV_PYTHON.resolve():
         print(f"re-running under {VENV_PYTHON}")
@@ -349,6 +422,7 @@ def main() -> int:
     read_versions_with_pyiceberg()
     write_with_pyiceberg()
     versions = write_versions_with_pyiceberg()
+    write_deletes_with_pyiceberg()
 
     print("\n== Rust reads the PyIceberg half")
     second = run_cargo()
