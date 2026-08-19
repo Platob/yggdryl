@@ -6,7 +6,7 @@ fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
         Field::new("number", DataType::Int64, false),
         Field::from_parts("text", DataType::Utf8, true, [("source", "variant")]).unwrap(),
     ];
-    let variant = DataType::variant(members.clone()).unwrap();
+    let variant = DataType::dense_union(members.clone()).unwrap();
     let union = DataType::union(
         [(0, members[0].clone()), (1, members[1].clone())],
         UnionMode::Dense,
@@ -28,14 +28,14 @@ fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
 
 #[test]
 fn variant_builder_enforces_the_arrow_type_id_capacity() {
-    let accepted = DataType::variant(
+    let accepted = DataType::dense_union(
         (0..128).map(|index| Field::new(format!("member_{index}"), DataType::Int64, true)),
     )
     .unwrap();
     assert_eq!(accepted.field_len(), 128);
     assert_eq!(accepted.get_field(127).map(Field::name), Some("member_127"));
 
-    let error = DataType::variant(
+    let error = DataType::dense_union(
         (0..129).map(|index| Field::new(format!("member_{index}"), DataType::Int64, true)),
     )
     .unwrap_err();
@@ -49,7 +49,7 @@ fn variant_builder_enforces_the_arrow_type_id_capacity() {
 
 #[test]
 fn variant_builder_reuses_union_child_validation() {
-    let duplicate = DataType::variant([
+    let duplicate = DataType::dense_union([
         Field::new("same", DataType::Int64, false),
         Field::new("same", DataType::Utf8, true),
     ])
@@ -60,7 +60,7 @@ fn variant_builder_reuses_union_child_validation() {
             .contains("duplicate field name \"same\"")
     );
 
-    let empty = DataType::variant([]).unwrap();
+    let empty = DataType::dense_union([]).unwrap();
     assert_eq!(empty, DataType::union([], UnionMode::Dense).unwrap());
 }
 
@@ -68,7 +68,7 @@ fn variant_builder_reuses_union_child_validation() {
 fn deeply_nested_variants_round_trip_without_a_second_logical_type() {
     let mut value = DataType::Int64;
     for depth in 0..24 {
-        value = DataType::variant([Field::new(format!("level_{depth}"), value, true)]).unwrap();
+        value = DataType::dense_union([Field::new(format!("level_{depth}"), value, true)]).unwrap();
     }
 
     value.validate().unwrap();

@@ -578,13 +578,21 @@ impl DataType {
         Ok(Self::Union(UnionFields::from_fields(fields)?, mode))
     }
 
-    /// Creates a finite Variant as a dense union with sequential type IDs.
+    /// Creates a finite dense union with sequential type IDs.
     ///
     /// Members retain their input order and receive IDs `0..`. The result is
     /// the canonical [`DataType::Union`] representation rather than a second
     /// logical datatype, so display, serialization, Arrow projection, and
     /// record materialization all reuse the union contract.
-    pub fn variant<I>(fields: I) -> Result<Self>
+    ///
+    /// This used to be spelled `variant`, after the input sugar the parser
+    /// still accepts - `variant(a: int32, b: utf8)` remains that sugar, and
+    /// its canonical display remains `union(dense, ...)`. The name moved
+    /// because bare `variant` is now a datatype of its own - the
+    /// self-describing semi-structured value Iceberg v3, Parquet, and Doris
+    /// share - and one word cannot name both a union of declared members and
+    /// a value that declares itself.
+    pub fn dense_union<I>(fields: I) -> Result<Self>
     where
         I: IntoIterator<Item = Field>,
     {

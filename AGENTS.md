@@ -610,11 +610,13 @@ Keep exact; no alternate aliases:
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
   `to_arrow`, `into_arrow`, `to_json`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `to_scheme_compat`. Generic
-  finite-variant constructor is exactly `variant`: Fields in declaration
+  finite-union constructor is exactly `dense_union`: Fields in declaration
   order, Arrow type IDs `0..`, canonical dense `Union` (kind `union`, dense
   display, lossless Arrow round trip, <=128 members); parser `variant(...)`
   is input sugar accepting only dense sequential-from-zero, displaying as
-  `union(dense,...)`. Generic `decimal` selects decimal128 (P 1..=38) or
+  `union(dense,...)`. Bare `variant` is a datatype of its own - the
+  self-describing semi-structured value - and the parenthesis is what
+  disambiguates, deterministically, in one parser branch. Generic `decimal` selects decimal128 (P 1..=38) or
   decimal256 (39..=76), then delegates validation; generic `time` selects
   time32 (s/ms) or time64 (us/ns) likewise; intervals are rejected without
   selecting a width.

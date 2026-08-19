@@ -808,7 +808,7 @@ impl<'a> Parser<'a> {
             self.expect_symbol(close)?;
         }
         if is_variant {
-            DataType::variant(fields.into_iter().map(|(_, field)| field))
+            DataType::dense_union(fields.into_iter().map(|(_, field)| field))
         } else {
             DataType::union(fields, mode)
         }

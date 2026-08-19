@@ -486,7 +486,7 @@ impl PyDataType {
     #[staticmethod]
     fn variant(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
         let inner =
-            CoreDataType::variant(core_fields_from_iterable(fields)?).map_err(value_error)?;
+            CoreDataType::dense_union(core_fields_from_iterable(fields)?).map_err(value_error)?;
         Self::from_validated(inner)
     }
 

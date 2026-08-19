@@ -235,7 +235,7 @@ impl JsDataType {
     /// Internal finite-variant constructor assigning dense Union IDs in order.
     #[napi(factory, js_name = "_variant", skip_typescript)]
     pub fn variant(fields: Vec<ClassInstance<'_, JsField>>) -> Result<Self> {
-        let inner = CoreDataType::variant(fields.into_iter().map(|field| field.inner.clone()))
+        let inner = CoreDataType::dense_union(fields.into_iter().map(|field| field.inner.clone()))
             .map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }

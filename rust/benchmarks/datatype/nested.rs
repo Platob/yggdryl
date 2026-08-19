@@ -36,7 +36,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         .collect::<Vec<_>>();
     group.bench_function("variant_from_fields_128", |bencher| {
         bencher.iter(|| {
-            DataType::variant(black_box(variant_fields.clone()))
+            DataType::dense_union(black_box(variant_fields.clone()))
                 .expect("128 members fit Arrow union type IDs")
         });
     });
