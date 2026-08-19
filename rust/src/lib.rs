@@ -55,6 +55,10 @@ pub mod puffin;
 pub mod text;
 pub mod toml;
 mod uri;
+// The Variant binary codec is unconditional like the Avro value codec: it
+// needs only bytes and the shared Value tree, so the Parquet, Iceberg v3, and
+// Doris surfaces all call one encoding instead of growing their own.
+pub mod variant;
 pub mod yaml;
 pub mod zlib;
 pub mod zstd;
