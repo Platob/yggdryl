@@ -1287,6 +1287,63 @@ mod planning {
     }
 
     #[test]
+    fn an_expression_prunes_manifests_before_a_byte_is_read() {
+        let (_path, table) = venues("plan-expression");
+
+        // The same three-level pruning, driven by the crate's one filter type
+        // rather than by an equality pair.
+        let filtered = table.plan_matching("venue = 'XNYS'").unwrap();
+        assert_eq!(filtered.tasks.len(), 1);
+        assert_eq!(filtered.manifests_skipped(), 2);
+        assert_eq!(filtered.manifests_read, 1);
+
+        // A question about the *file* prunes at the same level, because a Hive
+        // path is a statistic and an identity partition writes one.
+        let by_path = table
+            .plan_matching("&holder.partition['venue'] = 'XNYS'")
+            .unwrap();
+        assert_eq!(by_path.tasks.len(), 1);
+        assert_eq!(by_path.manifests_skipped(), 2);
+
+        // A range the summaries cannot settle still reads every manifest, and
+        // still answers correctly from the rows.
+        let ranged = table.plan_matching("id >= 2").unwrap();
+        assert_eq!(ranged.manifests_read, 3);
+
+        let rows = collect(table.scan_matching("id >= 2", None).unwrap());
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|(id, _, _)| *id >= 2));
+    }
+
+    #[test]
+    fn one_predicate_mixes_the_file_and_the_rows() {
+        let (_path, table) = venues("scan-mixed");
+
+        let rows = collect(
+            table
+                .scan_matching(
+                    "id >= 2 and symbol is not null and &holder.partition['venue'] = 'XLON'",
+                    None,
+                )
+                .unwrap(),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, 3);
+        assert_eq!(rows[0].2.as_deref(), Some("XLON"));
+
+        // A predicate the metadata proves empty reads nothing at all.
+        let empty = table.plan_matching("id > 1000").unwrap();
+        assert_eq!(empty.tasks.len(), 0);
+        assert_eq!(empty.files_skipped(), 3);
+
+        // The pair spelling and the expression spelling are one plan.
+        let by_pair = table.plan(&[("venue", "XLON")]).unwrap();
+        let by_text = table.plan_matching("venue = 'XLON'").unwrap();
+        assert_eq!(by_pair.tasks.len(), by_text.tasks.len());
+        assert_eq!(by_pair.manifests_skipped(), by_text.manifests_skipped());
+    }
+
+    #[test]
     fn a_filtered_read_never_opens_the_files_the_metadata_excluded() {
         let (path, table) = venues("plan-untouched");
         let excluded = table

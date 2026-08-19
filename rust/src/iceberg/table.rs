@@ -83,7 +83,7 @@ use super::manifest::{
 use super::metadata::{FormatVersion, TableMetadata, now_ms, uuid};
 use super::options::IcebergOptions;
 use super::partition::PartitionSpec;
-use super::scan::{Filter, ScanPart, ScanPlan, ScanTask};
+use super::scan::{ScanPart, ScanPlan, ScanTask};
 use super::snapshot::{Snapshot, SnapshotRef};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
@@ -395,8 +395,32 @@ impl<H: IOBase> Table<H> {
     /// declare, or when a manifest that had to be read cannot be reached or
     /// decoded.
     pub fn plan(&self, filters: &[(&str, &str)]) -> Result<ScanPlan> {
-        let resolved = super::scan::filters(self.schema()?, filters)?;
-        self.planned(&resolved)
+        self.plan_matching(pairs_predicate(self.schema()?, filters))
+    }
+
+    /// Plan a scan under one predicate, opening only what the metadata allows.
+    ///
+    /// The predicate is the crate's one filter type, so the same text prunes a
+    /// table here, a lake through
+    /// [`IOBase::children_matching`](crate::io::IOBase::children_matching), and
+    /// a batch through [`Bound::filter`](crate::expression::Bound::filter).
+    /// Each level of the metadata chain answers it from the statistics it
+    /// carries: a manifest-list summary, then a manifest entry's partition
+    /// tuple and column bounds. What none of them settles is left for the rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the predicate is text that does not parse, names
+    /// a column the schema does not declare, or when a manifest that had to be
+    /// read cannot be reached or decoded.
+    pub fn plan_matching(
+        &self,
+        filter: impl crate::expression::IntoExpression,
+    ) -> Result<ScanPlan> {
+        let filter = filter.into_expression()?;
+        let conjuncts = super::scan::conjuncts(self.schema()?, &filter)?;
+        let schema = self.schema()?.clone();
+        self.planned(&conjuncts, &schema)
     }
 
     /// Plan a scan of one retained snapshot rather than the current one.
@@ -414,9 +438,11 @@ impl<H: IOBase> Table<H> {
     pub fn plan_at(&self, snapshot_id: i64, filters: &[(&str, &str)]) -> Result<ScanPlan> {
         let snapshot = self.require_snapshot(snapshot_id)?;
         let schema = self.schema_of(snapshot)?;
-        let resolved = super::scan::filters(schema, filters)?;
+        let filter = pairs_predicate(schema, filters);
+        let conjuncts = super::scan::conjuncts(schema, &filter)?;
+        let schema = schema.clone();
         let manifests = self.manifests_at(snapshot)?;
-        self.plan_manifests(&manifests, &resolved)
+        self.plan_manifests(&manifests, &conjuncts, &schema)
     }
 
     /// Read one retained snapshot's rows: time travel as an ordinary scan.
@@ -439,10 +465,11 @@ impl<H: IOBase> Table<H> {
     ) -> Result<BatchReader> {
         let snapshot = self.require_snapshot(snapshot_id)?;
         let stored = self.schema_of(snapshot)?.clone();
-        let resolved = super::scan::filters(&stored, filters)?;
+        let filter = pairs_predicate(&stored, filters);
+        let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let manifests = self.manifests_at(snapshot)?;
-        let plan = self.plan_manifests(&manifests, &resolved)?;
-        self.reader(plan.tasks, &stored, field, resolved)
+        let plan = self.plan_manifests(&manifests, &conjuncts, &stored)?;
+        self.reader(plan.tasks, &stored, field, &filter)
     }
 
     /// Return one retained snapshot, or say which ids are retained.
@@ -474,13 +501,18 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Plan a scan from filters that are already resolved.
-    fn planned(&self, filters: &[Filter]) -> Result<ScanPlan> {
+    fn planned(&self, conjuncts: &[crate::expression::Bound], schema: &Field) -> Result<ScanPlan> {
         let manifests = self.manifests()?;
-        self.plan_manifests(&manifests, filters)
+        self.plan_manifests(&manifests, conjuncts, schema)
     }
 
     /// Plan one set of manifests under one set of resolved filters.
-    fn plan_manifests(&self, manifests: &[ManifestFile], filters: &[Filter]) -> Result<ScanPlan> {
+    fn plan_manifests(
+        &self,
+        manifests: &[ManifestFile],
+        conjuncts: &[crate::expression::Bound],
+        schema: &Field,
+    ) -> Result<ScanPlan> {
         super::scan::plan(
             manifests,
             &|spec_id| {
@@ -490,7 +522,8 @@ impl<H: IOBase> Table<H> {
                     .unwrap_or_else(PartitionSpec::unpartitioned)
             },
             &|location| self.child_at(location),
-            filters,
+            conjuncts,
+            schema,
         )
     }
 
@@ -713,9 +746,46 @@ impl<H: IOBase> Table<H> {
         field: Option<&Field>,
     ) -> Result<BatchReader> {
         let stored = self.schema()?.clone();
-        let resolved = super::scan::filters(&stored, filters)?;
-        let plan = self.planned(&resolved)?;
-        self.reader(plan.tasks, &stored, field, resolved)
+        self.scan_matching(pairs_predicate(&stored, filters), field)
+    }
+
+    /// Read the rows matching one predicate, keeping the columns `field` names.
+    ///
+    /// This is [`Self::scan_where`] with the whole expression language rather
+    /// than equality pairs: ranges, null tests, `in` lists, nested paths, and
+    /// `&holder.*` attributes about the files themselves. Planning prunes with
+    /// [`Self::plan_matching`], and only the conjuncts the metadata could not
+    /// settle are tested against the rows a surviving file holds.
+    ///
+    /// ```no_run
+    /// use yggdryl::iceberg::Table;
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let table = Table::open(Folder::new("/lake/trades")?)?;
+    /// let reader = table.scan_matching(
+    ///     "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
+    ///     None,
+    /// )?;
+    /// # let _ = reader;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the predicate does not parse or bind, when a
+    /// manifest cannot be read, or when the scan root cannot be projected.
+    pub fn scan_matching(
+        &self,
+        filter: impl crate::expression::IntoExpression,
+        field: Option<&Field>,
+    ) -> Result<BatchReader> {
+        let stored = self.schema()?.clone();
+        let filter = filter.into_expression()?;
+        let conjuncts = super::scan::conjuncts(&stored, &filter)?;
+        let plan = self.planned(&conjuncts, &stored)?;
+        self.reader(plan.tasks, &stored, field, &filter)
     }
 
     /// Build the reader over one set of planned files.
@@ -724,10 +794,13 @@ impl<H: IOBase> Table<H> {
         tasks: Vec<ScanTask>,
         stored: &Field,
         field: Option<&Field>,
-        filters: Vec<Filter>,
+        filter: &crate::Expression,
     ) -> Result<BatchReader> {
         let root = field.map_or_else(|| stored.clone(), Clone::clone);
-        let read_root = super::scan::read_root(&root, stored, &filters)?;
+        let read_root = super::scan::read_root(&root, stored, filter)?;
+        // The residual conjuncts run against the read root, which carries the
+        // predicate's own columns even when the caller projected them away.
+        let predicates = super::scan::conjuncts(&read_root, filter)?;
 
         let mut parts = Vec::new();
         for task in tasks {
@@ -744,7 +817,14 @@ impl<H: IOBase> Table<H> {
             });
         }
         let parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
-        super::scan::reader(parts, root, read_root, field.cloned(), filters, &parallel)
+        super::scan::reader(
+            parts,
+            root,
+            read_root,
+            field.cloned(),
+            predicates,
+            &parallel,
+        )
     }
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
@@ -889,7 +969,7 @@ impl<H: IOBase> Table<H> {
             }
         }
 
-        let stored = self.reader(selected, &schema, None, Vec::new())?;
+        let stored = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
         let arrow_schema = crate::arrow::schema_from_field(&schema)?;
         let merged = crate::io::merge::merged(
             stored,
@@ -975,7 +1055,7 @@ impl<H: IOBase> Table<H> {
             .sum();
 
         let schema = self.schema()?.clone();
-        let rows = self.reader(selected, &schema, None, Vec::new())?;
+        let rows = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
         let files_after = self.commit(
             rows,
             "replace",
@@ -2085,4 +2165,20 @@ fn invalid(reason: SmolStr) -> Error {
         position: 0,
         reason,
     }
+}
+
+/// The predicate one set of `(column, value)` pairs spells about a table.
+///
+/// The pairs are the older, narrower spelling of a filter and they stay: they
+/// build an expression here and are answered by the one planner and the one
+/// evaluator, so there is no second filter language behind them. A pair naming
+/// a column the schema does not declare is left in as written, so binding it
+/// reports the column rather than silently ignoring it.
+fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Expression {
+    crate::Expression::all(pairs.iter().map(|(column, value)| {
+        schema.get_field_by_name(column).map_or_else(
+            || crate::Expression::column(*column).eq(crate::Expression::literal(*value)),
+            |field| crate::Expression::partition_equals(column, value, field.data_type()),
+        )
+    }))
 }

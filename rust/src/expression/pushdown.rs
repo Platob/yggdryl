@@ -28,6 +28,7 @@ use smol_str::SmolStr;
 
 use super::bind::{Bound, Kind, Node};
 use super::eval::{compare as compare_values, order};
+use super::selector::Selector;
 use super::{Comparison, Expression, Function};
 use crate::{Field, Value};
 
@@ -100,6 +101,7 @@ impl ColumnBounds {
 #[derive(Clone, Debug, Default)]
 pub struct Bounds {
     columns: Vec<(SmolStr, ColumnBounds)>,
+    attributes: Vec<(Selector, ColumnBounds)>,
     rows: Option<u64>,
 }
 
@@ -109,6 +111,7 @@ impl Bounds {
     pub const fn new(rows: Option<u64>) -> Self {
         Self {
             columns: Vec::new(),
+            attributes: Vec::new(),
             rows,
         }
     }
@@ -168,10 +171,82 @@ impl Bounds {
         bounds
     }
 
+    /// Record what a holder attribute is known to hold.
+    ///
+    /// A container's *identity* is a statistic too: a file at
+    /// `year=2024/part-0.parquet` says its `year` partition is `2024` for every
+    /// row it holds, and it says so without being opened. Recording it here is
+    /// what lets `&holder.partition['year'] = '2024'` prune through the same
+    /// rule a column minimum and maximum prune through.
+    #[must_use]
+    pub fn with_attribute(
+        mut self,
+        selector: Selector,
+        minimum: Option<Value>,
+        maximum: Option<Value>,
+        nulls: Option<u64>,
+    ) -> Self {
+        self.attributes.push((
+            selector,
+            ColumnBounds {
+                minimum,
+                maximum,
+                nulls,
+            },
+        ));
+        self
+    }
+
+    /// The statistics an identifier states about itself.
+    ///
+    /// Every free selector answers exactly, so each one is a minimum equal to
+    /// its maximum: a path does not bound its own name, it *is* its name.
+    #[must_use]
+    pub fn from_url(url: &crate::Url) -> Self {
+        let mut bounds = Self::new(None);
+        for selector in Selector::ALL {
+            if !matches!(selector.cost(), super::selector::Cost::Free) {
+                continue;
+            }
+            let value = selector.read_url(url);
+            let nulls = Some(u64::from(value.is_null()));
+            bounds = bounds.with_attribute(selector, Some(value.clone()), Some(value), nulls);
+        }
+        for (column, _) in url.hive_partitions() {
+            let selector = Selector::Partition(SmolStr::new(&column));
+            let value = selector.read_url(url);
+            bounds = bounds.with_attribute(selector, Some(value.clone()), Some(value), Some(0));
+        }
+        bounds
+    }
+
+    /// Merge another set of statistics into this one, keeping both.
+    ///
+    /// A later entry never replaces an earlier one: the lookup takes the first
+    /// match, so whichever source was added first is the one that answers.
+    #[must_use]
+    pub fn with(mut self, other: Self) -> Self {
+        self.columns.extend(other.columns);
+        self.attributes.extend(other.attributes);
+        if self.rows.is_none() {
+            self.rows = other.rows;
+        }
+        self
+    }
+
     /// How many rows the container holds, when it is known.
     #[must_use]
     pub const fn row_count(&self) -> Option<u64> {
         self.rows
+    }
+
+    /// One attribute's statistics.
+    #[must_use]
+    pub fn attribute(&self, selector: &Selector) -> Option<&ColumnBounds> {
+        self.attributes
+            .iter()
+            .find(|(held, _)| held == selector)
+            .map(|(_, bounds)| bounds)
     }
 
     /// One column's statistics, ASCII case-insensitively.
@@ -231,10 +306,26 @@ impl Bound {
     /// makes the rules that needed it decline.
     #[must_use]
     pub fn statistics_prune(&self, bounds: &Bounds) -> bool {
+        self.statistics_certainty(bounds) != Some(false)
+    }
+
+    /// What a container's statistics settle about this predicate.
+    ///
+    /// `Some(true)` means every row matches and the rows need not be tested
+    /// again; `Some(false)` means none does and the container can be skipped;
+    /// `None` means the statistics do not say. The first answer is what turns
+    /// a partition scan into a plain read - a file whose whole partition
+    /// satisfies a conjunct does not have to re-test it row by row.
+    #[must_use]
+    pub fn statistics_certainty(&self, bounds: &Bounds) -> Option<bool> {
         if bounds.row_count() == Some(0) {
-            return false;
+            return Some(false);
         }
-        !matches!(prune(self.node(), self.schema(), bounds), Certainty::Never)
+        match prune(self.node(), self.schema(), bounds) {
+            Certainty::Always => Some(true),
+            Certainty::Never => Some(false),
+            Certainty::Unknown => None,
+        }
     }
 
     /// Split this predicate into the part a partition layout answers and the
@@ -397,6 +488,9 @@ fn column_bounds<'bounds>(
     schema: &Field,
     bounds: &'bounds Bounds,
 ) -> Option<&'bounds ColumnBounds> {
+    if let Kind::Attribute(selector) = &node.kind {
+        return bounds.attribute(selector);
+    }
     let index = node.as_column()?;
     let field = schema.get_field(index)?;
     bounds.column(field.name())
