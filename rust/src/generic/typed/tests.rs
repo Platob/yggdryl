@@ -140,6 +140,39 @@ fn a_marker_narrows_a_pairing_to_one_datatype_at_compile_time() {
 }
 
 #[test]
+fn the_newest_markers_narrow_their_pairings_like_every_other() {
+    use crate::generic::{GeographyValue, GeometryValue, VariantValue};
+
+    // A variant accepts any value: the datatype is the self-describing one.
+    let anything = VariantValue::new(Value::from("seven")).unwrap();
+    assert_eq!(anything.data_type(), &DataType::Variant);
+
+    // A geospatial pairing validates its bytes as WKB on construction.
+    let point: &[u8] = &[
+        1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 240, 63, 0, 0, 0, 0, 0, 0, 0, 64,
+    ];
+    let shape =
+        GeometryValue::try_from_parts(DataType::geometry(None).unwrap(), Value::from(point))
+            .unwrap();
+    assert_eq!(shape.data_type().id(), crate::enums::DataTypeId::Geometry);
+    assert!(
+        GeometryValue::try_from_parts(DataType::geometry(None).unwrap(), Value::from("no wkb"))
+            .is_err()
+    );
+    assert!(
+        GeographyValue::try_from_parts(DataType::geography(None, None).unwrap(), Value::Null)
+            .unwrap()
+            .is_null()
+    );
+
+    // Each marker still refuses the other family's datatype.
+    let wrong = GeometryValue::try_from_parts(DataType::Variant, Value::Null)
+        .unwrap_err()
+        .to_string();
+    assert!(wrong.contains("geometry"), "{wrong}");
+}
+
+#[test]
 fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
     use crate::generic::{Int64Value, TimestampValue};
 

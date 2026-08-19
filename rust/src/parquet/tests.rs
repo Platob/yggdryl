@@ -521,9 +521,9 @@ mod geospatial {
 
     /// A nullable field carrying one Arrow extension declaration.
     ///
-    /// Lane note: `Field`-level extension projection is a separate change, so
-    /// these schemas spell the field metadata by hand - the two canonical
-    /// keys, exactly as that projection will emit them.
+    /// The metadata is spelled by hand so foreign and malformed documents can
+    /// be written too; the well-formed spelling is proven equal to the
+    /// `Field` projection's own output by the end-to-end test below.
     fn extension_field(
         name: &str,
         storage: ArrowDataType,
@@ -896,12 +896,73 @@ mod geospatial {
             .unwrap_err()
             .to_string();
         assert!(
-            message.contains("expected a geography edge algorithm"),
+            message.contains("expected a GeoArrow JSON metadata document"),
             "{message}"
         );
+        // The shared parser names the vocabulary inside the refusal.
+        assert!(message.contains("expected one of"), "{message}");
         assert!(message.contains("\"diagonal\""), "{message}");
         assert!(message.contains("$.shape"), "{message}");
         // Nothing was published.
         assert!(media.handle().is_empty());
+    }
+
+    #[test]
+    fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
+        // The schema comes from the Field layer's own projection rather than
+        // hand-spelled metadata, so the two layers are proven to agree; rows
+        // stay out because a variant value cannot cross an Arrow array yet.
+        let root = crate::DataType::from_fields([
+            crate::DataType::Int64.required_field("id"),
+            crate::DataType::geometry(Some("EPSG:3857"))
+                .unwrap()
+                .nullable_field("shape"),
+            crate::DataType::geography(None, Some(crate::enums::EdgeAlgorithm::Vincenty))
+                .unwrap()
+                .nullable_field("route"),
+            crate::DataType::variant().nullable_field("payload"),
+        ])
+        .unwrap()
+        .required_field("row");
+        let schema = root.to_arrow_schema().unwrap();
+
+        let mut media = Parquet::new(handle("field-declared.parquet"));
+        media
+            .write_batch_reader(crate::arrow::batch_reader(schema, []))
+            .unwrap();
+
+        assert_eq!(
+            leaf_logical(&media, "shape"),
+            Some(LogicalType::geometry(Some("EPSG:3857".to_owned())))
+        );
+        // The default CRS folds to absence; a non-spherical algorithm rides.
+        assert_eq!(
+            leaf_logical(&media, "route"),
+            Some(LogicalType::geography(
+                None,
+                Some(EdgeInterpolationAlgorithm::VINCENTY)
+            ))
+        );
+        assert_eq!(leaf_logical(&media, "id"), None);
+        let builder = crate::parquet::open_builder(media.handle()).unwrap();
+        let payload = builder
+            .parquet_schema()
+            .root_schema_ptr()
+            .get_fields()
+            .iter()
+            .find(|field| field.name() == "payload")
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            payload.get_basic_info().logical_type_ref(),
+            Some(&LogicalType::variant(None))
+        );
+
+        // And the identity survives the read: the reimported root speaks the
+        // datatypes the declaration did, extension transport keys stripped.
+        let read =
+            crate::arrow::record_schema_from_arrow("row", media.read_schema().unwrap().as_ref())
+                .unwrap();
+        assert_eq!(read, root);
     }
 }

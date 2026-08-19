@@ -19,6 +19,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, OnceLock};
 
 use arrow_array::{Array, BinaryArray, BinaryViewArray, LargeBinaryArray, RecordBatch};
+use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use parquet::arrow::ArrowSchemaConverter;
 use parquet::arrow::ProjectionMask;
@@ -32,24 +33,12 @@ use parquet::geospatial::statistics::GeospatialStatistics as ParquetGeospatialSt
 use parquet::schema::types::{ColumnDescPtr, SchemaDescriptor, Type, TypePtr};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::GeospatialType;
 use crate::arrow::{Error, Result, from_reader_error};
+use crate::datatype::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use crate::enums::EdgeAlgorithm;
 use crate::generic::wkb;
 use crate::io::IOBase;
-
-/// The Arrow field-metadata key naming an extension type.
-const EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
-/// The Arrow field-metadata key carrying an extension's own metadata.
-const EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
-/// The GeoArrow WKB extension name the geospatial pair rides on.
-const GEOARROW_WKB: &str = "geoarrow.wkb";
-/// The canonical Arrow extension name of the Parquet Variant storage struct.
-const VARIANT_EXTENSION: &str = "arrow.parquet.variant";
-/// The coordinate reference system Parquet spells as absence.
-///
-/// This mirrors the default `crate::GeospatialType` fills, so a column
-/// carrying it writes the format's bare `GEOMETRY`/`GEOGRAPHY` spelling.
-const DEFAULT_CRS: &str = "OGC:CRS84";
 
 /// Bounds and geometry types of one geospatial column, in WKB vocabulary.
 ///
@@ -323,8 +312,11 @@ pub(super) fn extension_schema(schema: &Schema) -> Result<Option<SchemaDescripto
 /// this module attaches a logical type for.
 fn subtree_has_extension(field: &ArrowField) -> bool {
     if matches!(
-        field.metadata().get(EXTENSION_NAME_KEY).map(String::as_str),
-        Some(GEOARROW_WKB | VARIANT_EXTENSION)
+        field
+            .metadata()
+            .get(EXTENSION_TYPE_NAME_KEY)
+            .map(String::as_str),
+        Some(GEOARROW_WKB_EXTENSION_NAME | VARIANT_EXTENSION_NAME)
     ) {
         return true;
     }
@@ -343,9 +335,13 @@ fn subtree_has_extension(field: &ArrowField) -> bool {
 /// Return `ty` with the logical type this field's extension declares, walking
 /// into nested containers to find declarations beneath.
 fn annotated(field: &ArrowField, ty: &TypePtr, path: &str) -> Result<TypePtr> {
-    match field.metadata().get(EXTENSION_NAME_KEY).map(String::as_str) {
-        Some(GEOARROW_WKB) => Ok(Arc::new(geospatial_primitive(field, ty, path)?)),
-        Some(VARIANT_EXTENSION) => Ok(Arc::new(variant_group(ty, path)?)),
+    match field
+        .metadata()
+        .get(EXTENSION_TYPE_NAME_KEY)
+        .map(String::as_str)
+    {
+        Some(GEOARROW_WKB_EXTENSION_NAME) => Ok(Arc::new(geospatial_primitive(field, ty, path)?)),
+        Some(VARIANT_EXTENSION_NAME) => Ok(Arc::new(variant_group(ty, path)?)),
         _ => descend(field, ty, path),
     }
 }
@@ -413,7 +409,7 @@ fn geospatial_primitive(field: &ArrowField, ty: &Type, path: &str) -> Result<Typ
             storage_name(ty),
         ));
     }
-    let document = field.metadata().get(EXTENSION_METADATA_KEY);
+    let document = field.metadata().get(EXTENSION_TYPE_METADATA_KEY);
     let logical = geoarrow_logical_type(document.map(String::as_str), path)?;
     let info = ty.get_basic_info();
     let mut builder = Type::primitive_type_builder(ty.name(), PhysicalType::BYTE_ARRAY)
@@ -458,64 +454,22 @@ fn rebuilt_group(ty: &Type, fields: Vec<TypePtr>, logical: Option<LogicalType>) 
 
 /// Parse one GeoArrow metadata document into the logical type it declares.
 ///
-/// The document is `{"crs": <crs>}` for a geometry and
-/// `{"crs": <crs>, "edges": "<algorithm>"}` for a geography; an absent or
-/// empty document is a geometry in the default CRS. The `OGC:CRS84` default
-/// and the `spherical` default fold to Parquet's absent spellings, so a bare
-/// column writes the format's bare logical type.
+/// The parse is [`GeospatialType::from_geoarrow_json`] - the same one the
+/// field layer's import runs - so the two readers cannot drift. The
+/// `OGC:CRS84` default and the `spherical` default fold to Parquet's absent
+/// spellings, so a bare column writes the format's bare logical type.
 fn geoarrow_logical_type(document: Option<&str>, path: &str) -> Result<LogicalType> {
-    let (crs, edges) = match document {
-        None => (None, None),
-        Some(document) if document.trim().is_empty() => (None, None),
-        Some(document) => {
-            let value: serde_json::Value = serde_json::from_str(document).map_err(|error| {
-                invalid(
-                    path,
-                    "a GeoArrow JSON metadata document",
-                    format_smolstr!("{document:?} ({error})"),
-                )
-            })?;
-            let Some(object) = value.as_object() else {
-                return Err(invalid(
-                    path,
-                    "a GeoArrow JSON metadata object",
-                    format_smolstr!("{document:?}"),
-                ));
-            };
-            let crs = match object.get("crs") {
-                None | Some(serde_json::Value::Null) => None,
-                Some(serde_json::Value::String(name)) => Some(name.clone()),
-                // A PROJJSON object rides as its own JSON text, which is the
-                // spelling Parquet's `crs` string accepts.
-                Some(other) => Some(other.to_string()),
-            };
-            let edges = match object.get("edges") {
-                None | Some(serde_json::Value::Null) => None,
-                Some(serde_json::Value::String(name)) => {
-                    Some(EdgeAlgorithm::from_str(name).map_err(|_| {
-                        invalid(
-                            path,
-                            "a geography edge algorithm \
-                             (spherical, vincenty, thomas, andoyer, karney)",
-                            format_smolstr!("{name:?}"),
-                        )
-                    })?)
-                }
-                Some(other) => {
-                    return Err(invalid(
-                        path,
-                        "a string \"edges\" algorithm",
-                        format_smolstr!("{other}"),
-                    ));
-                }
-            };
-            (crs, edges)
-        }
-    };
-    let crs = crs.filter(|crs| crs != DEFAULT_CRS);
-    Ok(match edges {
-        // No edge algorithm is what distinguishes a geometry: a geography's
-        // document always carries one, `spherical` included.
+    let geospatial = GeospatialType::from_geoarrow_json(document).map_err(|error| {
+        invalid(
+            path,
+            "a GeoArrow JSON metadata document",
+            format_smolstr!("{:?} ({error})", document.unwrap_or("")),
+        )
+    })?;
+    let crs = Some(geospatial.crs().to_owned()).filter(|crs| crs != DEFAULT_CRS);
+    Ok(match geospatial.algorithm() {
+        // No edge algorithm is what distinguishes a geometry: a geography
+        // always carries one, `spherical` included.
         None => LogicalType::geometry(crs),
         Some(algorithm) => LogicalType::geography(
             crs,

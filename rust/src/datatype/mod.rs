@@ -28,6 +28,8 @@ pub use crate::enums::{TimeUnit, UnionMode};
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
 };
+#[cfg(feature = "parquet")]
+pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::GeospatialType;
 pub(crate) use geospatial::{
     GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,

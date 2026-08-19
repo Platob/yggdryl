@@ -676,12 +676,12 @@ returns an ordinary `Field`, typed as `Int64Field` for a checker only. Watch the
 `nullable` defaults to `True` in Python and to `false` in JavaScript.
 
 The three newest datatypes -
-[variant, geometry, and geography](datatype.md#variant-geometry-and-geography) - have no Rust
-marker aliases yet: the sealed marker set still stops at the Arrow logical types, so a generic
-`Field` carries them until their markers land. The binding-side `VariantField`, `GeometryField`,
-and `GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography`
-already exist, and are checker-level views over the one native class exactly like every alias
-above.
+[variant, geometry, and geography](datatype.md#variant-geometry-and-geography) - follow the same
+pattern: `yggdryl::field::VariantField` is parameterless and gets the static `new(name, nullable)`,
+while `GeometryField` and `GeographyField` are parameterized by CRS and edge algorithm, so they
+take their datatype through `try_new`. The binding-side `VariantField`, `GeometryField`, and
+`GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography` are
+checker-level views over the one native class exactly like every alias above.
 
 ## Row values are validated against the root
 
