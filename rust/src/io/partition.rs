@@ -605,7 +605,12 @@ pub(crate) fn folder_reader(
     }
     let field = match options.schema() {
         Some(schema) => Some(schema.clone()),
-        None => derived_field(&parts, root.as_ref(), options)?,
+        // The line projection's shape follows from the options alone - no
+        // leaf holds a schema to probe, and an empty folder still answers.
+        None => match options {
+            RecordOptions::Text(text) => Some(text.lines.schema().clone()),
+            _ => derived_field(&parts, root.as_ref(), options)?,
+        },
     };
     let Some(field) = field else {
         // Nothing is stored and nothing was declared, so there is no shape to

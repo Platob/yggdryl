@@ -33,6 +33,8 @@ pub use line::{
     LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines,
     schema_from_pattern,
 };
+#[cfg(feature = "arrow")]
+pub use line::TextOptions;
 pub use loading::Loading;
 pub use placeholder::Placeholders;
 

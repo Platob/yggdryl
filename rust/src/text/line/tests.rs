@@ -2059,3 +2059,209 @@ custom_fields:
         assert!(refused.contains("absent"), "{refused}");
     }
 }
+
+#[cfg(feature = "arrow")]
+mod record_surface {
+    //! Text is a record encoding: the three record methods route through the
+    //! line projection, with no options in sight.
+
+    use super::*;
+    use crate::generic::{IORecordOptions, RecordOptions};
+
+    fn rows(reader: crate::arrow::BatchReader) -> Vec<arrow_array::RecordBatch> {
+        reader.collect::<Result<_, _>>().unwrap()
+    }
+
+    #[test]
+    fn a_log_media_type_names_text_record_options() {
+        let handle = named("app.log", b"first\nsecond\n");
+        let options = handle.record_options().unwrap();
+        assert!(matches!(options, RecordOptions::Text(_)));
+        assert_eq!(options.mime_type(), crate::MimeType::PLAIN_TEXT);
+    }
+
+    #[test]
+    fn the_record_read_is_the_line_projection() {
+        let handle = named("app.log", b"first\nsecond\n");
+        let options = handle.record_options().unwrap();
+        let batches = rows(handle.read_arrow_batch_reader(&options).unwrap());
+        assert_eq!(batches.iter().map(|batch| batch.num_rows()).sum::<usize>(), 2);
+        let messages = batches[0]
+            .column_by_name("message")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .unwrap();
+        assert_eq!(messages.value(0), "first");
+        assert_eq!(messages.value(1), "second");
+    }
+
+    #[test]
+    fn a_text_handler_reads_records_under_its_own_extractor() {
+        let handle = named("app.log", b"2024-02-01 10:00:00 [ee] [engine] boom\n")
+            .into_text_with(TextLineOptions::for_logs());
+        let options = handle.record_options().unwrap();
+        let batches = rows(handle.read_arrow_batch_reader(&options).unwrap());
+        let levels = batches[0]
+            .column_by_name("level")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .unwrap();
+        assert_eq!(levels.value(0), "ee");
+        assert!(handle.is_tabular());
+    }
+
+    #[test]
+    fn a_write_renders_rows_as_lines_and_an_append_adds_after_them() {
+        let read = named("in.log", b"alpha\nbeta\n");
+        let mut target = named("out.log", b"");
+        let options = read.record_options().unwrap();
+
+        let batches = read.read_arrow_batch_reader(&options).unwrap();
+        target.write_arrow_batch_reader(batches, &options).unwrap();
+        assert_eq!(target.read_all_bytes().unwrap(), b"alpha\nbeta\n");
+
+        let more = named("more.log", b"gamma\n");
+        let batches = more.read_arrow_batch_reader(&options).unwrap();
+        target.append_arrow_batch_reader(batches, &options).unwrap();
+        assert_eq!(target.read_all_bytes().unwrap(), b"alpha\nbeta\ngamma\n");
+    }
+
+    #[test]
+    fn a_write_reproduces_header_and_message() {
+        let line = b"2024-02-01 10:00:00 [ee] [engine] boom\n    at frame one\n";
+        let read = named("in.log", line).into_text_with(TextLineOptions::for_logs());
+        let mut target = named("out.log", b"");
+        let options = read.record_options().unwrap();
+        let batches = read.read_arrow_batch_reader(&options).unwrap();
+        target.write_arrow_batch_reader(batches, &options).unwrap();
+        // The header opens the line and the message keeps its interior
+        // newline, so the multi-line record round-trips.
+        assert_eq!(
+            target.read_all_bytes().unwrap(),
+            b"2024-02-01 10:00:00 [ee] [engine] boom\n    at frame one\n"
+        );
+    }
+
+    #[test]
+    fn a_single_text_column_writes_as_lines_without_a_rename() {
+        let column: arrow_array::ArrayRef =
+            std::sync::Arc::new(arrow_array::StringArray::from(vec!["one", "two"]));
+        let batch = arrow_array::RecordBatch::try_from_iter([("payload", column)]).unwrap();
+        let schema = batch.schema();
+        let reader = crate::arrow::batch_reader(schema, [batch]);
+
+        let mut target = named("out.log", b"");
+        let options = target.record_options().unwrap();
+        target.write_arrow_batch_reader(reader, &options).unwrap();
+        assert_eq!(target.read_all_bytes().unwrap(), b"one\ntwo\n");
+    }
+
+    #[test]
+    fn a_coded_target_writes_and_appends_through_its_coding() {
+        let read = named("in.log", b"alpha\nbeta\n");
+        let mut target = named("out.log.gz", b"");
+        let options = read.record_options().unwrap();
+
+        let batches = read.read_arrow_batch_reader(&options).unwrap();
+        target.write_arrow_batch_reader(batches, &options).unwrap();
+        let more = named("more.log", b"gamma\n");
+        let batches = more.read_arrow_batch_reader(&options).unwrap();
+        target.append_arrow_batch_reader(batches, &options).unwrap();
+
+        let stored = target.read_all_bytes().unwrap();
+        assert_eq!(
+            crate::gzip::load(&stored[..]).unwrap(),
+            b"alpha\nbeta\ngamma\n"
+        );
+        // Reading back through the record surface sees three rows.
+        let batches = rows(target.read_arrow_batch_reader(&options).unwrap());
+        assert_eq!(batches.iter().map(|batch| batch.num_rows()).sum::<usize>(), 3);
+    }
+
+    #[test]
+    fn merging_by_key_is_refused_because_lines_have_no_row_identity() {
+        let read = named("in.log", b"alpha\n");
+        let mut target = named("out.log", b"alpha\n");
+        let mut options = read.record_options().unwrap();
+        options.set_merge_by_names(vec!["message".into()]);
+        let batches = read.read_arrow_batch_reader(&options).unwrap();
+        let refused = target.write_arrow_batch_reader(batches, &options);
+        assert!(refused.unwrap_err().to_string().contains("row identity"));
+    }
+
+    #[test]
+    fn a_holder_wraps_into_text_idempotently() {
+        let holder = crate::generic::Holder::buffer(named("app.log", b"first\n"));
+        let text = holder.into_text().into_text();
+        assert!(matches!(text, crate::generic::Holder::Text(_)));
+        let options = text.record_options().unwrap();
+        let batches: Vec<_> = text
+            .read_arrow_batch_reader(&options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(batches[0].num_rows(), 1);
+    }
+
+    #[test]
+    fn a_media_binds_text_from_the_media_type() {
+        let holder = crate::generic::Holder::buffer(named("app.log", b"first\nsecond\n"));
+        let mut media = crate::generic::Media::open(holder).unwrap();
+        assert!(matches!(media, crate::generic::Media::Text(_)));
+        assert_eq!(media.schema().unwrap().name(), "row");
+        let read: usize = media
+            .read_batch_reader(None)
+            .unwrap()
+            .map(|batch| batch.map(|batch| batch.num_rows()))
+            .sum::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(read, 2);
+    }
+}
+
+mod photo_shaped_headers {
+    //! The closed token table over the `[id] [logger] (LEVEL)` header shape.
+
+    use super::*;
+
+    const LOG: &[u8] = b"2026-08-14 00:05:01.167_250 [250-e7256676:9effef3a6a:72503] \
+        [OrderFlow_Enrichment] (DEBUG) CLIENTID set to ROUTE42\n\
+        2026-08-14 00:05:01.167_298 [250-e7256676:9effef3a6a:72503] \
+        [al-iris:RiskManager] (WARNING) Message rejected because : Ignoring expiry message\n";
+
+    #[test]
+    fn a_parenthesized_level_and_a_bracketed_id_fill_their_columns() {
+        let handle = named("app.log", LOG).into_text_with(TextLineOptions::for_logs());
+        let mut lines = handle.read_lines().unwrap();
+
+        let first = lines.next().unwrap().unwrap();
+        let [level, logger, thread] = first.tokens().unwrap();
+        assert_eq!(level, Some("DEBUG"));
+        assert_eq!(logger, Some("OrderFlow_Enrichment"));
+        assert_eq!(thread, Some("250-e7256676:9effef3a6a:72503"));
+        // The message is what remains after the whole header - the
+        // parenthesized level included.
+        assert_eq!(first.message().unwrap(), "CLIENTID set to ROUTE42");
+
+        // A logger with letters beyond hex keeps being a logger, colon or not.
+        let second = lines.next().unwrap().unwrap();
+        let [level, logger, thread] = second.tokens().unwrap();
+        assert_eq!(level, Some("WARNING"));
+        assert_eq!(logger, Some("al-iris:RiskManager"));
+        assert_eq!(thread, Some("250-e7256676:9effef3a6a:72503"));
+        assert!(second.message().unwrap().starts_with("Message rejected"));
+    }
+
+    #[test]
+    fn a_parenthesis_opening_prose_is_never_claimed() {
+        let handle = named("app.log", b"2026-08-14 00:05:01 (three) items remain\n")
+            .into_text_with(TextLineOptions::for_logs());
+        let mut lines = handle.read_lines().unwrap();
+        let line = lines.next().unwrap().unwrap();
+        let [level, logger, thread] = line.tokens().unwrap();
+        assert_eq!([level, logger, thread], [None, None, None]);
+        assert_eq!(line.message().unwrap(), "(three) items remain");
+    }
+}

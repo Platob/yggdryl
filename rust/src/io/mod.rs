@@ -1455,12 +1455,11 @@ pub trait IOBase: Send {
 
     /// Project the resource's text records into Arrow batches.
     ///
-    /// A thin shim over [`Self::into_text`]. This is a *text-line* projection
-    /// like [`Self::read_lines`], **not a fourth record method**: the record
-    /// surface stays exactly [`Self::read_arrow_batch_reader`],
-    /// [`Self::write_arrow_batch_reader`], and
-    /// [`Self::append_arrow_batch_reader`], and this never touches how a record
-    /// encoding decodes rows. The columns are described on
+    /// A convenience spelling of the record surface: text is a record
+    /// encoding like any other, so this is exactly
+    /// [`Self::read_arrow_batch_reader`] under
+    /// [`RecordOptions::Text`](crate::generic::RecordOptions::Text) - **not a
+    /// fourth record method**. The columns are described on
     /// [`TextLineOptions`](crate::text::TextLineOptions).
     ///
     /// # Errors
@@ -1471,11 +1470,10 @@ pub trait IOBase: Send {
     fn read_arrow_lines(
         &self,
         options: &crate::text::TextLineOptions,
-    ) -> Result<crate::arrow::BatchReader>
-    where
-        Self: Sized,
-    {
-        crate::text::line::arrow::read_arrow_lines(self, options)
+    ) -> Result<crate::arrow::BatchReader> {
+        self.read_arrow_batch_reader(&RecordOptions::Text(Box::new(
+            crate::text::TextOptions::with_lines(options.clone()),
+        )))
     }
 
     /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
@@ -1760,6 +1758,9 @@ pub(crate) fn leaf_reader(
             crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
+        RecordOptions::Text(text) => {
+            crate::text::line::arrow::read_arrow_lines(handle, &text.lines)?
+        }
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
@@ -1785,6 +1786,9 @@ fn leaf_writer(
             crate::parquet::write_batch_reader(handle, batches, parquet)?;
         }
         RecordOptions::Avro(avro) => crate::avro::write_batch_reader(handle, batches, avro)?,
+        RecordOptions::Text(text) => {
+            crate::text::line::arrow::write_arrow_lines(handle, batches, text)?;
+        }
     }
     Ok(())
 }
@@ -1802,6 +1806,11 @@ pub(crate) fn stored_field(
     use crate::generic::IORecordOptions;
 
     if handle.is_empty() {
+        return Ok(None);
+    }
+    // Text lines store no record shape of their own: any row shape writes,
+    // rendered line by line, so there is nothing to complete a cast onto.
+    if matches!(options, RecordOptions::Text(_)) {
         return Ok(None);
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
@@ -1840,6 +1849,18 @@ fn merge_leaf(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
+    // A text line has no row identity: re-parsing the resource yields
+    // projection rows, not the rows a caller wrote, so a key match would
+    // silently compare against the wrong thing. Refused rather than guessed.
+    if matches!(options, RecordOptions::Text(_)) {
+        return Err(Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$.merge_by_names"),
+            reason: crate::text::expected_got(
+                "a record encoding with row identity to merge by (Arrow IPC, Parquet, Avro)",
+                "text lines, which have none - use write or append",
+            ),
+        });
+    }
     let target = target_field(handle, &incoming, options)?;
     // The stored side is read as the target so both sides of the match agree
     // column for column before a single key is compared.
@@ -1868,6 +1889,12 @@ fn append_leaf(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
+    // Text lines append natively: rows render after the current last line,
+    // with no reason to re-parse what is already there.
+    if let RecordOptions::Text(text) = options {
+        let incoming = options.cast_arrow_reader(incoming, None)?;
+        return crate::text::line::arrow::append_arrow_lines(handle, incoming, text);
+    }
     let target = target_field(handle, &incoming, options)?;
     let mut rewrite = options.clone();
     rewrite.set_schema(target.clone());

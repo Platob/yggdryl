@@ -39,6 +39,8 @@ mod handle;
 pub mod log;
 mod options;
 mod reader;
+#[cfg(feature = "arrow")]
+mod record;
 mod sep;
 mod strip;
 mod timestamp;
@@ -51,6 +53,8 @@ pub use handle::{Text, TextLines};
 
 pub(crate) use handle::{borrowed_lines, coded_lines};
 pub use options::{Opening, TextLineOptions, schema_from_pattern};
+#[cfg(feature = "arrow")]
+pub use record::TextOptions;
 pub use sep::LineSep;
 pub use strip::Strip;
 pub use view::{TextLine, TextLineBuf};
