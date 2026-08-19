@@ -103,7 +103,7 @@ def _build_variant_datatype() -> DataType:
 
 
 def _build_variant_field() -> Field:
-    return fields.variant("payload", VARIANT_MEMBERS, nullable=False)
+    return fields.dense_union("payload", VARIANT_MEMBERS, nullable=False)
 
 
 def _infer_variant_datatype() -> DataType:

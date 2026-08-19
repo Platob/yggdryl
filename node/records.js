@@ -68,7 +68,6 @@ function installRecords({
   BatchReader,
   Field,
   IOBase,
-  Namespace,
   RecordOptions,
   Table,
   Tables,
@@ -404,21 +403,6 @@ function installRecords({
     })
   }
 
-  // The setter half of the map-like catalog: a schema opens the table,
-  // creating it when absent; anything rows-like replaces the table's rows,
-  // creating it from their own schema on first write.
-  if (Namespace) {
-    Object.defineProperty(Namespace.prototype, 'set', {
-      configurable: true,
-      value(name, value) {
-        if (value instanceof Field || typeof value === 'string') {
-          return this.openOrCreateTable(name, Field.from(value))
-        }
-        return this._setIpc(name, batchReader(value).toIpc())
-      },
-    })
-  }
-
   // The writes that take rows widen them the way every other write here does,
   // and pass the trailing per-call options through untouched. Forwarding it
   // is not optional bookkeeping: a wrapper that drops the argument leaves a
@@ -525,7 +509,13 @@ function installRecords({
       Object.defineProperty(Tables.prototype, name, {
         configurable: true,
         value(table, schema) {
-          return native.call(this, table, schemaField(schema))
+          // An array of child Fields is a shape the native call assembles
+          // itself, under a root named `row`; only scalar spellings coerce.
+          return native.call(
+            this,
+            table,
+            Array.isArray(schema) ? schema : schemaField(schema),
+          )
         },
       })
     }

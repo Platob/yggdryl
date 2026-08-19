@@ -2,10 +2,17 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, Datum, Float64Array, Int32Array, Int64Array, StringArray};
+use arrow_array::{
+    Array, ArrayRef, BinaryArray, Datum, Float64Array, Int32Array, Int64Array, StringArray,
+    StructArray,
+};
 
-use crate::field::{Int64Field, StructField, TimestampField, Utf8Field};
-use crate::{DataType, Field, TimeUnit};
+use super::ArrowCast;
+use crate::TimeUnit;
+use crate::field::{
+    GeometryField, Int64Field, StructField, TimestampField, Utf8Field, VariantField,
+};
+use crate::{DataType, EdgeAlgorithm, Field};
 
 #[test]
 fn a_typed_field_returns_its_own_array_type() {
@@ -130,4 +137,219 @@ fn a_borrowed_typed_field_casts_the_same_way() {
         borrowed.cast_arrow_array(source, false).unwrap().values(),
         &[4]
     );
+}
+
+/// One little-endian ISO WKB point.
+fn wkb_point(x: f64, y: f64) -> Vec<u8> {
+    let mut bytes = vec![1u8, 1, 0, 0, 0];
+    bytes.extend_from_slice(&x.to_le_bytes());
+    bytes.extend_from_slice(&y.to_le_bytes());
+    bytes
+}
+
+fn variant_storage_array(rows: usize) -> ArrayRef {
+    let fields = arrow_schema::Fields::from(vec![
+        arrow_schema::Field::new("metadata", arrow_schema::DataType::Binary, false),
+        arrow_schema::Field::new("value", arrow_schema::DataType::Binary, false),
+    ]);
+    let empty: Vec<&[u8]> = vec![b""; rows];
+    let columns: Vec<ArrayRef> = vec![
+        Arc::new(BinaryArray::from(empty.clone())),
+        Arc::new(BinaryArray::from(empty)),
+    ];
+    Arc::new(StructArray::new(fields, columns, None))
+}
+
+fn geospatial_batch(data_type: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array::RecordBatch {
+    let root = Field::new(
+        "row",
+        DataType::from_fields([Field::new("shape", data_type, true)]).unwrap(),
+        false,
+    );
+    let schema = crate::arrow::schema_from_field(&root).unwrap();
+    let values: Vec<Option<&[u8]>> = cells.iter().map(|cell| cell.as_deref()).collect();
+    arrow_array::RecordBatch::try_new(schema, vec![Arc::new(BinaryArray::from(values))]).unwrap()
+}
+
+fn cast_shape_to(
+    batch: arrow_array::RecordBatch,
+    target: Field,
+) -> crate::arrow::Result<arrow_array::RecordBatch> {
+    let root = Field::new("row", DataType::from_fields([target]).unwrap(), false);
+    root.cast_arrow_batch(batch, false)
+}
+
+#[test]
+fn binary_bytes_entering_a_geometry_field_are_validated_as_wkb() {
+    let field = GeometryField::try_new("shape", DataType::geometry(None).unwrap(), true).unwrap();
+    let point = wkb_point(1.0, 2.0);
+    let source: ArrayRef = Arc::new(BinaryArray::from(vec![Some(point.as_slice()), None]));
+
+    // Valid WKB passes with the same bytes; the untyped cast is the identity.
+    let cast = field.cast_arrow_array(Arc::clone(&source), false).unwrap();
+    assert_eq!(cast.value(0), point.as_slice());
+    let identity = field
+        .as_field()
+        .cast_arrow_array(Arc::clone(&source), false)
+        .unwrap();
+    assert!(Arc::ptr_eq(&identity, &source));
+
+    // Truncated bytes are refused naming the field and the row.
+    let broken: ArrayRef = Arc::new(BinaryArray::from(vec![Some([1u8, 1, 0].as_slice())]));
+    let refused = field
+        .cast_arrow_array(broken, false)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("shape"), "{refused}");
+    assert!(refused.contains("row 0"), "{refused}");
+    assert!(refused.contains("WKB"), "{refused}");
+}
+
+#[test]
+fn a_geometry_column_renders_wkt_into_a_utf8_target() {
+    let batch = geospatial_batch(
+        DataType::geometry(None).unwrap(),
+        vec![Some(wkb_point(1.0, 2.0)), None],
+    );
+    let cast = cast_shape_to(batch, Field::new("shape", DataType::Utf8, true)).unwrap();
+    let text = cast
+        .column(0)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(text.value(0), "POINT (1 2)");
+    assert!(text.is_null(1));
+}
+
+#[test]
+fn a_geometry_column_stays_lossless_into_a_binary_target() {
+    let point = wkb_point(3.0, 4.0);
+    let batch = geospatial_batch(DataType::geometry(None).unwrap(), vec![Some(point.clone())]);
+    let cast = cast_shape_to(batch, Field::new("shape", DataType::Binary, true)).unwrap();
+    let bytes = cast
+        .column(0)
+        .as_any()
+        .downcast_ref::<BinaryArray>()
+        .unwrap();
+    assert_eq!(bytes.value(0), point.as_slice());
+}
+
+#[test]
+fn a_crs_change_between_geospatial_columns_is_refused_naming_both() {
+    let batch = geospatial_batch(
+        DataType::geometry(None).unwrap(),
+        vec![Some(wkb_point(1.0, 2.0))],
+    );
+    let refused = cast_shape_to(
+        batch,
+        Field::new(
+            "shape",
+            DataType::geometry(Some("EPSG:3857")).unwrap(),
+            true,
+        ),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(refused.contains("OGC:CRS84"), "{refused}");
+    assert!(refused.contains("EPSG:3857"), "{refused}");
+}
+
+#[test]
+fn geometry_and_geography_refuse_each_other_naming_the_edge_change() {
+    let batch = geospatial_batch(
+        DataType::geometry(None).unwrap(),
+        vec![Some(wkb_point(1.0, 2.0))],
+    );
+    let refused = cast_shape_to(
+        batch,
+        Field::new("shape", DataType::geography(None, None).unwrap(), true),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(refused.contains("edge"), "{refused}");
+
+    let batch = geospatial_batch(
+        DataType::geography(None, Some(EdgeAlgorithm::Spherical)).unwrap(),
+        vec![Some(wkb_point(1.0, 2.0))],
+    );
+    let refused = cast_shape_to(
+        batch,
+        Field::new("shape", DataType::geometry(None).unwrap(), true),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(refused.contains("edge"), "{refused}");
+}
+
+#[test]
+fn a_matching_geospatial_pair_casts_as_the_identity() {
+    let point = wkb_point(5.0, 6.0);
+    let batch = geospatial_batch(DataType::geometry(None).unwrap(), vec![Some(point.clone())]);
+    let cast = cast_shape_to(
+        batch,
+        Field::new("shape", DataType::geometry(None).unwrap(), true),
+    )
+    .unwrap();
+    let bytes = cast
+        .column(0)
+        .as_any()
+        .downcast_ref::<BinaryArray>()
+        .unwrap();
+    assert_eq!(bytes.value(0), point.as_slice());
+}
+
+#[test]
+fn text_into_a_geospatial_target_names_the_absent_wkt_parser() {
+    let field = Field::new("shape", DataType::geometry(None).unwrap(), true);
+    let source: ArrayRef = Arc::new(StringArray::from(vec!["POINT (1 2)"]));
+    let refused = field
+        .cast_arrow_array(source, false)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("WKT parser"), "{refused}");
+}
+
+#[test]
+fn a_variant_casts_only_to_itself_until_the_codec_lands() {
+    let field = VariantField::new("payload", true);
+    let storage = variant_storage_array(2);
+
+    // The identity works, and the untyped cast returns the same array.
+    let cast = field.cast_arrow_array(Arc::clone(&storage), false).unwrap();
+    assert_eq!(cast.len(), 2);
+    let identity = field
+        .as_field()
+        .cast_arrow_array(Arc::clone(&storage), false)
+        .unwrap();
+    assert!(Arc::ptr_eq(&identity, &storage));
+
+    // Anything else refuses by name until the codec lands.
+    let numbers: ArrayRef = Arc::new(Int64Array::from(vec![7]));
+    let refused = field
+        .as_field()
+        .cast_arrow_array(numbers, false)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("Iceberg v3 layer"), "{refused}");
+}
+
+#[test]
+fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
+    let root = Field::new(
+        "row",
+        DataType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
+        false,
+    );
+    let schema = crate::arrow::schema_from_field(&root).unwrap();
+    let batch = arrow_array::RecordBatch::try_new(schema, vec![variant_storage_array(1)]).unwrap();
+    let target = Field::new(
+        "row",
+        DataType::from_fields([Field::new("payload", DataType::Utf8, true)]).unwrap(),
+        false,
+    );
+    let refused = target
+        .cast_arrow_batch(batch, false)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("Iceberg v3 layer"), "{refused}");
 }

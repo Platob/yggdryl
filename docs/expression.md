@@ -200,7 +200,9 @@ attribute whose price depends on the backend is classified by its worst case.
     std::fs::write(lake.path()?.join("year=2025").join("part-0.parquet"), b"")?;
 
     let filter: Expression = "&holder.partition['year'] = '2024'".parse()?;
-    let matched: Vec<_> = lake.children_matching(&filter, false)?.collect();
+    let matched: Vec<_> = lake
+        .children_matching(&filter, false)?
+        .collect::<yggdryl::Result<_>>()?;
     assert!(!matched.is_empty());
     assert!(matched.iter().all(|entry| {
         entry.url().is_some_and(|url| url.to_string().contains("year=2024"))
@@ -245,7 +247,7 @@ attribute whose price depends on the backend is classified by its worst case.
     }
 
     const lake = new IOBase(root)
-    const matched = lake.childrenMatching("&holder.partition['year'] = '2024'")
+    const matched = [...lake.childrenMatching("&holder.partition['year'] = '2024'")]
     assert.ok(matched.length > 0)
     for (const entry of matched) {
       assert.match(String(entry.url), /year=2024/)
@@ -324,6 +326,84 @@ Measured over 65,536 rows against the raw kernel call written by hand, the expre
 a few percent for every predicate family, and parse and bind together cost single-digit microseconds
 once per stream. The numbers, and how to reproduce them, are [below](#against-the-raw-arrow-kernels).
 
+## Targets own their application
+
+`Bound` does not grow one method per thing an expression can run over. The `ApplyExpression` trait
+inverts that ownership: the *target* says what applying an expression to it produces and how, as an
+associated type, because a target has exactly one natural application. `Bound` keeps only the verbs
+that mean more than "apply" - `matches` is apply-then-require-boolean, `filter` is
+apply-then-select - and each is a short composition over the trait. The four tiers above are its
+four implementations:
+
+| Target | Applying an expression produces |
+| --- | --- |
+| one row (`Value`) | the `Value` the expression computes |
+| one holder (`dyn Attributes`) | what the holder alone settles, three-valued |
+| one Arrow `RecordBatch` | one column of answers, an `ArrayRef` |
+| one container's statistics (`Bounds`) | the `Option<bool>` certainty pruning runs on |
+
+A `BatchReader` cannot be applied through `&self` - a stream is wrapped, not borrowed - so
+`ApplyExpressionStream` is the consuming sibling. Its output is deliberately the *filtering* reader
+rather than a stream of evaluated columns: a stream cannot hand back its answers without draining
+itself, but it can yield only the rows the predicate keeps, one batch at a time. Selection is the
+only application a stream can make lazily, so apply-then-select is what applying an expression to a
+stream *means*.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use yggdryl::expression::{ApplyExpression, ApplyExpressionStream, Attributes, Bounds};
+use yggdryl::{Expression, Field, Url, Value};
+
+// Non-nullable at the root, because the batch below projects it to Arrow.
+let schema = "trades:struct<ccy:utf8,size:bigint>".parse::<Field>()?.with_nullable(false);
+let bound = "ccy = 'EUR' and size > 10".parse::<Expression>()?.bind(&schema)?;
+
+// One row applies to the value the expression computes.
+let row = Value::from_sequence([Value::from("EUR"), Value::I64(25)]);
+assert_eq!(row.apply_expression(&bound)?, Value::Bool(true));
+
+// One batch applies to one column of answers, one per row.
+let arrow_schema = schema.to_arrow_schema()?;
+let batch = RecordBatch::try_new(
+    Arc::clone(&arrow_schema),
+    vec![
+        Arc::new(StringArray::from(vec!["EUR", "USD"])),
+        Arc::new(Int64Array::from(vec![25_i64, 25])),
+    ],
+)?;
+assert_eq!(batch.apply_expression(&bound)?.len(), 2);
+
+// Statistics apply to the certainty pruning runs on: every size is below 10,
+// so no row can match and the container is skipped unread.
+let bounds = Bounds::new(Some(1_000))
+    .with_column("size", Some(Value::I64(1)), Some(Value::I64(5)), Some(0));
+assert_eq!(bounds.apply_expression(&bound)?, Some(false));
+
+// A holder settles only the conjuncts that need no row - here none - and an
+// unknown answer excludes nothing.
+let url = Url::from_str("file:///lake/year=2024/part-0.parquet")?;
+let holder: &dyn Attributes = &url;
+assert_eq!(holder.apply_expression(&bound)?, Value::Null);
+
+// The stream sibling consumes its reader, and its application is the
+// filtering reader: only the EUR row above survives.
+let filtered = yggdryl::arrow::batch_reader(arrow_schema, [batch])
+    .apply_expression_stream(&bound)?;
+let mut kept = 0;
+for batch in filtered {
+    kept += batch?.num_rows();
+}
+assert_eq!(kept, 1);
+```
+
+The point of the inversion is who can join. A new target implements the trait beside its own type -
+a listing entry, a cache, a foreign table - and `expression/` never learns it exists; if an
+implementation ever needed a line inside that module beyond a `use`, the trait would be shaped
+wrong. The claim is proven by a test rather than asserted: `rust/src/io/tests.rs` defines a
+`Listing` target outside the module, reaching it through the public surface alone.
+
 ## Iceberg: one predicate, every level of the metadata
 
 A table's scan is planned by the same expression that filters its rows. Each level of the chain
@@ -333,7 +413,7 @@ partition tuple *proves* is dropped rather than re-tested.
 
 === "Rust"
 
-    ```rust,ignore
+    ```{ .rust .ignore }
     use yggdryl::iceberg::Table;
     use yggdryl::local::Folder;
 

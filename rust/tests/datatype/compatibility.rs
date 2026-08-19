@@ -658,3 +658,39 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         "{message}"
     );
 }
+
+#[test]
+fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_extensions() {
+    // The three extension-typed variants are first class: Iceberg v3 spells
+    // them itself, so they pass unchanged.
+    let geometry = Field::new("shape", DataType::geometry(None).unwrap(), true);
+    assert_eq!(
+        geometry.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+        geometry
+    );
+    let variant = Field::new("payload", DataType::variant(), true);
+    assert_eq!(variant.to_scheme_compat(&Scheme::ICEBERG).unwrap(), variant);
+
+    // An imported geometry no longer carries its extension keys - they are
+    // stripped as transport - so nothing trips the extension-storage rule.
+    let imported = Field::from_arrow(&geometry.to_arrow().unwrap()).unwrap();
+    assert!(!imported.has_metadata("ARROW:extension:name"));
+    assert_eq!(
+        imported.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+        geometry
+    );
+
+    // A foreign extension is still rejected rather than relabeled.
+    let foreign = Field::from_parts(
+        "blob",
+        DataType::LargeBinary,
+        true,
+        [("ARROW:extension:name", "someorg.blob")],
+    )
+    .unwrap();
+    let refused = foreign
+        .to_scheme_compat(&Scheme::ICEBERG)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("extension storage"), "{refused}");
+}

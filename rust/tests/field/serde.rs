@@ -76,6 +76,11 @@ fn shapes() -> Vec<Field> {
             .unwrap()
             .nullable_field("uuid"),
         DataType::Null.nullable_field("nothing"),
+        DataType::variant().nullable_field("payload"),
+        DataType::geometry(None).unwrap().nullable_field("shape"),
+        DataType::geography(Some("EPSG:4326"), Some(yggdryl::EdgeAlgorithm::Vincenty))
+            .unwrap()
+            .required_field("region"),
     ]
 }
 

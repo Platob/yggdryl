@@ -40,7 +40,7 @@ The file system as three [`IOBase`](io.md) handles: a generic location, a direct
     // A container: it holds no bytes of its own, only children.
     let folder = Folder::new(&root)?;
     assert_eq!(folder.size(), 0);
-    assert_eq!(folder.ls(false, false)?.len(), 2);
+    assert_eq!(folder.ls(false, false).count(), 2);
 
     // A leaf: bytes addressed by offset.
     let leaf = File::new(root.join("a.bin"))?;
@@ -82,7 +82,7 @@ four for a container, two for a leaf, three for a location - and inherits the re
     assert!(!leaf.exists());
 
     // Reading something absent yields nothing - and still creates nothing.
-    assert!(folder.ls(true, false)?.is_empty());
+    assert_eq!(folder.ls(true, false).count(), 0);
     assert!(leaf.read_all_bytes()?.is_empty());
     assert_eq!(leaf.size(), 0);
     assert!(!root.exists());
@@ -160,24 +160,30 @@ is an error, because a container has no bytes to resize.
     folder.create()?;
 
     // A child is a handle; writing through it creates the leaf.
-    let mut leaf = folder.child_by("trades.arrows")?;
+    let mut leaf = folder.child_by_path("trades.arrows")?;
     leaf.write_all_bytes(b"payload")?;
     leaf.flush()?;
     assert!(matches!(leaf, Holder::File(_)));
 
     // A nested child creates its parent directory on write.
-    let mut nested = folder.child_by("sub/inner.bin")?;
+    let mut nested = folder.child_by_path("sub/inner.bin")?;
     nested.write_all_bytes(b"deep")?;
     nested.flush()?;
 
     // Listings are sorted, so two runs agree; recursion reaches the nested leaf.
     let names: Vec<String> = folder
-        .ls(false, false)?
-        .iter()
-        .filter_map(|entry| entry.url().and_then(|url| url.file_name()).map(str::to_string))
-        .collect();
+        .ls(false, false)
+        .map(|entry| {
+            let entry = entry?;
+            Ok(entry
+                .url()
+                .and_then(|url| url.file_name())
+                .unwrap_or_default()
+                .to_owned())
+        })
+        .collect::<yggdryl::Result<_>>()?;
     assert_eq!(names, ["sub", "trades.arrows"]);
-    assert_eq!(folder.ls(true, false)?.len(), 3);
+    assert_eq!(folder.ls(true, false).count(), 3);
 
     // A leaf's parent is the directory holding it.
     let parent = leaf.parent().expect("a file has a parent");
@@ -189,7 +195,7 @@ is an error, because a container has no bytes to resize.
     let _ = std::fs::remove_dir_all(&root);
     ```
 
-`ls`, `child_by`, and `parent` return [`Holder`](generic.md), so one enum walks a whole tree:
+`ls`, `child_by_path`, and `parent` return [`Holder`](generic.md), so one enum walks a whole tree:
 subdirectories come back as `Holder::Folder`, files as `Holder::File`. Children resolve through
 the URL, so `.` and `..` segments collapse the way they do everywhere else in the crate, and a
 name with separators in it is a nested child rather than an error.
@@ -329,8 +335,8 @@ std::fs::create_dir_all(root.join(".git"))?;
 std::fs::write(root.join("trades.arrows"), b"x")?;
 
 let folder = Folder::new(&root)?;
-assert_eq!(folder.ls(false, false)?.len(), 1);
-assert_eq!(folder.ls(false, true)?.len(), 2);
+assert_eq!(folder.ls(false, false).count(), 1);
+assert_eq!(folder.ls(false, true).count(), 2);
 
 // The rule is one accessor on the location itself, because every child has one.
 assert!(Url::from_str("file:///project/.git")?.is_private());

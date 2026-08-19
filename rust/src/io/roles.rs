@@ -19,7 +19,7 @@
 //! different transport.
 
 use crate::generic::Holder;
-use crate::io::IOBase;
+use crate::io::{IOBase, Listing};
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 
 /// The media type every container reports.
@@ -45,16 +45,16 @@ pub trait IOFolder: IOBase {
     /// Returns the backing store's creation failure.
     fn create_folder(&self) -> Result<()>;
 
-    /// List the container's entries, optionally descending.
+    /// List the container's entries, one at a time, optionally descending.
     ///
     /// A container that does not exist lists nothing rather than failing, and
     /// private entries - those whose name begins with a dot - are excluded
     /// unless `include_private` asks for them.
     ///
-    /// # Errors
-    ///
-    /// Returns the backing store's listing failure.
-    fn list_folder(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>>;
+    /// The walk is lazy and the failure arrives as an entry, so an
+    /// implementation never builds the result it is describing; whatever it
+    /// does hold - one directory's entry names, say - says what bounds it.
+    fn list_folder(&self, recursive: bool, include_private: bool) -> Listing;
 
     /// Delete the container itself, leaving whatever is inside it alone.
     ///
@@ -85,8 +85,8 @@ pub trait IOFolder: IOBase {
     ///
     /// Returns the backing store's listing or delete failure.
     fn folder_clear(&mut self) -> Result<()> {
-        for mut child in self.list_folder(false, true)? {
-            child.remove(true)?;
+        for child in self.list_folder(false, true) {
+            child?.remove(true)?;
         }
         Ok(())
     }
@@ -120,11 +120,11 @@ pub trait IOFolder: IOBase {
     /// looking for a directory literally named `**`. A plain location lists
     /// normally.
     ///
-    /// # Errors
-    ///
-    /// Returns the backing store's listing failure.
-    fn folder_ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
-        let (_, pattern) = self.folder_url().glob_parts()?;
+    fn folder_ls(&self, recursive: bool, include_private: bool) -> Listing {
+        let pattern = match self.folder_url().glob_parts() {
+            Ok((_, pattern)) => pattern,
+            Err(error) => return Listing::failing(error),
+        };
         let Some(pattern) = pattern else {
             return self.list_folder(recursive, include_private);
         };
@@ -135,9 +135,12 @@ pub trait IOFolder: IOBase {
             root = root.and_then(|holder| holder.parent());
         }
         match root {
-            Some(root) => root.glob(&pattern, include_private),
+            Some(root) => match root.glob(&pattern, include_private) {
+                Ok(listing) => listing,
+                Err(error) => Listing::failing(error),
+            },
             // Nothing above the pattern, so there is nowhere to expand it.
-            None => Ok(Vec::new()),
+            None => Listing::empty(),
         }
     }
 
@@ -253,8 +256,8 @@ pub trait IOFile: IOBase {
     }
 
     /// List nothing: a leaf contains no other resources.
-    fn file_ls(&self) -> Result<Vec<Holder>> {
-        Ok(Vec::new())
+    fn file_ls(&self) -> Listing {
+        Listing::empty()
     }
 
     /// A leaf that exists is a file; one that does not has not been decided.
@@ -285,7 +288,7 @@ pub trait IOFile: IOBase {
     /// # Errors
     ///
     /// Always returns [`std::io::ErrorKind::NotADirectory`].
-    fn file_child_by(&self, name: &str) -> Result<Holder> {
+    fn file_child_by_path(&self, name: &str) -> Result<Holder> {
         Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotADirectory,
             format!(

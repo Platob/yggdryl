@@ -13,8 +13,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList};
 use yggdryl::ArrowCast;
 use yggdryl::{
-    DataType as CoreDataType, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
-    UnionMode as CoreUnionMode,
+    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
+    TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
 use crate::field::PyField;
@@ -482,11 +482,49 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Builds the canonical dense Union with sequential native type IDs.
+    /// Builds a variant datatype, or the dense-union sugar over members.
+    ///
+    /// The parenthesis disambiguates, exactly as it does in the grammar:
+    /// ``DataType.variant()`` with no argument is the self-describing
+    /// semi-structured Variant datatype, while ``DataType.variant(fields)``
+    /// keeps building the canonical dense Union with sequential native type
+    /// IDs from the given members.
     #[staticmethod]
-    fn variant(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let inner =
-            CoreDataType::variant(core_fields_from_iterable(fields)?).map_err(value_error)?;
+    #[pyo3(signature = (fields=None), text_signature = "(fields=None)")]
+    fn variant(fields: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let inner = match fields {
+            None => CoreDataType::variant(),
+            Some(fields) => CoreDataType::dense_union(core_fields_from_iterable(fields)?)
+                .map_err(value_error)?,
+        };
+        Self::from_validated(inner)
+    }
+
+    /// Creates a geometry datatype: planar features as Well-Known Binary.
+    ///
+    /// ``None`` fills the ``OGC:CRS84`` default shared with Parquet and
+    /// Iceberg; a geometry connects vertices with straight planar lines, so
+    /// it takes no edge algorithm.
+    #[staticmethod]
+    #[pyo3(signature = (crs=None), text_signature = "(crs=None)")]
+    fn geometry(crs: Option<&str>) -> PyResult<Self> {
+        let inner = CoreDataType::geometry(crs).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// Creates a geography datatype: features on a sphere or spheroid.
+    ///
+    /// ``None`` fills the ``OGC:CRS84`` default and the ``spherical`` edge
+    /// algorithm; ``algorithm`` accepts the canonical lowercase names the
+    /// core's ``EdgeAlgorithm`` parses.
+    #[staticmethod]
+    #[pyo3(signature = (crs=None, algorithm=None), text_signature = "(crs=None, algorithm=None)")]
+    fn geography(crs: Option<&str>, algorithm: Option<&str>) -> PyResult<Self> {
+        let algorithm = algorithm
+            .map(CoreEdgeAlgorithm::from_str)
+            .transpose()
+            .map_err(value_error)?;
+        let inner = CoreDataType::geography(crs, algorithm).map_err(value_error)?;
         Self::from_validated(inner)
     }
 

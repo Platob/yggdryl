@@ -19,7 +19,7 @@ assert_eq!(handle.cached_pages(), 1);
 ```
 
 `IOBase::buffered` wraps any handle, and what comes back is a handle: `Buffered<H>` mirrors
-everything it does not change, so `size`, `url`, `media_type`, `kind`, `parent`, `child_by`,
+everything it does not change, so `size`, `url`, `media_type`, `kind`, `parent`, `child_by_path`,
 and `ls` answer exactly what the wrapped handle answers. It is invisible except for speed,
 the same way [`Coded`](io.md) is invisible except for the coding.
 

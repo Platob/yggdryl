@@ -57,6 +57,68 @@ fn typed_values_round_trip_without_reserved_key_collisions() {
     assert_eq!(json::from_slice(&encoded).unwrap(), value);
 }
 
+/// One valid little-endian WKB `POINT (1 2)`, the smallest real geometry.
+fn point_wkb() -> Vec<u8> {
+    let mut wkb = vec![0x01, 0x01, 0x00, 0x00, 0x00];
+    wkb.extend_from_slice(&1.0_f64.to_le_bytes());
+    wkb.extend_from_slice(&2.0_f64.to_le_bytes());
+    wkb
+}
+
+#[test]
+fn geospatial_values_round_trip_through_their_own_envelope() {
+    let point = Value::Geospatial(point_wkb().into());
+
+    // At the root, nested in a sequence, and nested in a mapping alike.
+    let encoded = json::to_vec(&point).unwrap();
+    let text = std::str::from_utf8(&encoded).unwrap();
+    assert!(text.contains("\"geospatial\""), "{text}");
+    assert_eq!(json::from_slice(&encoded).unwrap(), point);
+
+    let nested = Value::from_mapping([
+        (Value::from("shape"), point.clone()),
+        (
+            Value::from("shapes"),
+            Value::from_sequence([point.clone(), Value::Null]),
+        ),
+    ])
+    .unwrap();
+    let encoded = json::to_vec(&nested).unwrap();
+    let decoded = json::from_slice(&encoded).unwrap();
+    assert_eq!(decoded, nested);
+    // The kind survives the trip: the WKB comes back geospatial, not bytes.
+    assert!(matches!(
+        decoded.get_key_str("shape"),
+        Some(Value::Geospatial(_))
+    ));
+
+    // The envelope carries bytes, not geometry validity, so malformed WKB
+    // still round-trips byte for byte.
+    let malformed = Value::Geospatial([0xff_u8, 0x00].as_slice().into());
+    assert_eq!(
+        json::from_slice(&json::to_vec(&malformed).unwrap()).unwrap(),
+        malformed
+    );
+}
+
+#[test]
+fn a_user_mapping_shaped_like_the_geospatial_envelope_stays_user_data() {
+    let body = Value::from_mapping([
+        (Value::from("version"), Value::from(1_u64)),
+        (Value::from("type"), Value::from("geospatial")),
+        (
+            Value::from("value"),
+            Value::from("AQEAAAAAAAAAAADwPwAAAAAAAABA"),
+        ),
+    ])
+    .unwrap();
+    let collision = Value::from_mapping([(Value::from("$yggdryl"), body)]).unwrap();
+    let encoded = json::to_vec(&collision).unwrap();
+    let decoded = json::from_slice(&encoded).unwrap();
+    assert_eq!(decoded, collision);
+    assert!(matches!(decoded, Value::Mapping(_)));
+}
+
 #[test]
 fn a_tag_envelope_is_now_the_ordinary_mapping_it_is_spelled_as() {
     // The `tag` kind named a carrier this value model no longer has, so it is

@@ -375,10 +375,17 @@ fn record_parts(
     options: &RecordOptions,
 ) -> Result<Vec<crate::generic::Holder>> {
     let encoding = options.mime_type();
-    Ok(folder
+    // Held whole, and bounded by the folder: the parts decide the derived
+    // schema before the first batch is read, and the reader chains them in a
+    // fixed order afterwards. What is retained is one handle per leaf, never a
+    // batch - the rows themselves are still streamed one part at a time.
+    folder
         .children_where(&[], false)?
-        .filter(|child| child.media_type().base() == &encoding)
-        .collect())
+        .filter(|child| match child {
+            Ok(child) => child.media_type().base() == &encoding,
+            Err(_) => true,
+        })
+        .collect()
 }
 
 /// Return the partition columns the tree beneath `folder` already spells out.
@@ -552,6 +559,13 @@ fn leaf_name(
 /// agrees on `year`, which makes it useless for telling two of them apart.
 fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<RecordOptions> {
     let mut leaf = options.clone();
+    // The row and byte limits were already applied to the whole operation at
+    // the record-method seam, so a leaf must not apply them again: a limit on
+    // the tree re-applied per leaf would become one bound per partition, and
+    // a byte bound would re-cut a sliced batch whose buffers still report
+    // their full size.
+    leaf.set_max_row_size(None);
+    leaf.set_max_byte_size(None);
     if pairs.is_empty() {
         return Ok(leaf);
     }
@@ -729,8 +743,11 @@ pub(crate) fn write_folder(
     append: bool,
 ) -> Result<()> {
     // One walk answers both questions: which directories name partition
-    // columns, and which leaves already hold rows.
-    let entries = retried(|| folder.ls(true, false))?;
+    // columns, and which leaves already hold rows. The layout is held whole
+    // because a partitioned write routes every incoming row to the leaf its
+    // values name, so the whole layout has to be known before the first row
+    // lands; it is bounded by the folder being written, not by the rows.
+    let entries: Vec<Holder> = retried(|| folder.ls(true, false).collect::<Result<Vec<Holder>>>())?;
     let root = folder.url().cloned();
     let columns = write_partition_columns(&entries, root.as_ref(), options)?;
     let encoding = options.mime_type();
@@ -770,7 +787,7 @@ pub(crate) fn write_folder(
         for (pairs, part) in split_by_partition(&batch, &columns)? {
             let relative = leaf_name(&existing, &pairs, options);
             let leaf = leaf_options(options, &pairs)?;
-            let mut handle = folder.child_by(&relative)?;
+            let mut handle = folder.child_by_path(&relative)?;
             let first = written.insert(relative);
             let replacing = !leaf.merge_by_names().is_empty() || (!append && first);
             if replacing {

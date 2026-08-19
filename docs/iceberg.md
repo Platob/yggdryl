@@ -142,7 +142,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
 
 **An Iceberg table is a folder.** `metadata/` holds the JSON documents and the Avro manifests,
 `data/` holds the Parquet files, and everything here is reached with
-[`IOBase::child_by`](io.md) and [`IOBase::ls`](io.md) against the handle the table was constructed
+[`IOBase::child_by_path`](io.md) and [`IOBase::ls`](io.md) against the handle the table was constructed
 from. Nothing in this module opens a path or calls the file system, so the same code works over a
 local directory today and over an object store the moment a backend for one exists.
 
@@ -197,7 +197,8 @@ a consumer that only needs schemas never compiles it.
     table.append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     let names: Vec<String> = Folder::new(&path)?
-        .ls(true, false)?
+        .ls(true, false)
+        .collect::<yggdryl::Result<Vec<_>>>()?
         .iter()
         .filter(|entry| !entry.is_container())
         .filter_map(|entry| entry.url().and_then(|url| url.file_name().map(str::to_owned)))
@@ -268,8 +269,7 @@ a consumer that only needs schemas never compiles it.
     table.append(new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) }))
 
     // `table.root` is the folder handle the table reads and writes through.
-    const names = table.root
-      .ls(true)
+    const names = [...table.root.ls(true)]
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
 
@@ -432,7 +432,7 @@ must yield no rows rather than fail.
 
     // A manifest is self-describing: its Avro header carries the schema and the spec.
     let name = manifests[0].manifest_path.rsplit('/').next().unwrap().to_owned();
-    let handle = Folder::new(&path)?.child_by(&format!("metadata/{name}"))?;
+    let handle = Folder::new(&path)?.child_by_path(&format!("metadata/{name}"))?;
     assert_eq!(read_manifest_spec(&handle)?, spec);
 
     let entries = read_manifest(&handle)?;
@@ -1736,19 +1736,31 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
         )
     };
     let first = rows(&[1, 2], &["XNAS", "XNYS"])?;
-    let table = catalog.append("nyc.trades", yggdryl::arrow::batch_reader(first.schema(), [first]))?;
+    let table = catalog
+        .tables()
+        .append("nyc.trades", yggdryl::arrow::batch_reader(first.schema(), [first]))?;
     let rows_read: usize = table.scan(None)?.map(|batch| batch.map(|b| b.num_rows())).sum::<Result<usize, _>>()?;
     assert_eq!(rows_read, 2);
 
     let second = rows(&[3], &["XNAS"])?;
-    catalog.append("nyc.trades", yggdryl::arrow::batch_reader(second.schema(), [second]))?;
+    catalog
+        .tables()
+        .append("nyc.trades", yggdryl::arrow::batch_reader(second.schema(), [second]))?;
 
     // The partition marks the schema carried became the table's spec.
     let reopened = catalog.table("nyc.trades")?;
     assert_eq!(reopened.metadata().default_spec()?.fields[0].name, "venue");
-    assert!(catalog.has_table("nyc.trades")?);
-    assert_eq!(catalog.list_namespaces(None)?, ["nyc"]);
-    assert_eq!(catalog.list_tables("nyc")?, ["nyc.trades"]);
+    assert!(catalog.tables().contains("nyc.trades")?);
+    let namespaces: Vec<String> =
+        catalog.namespaces().iter().collect::<yggdryl::Result<_>>()?;
+    assert_eq!(namespaces, ["nyc"]);
+    let tables: Vec<String> = catalog
+        .namespaces()
+        .get("nyc")?
+        .tables()
+        .iter()
+        .collect::<yggdryl::Result<_>>()?;
+    assert_eq!(tables, ["trades"]);
 
     let _ = std::fs::remove_dir_all(&warehouse);
     ```
@@ -1791,9 +1803,9 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
     reopened = catalog.table("nyc.trades")
     assert [field.name for field in reopened.spec.fields] == ["venue"]
     assert reopened.scan().read_all().num_rows == 3
-    assert catalog.has_table("nyc.trades")
-    assert catalog.list_namespaces() == ["nyc"]
-    assert catalog.list_tables("nyc") == ["nyc.trades"]
+    assert "nyc.trades" in catalog.tables
+    assert list(catalog.namespaces) == ["nyc"]
+    assert list(catalog.namespaces["nyc"].tables) == ["trades"]
 
     shutil.rmtree(warehouse.parent)
     ```
@@ -1816,7 +1828,7 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
     const marked = fields
       .struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], { nullable: false })
       .withPartitionFields(['venue'])
-    catalog.createTable('nyc.trades', marked)
+    catalog.tables.create('nyc.trades', marked)
 
     const rows = (ids, venues) =>
       new arrow.Table({
@@ -1828,18 +1840,22 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
     assert.equal(catalog.append('nyc.trades', rows([3n], ['XNAS'])).scan().toTable().numRows, 3)
 
     // The dotted name is the folder nyc/trades, and the marks became the spec.
-    assert.ok(catalog.hasTable('nyc.trades'))
+    assert.ok(catalog.tables.has('nyc.trades'))
     assert.deepEqual(catalog.table('nyc.trades').spec.fields.map((field) => field.name), ['venue'])
-    assert.deepEqual(catalog.listNamespaces(), ['nyc'])
-    assert.deepEqual(catalog.listTables('nyc'), ['nyc.trades'])
+    assert.deepEqual(catalog.namespaces.names(), ['nyc'])
+    assert.deepEqual(catalog.namespaces.get('nyc').tables.names(), ['trades'])
 
     fs.rmSync(warehouse, { recursive: true, force: true })
     ```
 
-`create_table` is the explicit spelling - it numbers an unnumbered schema, derives the identity spec
-from the schema's own [partition marks](field.md#a-field-can-be-a-partition-column), and refuses a
-name that already has a table. `append` and `overwrite` are create-or-write. Every convenience is a
-thin wrapper over the explicit one; nothing is decided twice.
+`tables().create` is the explicit spelling - it numbers an unnumbered schema, derives the identity
+spec from the schema's own [partition marks](field.md#a-field-can-be-a-partition-column), and
+refuses a name that already has a table with a typed conflict. `append` and `overwrite` are
+create-or-write. In every language the collections are the one spelling and the catalog keeps
+exactly two dotted entry points - `table` and `namespace` - because a dotted identifier is a real
+Iceberg spelling and deserves one call; there is no flat `create_table`/`has_table` surface beside
+the views, because two spellings of one operation is the disease and a one-line delegate is still
+a second spelling.
 
 What is deliberately not here: `drop_table` and `rename_table`, because the storage contract has no
 delete or move primitive, and a catalog must not emulate either by leaving a half-erased table
@@ -1854,11 +1870,32 @@ shape one level down, indexing to a `Table`. A nested namespace is reached throu
 `namespaces` view, so access chains - `catalog.namespaces["sales"].tables["orders"]` - and every
 collection operation has exactly one home. The views are cheap handles, not caches: constructing
 one performs no I/O, membership and iteration consult storage at the moment they are asked, two
-views over the same catalog observe each other's writes, and a missing name is a `KeyError` naming
-it. JavaScript has no indexing hook a native class can answer, so the same questions are spelled
-out there - `get`, `has`, `names`, `size`, `create`, `openOrCreate` - over the same views. The
-dotted-name conveniences on the catalog itself - `create_table("sales.orders", ...)` and friends -
-are one-line delegates over the same views.
+views over the same catalog observe each other's writes, and a missing name is a `KeyError`
+carrying the core's own absence message. JavaScript has no indexing hook a native class can
+answer - no operator sugar exists - so the Map verbs are the spelling there: `get`, `has`, `size`,
+`keys`, `values`, `entries`, `create`, `openOrCreate` over the same views, and `for...of` walks a
+view's names lazily. Dotted names are resolved in the collections themselves -
+`namespaces.get("sales.eu")` and `tables.get("sales.eu.orders")` descend - so the resolution rule
+lives in one place, and `catalog.tables` is the same view at the warehouse root, where a fully
+dotted name reaches any table in one lookup.
+
+Iterating a collection is lazy in all three languages: the names arrive one at a time, `values` /
+`items` / `entries` open one resource per step, and `len` / `size` drain the listing, so they cost
+the full level. In Rust `get` returns `Result` and nothing implements `Index`: panic-on-missing is
+normal for an in-memory child lookup and is not normal for a storage lookup - Python and
+JavaScript get the map spelling their readers expect instead, and there is no `__delitem__`
+anywhere because removal is deliberately absent from the hierarchy: the storage contract's
+`remove` deletes a leaf or an empty container, and dropping a table is maintenance work, not a
+`del`.
+
+A catalog and a namespace each carry properties too, in one small metadata document apiece -
+`metadata/catalog.json` under the warehouse, `metadata/namespace.json` under the namespace folder -
+written through the shared JSON codec. Absent means empty properties, never an error; writing the
+namespace document is also what makes an *empty* namespace durable, and what creates its ancestry.
+The `iceberg:` property prefix is reserved for the format and refused by name. Above the warehouse
+sits `Catalogs`, the same collection shape over a folder of warehouses, so
+`catalogs.get("lake")?.namespaces()` addresses a lake without a caller-side convention (Rust-only
+for now).
 
 === "Rust"
 
@@ -1872,10 +1909,18 @@ are one-line delegates over the same views.
 
     // Constructing the views touches nothing; every answer is storage's.
     let namespaces = catalog.namespaces();
-    assert_eq!(namespaces.names()?.len(), 0);
+    assert_eq!(namespaces.iter().count(), 0);
     let sales = namespaces.open_or_create("sales")?;
     assert!(!sales.tables().contains("orders")?);
     assert!(namespaces.contains("sales")?);
+
+    // The namespace document is what makes the empty namespace durable, and
+    // it is where its properties live.
+    sales.update_properties([("region".to_owned(), "eu".to_owned())], [])?;
+    assert_eq!(
+        sales.properties()?.get("region").map(String::from),
+        Some("eu".to_owned())
+    );
 
     let _ = std::fs::remove_dir_all(&root);
     ```
@@ -1906,6 +1951,21 @@ are one-line delegates over the same views.
 
     table = catalog.namespaces["sales"].tables["orders"]
     assert table.scan().read_all().num_rows == 2
+
+    # The mapping surface: keys, values, and items, exactly as a dict's -
+    # values and items are lazy iterators that open one table per step.
+    # len drains the listing, so it costs the full level.
+    assert list(sales.tables.keys()) == ["orders"]
+    assert [name for name, _ in sales.tables.items()] == ["orders"]
+    assert next(sales.tables.values()).scan().read_all().num_rows == 2
+    assert len(sales.tables) == 1
+    # There is no __delitem__: removal is absent from the whole hierarchy,
+    # because the storage contract has no delete primitive to build it on.
+    assert not hasattr(sales.tables, "__delitem__")
+
+    # A catalog and a namespace each carry properties, in one small document.
+    sales.update_properties({"region": "eu"})
+    assert sales.properties == {"region": "eu"}
 
     shutil.rmtree(warehouse.parent)
     ```
@@ -1938,9 +1998,20 @@ are one-line delegates over the same views.
     )
     assert.ok(sales.tables.has('orders'))
     assert.deepEqual(sales.tables.names(), ['orders'])
+    // No operator sugar exists - JavaScript gives a native class no indexing
+    // hook - so the Map verbs are the spelling: has, size, keys, values,
+    // entries, and for...of. values and entries open one table per step.
+    assert.deepEqual([...sales.tables.keys()], ['orders'])
+    assert.deepEqual([...sales.tables], ['orders'])
+    assert.deepEqual([...sales.tables.entries()].map(([name]) => name), ['orders'])
+    assert.equal(sales.tables.size(), 1)
 
     const table = catalog.namespaces.get('sales').tables.get('orders')
     assert.equal(table.scan().toTable().numRows, 2)
+
+    // A catalog and a namespace each carry properties, in one small document.
+    sales.updateProperties({ region: 'eu' })
+    assert.deepEqual(sales.properties(), { region: 'eu' })
 
     // A nested namespace is reached through its parent's own view.
     sales.namespaces.create('eu')
@@ -1990,7 +2061,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
     };
 
     // Five appends, five snapshots, five small files.
-    let mut table = catalog.create_table("tiny.rows", schema)?;
+    let mut table = catalog.tables().create("tiny.rows", schema)?;
     for id in 0..5 {
         let batch = one(id)?;
         table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
@@ -2025,7 +2096,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
 
     # The default target is Iceberg's own 512 MiB.
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    table = catalog.create_table("tiny.rows", columns)
+    table = catalog.tables.create("tiny.rows", columns)
     assert table.target_file_size == 512 * 1024 * 1024
 
     # Five appends, five snapshots, five small files.
@@ -2061,7 +2132,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
     const catalog = new iceberg.Catalog(warehouse)
 
     // The default target is Iceberg's own 512 MiB.
-    const table = catalog.createTable('tiny.rows', [Field.from('id: int64')])
+    const table = catalog.tables.create('tiny.rows', [Field.from('id: int64')])
     assert.equal(table.targetFileSize, 512 * 1024 * 1024)
 
     // Five appends, five snapshots, five small files.
@@ -2745,7 +2816,7 @@ let schema = DataType::from_fields([
 ])?
 .required_field("row")
 .with_partition_fields(&["vendor_id"])?;
-let mut table = catalog.create_table("nyc.taxis", schema.clone())?;
+let mut table = catalog.tables().create("nyc.taxis", schema.clone())?;
 let schema = table.schema()?.clone();
 
 // INSERT INTO nyc.taxis VALUES (...)

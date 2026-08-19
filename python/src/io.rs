@@ -468,7 +468,7 @@ impl PyIOBase {
         for other in others {
             let name = crate::uri::path_string_from_value(&other)?;
             let base = resolved.as_ref().unwrap_or(&self.inner);
-            resolved = Some(base.child_by(&name).map_err(value_error)?);
+            resolved = Some(base.child_by_path(&name).map_err(value_error)?);
         }
         match resolved {
             Some(handle) => Ok(Self::from_core(handle)),
@@ -480,7 +480,7 @@ impl PyIOBase {
     /// `handle / "child"`, as `PurePath.__truediv__`.
     fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         self.inner
-            .child_by(&crate::uri::path_string_from_value(other)?)
+            .child_by_path(&crate::uri::path_string_from_value(other)?)
             .map(Self::from_core)
             .map_err(value_error)
     }
@@ -521,46 +521,44 @@ impl PyIOBase {
 
     /// Iterate the immediate children, as `Path.iterdir`.
     ///
+    /// Lazy exactly as `pathlib` is: the walk runs as the iterator is drained,
+    /// so taking three entries from a folder of a hundred thousand costs three.
     /// Private entries - names beginning with a dot - are skipped unless
     /// `include_private` asks for them.
     #[pyo3(signature = (include_private = false))]
-    fn iterdir(&self, include_private: bool) -> PyResult<Vec<Self>> {
-        Ok(self
-            .inner
-            .ls(false, include_private)
-            .map_err(value_error)?
-            .into_iter()
-            .map(Self::from_core)
-            .collect())
+    fn iterdir(&self, include_private: bool) -> PyIOBaseIterator {
+        PyIOBaseIterator {
+            entries: self.inner.ls(false, include_private),
+        }
     }
 
     /// List the children, optionally descending, as the core `ls`.
+    ///
+    /// Lazy: see `iterdir`.
     #[pyo3(signature = (recursive = false, include_private = false))]
-    fn ls(&self, recursive: bool, include_private: bool) -> PyResult<Vec<Self>> {
-        Ok(self
-            .inner
-            .ls(recursive, include_private)
-            .map_err(value_error)?
-            .into_iter()
-            .map(Self::from_core)
-            .collect())
+    fn ls(&self, recursive: bool, include_private: bool) -> PyIOBaseIterator {
+        PyIOBaseIterator {
+            entries: self.inner.ls(recursive, include_private),
+        }
     }
 
     /// Expand a glob against this resource, as `Path.glob`.
+    ///
+    /// Lazy: a pattern whose fixed prefix names nothing touches nothing
+    /// beneath it, because the walk only starts on the first `next`.
     #[pyo3(signature = (pattern, include_private = false))]
-    fn glob(&self, pattern: &str, include_private: bool) -> PyResult<Vec<Self>> {
-        Ok(self
-            .inner
-            .glob(pattern, include_private)
-            .map_err(value_error)?
-            .into_iter()
-            .map(Self::from_core)
-            .collect())
+    fn glob(&self, pattern: &str, include_private: bool) -> PyResult<PyIOBaseIterator> {
+        Ok(PyIOBaseIterator {
+            entries: self
+                .inner
+                .glob(pattern, include_private)
+                .map_err(value_error)?,
+        })
     }
 
     /// Expand a glob at any depth, as `Path.rglob`.
     #[pyo3(signature = (pattern, include_private = false))]
-    fn rglob(&self, pattern: &str, include_private: bool) -> PyResult<Vec<Self>> {
+    fn rglob(&self, pattern: &str, include_private: bool) -> PyResult<PyIOBaseIterator> {
         self.glob(&format!("**/{pattern}"), include_private)
     }
 
@@ -584,14 +582,14 @@ impl PyIOBase {
         &self,
         filter: &Bound<'_, PyAny>,
         include_private: bool,
-    ) -> PyResult<Vec<Self>> {
+    ) -> PyResult<PyIOBaseIterator> {
         let filter = crate::expression::expression_from_value(filter)?;
-        Ok(self
-            .inner
-            .children_matching(&filter, include_private)
-            .map_err(value_error)?
-            .map(Self::from_core)
-            .collect())
+        Ok(PyIOBaseIterator {
+            entries: self
+                .inner
+                .children_matching(&filter, include_private)
+                .map_err(value_error)?,
+        })
     }
 
     /// Iterate the leaves beneath this one carrying every given partition.
@@ -603,7 +601,7 @@ impl PyIOBase {
         &self,
         filters: &Bound<'_, PyAny>,
         include_private: bool,
-    ) -> PyResult<Vec<Self>> {
+    ) -> PyResult<PyIOBaseIterator> {
         let pairs: Vec<(String, String)> =
             if let Ok(mapping) = filters.cast::<pyo3::types::PyDict>() {
                 mapping
@@ -617,12 +615,12 @@ impl PyIOBase {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        Ok(self
-            .inner
-            .children_where(&borrowed, include_private)
-            .map_err(value_error)?
-            .map(Self::from_core)
-            .collect())
+        Ok(PyIOBaseIterator {
+            entries: self
+                .inner
+                .children_where(&borrowed, include_private)
+                .map_err(value_error)?,
+        })
     }
 
     /// Read every byte here, as `Path.read_bytes`.
@@ -1529,10 +1527,8 @@ impl PyIOBase {
         usize::try_from(self.inner.size()).unwrap_or(usize::MAX)
     }
 
-    fn __iter__(&self) -> PyResult<PyIOBaseIterator> {
-        Ok(PyIOBaseIterator {
-            entries: self.iterdir(false)?.into_iter(),
-        })
+    fn __iter__(&self) -> PyIOBaseIterator {
+        self.iterdir(false)
     }
 
     fn __str__(&self) -> String {
@@ -1546,10 +1542,14 @@ impl PyIOBase {
     }
 }
 
-/// The iterator `for entry in handle` walks.
-#[pyclass(module = "yggdryl._native")]
+/// The iterator `for entry in handle`, `iterdir`, `ls`, and `glob` all walk.
+///
+/// It wraps the core listing directly, so nothing is collected on the way
+/// across the boundary and a failure raises at the entry it happened on, after
+/// which the iterator is exhausted.
+#[pyclass(name = "Listing", module = "yggdryl._native")]
 pub(crate) struct PyIOBaseIterator {
-    entries: std::vec::IntoIter<PyIOBase>,
+    entries: yggdryl::io::Listing,
 }
 
 #[pymethods]
@@ -1558,12 +1558,12 @@ impl PyIOBaseIterator {
         slf
     }
 
-    fn __next__(&mut self) -> Option<PyIOBase> {
-        self.entries.next()
-    }
-
-    fn __length_hint__(&self) -> usize {
-        self.entries.len()
+    fn __next__(&mut self) -> PyResult<Option<PyIOBase>> {
+        self.entries
+            .next()
+            .transpose()
+            .map(|entry| entry.map(PyIOBase::from_core))
+            .map_err(value_error)
     }
 }
 

@@ -80,7 +80,14 @@ pub(crate) fn data_type_js_hint(data_type: &DataType) -> Result<JsValueHint> {
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
         | D::Decimal256 { .. } => JsValueHint::BigInt,
-        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => JsValueHint::Buffer,
+        // A geospatial value is its Well-Known Binary payload, so the pair
+        // projects exactly as the binary family does.
+        D::Binary
+        | D::LargeBinary
+        | D::BinaryView
+        | D::FixedSizeBinary(_)
+        | D::Geometry(_)
+        | D::Geography(_) => JsValueHint::Buffer,
         D::Utf8 | D::LargeUtf8 | D::Utf8View => JsValueHint::String,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
@@ -226,6 +233,22 @@ fn data_type_to_js<'env>(
         D::Decimal256 { .. } => decimal256_to_js(env, value),
         D::Map(map) => map_to_js(env, map, value, root_schema, path),
         D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value, root_schema, path),
+        // A geospatial value is its Well-Known Binary payload, so it crosses
+        // exactly as the binary family does.
+        D::Geometry(_) | D::Geography(_) => Buffer::from(
+            value
+                .as_wkb()
+                .ok_or_else(|| napi_error("invalid native geospatial record value"))?
+                .to_vec(),
+        )
+        .into_unknown(env),
+        // A non-null variant value crosses as the Parquet Variant binary
+        // encoding, which the Iceberg v3 layer owns; refuse by name until
+        // that codec lands rather than inventing a second encoding here.
+        D::Variant => Err(napi_error(
+            "unsupported native datatype variant: \
+             the variant binary encoding lands with the Iceberg v3 layer",
+        )),
         _ => Err(napi_error(format!(
             "unsupported native datatype {data_type}"
         ))),

@@ -41,7 +41,7 @@ if TYPE_CHECKING:
         Literal["struct"], Record | Mapping[str, object]
     ]
     UnionField: TypeAlias = TypedField[Literal["union"], object]
-    VariantField: TypeAlias = UnionField
+    DenseUnionField: TypeAlias = UnionField
     DictionaryField: TypeAlias = TypedField[Literal["dictionary"], _ValueT]
     MapField: TypeAlias = TypedField[
         Literal["map"], Mapping[_KeyT, _ValueT]
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 else:
     ListField = ListViewField = FixedSizeListField = Field
     LargeListField = LargeListViewField = StructField = UnionField = Field
-    VariantField = Field
+    DenseUnionField = Field
     DictionaryField = MapField = RunEndEncodedField = Field
 
 
@@ -135,17 +135,17 @@ def union(
     return new_field(UnionField, name, value, nullable, metadata)
 
 
-def variant(
+def dense_union(
     name: str,
     members: Iterable[Field],
     *,
     nullable: bool = True,
     metadata: MetadataInput = None,
-) -> VariantField:
+) -> DenseUnionField:
     """Create the canonical dense Union with sequential native type IDs."""
 
     value = DataType.variant(members)
-    return new_field(VariantField, name, value, nullable, metadata)
+    return new_field(DenseUnionField, name, value, nullable, metadata)
 
 
 def dictionary(
@@ -211,6 +211,7 @@ def run_end_encoded(
 
 
 __all__ = [
+    "DenseUnionField",
     "DictionaryField",
     "FixedSizeListField",
     "LargeListField",
@@ -221,7 +222,7 @@ __all__ = [
     "RunEndEncodedField",
     "StructField",
     "UnionField",
-    "VariantField",
+    "dense_union",
     "dictionary",
     "fixed_size_list",
     "large_list",
@@ -233,5 +234,4 @@ __all__ = [
     "run_end_encoded",
     "struct",
     "union",
-    "variant",
 ]

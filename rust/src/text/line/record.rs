@@ -64,6 +64,10 @@ pub struct TextOptions {
     pub select_by_names: Vec<String>,
     /// Partition equalities a read is pruned and filtered by; empty keeps all.
     pub filter_partitions: Vec<(String, String)>,
+    /// Bound on how many result rows flow in total; `None` is unlimited.
+    pub max_row_size: Option<u64>,
+    /// Bound on the result rows' Arrow in-memory bytes; `None` is unlimited.
+    pub max_byte_size: Option<u64>,
 }
 
 impl TextOptions {
@@ -85,6 +89,8 @@ impl TextOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
+            max_row_size: None,
+            max_byte_size: None,
         }
     }
 
@@ -127,6 +133,22 @@ impl IORecordOptions for TextOptions {
 
     fn set_batch_size(&mut self, batch_size: Option<usize>) {
         self.lines.set_batch_size(batch_size);
+    }
+
+    fn max_row_size(&self) -> Option<u64> {
+        self.max_row_size
+    }
+
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
+        self.max_row_size = max_row_size;
+    }
+
+    fn max_byte_size(&self) -> Option<u64> {
+        self.max_byte_size
+    }
+
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
+        self.max_byte_size = max_byte_size;
     }
 
     fn level(&self) -> Level {

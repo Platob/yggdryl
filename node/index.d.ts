@@ -78,26 +78,10 @@ export declare class Catalog {
    */
   constructor(warehouse: LocationInput)
   /**
-   * Create the named table, writing its first metadata document.
-   *
-   * `schema` is a root `Field`, a field expression, or an array of child
-   * `Field`s assembled under a root named `row`. Unnumbered columns are
-   * numbered, and the partition spec is derived from the columns the schema
-   * itself marks - a schema that marks none produces an unpartitioned
-   * table.
+   * Open the table a dotted name addresses - the one-call spelling of
+   * `catalog.tables.get(name)`.
    */
-  createTable(name: string, schema: TableSchemaInput): Table
-  /** Open the named table. */
   table(name: string): Table
-  /** Return whether the named table exists. */
-  hasTable(name: string): boolean
-  /**
-   * Open the named table if it exists, creating it otherwise.
-   *
-   * An existing table is opened as it is - `schema` describes only the
-   * table this call would create.
-   */
-  openOrCreateTable(name: string, schema: TableSchemaInput): Table
   /**
    * Append `data` to the named table, creating it on first write.
    *
@@ -114,19 +98,6 @@ export declare class Catalog {
    * table so the caller can keep going.
    */
   overwrite(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
-  /**
-   * List the namespaces one level below `parent`, as sorted dotted names.
-   *
-   * Omitting `parent` lists the warehouse's own child folders. A parent
-   * that does not exist lists nothing rather than failing.
-   */
-  listNamespaces(parent?: string | undefined | null): Array<string>
-  /**
-   * List the tables in a namespace, as sorted dotted names.
-   *
-   * A namespace that does not exist lists nothing rather than failing.
-   */
-  listTables(namespace: string): Array<string>
   /**
    * One namespace as a view: `catalog.namespace('analytics')`.
    *
@@ -145,6 +116,28 @@ export declare class Catalog {
    * chains all the way to a table.
    */
   get namespaces(): JsNamespaces
+  /**
+   * The catalog's tables, as the same lazy view over dotted names.
+   *
+   * `catalog.tables.get('sales.eu.orders')` descends; an un-dotted name
+   * addresses a table directly under the warehouse root, and the listing
+   * questions answer exactly those.
+   */
+  get tables(): JsTables
+  /**
+   * The catalog's own properties, from `metadata/catalog.json`.
+   *
+   * Absent means empty - never an error a caller has to catch.
+   */
+  properties(): Record<string, string>
+  /**
+   * Set and remove catalog properties as one transactional write.
+   *
+   * `updates` is a mapping of properties to set and `removes` lists the
+   * keys to drop, in that order. Passing neither writes nothing at all.
+   * Keys under the reserved `iceberg:` prefix are refused by name.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
 }
 export type JsCatalog = Catalog
 
@@ -196,6 +189,18 @@ export declare class DataType {
   static from(value: DataType | string): DataType
   /** Creates the physical time-of-day type selected by its resolution. */
   static time(unit: string): DataType
+  /**
+   * Creates a geometry datatype: planar features as Well-Known Binary.
+   * Omitting `crs` fills the `OGC:CRS84` default shared with Parquet and
+   * Iceberg; a geometry takes no edge algorithm.
+   */
+  static geometry(crs?: string | undefined | null): DataType
+  /**
+   * Creates a geography datatype: features on a sphere or spheroid.
+   * Omitting `crs` fills the `OGC:CRS84` default and omitting `algorithm`
+   * fills `spherical`; `algorithm` accepts the canonical lowercase names.
+   */
+  static geography(crs?: string | undefined | null, algorithm?: string | undefined | null): DataType
   /** Parse canonical, Arrow, SQL, Hive, or Spark type syntax. */
   static fromString(value: string): DataType
   /** Deserialize the native structural JSON representation. */
@@ -606,6 +611,21 @@ export declare class Field {
 export type JsField = Field
 
 /**
+ * The names of one collection level, one at a time.
+ *
+ * Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
+ * iterator directly, so nothing is collected on the way across the boundary;
+ * `next()` is the native half of the iteration protocol and the loader wraps
+ * it so `for...of` yields strings. A failure throws at the entry it happened
+ * on, after which the iterator is exhausted.
+ */
+export declare class IcebergNames {
+  /** The next name, or `null` when the level is exhausted. */
+  next(): string | null
+}
+export type JsIcebergNames = IcebergNames
+
+/**
  * Configuration for one table's commits, writes, and reads.
  *
  * The value records only what was set on it: every getter answers the field's
@@ -813,16 +833,27 @@ export declare class IOBase {
   /**
    * Iterate the immediate children, as `fs.readdirSync`.
    *
-   * Private entries - names beginning with a dot - are skipped unless
+   * The listing is lazy and iterable: `for...of` walks it, and taking three
+   * entries from a folder of a hundred thousand costs three. Private
+   * entries - names beginning with a dot - are skipped unless
    * `includePrivate` asks for them.
    */
-  iterdir(includePrivate?: boolean | undefined | null): Array<IOBase>
-  /** List the children, optionally descending, as the core `ls`. */
-  ls(recursive?: boolean | undefined | null, includePrivate?: boolean | undefined | null): Array<IOBase>
-  /** Expand a glob against this resource, as `fs.globSync`. */
-  glob(pattern: string, includePrivate?: boolean | undefined | null): Array<IOBase>
+  iterdir(includePrivate?: boolean | undefined | null): JsListing
+  /**
+   * List the children, optionally descending, as the core `ls`.
+   *
+   * Lazy and iterable: see `iterdir`.
+   */
+  ls(recursive?: boolean | undefined | null, includePrivate?: boolean | undefined | null): JsListing
+  /**
+   * Expand a glob against this resource, as `fs.globSync`.
+   *
+   * Lazy and iterable: a pattern whose fixed prefix names nothing touches
+   * nothing beneath it, because the walk only starts on the first `next`.
+   */
+  glob(pattern: string, includePrivate?: boolean | undefined | null): JsListing
   /** Expand a glob at any depth, so a pattern needs no leading `**\/`. */
-  rglob(pattern: string, includePrivate?: boolean | undefined | null): Array<IOBase>
+  rglob(pattern: string, includePrivate?: boolean | undefined | null): JsListing
   /** The Hive partition pairs this resource's location spells out. */
   get partitions(): Array<PartitionEntry>
   /**
@@ -836,14 +867,14 @@ export declare class IOBase {
    *
    * `filter` is an `Expression` or the text of one, which parses.
    */
-  childrenMatching(filter: Expression | string, includePrivate?: boolean | undefined | null): Array<IOBase>
+  childrenMatching(filter: Expression | string, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Iterate the leaves beneath this one carrying every given partition.
    *
    * `filters` is a mapping or a sequence of pairs, so a partitioned write
    * selects the parts it has to touch and leaves the rest alone.
    */
-  childrenWhere(filters: PartitionFilters, includePrivate?: boolean | undefined | null): Array<IOBase>
+  childrenWhere(filters: PartitionFilters, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Read every byte here, as `fs.readFileSync`.
    *
@@ -1066,6 +1097,22 @@ export declare class LineIterator {
 }
 export type JsLineIterator = LineIterator
 
+/**
+ * The entries of one listing, one at a time.
+ *
+ * Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
+ * `childrenWhere`. It wraps the core listing directly, so nothing is
+ * collected on the way across the boundary; `next()` is the native half of
+ * the iteration protocol and the loader wraps it so `for...of` yields
+ * handles. A failure throws at the entry it happened on, after which the
+ * listing is exhausted.
+ */
+export declare class Listing {
+  /** The next entry, or `null` when the listing is exhausted. */
+  next(): IOBase | null
+}
+export type JsListing = Listing
+
 /** A base MIME type plus ordered transparent encodings. */
 export declare class MediaType {
   /** Parse/clone a media value or promote one MIME value. */
@@ -1243,9 +1290,8 @@ export type JsMimeType = MimeType
  * [`tables`](Self::tables) and its child namespaces are
  * [`namespaces`](Self::namespaces), so access chains -
  * `catalog.namespaces.get('sales').tables.get('orders')` - and every
- * collection question has exactly one home. The table methods here are the
- * short spelling of the same view, kept so a caller who has a namespace need
- * not reach for one.
+ * collection question has exactly one home: a namespace is a resource, and
+ * the map verbs live on its collections, never on it.
  */
 export declare class Namespace {
   /** The namespace's dotted name. */
@@ -1257,14 +1303,22 @@ export declare class Namespace {
    * catalog itself answers - the cascade that reaches a nested namespace.
    */
   get namespaces(): JsNamespaces
-  /** Open the named table. */
-  table(name: string): Table
-  /** Open the named table, as a map reads one. */
-  get(name: string): Table
-  /** Return whether the named table exists here. */
-  has(name: string): boolean
-  /** Open the named table, creating it with `schema` when absent. */
-  openOrCreateTable(name: string, schema: Field): Table
+  /**
+   * The namespace's properties, from `metadata/namespace.json`.
+   *
+   * Absent means empty - a namespace a table write brought into being
+   * carries no document and answers no properties, and that is not a
+   * failure.
+   */
+  properties(): Record<string, string>
+  /**
+   * Set and remove namespace properties as one transactional write.
+   *
+   * `updates` is a mapping of properties to set and `removes` lists the
+   * keys to drop, in that order. Passing neither writes nothing at all.
+   * Keys under the reserved `iceberg:` prefix are refused by name.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
 }
 export type JsNamespace = Namespace
 
@@ -1295,9 +1349,18 @@ export declare class Namespaces {
    * `false` here, and so does a location nothing occupies yet.
    */
   has(name: string): boolean
+  /**
+   * The names one level down, lazily - the loader wires `Symbol.iterator`,
+   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
+   */
+  keys(): JsIcebergNames
   /** The namespaces one level down, as sorted bare names. */
   names(): Array<string>
-  /** How many namespaces are one level down, right now. */
+  /**
+   * How many namespaces are one level down, right now.
+   *
+   * This drains the level's listing, so it costs the full listing.
+   */
   size(): number
   /**
    * Create the named namespace, as the folder it is.
@@ -1410,6 +1473,25 @@ export declare class RecordOptions {
    * none. `null` is how "no bound" is spelled.
    */
   set batchSize(batchSize: number | undefined | null)
+  /**
+   * The bound on how many result rows flow in total, when one is set.
+   *
+   * A count of rows, applied last - after the declared schema, selection,
+   * completion cast, and partition filter - so `0` is a valid ask: the
+   * shaped schema with no batches, rather than an error.
+   */
+  get maxRowSize(): number | null
+  /** Set the bound on how many result rows flow in total. */
+  set maxRowSize(maxRowSize: number | undefined | null)
+  /**
+   * The bound on the result rows' Arrow in-memory bytes, when one is set.
+   *
+   * Counted uncompressed, never as encoded bytes; a non-zero bound always
+   * yields at least one row, and only `0` yields nothing.
+   */
+  get maxByteSize(): number | null
+  /** Set the bound on the result rows' Arrow in-memory bytes. */
+  set maxByteSize(maxByteSize: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -1459,6 +1541,10 @@ export declare class RecordOptions {
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
   withBatchSize(batchSize: number): RecordOptions
+  /** Return these options with a bound on how many result rows flow. */
+  withMaxRowSize(maxRowSize: number): RecordOptions
+  /** Return these options with a bound on the result rows' Arrow bytes. */
+  withMaxByteSize(maxByteSize: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with a match key for a write. */
@@ -1873,12 +1959,14 @@ export declare class Table {
 export type JsTable = Table
 
 /**
- * The tables of one namespace, as a lazy map-like view.
+ * The tables of one namespace - or of the warehouse root - as a lazy view.
  *
  * The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
  * a [`Table`](JsTable) and the write conveniences that take a name create the
- * table on first write, from the incoming rows' own schema. Every answer comes
- * from storage at call time, so the view is never stale.
+ * table on first write, from the incoming rows' own schema. At the root,
+ * names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
+ * descends. Every answer comes from storage at call time, so the view is
+ * never stale.
  */
 export declare class Tables {
   /**
@@ -1892,9 +1980,18 @@ export declare class Tables {
   get(name: string): Table
   /** Return whether the named table exists, asked of storage now. */
   has(name: string): boolean
+  /**
+   * The names one level down, lazily - the loader wires `Symbol.iterator`,
+   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
+   */
+  keys(): IcebergNames
   /** This namespace's tables, as sorted bare names. */
   names(): Array<string>
-  /** How many tables the namespace holds, right now. */
+  /**
+   * How many tables the namespace holds, right now.
+   *
+   * This drains the level's listing, so it costs the full listing.
+   */
   size(): number
   /**
    * Create the named table, writing its first metadata document.

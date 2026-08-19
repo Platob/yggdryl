@@ -104,8 +104,8 @@ test('iterdir skips private entries by default', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const handle = new IOBase(root)
 
-  assert.deepEqual(names(handle.iterdir()), ['year=2024', 'year=2025'])
-  assert.ok(names(handle.iterdir(true)).includes('.staging'))
+  assert.deepEqual(names([...handle.iterdir()]), ['year=2024', 'year=2025'])
+  assert.ok(names([...handle.iterdir(true)]).includes('.staging'))
   // Iterating the handle itself is iterdir, as iterating a directory is.
   assert.deepEqual(names([...handle]), ['year=2024', 'year=2025'])
 })
@@ -115,12 +115,12 @@ test('ls descends only when it is asked to', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const handle = new IOBase(root)
 
-  assert.equal(handle.ls().length, 2)
+  assert.equal([...handle.ls()].length, 2)
   // Two years, four months, and eight leaves.
-  assert.equal(handle.ls(true).length, 14)
-  assert.equal(handle.ls(true, true).length, 16)
+  assert.equal([...handle.ls(true)].length, 14)
+  assert.equal([...handle.ls(true, true)].length, 16)
   // A leaf contains nothing rather than failing to be listed.
-  assert.deepEqual(handle.joinpath('year=2024', 'month=01', 'notes.txt').ls(true), [])
+  assert.deepEqual([...handle.joinpath('year=2024', 'month=01', 'notes.txt').ls(true)], [])
 })
 
 test('glob and rglob select the same leaves', (t) => {
@@ -128,12 +128,12 @@ test('glob and rglob select the same leaves', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const handle = new IOBase(root)
 
-  assert.equal(handle.glob('**/*.parquet').length, 4)
-  assert.equal(handle.rglob('*.parquet').length, 4)
-  assert.equal(handle.glob('year=2024/**/*.parquet').length, 2)
+  assert.equal([...handle.glob('**/*.parquet')].length, 4)
+  assert.equal([...handle.rglob('*.parquet')].length, 4)
+  assert.equal([...handle.glob('year=2024/**/*.parquet')].length, 2)
   // One plain segment stays at one level, where there are no leaves.
-  assert.deepEqual(handle.glob('*.parquet'), [])
-  assert.equal(handle.rglob('*.parquet', true).length, 5)
+  assert.deepEqual([...handle.glob('*.parquet')], [])
+  assert.equal([...handle.rglob('*.parquet', true)].length, 5)
 })
 
 test('a write creates and a read returns it', (t) => {
@@ -233,27 +233,27 @@ test('childrenWhere selects the parts to rewrite', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const handle = new IOBase(root)
 
-  const year = handle.childrenWhere({ year: '2024' })
+  const year = [...handle.childrenWhere({ year: '2024' })]
   assert.equal(year.length, 4)
   assert.ok(year.every((entry) => entry.isFile()))
 
   // A Map, an entry array, and a plain object spell the same set of pairs.
-  assert.equal(handle.childrenWhere(new Map([['year', '2024']])).length, 4)
-  assert.equal(handle.childrenWhere([['year', '2024']]).length, 4)
+  assert.equal([...handle.childrenWhere(new Map([['year', '2024']]))].length, 4)
+  assert.equal([...handle.childrenWhere([['year', '2024']])].length, 4)
   assert.equal(
-    handle.childrenWhere([{ column: 'year', value: '2024' }]).length,
+    [...handle.childrenWhere([{ column: 'year', value: '2024' }])].length,
     4,
   )
 
-  const both = handle.childrenWhere([
+  const both = [...handle.childrenWhere([
     ['year', '2024'],
     ['month', '02'],
-  ])
+  ])]
   assert.equal(both.length, 2)
-  assert.deepEqual(handle.childrenWhere({ year: '1999' }), [])
+  assert.deepEqual([...handle.childrenWhere({ year: '1999' })], [])
   // No filter is every leaf.
-  assert.equal(handle.childrenWhere({}).length, 8)
-  assert.equal(handle.childrenWhere({}, true).length, 9)
+  assert.equal([...handle.childrenWhere({})].length, 8)
+  assert.equal([...handle.childrenWhere({}, true)].length, 9)
 
   assert.throws(() => handle.childrenWhere('year=2024'), TypeError)
   assert.throws(() => handle.childrenWhere([['year']]), TypeError)

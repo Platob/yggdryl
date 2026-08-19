@@ -94,7 +94,7 @@ your own hardware before drawing conclusions.
 
 | Target | Isolates |
 | --- | --- |
-| `datatype` | Parsing, decimal and time selection, Arrow projection, defaults, compatibility rewriting |
+| `datatype` | Parsing, decimal and time selection, Arrow projection, defaults, compatibility rewriting, and (`geospatial`) the WKB reader against payload size: decode and the single-pass bounding box |
 | `field` | Construction, metadata mutation and cache invalidation, comparison, typed views |
 | `enums` | MIME and media parsing, compound filename inference, content-coding recovery |
 | `uri` | Parsing, component access, path segments, path interop |
@@ -108,7 +108,7 @@ your own hardware before drawing conclusions.
 | `lines` (JavaScript) | The same corpus at the copied-IPC boundary, with median, best, and spread |
 | `arrowfs` | What wrapping a foreign Arrow filesystem costs: bytes, ranged reads, record round trips, and listing, each beside the native handle holding the same bytes |
 | `arrowfs` (Python) | The same boundary against PyArrow's own calls on the same filesystem - the implementation the wrapper delegates to |
-| `iceberg` | Plan, metadata, manifests (full against the planning fast path, at scale), partitioning, compaction, merge, contended commits |
+| `iceberg` | Plan, metadata, manifests (full against the planning fast path, at scale), partitioning, compaction, merge, contended commits, and (`catalog_resolve`) name resolution through the catalog hierarchy, the backend calls each operation makes printed beside the wall time |
 | `compression` (Python) | The byte codings against the standard library's, same wire, same payload |
 
 ## Rules

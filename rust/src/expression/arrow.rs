@@ -35,6 +35,7 @@ use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use super::Comparison;
+use super::apply::{ApplyExpression, ApplyExpressionStream};
 use super::bind::{Bound, BoundStatement, Kind, Node};
 use super::eval::Row;
 use super::parser::{Direction, NullsOrder};
@@ -81,18 +82,22 @@ impl Vector {
 
     /// This operand as a boolean column of `rows` rows.
     fn into_boolean(self, rows: usize) -> Result<BooleanArray> {
-        let array = self.into_column(rows)?;
-        array
-            .as_any()
-            .downcast_ref::<BooleanArray>()
-            .cloned()
-            .ok_or_else(|| {
-                Error::IncompatibleSchema(format!(
-                    "expected a boolean operand, got {}",
-                    array.data_type()
-                ))
-            })
+        boolean_column(self.into_column(rows)?)
     }
+}
+
+/// One full column read as the boolean it must be.
+fn boolean_column(array: ArrayRef) -> Result<BooleanArray> {
+    array
+        .as_any()
+        .downcast_ref::<BooleanArray>()
+        .cloned()
+        .ok_or_else(|| {
+            Error::IncompatibleSchema(format!(
+                "expected a boolean operand, got {}",
+                array.data_type()
+            ))
+        })
 }
 
 /// What one batch evaluation knows besides the batch.
@@ -143,15 +148,54 @@ impl<'batch> Context<'batch> {
     }
 }
 
+/// One batch applies to one column of answers.
+///
+/// This is the vectorized tier's application: the batch is the target, the
+/// output is one `ArrayRef` with one answer per row. The holder-augmented
+/// variants on [`Bound`] generalize it with an extra participant the trait's
+/// shape has no room for.
+impl ApplyExpression for RecordBatch {
+    type Output = ArrayRef;
+
+    fn apply_expression(&self, bound: &Bound) -> crate::Result<ArrayRef> {
+        let context = Context::new(bound.schema(), self, None);
+        let vector = evaluate(bound.node(), &context).map_err(crate::Error::from)?;
+        vector
+            .into_column(self.num_rows())
+            .map_err(crate::Error::from)
+    }
+}
+
+/// One reader applies to the reader that yields only matching rows.
+///
+/// The stream's application is the *filtering* reader - see
+/// [`ApplyExpressionStream`] for why selection is the only application a
+/// stream can make lazily. The predicate is bound once, here, never per batch.
+impl ApplyExpressionStream for BatchReader {
+    type Output = BatchReader;
+
+    fn apply_expression_stream(self, bound: &Bound) -> crate::Result<BatchReader> {
+        let schema = self.schema();
+        Ok(Box::new(Filtered {
+            inner: self,
+            bound: bound.clone(),
+            schema,
+        }))
+    }
+}
+
 impl Bound {
     /// Evaluate this expression over one batch, producing one column.
+    ///
+    /// The batch target's [`ApplyExpression`], spelled from the expression's
+    /// side and answered in this tier's own error type.
     ///
     /// # Errors
     ///
     /// Returns an error when the batch does not carry a column the expression
     /// reads, or when a strict cast refuses a value.
     pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
-        self.evaluate_with(batch, None)
+        batch.apply_expression(self).map_err(Error::from)
     }
 
     /// Evaluate this expression over one batch alongside its holder.
@@ -169,7 +213,11 @@ impl Bound {
         batch: &RecordBatch,
         holder: Option<&dyn Attributes>,
     ) -> Result<ArrayRef> {
-        let context = Context::new(self.schema(), batch, holder);
+        // Without a holder this is exactly the batch target's application.
+        let Some(holder) = holder else {
+            return self.evaluate(batch);
+        };
+        let context = Context::new(self.schema(), batch, Some(holder));
         evaluate(self.node(), &context)?.into_column(batch.num_rows())
     }
 
@@ -203,8 +251,7 @@ impl Bound {
                 self.field().data_type()
             )));
         }
-        let context = Context::new(self.schema(), batch, holder);
-        let answered = evaluate(self.node(), &context)?.into_boolean(batch.num_rows())?;
+        let answered = boolean_column(self.evaluate_with(batch, holder)?)?;
         Ok(certain(&answered))
     }
 
@@ -242,15 +289,13 @@ impl Bound {
 
     /// Wrap a reader so every batch it yields is filtered by this predicate.
     ///
-    /// The predicate is bound once, here, and never again per batch.
+    /// The stream target's [`ApplyExpressionStream`], spelled from the
+    /// expression's side.
     #[must_use]
     pub fn filter_reader(self, inner: BatchReader) -> BatchReader {
-        let schema = inner.schema();
-        Box::new(Filtered {
-            inner,
-            bound: self,
-            schema,
-        })
+        inner
+            .apply_expression_stream(&self)
+            .unwrap_or_else(|_| unreachable!("wrapping a reader performs no fallible work"))
     }
 }
 
@@ -309,10 +354,9 @@ impl BoundStatement {
         if self.is_all() {
             return Ok(filtered);
         }
-        let context = Context::new(self.schema(), &filtered, None);
         let mut columns = Vec::with_capacity(self.projections().len());
         for projection in self.projections() {
-            columns.push(evaluate(projection.node(), &context)?.into_column(filtered.num_rows())?);
+            columns.push(projection.evaluate(&filtered)?);
         }
         let schema = crate::arrow::schema_from_field(self.output())?;
         RecordBatch::try_new(schema, columns).map_err(Error::Arrow)
@@ -332,12 +376,11 @@ impl BoundStatement {
         if self.ordering().is_empty() {
             return Ok(batch.clone());
         }
-        let context = Context::new(self.schema(), batch, None);
         let mut keys = Vec::with_capacity(self.ordering().len());
         for (bound, direction, nulls) in self.ordering() {
             let descending = matches!(direction, Direction::Descending);
             keys.push(SortColumn {
-                values: evaluate(bound.node(), &context)?.into_column(batch.num_rows())?,
+                values: bound.evaluate(batch)?,
                 options: Some(SortOptions {
                     descending,
                     // SQL's default puts nulls where the ordering's extreme is,

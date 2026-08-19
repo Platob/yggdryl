@@ -81,6 +81,10 @@ pub struct IpcOptions {
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
     pub batch_size: Option<usize>,
+    /// Most result rows in total - a count of rows, not a per-row byte cap.
+    pub max_row_size: Option<u64>,
+    /// Most Arrow in-memory bytes of result rows, never encoded bytes.
+    pub max_byte_size: Option<u64>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     /// Column names forming a write's match key; empty means overwrite.
@@ -99,6 +103,8 @@ impl IpcOptions {
             root_name: SmolStr::new_static(DEFAULT_ROOT_NAME),
             safe: false,
             batch_size: None,
+            max_row_size: None,
+            max_byte_size: None,
             level: Level::DEFAULT,
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),

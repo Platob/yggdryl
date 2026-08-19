@@ -1439,12 +1439,16 @@ for the next reader to prune with.
     // The options already know the schema, so the table exists - partitioned
     // by `level` - before the first log line is parsed.
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
-    catalog.create_table("logs.app", options.schema().with_partition_fields(&["level"])?)?;
+    catalog
+        .tables()
+        .create("logs.app", options.schema().with_partition_fields(&["level"])?)?;
 
     // The append consumes the parse itself: a lazy reader over both leaves,
     // the gzip one decoded as a stream, routed row by row into `level=...`
     // partitions and committed as one snapshot.
-    let table = catalog.append("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
+    let table = catalog
+        .tables()
+        .append("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
 
     let snapshot = table.current_snapshot().expect("one commit");
     assert_eq!(snapshot.operation(), "append");
@@ -1455,7 +1459,9 @@ for the next reader to prune with.
     let mut day_two = yggdryl::io::Buffer::new()
         .with_media_type(yggdryl::Url::from_str("file:///c.log")?.media_type());
     day_two.write_all_bytes(b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n")?;
-    let table = catalog.append("logs.app", day_two.into_arrow_lines(&options)?)?;
+    let table = catalog
+        .tables()
+        .append("logs.app", day_two.into_arrow_lines(&options)?)?;
     assert_eq!(table.metadata().snapshots.len(), 2);
     assert_eq!(table.current_snapshot().unwrap().summary_value("total-records"), Some("4"));
     assert_eq!(table.manifests()?.len(), 2, "one manifest per append");
@@ -1507,7 +1513,7 @@ for the next reader to prune with.
         nullable=False,
     ).with_partition_fields(["level"])
     catalog = Catalog(root / "warehouse")
-    catalog.create_table("logs.app", marked)
+    catalog.tables.create("logs.app", marked)
 
     # The append consumes the parse itself - lazy, one batch at a time.
     table = catalog.append("logs.app", reader)
@@ -1564,7 +1570,7 @@ for the next reader to prune with.
 
     // The reader's root field is the table's schema; marking `level` partitions it.
     const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
-    catalog.createTable('logs.app', reader.field.withPartitionFields(['level']))
+    catalog.tables.create('logs.app', reader.field.withPartitionFields(['level']))
 
     // The append consumes the parse itself - lazy, one batch at a time.
     const table = catalog.append('logs.app', reader)
@@ -1667,7 +1673,7 @@ makes the line surface worth having.
     let marked = options.schema().with_partition_fields(&["level"])?;
 
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
-    let mut table = catalog.create_table("logs.app", marked)?;
+    let mut table = catalog.tables().create("logs.app", marked)?;
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     let older = TextLineOptions::with_pattern(archived)?
@@ -1771,7 +1777,7 @@ makes the line surface worth having.
     # 1. The table exists before the first record does.
     marked = schema_from_pattern(options=extractor).with_partition_fields(["level"])
     catalog = Catalog(root / "warehouse")
-    table = catalog.create_table("logs.app", marked)
+    table = catalog.tables.create("logs.app", marked)
 
     # 2, 3, 4. One handle per folder, and one lazy combine over the two: both
     # schemas are answered without pulling a batch, so nothing is read yet.
@@ -1861,7 +1867,7 @@ makes the line surface worth having.
     // 1. The table exists before the first record does.
     const marked = schemaFromPattern(extractor).withPartitionFields(['level'])
     const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
-    const table = catalog.createTable('logs.app', marked)
+    const table = catalog.tables.create('logs.app', marked)
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     const stream = new IOBase(incoming)
@@ -2217,11 +2223,11 @@ than silently recursed into.
     let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
     let mut folder = Folder::new(&root)?;
     folder.truncate(0)?;
-    folder.child_by("a.log")?.write_all_bytes(b"line\n")?;
+    folder.child_by_path("a.log")?.write_all_bytes(b"line\n")?;
 
     // Clearing empties the container and keeps it.
     folder.clear()?;
-    assert!(folder.ls(true, false)?.is_empty());
+    assert_eq!(folder.ls(true, false).count(), 0);
     assert_eq!(folder.kind(), yggdryl::IOKind::Directory);
 
     // Removing deletes it; a second call succeeds, having done nothing. A
@@ -2230,10 +2236,10 @@ than silently recursed into.
     let leaf = root.join("nested");
     let mut nested = Folder::new(&leaf)?;
     nested.truncate(0)?;
-    assert_eq!(folder.ls(false, false)?.len(), 1);
+    assert_eq!(folder.ls(false, false).count(), 1);
     nested.remove(false)?;
     nested.remove(false)?;
-    assert!(folder.ls(false, false)?.is_empty());
+    assert_eq!(folder.ls(false, false).count(), 0);
     folder.remove(false)?;
 
     // A wrapping handle removes what it wraps, cache included.
@@ -2302,12 +2308,12 @@ than silently recursed into.
 
     // Clearing empties the container and keeps it.
     handle.clear()
-    assert.equal(handle.ls(true, false).length, 0)
+    assert.equal([...handle.ls(true, false)].length, 0)
 
     // Removing deletes it; a second call succeeds, having done nothing.
     handle.remove()
     handle.remove()
-    assert.equal(new IOBase(root).ls(false, false).length, 0)
+    assert.equal([...new IOBase(root).ls(false, false)].length, 0)
 
     // The handle stays usable and lazy - a write recreates the resource.
     const leaf = new IOBase(path.join(root, 'trades.csv'))
@@ -2446,7 +2452,7 @@ folder.truncate(0)?;
 assert!(folder.exists());
 assert_eq!(folder.kind(), IOKind::Directory);
 assert_eq!(folder.media_type().base(), &MimeType::DIRECTORY);
-assert!(folder.ls(false, false)?.is_empty());
+assert_eq!(folder.ls(false, false).count(), 0);
 
 std::fs::remove_dir_all(&path)?;
 ```
@@ -2460,7 +2466,7 @@ to:
   `folder_truncate` (creates on `0`, errors otherwise), `folder_media_type` (`inode/directory`), and
   `folder_kind` (`Directory`).
 - **`IOFile`** - a leaf. Declares `file_url` and `file_exists`. Pre-implements `file_ls` (lists
-  nothing), `file_child_by` (refuses, naming the file), and `file_kind` (`File` when it exists,
+  nothing), `file_child_by_path` (refuses, naming the file), and `file_kind` (`File` when it exists,
   `Unknown` when it does not).
 - **`IOPath`** - a location whose role is not resolved yet. Declares `path_url`, `is_folder`,
   `is_file`. Pre-implements `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), and
@@ -2480,11 +2486,11 @@ assert!(undecided.read_all_bytes()?.is_empty());
 
 // A leaf is not a container: it lists nothing and resolves no child.
 let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
-assert!(leaf.ls(true, false)?.is_empty());
-assert!(leaf.child_by("nested").is_err());
+assert_eq!(leaf.ls(true, false).count(), 0);
+assert!(leaf.child_by_path("nested").is_err());
 ```
 
-`parent`, `child_by`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
+`parent`, `child_by_path`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
 tree needs no type parameter. A resource that cannot contain others lists nothing rather than failing,
 so a caller can walk without testing each node first. `local::Path` is the reference `IOPath`: it
 resolves by looking, and a byte write is what settles an undecided location into a file. A remote
@@ -2530,7 +2536,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `delegate_iobase!` expands to the forwarding bodies for every byte method - `pread`, `pwrite`, `size`,
 `capacity`, `reserve`, `truncate`, `url`, `media_type`, `set_media_type`, `flush`, `parent`,
-`child_by`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
+`child_by_path`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
 deliberately does not forward `open`, `opened`, or `close`: a wrapper that caches something of its
 own writes those after the invocation, as the example does. [ipc.md](ipc.md),
 [parquet.md](parquet.md), and the compression handles are all built this way.
@@ -3014,6 +3020,146 @@ the stored shape is preserved exactly and no cast runs at all.
 `read_arrow_field` answers with the same shape this read produces, so the schema a caller reads and
 the batches a caller gets can never disagree.
 
+## Limiting a read or a write
+
+`max_row_size` bounds how many result rows flow in total - a count of rows,
+never a per-row byte cap - and `max_byte_size` bounds their Arrow in-memory
+bytes, counted uncompressed. Either bound applies *last*, after the fixed
+shaping order - declared schema, then selection, then completion cast, then
+partition filter - so a limit of ten combined with a filter means the first ten
+matching rows. A satisfied limit stops pulling, so the rest of the resource is
+never decoded.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
+    use yggdryl::arrow;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{DataType, MimeType};
+
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let arrow_schema = schema.to_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![Arc::new(Int64Array::from_iter_values(0..1_000))],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let plain = handle.record_options()?;
+    handle.write_arrow_batch_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
+
+    // Ten result rows, exactly: the batch the bound lands inside is sliced.
+    let first = handle.read_arrow_batch_reader(&plain.clone().with_max_row_size(10))?;
+    assert_eq!(first.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 10);
+
+    // Zero is a valid ask: the shaped schema answers, and no batch flows.
+    let mut none = handle.read_arrow_batch_reader(&plain.clone().with_max_row_size(0))?;
+    assert_eq!(none.schema().fields().len(), 1);
+    assert!(none.next().is_none());
+
+    // A non-zero byte bound always yields at least one row.
+    let narrow = handle.read_arrow_batch_reader(&plain.clone().with_max_byte_size(1))?;
+    assert_eq!(narrow.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 1);
+
+    // A limited write truncates the data the caller offered: three rows land,
+    // and what the bound cut off is never pulled from the reader.
+    let mut copy = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    copy.write_arrow_batch_reader(
+        handle.read_arrow_batch_reader(&plain)?,
+        &plain.clone().with_max_row_size(3),
+    )?;
+    let kept = copy.read_arrow_batch_reader(&plain)?;
+    assert_eq!(kept.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes()
+    handle.media_type = "application/vnd.apache.arrow.stream"
+    handle.write_arrow_batch_reader(pa.table({"id": list(range(1_000))}))
+
+    # Ten result rows, exactly: the batch the bound lands inside is sliced.
+    assert handle.read_arrow_batch_reader(max_row_size=10).read_all().num_rows == 10
+
+    # Zero is a valid ask: the shaped schema answers, and no batch flows.
+    empty = handle.read_arrow_batch_reader(max_row_size=0)
+    assert empty.schema.names == ["id"]
+    assert empty.read_all().num_rows == 0
+
+    # A non-zero byte bound always yields at least one row.
+    assert handle.read_arrow_batch_reader(max_byte_size=1).read_all().num_rows == 1
+
+    # A limited write truncates the data the caller offered: three rows land,
+    # and what the bound cut off is never pulled from the reader.
+    copy = IOBase.from_bytes()
+    copy.media_type = "application/vnd.apache.arrow.stream"
+    copy.write_arrow_batch_reader(handle.read_arrow_batch_reader(), max_row_size=3)
+    assert copy.read_arrow_batch_reader().read_all().num_rows == 3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, IOBase, MimeType } = require('yggdryl')
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray(
+        Array.from({ length: 1000 }, (_, index) => BigInt(index)),
+        new arrow.Int64(),
+      ),
+    })
+
+    const handle = IOBase.fromBytes()
+    handle.mediaType = MimeType.ARROW_STREAM
+    handle.writeArrowBatchReader(BatchReader.from(table))
+    const options = handle.recordOptions()
+
+    // Ten result rows, exactly: the batch the bound lands inside is sliced.
+    assert.equal(handle.readArrowBatchReader(options.withMaxRowSize(10)).toTable().numRows, 10)
+
+    // Zero is a valid ask: the shaped schema answers, and no batch flows.
+    const empty = handle.readArrowBatchReader(options.withMaxRowSize(0))
+    assert.equal(empty.field.dataType.length, 1)
+    assert.equal(empty.toTable().numRows, 0)
+
+    // A non-zero byte bound always yields at least one row.
+    assert.equal(handle.readArrowBatchReader(options.withMaxByteSize(1)).toTable().numRows, 1)
+
+    // A limited write truncates the data the caller offered: three rows land,
+    // and what the bound cut off is never pulled from the reader.
+    const copy = IOBase.fromBytes()
+    copy.mediaType = MimeType.ARROW_STREAM
+    copy.writeArrowBatchReader(handle.readArrowBatchReader(), options.withMaxRowSize(3))
+    assert.equal(copy.readArrowBatchReader().toTable().numRows, 3)
+    ```
+
+A limit of zero yields a reader with the shaped schema and no batches rather
+than an error, so "just the schema, cheaply" is a valid ask. The row bound is
+exact: the batch it lands inside is cut with a slice, a view over the same
+buffers rather than a copy. The byte bound stops at the last row that keeps the
+running total at or under the limit, and a non-zero byte limit always yields at
+least one row rather than silently losing everything to one wide row. When both
+are set, whichever bound binds first wins.
+
+A limited write truncates the data the caller offered: the bounds cap the
+incoming reader exactly as they cap a read, and what they cut off is never
+pulled from it. A limit combined with a non-empty `merge_by_names` is refused
+naming both settings, because a truncated merge would update the matched keys
+it kept and silently drop the rest - corrupting the resource rather than
+shortening the write.
+
 ## Appending and merging
 
 A write with no match key replaces the resource, which is what an IPC stream or
@@ -3282,11 +3428,13 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
     let lake = Folder::new(&root)?;
 
     // A fixed prefix is descended, not listed and filtered.
-    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.len(), 1);
-    assert_eq!(lake.glob("**/*.parquet", false)?.len(), 2);
+    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
+    assert_eq!(lake.glob("**/*.parquet", false)?.count(), 2);
 
     // Partition filters select the leaves to overwrite or upsert.
-    let selected: Vec<_> = lake.children_where(&[("year", "2024")], false)?.collect();
+    let selected: Vec<_> = lake
+        .children_where(&[("year", "2024")], false)?
+        .collect::<yggdryl::Result<_>>()?;
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].partitions(), vec![
         ("year".to_owned(), "2024".to_owned()),
@@ -3312,10 +3460,10 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
 
     lake = IOBase(root)
 
-    assert len(lake.glob("year=2024/**/*.parquet")) == 1
-    assert len(lake.rglob("*.parquet")) == 2
+    assert len(list(lake.glob("year=2024/**/*.parquet"))) == 1
+    assert len(list(lake.rglob("*.parquet"))) == 2
 
-    selected = lake.children_where({"year": "2024"})
+    selected = list(lake.children_where({"year": "2024"}))
     assert len(selected) == 1
     assert selected[0].partitions == (("year", "2024"), ("month", "01"))
     ```
@@ -3339,11 +3487,11 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
     const lake = new IOBase(root)
 
     // A fixed prefix is descended, not listed and filtered.
-    assert.equal(lake.glob('year=2024/**/*.parquet').length, 1)
-    assert.equal(lake.rglob('*.parquet').length, 2)
+    assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 1)
+    assert.equal([...lake.rglob('*.parquet')].length, 2)
 
     // Partition filters select the leaves to overwrite or upsert.
-    const selected = lake.childrenWhere({ year: '2024' })
+    const selected = [...lake.childrenWhere({ year: '2024' })]
     assert.equal(selected.length, 1)
     assert.deepEqual(selected[0].partitions, [
       { column: 'year', value: '2024' },
@@ -3365,6 +3513,42 @@ The pairs are sugar. Each one builds `&holder.partition['column'] = 'value'` and
 answered by `children_matching`, which takes the [expression](expression.md) language itself: ranges,
 null tests, `in` lists, and every other `&holder.*` attribute. There is no second filter behind the
 pairs.
+
+## A listing is an iterator
+
+Every listing here yields one entry at a time: `ls`, `glob`, `rglob`, `children_matching`, and
+`children_where` all hand back a `Listing`, and none of them decides to build a vector on the
+caller's behalf. That is not a style preference. A folder with a million leaves has to be listable
+the same way one with three is, and a shape that has to materialize cannot describe a resource
+larger than memory - the same argument the three record methods already make about batches.
+
+Three consequences a caller can rely on:
+
+- **Nothing is touched until the first `next`.** Building a listing costs nothing, and taking three
+  entries from a folder of a hundred thousand costs three. A glob whose fixed prefix names nothing
+  reads no directory beneath it at all.
+- **The item is a `Result`, and the iterator is fused after the first one that fails.** A listing
+  fails *at* the failing entry, naming it, without discarding what it already yielded and without
+  spinning against a backend that is already refusing. A caller who wants a vector writes
+  `.collect::<Result<Vec<_>>>()`.
+- **Order is deterministic.** One directory's entries are sorted, and a recursive walk yields each
+  container immediately before the subtree beneath it. The same listing over the same state yields
+  the same sequence twice.
+
+What a recursive walk holds is its *frontier* - one level's cursor per open depth - never its
+result. The local backend reads and sorts one directory at a time; an Arrow filesystem answers a
+whole prefix in one call, because that is the shape an object store already has, and the laziness
+lives inside that one answer.
+
+A few returns in listing positions stay owned, and each says what bounds it: `IOBase::partitions` is
+bounded by one URL's path depth, and a report of what an operation just did - the snapshot ids an
+expiry removed, the counts a compaction reports - is bounded by the operation. Unbounded by the
+resource means an iterator; bounded by the act, or already in hand, may be owned.
+
+In Python the listings are ordinary iterators, so `iterdir`, `glob`, and `rglob` behave exactly as
+`pathlib`'s do - wrap one in `list()` when you want a sequence, and remember that `len()` of that
+list costs the whole walk. In JavaScript they are iterables: `for...of` walks one, and `[...listing]`
+drains it.
 
 ## Partition pruning and filtering
 
@@ -3493,7 +3677,7 @@ each row of a write to the leaf its values name.
     )?;
 
     // Only `price` reached the leaf; the other two are the directory names.
-    let leaf = lake.child_by("year=2024/month=01/part-0.arrows")?;
+    let leaf = lake.child_by_path("year=2024/month=01/part-0.arrows")?;
     assert_eq!(
         leaf.read_arrow_field(&RecordOptions::for_media_type(leaf.media_type())?)?.field_len(),
         1

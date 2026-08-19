@@ -52,7 +52,7 @@ impl ArrowFileSystem for Counting {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
+    fn list(&self, path: &str, recursive: bool) -> crate::arrowfs::FileInfos {
         self.count();
         self.inner.list(path, recursive)
     }
@@ -99,8 +99,10 @@ impl ArrowFileSystem for Failing {
         Self::refusal()
     }
 
-    fn list(&self, _path: &str, _recursive: bool) -> Result<Vec<FileInfo>> {
-        Self::refusal()
+    fn list(&self, _path: &str, _recursive: bool) -> crate::arrowfs::FileInfos {
+        crate::arrowfs::FileInfos::failing(
+            Self::refusal::<()>().expect_err("the refusal this filesystem always answers with"),
+        )
     }
 
     fn read_range(&self, _path: &str, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
@@ -426,12 +428,18 @@ mod hierarchy {
         let folder = Folder::from_location(filesystem, "bucket").unwrap();
 
         // Flat: the file and the one immediate subdirectory.
-        let flat = folder.ls(false, false).unwrap();
+        let flat = folder
+            .ls(false, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(flat.len(), 2, "{flat:?}");
         assert_eq!(flat.iter().filter(|entry| entry.is_container()).count(), 1);
 
         // Recursive: every directory and every leaf beneath.
-        let deep = folder.ls(true, false).unwrap();
+        let deep = folder
+            .ls(true, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(deep.len(), 5, "{deep:?}");
 
         // The order is stable across runs.
@@ -449,7 +457,10 @@ mod hierarchy {
         let filesystem = lake();
         let folder = Folder::from_location(filesystem, "bucket").unwrap();
 
-        let public = folder.ls(true, false).unwrap();
+        let public = folder
+            .ls(true, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert!(
             public
                 .iter()
@@ -457,7 +468,10 @@ mod hierarchy {
             "a private directory is not descended into"
         );
 
-        let everything = folder.ls(true, true).unwrap();
+        let everything = folder
+            .ls(true, true)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert!(
             everything
                 .iter()
@@ -480,10 +494,18 @@ mod hierarchy {
         }
         let folder = Folder::from_location(filesystem.clone(), "bucket").unwrap();
 
-        let all = folder.glob("**/*.parquet", false).unwrap();
+        let all: Vec<_> = folder
+            .glob("**/*.parquet", false)
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap();
         assert_eq!(all.len(), 4, "{all:?}");
 
-        let one_year = folder.glob("year=2024/**/*.parquet", false).unwrap();
+        let one_year: Vec<_> = folder
+            .glob("year=2024/**/*.parquet", false)
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap();
         assert_eq!(one_year.len(), 2, "{one_year:?}");
         assert!(
             one_year
@@ -492,11 +514,12 @@ mod hierarchy {
         );
 
         // A prefix that is not there yields nothing rather than failing.
-        assert!(
+        assert_eq!(
             folder
                 .glob("year=1999/**/*.parquet", false)
                 .unwrap()
-                .is_empty()
+                .count(),
+            0
         );
     }
 
@@ -508,13 +531,15 @@ mod hierarchy {
         let year: Vec<_> = folder
             .children_where(&[("year", "2024")], false)
             .unwrap()
-            .collect();
+            .collect::<Result<_>>()
+            .unwrap();
         assert_eq!(year.len(), 4, "two months, two leaves each");
 
         let one: Vec<_> = folder
             .children_where(&[("year", "2024"), ("month", "01")], false)
             .unwrap()
-            .collect();
+            .collect::<Result<_>>()
+            .unwrap();
         assert_eq!(one.len(), 2);
         assert!(one.iter().all(|entry| !entry.is_container()));
         assert_eq!(
@@ -542,20 +567,25 @@ mod hierarchy {
         filesystem.write_full("bucket/trades.bin", b"x").unwrap();
         let folder = Folder::from_location(filesystem, "bucket").unwrap();
 
-        let leaf = folder.child_by("trades.bin").unwrap();
+        let leaf = folder.child_by_path("trades.bin").unwrap();
         assert!(!leaf.is_container());
 
-        let message = leaf.child_by("deeper").unwrap_err().to_string();
+        let message = leaf.child_by_path("deeper").unwrap_err().to_string();
         assert!(message.contains("expected a container"), "{message}");
         assert!(message.contains("trades.bin"), "{message}");
         // A leaf lists nothing rather than failing.
-        assert!(leaf.ls(true, false).unwrap().is_empty());
+        assert!(
+            leaf.ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
     fn a_listed_handle_resolves_back_to_itself_by_name() {
         // Every generic caller does this round trip - the line projection
-        // reopens a leaf as `parent().child_by(url.file_name())`, a folder
+        // reopens a leaf as `parent().child_by_path(url.file_name())`, a folder
         // write routes rows by the segments under its root, and a table
         // turns a recorded location into a relative name first. So a name
         // taken off a listed handle's own URL has to address the object that
@@ -566,13 +596,16 @@ mod hierarchy {
             .unwrap();
         let folder = Folder::from_location(filesystem, "logs").unwrap();
 
-        let listed = folder.ls(false, false).unwrap();
+        let listed = folder
+            .ls(false, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(listed.len(), 1);
         let url = listed[0].url().unwrap().clone();
         assert_eq!(listed[0].size(), 10);
 
         let name = url.file_name().unwrap();
-        let round = folder.child_by(name).unwrap();
+        let round = folder.child_by_path(name).unwrap();
         assert_eq!(
             round.url().unwrap(),
             &url,
@@ -582,32 +615,38 @@ mod hierarchy {
 
         // The parent of a listed child resolves it the same way.
         let parent = listed[0].parent().expect("a listed leaf has a parent");
-        let reopened = parent.child_by(name).unwrap();
+        let reopened = parent.child_by_path(name).unwrap();
         assert_eq!(reopened.read_all_bytes().unwrap(), b"REAL-BYTES");
     }
 
     #[test]
     fn a_folder_write_lands_on_the_leaf_it_read() {
         // The folder record path clears an existing leaf through its listed
-        // handle and rewrites it through `child_by`, so a name needing
+        // handle and rewrites it through `child_by_path`, so a name needing
         // escaping must resolve to one object, never two.
         let filesystem = memory();
         filesystem.write_full("lake/part 0.bin", b"old").unwrap();
         let folder = Folder::from_location(filesystem.clone(), "lake").unwrap();
 
-        let relative = folder.ls(false, false).unwrap()[0]
+        let relative = folder
+            .ls(false, false)
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap()[0]
             .url()
             .unwrap()
             .file_name()
             .unwrap()
             .to_owned();
-        let mut leaf = folder.child_by(&relative).unwrap();
+        let mut leaf = folder.child_by_path(&relative).unwrap();
         leaf.write_all_bytes(b"new").unwrap();
         leaf.close().unwrap();
 
         // One object, holding the new bytes - not a second, differently
         // spelled key beside the original.
-        let entries = filesystem.list("lake", true).unwrap();
+        let entries = filesystem
+            .list("lake", true)
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
         assert_eq!(entries.len(), 1, "{entries:?}");
         assert_eq!(entries[0].path, "lake/part 0.bin");
         assert_eq!(entries[0].size, 3);
@@ -621,13 +660,20 @@ mod hierarchy {
             .unwrap();
         let folder = Folder::from_location(filesystem, "bucket/lake").unwrap();
 
-        let leaf = folder.child_by("trades.bin").unwrap();
+        let leaf = folder.child_by_path("trades.bin").unwrap();
         let parent = leaf.parent().expect("a leaf has a parent");
         assert!(parent.is_container());
         assert_eq!(parent.url().unwrap(), folder.url());
 
         // The rebuilt parent still reaches the same filesystem.
-        assert_eq!(parent.ls(false, false).unwrap().len(), 1);
+        assert_eq!(
+            parent
+                .ls(false, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -659,12 +705,24 @@ mod hierarchy {
         let directory = Path::from_location(filesystem.clone(), "bucket/lake").unwrap();
         assert_eq!(directory.kind(), IOKind::Directory);
         assert!(directory.is_container());
-        assert_eq!(directory.ls(false, false).unwrap().len(), 1);
+        assert_eq!(
+            directory
+                .ls(false, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .len(),
+            1
+        );
 
         let leaf = Path::from_location(filesystem.clone(), "bucket/lake/a.bin").unwrap();
         assert_eq!(leaf.kind(), IOKind::File);
         assert_eq!(leaf.read_all_bytes().unwrap(), b"a");
-        assert!(leaf.ls(true, false).unwrap().is_empty());
+        assert!(
+            leaf.ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .is_empty()
+        );
 
         // Nothing there yet has not decided what it is; a write settles it.
         let mut undecided = Path::from_location(filesystem, "bucket/lake/new.bin").unwrap();
@@ -742,10 +800,17 @@ mod identity {
             .unwrap();
 
         let folder = Folder::from_location(filesystem.clone(), "marché").unwrap();
-        assert_eq!(folder.ls(true, false).unwrap().len(), 2);
+        assert_eq!(
+            folder
+                .ls(true, false)
+                .collect::<crate::Result<Vec<_>>>()
+                .unwrap()
+                .len(),
+            2
+        );
 
         // A raw filesystem name is reached through `from_location`, which is
-        // the constructor that encodes; `child_by` takes URI-path text.
+        // the constructor that encodes; `child_by_path` takes URI-path text.
         let leaf = File::from_location(filesystem.clone(), "marché/données/prix€.bin").unwrap();
         assert_eq!(leaf.read_all_bytes().unwrap(), b"euro");
         assert_eq!(
@@ -948,7 +1013,7 @@ mod records {
             )
             .unwrap();
             let mut leaf = folder
-                .child_by(&format!("year={year}/part-0.arrows"))
+                .child_by_path(&format!("year={year}/part-0.arrows"))
                 .unwrap();
             let options = leaf.record_options().unwrap().with_schema(schema());
             leaf.write_arrow_batch_reader(
@@ -1045,5 +1110,67 @@ mod tables {
             table.read_arrow_field(&options).unwrap().field_len(),
             schema().field_len()
         );
+    }
+}
+
+/// A listing must cost what it yields, not what it could have yielded, and the
+/// counting filesystem is what turns that into a number.
+mod listing_cost {
+    use std::sync::Arc;
+
+    use super::{Counting, Result};
+    use crate::arrowfs::{ArrowFileSystem, Folder};
+    use crate::io::IOBase;
+
+    /// A tree `depth` levels deep, `width` leaves per level.
+    fn tree(filesystem: &Counting, depth: usize, width: usize) {
+        let mut prefix = "lake".to_owned();
+        for level in 0..depth {
+            for leaf in 0..width {
+                filesystem
+                    .inner
+                    .write_full(&format!("{prefix}/part-{leaf:04}.parquet"), b"PAR1")
+                    .expect("a written leaf");
+            }
+            prefix.push_str(&format!("/level-{level:02}"));
+        }
+    }
+
+    #[test]
+    fn one_entry_from_a_deep_wide_tree_costs_one_directory_read() {
+        let filesystem = Arc::new(Counting::new());
+        tree(&filesystem, 4, 500);
+        let lake = Folder::from_location(filesystem.clone(), "lake").expect("a valid location");
+
+        let before = filesystem.calls();
+        let first = lake.ls(true, false).next().expect("an entry");
+        first.expect("a readable entry");
+
+        assert_eq!(
+            filesystem.calls() - before,
+            1,
+            "the walk read the root level and stopped, not the whole tree"
+        );
+    }
+
+    #[test]
+    fn a_recursive_walk_asks_the_filesystem_once_for_the_whole_prefix() {
+        let filesystem = Arc::new(Counting::new());
+        tree(&filesystem, 4, 5);
+        let lake = Folder::from_location(filesystem.clone(), "lake").expect("a valid location");
+
+        let entries: Vec<_> = lake
+            .ls(true, false)
+            .collect::<Result<Vec<_>>>()
+            .expect("a listing");
+
+        // Four levels of five leaves each, plus the three nested directories
+        // the levels below live in.
+        assert_eq!(entries.len(), 4 * 5 + 3, "{entries:?}");
+        // One call, not one per level: a prefix listing is the shape every
+        // Arrow filesystem already answers recursively, so the walk asks once
+        // and the laziness lives inside that one answer. The local backend,
+        // whose `read_dir` is per directory, pays one call per level instead -
+        // and both are the same contract, one entry at a time.
     }
 }

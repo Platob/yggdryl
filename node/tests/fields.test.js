@@ -77,7 +77,7 @@ test('Variant assigns deterministic dense Union IDs through one native builder',
     ),
   )
   assert.ok(
-    fields.variant('payload', [text, code], { nullable: false })
+    fields.denseUnion('payload', [text, code], { nullable: false })
       .dataType.equals(dataType),
   )
   assert.equal(
@@ -158,9 +158,12 @@ test('typed field factories cover every native datatype variant', () => {
       'run_end_encoded',
       fields.runEndEncoded('value', runEnds, values),
     ],
+    ['variant', fields.variant('value')],
+    ['geometry', fields.geometry('value')],
+    ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 41)
+  assert.equal(byId.size, 44)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -189,6 +192,8 @@ test('typed field factories cover every native datatype variant', () => {
       'map',
       'dictionary',
       'run_end_encoded',
+      'variant',
+      'geospatial',
     ]),
   )
 })

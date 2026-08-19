@@ -4,6 +4,8 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::field::{RecognizedExtension, recognized_arrow_extension};
+use crate::generic::wkb;
 use crate::{DataType, Field, UnionMode, Value};
 use arrow_array::types::{
     ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType, UInt8Type,
@@ -191,6 +193,12 @@ struct ArrayCastPlan {
 enum ArrayCastKind {
     Exact,
     Kernel,
+    /// Bytes entering a geometry or geography: same bytes out, but every
+    /// exposed value is validated as WKB on the way in. A non-Binary binary
+    /// layout is first cast to the Binary storage through Arrow's kernel.
+    GeospatialIngest,
+    /// A recognized geospatial source rendering as WKT text.
+    GeospatialWkt,
     DeferredUnsupported {
         reason: String,
     },
@@ -266,6 +274,28 @@ impl ArrayCastPlan {
         Self::new_validated_with(
             field,
             source_type,
+            None,
+            safe,
+            null_policy,
+            StructPolicy::Normal,
+            true,
+        )
+    }
+
+    /// Plans a nested cast whose source is a complete Arrow field, so the
+    /// source's extension identity (a variant, a geometry, a geography)
+    /// participates in the declared cast rules rather than being erased to
+    /// its storage type.
+    fn new_nested_from_arrow_field(
+        field: &Field,
+        source_field: &ArrowFieldRef,
+        safe: bool,
+        null_policy: NullPolicy,
+    ) -> Result<Self> {
+        Self::new_validated_with(
+            field,
+            source_field.data_type(),
+            Some(source_field.metadata()),
             safe,
             null_policy,
             StructPolicy::Normal,
@@ -276,18 +306,34 @@ impl ArrayCastPlan {
     fn new_validated_with(
         field: &Field,
         source_type: &ArrowDataType,
+        source_metadata: Option<&HashMap<String, String>>,
         safe: bool,
         null_policy: NullPolicy,
         struct_policy: StructPolicy,
         may_be_fully_hidden: bool,
     ) -> Result<Self> {
+        let source_extension = match source_metadata {
+            Some(metadata) => recognized_arrow_extension(metadata, source_type)?,
+            None => None,
+        };
+        check_extension_source(field, source_extension.as_ref())?;
         let expected = field.to_arrow_ref()?.data_type().clone();
-        let kind = if source_type == &expected && !is_reconcilable_nested(field.data_type()) {
+        // A geospatial target validates WKB on the way in, so an exact Binary
+        // source must still take the planned path rather than the shortcut.
+        let ingest_validated = matches!(
+            field.data_type(),
+            DataType::Geometry(_) | DataType::Geography(_)
+        );
+        let kind = if source_type == &expected
+            && !is_reconcilable_nested(field.data_type())
+            && !ingest_validated
+        {
             ArrayCastKind::Exact
         } else {
             Self::nested_kind(
                 field,
                 source_type,
+                source_extension.as_ref(),
                 &expected,
                 safe,
                 struct_policy,
@@ -308,6 +354,7 @@ impl ArrayCastPlan {
     fn nested_kind(
         field: &Field,
         source_type: &ArrowDataType,
+        source_extension: Option<&RecognizedExtension>,
         expected: &ArrowDataType,
         safe: bool,
         struct_policy: StructPolicy,
@@ -315,6 +362,56 @@ impl ArrayCastPlan {
     ) -> Result<ArrayCastKind> {
         let data_type = field.data_type();
         let kind = match (data_type, source_type) {
+            // The three extension-typed variants follow declared rules, never
+            // the positional kernel: WKB is validated entering a geospatial
+            // column, WKT needs a parser this workspace deliberately lacks,
+            // and a variant's binary encoding lands with the Iceberg v3
+            // layer, so only the identity works until then.
+            (DataType::Geometry(_) | DataType::Geography(_), source) => match source {
+                ArrowDataType::Binary
+                | ArrowDataType::LargeBinary
+                | ArrowDataType::BinaryView
+                | ArrowDataType::FixedSizeBinary(_) => ArrayCastKind::GeospatialIngest,
+                ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View => {
+                    return Err(Error::Unsupported {
+                        kind: data_type.name(),
+                        reason: format!(
+                            "casting text to {} would need the WKT parser this workspace \
+                             deliberately does not have yet",
+                            data_type.name()
+                        ),
+                    });
+                }
+                other => {
+                    return Err(Error::Unsupported {
+                        kind: data_type.name(),
+                        reason: format!(
+                            "expected a binary column of WKB payloads to cast into {}, got {other:?}",
+                            data_type.name()
+                        ),
+                    });
+                }
+            },
+            (DataType::Variant, source) => {
+                if crate::datatype::is_variant_storage(source) {
+                    // The identity: physically the same two required binary
+                    // children, reconciled to the canonical child spelling.
+                    ArrayCastKind::Kernel
+                } else {
+                    return Err(Error::Unsupported {
+                        kind: data_type.name(),
+                        reason: format!(
+                            "casting {source:?} to variant goes through the variant codec, \
+                             which lands with the Iceberg v3 layer"
+                        ),
+                    });
+                }
+            }
+            (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, ArrowDataType::Binary)
+                if matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
+            {
+                ArrayCastKind::GeospatialWkt
+            }
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
@@ -334,11 +431,14 @@ impl ArrayCastPlan {
                             };
                             StructColumnPlan::Source {
                                 index,
-                                cast: Self::new_nested_validated(
+                                cast: Self::new_validated_with(
                                     target,
                                     source_fields[index].data_type(),
+                                    Some(source_fields[index].metadata()),
                                     safe,
                                     null_policy,
+                                    StructPolicy::Normal,
+                                    true,
                                 )?,
                             }
                         }
@@ -361,9 +461,9 @@ impl ArrayCastPlan {
             }
             (DataType::List(child), ArrowDataType::List(source_child)) => ArrayCastKind::List {
                 field: list_child(expected)?,
-                child: Box::new(Self::new_nested_validated(
+                child: Box::new(Self::new_nested_from_arrow_field(
                     child,
-                    source_child.data_type(),
+                    source_child,
                     safe,
                     NullPolicy::Field,
                 )?),
@@ -374,9 +474,9 @@ impl ArrayCastPlan {
                 ArrowDataType::LargeList(source_child),
             ) => ArrayCastKind::List {
                 field: list_child(expected)?,
-                child: Box::new(Self::new_nested_validated(
+                child: Box::new(Self::new_nested_from_arrow_field(
                     child,
-                    source_child.data_type(),
+                    source_child,
                     safe,
                     NullPolicy::Field,
                 )?),
@@ -385,9 +485,9 @@ impl ArrayCastPlan {
             (DataType::LargeList(child), ArrowDataType::List(source_child)) => {
                 ArrayCastKind::List {
                     field: list_child(expected)?,
-                    child: Box::new(Self::new_nested_validated(
+                    child: Box::new(Self::new_nested_from_arrow_field(
                         child,
-                        source_child.data_type(),
+                        source_child,
                         safe,
                         NullPolicy::Field,
                     )?),
@@ -399,9 +499,9 @@ impl ArrayCastPlan {
                 ArrowDataType::ListView(source_child),
             ) => ArrayCastKind::List {
                 field: list_child(expected)?,
-                child: Box::new(Self::new_nested_validated(
+                child: Box::new(Self::new_nested_from_arrow_field(
                     child,
-                    source_child.data_type(),
+                    source_child,
                     safe,
                     NullPolicy::Field,
                 )?),
@@ -412,9 +512,9 @@ impl ArrayCastPlan {
                 ArrowDataType::LargeListView(source_child),
             ) => ArrayCastKind::List {
                 field: list_child(expected)?,
-                child: Box::new(Self::new_nested_validated(
+                child: Box::new(Self::new_nested_from_arrow_field(
                     child,
-                    source_child.data_type(),
+                    source_child,
                     safe,
                     NullPolicy::Field,
                 )?),
@@ -425,9 +525,9 @@ impl ArrayCastPlan {
                 ArrowDataType::FixedSizeList(source_child, source_size),
             ) if size == source_size => ArrayCastKind::List {
                 field: list_child(expected)?,
-                child: Box::new(Self::new_nested_validated(
+                child: Box::new(Self::new_nested_from_arrow_field(
                     child,
-                    source_child.data_type(),
+                    source_child,
                     safe,
                     NullPolicy::Field,
                 )?),
@@ -449,6 +549,7 @@ impl ArrayCastPlan {
                     entries: Box::new(Self::new_validated_with(
                         map.entries(),
                         source_entries.data_type(),
+                        Some(source_entries.metadata()),
                         safe,
                         NullPolicy::Reject,
                         StructPolicy::MapEntries,
@@ -495,12 +596,7 @@ impl ArrayCastPlan {
                         })?;
                     children.push((
                         type_id,
-                        Self::new_nested_validated(
-                            target,
-                            source.data_type(),
-                            safe,
-                            NullPolicy::Field,
-                        )?,
+                        Self::new_nested_from_arrow_field(target, source, safe, NullPolicy::Field)?,
                     ));
                 }
                 ArrayCastKind::Union {
@@ -514,9 +610,9 @@ impl ArrayCastPlan {
             ) if source_runs.data_type() == encoded.run_ends().to_arrow_ref()?.data_type() => {
                 ArrayCastKind::RunEndEncoded {
                     source_run_type: source_runs.data_type().clone(),
-                    values: Box::new(Self::new_nested_validated(
+                    values: Box::new(Self::new_nested_from_arrow_field(
                         encoded.values(),
-                        source_values.data_type(),
+                        source_values,
                         safe,
                         NullPolicy::Field,
                     )?),
@@ -586,6 +682,25 @@ impl ArrayCastPlan {
                 &self.field,
                 budget,
             )?,
+            ArrayCastKind::GeospatialIngest => {
+                let binary = if array.data_type() == &ArrowDataType::Binary {
+                    array
+                } else {
+                    arrow_cast_exposed(
+                        &array,
+                        &ArrowDataType::Binary,
+                        self.safe,
+                        exposure,
+                        &self.field,
+                        budget,
+                    )?
+                };
+                validate_wkb_ingest(binary.as_ref(), &self.field, exposure)?;
+                binary
+            }
+            ArrayCastKind::GeospatialWkt => {
+                render_wkt_array(&array, &self.expected, &self.field, exposure, budget)?
+            }
             ArrayCastKind::DeferredUnsupported { reason } => {
                 let source_type = DataType::from_arrow(array.data_type())?;
                 let exposed = exposure.map_or(array.len(), BooleanBuffer::count_set_bits);
@@ -947,6 +1062,175 @@ fn cast_field_array(field: &Field, array: ArrayRef, safe: bool) -> Result<ArrayR
     let plan = ArrayCastPlan::new(field, array.data_type(), safe)?;
     let mut budget = MaterializationBudget::default();
     plan.cast(array, &mut budget)
+}
+
+/// Enforces the declared rules a recognized extension source adds to a cast.
+///
+/// A variant crosses only to a variant until the codec lands with the
+/// Iceberg v3 layer, and a geospatial source refuses a CRS or an
+/// edge-interpretation change by name: both are value transformations, not
+/// schema casts. A matching geospatial pair, and every plain-storage target
+/// (bytes stay bytes, text renders as WKT), passes through to the planned
+/// arms.
+fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
+    let Some(source) = source else {
+        return Ok(());
+    };
+    match (target.data_type(), source) {
+        (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
+        (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
+            kind: "variant",
+            reason: format!(
+                "casting variant to {} goes through the variant codec, which lands \
+                 with the Iceberg v3 layer",
+                other.name()
+            ),
+        }),
+        (
+            DataType::Geometry(target_geospatial) | DataType::Geography(target_geospatial),
+            RecognizedExtension::Geospatial(source_geospatial),
+        ) => {
+            let target_kind = target.data_type().name();
+            match (target_geospatial.algorithm(), source_geospatial.algorithm()) {
+                (None, Some(algorithm)) => Err(Error::Unsupported {
+                    kind: target_kind,
+                    reason: format!(
+                        "expected planar geometry edges, got geography {algorithm} edges; \
+                         the edge interpretation change is a value transformation, not a \
+                         schema cast"
+                    ),
+                }),
+                (Some(algorithm), None) => Err(Error::Unsupported {
+                    kind: target_kind,
+                    reason: format!(
+                        "expected geography {algorithm} edges, got planar geometry edges; \
+                         the edge interpretation change is a value transformation, not a \
+                         schema cast"
+                    ),
+                }),
+                (Some(target_algorithm), Some(source_algorithm))
+                    if target_algorithm != source_algorithm =>
+                {
+                    Err(Error::Unsupported {
+                        kind: target_kind,
+                        reason: format!(
+                            "expected geography {target_algorithm} edges, got \
+                             {source_algorithm} edges; the edge interpretation change is \
+                             a value transformation, not a schema cast"
+                        ),
+                    })
+                }
+                _ if target_geospatial.crs() != source_geospatial.crs() => {
+                    Err(Error::Unsupported {
+                        kind: target_kind,
+                        reason: format!(
+                            "expected CRS {:?}, got CRS {:?}; a CRS change is a coordinate \
+                             transformation, not a schema cast",
+                            target_geospatial.crs(),
+                            source_geospatial.crs()
+                        ),
+                    })
+                }
+                _ => Ok(()),
+            }
+        }
+        (_, RecognizedExtension::Geospatial(_)) => Ok(()),
+    }
+}
+
+/// Validates every exposed, non-null payload of a Binary array as WKB on its
+/// way into a geospatial field, naming the field, the row, and the byte
+/// position the reader stopped at.
+///
+/// The streaming bounds scan walks the whole payload without materializing a
+/// geometry, so validation holds nothing per row.
+fn validate_wkb_ingest(
+    array: &dyn Array,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+) -> Result<()> {
+    let source = downcast::<BinaryArray>(array)?;
+    for index in 0..source.len() {
+        if !is_exposed(exposure, index) || source.is_null(index) {
+            continue;
+        }
+        wkb::bounding_box(source.value(index)).map_err(|error| {
+            Error::IncompatibleSchema(format!(
+                "field {:?} row {index}: expected WKB bytes for a {} value, got {error}",
+                field.name(),
+                field.data_type().name(),
+            ))
+        })?;
+    }
+    Ok(())
+}
+
+/// Renders a recognized geospatial Binary column as WKT text.
+///
+/// Two passes keep the materialization honest: the first parses and renders
+/// each exposed value once to count the exact output payload against the
+/// budget - holding one rendered value at a time - and the second builds the
+/// target text array under that reservation.
+fn render_wkt_array(
+    array: &ArrayRef,
+    expected: &ArrowDataType,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    let source = downcast::<BinaryArray>(array.as_ref())?;
+    let mut total = 0usize;
+    let mut maximum = 0usize;
+    for index in 0..source.len() {
+        if !is_exposed(exposure, index) || source.is_null(index) {
+            continue;
+        }
+        let text = wkt_for_cell(field, index, source.value(index))?;
+        total = total.checked_add(text.len()).ok_or_else(|| {
+            Error::IncompatibleSchema("WKT output payload exceeds usize".to_owned())
+        })?;
+        maximum = maximum.max(text.len());
+    }
+    budget.add_array(field.data_type(), source.len())?;
+    budget.add_bytes(total)?;
+    // View outputs keep the largest logical value alive while the final view
+    // buffers are appended.
+    if matches!(expected, ArrowDataType::Utf8View) {
+        budget.add_bytes(maximum)?;
+    }
+    let mut rendered: Vec<Option<String>> = Vec::new();
+    reserve_vec_bytes::<Option<String>>(budget, source.len())?;
+    rendered.try_reserve_exact(source.len()).map_err(|error| {
+        Error::IncompatibleSchema(format!("WKT output allocation failed: {error}"))
+    })?;
+    for index in 0..source.len() {
+        if !is_exposed(exposure, index) || source.is_null(index) {
+            rendered.push(None);
+        } else {
+            rendered.push(Some(wkt_for_cell(field, index, source.value(index))?));
+        }
+    }
+    Ok(match expected {
+        ArrowDataType::Utf8 => Arc::new(rendered.into_iter().collect::<StringArray>()) as ArrayRef,
+        ArrowDataType::LargeUtf8 => {
+            Arc::new(rendered.into_iter().collect::<LargeStringArray>()) as ArrayRef
+        }
+        ArrowDataType::Utf8View => {
+            Arc::new(rendered.into_iter().collect::<StringViewArray>()) as ArrayRef
+        }
+        _ => return Err(internal_target_error("geospatial WKT")),
+    })
+}
+
+/// Renders one WKB cell as WKT, naming the field and row when the bytes are
+/// not one well-formed geometry.
+fn wkt_for_cell(field: &Field, index: usize, bytes: &[u8]) -> Result<String> {
+    wkb::to_wkt(bytes).map_err(|error| {
+        Error::IncompatibleSchema(format!(
+            "field {:?} row {index}: expected WKB bytes to render as WKT, got {error}",
+            field.name(),
+        ))
+    })
 }
 
 fn validate_map_invariants(

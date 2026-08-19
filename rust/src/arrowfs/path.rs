@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOPath};
+use crate::io::{IOBase, IOPath, Listing};
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 
 use super::system::{ArrowFileSystem, filesystem_location};
@@ -119,10 +119,13 @@ impl Path {
             // A prefix with entries is a directory even when the filesystem
             // reports no marker for it.
             _ => {
+                // One entry settles it, and the listing is lazy, so this
+                // asks for the first one and stops there.
                 if self
                     .filesystem
                     .list(&self.location, false)
-                    .is_ok_and(|entries| !entries.is_empty())
+                    .next()
+                    .is_some_and(|entry| entry.is_ok())
                 {
                     IOKind::Directory
                 } else {
@@ -313,19 +316,19 @@ impl IOBase for Path {
         )))
     }
 
-    fn child_by(&self, name: &str) -> Result<Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         // `name` is URI-path text, exactly as the reference backend and the
-        // trait's own contract resolve it; see `Folder::child_by`.
+        // trait's own contract resolve it; see `Folder::child_by_path`.
         Ok(Holder::ArrowPath(Self::new(
             self.filesystem.clone(),
             self.url.joinpath(name)?,
         )))
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         if !self.kind().is_container() {
             // A leaf contains nothing; that is not an error.
-            return Ok(Vec::new());
+            return Listing::empty();
         }
         self.as_directory().ls(recursive, include_private)
     }

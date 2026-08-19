@@ -68,6 +68,9 @@ impl DataType {
             Self::Decimal256 { .. } => DataTypeId::Decimal256,
             Self::Map(_) => DataTypeId::Map,
             Self::RunEndEncoded(_) => DataTypeId::RunEndEncoded,
+            Self::Variant => DataTypeId::Variant,
+            Self::Geometry(_) => DataTypeId::Geometry,
+            Self::Geography(_) => DataTypeId::Geography,
         }
     }
 
@@ -264,6 +267,9 @@ impl Ord for DataType {
             ) => (left_precision, left_scale).cmp(&(right_precision, right_scale)),
             (D::Map(left), D::Map(right)) => left.cmp(right),
             (D::RunEndEncoded(left), D::RunEndEncoded(right)) => left.cmp(right),
+            (D::Geometry(left), D::Geometry(right)) | (D::Geography(left), D::Geography(right)) => {
+                left.cmp(right)
+            }
             _ => Ordering::Equal,
         }
     }
@@ -318,6 +324,9 @@ fn data_type_rank(value: &DataType) -> u8 {
         DataType::Decimal256 { .. } => 38,
         DataType::Map(_) => 39,
         DataType::RunEndEncoded(_) => 40,
+        DataType::Variant => 41,
+        DataType::Geometry(_) => 42,
+        DataType::Geography(_) => 43,
     }
 }
 

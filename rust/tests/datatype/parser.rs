@@ -2,7 +2,7 @@ use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
 #[test]
 fn variant_parser_alias_canonicalizes_to_dense_union() {
-    let expected = DataType::variant([
+    let expected = DataType::dense_union([
         Field::new("number", DataType::Int64, true),
         Field::new("text", DataType::Utf8, true),
     ])
@@ -28,7 +28,7 @@ fn union_layout_words_remain_available_as_unquoted_member_names() {
         Field::new("dense", DataType::Int64, true),
         Field::new("sparse", DataType::Utf8, true),
     ];
-    let variant = DataType::variant(members.clone()).unwrap();
+    let variant = DataType::dense_union(members.clone()).unwrap();
     assert_eq!(
         DataType::from_str("variant(dense:int64,sparse:utf8)").unwrap(),
         variant,

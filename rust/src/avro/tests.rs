@@ -1860,3 +1860,80 @@ mod fuzz_lite {
         }
     }
 }
+
+mod limits {
+    use std::sync::Arc;
+
+    use arrow_array::RecordBatchReader;
+
+    use crate::generic::{IORecordOptions, RecordOptions};
+    use crate::io::{Buffer, IOBase};
+    use crate::{DataType, Field, Url};
+
+    /// A struct field is the schema of the batches it describes.
+    fn schema() -> Field {
+        DataType::from_fields([DataType::Int64.required_field("id")])
+            .unwrap()
+            .required_field("row")
+    }
+
+    /// A reader over one batch of `ids`.
+    fn reader(ids: Vec<i64>) -> crate::arrow::BatchReader {
+        let batch = arrow_array::RecordBatch::try_new(
+            crate::arrow::schema_from_field(&schema()).unwrap(),
+            vec![Arc::new(arrow_array::Int64Array::from(ids))],
+        )
+        .unwrap();
+        crate::arrow::batch_reader(batch.schema(), [batch])
+    }
+
+    fn handle() -> Buffer {
+        Buffer::new().with_media_type(Url::from_str("file:///limited.avro").unwrap().media_type())
+    }
+
+    /// The total rows a handle yields under `options`.
+    fn rows(handle: &Buffer, options: &RecordOptions) -> usize {
+        handle
+            .read_arrow_batch_reader(options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum()
+    }
+
+    #[test]
+    fn a_zero_limit_reads_the_declared_schema_and_no_batches() {
+        let mut handle = handle();
+        let options = handle.record_options().unwrap().with_schema(schema());
+        handle
+            .write_arrow_batch_reader(reader(vec![1, 2]), &options)
+            .unwrap();
+
+        let mut limited = handle
+            .read_arrow_batch_reader(&options.with_max_row_size(0))
+            .unwrap();
+        // The schema is asserted, not only the emptiness: `Some(0)` is a
+        // valid ask that still says what the rows would have been.
+        assert_eq!(
+            limited.schema(),
+            crate::arrow::schema_from_field(&schema()).unwrap()
+        );
+        assert!(limited.next().is_none());
+    }
+
+    #[test]
+    fn a_limited_write_truncates_what_the_caller_offered() {
+        let mut handle = handle();
+        let options = handle.record_options().unwrap().with_schema(schema());
+
+        handle
+            .write_arrow_batch_reader(reader(vec![1, 2]), &options.clone().with_max_row_size(1))
+            .unwrap();
+        assert_eq!(rows(&handle, &options), 1);
+
+        // An append is a write, so the same bound truncates it the same way.
+        handle
+            .append_arrow_batch_reader(reader(vec![3, 4]), &options.clone().with_max_row_size(1))
+            .unwrap();
+        assert_eq!(rows(&handle, &options), 2);
+    }
+}

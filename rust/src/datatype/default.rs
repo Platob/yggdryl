@@ -27,6 +27,8 @@ enum DefaultPlan {
     Repeated(Box<Self>, usize),
     Union(i8, Box<Self>),
     EmptyMapping,
+    /// The 21-byte `POINT EMPTY` Well-Known Binary, a present empty geometry.
+    PointEmpty,
 }
 
 struct Planned {
@@ -221,7 +223,12 @@ pub(crate) fn preflight_schema_shape(data_type: &DataType, kind: &'static str) -
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
-            | DataType::Decimal256 { .. } => {}
+            | DataType::Decimal256 { .. }
+            // A variant declares its types per value and a geometry is one
+            // WKB payload: neither holds child fields for the walk to visit.
+            | DataType::Variant
+            | DataType::Geometry(_)
+            | DataType::Geography(_) => {}
         }
     }
     Ok(())
@@ -360,6 +367,12 @@ fn plan_data_type<'a>(
             scalar(DefaultPlan::Decimal, false)
         }
         D::Decimal256 { .. } => scalar(DefaultPlan::Decimal256, false),
+        // The variant's present zero value is the variant null: a variant can
+        // hold null as a first-class value, so `Value::Null` here is a value,
+        // not an absence, and the plan is not logically null.
+        D::Variant => scalar(DefaultPlan::Null, false),
+        // The geospatial pair's present empty value is `POINT EMPTY`.
+        D::Geometry(_) | D::Geography(_) => scalar(DefaultPlan::PointEmpty, false),
         D::Map(_) => scalar(DefaultPlan::EmptyMapping, false),
         D::RunEndEncoded(encoded) => {
             path.push(PathSegment::RunEndValues);
@@ -590,8 +603,18 @@ fn materialize(plan: DefaultPlan) -> Result<Value> {
             materialize(*value)?,
         ])),
         DefaultPlan::EmptyMapping => Value::from_mapping([]),
+        // Little-endian `POINT EMPTY`: the conventional empty geometry, spelled
+        // as a point whose coordinates are NaN, in the canonical geospatial
+        // value spelling.
+        DefaultPlan::PointEmpty => Ok(Value::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
     }
 }
+
+/// `POINT EMPTY` in little-endian ISO WKB: order byte, type 1, NaN NaN.
+pub(crate) const POINT_EMPTY_WKB: [u8; 21] = [
+    0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF8, 0x7F, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xF8, 0x7F,
+];
 
 fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
     match plan {
@@ -652,10 +675,18 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
                 && plan_matches_value(payload, actual_payload)
         }),
         DefaultPlan::EmptyMapping => value.as_mapping().is_some_and(<[(Value, Value)]>::is_empty),
+        DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
     }
 }
 
 pub(crate) fn value_is_logically_null(data_type: &DataType, value: &Value) -> bool {
+    // A variant can *spell* null: the variant null is a present value the
+    // encoding writes, so `Null` in a variant column is a value, never the
+    // absence a validity bitmap records - which is exactly why a required
+    // variant column can hold it.
+    if matches!(data_type, DataType::Variant) {
+        return false;
+    }
     if matches!(value, Value::Null) {
         return true;
     }

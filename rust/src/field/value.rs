@@ -8,6 +8,8 @@
 
 use std::collections::HashSet;
 
+use std::sync::Arc;
+
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::value_is_logically_null;
@@ -221,6 +223,15 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         }
         D::Map(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
+        // A variant value is any value: the tree describes itself.
+        D::Variant => Ok((value.clone(), false)),
+        // The canonical geospatial spelling is `Value::Geospatial`; plain
+        // bytes are accepted on the way in and rewritten here.
+        D::Geometry(_) | D::Geography(_) => match value {
+            Value::Geospatial(_) => Ok((value.clone(), false)),
+            Value::Bytes(bytes) => Ok((Value::Geospatial(Arc::from(bytes.as_ref())), true)),
+            other => Ok((other.clone(), false)),
+        },
     }
 }
 
@@ -650,6 +661,19 @@ fn validate_data_type_value(
         D::RunEndEncoded(encoded) => {
             validate_field_value_at_depth(encoded.values(), value, depth + 1)
         }
+        // A variant column validates any value, null included: the variant
+        // null is a *value* the encoding can spell, so a required variant
+        // holding `Null` is present, not absent.
+        D::Variant => Ok(()),
+        // A geospatial value is Well-Known Binary, and the payload's own
+        // framing is the validation: a buffer the WKB reader refuses is not a
+        // geometry, whatever bytes it carries.
+        D::Geometry(_) | D::Geography(_) => match value.as_wkb() {
+            Some(bytes) => crate::generic::wkb::Geometry::from_slice(bytes)
+                .map(|_| ())
+                .map_err(|error| expected_because(data_type.name(), value, &error)),
+            None => Err(expected(data_type.name(), value)),
+        },
     }
 }
 
@@ -856,6 +880,18 @@ fn validate_decimal256(value: &Value, precision: u8) -> std::result::Result<(), 
 /// Report a value whose kind does not match what the schema declared.
 fn expected(expected_name: &str, value: &Value) -> ValidationFailure {
     ValidationFailure::new(crate::text::expected_got(expected_name, value.kind()))
+}
+
+/// [`expected`], carrying the refusal that says why the payload failed.
+fn expected_because(
+    expected_name: &str,
+    value: &Value,
+    because: &crate::Error,
+) -> ValidationFailure {
+    ValidationFailure::new(format_smolstr!(
+        "expected {expected_name}, got {}: {because}",
+        value.kind()
+    ))
 }
 
 /// Accept a value when `matched`, and otherwise report what was expected.

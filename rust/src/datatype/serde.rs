@@ -130,6 +130,14 @@ enum DataTypeRef<'a> {
         run_ends: &'a Field,
         values: &'a Field,
     },
+    Variant {},
+    Geometry {
+        crs: &'a str,
+    },
+    Geography {
+        crs: &'a str,
+        algorithm: crate::enums::EdgeAlgorithm,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -232,6 +240,16 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
                 run_ends: &encoded.run_ends,
                 values: &encoded.values,
             },
+            D::Variant => Self::Variant {},
+            D::Geometry(geospatial) => Self::Geometry {
+                crs: geospatial.crs(),
+            },
+            D::Geography(geospatial) => Self::Geography {
+                crs: geospatial.crs(),
+                // A geography's algorithm is always present; the constructor
+                // filled the default, so the stored value is the truth.
+                algorithm: geospatial.algorithm().unwrap_or_default(),
+            },
         }
     }
 }
@@ -331,6 +349,15 @@ enum DataTypeValue {
         run_ends: Field,
         values: Field,
     },
+    Variant {},
+    Geometry {
+        crs: SmolStr,
+    },
+    Geography {
+        crs: SmolStr,
+        #[serde(default)]
+        algorithm: Option<crate::enums::EdgeAlgorithm>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -397,6 +424,9 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::RunEndEncoded { run_ends, values } => {
                 Self::run_end_encoded(run_ends, values)?
             }
+            DataTypeValue::Variant {} => Self::Variant,
+            DataTypeValue::Geometry { crs } => Self::geometry(Some(&crs))?,
+            DataTypeValue::Geography { crs, algorithm } => Self::geography(Some(&crs), algorithm)?,
         })
     }
 }
@@ -595,6 +625,21 @@ impl DataType {
                 entries.push((key("run_ends"), encoded.run_ends.to_value()));
                 entries.push((key("values"), encoded.values.to_value()));
             }
+            D::Variant => tag("variant"),
+            D::Geometry(geospatial) => {
+                tag("geometry");
+                entries.push((key("crs"), Value::String(SmolStr::new(geospatial.crs()))));
+            }
+            D::Geography(geospatial) => {
+                tag("geography");
+                entries.push((key("crs"), Value::String(SmolStr::new(geospatial.crs()))));
+                entries.push((
+                    key("algorithm"),
+                    Value::String(SmolStr::new(
+                        geospatial.algorithm().unwrap_or_default().as_str(),
+                    )),
+                ));
+            }
         }
         // The keys are distinct literals, so the mapping cannot be rejected.
         Value::from_mapping(entries).unwrap_or(Value::Null)
@@ -791,6 +836,28 @@ impl DataType {
                 Self::map(child("entries")?, keys_sorted)?
             }
             "run_end_encoded" => Self::run_end_encoded(child("run_ends")?, child("values")?)?,
+            "variant" => Self::Variant,
+            "geometry" => {
+                let crs = at("crs").and_then(Value::as_str);
+                Self::geometry(crs)?
+            }
+            "geography" => {
+                let crs = at("crs").and_then(Value::as_str);
+                let algorithm = match at("algorithm").filter(|held| !matches!(held, Value::Null)) {
+                    Some(held) => {
+                        let text = held.as_str().ok_or_else(|| {
+                            invalid(
+                                "$.algorithm",
+                                "an edge algorithm name",
+                                "a non-string value",
+                            )
+                        })?;
+                        Some(text.parse()?)
+                    }
+                    None => None,
+                };
+                Self::geography(crs, algorithm)?
+            }
             other => {
                 return Err(invalid(
                     "$.type",

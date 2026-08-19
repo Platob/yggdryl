@@ -45,6 +45,7 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 mod buffer;
 mod coding;
 mod cursor;
+mod listing;
 /// How a directory name spells a value that is not there.
 ///
 /// A path cannot distinguish the absence of a value from the four letters, so
@@ -69,6 +70,7 @@ mod roles;
 pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
+pub use listing::Listing;
 pub use roles::{IOFile, IOFolder, IOPath};
 
 use crate::generic::Holder;
@@ -170,7 +172,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 ///
 /// impl IOBase for Counted {
 ///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
-///         truncate, url, media_type, set_media_type, flush, parent, child_by,
+///         truncate, url, media_type, set_media_type, flush, parent, child_by_path,
 ///         ls, kind, clear, remove, is_atomic, is_tabular);
 ///
 ///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
@@ -197,7 +199,7 @@ macro_rules! delegate_iobase {
     // The whole contract, lifecycle included: the wrapper changes nothing.
     ($handle:ident) => {
         $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular);
     };
 
@@ -209,7 +211,7 @@ macro_rules! delegate_iobase {
     // five call sites.
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, parent, child_by,
+            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
             ls, kind);
     };
 
@@ -283,18 +285,14 @@ macro_rules! delegate_iobase {
         }
     };
 
-    (@method $handle:ident, child_by) => {
-        fn child_by(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
-            $crate::io::IOBase::child_by(&self.$handle, name)
+    (@method $handle:ident, child_by_path) => {
+        fn child_by_path(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
+            $crate::io::IOBase::child_by_path(&self.$handle, name)
         }
     };
 
     (@method $handle:ident, ls) => {
-        fn ls(
-            &self,
-            recursive: bool,
-            include_private: bool,
-        ) -> $crate::Result<Vec<$crate::generic::Holder>> {
+        fn ls(&self, recursive: bool, include_private: bool) -> $crate::io::Listing {
             $crate::io::IOBase::ls(&self.$handle, recursive, include_private)
         }
     };
@@ -385,9 +383,9 @@ fn descend(base: &(impl IOBase + ?Sized), names: &[&str]) -> Result<Option<Holde
     let Some((first, rest)) = names.split_first() else {
         return Ok(None);
     };
-    let mut holder = base.child_by(first)?;
+    let mut holder = base.child_by_path(first)?;
     for name in rest {
-        holder = holder.child_by(name)?;
+        holder = holder.child_by_path(name)?;
     }
     Ok(Some(holder))
 }
@@ -411,12 +409,16 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
     if matches!(crate::iceberg::located(handle), Ok(Some(_))) {
         return true;
     }
-    let Ok(mut level) = handle.ls(false, false) else {
-        return false;
-    };
+    let mut level = handle.ls(false, false);
+    // The frontier: the containers a level named and this walk has not opened
+    // yet. It is bounded by the tree's width at the levels already listed, and
+    // the walk stops at the first tabular leaf, so it is never the result.
     let mut deeper: Vec<Holder> = Vec::new();
     loop {
         for entry in level {
+            let Ok(entry) = entry else {
+                return false;
+            };
             // The media type answers first because it is free, and no
             // container reports a tabular one - asking whether an entry is a
             // container is what costs a call into the backing store.
@@ -430,7 +432,7 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
         let Some(next) = deeper.pop() else {
             return false;
         };
-        level = next.ls(false, false).unwrap_or_default();
+        level = next.ls(false, false);
     }
 }
 
@@ -596,33 +598,51 @@ pub trait IOBase: Send {
         None
     }
 
-    /// Return the child named `name`, resolved against this resource.
+    /// Return the descendant that `path` names, resolved against this resource.
     ///
-    /// `name` may be a single segment or a relative path; `.` and `..` resolve
-    /// the way they do in [`crate::UriPath::joinpath`]. The child need not
-    /// exist - per the laziness contract, reading a missing child is empty and
-    /// writing one creates it.
+    /// `path` is a *relative path*, not a single name: one segment reaches an
+    /// immediate child, `sales/eu/orders` reaches three levels down, and `.`
+    /// and `..` resolve the way they do in [`crate::UriPath::joinpath`]. The
+    /// resource need not exist - per the laziness contract, reading a missing
+    /// one is empty and writing one creates it and its parents.
     ///
     /// # Errors
     ///
-    /// Returns an error when this resource cannot have children or `name` does
+    /// Returns an error when this resource cannot have children or `path` does
     /// not form a valid location.
-    fn child_by(&self, name: &str) -> Result<Holder> {
-        Err(no_children(self.url(), name))
+    fn child_by_path(&self, path: &str) -> Result<Holder> {
+        Err(no_children(self.url(), path))
     }
 
-    /// List the resources contained by this one.
+    /// List the resources contained by this one, one entry at a time.
     ///
     /// `recursive` descends into every container beneath this one. A resource
     /// that cannot contain others lists nothing rather than failing, so a
     /// caller can walk a tree without testing each node first.
     ///
-    /// # Errors
+    /// The listing is lazy: nothing is touched until the first
+    /// [`next`](Iterator::next), and a caller that takes three entries from a
+    /// folder of a hundred thousand pays for three. A failure arrives *as* an
+    /// entry - the item is a [`Result`] - and the iterator is fused after it.
+    /// A caller who wants a vector writes `.collect::<Result<Vec<_>>>()`; this
+    /// never decides that for them.
     ///
-    /// Returns the backing store's listing failure.
-    fn ls(&self, recursive: bool, include_private: bool) -> Result<Vec<Holder>> {
+    /// ```no_run
+    /// use yggdryl::io::IOBase;
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    ///
+    /// for entry in lake.ls(true, false).take(3) {
+    ///     let _ = entry?;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         let _ = (recursive, include_private);
-        Ok(Vec::new())
+        Listing::empty()
     }
 
     /// Return the locations beneath this one that match a glob `pattern`.
@@ -642,55 +662,53 @@ pub trait IOBase: Send {
     /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
     ///
     /// for part in lake.glob("year=2024/**/*.parquet", false)? {
-    ///     println!("{}", part.url().expect("a located child"));
+    ///     println!("{}", part?.url().expect("a located child"));
     /// }
     /// # Ok(())
     /// # }
     /// ```
     ///
+    /// A pattern whose fixed prefix loses therefore touches nothing beneath it:
+    /// the first `next` descends the prefix and finds nothing to list.
+    ///
     /// # Errors
     ///
-    /// Returns the backing store's listing failure.
-    fn glob(&self, pattern: &str, include_private: bool) -> Result<Vec<Holder>> {
+    /// Returns a refusal when the pattern cannot be decomposed, or when a fixed
+    /// prefix segment cannot be resolved. Everything the walk itself hits
+    /// arrives as a failing entry instead.
+    fn glob(&self, pattern: &str, include_private: bool) -> Result<Listing> {
         let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
         let Some(fixed) = parts.iter().position(|part| Url::is_pattern(part)) else {
             // Nothing to expand: the pattern names one location, which counts
             // only if something is actually there.
             let child = descend(self, &parts)?;
             return Ok(match child {
-                Some(child) if child.kind() != IOKind::Unknown => vec![child],
-                _ => Vec::new(),
+                Some(child) if child.kind() != IOKind::Unknown => {
+                    Listing::new(std::iter::once(Ok(child)))
+                }
+                _ => Listing::empty(),
             });
         };
         if fixed > 0 {
             // Descend the fixed prefix so the listing starts as deep as it can.
             let Some(child) = descend(self, &parts[..fixed])? else {
-                return Ok(Vec::new());
+                return Ok(Listing::empty());
             };
             return child.glob(&parts[fixed..].join("/"), include_private);
         }
 
         let Some(root) = self.url().cloned() else {
-            return Ok(Vec::new());
+            return Ok(Listing::empty());
         };
         // One plain segment is answered by the immediate children; anything
         // deeper, or a `**`, needs the whole subtree.
         let recursive = parts.len() > 1 || parts[0] == "**";
-        let mut matched: Vec<Holder> = self
-            .ls(recursive, include_private)?
-            .into_iter()
-            .filter(|entry| {
-                entry
-                    .url()
-                    .is_some_and(|url| url.matches_glob_under(&root, pattern))
-            })
-            .collect();
-        matched.sort_by(|left, right| {
-            left.url()
-                .map(ToString::to_string)
-                .cmp(&right.url().map(ToString::to_string))
-        });
-        Ok(matched)
+        let pattern = pattern.to_owned();
+        Ok(self.ls(recursive, include_private).keeping(move |entry| {
+            entry
+                .url()
+                .is_some_and(|url| url.matches_glob_under(&root, &pattern))
+        }))
     }
 
     /// Return the Hive partition pairs this resource's own location spells out.
@@ -739,7 +757,7 @@ pub trait IOBase: Send {
         &self,
         filter: &crate::Expression,
         include_private: bool,
-    ) -> Result<std::vec::IntoIter<Holder>> {
+    ) -> Result<Listing> {
         // Only the conjuncts a listing can settle are kept. Dropping a conjunct
         // from a conjunction only ever widens what is kept, which is the whole
         // reason this is sound.
@@ -750,18 +768,23 @@ pub trait IOBase: Send {
                 .filter(|conjunct| conjunct.columns().is_empty()),
         );
         let bound = answerable.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
-        let mut matched: Vec<Holder> = Vec::new();
-        for entry in self.ls(true, include_private)? {
-            if bound.matches_holder(&crate::expression::Handle(&entry))? {
-                matched.push(entry);
-            }
-        }
-        matched.sort_by(|left, right| {
-            left.url()
-                .map(ToString::to_string)
-                .cmp(&right.url().map(ToString::to_string))
-        });
-        Ok(matched.into_iter())
+        // The predicate is asked of each entry as it arrives, so a losing entry
+        // is dropped before the next one is fetched and nothing accumulates.
+        Ok(Listing::new(
+            self.ls(true, include_private)
+                .map(move |entry| {
+                    let entry = entry?;
+                    Ok((
+                        bound.matches_holder(&crate::expression::Handle(&entry))?,
+                        entry,
+                    ))
+                })
+                .filter_map(|matched| match matched {
+                    Ok((true, entry)) => Some(Ok(entry)),
+                    Ok((false, _)) => None,
+                    Err(error) => Some(Err(error)),
+                }),
+        ))
     }
 
     /// Iterate the leaves beneath this one that carry every given partition.
@@ -786,8 +809,8 @@ pub trait IOBase: Send {
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
     ///
-    /// for mut part in lake.children_where(&[("year", "2024")], false)? {
-    ///     part.clear()?;
+    /// for part in lake.children_where(&[("year", "2024")], false)? {
+    ///     part?.clear()?;
     /// }
     /// # Ok(())
     /// # }
@@ -796,17 +819,11 @@ pub trait IOBase: Send {
     /// # Errors
     ///
     /// Returns the backing store's listing failure.
-    fn children_where(
-        &self,
-        filters: &[(&str, &str)],
-        include_private: bool,
-    ) -> Result<std::vec::IntoIter<Holder>> {
+    fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing> {
         let filter = crate::Expression::all_holder_partitions_carried(filters.iter().copied());
-        let matched: Vec<Holder> = self
+        Ok(self
             .children_matching(&filter, include_private)?
-            .filter(|entry| !entry.is_container())
-            .collect();
-        Ok(matched.into_iter())
+            .keeping(|entry| !entry.is_container()))
     }
 
     /// Return what kind of resource this handle addresses.
@@ -1517,12 +1534,14 @@ pub trait IOBase: Send {
             if let Some(table) = crate::iceberg::located(self)? {
                 return table.record_options();
             }
-            // Text answers last: plain text maps to the line projection, so
-            // a stray README or marker file must not re-type a lake whose
-            // data files are a structured encoding.
+            // The listing is lazy, so a lake costs the walk to its first
+            // structured leaf and stops there. Text answers last: plain text
+            // maps to the line projection, so a stray README or marker file
+            // must not re-type a lake whose data files are a structured
+            // encoding.
             let mut lines = None;
             for child in self.children_where(&[], false)? {
-                if let Ok(options) = RecordOptions::for_media_type(child.media_type()) {
+                if let Ok(options) = RecordOptions::for_media_type(child?.media_type()) {
                     if matches!(options, RecordOptions::Text(_)) {
                         lines.get_or_insert(options);
                         continue;
@@ -1592,6 +1611,14 @@ pub trait IOBase: Send {
     /// Per the laziness contract, a resource that does not exist yet holds no
     /// batches rather than failing.
     ///
+    /// The shaping order is fixed: declared schema, then selection, then
+    /// completion cast, then partition filter, then
+    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size)
+    /// last - so a limit counts result rows, and a limit of ten with a filter
+    /// means the first ten matching rows. A satisfied limit stops pulling, so
+    /// the rest of the resource is never decoded.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, decoding, or cast failure.
@@ -1600,18 +1627,20 @@ pub trait IOBase: Send {
         &self,
         options: &RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
+        use crate::generic::IORecordOptions;
+
         let reader = if self.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(self)? {
                 let filtered = partition::filtered_reader(table.read(options)?, options)?;
-                return select_reader(filtered, options);
+                return options.limit_arrow_reader(select_reader(filtered, options)?);
             }
             partition::folder_reader(self, options)?
         } else {
             leaf_reader(self, options)?
         };
         let reader = partition::filtered_reader(reader, options)?;
-        select_reader(reader, options)
+        options.limit_arrow_reader(select_reader(reader, options)?)
     }
 
     /// Replace or merge this resource's rows with every batch `batches` yields.
@@ -1642,6 +1671,14 @@ pub trait IOBase: Send {
     /// whose statistics say they can hold an incoming key and carries the rest
     /// forward untouched.
     ///
+    /// A limited write truncates data the caller offered:
+    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size) bound
+    /// the incoming reader exactly as they bound a read, and what they cut off
+    /// is never pulled from it. A limit combined with a non-empty match key is
+    /// refused naming both settings, because a truncated merge would update
+    /// some matched keys and silently drop the rest.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, schema, cast, encoding, or write failure.
@@ -1653,6 +1690,10 @@ pub trait IOBase: Send {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
+        // The limit sits on the incoming side, before anything else pulls, so
+        // a satisfied write stops consuming the caller's reader; the same call
+        // refuses a limit combined with a match key.
+        let batches = options.limit_arrow_reader(batches)?;
         // The selection narrows what a write is about before any encoding or
         // matching sees the rows, so the columns it drops can never land.
         let batches = select_reader(batches, options)?;
@@ -1687,6 +1728,14 @@ pub trait IOBase: Send {
     /// commits a snapshot that keeps every manifest the last one had, so nothing
     /// already stored is read, rewritten, or even listed.
     ///
+    /// A limited write truncates data the caller offered: an append is a
+    /// write, so
+    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
+    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size) bound
+    /// the incoming reader here exactly as they do on
+    /// [`write_arrow_batch_reader`](Self::write_arrow_batch_reader), and a
+    /// limit combined with a non-empty match key is refused the same way.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, cast, encoding, or write failure. A failure
@@ -1700,6 +1749,9 @@ pub trait IOBase: Send {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
+        // The limit sits on the incoming side for the same reason it does on
+        // a write: a satisfied append stops consuming the caller's reader.
+        let batches = options.limit_arrow_reader(batches)?;
         // The same narrowing a write applies: an append is a write that keeps.
         let batches = select_reader(batches, options)?;
         if self.is_container() {

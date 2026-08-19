@@ -151,6 +151,50 @@ class TestOptions:
             compressed.write_arrow_batch_reader(_table())
 
 
+class TestTheLimits:
+    """`max_row_size` counts result rows and `max_byte_size` Arrow bytes."""
+
+    def test_a_zero_row_limit_reads_the_schema_and_no_batches(
+        self, file: IOBase
+    ) -> None:
+        file.write_arrow_batch_reader(_table())
+
+        reader = file.read_arrow_batch_reader(max_row_size=0)
+        # `0` is a valid ask, not an error: the shaped schema still answers.
+        assert reader.schema.names == ["id", "symbol", "venue"]
+        assert reader.read_all().num_rows == 0
+
+    def test_a_row_limit_is_exact_over_a_bigger_file(self, file: IOBase) -> None:
+        file.write_arrow_batch_reader(_table())
+        options = file.record_options()
+        options.max_row_size = 10
+
+        assert options.max_row_size == 10
+        assert (
+            file.read_arrow_batch_reader(options=options).read_all().num_rows == 10
+        )
+
+    def test_a_small_byte_limit_still_yields_at_least_one_row(
+        self, file: IOBase
+    ) -> None:
+        file.write_arrow_batch_reader(_table())
+
+        # One byte admits no whole row, but a bounded read must never be a
+        # silent total loss: only a limit of zero yields nothing.
+        assert file.read_arrow_batch_reader(max_byte_size=1).read_all().num_rows == 1
+
+    def test_a_limit_with_a_match_key_is_refused_naming_both(
+        self, file: IOBase
+    ) -> None:
+        file.write_arrow_batch_reader(_table())
+        options = file.record_options()
+        options.max_row_size = 10
+        options.merge_by_names = ["id"]
+
+        with pytest.raises(ValueError, match="max_row_size = 10.*merge_by_names"):
+            file.write_arrow_batch_reader(_table(), options=options)
+
+
 class TestWhatAnotherReaderSees:
     """The bytes are Parquet, so PyArrow reads them and we read PyArrow's."""
 
@@ -266,5 +310,5 @@ class TestWritesAndMerges:
         restored = lake.read_arrow_batch_reader(options=options).read_all()
         assert restored.column("venue").to_pylist() == ["XNAS", "XNAS", "XNYS"]
 
-        selected = lake.children_where({"venue": "XNAS"})
+        selected = list(lake.children_where({"venue": "XNAS"}))
         assert len(selected) == 1

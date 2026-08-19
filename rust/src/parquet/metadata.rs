@@ -7,8 +7,13 @@
 use parquet::file::metadata::ParquetMetaData;
 use parquet::file::statistics::Statistics;
 
+use super::GeospatialStatistics;
+
 /// Bounds and counts for one column chunk within one row group.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// Not `Eq`: geospatial bounds are floating-point, so the family compares
+/// with `PartialEq` only.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ColumnStatistics {
     /// Dotted path of the leaf column, such as `address.zip`.
     pub path: String,
@@ -19,13 +24,24 @@ pub struct ColumnStatistics {
     /// Number of null values, when the writer recorded one.
     pub null_count: Option<u64>,
     /// Encoded minimum value, when the writer recorded one.
+    ///
+    /// Geospatial columns never record one - their sort order is undefined -
+    /// and one found in a foreign file is ignored rather than surfaced.
     pub min_bytes: Option<Vec<u8>>,
     /// Encoded maximum value, when the writer recorded one.
+    ///
+    /// Absent for geospatial columns, exactly like [`Self::min_bytes`].
     pub max_bytes: Option<Vec<u8>>,
+    /// Bounding box and geometry types, when the writer recorded them.
+    ///
+    /// This is the statistic a geospatial column carries *instead of* value
+    /// bounds: Parquet's own `GeospatialStatistics` footer field, projected
+    /// into the shared WKB vocabulary.
+    pub geospatial: Option<GeospatialStatistics>,
 }
 
 /// Counts and per-column statistics for one row group.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RowGroupStatistics {
     /// Rows stored in this group.
     pub num_rows: i64,
@@ -40,7 +56,7 @@ pub struct RowGroupStatistics {
 }
 
 /// Whole-file counts, footer metadata, and per-row-group statistics.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileStatistics {
     /// Total rows across every row group.
     pub num_rows: i64,
@@ -76,13 +92,30 @@ impl FileStatistics {
                 columns: group
                     .columns()
                     .iter()
-                    .map(|column| ColumnStatistics {
-                        path: column.column_path().string(),
-                        compressed_size: column.compressed_size(),
-                        uncompressed_size: column.uncompressed_size(),
-                        null_count: column.statistics().and_then(Statistics::null_count_opt),
-                        min_bytes: column.statistics().and_then(min_bytes),
-                        max_bytes: column.statistics().and_then(max_bytes),
+                    .map(|column| {
+                        // A geospatial column's sort order is undefined, so a
+                        // min/max a foreign writer recorded anyway is ignored
+                        // rather than surfaced as a usable bound.
+                        let geospatial_column = matches!(
+                            column.column_descr().logical_type_ref(),
+                            Some(
+                                parquet::basic::LogicalType::Geometry(_)
+                                    | parquet::basic::LogicalType::Geography(_)
+                            )
+                        );
+                        ColumnStatistics {
+                            path: column.column_path().string(),
+                            compressed_size: column.compressed_size(),
+                            uncompressed_size: column.uncompressed_size(),
+                            null_count: column.statistics().and_then(Statistics::null_count_opt),
+                            min_bytes: (!geospatial_column)
+                                .then(|| column.statistics().and_then(min_bytes))
+                                .flatten(),
+                            max_bytes: (!geospatial_column)
+                                .then(|| column.statistics().and_then(max_bytes))
+                                .flatten(),
+                            geospatial: column.geo_statistics().map(super::geospatial::from_footer),
+                        }
                     })
                     .collect(),
             })

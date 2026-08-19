@@ -21,21 +21,11 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     let lake = Folder::from_location(filesystem, "lake").expect("a valid location");
 
     group.bench_function("ls_flat/arrowfs_memory", |bencher| {
-        bencher.iter(|| {
-            black_box(&lake)
-                .ls(false, false)
-                .expect("a listable container")
-                .len()
-        });
+        bencher.iter(|| black_box(&lake).ls(false, false).count());
     });
 
     group.bench_function("ls_recursive/arrowfs_memory", |bencher| {
-        bencher.iter(|| {
-            black_box(&lake)
-                .ls(true, false)
-                .expect("a listable container")
-                .len()
-        });
+        bencher.iter(|| black_box(&lake).ls(true, false).count());
     });
 
     group.bench_function("glob_all/arrowfs_memory", |bencher| {
@@ -43,7 +33,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
             black_box(&lake)
                 .glob("**/*.parquet", false)
                 .expect("an expandable pattern")
-                .len()
+                .count()
         });
     });
 
@@ -54,7 +44,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
             black_box(&lake)
                 .glob("year=2024/**/*.parquet", false)
                 .expect("an expandable pattern")
-                .len()
+                .count()
         });
     });
 
@@ -73,22 +63,12 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     let local_lake = Folder::from_location(local_filesystem, &location).expect("a valid location");
 
     group.bench_function("ls_recursive/arrowfs_local", |bencher| {
-        bencher.iter(|| {
-            black_box(&local_lake)
-                .ls(true, false)
-                .expect("a listable container")
-                .len()
-        });
+        bencher.iter(|| black_box(&local_lake).ls(true, false).count());
     });
 
     group.bench_function("ls_recursive/local_folder", |bencher| {
         let folder = yggdryl::local::Folder::new(root.join("lake")).expect("a valid path");
-        bencher.iter(|| {
-            black_box(&folder)
-                .ls(true, false)
-                .expect("a listable container")
-                .len()
-        });
+        bencher.iter(|| black_box(&folder).ls(true, false).count());
     });
 
     group.finish();

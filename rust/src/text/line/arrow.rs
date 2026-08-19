@@ -109,7 +109,7 @@ use super::view::TextLine;
 ///
 /// - A **leaf** parses that one resource's records. This borrowed variant needs
 ///   an owned view behind the reader it returns, so it reopens the same
-///   location through [`IOBase::parent`] and [`IOBase::child_by`]; a handle with
+///   location through [`IOBase::parent`] and [`IOBase::child_by_path`]; a handle with
 ///   no parent - an in-memory buffer - contributes a snapshot of its
 ///   still-encoded bytes instead, which those handles already hold in memory.
 ///   [`into_arrow_lines`] avoids both by consuming the handle.
@@ -181,7 +181,7 @@ pub(crate) fn into_arrow_lines<H: IOBase + 'static>(
 fn reopened<H: IOBase + ?Sized>(handle: &H) -> Result<Holder> {
     if let Some(parent) = handle.parent() {
         if let Some(name) = handle.url().and_then(crate::Url::file_name) {
-            let mut child = parent.child_by(name)?;
+            let mut child = parent.child_by_path(name)?;
             // The reopened view keeps the caller's declared media type, so an
             // override - a coding the name does not spell - survives.
             child.set_media_type(handle.media_type().clone());
@@ -202,8 +202,11 @@ fn empty_lines(options: &TextLineOptions) -> Result<BatchReader> {
 /// Stream a container's leaves, name-sorted, one open leaf at a time.
 fn folder_lines(handle: &(impl IOBase + ?Sized), options: &TextLineOptions) -> Result<BatchReader> {
     // The walk enumerates handles only - constructions that touch nothing. Each
-    // leaf's bytes wait until the reader reaches it.
-    let leaves: Vec<Holder> = handle.children_where(&[], false)?.collect();
+    // leaf's bytes wait until the reader reaches it, and what is held is one
+    // handle per leaf, bounded by the container being read.
+    let leaves: Vec<Holder> = handle
+        .children_where(&[], false)?
+        .collect::<Result<Vec<_>>>()?;
     ArrowLines::boxed(options, leaves, None)
 }
 

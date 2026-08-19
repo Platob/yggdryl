@@ -38,13 +38,15 @@ pub trait ArrowFileSystem: Send + Sync {
     /// Returns the filesystem's own metadata failure; absence is not one.
     fn file_info(&self, path: &str) -> Result<FileInfo>;
 
-    /// Every entry under `path` (`recursive` descends). A missing directory
-    /// lists empty.
+    /// Every entry under `path` (`recursive` descends), one at a time. A
+    /// missing directory lists empty.
     ///
-    /// # Errors
-    ///
-    /// Returns the filesystem's own listing failure; absence is not one.
-    fn list(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>>;
+    /// The listing is lazy at this seam too: a failure arrives as an entry and
+    /// the iterator is fused after it, so a caller that takes three entries
+    /// from a prefix of a hundred thousand pays for three. Order is
+    /// deterministic: one directory's entries sorted by path, each container
+    /// followed immediately by what is under it.
+    fn list(&self, path: &str, recursive: bool) -> FileInfos;
 
     /// Bytes `[offset, offset + buffer.len())` of the file at `path` into
     /// `buffer`; short reads at end-of-file return the short count; a missing
@@ -80,6 +82,76 @@ pub trait ArrowFileSystem: Send + Sync {
     /// Returns the filesystem's own removal failure, or a refusal when `path`
     /// names a directory.
     fn delete_file(&self, path: &str) -> Result<()>;
+}
+
+/// The entries of one foreign-filesystem listing, yielded one at a time.
+///
+/// The [`crate::io::Listing`] of the storage layer, one level down: the same
+/// rules - lazy, `Result` per item, fused after the first failure - stated at
+/// the seam where a foreign filesystem answers, so a backend never has to build
+/// the listing it is describing. One named type, because there is one item kind.
+pub struct FileInfos {
+    /// The walk still running. `None` once the listing is spent.
+    entries: Option<Box<dyn Iterator<Item = Result<FileInfo>> + Send + Sync>>,
+}
+
+impl FileInfos {
+    /// A listing of nothing, which a missing directory answers with.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            entries: Some(Box::new(std::iter::empty())),
+        }
+    }
+
+    /// Wrap a walk that is already lazy.
+    pub fn new(entries: impl Iterator<Item = Result<FileInfo>> + Send + Sync + 'static) -> Self {
+        Self {
+            entries: Some(Box::new(entries)),
+        }
+    }
+
+    /// A listing that reports one failure and then ends.
+    #[must_use]
+    pub fn failing(error: Error) -> Self {
+        Self::new(std::iter::once(Err(error)))
+    }
+}
+
+impl Iterator for FileInfos {
+    type Item = Result<FileInfo>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let entries = self.entries.as_mut()?;
+        match entries.next() {
+            Some(Ok(entry)) => Some(Ok(entry)),
+            Some(Err(error)) => {
+                self.entries = None;
+                Some(Err(error))
+            }
+            None => {
+                self.entries = None;
+                None
+            }
+        }
+    }
+}
+
+impl std::iter::FusedIterator for FileInfos {}
+
+impl std::fmt::Debug for FileInfos {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FileInfos")
+            .field("spent", &self.entries.is_none())
+            .finish()
+    }
+}
+
+impl Default for FileInfos {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 /// What a foreign filesystem reports about one path.
@@ -382,9 +454,11 @@ impl ArrowFileSystem for MemoryFileSystem {
         Ok(FileInfo::not_found(path))
     }
 
-    fn list(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
+    fn list(&self, path: &str, recursive: bool) -> FileInfos {
         let prefix = Self::normalized(path);
-        let state = self.state.lock().map_err(|_| poisoned())?;
+        let Ok(state) = self.state.lock() else {
+            return FileInfos::failing(poisoned());
+        };
         // A directory is a prefix, so every intermediate prefix of a stored
         // file or marker is itself a listable directory.
         let mut directories: BTreeSet<&str> = BTreeSet::new();
@@ -426,7 +500,12 @@ impl ArrowFileSystem for MemoryFileSystem {
             }
         }
         found.sort_by(|left, right| left.path.cmp(&right.path));
-        Ok(found)
+        // The store *is* memory, so its entry names are already held and this
+        // snapshot is bounded by the store itself, not by the listing. Taking
+        // it under one lock is also what makes the listing consistent: the
+        // guard cannot outlive this call.
+        drop(state);
+        FileInfos::new(found.into_iter().map(Ok))
     }
 
     fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
@@ -518,6 +597,53 @@ impl LocalFileSystem {
     }
 }
 
+/// One local directory's entries, sorted, as a lazy listing.
+///
+/// `read_dir` is issued without asking whether the directory is there first: a
+/// `NotFound` answer *is* "it contains nothing". The entry names are sorted
+/// because `read_dir` order is platform-defined and a listing must be
+/// deterministic, so one directory's entries are held and nothing else is.
+fn level_of(directory: &str) -> FileInfos {
+    // Deferred into the first `next`, so constructing a listing touches
+    // nothing at all.
+    let directory = directory.to_owned();
+    FileInfos::new(std::iter::once(()).flat_map(move |()| read_level(&directory)))
+}
+
+/// The directory read itself, issued when the listing is first polled.
+fn read_level(directory: &str) -> FileInfos {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        // A missing directory lists empty, per the vtable contract.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return FileInfos::empty(),
+        Err(error) => return FileInfos::failing(Error::Io(error)),
+    };
+    let directory = directory.trim_end_matches('/').to_owned();
+    let mut found: Vec<FileInfo> = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => return FileInfos::failing(Error::Io(error)),
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let child = format!("{directory}/{name}");
+        // `DirEntry::metadata` is what the platform already read for the entry
+        // on most systems, so the kind costs no extra call.
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) => return FileInfos::failing(Error::Io(error)),
+        };
+        found.push(if metadata.is_dir() {
+            FileInfo::directory(child)
+        } else {
+            FileInfo::file(child, metadata.len())
+        });
+    }
+    found.sort_by(|left, right| left.path.cmp(&right.path));
+    FileInfos::new(found.into_iter().map(Ok))
+}
+
 /// Distinguishes concurrent temporary files within one process.
 static TEMPORARY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -537,36 +663,38 @@ impl ArrowFileSystem for LocalFileSystem {
         }
     }
 
-    fn list(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
-        fn collect(directory: &str, recursive: bool, found: &mut Vec<FileInfo>) -> Result<()> {
-            let entries = match std::fs::read_dir(directory) {
-                Ok(entries) => entries,
-                // A missing directory lists empty, per the vtable contract.
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-                Err(error) => return Err(Error::Io(error)),
-            };
-            for entry in entries {
-                let entry = entry.map_err(Error::Io)?;
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                let child = format!("{}/{name}", directory.trim_end_matches('/'));
-                let metadata = entry.metadata().map_err(Error::Io)?;
-                if metadata.is_dir() {
-                    found.push(FileInfo::directory(child.clone()));
-                    if recursive {
-                        collect(&child, true, found)?;
-                    }
-                } else {
-                    found.push(FileInfo::file(child, metadata.len()));
-                }
-            }
-            Ok(())
+    fn list(&self, path: &str, recursive: bool) -> FileInfos {
+        let level = level_of(path);
+        if !recursive {
+            return level;
         }
-
-        let mut found = Vec::new();
-        collect(path, recursive, &mut found)?;
-        found.sort_by(|left, right| left.path.cmp(&right.path));
-        Ok(found)
+        // Depth-first, pre-order, holding one directory's sorted entries per
+        // open level - the frontier, never the result.
+        let mut stack = std::collections::VecDeque::from([level]);
+        let mut done = false;
+        FileInfos::new(std::iter::from_fn(move || {
+            if done {
+                return None;
+            }
+            loop {
+                let level = stack.front_mut()?;
+                let Some(entry) = level.next() else {
+                    stack.pop_front();
+                    continue;
+                };
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        done = true;
+                        return Some(Err(error));
+                    }
+                };
+                if entry.kind == IOKind::Directory {
+                    stack.push_front(level_of(&entry.path));
+                }
+                return Some(Ok(entry));
+            }
+        }))
     }
 
     fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
@@ -593,11 +721,6 @@ impl ArrowFileSystem for LocalFileSystem {
 
     fn write_full(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let target = std::path::Path::new(path);
-        if let Some(parent) = target.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).map_err(Error::Io)?;
-            }
-        }
         // Write beside the target and rename into place, so publication is
         // atomic and a concurrent reader never sees a half-written value.
         let tag = TEMPORARY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -609,7 +732,32 @@ impl ArrowFileSystem for LocalFileSystem {
                 .unwrap_or_default(),
             std::process::id()
         ));
-        std::fs::write(&staged, bytes).map_err(Error::Io)?;
+        // The staged write *is* the ancestry question: no directory is made in
+        // advance. A missing parent is repaired once, and the original write is
+        // retried exactly once; a second absence is reported naming what the
+        // repair created.
+        if let Err(error) = std::fs::write(&staged, bytes) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(Error::from_io_at(error, "file", path));
+            }
+            let Some(parent) = target
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            else {
+                return Err(Error::from_io_at(error, "file", path));
+            };
+            std::fs::create_dir_all(parent).map_err(Error::Io)?;
+            std::fs::write(&staged, bytes).map_err(|retry| {
+                if retry.kind() == std::io::ErrorKind::NotFound {
+                    Error::absent(
+                        "file",
+                        format!("{path} (its parent {} was created)", parent.display()),
+                    )
+                } else {
+                    Error::Io(retry)
+                }
+            })?;
+        }
         std::fs::rename(&staged, target).map_err(|error| {
             let _ = std::fs::remove_file(&staged);
             Error::Io(error)

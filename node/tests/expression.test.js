@@ -110,14 +110,14 @@ test('a lake is filtered by the same predicate the rows are', () => {
   }
   try {
     const handle = new IOBase(root)
-    const matched = handle.childrenMatching("&holder.partition['year'] = '2024'")
+    const matched = [...handle.childrenMatching("&holder.partition['year'] = '2024'")]
     assert.ok(matched.length > 0)
     for (const entry of matched) {
       assert.match(String(entry.url), /year=2024/)
     }
 
     // The pair spelling selects the leaves, and it selects the same ones.
-    const pairs = handle.childrenWhere({ year: '2024' })
+    const pairs = [...handle.childrenWhere({ year: '2024' })]
     assert.equal(pairs.length, 1)
     assert.match(String(pairs[0].url), /year=2024\/part-0\.parquet$/)
   } finally {

@@ -180,6 +180,49 @@ impl JsRecordOptions {
         Ok(())
     }
 
+    /// The bound on how many result rows flow in total, when one is set.
+    ///
+    /// A count of rows, applied last - after the declared schema, selection,
+    /// completion cast, and partition filter - so `0` is a valid ask: the
+    /// shaped schema with no batches, rather than an error.
+    #[napi(getter)]
+    pub fn max_row_size(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.max_row_size().map(|rows| rows as f64)
+    }
+
+    /// Set the bound on how many result rows flow in total.
+    #[napi(setter)]
+    pub fn set_max_row_size(&mut self, max_row_size: Option<f64>) -> Result<()> {
+        let bound = match max_row_size {
+            Some(rows) => Some(crate::exact_u64(rows, "maxRowSize")?),
+            None => None,
+        };
+        self.inner.set_max_row_size(bound);
+        Ok(())
+    }
+
+    /// The bound on the result rows' Arrow in-memory bytes, when one is set.
+    ///
+    /// Counted uncompressed, never as encoded bytes; a non-zero bound always
+    /// yields at least one row, and only `0` yields nothing.
+    #[napi(getter)]
+    pub fn max_byte_size(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.max_byte_size().map(|bytes| bytes as f64)
+    }
+
+    /// Set the bound on the result rows' Arrow in-memory bytes.
+    #[napi(setter)]
+    pub fn set_max_byte_size(&mut self, max_byte_size: Option<f64>) -> Result<()> {
+        let bound = match max_byte_size {
+            Some(bytes) => Some(crate::exact_u64(bytes, "maxByteSize")?),
+            None => None,
+        };
+        self.inner.set_max_byte_size(bound);
+        Ok(())
+    }
+
     /// The compression level on the shared 0-to-9 scale.
     #[napi(getter)]
     pub fn level(&self) -> u8 {
@@ -347,6 +390,22 @@ impl JsRecordOptions {
     pub fn with_batch_size(&self, batch_size: u32) -> Result<Self> {
         let mut options = self.clone();
         options.set_batch_size(Some(batch_size))?;
+        Ok(options)
+    }
+
+    /// Return these options with a bound on how many result rows flow.
+    #[napi]
+    pub fn with_max_row_size(&self, max_row_size: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_max_row_size(Some(max_row_size))?;
+        Ok(options)
+    }
+
+    /// Return these options with a bound on the result rows' Arrow bytes.
+    #[napi]
+    pub fn with_max_byte_size(&self, max_byte_size: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_max_byte_size(Some(max_byte_size))?;
         Ok(options)
     }
 

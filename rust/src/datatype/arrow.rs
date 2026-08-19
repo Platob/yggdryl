@@ -437,6 +437,17 @@ impl TryFrom<&DataType> for ArrowDataType {
                     encoded.values.to_arrow_ref()?,
                 )
             }
+            // The Arrow storage of the three extension-typed variants. The
+            // extension name and metadata are *field* metadata
+            // (`ARROW:extension:name`), so they ride `Field`'s projection;
+            // this level answers the storage type Arrow actually lays out:
+            // the canonical `arrow.parquet.variant` struct of two required
+            // binaries, and WKB bytes for the geospatial pair.
+            R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
+                arrow_schema::Field::new("metadata", Self::Binary, false),
+                arrow_schema::Field::new("value", Self::Binary, false),
+            ])),
+            R::Geometry(_) | R::Geography(_) => Self::Binary,
         })
     }
 }
@@ -567,6 +578,17 @@ impl TryFrom<DataType> for ArrowDataType {
                     encoded.values.to_arrow_ref()?,
                 ),
             },
+            // The Arrow storage of the three extension-typed variants. The
+            // extension name and metadata are *field* metadata
+            // (`ARROW:extension:name`), so they ride `Field`'s projection;
+            // this level answers the storage type Arrow actually lays out:
+            // the canonical `arrow.parquet.variant` struct of two required
+            // binaries, and WKB bytes for the geospatial pair.
+            R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
+                arrow_schema::Field::new("metadata", Self::Binary, false),
+                arrow_schema::Field::new("value", Self::Binary, false),
+            ])),
+            R::Geometry(_) | R::Geography(_) => Self::Binary,
         })
     }
 }
@@ -623,6 +645,25 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+/// Reports whether an Arrow datatype is exactly the canonical variant
+/// storage: a struct of a non-nullable `metadata` Binary followed by a
+/// non-nullable `value` Binary.
+///
+/// Child field metadata does not participate - it is transport, not
+/// identity - but the order is fixed because Arrow's own struct casting is
+/// positional and would silently relabel swapped children.
+pub(crate) fn is_variant_storage(data_type: &ArrowDataType) -> bool {
+    let ArrowDataType::Struct(fields) = data_type else {
+        return false;
+    };
+    fields.len() == 2
+        && fields[0].name() == "metadata"
+        && fields[1].name() == "value"
+        && fields
+            .iter()
+            .all(|field| field.data_type() == &ArrowDataType::Binary && !field.is_nullable())
 }
 
 /// Builds a C Data Interface schema without losing nested datatype flags.
@@ -753,6 +794,29 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
                 None,
                 Flags::empty(),
             )
+        }
+        // The extension identity of the three extension-typed variants is
+        // metadata, and a C schema is a field, so the storage projection
+        // carries the two `ARROW:extension:*` entries here. `Field::to_arrow_ffi`
+        // merges the same entries with the field's own metadata.
+        DataType::Variant | DataType::Geometry(_) | DataType::Geography(_) => {
+            let arrow = data_type.to_arrow()?;
+            let schema = FFI_ArrowSchema::try_from(&arrow)?;
+            let Some((name, metadata)) = super::arrow_extension_parts(data_type) else {
+                return Err(invalid(
+                    "ArrowExtension",
+                    format_smolstr!("expected an extension projection for {data_type}, got none"),
+                ));
+            };
+            return schema
+                .with_metadata([
+                    (arrow_schema::extension::EXTENSION_TYPE_NAME_KEY, name),
+                    (
+                        arrow_schema::extension::EXTENSION_TYPE_METADATA_KEY,
+                        metadata.as_str(),
+                    ),
+                ])
+                .map_err(Error::from);
         }
         _ => {
             let arrow = data_type.to_arrow()?;

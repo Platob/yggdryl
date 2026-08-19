@@ -94,7 +94,7 @@ layer compiling annotations into native values.
   `partition.rs`, `snapshot.rs` (snapshots and refs), `metadata.rs`,
   `manifest.rs`, `statistics.rs`, `value.rs` (Iceberg's text and
   single-value renderings of a scalar), `scan.rs`, `table.rs`, `options.rs`,
-  `catalog.rs`, `evolve.rs`, `inspect.rs`. A table format sits on the record
+  `catalog/` (one file per hierarchy level), `evolve.rs`, `inspect.rs`. A table format sits on the record
   encodings; it never becomes one.
 - No tabular descriptor, dataset, or in-memory table type: a handle plus
   `RecordOptions` is the whole surface; an in-memory table is a `Buffer`.
@@ -353,7 +353,7 @@ meets all of these; a new media that cannot yet is not done:
 ## Table format contract
 
 - **A table is a folder, reached through `IOBase` only.** `Table` finds
-  metadata, manifest lists, manifests, and data files with `child_by`/`ls`;
+  metadata, manifest lists, manifests, and data files with `child_by_path`/`ls`;
   no paths, no `std::fs`; recorded absolute locations become relative names
   first. Catalog-free location works like `HadoopTables`:
   `metadata/version-hint.text`, else highest-numbered `*.metadata.json`.
@@ -418,12 +418,24 @@ meets all of these; a new media that cannot yet is not done:
   unchanged). Inspection is `inspect_history`/`inspect_snapshots`/
   `inspect_files` as record batches under PyIceberg's column names; never a
   second struct-shaped spelling.
-- **A catalog is a warehouse folder over `IOBase`.** `iceberg::Catalog` maps
-  dotted names to nested folders, creates tables from partition-marked
-  schemas, answers `append` (create-or-append) and `overwrite`. No network,
-  no transaction protocol; REST catalog is future work behind an HTTP
-  backend. Drop/rename are absent until the storage contract gains
-  delete/move - name that reason, do not emulate.
+- **A catalog is a warehouse folder over `IOBase`, and the hierarchy is one
+  shape at three levels.** `Catalogs`/`Catalog`, `Namespaces`/`Namespace`,
+  and `Tables` share one collection vocabulary - `get` (absence raised),
+  `create` (conflict raised), `open_or_create` (both absorbed, same attempt,
+  one code path), `contains`, lazy `iter`, draining `len`/`is_empty` - and
+  no level invents a verb. Dotted names resolve in the collections
+  (`tables.get("sales.eu.orders")` descends); `Catalog` keeps exactly two
+  dotted entry points, `table` and `namespace`. A catalog and a namespace
+  each carry properties in `metadata/catalog.json` / `metadata/namespace.json`
+  (absent = empty; the `iceberg:` prefix reserved; writing the namespace
+  document is what makes an empty namespace durable and creates its
+  ancestry). A table create makes its namespaces by writing its first
+  metadata document - nothing pre-walks or pre-checks, per the existence
+  contract, and `metadata` is a reserved name at every level. `Tables` keeps
+  `append` (create-or-append) and `overwrite`. No network, no transaction
+  protocol; REST catalog is future work behind an HTTP backend. Drop/rename
+  are absent until the storage contract gains delete/move - name that
+  reason, do not emulate.
 - **One key names the file-size target**: `write.target-file-size-bytes`,
   falling back to the schema root's `iceberg:` spelling, then 512 MiB. Rolls
   a partition's stream at batch boundaries, sized by Arrow in-memory bytes
@@ -600,11 +612,13 @@ Keep exact; no alternate aliases:
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
   `to_arrow`, `into_arrow`, `to_json`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `to_scheme_compat`. Generic
-  finite-variant constructor is exactly `variant`: Fields in declaration
+  finite-union constructor is exactly `dense_union`: Fields in declaration
   order, Arrow type IDs `0..`, canonical dense `Union` (kind `union`, dense
   display, lossless Arrow round trip, <=128 members); parser `variant(...)`
   is input sugar accepting only dense sequential-from-zero, displaying as
-  `union(dense,...)`. Generic `decimal` selects decimal128 (P 1..=38) or
+  `union(dense,...)`. Bare `variant` is a datatype of its own - the
+  self-describing semi-structured value - and the parenthesis is what
+  disambiguates, deterministically, in one parser branch. Generic `decimal` selects decimal128 (P 1..=38) or
   decimal256 (39..=76), then delegates validation; generic `time` selects
   time32 (s/ms) or time64 (us/ns) likewise; intervals are rejected without
   selecting a width.

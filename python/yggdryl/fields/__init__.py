@@ -42,6 +42,14 @@ from .floating import (
     float32,
     float64,
 )
+from .geospatial import (
+    GeographyField,
+    GeometryField,
+    VariantField,
+    geography,
+    geometry,
+    variant,
+)
 from .integer import (
     Int8Field,
     Int16Field,
@@ -61,6 +69,7 @@ from .integer import (
     uint64,
 )
 from .nested import (
+    DenseUnionField,
     DictionaryField,
     FixedSizeListField,
     LargeListField,
@@ -71,7 +80,7 @@ from .nested import (
     RunEndEncodedField,
     StructField,
     UnionField,
-    VariantField,
+    dense_union,
     dictionary,
     fixed_size_list,
     large_list,
@@ -83,7 +92,6 @@ from .nested import (
     run_end_encoded,
     struct,
     union,
-    variant,
 )
 from .scalar import BooleanField, NullField, boolean, null
 from .temporal import (
@@ -116,6 +124,7 @@ __all__ = [
     "Decimal128Field",
     "Decimal256Field",
     "DecimalField",
+    "DenseUnionField",
     "DictionaryField",
     "DurationField",
     "FixedSizeBinaryField",
@@ -123,6 +132,8 @@ __all__ = [
     "Float16Field",
     "Float32Field",
     "Float64Field",
+    "GeographyField",
+    "GeometryField",
     "Int8Field",
     "Int16Field",
     "Int32Field",
@@ -162,6 +173,7 @@ __all__ = [
     "decimal64",
     "decimal128",
     "decimal256",
+    "dense_union",
     "dictionary",
     "duration",
     "fixed_size_binary",
@@ -169,6 +181,8 @@ __all__ = [
     "float16",
     "float32",
     "float64",
+    "geography",
+    "geometry",
     "int8",
     "int16",
     "int32",
@@ -194,7 +208,7 @@ __all__ = [
     "uint32",
     "uint64",
     "union",
-    "variant",
     "utf8",
     "utf8_view",
+    "variant",
 ]
