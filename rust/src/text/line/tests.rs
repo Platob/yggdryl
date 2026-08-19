@@ -2085,7 +2085,10 @@ mod record_surface {
         let handle = named("app.log", b"first\nsecond\n");
         let options = handle.record_options().unwrap();
         let batches = rows(handle.read_arrow_batch_reader(&options).unwrap());
-        assert_eq!(batches.iter().map(|batch| batch.num_rows()).sum::<usize>(), 2);
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            2
+        );
         let messages = batches[0]
             .column_by_name("message")
             .unwrap()
@@ -2177,7 +2180,10 @@ mod record_surface {
         );
         // Reading back through the record surface sees three rows.
         let batches = rows(target.read_arrow_batch_reader(&options).unwrap());
-        assert_eq!(batches.iter().map(|batch| batch.num_rows()).sum::<usize>(), 3);
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            3
+        );
     }
 
     #[test]
@@ -2204,10 +2210,7 @@ mod record_surface {
 
     #[test]
     fn a_stray_text_leaf_does_not_retype_a_structured_lake() {
-        let root = std::env::temp_dir().join(format!(
-            "yggdryl-lake-probe-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("yggdryl-lake-probe-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         // `_SUCCESS.txt` sorts before the data file; the probe must still
@@ -2220,7 +2223,9 @@ mod record_surface {
         let arrow_schema = crate::arrow::schema_from_field(&schema).unwrap();
         let batch = arrow_array::RecordBatch::try_new(
             std::sync::Arc::clone(&arrow_schema),
-            vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![1_i64]))],
+            vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![
+                1_i64,
+            ]))],
         )
         .unwrap();
         let reader = crate::arrow::batch_reader(arrow_schema, [batch]);
@@ -2256,7 +2261,10 @@ mod record_surface {
         let options = view.record_options().unwrap();
         assert!(matches!(options, RecordOptions::Text(_)));
         let batches = rows(view.read_arrow_batch_reader(&options).unwrap());
-        assert_eq!(batches.iter().map(|batch| batch.num_rows()).sum::<usize>(), 2);
+        assert_eq!(
+            batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
+            2
+        );
         let messages = batches[0]
             .column_by_name("message")
             .unwrap()

@@ -785,7 +785,10 @@ impl LineColumns {
         use arrow_array::Array as _;
 
         let message = text_column(batch, self.message)?;
-        let header = self.header.map(|index| text_column(batch, index)).transpose()?;
+        let header = self
+            .header
+            .map(|index| text_column(batch, index))
+            .transpose()?;
         for row in 0..batch.num_rows() {
             if let Some(header) = header {
                 if !header.is_null(row) && !header.value(row).is_empty() {

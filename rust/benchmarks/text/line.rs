@@ -135,8 +135,13 @@ fn record(text: &mut String, index: usize, continuations: bool) {
              forwarded to [(null) as (null)] [Direct reject]",
             index % 1_000_000
         ),
-        4 => String::from("Message rejected because : Ignoring expiry message from fully filled orders"),
-        5 => format!("Setting last event id for order , 1 to 20260814-2206{:02}-906-02-1", index % 100),
+        4 => String::from(
+            "Message rejected because : Ignoring expiry message from fully filled orders",
+        ),
+        5 => format!(
+            "Setting last event id for order , 1 to 20260814-2206{:02}-906-02-1",
+            index % 100
+        ),
         6 => String::from(
             "Expression from TCRPRICE=xpath(\"/event/action/trade/capturereport/@price\") gives \
              no result, no mapping is done",
@@ -275,7 +280,6 @@ const RECORDS: usize = 200_000;
 
 /// Rotated leaves one folder corpus is split across.
 const LEAVES: usize = 8;
-
 
 /// A written corpus: the handle addressing it and what its rows weigh.
 struct Corpus<H> {
@@ -440,17 +444,16 @@ pub(crate) fn lines_gzip_benchmarks(criterion: &mut Criterion) {
     // the headline cases read: each added point costs a full pass, and the
     // claim is flat per-byte throughput, which four sizes over an eightfold
     // range carry.
-    let scale: Vec<(&str, Corpus<Folder>)> =
-        [("25k", 25_000), ("50k", 50_000), ("100k", 100_000)]
-            .into_iter()
-            .map(|(label, records)| {
-                let shards = rotated_shards(records);
-                (
-                    label,
-                    rotated_folder(&root.join(label), &shards, records, true),
-                )
-            })
-            .collect();
+    let scale: Vec<(&str, Corpus<Folder>)> = [("25k", 25_000), ("50k", 50_000), ("100k", 100_000)]
+        .into_iter()
+        .map(|(label, records)| {
+            let shards = rotated_shards(records);
+            (
+                label,
+                rotated_folder(&root.join(label), &shards, records, true),
+            )
+        })
+        .collect();
 
     // Proven once, outside the timers: a projection that split or dropped the
     // multi-line records would still look fast.

@@ -216,10 +216,7 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         "data_type_kinds",
         DataTypeKind::ALL.map(DataTypeKind::as_str).to_vec(),
     )?;
-    listing.set_item(
-        "time_units",
-        TimeUnit::ALL.map(TimeUnit::as_str).to_vec(),
-    )?;
+    listing.set_item("time_units", TimeUnit::ALL.map(TimeUnit::as_str).to_vec())?;
     listing.set_item(
         "union_modes",
         UnionMode::ALL.map(UnionMode::as_str).to_vec(),

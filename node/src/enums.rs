@@ -32,7 +32,10 @@ pub fn enum_values_native() -> HashMap<String, Vec<String>> {
             spell(&UnionMode::ALL.map(UnionMode::as_str)),
         ),
         ("codecs".to_owned(), spell(&Codec::ALL.map(Codec::as_str))),
-        ("ioKinds".to_owned(), spell(&IOKind::ALL.map(IOKind::as_str))),
+        (
+            "ioKinds".to_owned(),
+            spell(&IOKind::ALL.map(IOKind::as_str)),
+        ),
         (
             "compatibilitySchemes".to_owned(),
             Scheme::COMPATIBILITY_TARGETS
