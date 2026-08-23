@@ -131,8 +131,16 @@ fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
             DataType::Time64(TimeUnit::Nanosecond),
         ),
         (
-            DataType::Duration(TimeUnit::Second),
-            DataType::Duration(TimeUnit::Nanosecond),
+            DataType::Duration32(TimeUnit::Second),
+            DataType::Duration32(TimeUnit::Nanosecond),
+        ),
+        (
+            DataType::Duration64(TimeUnit::Second),
+            DataType::Duration64(TimeUnit::Nanosecond),
+        ),
+        (
+            DataType::Duration32(TimeUnit::Second),
+            DataType::Duration64(TimeUnit::Second),
         ),
         (
             DataType::Interval(TimeUnit::YearMonth),

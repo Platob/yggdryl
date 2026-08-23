@@ -32,7 +32,7 @@
 
 use std::io::SeekFrom;
 
-use super::IOBase;
+use super::{ByteStream, IOBase};
 use crate::{Error, Result};
 
 /// A positioned view over a positional resource.
@@ -88,6 +88,18 @@ pub trait IOCursor: IOBase {
         Ok(read)
     }
 
+    /// Stream byte arrays from the current position and advance as consumed.
+    ///
+    /// The source is untouched until the first item is requested. Dropping the
+    /// iterator leaves the cursor immediately after the last yielded byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`std::io::ErrorKind::InvalidInput`] when `batch_size` is zero.
+    fn stream_bytes(&mut self, batch_size: usize) -> Result<ByteStream<'_>> {
+        ByteStream::from_cursor(self, batch_size)
+    }
+
     /// Write at the position, advancing it by what was written.
     ///
     /// # Errors
@@ -141,8 +153,20 @@ impl<H: IOBase> Cursor<H> {
     }
 }
 
+impl<H: IOBase> crate::io::IOMedia for Cursor<H> {
+    crate::delegate_iomedia!(handle);
+}
+
 impl<H: IOBase> IOBase for Cursor<H> {
     crate::delegate_iobase!(handle);
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.handle.read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.handle.read_range(offset, length)
+    }
 }
 
 impl<H: IOBase> IOCursor for Cursor<H> {
@@ -152,6 +176,14 @@ impl<H: IOBase> IOCursor for Cursor<H> {
 
     fn seek_to(&mut self, position: u64) {
         self.position = position;
+    }
+
+    /// Keep the wrapped handle's native sequential path alive for the whole
+    /// stream while advancing this cursor's disjoint position field.
+    fn stream_bytes(&mut self, batch_size: usize) -> Result<ByteStream<'_>> {
+        let Self { handle, position } = self;
+        let stream = handle.pstream_bytes(*position, batch_size)?;
+        ByteStream::from_advancing_stream(stream, position, batch_size)
     }
 }
 
@@ -233,5 +265,50 @@ mod tests {
         // cursor's position, exactly as a second pread caller would.
         assert_eq!(cursor.read_all_bytes().unwrap(), b"AAPL");
         assert_eq!(cursor.tell(), 4);
+    }
+
+    #[test]
+    fn a_cursor_stream_bypasses_the_wrapped_page_cache() {
+        let handle = Buffer::from_bytes(vec![0xA5; 256 * 1024]).buffered(
+            crate::buffered::BufferedOptions::default()
+                .with_page_size(4 * 1024)
+                .with_max_bytes(32 * 1024),
+        );
+        let mut cursor = handle.cursor_at(17);
+        let total: usize = cursor
+            .stream_bytes(4 * 1024)
+            .unwrap()
+            .map(|chunk| chunk.unwrap().len())
+            .sum();
+
+        assert_eq!(total, 256 * 1024 - 17);
+        assert_eq!(cursor.handle().cached_pages(), 0);
+        assert_eq!(cursor.tell(), 256 * 1024);
+    }
+
+    #[test]
+    fn a_cursor_stream_keeps_one_compression_decoder_alive() {
+        use crate::buffered::tests::Counting;
+
+        let plain = b"symbol,price\nAAPL,1\n".repeat(4 * 1024);
+        let encoded = crate::gzip::dump(&plain).unwrap();
+        let handle =
+            crate::io::Coded::new(Counting::from_bytes(encoded.clone()), crate::Codec::Gzip);
+        let mut cursor = handle.cursor();
+        let decoded = cursor
+            .stream_bytes(31)
+            .unwrap()
+            .collect::<crate::Result<Vec<_>>>()
+            .unwrap()
+            .concat();
+
+        assert_eq!(decoded, plain);
+        assert_eq!(cursor.tell(), plain.len() as u64);
+        assert_eq!(cursor.handle().handle().sizes(), 0);
+        assert!(
+            cursor.handle().handle().reads() <= encoded.len().div_ceil(31) + 2,
+            "the cursor rebuilt its decoder instead of advancing one encoded stream"
+        );
+        assert!(!cursor.handle().opened());
     }
 }

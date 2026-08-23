@@ -42,7 +42,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "date64": fields.date64("value"),
         "time32": fields.time32("value", "ms"),
         "time64": fields.time64("value", "ns"),
-        "duration": fields.duration("value", "us"),
+        "duration32": fields.duration32("value", "ms"),
+        "duration64": fields.duration64("value", "us"),
         "interval": fields.interval("value", "month_day_nano"),
         "binary": fields.binary("value"),
         "fixed_size_binary": fields.fixed_size_binary("value", 16),
@@ -72,7 +73,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": fields.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 44
+    assert len(values_by_kind) == 45
     assert set(values_by_kind) == {
         value.data_type.id for value in values_by_kind.values()
     }
@@ -90,7 +91,7 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
         metadata={"logical": "status"},
     )
     item.set_dictionary_options(42, True)
-    projected_item = item.to_arrow()
+    projected_item = item.into_arrow()
 
     values = fields.list("values", item, metadata={"owner": "events"})
     child = values.data_type[0]
@@ -99,8 +100,8 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     assert child.dictionary_id == 42
     assert child.dictionary_is_ordered is True
     assert child.metadata["logical"] == "status"
-    assert child.to_arrow().equals(projected_item, check_metadata=True)
-    assert values.to_arrow().metadata == {b"owner": b"events"}
+    assert child.into_arrow().equals(projected_item, check_metadata=True)
+    assert values.into_arrow().metadata == {b"owner": b"events"}
 
 
 def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
@@ -115,7 +116,7 @@ def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
         nullable=False,
         metadata={"logical": "variant"},
     )
-    arrow = value.to_arrow()
+    arrow = value.into_arrow()
 
     assert type(value) is Field
     assert fields.DenseUnionField is Field
@@ -238,7 +239,7 @@ def test_map_factory_projects_exact_arrow_layout() -> None:
     mapping = fields.map_of(
         "labels", "utf8", "int32", keys_sorted=True, nullable=False
     )
-    arrow = mapping.to_arrow()
+    arrow = mapping.into_arrow()
 
     assert arrow.type.equals(pa.map_(pa.string(), pa.int32(), keys_sorted=True))
     assert arrow.nullable is False

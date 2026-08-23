@@ -4,7 +4,8 @@ const { readFileSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const declarationPath = join(__dirname, '..', 'index.d.ts')
-const privateTypes = []
+const privateTypes = [['ArrowWriteSession', 'JsArrowWriteSession']]
+const loaderPath = join(__dirname, '..', 'index.js')
 
 function occurrences(source, needle) {
   let count = 0
@@ -86,6 +87,21 @@ function check(source) {
 const source = readFileSync(declarationPath, 'utf8')
 if (process.argv.includes('--check')) {
   check(source)
+  check(readFileSync(loaderPath, 'utf8'))
 } else {
   writeFileSync(declarationPath, sanitize(source))
+  writeFileSync(loaderPath, sanitizeLoader(readFileSync(loaderPath, 'utf8')))
+}
+
+function sanitizeLoader(source) {
+  for (const names of privateTypes) {
+    for (const name of names) {
+      source = source.replace(
+        new RegExp(`^module\\.exports\\.${name} = nativeBinding\\.${name}\\r?\\n`, 'm'),
+        '',
+      )
+    }
+  }
+  check(source)
+  return source
 }

@@ -158,7 +158,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     )
     .expect("the static HTTP metadata is valid");
     http_field
-        .to_arrow_ref()
+        .clone()
+        .into_arrow_ref()
         .expect("the static HTTP field projects to Arrow");
     group.bench_function("http_content_type_exact", |bencher| {
         bencher.iter(|| black_box(&http_field).content_type());

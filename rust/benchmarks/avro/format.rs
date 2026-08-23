@@ -8,7 +8,7 @@
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::io::{Buffer, IOBase};
-use yggdryl::{Value, avro, json};
+use yggdryl::{Limits, Value, avro, json};
 
 /// Rows per fixture.
 const ROWS: usize = 10_000;
@@ -19,7 +19,7 @@ type RowMaker = Box<dyn Fn(usize) -> Value>;
 /// One family: a schema and a row generator.
 fn families() -> Vec<(&'static str, Value, RowMaker)> {
     let record = |fields: &str| -> Value {
-        json::from_str(&format!(
+        json::from_utf8(&format!(
             r#"{{"type":"record","name":"row","fields":[{fields}]}}"#
         ))
         .expect("the family schema parses")
@@ -61,7 +61,7 @@ fn families() -> Vec<(&'static str, Value, RowMaker)> {
             Box::new(|index| {
                 Value::from_mapping([(
                     Value::from("price"),
-                    Value::Decimal(1_000_000 + index as i128 * 13, 4),
+                    Value::d128(1_000_000 + index as i128 * 13, 4),
                 )])
                 .expect("unique keys")
             }),
@@ -136,17 +136,65 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     // zig-zag encode and decode from every container concern above it.
     let long = avro::Schema::from_str("\"long\"").expect("a long schema");
     let value = Value::I64(-123_456_789);
-    let framed = avro::to_single_object_vec(&long, &value).expect("the frame encodes");
+    let framed = avro::into_single_object_vec(&long, &value).expect("the frame encodes");
     assert_eq!(
         avro::from_single_object_slice(&framed, &long).expect("the frame decodes"),
         value
     );
     group.throughput(Throughput::Elements(1));
     group.bench_function("varint/encode_single_object", |bencher| {
-        bencher.iter(|| avro::to_single_object_vec(black_box(&long), black_box(&value)));
+        bencher.iter(|| avro::into_single_object_vec(black_box(&long), black_box(&value)));
     });
     group.bench_function("varint/decode_single_object", |bencher| {
         bencher.iter(|| avro::from_single_object_slice(black_box(&framed), black_box(&long)));
+    });
+
+    // Opening blocks parses only the header. The owning shape includes the
+    // byte copy a language-runtime iterator needs in order to outlive its
+    // factory call; neither path reads or decompresses the payload.
+    let rows = (0..10_000).map(Value::I64).collect::<Vec<_>>();
+    let mut stored = Buffer::new();
+    avro::write_container(&mut stored, &Value::from("long"), &[], &rows)
+        .expect("the streaming fixture encodes");
+    let encoded = stored.read_all_bytes().expect("the fixture reads");
+    group.throughput(Throughput::Bytes(encoded.len() as u64));
+    group.bench_function("blocks/open_borrowed", |bencher| {
+        bencher.iter(|| avro::read_blocks(black_box(&stored)).expect("the header parses"));
+    });
+    group.bench_function("blocks/open_borrowed_with_limits", |bencher| {
+        bencher.iter(|| {
+            avro::read_blocks_with_limits(black_box(&stored), Limits::default())
+                .expect("the header parses")
+        });
+    });
+    group.bench_function("blocks/open_owned", |bencher| {
+        bencher.iter(|| {
+            avro::read_blocks_owned(Buffer::from_bytes(black_box(encoded.clone())))
+                .expect("the header parses")
+        });
+    });
+    group.bench_function("blocks/open_owned_with_limits", |bencher| {
+        bencher.iter(|| {
+            avro::read_blocks_owned_with_limits(
+                Buffer::from_bytes(black_box(encoded.clone())),
+                Limits::default(),
+            )
+            .expect("the header parses")
+        });
+    });
+    group.bench_function("blocks/first_borrowed", |bencher| {
+        bencher.iter(|| {
+            let mut blocks = avro::read_blocks(black_box(&stored)).expect("the header parses");
+            black_box(blocks.next_block().expect("the first block reads"))
+        });
+    });
+    group.bench_function("blocks/first_owned", |bencher| {
+        bencher.iter(|| {
+            let mut blocks =
+                avro::read_blocks_owned(Buffer::from_bytes(black_box(encoded.clone())))
+                    .expect("the header parses");
+            black_box(blocks.next_block().expect("the first block reads"))
+        });
     });
 
     group.finish();

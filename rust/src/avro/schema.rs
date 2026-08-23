@@ -9,13 +9,16 @@
 //! schema be finite.
 //!
 //! Logical types are modeled because the value model above this codec is
-//! typed: a `date` int decodes as a calendar [`Value::Date`](crate::Value)
+//! typed: a `date` int decodes as a calendar [`Value::Date32`](crate::Value)
 //! rather than a bare count, and a `decimal` keeps its unscaled integer and
 //! scale exactly. An annotation this implementation does not know - or one
 //! whose attributes are invalid for its underlying type - degrades to the
 //! underlying type, as the specification requires, never to an error.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
@@ -36,7 +39,7 @@ pub const MAX_SCHEMA_DEPTH: usize = 384;
 /// Cloning is cheap: the node tree and the name registry are shared, and the
 /// JSON the schema round-trips as is the same shared [`Value`] it was parsed
 /// from.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Schema {
     /// The root node.
     pub(crate) node: Node,
@@ -44,6 +47,10 @@ pub struct Schema {
     pub(crate) names: Arc<HashMap<SmolStr, Node>>,
     /// The JSON this schema round-trips as.
     json: Value,
+    /// Complete JSON identity with every object normalized to a sorted record.
+    identity: Value,
+    /// Parsing Canonical Form, shared by cheap clones and filled on demand.
+    canonical: Arc<OnceLock<String>>,
 }
 
 /// One node of the parsed schema tree.
@@ -137,6 +144,7 @@ pub(crate) struct FieldType {
     /// Iceberg resolves a column by identifier rather than by name, so the
     /// attribute is surfaced onto the decoded field's metadata rather than
     /// merely surviving as an unmodeled attribute.
+    #[cfg(feature = "arrow")]
     pub(crate) field_id: Option<i32>,
     /// The declared default, as the JSON it was written with.
     ///
@@ -208,6 +216,8 @@ impl Schema {
             node,
             names: Arc::new(parser.names),
             json: document.clone(),
+            identity: normalized_schema_json(document)?,
+            canonical: Arc::new(OnceLock::new()),
         })
     }
 
@@ -227,15 +237,20 @@ impl Schema {
     ///
     /// Returns an error when the bytes are not JSON or not a schema.
     pub fn from_slice(input: &[u8]) -> Result<Self> {
-        Self::from_json(&crate::json::from_slice(input)?)
+        Self::from_json(&crate::json::from_bytes(input)?)
     }
 
     /// Return the JSON this schema round-trips as.
     ///
     /// A parsed schema answers with the exact document it was parsed from, so
     /// attributes this implementation does not model survive verbatim.
-    pub fn to_json(&self) -> Value {
-        self.json.clone()
+    pub fn into_json(self) -> Value {
+        self.json
+    }
+
+    /// Borrow the exact JSON document this schema was parsed from.
+    pub const fn as_json(&self) -> &Value {
+        &self.json
     }
 
     /// Return the name a caller would use to refer to the root of this schema.
@@ -245,11 +260,17 @@ impl Schema {
 
     /// Render the Parsing Canonical Form: the one spelling of this schema
     /// every implementation agrees on, which is what fingerprints hash.
-    pub fn to_canonical_form(&self) -> String {
-        let mut output = String::new();
-        let mut printed = Vec::new();
-        canonical(&self.node, &self.names, &mut printed, &mut output);
-        output
+    pub fn into_canonical_form(self) -> String {
+        self.canonical_form().to_owned()
+    }
+
+    fn canonical_form(&self) -> &str {
+        self.canonical.get_or_init(|| {
+            let mut output = String::new();
+            let mut printed = Vec::new();
+            canonical(&self.node, &self.names, &mut printed, &mut output);
+            output
+        })
     }
 
     /// Return the 64-bit Rabin fingerprint of the canonical form.
@@ -257,7 +278,87 @@ impl Schema {
     /// This is the fingerprint single-object encoding frames a datum with,
     /// and the natural cache key for a resolution plan.
     pub fn fingerprint(&self) -> u64 {
-        rabin(self.to_canonical_form().as_bytes())
+        rabin(self.canonical_form().as_bytes())
+    }
+
+    /// Return a deterministic hash of the complete retained schema document.
+    ///
+    /// Unlike an Avro fingerprint, this preserves logical annotations,
+    /// defaults, aliases, and extension attributes that affect this schema's
+    /// behavior or round trip.
+    pub fn stable_hash(&self) -> u64 {
+        self.identity.stable_hash()
+    }
+}
+
+impl fmt::Debug for Schema {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Schema")
+            .field("json", &self.json)
+            .finish()
+    }
+}
+
+impl PartialEq for Schema {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity == other.identity
+    }
+}
+
+impl Eq for Schema {}
+
+impl PartialOrd for Schema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Schema {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.identity.cmp(&other.identity)
+    }
+}
+
+impl Hash for Schema {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity.hash(state);
+    }
+}
+
+/// Normalize JSON objects independently of how a language boundary represented
+/// them (`Mapping` or `Record`) while preserving every key and nested value.
+fn normalized_schema_json(value: &Value) -> Result<Value> {
+    match value {
+        Value::Sequence(values) => Ok(Value::from_sequence(
+            values
+                .iter()
+                .map(normalized_schema_json)
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        Value::Record(entries) => Value::from_record(
+            entries
+                .iter()
+                .map(|(name, value)| {
+                    normalized_schema_json(value).map(|value| (name.clone(), value))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        Value::Mapping(entries) => Value::from_record(
+            entries
+                .iter()
+                .map(|(name, value)| {
+                    let name = name.as_str().ok_or_else(|| {
+                        invalid(format_smolstr!(
+                            "expected every Avro schema object key to be text, got {}",
+                            name.kind()
+                        ))
+                    })?;
+                    Ok((name, normalized_schema_json(value)?))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        scalar => Ok(scalar.clone()),
     }
 }
 
@@ -265,7 +366,7 @@ impl std::str::FromStr for Schema {
     type Err = crate::Error;
 
     fn from_str(input: &str) -> Result<Self> {
-        Self::from_json(&crate::json::from_str(input)?)
+        Self::from_json(&crate::json::from_utf8(input)?)
     }
 }
 
@@ -432,7 +533,7 @@ impl Parser {
             }
             return Ok(Node::Union(parsed.into()));
         }
-        if document.as_mapping().is_none() {
+        if document.as_record().is_none() && document.as_mapping().is_none() {
             return Err(invalid(format_smolstr!(
                 "expected an Avro schema name, union, or object, got {}",
                 document.kind()
@@ -534,6 +635,7 @@ impl Parser {
                 name: SmolStr::new(field_name),
                 aliases: field_aliases,
                 schema: self.parse(field_type, &child_namespace, depth + 1)?,
+                #[cfg(feature = "arrow")]
                 field_id: entry
                     .get_key_str("field-id")
                     .and_then(Value::as_i64)

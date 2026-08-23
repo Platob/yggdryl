@@ -530,11 +530,11 @@ impl Runner<'_> {
                 Step::Skip(node) => self.writer.skip(node, cursor, depth, budget)?,
             }
         }
-        Value::from_mapping(
+        Value::from_record(
             plan.reader_fields
                 .iter()
                 .zip(values)
-                .map(|(name, value)| (Value::from(name.clone()), value)),
+                .map(|(name, value)| (name.clone(), value)),
         )
     }
 }
@@ -565,33 +565,43 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Value
         }
         Node::Bytes => Value::Bytes(Arc::from(cursor.bytes()?)),
         Node::String | Node::Uuid => Value::String(SmolStr::new(cursor.string()?)),
-        Node::Date => Value::Date(cursor.int()?),
-        Node::TimeMillis => Value::Time(i64::from(cursor.int()?), TimeUnit::Millisecond),
-        Node::TimeMicros => Value::Time(read_integer(from, cursor)?, TimeUnit::Microsecond),
-        Node::TimestampMillis => Value::Timestamp(
+        Node::Date => Value::date32(cursor.int()?),
+        Node::TimeMillis => Value::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?,
+        Node::TimeMicros => Value::time64(
+            read_integer(from, cursor)?,
+            TimeUnit::Microsecond,
+            Timezone::NAIVE,
+        )?,
+        Node::TimestampMillis => Value::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Millisecond,
             Timezone::UTC,
-        ),
-        Node::TimestampMicros => Value::Timestamp(
+        )?,
+        Node::TimestampMicros => Value::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Microsecond,
             Timezone::UTC,
-        ),
-        Node::TimestampNanos => Value::Timestamp(
+        )?,
+        Node::TimestampNanos => Value::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Nanosecond,
             Timezone::UTC,
-        ),
-        Node::LocalTimestampMillis => {
-            Value::DateTime(read_integer(from, cursor)?, TimeUnit::Millisecond)
-        }
-        Node::LocalTimestampMicros => {
-            Value::DateTime(read_integer(from, cursor)?, TimeUnit::Microsecond)
-        }
-        Node::LocalTimestampNanos => {
-            Value::DateTime(read_integer(from, cursor)?, TimeUnit::Nanosecond)
-        }
+        )?,
+        Node::LocalTimestampMillis => Value::datetime64(
+            read_integer(from, cursor)?,
+            TimeUnit::Millisecond,
+            Timezone::NAIVE,
+        )?,
+        Node::LocalTimestampMicros => Value::datetime64(
+            read_integer(from, cursor)?,
+            TimeUnit::Microsecond,
+            Timezone::NAIVE,
+        )?,
+        Node::LocalTimestampNanos => Value::datetime64(
+            read_integer(from, cursor)?,
+            TimeUnit::Nanosecond,
+            Timezone::NAIVE,
+        )?,
         Node::Decimal(decimal) => {
             let bytes = match from {
                 Wire::Fixed(size) => cursor.take(size)?,
@@ -606,7 +616,7 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Value
                     ),
                 )
             })?;
-            Value::Decimal(unscaled, decimal.scale as i8)
+            Value::d128(unscaled, decimal.scale as i8)
         }
         Node::Duration(_) | Node::UuidFixed(_) | Node::Fixed(_) => {
             let size = match from {
@@ -770,24 +780,26 @@ fn default_value_at(
             let bytes = default_bytes(default)?;
             let unscaled = super::datum::decimal_from_bytes(&bytes)
                 .ok_or_else(|| bad_default("decimal", default))?;
-            Value::Decimal(unscaled, decimal.scale as i8)
+            Value::d128(unscaled, decimal.scale as i8)
         }
         Node::String | Node::Uuid | Node::Enum(_) => Value::String(SmolStr::new(
             default
                 .as_str()
                 .ok_or_else(|| bad_default(node.kind(), default))?,
         )),
-        Node::Date => Value::Date(default_int(default, "date")?),
-        Node::TimeMillis => Value::Time(
-            i64::from(default_int(default, "time-millis")?),
+        Node::Date => Value::date32(default_int(default, "date")?),
+        Node::TimeMillis => Value::time32(
+            default_int(default, "time-millis")?,
             TimeUnit::Millisecond,
-        ),
-        Node::TimeMicros => Value::Time(
+            Timezone::NAIVE,
+        )?,
+        Node::TimeMicros => Value::time64(
             default
                 .as_i64()
                 .ok_or_else(|| bad_default("time-micros", default))?,
             TimeUnit::Microsecond,
-        ),
+            Timezone::NAIVE,
+        )?,
         Node::TimestampMillis | Node::TimestampMicros | Node::TimestampNanos => {
             let count = default
                 .as_i64()
@@ -797,7 +809,7 @@ fn default_value_at(
                 Node::TimestampNanos => TimeUnit::Nanosecond,
                 _ => TimeUnit::Microsecond,
             };
-            Value::Timestamp(count, unit, Timezone::UTC)
+            Value::datetime64(count, unit, Timezone::UTC)?
         }
         Node::LocalTimestampMillis | Node::LocalTimestampMicros | Node::LocalTimestampNanos => {
             let count = default
@@ -808,7 +820,7 @@ fn default_value_at(
                 Node::LocalTimestampNanos => TimeUnit::Nanosecond,
                 _ => TimeUnit::Microsecond,
             };
-            Value::DateTime(count, unit)
+            Value::datetime64(count, unit, Timezone::NAIVE)?
         }
         // A union default always describes the union's first branch.
         Node::Union(branches) => match branches.first() {
@@ -836,7 +848,7 @@ fn default_value_at(
             Value::from_mapping(converted)?
         }
         Node::Record(record) => {
-            if default.as_mapping().is_none() {
+            if default.as_record().is_none() && default.as_mapping().is_none() {
                 return Err(bad_default("record", default));
             }
             let mut entries = Vec::with_capacity(record.fields.len());
@@ -854,9 +866,9 @@ fn default_value_at(
                         }
                     },
                 };
-                entries.push((Value::from(field.name.clone()), value));
+                entries.push((field.name.clone(), value));
             }
-            Value::from_mapping(entries)?
+            Value::from_record(entries)?
         }
         Node::Ref(name) => {
             let target = names

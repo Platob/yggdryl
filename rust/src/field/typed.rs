@@ -196,6 +196,18 @@ impl<K: FieldType> TypedField<K> {
     }
 }
 
+impl TypedField<super::nested::Struct> {
+    /// Consumes a checked Struct wrapper and returns its generic Struct field.
+    ///
+    /// This typed spelling is the Rust counterpart of the cached
+    /// `into_struct_field` class accessor exposed by field-decorated dataclasses.
+    /// The returned value is still the one canonical [`Field`]; the marker has
+    /// already proved that its datatype is Struct.
+    pub fn into_struct_field(self) -> Field {
+        self.field
+    }
+}
+
 /// A borrowed, allocation-free proof that a [`Field`] has datatype marker `K`.
 #[repr(transparent)]
 pub struct TypedFieldRef<'field, K: FieldType> {
@@ -356,6 +368,32 @@ impl<K: FieldType> fmt::Debug for TypedFieldRef<'_, K> {
             .field(&K::NAME)
             .field(&self.field)
             .finish()
+    }
+}
+
+impl<K: FieldType> PartialEq for TypedFieldRef<'_, K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field
+    }
+}
+
+impl<K: FieldType> Eq for TypedFieldRef<'_, K> {}
+
+impl<K: FieldType> PartialOrd for TypedFieldRef<'_, K> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<K: FieldType> Ord for TypedFieldRef<'_, K> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.field.cmp(other.field)
+    }
+}
+
+impl<K: FieldType> Hash for TypedFieldRef<'_, K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.field.hash(state);
     }
 }
 

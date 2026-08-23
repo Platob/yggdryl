@@ -76,7 +76,7 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
         datetime.datetime: "timestamp",
         datetime.date: "date32",
         datetime.time: "time64",
-        datetime.timedelta: "duration",
+        datetime.timedelta: "duration64",
         decimal.Decimal: "decimal128",
         uuid.UUID: "utf8",
         pathlib.Path: "utf8",
@@ -88,10 +88,10 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
     for hint, kind in expected.items():
         assert DataType.from_pyhint(hint).id == kind
 
-    assert DataType.from_pyhint(datetime.datetime).to_arrow() == pa.timestamp(
+    assert DataType.from_pyhint(datetime.datetime).into_arrow() == pa.timestamp(
         "us", tz="UTC"
     )
-    assert DataType.from_pyhint(decimal.Decimal).to_arrow() == pa.decimal128(38, 18)
+    assert DataType.from_pyhint(decimal.Decimal).into_arrow() == pa.decimal128(38, 18)
 
 
 def test_scalar_subclasses_keep_their_physical_type() -> None:
@@ -153,7 +153,7 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
     assert [field.name for field in entries] == ["key", "value"]
     assert not entries[0].nullable
     assert entries[1].nullable
-    assert DataType.from_arrow(mapping.to_arrow()) == mapping
+    assert DataType.from_arrow(mapping.into_arrow()) == mapping
 
     assert DataType.from_pyhint(cabc.Iterable).id == "list"
     assert DataType.from_pyhint(typing.Tuple).id == "list"
@@ -168,7 +168,7 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
 def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yggdryl.records._hints as hint_impl
+    import yggdryl.fields._hints as hint_impl
 
     def unexpected_arrow_factory(*args: object, **kwargs: object) -> object:
         raise AssertionError(
@@ -230,8 +230,8 @@ def test_items_view_and_union_inference_preserve_native_child_state() -> None:
     assert union.id == "union"
     assert union[0].metadata["source"] == "integer"
     assert [field.dictionary_id for field in union] == [None, None]
-    assert union.to_arrow().mode == "dense"
-    assert tuple(union.to_arrow().type_codes) == (0, 1)
+    assert union.into_arrow().mode == "dense"
+    assert tuple(union.into_arrow().type_codes) == (0, 1)
 
 
 def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> None:
@@ -247,11 +247,11 @@ def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> N
 
     assert inferred.id == "list"
     assert outer.id == "union"
-    assert outer.to_arrow().mode == "dense"
-    assert tuple(outer.to_arrow().type_codes) == (0, 1)
+    assert outer.into_arrow().mode == "dense"
+    assert tuple(outer.into_arrow().type_codes) == (0, 1)
     assert [member.data_type.id for member in outer] == ["map", "struct"]
     assert mapping_value.id == "union"
-    assert tuple(mapping_value.to_arrow().type_codes) == (0, 1)
+    assert tuple(mapping_value.into_arrow().type_codes) == (0, 1)
     assert mapping_value[0].metadata["branch"] == "count"
 
 
@@ -338,7 +338,7 @@ def test_internal_namespace_resolves_deep_local_struct_annotations() -> None:
         Shadowed = int
         value: Shadowed
 
-    from yggdryl.records._hints import _field_from_pyhint
+    from yggdryl.fields._hints import _field_from_pyhint
 
     root = _field_from_pyhint(
         "envelope",

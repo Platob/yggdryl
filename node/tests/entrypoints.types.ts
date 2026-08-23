@@ -1,40 +1,76 @@
-import { RecordBatch, Table, tableFromJSON, tableToIPC } from 'apache-arrow'
+import { RecordBatch, Table, tableFromJSON } from 'apache-arrow'
 
 import {
   BatchReader,
   Field,
   IOBase,
   RecordOptions,
-  type RowSource,
+  type RecordSource,
+  type StructRecord,
+  type WriteMode,
 } from '..'
 
 const handle: IOBase = IOBase.fromBytes()
 const table: Table = tableFromJSON([{ id: 1, venue: 'XNAS' }])
 const batch: RecordBatch = table.batches[0]
+const reader: BatchReader = BatchReader.from(table)
 const options: RecordOptions = handle.recordOptions()
-options.schema = Field.from('row: struct<id: int32> not null')
+options.field = Field.from('row: struct<id: int32> not null')
+const merging: RecordOptions = options.withMergeByNames(['id'])
+const overwriteMode: WriteMode = 'overwrite'
 
-const read: BatchReader = handle.readArrow()
-const readWithOptions: BatchReader = handle.readArrow(options)
-const readNamed: BatchReader = handle.readArrow('application/vnd.apache.arrow.stream')
+const read: BatchReader = handle.readArrowReader()
+const readWithOptions: BatchReader = handle.readArrowReader(options)
+const readNamed: BatchReader = handle.readArrowReader(
+  'application/vnd.apache.arrow.stream',
+)
 
-// Every synchronous source returns nothing at all.
-const written: void = handle.writeArrow(table)
-const writtenBatch: void = handle.writeArrow(batch)
-const writtenReader: void = handle.writeArrow(BatchReader.from(table))
-const writtenBytes: void = handle.writeArrow(tableToIPC(table))
-const writtenRecords: void = handle.writeArrow([{ id: 1, venue: 'XNAS' }])
-const writtenColumns: void = handle.writeArrow({ id: [1, 2], venue: ['a', 'b'] })
-const writtenWithOptions: void = handle.writeArrow(table, options)
-const appended: void = handle.appendArrow(table)
-const appendedRecords: void = handle.appendArrow([{ id: 2 }], options)
+const overwriteReader: void = handle.overwriteArrowReader(reader, options)
+const appendReader: void = handle.appendArrowReader(BatchReader.from(table), options)
+const mergeReader: void = handle.mergeArrowReader(BatchReader.from(table), merging)
+const writeReader: void = handle.writeArrowReader(
+  BatchReader.from(table),
+  overwriteMode,
+  options,
+)
 
-// An async source is the one shape whose call has to be awaited.
-async function* pages(): AsyncIterable<Table> {
-  yield table
+const overwriteTable: void = handle.overwriteArrowTable(table, options)
+const appendTable: void = handle.appendArrowTable(table, options)
+const mergeTable: void = handle.mergeArrowTable(table, merging)
+const writeTable: void = handle.writeArrowTable(table, 'append', options)
+
+const overwriteBatch: void = handle.overwriteArrowRecordBatch(batch, options)
+const appendBatch: void = handle.appendArrowRecordBatch(batch, options)
+const mergeBatch: void = handle.mergeArrowRecordBatch(batch, merging)
+const writeBatch: void = handle.writeArrowRecordBatch(batch, 'merge', merging)
+
+const record: StructRecord = { id: 1, venue: 'XNAS' }
+const records: RecordSource = [record]
+const overwriteRecords: void = handle.overwriteRecords(records, options)
+const appendRecords: void = handle.appendRecords(record, options)
+const mergeRecords: void = handle.mergeRecords(records, merging)
+const writeRecords: void = handle.writeRecords(records, 'overwrite', options)
+const readRecords: IterableIterator<Record<string, unknown>> = handle.readRecords(options)
+class Trade {
+  constructor(readonly row: Record<string, unknown>) {}
 }
-const pending: Promise<void> = handle.writeArrow(pages())
-const pendingAppend: Promise<void> = handle.appendArrow(pages())
+const readTrades: IterableIterator<Trade> = handle.readRecords(Trade, options)
+// @ts-expect-error one call accepts one options value
+handle.readRecords(options, options)
 
-const source: RowSource = table
-const sources: RowSource = [table, batch]
+async function* pages(): AsyncIterable<StructRecord> {
+  yield record
+}
+const pendingOverwrite: Promise<void> = handle.overwriteRecords(pages(), options)
+const pendingAppend: Promise<void> = handle.appendRecords(pages(), options)
+const pendingMerge: Promise<void> = handle.mergeRecords(pages(), merging)
+const pendingWrite: Promise<void> = handle.writeRecords(pages(), 'append', options)
+
+// @ts-expect-error the mode is required and precedes options
+handle.writeArrowReader(BatchReader.from(table), options)
+// @ts-expect-error the public mode vocabulary is closed
+handle.writeArrowTable(table, 'replace')
+// @ts-expect-error the public mode vocabulary is closed
+handle.writeArrowRecordBatch(batch, 'upsert')
+// @ts-expect-error records use the same closed mode vocabulary
+handle.writeRecords(records, 'update')

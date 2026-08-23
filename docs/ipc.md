@@ -2,6 +2,11 @@
 
 `yggdryl::ipc` reads and writes Arrow IPC streams over any byte handle.
 
+At handle level, overwrite, append, and keyed merge use the shared
+[canonical record-write signatures](io.md#canonical-record-write-signatures).
+The free `ipc::overwrite_batch_reader` below is the one complete-stream encoder
+those intents ultimately publish through.
+
 !!! note "All three"
     Python and JavaScript reach the encoding through [`IOBase`](io.md)'s record
     methods rather than through the free functions. Python exchanges batches as
@@ -9,39 +14,63 @@
     the copied Arrow IPC boundary described in
     [javascript.md](extensions/javascript.md).
 
+## Arrow batch reads and writes
+
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::arrow;
-    use yggdryl::io::Buffer;
-    use yggdryl::ipc::{self, IpcOptions};
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
     use yggdryl::{DataType, MimeType};
 
-    // A non-null struct Field is the schema of the batches it describes.
-    let schema = DataType::from_fields([
+    let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::Utf8.nullable_field("venue"),
     ])?
     .required_field("row");
-
-    let arrow_schema = schema.to_arrow_schema()?;
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![
-            Arc::new(Int64Array::from(vec![1, 2])),
-            Arc::new(StringArray::from(vec![Some("AAPL"), None])),
-        ],
-    )?;
+    let schema = field.into_arrow_schema()?;
+    let batch = |ids: Vec<i64>, venues: Vec<Option<&str>>| {
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int64Array::from(ids)),
+                Arc::new(StringArray::from(venues)),
+            ],
+        )
+    };
 
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    let options = IpcOptions::new();
+    let options = handle.record_options()?;
+    handle.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![1, 2], vec![Some("XNAS"), Some("XNYS")])?],
+        ),
+        &options,
+    )?;
+    handle.append_arrow_reader(
+        yggdryl::arrow::batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![3], vec![Some("XLON")])?],
+        ),
+        &options,
+    )?;
+    handle.merge_arrow_reader(
+        yggdryl::arrow::batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![2, 4], vec![Some("XPAR"), None])?],
+        ),
+        &options.clone().with_merge_by_names(["id"]),
+    )?;
 
-    ipc::write_batch_reader(&mut handle, arrow::batch_reader(arrow_schema, [batch]), &options)?;
-    assert_eq!(ipc::read_field(&handle, &options)?, schema);
-    assert_eq!(ipc::read_batch_reader(&handle, None, &options)?.count(), 1);
+    let rows = handle
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .sum::<Result<usize, _>>()?;
+    assert_eq!(rows, 4);
     ```
 
 === "Python"
@@ -56,16 +85,23 @@
 
     schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string()),
+        pa.field("venue", pa.string()),
     ])
-    batch = pa.record_batch({"id": [1, 2], "symbol": ["AAPL", None]}, schema=schema)
+    batch = lambda ids, venues: pa.record_batch(
+        {"id": ids, "venue": venues}, schema=schema
+    )
 
     # The name says Arrow IPC, so no call names an encoding.
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.write_arrow_batch_reader(batch)
+    handle.overwrite_arrow_record_batch(batch([1, 2], ["XNAS", "XNYS"]))
+    handle.append_arrow_record_batch(batch([3], ["XLON"]))
+
+    merging = handle.record_options()
+    merging.merge_by_names = ["id"]
+    handle.merge_arrow_record_batch(batch([2, 4], ["XPAR", None]), options=merging)
 
     assert handle.read_arrow_field().name == "row"
-    assert handle.read_arrow_batch_reader().read_all() == pa.Table.from_batches([batch])
+    assert handle.read_arrow_reader().read_all().num_rows == 4
     ```
 
 === "JavaScript"
@@ -78,42 +114,129 @@
     const arrow = require('apache-arrow')
     const { IOBase } = require('yggdryl')
 
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-      symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
+    const rows = (ids, venues) => new arrow.Table({
+      id: arrow.vectorFromArray(ids.map(BigInt), new arrow.Int64()),
+      venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
     })
 
     // The name says Arrow IPC, so no call names an encoding.
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.arrows'))
-    handle.writeArrowBatchReader(table)
+    handle.overwriteArrowTable(rows([1, 2], ['XNAS', 'XNYS']))
+    handle.appendArrowTable(rows([3], ['XLON']))
+    handle.mergeArrowTable(
+      rows([2, 4], ['XPAR', null]),
+      handle.recordOptions().withMergeByNames(['id']),
+    )
 
     assert.equal(handle.readArrowField().name, 'row')
-    assert.equal(handle.readArrowBatchReader().toTable().numRows, 2)
+    assert.equal(handle.readArrowReader().intoTable().numRows, 4)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-Three free functions are the whole encoding. `read_field` answers what the stream holds,
-`ipc::read_batch_reader` yields the batches, and `ipc::write_batch_reader` replaces the stream. Each
-takes an [`IOBase`](io.md) handle and one `IpcOptions`, and nothing else: no path, no file,
-no codec argument. A [`Buffer`](io.md) here, a [`local::File`](local.md) in a program, the
-same three calls.
+The methods above are the shared [`IOMedia`](io.md#canonical-record-write-signatures)
+surface. Their names make intent authoritative: append retains stored rows, while keyed
+merge updates matching `id` values and inserts misses. `merge_by_names` supplies identity;
+it never selects merge implicitly.
 
-Streaming is the only shape: a read returns an [`arrow::BatchReader`](arrow.md) and a write
-consumes one. The reader a write is handed carries its own Arrow schema, and that schema is
-what the stream declares, so a caller replacing a stream with the non-null struct root
-`Field` of [field.md](field.md) projects that root and builds the reader over it -
-`arrow::batch_reader` is the constructor that turns batches a caller already has into one.
-`ipc::write_batch_reader` replaces the stream rather than appending to it.
+IPC itself stays one batch-native seam: `read_field`, `read_batch_reader`, and
+`overwrite_batch_reader` operate over any `IOBase` handle and `IpcOptions`. Runtime row,
+table, and record-batch adapters widen into the same reader before encoding. Python crosses
+that seam through Arrow C Stream; JavaScript uses the documented copied IPC boundary.
 
-Python spells the same two operations `IOBase.read_arrow_batch_reader` and
-`IOBase.write_arrow_batch_reader`, and its reader is a `pyarrow.RecordBatchReader`: batches cross
-through the Arrow C Stream interface in both directions, so neither side copies or rebuilds
-them. `IOBase.read_arrow_field` is `read_field`, and the encoding still comes from the
-handle's media type rather than from an argument.
+### Measured batch operations
 
-There is no row-level read or write. A batch is the unit at every level of this module.
+The read fixture contains 65,536 rows and four columns. The write fixture contains 4,096 rows;
+Criterion prepares the stored side for append and keyed merge outside the timer. Keyed merge is
+the upsert operation: matching `id` rows are updated and misses are inserted.
+
+| batch operation | rows | estimate | throughput |
+| --- | ---: | ---: | ---: |
+| read and drain `read_arrow_reader` | 65,536 | 4.33 ms | 15.1M rows/s |
+| `overwrite_arrow_reader` | 4,096 | 181 us | 22.6M rows/s |
+| `append_arrow_reader` | 4,096 | 615 us | 6.66M rows/s |
+| keyed `merge_arrow_reader` (upsert) | 4,096 | 5.44 ms | 754k rows/s |
+
+These are Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5
+150 with rustc 1.96.1 (2026-08-23). Regenerate them on the deployment host with
+`io_dimensions/ipc/read_rows` and `io_write_stateful/ipc`; the longer PyArrow comparison remains
+in [Against PyArrow](#against-pyarrow).
+
+### Dimensions and opened sessions
+
+`row_size` counts IPC message metadata while skipping dictionary and record-batch bodies;
+`column_size` reads the canonical Struct field. They describe the whole stream, ignoring selection,
+partition filters, and read limits. Closed calls read fresh metadata; `open` retains the inferred
+IPC media wrapper and caches schema and dimensions until `close`. Writes invalidate the cache.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::generic::Holder;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{DataType, MimeType};
+
+    let field = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let schema = field.clone().into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int64Array::from(vec![1, 2]))],
+    )?;
+    let mut handle = Holder::buffer(Buffer::new().with_media_type(MimeType::ARROW_STREAM.into()));
+    let options = handle.record_options()?;
+    handle.overwrite_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch]), &options)?;
+
+    handle.open()?;
+    assert_eq!(handle.read_arrow_field(&options)?, field);
+    assert_eq!((handle.row_size()?, handle.column_size()?), (2, 1));
+    handle.close()?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "dimensions.arrows")
+    handle.overwrite_arrow_table(pa.table({"id": [1, 2]}))
+    with handle:
+        assert (handle.row_size, handle.column_size) == (2, 1)
+        assert handle.read_arrow_field().name == "row"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'dimensions.arrows'))
+    handle.overwriteArrowTable(arrow.tableFromArrays({ id: [1, 2] }))
+    handle.open()
+    assert.deepEqual([handle.rowSize, handle.columnSize], [2, 1])
+    assert.equal(handle.readArrowField().name, 'row')
+    handle.close()
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+The same 65,536-row fixture measured fresh/opened `row_size` at 2.51 us/6.63 ns and
+fresh/opened `column_size` at 6.25 us/7.04 ns. Regenerate with
+`cargo bench -p yggdryl --bench io --all-features -- io_dimensions/ipc`.
 
 ## Reading and writing are both readers
 
@@ -124,12 +247,12 @@ There is no row-level read or write. A batch is the unit at every level of this 
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::ipc::{self, IpcOptions};
     use yggdryl::{DataType, MimeType};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let batches = (0..3)
         .map(|start| {
             RecordBatch::try_new(
@@ -144,7 +267,7 @@ There is no row-level read or write. A batch is the unit at every level of this 
 
     // `batch_reader` turns whatever is already in hand - a Vec, an array, an
     // iterator - into the one shape a write takes.
-    ipc::write_batch_reader(
+    ipc::overwrite_batch_reader(
         &mut handle,
         arrow::batch_reader(arrow_schema, batches),
         &options,
@@ -179,11 +302,10 @@ There is no row-level read or write. A batch is the unit at every level of this 
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
 
-    # A list, a Table, a RecordBatch, or a RecordBatchReader: anything PyArrow
-    # exports an Arrow C stream from is the one shape a write takes.
-    handle.write_arrow_batch_reader(batches)
+    # The primitive write consumes exactly one RecordBatchReader.
+    handle.overwrite_arrow_reader(pa.RecordBatchReader.from_batches(schema, batches))
 
-    reader = handle.read_arrow_batch_reader()
+    reader = handle.read_arrow_reader()
     # The schema is known before a single batch is decoded.
     assert reader.schema.names == ["id"]
 
@@ -210,9 +332,9 @@ There is no row-level read or write. A batch is the unit at every level of this 
 
     // An Arrow JS Table, one RecordBatch, an array of them, or Arrow IPC bytes:
     // `BatchReader.from` turns whatever is in hand into the shape a write takes.
-    handle.writeArrowBatchReader(BatchReader.from(batches))
+    handle.overwriteArrowReader(BatchReader.from(batches))
 
-    const reader = handle.readArrowBatchReader()
+    const reader = handle.readArrowReader()
     // The schema is known before a single batch is decoded.
     assert.deepEqual([...reader.field.dataType].map((child) => child.name), ['id'])
 
@@ -228,7 +350,7 @@ stream's Arrow schema is available from the reader itself, ahead of the first ba
 Batches come back exactly as they were written. `ipc::read_batch_reader` does not cast them to
 a declared schema, so what goes in is what comes out, block boundaries included.
 
-The write side is the same type facing the other way: `ipc::write_batch_reader` consumes a
+The write side is the same type facing the other way: `ipc::overwrite_batch_reader` consumes a
 `BatchReader` and encodes each batch as it pulls it, so a reader that computes its batches
 lazily is never materialized.
 
@@ -239,12 +361,12 @@ lazily is never materialized.
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::ipc::{self, IpcOptions};
     use yggdryl::{DataType, MimeType};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
 
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 
@@ -259,7 +381,7 @@ lazily is never materialized.
             .expect("batch")
         }
     });
-    ipc::write_batch_reader(
+    ipc::overwrite_batch_reader(
         &mut handle,
         arrow::batch_reader(arrow_schema, produced),
         &IpcOptions::new(),
@@ -288,9 +410,9 @@ lazily is never materialized.
     produced = (
         pa.record_batch({"id": [start]}, schema=schema) for start in range(4)
     )
-    handle.write_arrow_batch_reader(pa.RecordBatchReader.from_batches(schema, produced))
+    handle.overwrite_arrow_reader(pa.RecordBatchReader.from_batches(schema, produced))
 
-    assert sum(1 for _ in handle.read_arrow_batch_reader()) == 4
+    assert sum(1 for _ in handle.read_arrow_reader()) == 4
     ```
 
 === "JavaScript"
@@ -310,9 +432,9 @@ lazily is never materialized.
         new arrow.Table({ id: arrow.vectorFromArray([BigInt(start)], new arrow.Int64()) })
           .batches[0],
     )
-    handle.writeArrowBatchReader(BatchReader.from(produced))
+    handle.overwriteArrowReader(BatchReader.from(produced))
 
-    assert.equal([...handle.readArrowBatchReader()].length, 4)
+    assert.equal([...handle.readArrowReader()].length, 4)
     ```
 
 ## Column pushdown
@@ -334,7 +456,7 @@ lazily is never materialized.
         DataType::Utf8.required_field("venue"),
     ])?
     .required_field("row");
-    let arrow_schema = stored.to_arrow_schema()?;
+    let arrow_schema = stored.into_arrow_schema()?;
 
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -347,7 +469,7 @@ lazily is never materialized.
 
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
     let options = IpcOptions::new();
-    ipc::write_batch_reader(&mut handle, arrow::batch_reader(arrow_schema, [batch]), &options)?;
+    ipc::overwrite_batch_reader(&mut handle, arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // One of the three columns, named by a root Field of its own.
     let wanted = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -382,13 +504,12 @@ lazily is never materialized.
     )
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.write_arrow_batch_reader(batch)
+    handle.overwrite_arrow_record_batch(batch)
 
-    # One of the three columns, declared as this read's schema - a single
-    # setting is its own keyword, no options object needed.
-    projected = handle.read_arrow_batch_reader(
-        schema=pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    )
+    # One of the three columns, declared through the centralized options field.
+    options = handle.record_options()
+    options.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    projected = handle.read_arrow_reader(options=options)
     assert projected.schema.names == ["id"]
     assert projected.read_all().num_columns == 1
 
@@ -405,7 +526,7 @@ lazily is never materialized.
 
     const handle = IOBase.fromBytes()
     handle.mediaType = MimeType.ARROW_STREAM
-    handle.writeArrowBatchReader(
+    handle.overwriteArrowTable(
       new arrow.Table({
         id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
         symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
@@ -416,9 +537,9 @@ lazily is never materialized.
     // One of the three columns, declared as this read's schema.
     const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
 
-    const projected = handle.readArrowBatchReader(handle.recordOptions().withSchema(wanted))
+    const projected = handle.readArrowReader(handle.recordOptions().withField(wanted))
     assert.deepEqual([...projected.field.dataType].map((child) => child.name), ['id'])
-    assert.equal(projected.toTable().numCols, 1)
+    assert.equal(projected.intoTable().numCols, 1)
 
     // The stream itself is unchanged: it still carries all three.
     assert.equal(handle.readArrowField().dataType.length, 3)
@@ -434,7 +555,7 @@ projection also removes reading.
 
 A root naming every stored column, or naming one the stream does not carry, reads
 everything: a projection can only drop columns, never invent them. The selection keeps the
-stored order and the stored types. The handle-level `read_arrow_batch_reader` in
+stored order and the stored types. The handle-level `read_arrow_reader` in
 [io.md](io.md) is the one that also casts: it declares this schema, gets the projection out
 of it, and then reshapes what comes back.
 
@@ -453,32 +574,34 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::{Buffer, IOBase, IOMedia};
 use yggdryl::ipc::Ipc;
 use yggdryl::{DataType, Url};
 
 let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-let arrow_schema = schema.to_arrow_schema()?;
+let arrow_schema = schema.clone().into_arrow_schema()?;
 let batch = RecordBatch::try_new(
     Arc::clone(&arrow_schema),
     vec![Arc::new(Int64Array::from(vec![1, 2]))],
 )?;
 
 let handle = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
-let mut media = Ipc::new(handle).with_schema(schema.clone());
+let mut media = Ipc::new(handle).with_field(schema.clone());
+let options = media.record_options()?;
 
-// No call repeats the schema, the root name, or the coding.
-media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
-assert_eq!(media.read_batch_reader(None)?.count(), 1);
-assert_eq!(media.schema()?, schema);
+// One options value carries the schema, root name, and coding.
+media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
+assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
+assert_eq!(media.read_arrow_field(&options)?, schema);
 
 // An Ipc is also the bytes it encodes: a stream opens with its continuation marker.
 assert_eq!(media.read_range(0, 4)?, [0xFF, 0xFF, 0xFF, 0xFF]);
 ```
 
-`Ipc<H>` is the same encoding with the handle, the options, and the cached schema held in
-one place instead of being passed at every call. `handle`, `handle_mut`, and
-`into_handle` reach the wrapped handle; `options` and `options_mut` reach the settings.
+`Ipc<H>` holds the handle, its default options, and the opened metadata cache.
+`record_options` returns those defaults as the `RecordOptions` value every
+canonical `IOMedia` call accepts. `handle`, `handle_mut`, and `into_handle`
+reach the wrapped handle; `options` and `options_mut` change future defaults.
 
 `Ipc<H>` implements `IOBase` by delegating to the handle it owns, which is why
 `read_range` above works on it directly. That is what lets a stream be copied, compressed,
@@ -494,30 +617,34 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::ipc::{Ipc, DEFAULT_ROOT_NAME};
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![Arc::new(Int64Array::from(vec![7]))],
     )?;
 
-    let mut writer = Ipc::new(Buffer::new()).with_schema(schema.clone());
-    writer.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+    let mut writer = Ipc::new(Buffer::new()).with_field(schema.clone());
+    let options = writer.record_options()?;
+    writer.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
     let bytes = writer.handle().as_slice().to_vec();
 
     // A reader that declares nothing recovers the schema from the bytes.
-    let mut reader = Ipc::new(Buffer::from_bytes(bytes.clone()));
-    assert_eq!(reader.schema()?, schema);
-    assert_eq!(reader.schema()?.name(), DEFAULT_ROOT_NAME);
+    let reader = Ipc::new(Buffer::from_bytes(bytes.clone()));
+    let options = reader.record_options()?;
+    assert_eq!(reader.read_arrow_field(&options)?, schema);
+    assert_eq!(reader.read_arrow_field(&options)?.name(), DEFAULT_ROOT_NAME);
 
     // Arrow names columns, not the record; the root name is chosen on this side.
-    let mut named = Ipc::new(Buffer::from_bytes(bytes)).with_root_name("trade");
-    assert_eq!(named.schema()?.name(), "trade");
-    assert_eq!(named.schema()?.get_field_by_name("id"), schema.get_field_by_name("id"));
+    let named = Ipc::new(Buffer::from_bytes(bytes)).with_root_name("trade");
+    let options = named.record_options()?;
+    let named_field = named.read_arrow_field(&options)?;
+    assert_eq!(named_field.name(), "trade");
+    assert_eq!(named_field.get_field_by_name("id"), schema.get_field_by_name("id"));
     ```
 
 === "Python"
@@ -532,7 +659,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.write_arrow_batch_reader(pa.record_batch({"id": [7]}, schema=schema))
+    handle.overwrite_arrow_record_batch(pa.record_batch({"id": [7]}, schema=schema))
 
     # A reader that declares nothing recovers the schema from the bytes.
     assert handle.read_arrow_field().name == "row"
@@ -553,7 +680,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
 
     const handle = IOBase.fromBytes()
     handle.mediaType = MimeType.ARROW_STREAM
-    handle.writeArrowBatchReader(
+    handle.overwriteArrowTable(
       new arrow.Table({ id: arrow.vectorFromArray([7n], new arrow.Int64()) }),
     )
 
@@ -567,7 +694,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     ```
 
 An IPC stream is self-describing, so a declared schema is never required to read one. When
-`IpcOptions::schema` is set, `read_field` returns it without touching the handle; when it
+When `IpcOptions::field` is set, `read_field` returns it without touching the handle; when it
 is absent, the stream's Arrow schema is converted back to a `Field` and the struct root
 is named `root_name`, which defaults to `DEFAULT_ROOT_NAME` - `"row"`. Arrow carries names
 for the columns and none for the record, so that one name is the only thing inference
@@ -582,27 +709,31 @@ cannot recover.
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::ipc::Ipc;
     use yggdryl::{DataType, Url};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
 
     let mut sizes = Vec::new();
     for name in ["trades.arrows", "trades.arrows.gz", "trades.arrows.zst"] {
         let url = Url::from_str(&format!("file:///{name}"))?;
         let handle = Buffer::new().with_media_type(url.media_type());
-        let mut media = Ipc::new(handle).with_schema(schema.clone());
+        let mut media = Ipc::new(handle).with_field(schema.clone());
 
         let batch = RecordBatch::try_new(
             arrow_schema.clone(),
             vec![Arc::new(Int64Array::from(vec![1, 2]))],
         )?;
-        media.write_batch_reader(arrow::batch_reader(arrow_schema.clone(), [batch]))?;
+        let options = media.record_options()?;
+        media.overwrite_arrow_reader(
+            arrow::batch_reader(arrow_schema.clone(), [batch]),
+            &options,
+        )?;
 
         // Identical calls on both sides, whatever the coding is.
-        assert_eq!(media.read_batch_reader(None)?.count(), 1, "{name}");
+        assert_eq!(media.read_arrow_reader(&options)?.count(), 1, "{name}");
         sizes.push(media.handle().as_slice().to_vec());
     }
 
@@ -628,10 +759,10 @@ cannot recover.
     written = []
     for name in ("trades.arrows", "trades.arrows.gz", "trades.arrows.zst"):
         handle = IOBase(root / name)
-        handle.write_arrow_batch_reader(pa.record_batch({"id": [1, 2]}, schema=schema))
+        handle.overwrite_arrow_record_batch(pa.record_batch({"id": [1, 2]}, schema=schema))
 
         # Identical calls on both sides, whatever the coding is.
-        assert handle.read_arrow_batch_reader().read_all().num_rows == 2, name
+        assert handle.read_arrow_reader().read_all().num_rows == 2, name
         written.append(handle.read_bytes())
 
     # The bytes underneath are framed by the coding the name declared.
@@ -654,12 +785,12 @@ cannot recover.
     const written = []
     for (const name of ['trades.arrows', 'trades.arrows.gz', 'trades.arrows.zst']) {
       const handle = new IOBase(path.join(root, name))
-      handle.writeArrowBatchReader(
+      handle.overwriteArrowTable(
         new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()) }),
       )
 
       // Identical calls on both sides, whatever the coding is.
-      assert.equal(handle.readArrowBatchReader().toTable().numRows, 2, name)
+      assert.equal(handle.readArrowReader().intoTable().numRows, 2, name)
       written.push(handle.readBytes())
     }
 
@@ -685,12 +816,12 @@ handle declared. It does nothing when the handle declares none.
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
     use yggdryl::ipc::Ipc;
     use yggdryl::{DataType, Level, Url};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![Arc::new(Int64Array::from((0..512).collect::<Vec<i64>>()))],
@@ -698,11 +829,15 @@ handle declared. It does nothing when the handle declares none.
 
     let handle = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
     let mut media = Ipc::new(handle)
-        .with_schema(schema.clone())
+        .with_field(schema.clone())
         .with_level(Level::BEST);
+    let options = media.record_options()?;
 
-    media.write_batch_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]))?;
-    assert_eq!(media.read_batch_reader(None)?.count(), 1);
+    media.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(arrow_schema, [batch]),
+        &options,
+    )?;
+    assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
     // Still a gzip member, and smaller than the stream it encodes.
     assert_eq!(&media.handle().as_slice()[..2], &[0x1F, 0x8B]);
     assert!(media.handle().size() < 512 * 8);
@@ -723,11 +858,11 @@ handle declared. It does nothing when the handle declares none.
 
     options = handle.record_options()
     options.level = 9
-    handle.write_arrow_batch_reader(
+    handle.overwrite_arrow_record_batch(
         pa.record_batch({"id": list(range(512))}, schema=schema), options=options
     )
 
-    assert handle.read_arrow_batch_reader().read_all().num_rows == 512
+    assert handle.read_arrow_reader().read_all().num_rows == 512
     # Still a gzip member, and smaller than the stream it encodes.
     assert handle.read_bytes()[:2] == bytes.fromhex("1f8b")
     assert handle.size < 512 * 8
@@ -747,12 +882,12 @@ handle declared. It does nothing when the handle declares none.
     const handle = new IOBase(path.join(root, 'trades.arrows.gz'))
 
     const ids = Array.from({ length: 512 }, (_, index) => BigInt(index))
-    handle.writeArrowBatchReader(
+    handle.overwriteArrowTable(
       new arrow.Table({ id: arrow.vectorFromArray(ids, new arrow.Int64()) }),
       handle.recordOptions().withLevel(9),
     )
 
-    assert.equal(handle.readArrowBatchReader().toTable().numRows, 512)
+    assert.equal(handle.readArrowReader().intoTable().numRows, 512)
     // Still a gzip member, and smaller than the stream it encodes.
     assert.deepEqual([...handle.readBytes().subarray(0, 2)], [0x1f, 0x8b])
     assert.ok(handle.size < 512 * 8)
@@ -772,10 +907,10 @@ handle declared. It does nothing when the handle declares none.
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
 
     let options = IpcOptions::new()
-        .with_schema(schema.clone())
+        .with_field(schema.clone())
         .with_level(Level::BEST);
 
-    assert_eq!(options.schema(), Some(&schema));
+    assert_eq!(options.field(), Some(&schema));
     assert_eq!(options.root_name(), DEFAULT_ROOT_NAME);
     assert_eq!(options.level(), Level::BEST);
 
@@ -800,10 +935,10 @@ handle declared. It does nothing when the handle declares none.
 
     # The media type names the encoding, so there is no format argument.
     options = RecordOptions("trades.arrows")
-    options.schema = schema
+    options.field = schema
     options.level = 9
 
-    assert options.schema is not None
+    assert options.field is not None
     assert options.root_name == "row"
     assert options.level == 9
 
@@ -825,10 +960,10 @@ handle declared. It does nothing when the handle declares none.
 
     // The media type names the encoding, so there is no format argument.
     const options = new RecordOptions('trades.arrows')
-    options.schema = schema
+    options.field = schema
     options.level = 9
 
-    assert.ok(options.schema.equals(schema))
+    assert.ok(options.field.equals(schema))
     assert.equal(options.rootName, 'row')
     assert.equal(options.level, 9)
 
@@ -841,66 +976,22 @@ handle declared. It does nothing when the handle declares none.
     assert.equal(options.safe, false)
     ```
 
-`IpcOptions` holds the five settings shared by every record encoding - `schema`,
-`root_name`, `safe`, `batch_size`, `level` - as public fields, and implements
-[`IORecordOptions`](generic.md) over them, which is where the `with_*` builders and the
-accessors come from. IPC adds nothing of its own: a stream carries its schema, and its
-coding comes from the handle.
+`IpcOptions` stores the shared record settings as public fields: `field`, `root_name`,
+`safe`, `batch_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`,
+`merge_by_names`, `select_by_names`, and `filter_partitions`. It implements
+[`IORecordOptions`](generic.md), which defines their accessors and `with_*` builders once.
+IPC adds no format-specific setting: the stream carries its schema and the handle carries
+its optional outer coding.
 
-Two of those five are carried and not consulted here. `safe` governs a cast, and this
-encoding performs none; `batch_size` bounds a reader that re-chunks, and IPC returns the
-batches the stream was written with. They are on the type because a caller holding a
-`RecordOptions` should not have to know which encoding is underneath.
+The low-level `ipc::*` functions handle only the encoding seam. The shared
+[`IOMedia`](io.md#canonical-record-write-signatures) path applies casting, re-chunking,
+selection, limits, partition filters, commit cadence, and write intent around that seam.
+Consequently the same `RecordOptions` value has one meaning even when the caller does not
+know which encoding is underneath.
 
 `Ipc::with_options` replaces the whole settings value at once, and every builder on `Ipc`
-that touches the schema or the root name drops the cached schema with it. `with_level` does
+that touches the field or the root name drops the cached field with it. `with_level` does
 not: it changes how bytes are written, not what they say.
-
-## The schema cache
-
-!!! note "Rust only"
-    The bindings' `open`/`close` cache the resource, not a decoded schema: the
-    schema cache belongs to the `Ipc` wrapper.
-
-```rust
-use std::sync::Arc;
-
-use arrow_array::{Int64Array, RecordBatch};
-use yggdryl::io::{Buffer, IOBase};
-use yggdryl::ipc::Ipc;
-use yggdryl::DataType;
-
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-let arrow_schema = schema.to_arrow_schema()?;
-let batch = RecordBatch::try_new(
-    Arc::clone(&arrow_schema),
-    vec![Arc::new(Int64Array::from(vec![1, 2]))],
-)?;
-
-let mut writer = Ipc::new(Buffer::new()).with_schema(schema.clone());
-writer.write_batch_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]))?;
-
-let mut reader = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
-assert!(!reader.opened());
-
-// Opening derives the schema once; every later question is answered from the cache.
-reader.open()?;
-assert!(reader.opened());
-assert_eq!(reader.schema()?, schema);
-
-reader.close()?;
-assert!(!reader.opened());
-// Still usable afterwards: it simply derives the schema again.
-assert_eq!(reader.schema()?, schema);
-```
-
-`Ipc` works without `open`, like every other handle in [io.md](io.md): each call
-materializes what it needs. What `open` adds is a schema derived once instead of once per
-question, and `opened` reports exactly that - whether a schema is cached. `close` drops
-it. A write also refreshes the cache, since the batches just written are the schema.
-
-Deriving a schema means decoding the stream's header, and behind a coding it means
-decoding the stream. That is the cost `open` moves to a known point.
 
 ## Absence
 
@@ -909,32 +1000,40 @@ decoding the stream. That is the cost `open` moves to a known point.
     ```rust
     use arrow_array::{RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
     use yggdryl::ipc::Ipc;
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
 
     // A resource that does not exist yet holds no batches; it is not a parse failure.
-    let missing = Ipc::new(Buffer::new()).with_schema(schema.clone());
-    assert_eq!(missing.read_batch_reader(None)?.count(), 0);
+    let missing = Ipc::new(Buffer::new()).with_field(schema.clone());
+    let options = missing.record_options()?;
+    let reader = missing.read_arrow_reader(&options)?;
     // The declared schema is what the empty reader reports.
-    assert_eq!(missing.read_batch_reader(None)?.schema().fields().len(), 1);
+    assert_eq!(reader.schema().fields().len(), 1);
+    assert_eq!(reader.count(), 0);
 
-    // Opening an absent stream succeeds and caches nothing.
+    // Opening an absent stream succeeds and caches explicit zero dimensions.
     let mut empty = Ipc::new(Buffer::new());
     empty.open()?;
-    assert!(!empty.opened());
+    assert!(empty.opened());
+    assert_eq!(empty.row_size()?, 0);
+    assert_eq!(empty.column_size()?, 0);
 
     // Writing no batches still writes the schema, so the stream exists and is readable.
-    let mut written = Ipc::new(Buffer::new()).with_schema(schema.clone());
-    written.write_batch_reader(arrow::batch_reader(
-        schema.to_arrow_schema()?,
-        std::iter::empty::<RecordBatch>(),
-    ))?;
+    let mut written = Ipc::new(Buffer::new()).with_field(schema.clone());
+    let options = written.record_options()?;
+    written.overwrite_arrow_reader(
+        arrow::batch_reader(
+            schema.clone().into_arrow_schema()?,
+            std::iter::empty::<RecordBatch>(),
+        ),
+        &options,
+    )?;
     assert!(!written.handle().is_empty());
-    assert_eq!(written.read_batch_reader(None)?.count(), 0);
-    assert_eq!(written.schema()?, schema);
+    assert_eq!(written.read_arrow_reader(&options)?.count(), 0);
+    assert_eq!(written.read_arrow_field(&options)?, schema);
     ```
 
 === "Python"
@@ -953,13 +1052,13 @@ decoding the stream. That is the cost `open` moves to a known point.
     # A resource that does not exist yet holds no batches; it is not a parse failure.
     missing = IOBase(root / "missing.arrows")
     assert not missing.exists()
-    assert missing.read_arrow_batch_reader().read_all().num_rows == 0
+    assert missing.read_arrow_reader().read_all().num_rows == 0
 
     # Writing no batches still writes the schema, so the stream exists and reads.
     written = IOBase(root / "empty.arrows")
-    written.write_arrow_batch_reader(pa.Table.from_batches([], schema=schema))
+    written.overwrite_arrow_table(pa.Table.from_batches([], schema=schema))
     assert written.size > 0
-    assert written.read_arrow_batch_reader().read_all().num_rows == 0
+    assert written.read_arrow_reader().read_all().num_rows == 0
     assert written.read_arrow_field().name == "row"
     ```
 
@@ -978,14 +1077,14 @@ decoding the stream. That is the cost `open` moves to a known point.
     // A resource that does not exist yet holds no batches; it is not a parse failure.
     const missing = new IOBase(path.join(root, 'missing.arrows'))
     assert.ok(!missing.exists())
-    assert.equal(missing.readArrowBatchReader().toTable().numRows, 0)
+    assert.equal(missing.readArrowReader().intoTable().numRows, 0)
 
     // Writing no batches still writes the schema, so the stream exists and reads.
     const schema = new arrow.Schema([new arrow.Field('id', new arrow.Int64(), true)])
     const written = new IOBase(path.join(root, 'empty.arrows'))
-    written.writeArrowBatchReader(new arrow.Table(schema))
+    written.overwriteArrowTable(new arrow.Table(schema))
     assert.ok(written.size > 0)
-    assert.equal(written.readArrowBatchReader().toTable().numRows, 0)
+    assert.equal(written.readArrowReader().intoTable().numRows, 0)
     assert.equal(written.readArrowField().name, 'row')
 
     fs.rmSync(root, { recursive: true, force: true })
@@ -1026,7 +1125,7 @@ Anything that is not a stream fails on the spot rather than being guessed at.
     with pytest.raises(ValueError):
         handle.read_arrow_field()
     with pytest.raises(ValueError):
-        handle.read_arrow_batch_reader()
+        handle.read_arrow_reader()
     ```
 
 === "JavaScript"
@@ -1039,12 +1138,12 @@ Anything that is not a stream fails on the spot rather than being guessed at.
     handle.mediaType = MimeType.ARROW_STREAM
 
     assert.throws(() => handle.readArrowField(), /Arrow/)
-    assert.throws(() => handle.readArrowBatchReader(), /Arrow/)
+    assert.throws(() => handle.readArrowReader(), /Arrow/)
     ```
 
 The other record encoding in this build is [parquet.md](parquet.md), behind the non-default
 `parquet` feature. It has the same `read_field`, `read_batch_reader`, and
-`write_batch_reader` shape over the same shared settings, and adds the three a file
+`overwrite_batch_reader` shape over the same shared settings, and adds the three a file
 format needs that a stream does not. [`generic::Media`](generic.md) holds either one
 without naming which.
 

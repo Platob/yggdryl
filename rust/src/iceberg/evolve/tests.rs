@@ -393,7 +393,7 @@ mod metadata_updates {
             "replacing keeps insertion order"
         );
 
-        let document = metadata.to_json().unwrap();
+        let document = metadata.into_json().unwrap();
         let mut read = TableMetadata::from_json(&document).unwrap();
         assert_eq!(read.property("owner"), Some("mothra"));
         assert_eq!(read.property("commit.retry"), Some("4"));
@@ -589,9 +589,9 @@ mod metadata_updates {
         let schema_id = metadata.add_schema(update.apply().unwrap()).unwrap();
         metadata.set_current_schema(schema_id).unwrap();
 
-        let document = metadata.to_json().unwrap();
+        let document = metadata.into_json().unwrap();
         let read = TableMetadata::from_json(&document).unwrap();
-        assert_eq!(read.to_json().unwrap(), document);
+        assert_eq!(read.clone().into_json().unwrap(), document);
         assert_eq!(read.location, "file:///tmp/evolve-moved");
         assert_eq!(read.current_schema().unwrap().field_len(), 4);
         assert_eq!(read.default_spec_id, 1);

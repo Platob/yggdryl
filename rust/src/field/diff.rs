@@ -303,7 +303,8 @@ impl DiffEngine {
             }
             (D::Time32(left), D::Time32(right))
             | (D::Time64(left), D::Time64(right))
-            | (D::Duration(left), D::Duration(right))
+            | (D::Duration32(left), D::Duration32(right))
+            | (D::Duration64(left), D::Duration64(right))
             | (D::Interval(left), D::Interval(right)) => {
                 if left != right {
                     self.pending.push_back(changed_display(

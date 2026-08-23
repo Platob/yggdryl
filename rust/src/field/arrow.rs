@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
+#[cfg(feature = "arrow")]
+use arrow_schema::Schema;
 use arrow_schema::{
     DataType as ArrowDataType, Field as ArrowField,
     extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY},
@@ -18,6 +20,20 @@ use crate::datatype::{
 use crate::{DataType, Error, GeospatialType, Metadata, Result};
 
 impl Field {
+    /// Imports one complete Arrow schema as a non-null Struct root Field.
+    ///
+    /// Ordinary schema metadata becomes root metadata. The transport-only
+    /// dictionary-ID sidecar is consumed without entering Field metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the Arrow fields cannot form a non-null Struct
+    /// root or the dictionary-ID sidecar is invalid.
+    #[cfg(feature = "arrow")]
+    pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self> {
+        crate::arrow::field_from_arrow_schema(name, schema)
+    }
+
     /// Imports an Arrow field and seeds the projection cache.
     pub fn from_arrow(value: &ArrowField) -> Result<Self> {
         Self::from_arrow_at_depth(value, 0)
@@ -61,9 +77,19 @@ impl Field {
     /// # Errors
     ///
     /// Returns an error unless this is a bounded, non-nullable Struct root.
+    /// Projects this non-null Struct root for Arrow runtime exchange.
+    ///
+    /// Unlike [`Field::into_arrow_schema`], this owned schema carries the
+    /// transport-only dictionary-ID sidecar needed when crossing the Arrow C
+    /// Data Interface. The sidecar never becomes logical Field metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error unless this is a bounded, non-null Struct root or when
+    /// caller metadata uses the transport-reserved sidecar key.
     #[cfg(feature = "arrow")]
-    pub fn to_arrow_schema(&self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
-        crate::arrow::schema_from_field(self)
+    pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema> {
+        crate::arrow::arrow_exchange_schema_from_field(&self)
     }
 
     /// Consumes this Field and projects it as an Arrow schema.
@@ -73,7 +99,7 @@ impl Field {
     /// Returns an error unless this is a bounded, non-nullable Struct root.
     #[cfg(feature = "arrow")]
     pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
-        self.to_arrow_schema()
+        crate::arrow::arrow_schema_from_field(&self)
     }
 
     /// Materializes [`Field::default_value`] as an exact one-row array.
@@ -91,40 +117,15 @@ impl Field {
         crate::arrow::default_scalar_array(self)
     }
 
-    /// Returns a cached shared Arrow field projection.
-    pub fn to_arrow_ref(&self) -> Result<FieldRef> {
-        if let Some(field) = self.arrow.get() {
-            return Ok(Arc::clone(field));
-        }
-        let field = Arc::new(arrow_field_from_parts(
-            self.name.as_str(),
-            self.data_type.to_arrow()?,
-            self.nullable,
-            self.dictionary_id,
-            self.dictionary_is_ordered,
-            projected_arrow_metadata(&self.data_type, self.metadata.to_arrow())?,
-        ));
-        if self.arrow.set(Arc::clone(&field)).is_ok() {
-            Ok(field)
-        } else {
-            Ok(self.arrow.get().map_or(field, Arc::clone))
-        }
-    }
-
-    /// Returns an owned Arrow field, sharing nested Arrow state where possible.
-    pub fn to_arrow(&self) -> Result<ArrowField> {
-        Ok(self.to_arrow_ref()?.as_ref().clone())
-    }
-
     /// Projects this field to an owned Arrow C Data Interface schema.
     ///
     /// Name, metadata, nullability, dictionary ordering, and nested datatype
     /// flags are preserved in one canonical core conversion.
-    pub fn to_arrow_ffi(&self) -> Result<FFI_ArrowSchema> {
+    pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema> {
         if let Some(field) = self.arrow.get() {
             return arrow_field_to_ffi(field).map_err(Error::from);
         }
-        let mut schema = self.data_type.to_arrow_ffi()?;
+        let mut schema = self.data_type.clone().into_arrow_ffi()?;
         let mut flags = schema.flags().unwrap_or_else(Flags::empty);
         if self.nullable {
             flags |= Flags::NULLABLE;
@@ -139,7 +140,7 @@ impl Field {
         schema
             .with_metadata(&projected_arrow_metadata(
                 &self.data_type,
-                self.metadata.to_arrow(),
+                self.metadata.clone().into_arrow(),
             )?)
             .map_err(Error::from)
     }
@@ -389,7 +390,7 @@ impl TryFrom<&Field> for ArrowField {
     type Error = Error;
 
     fn try_from(value: &Field) -> Result<Self> {
-        value.to_arrow()
+        value.clone().into_arrow()
     }
 }
 
@@ -438,7 +439,7 @@ mod tests {
     #[test]
     fn a_geometry_field_projects_the_geoarrow_extension_and_reimports_itself() {
         let field = Field::new("shape", DataType::geometry(None).unwrap(), true);
-        let arrow = field.to_arrow().unwrap();
+        let arrow = field.clone().into_arrow().unwrap();
         assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
         assert_eq!(arrow.extension_type_name(), Some("geoarrow.wkb"));
         assert_eq!(
@@ -459,7 +460,7 @@ mod tests {
             DataType::geography(Some("EPSG:4326"), Some(EdgeAlgorithm::Vincenty)).unwrap(),
             false,
         );
-        let arrow = field.to_arrow().unwrap();
+        let arrow = field.clone().into_arrow().unwrap();
         assert_eq!(
             arrow.extension_type_metadata(),
             Some(r#"{"crs":"EPSG:4326","edges":"vincenty"}"#)
@@ -470,7 +471,7 @@ mod tests {
     #[test]
     fn a_variant_field_projects_the_canonical_struct_and_reimports_itself() {
         let field = Field::new("payload", DataType::variant(), true);
-        let arrow = field.to_arrow().unwrap();
+        let arrow = field.clone().into_arrow().unwrap();
         assert_eq!(arrow.data_type(), &variant_storage());
         assert_eq!(arrow.extension_type_name(), Some("arrow.parquet.variant"));
         assert_eq!(arrow.extension_type_metadata(), Some(""));
@@ -512,7 +513,7 @@ mod tests {
             imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
             Some("someorg.blob")
         );
-        assert_eq!(imported.to_arrow().unwrap(), arrow);
+        assert_eq!(imported.into_arrow().unwrap(), arrow);
     }
 
     #[test]
@@ -558,7 +559,7 @@ mod tests {
             [(EXTENSION_TYPE_NAME_KEY, "someorg.other")],
         )
         .unwrap();
-        let refused = field.to_arrow().unwrap_err().to_string();
+        let refused = field.into_arrow().unwrap_err().to_string();
         assert!(refused.contains("someorg.other"), "{refused}");
         assert!(refused.contains("geoarrow.wkb"), "{refused}");
 
@@ -569,7 +570,7 @@ mod tests {
             [(EXTENSION_TYPE_METADATA_KEY, "shredded")],
         )
         .unwrap();
-        let refused = variant.to_arrow().unwrap_err().to_string();
+        let refused = variant.into_arrow().unwrap_err().to_string();
         assert!(refused.contains("shredded"), "{refused}");
         assert!(refused.contains("arrow.parquet.variant"), "{refused}");
     }

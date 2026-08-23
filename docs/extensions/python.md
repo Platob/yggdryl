@@ -35,16 +35,18 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | Name | Documented in |
 | --- | --- |
 | `DataType` | [datatype](../datatype.md) |
-| `Field`, `fields` | [field](../field.md) |
+| `Field`, `field`, `scalar`, `fields` | [field](../field.md) and this page |
+| `Value` | this page and [text](../text.md) |
+| `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
-| `schema_from_pattern` | [io](../io.md) |
+| `field_from_pattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
+| `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
-| `Record`, `record`, `from_dict`, `to_dict`, `schema_field`, `schema_fields` | this page |
 
 The three coding modules carry the whole-buffer pair - `loads` and `dumps`, plus `loads_raw` and
 `dumps_raw` on `zlib` - under the standard library's own module names, so swapping `import gzip`
@@ -77,10 +79,51 @@ assert str(Url.from_path("C:/tmp/a.json")) == "file:///C:/tmp/a.json"
 value, a string, a PyArrow value, a Python type annotation - and dispatches to the matching core
 constructor.
 
-## What a Python value becomes
+## Native `Value`
 
-One pair of Rust functions converts in both directions, so `dumps` and `loads` cannot disagree about
-what a value is. Nine Python types have a native value of their own and cross unchanged.
+`Value` is a Python view of the Rust tree, not a Python-side model. Its factories
+name exact widths; `from_python` chooses the natural language-native shape.
+
+```python
+from decimal import Decimal
+
+import pyarrow as pa
+
+from yggdryl import Value
+
+price = Value.d256("1234567890123456789012345678901234567890", 2)
+assert price.kind == "d256"
+assert price.into_python() == Decimal("12345678901234567890123456789012345678.90")
+
+values = Value.from_arrow_array(pa.array([1, 2], type=pa.int16()))
+assert values.into_arrow_array().type == pa.int16()
+
+tree = Value.from_python({"legs": [{"id": 1}]})
+assert tree["legs"][0]["id"].into_python() == 1
+assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
+```
+
+`from_arrow_scalar`, `from_arrow_array`, `from_arrow_record_batch`, and
+`from_arrow_table` import through Arrow C Data/C Stream. Their `into_arrow_*`
+counterparts preserve exact physical types. Pass `field=` to cast to a declared
+shape; empty output collections require it because they cannot infer a type.
+Array conversion uses one native builder. A table is imported through Arrow C
+Stream batch by batch, then owned as rows because a `Value` is materialized by
+definition.
+
+The exact temporal factories are `date32`, `date64`, `time32`, `time64`,
+`datetime64`, `duration32`, and `duration64`. Every value carries a non-null
+zone marker. Only `datetime64` accepts a real zone; the other Arrow datatypes
+require `NAIVE`, and a zoned `datetime.time` is refused instead of stripped.
+
+All values are hashable. `kind` and `data_type` expose their exact native type;
+`as_bytes` and `as_utf8` expose the matching scalar payload, while
+`as_json_bytes` and `as_json_utf8` use the core's natural JSON writer.
+`len`, iteration, indexing, `get`, `path`, containment, and
+`keys` / `values` / `items` keep child values native. `set` and `remove` are
+persistent updates: they return a rebuilt `Value` and leave the source intact.
+
+The same conversion pair backs codecs, expressions, and records:
 
 ```python
 import datetime as dt
@@ -102,9 +145,11 @@ restored = json.loads(json.dumps(value))
 
 # The scale is data, so a price written to two places comes back to two.
 assert str(restored["price"]) == "10.50"
-assert restored["payload"] == value["payload"]
+# Binary uses interoperable base64 text. A Field is what turns it back into
+# bytes; a schemaless read cannot distinguish base64 from ordinary text.
+assert restored["payload"] == "AP8="
 # A temporal travels as its classic ISO string, the loosely typed deal a
-# schemaless wire makes; a record class or a schema recovers the typed
+# schemaless wire makes; a field class or a schema recovers the typed
 # reading. The zone survives as the zone name, not as the offset it
 # happened to be at.
 assert restored["on"] == "2026-08-15"
@@ -114,18 +159,85 @@ assert restored["at"] == "2026-08-15T12:30:00.000000+02:00[Europe/Paris]"
 
 | Python | Native value | Notes |
 | --- | --- | --- |
-| `None`, `bool`, `int`, `float`, `str`, `bytes` | `Null`, `Bool`, integer, `Float`, `String`, `Bytes` | an `int` up to 128 bits keeps its width |
-| `decimal.Decimal` | `Decimal` | coefficient and scale, never a float |
-| `datetime.date` | `Date` | days since the epoch |
-| `datetime.time` | `Time` | microseconds since midnight |
-| `datetime.datetime` | `Timestamp` | microseconds since the epoch, UTC, plus the zone |
-| `datetime.timedelta` | `Duration` | elapsed microseconds |
+| `None`, `bool`, `int`, `float`, `str`, `bytes` | `Null`, `Bool`, integer, `F64`, `String`, `Bytes` | an `int` up to 128 bits stays numeric |
+| `decimal.Decimal` | `D128` or `D256` | coefficient and scale, never a float |
+| `datetime.date` | `Date32` | days since the epoch |
+| `datetime.time` | `Time64(us)` | zoned times are refused because Arrow time has no timezone parameter |
+| `datetime.datetime` | `DateTime64(us)` | UTC-relative count plus non-null zone (`NAIVE` when absent) |
+| `datetime.timedelta` | `Duration64(us)` | elapsed microseconds |
 | `list`, `tuple` | `Sequence` | |
 | `dict` | `Mapping` | keys are values too, not only strings |
+| dataclass, named tuple, attribute object | `Record` | sorted string names; no second schema model |
 
-The temporal spellings and the `decimal` envelope are the shared cross-language vocabulary, so a
-document written here reads back the same way in Rust and JavaScript - never as a Python-shaped
-wrapper.
+Text codecs emit natural documents with no private value tags. Pass a `Field`
+when strings or numbers need an exact decimal, binary, or temporal reading.
+When the format is dynamic, [`yggdryl.codec`](../text.md#raw-document-codecs)
+provides `from_io` / `from_stream` and `into_io` / `into_stream`: suffix or
+core content inference selects the existing JSON, YAML, TOML, or JSON Lines
+implementation, with no second parser in Python.
+
+## Python value protocols
+
+Canonical immutable wrappers compare, order, hash, copy, and pickle by their
+complete native identity. This includes `DataType`, `MimeType`, `Timezone`,
+`Value`, `Expression`, `Statement`, Avro schemas and containers, and the frozen
+Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`,
+`ManifestFile`, `DataFile`, and `ScanPlan` count report. `stable_hash()` returns
+the deterministic native `u64`; Python's built-in `hash()` remaps that value to
+`Py_hash_t` without changing equal-value hash agreement. An Avro fingerprint is
+still Parsing Canonical Form, not the schema's complete behavioral identity.
+
+Mutable identity wrappers - `Field`, `MediaType`, `Uri`, `Url`, `Urn`,
+`RecordOptions`, and `IcebergOptions` - stay mutable until built-in `hash()` is
+called. Hashing locks that instance against every equality-affecting mutation;
+`stable_hash()` alone does not lock it, and an ordinary copy or unpickle is
+unlocked. A field cached by the class decorator is independently read-only.
+
+Operational objects have no invented identity: `IOBase`, cursors, listings and
+iterators, catalog/table/namespace views, schema updates, bound expressions and
+statements, Avro blocks, and metadata views are explicitly unhashable. Metadata
+views still compare by their current content, like ordinary mapping views.
+`ScanPlan` is the exception because its five stored counts are the entire public
+bounded report, not a hidden executable plan.
+
+```python
+import copy
+import pickle
+
+from yggdryl import Expression, IOBase, Uri, Value
+
+value = Value.from_python({"id": 1})
+assert {value: "row"}[copy.copy(value)] == "row"
+assert pickle.loads(pickle.dumps(value)) == value
+assert Value.from_python(12).divide(3).into_python() == 4
+assert isinstance((Expression("price") + 2) * 3, Expression)
+
+location = Uri("https://example.com/data.json")
+hash(location)
+archive = location.joinpath("2026", "part.parquet")
+assert archive == location / "2026/part.parquet"
+try:
+    location.set_extension("parquet")
+except TypeError:
+    pass
+else:
+    raise AssertionError("hashing must lock equality-affecting mutation")
+
+try:
+    hash(IOBase.from_bytes())
+except TypeError:
+    pass
+else:
+    raise AssertionError("a live handle has no value hash")
+```
+
+`Value`'s named arithmetic (`add`, `subtract`, `multiply`, `divide`,
+`remainder`, `negate`, `absolute`) and Python operators are native checked
+operations: invalid types raise `TypeError`, overflow raises `OverflowError`,
+division by zero raises `ZeroDivisionError`, and inexact integer division raises
+`ArithmeticError`. `Expression` exposes the same binary spellings as builders;
+strings keep expression parsing, while other Python operands become native
+literal `Value` nodes, including in reflected operators.
 
 ## What a Python value loses
 
@@ -169,46 +281,46 @@ assert restored == {
 | `complex` | `[real, imag]` | the type |
 | `range`, `slice` | `[start, stop, step]` | the type |
 | `OrderedDict`, `Counter`, `defaultdict` | mapping | the type, and a `defaultdict`'s factory |
-| a named tuple | mapping of its members | the class |
+| a named tuple | record of its members | the class |
 | an `enum.Enum` member | its value | the class |
-| a dataclass or record | mapping of its fields | the class |
-| any other object | mapping of its `__dict__` | the class |
+| a dataclass | record of its fields | the class |
+| any other object | record of its `__dict__` | the class |
 | an `int` wider than 128 bits | its decimal text | that it was a number |
 | `datetime.fold` | nothing | which reading of a repeated hour a *naive* value was |
-| a `tzinfo` on a `datetime.time` | nothing | the zone; a time of day has no zone field |
 
 A `fold` on an *aware* datetime does survive, because the offset it selects is baked into the
 UTC-relative count the value carries.
 
-Two losses are refusals rather than silent damage: a decimal whose coefficient needs more than 128
+Two losses are refusals rather than silent damage: a decimal whose coefficient needs more than 256
 bits or whose exponent has no scale in `-128..=127` raises `OverflowError`, and a temporal finer than
 a microsecond - which `datetime` cannot hold - raises `ValueError` instead of truncating.
 
 ## Reading a class back
 
 Nothing in a document names a Python class, so the class comes from the call. `cls=` converts the
-decoded mapping through the same safe caster `from_dict` uses, which is the only path that validates
-annotations and never imports a module named by untrusted input.
+decoded mapping through the native Struct `Field` cached behind the class's
+`field()` staticmethod; it never imports a module named by untrusted input.
 
 ```python
-from yggdryl import json, record
+from yggdryl import json, scalar
 
-@record
+@scalar
 class Trade:
     trade_id: int
     symbol: str
 
-encoded = Trade(1, "AAPL").into_json()
+encoded = json.dumps(Trade(1, "AAPL"))
 
 # Without a target the document is what it says it is: data.
 assert json.loads(encoded) == {"trade_id": 1, "symbol": "AAPL"}
 assert json.loads(encoded, cls=Trade) == Trade(1, "AAPL")
-assert Trade.from_json(encoded) == Trade(1, "AAPL")
+assert Trade.field()["trade_id"].data_type.id == "int64"
 ```
 
-A record used as a dictionary *key* is the one shape that reads back asymmetrically: JSON and YAML
-have no unhashable keys, so it decodes as the tuple of its entries, and an annotation naming the
-record type reads that tuple back as the record.
+A dataclass used as a dictionary *key* reads back asymmetrically: JSON and YAML
+have no non-string mapping keys, so its untyped form is the tuple of its
+entries. Supplying the decorated class as the target restores the declared
+shape.
 
 ## Field metadata is a mapping
 
@@ -285,28 +397,70 @@ assert schema.data_type["year"].is_partition
 assert len(schema.without_partition_fields().data_type) == 1
 ```
 
-## Records
+## Field classes
 
-The Python-only records layer compiles class annotations into a native schema field and converts
-instances through the core.
+The `@scalar` decorator compiles class annotations into one native Struct
+`Field` while leaving the result a genuine standard-library dataclass.
 
 ```python
-from yggdryl import record, to_dict
+import dataclasses
 
-@record
+from yggdryl import field, scalar
+
+@scalar
 class Trade:
     trade_id: int
     symbol: str
 
 trade = Trade(trade_id=1, symbol="AAPL")
 
-assert to_dict(trade) == {"trade_id": 1, "symbol": "AAPL"}
-assert Trade.schema_field().name == "Trade"
-assert [field.name for field in Trade.schema_fields()] == ["trade_id", "symbol"]
+assert dataclasses.is_dataclass(Trade)
+trade_field = Trade.field()
+assert Trade.field() is trade_field
+assert field(Trade) is trade_field
+assert field(trade) is trade_field
+assert trade_field.name == "Trade"
+assert [child.name for child in trade_field] == ["trade_id", "symbol"]
 ```
 
-Annotation inference, safe conversion, and Arrow materialization all delegate to the core: the
-Python layer decides *which* core call to make, never how the conversion works.
+`@scalar(...)` forwards every dataclass option. `Class.field()`
+resolves one frozen native Struct field, caches it once per decorated class,
+and returns that same object on every call. No codec, dictionary, or Arrow
+methods are injected into the class. An undecorated subclass reuses the
+nearest decorated base's root; decorate the subclass to make it a distinct
+schema owner.
+
+This is an intentionally breaking rename: `FIELD`, `field_of`,
+`Field.from_dataclass`, `into_field`, and `into_struct_field` are removed with
+no aliases. Use `Class.field()` for a decorated class and `field(value)` for
+the general conversion funnel. `Field.into_dataclass` is unchanged.
+
+The [core field guide](../field.md#converting-to-one-native-field) owns the
+canonical cross-runtime signatures and error contract. Python's global
+conversion accepts a native Field, a PyArrow Schema/Field/DataType, or a
+dataclass class/instance; `name` has identical rename semantics for each input
+kind.
+
+An Arrow schema takes the inverse route through the native value:
+
+```python
+import pyarrow as pa
+
+from yggdryl import Field
+
+row = Field.from_arrow_schema(
+    pa.schema([pa.field("trade_id", pa.uint32(), nullable=False)]),
+    name="Trade",
+)
+Trade = row.into_dataclass()
+
+assert Trade.field() is row
+assert Trade.field().into_arrow_schema().field("trade_id").type == pa.uint32()
+```
+
+The import preserves exact physical layout and metadata. Rebuilding the
+dataclass derives annotations from that native graph rather than passing it
+through annotation inference again.
 
 ## Errors
 
@@ -349,6 +503,7 @@ assert handle.read_bytes() == b""
 handle.write_text("AAPL")
 assert handle.read_text() == "AAPL"
 assert handle.size == 4
+assert handle.is_io()
 
 # Random access needs no mode.
 handle.pwrite(0, b"MSFT")
@@ -361,6 +516,15 @@ lake.mkdir()
 assert [entry.name for entry in lake.iterdir()] == ["part-0.arrows"]
 assert len(list(IOBase(root / "lake").rglob("*.arrows"))) == 1
 ```
+
+`is_io()` is the general capability check: an atomic byte value or a tabular
+media returns `True`, while a container holding neither returns `False`.
+`row_size` and `column_size` describe the whole logical record media,
+independent of a projection, filter, or row limit used for a read. The native
+core answers them lazily from IPC messages, Parquet metadata, Avro block
+counts, text boundaries, or Iceberg manifests without decoding rows where the
+format carries an exact count. Successful answers are retained only between
+`open()` and `close()` and invalidated by writes through that handle.
 
 `Url` answers the `PurePath` half under the same names - `name`, `stem`, `suffix`, `suffixes`,
 `parts`, `parent`, `parents`, `joinpath`, `/`, `with_name`, `with_stem`, `with_suffix`, `match`,
@@ -420,11 +584,47 @@ A Hive layout is readable from either side: `handle.partitions` and `url.partiti
 `column=value` pairs the path spells out, and `handle.children_where({"year": "2024"})` yields the
 leaves carrying them, ready to rewrite.
 
-## Records cross as PyArrow readers
+## Records use typed adapters
 
-The same handle reads and writes records. A read returns a `pyarrow.RecordBatchReader` and a write
-takes anything PyArrow exports an Arrow C stream from, so batches cross without a copy in either
-direction and a resource larger than memory is never materialized to move it.
+The handle exposes one read vocabulary and explicit write intent. `record_options()` derives the
+encoding from the handle, `read_arrow_field()` returns its native root `Field`, and
+`read_arrow_reader()` streams `pyarrow.RecordBatch` values. Every record call accepts only
+`options=`; configure `options.field`, projection, limits, compression, and merge keys on that one
+value rather than as parallel keywords.
+
+The write name says both what Python is holding and what the operation means:
+
+| Python value | Replace | Add rows | Keyed update/insert |
+| --- | --- | --- | --- |
+| `RecordBatchReader` or foreign Arrow C stream reader | `overwrite_arrow_reader` | `append_arrow_reader` | `merge_arrow_reader` |
+| one `pyarrow.Table` | `overwrite_arrow_table` | `append_arrow_table` | `merge_arrow_table` |
+| one `pyarrow.RecordBatch` | `overwrite_arrow_record_batch` | `append_arrow_record_batch` | `merge_arrow_record_batch` |
+| iterable of mappings, sequences, or dataclass instances | `overwrite_records` | `append_records` | `merge_records` |
+
+The same shapes have one configurable entry point when mode comes from
+configuration. Its canonical order is input, required mode, then the one
+keyword-only options value:
+
+```text
+write_arrow_reader(reader, mode, *, options=None)
+write_arrow_table(table, mode, *, options=None)
+write_arrow_record_batch(batch, mode, *, options=None)
+write_records(records, mode, *, options=None)
+write_pandas(frames, mode, *, options=None)
+write_pandas_frame(frame, mode, *, options=None)
+write_polars(frames, mode, *, options=None)
+write_polars_frame(frame, mode, *, options=None)
+```
+
+`mode` is `"overwrite"`, `"append"`, or `"merge"`. It is required and never
+inferred from `merge_by_names`; the shape remains explicit in the method name.
+
+These adapters are intentionally strict. A table passed to `overwrite_arrow_reader` is refused even
+though PyArrow can export it as a stream: `overwrite_arrow_table` preserves the representation the
+caller actually holds. A scanner participates by handing over `scanner.to_reader()`. Row iterables
+stay streaming and are grouped into at most `options.batch_size` rows; when a commit cadence falls
+inside that grouping, conversion ends the current batch at the exact cadence boundary instead.
+Empty records cannot infer a shape and therefore require `options.field`.
 
 ```python
 import pathlib
@@ -436,79 +636,123 @@ from yggdryl import IOBase
 
 schema = pa.schema([
     pa.field("id", pa.int64(), nullable=False),
-    pa.field("venue", pa.string(), nullable=False),
+    pa.field("venue", pa.string()),
 ])
-batch = pa.record_batch({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=schema)
-
+first = pa.record_batch({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=schema)
+more = pa.table({"id": [3], "venue": ["XLON"]}, schema=schema)
 root = pathlib.Path(tempfile.mkdtemp())
+handle = IOBase(root / "trades.parquet")
 
 # The handle's name picks the encoding; no call takes a format argument.
-for name in ("trades.arrows", "trades.parquet"):
-    with IOBase(root / name) as handle:
-        handle.write_arrow_batch_reader(batch)
-        assert handle.read_arrow_batch_reader().read_all() == pa.Table.from_batches([batch])
+handle.overwrite_arrow_record_batch(first)
+handle.append_arrow_table(more)
 
-# A schema on the options selects and casts in one pass: the columns it leaves
-# out are skipped rather than read and discarded.
-handle = IOBase(root / "trades.parquet")
-options = handle.record_options()
-options.schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-assert handle.read_arrow_batch_reader(options=options).schema.names == ["id"]
+merge = handle.record_options()
+merge.merge_by_names = ["id"]
+updated = pa.RecordBatchReader.from_batches(
+    schema,
+    [pa.record_batch({"id": [2, 4], "venue": ["XPAR", None]}, schema=schema)],
+)
+handle.merge_arrow_reader(updated, options=merge)
+assert handle.read_arrow_reader().read_all().column("id").to_pylist() == [1, 2, 3, 4]
+
+# The configurable spelling reaches the same primitive and validation.
+handle.write_arrow_table(more, "append")
+
+# A declared field selects and casts during the read.
+selected = handle.record_options()
+selected.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+assert handle.read_arrow_reader(options=selected).schema.names == ["id"]
 ```
 
-`record_options()` is the settings value for whichever encoding the media type names, and it is what
-carries a Parquet row-group size or page compression. `with` is the scoped pair: leaving the block
-publishes the resource at its exact length, which is what another reader needs to find a footer.
+The selected method is authoritative. `merge_by_names` supplies identity to a `merge_*` call; it
+does not turn overwrite or append into merge. Invalid intent is rejected before Python exports or
+iterates the input, so an error never consumes the head of a generator.
 
-## Anything in, a reader out
-
-`read_arrow`, `write_arrow`, and `append_arrow` are the same three methods with the argument widened
-to whatever your last library handed you. Each one turns what it was given into one
-`RecordBatchReader` and then calls the core method above it, so the widening is inference and never
-a second way to write.
+`options.commit_row_size` is the optional publication cadence for every representation in the
+table above, including pandas and polars. Its default `None` publishes once after successful end of
+input. A positive `N` publishes every complete `N`-row group and the final remainder; overwrite
+uses overwrite for the first group and append thereafter, while append and merge retain their
+intent for every group. If conversion, source reading, native casting, or publication then fails,
+completed prefixes remain visible by design.
 
 ```python
 import pathlib
 import tempfile
 
-import pyarrow as pa
-import pyarrow.dataset as pads
-
 from yggdryl import IOBase
 
-schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
-table = pa.table({"id": [1, 2], "venue": ["XNAS", None]}, schema=schema)
-root = pathlib.Path(tempfile.mkdtemp())
+handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+incremental = handle.record_options()
+incremental.commit_row_size = 10_000
 
-# A table, a dataset, a generator of tables, and plain rows all write.
-for name, rows in (
-    ("table.parquet", table),
-    ("dataset.parquet", pads.dataset(table)),
-    ("generated.parquet", (chunk for chunk in table.to_batches())),
-    ("rows.parquet", [{"id": 1, "venue": "XNAS"}, {"id": 2, "venue": None}]),
-):
-    handle = IOBase(root / name)
-    handle.write_arrow(rows)
-    assert handle.read_arrow().read_all().num_rows == 2
+# The generator is never collected. A failure after row 10,000 leaves that
+# complete prefix published, and conversion does not inspect row 10,001 first.
+handle.append_records(
+    ({"id": row_id, "venue": None} for row_id in range(5, 20_005)),
+    options=incremental,
+)
 ```
 
-| You are holding | What happens |
+`commit_row_size = 0` is invalid and is rejected before any Python input is inspected. A zero
+`max_row_size` or `max_byte_size` is different: append is a no-op; overwrite publishes a typed
+empty value directly from an explicit `options.field` and therefore requires that field without
+asking the input for a schema. Limits apply once to the whole incoming stream, before it is split
+into commits, and remain incompatible with keyed merge.
+
+Decorated dataclasses use their cached native class field directly:
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase, scalar
+
+@scalar
+class Trade:
+    id: int
+    venue: str | None
+
+handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+cached = Trade.field()
+handle.overwrite_records([Trade(1, "XNAS"), Trade(2, None)])
+assert Trade.field() is cached
+assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
+assert list(handle.read_records()) == [
+    {"id": 1, "venue": "XNAS"},
+    {"id": 2, "venue": None},
+]
+
+empty = handle.record_options()
+empty.field = Trade.field()
+handle.overwrite_records([], options=empty)
+```
+
+`read_records()` lowers only the current Arrow batch. With no class it yields plain mappings; with
+a stdlib or `@scalar` dataclass type it constructs one instance per row. It never revives a separate
+`Record` or `RecordSchema` model.
+
+### Record API migration
+
+The old catch-all names are removed rather than retained as aliases. Choose the replacement from
+the value Python actually holds and the write intent:
+
+| Removed public name | Replacement |
 | --- | --- |
-| `RecordBatchReader`, `Table`, `RecordBatch`, any `__arrow_c_stream__` exporter | the Arrow C stream, uncopied |
-| `pyarrow.dataset.Dataset` or `Scanner` | its own reader, so the scan stays a scan |
-| a `pandas` or `polars` frame | the frame's own Arrow export |
-| a list or generator of any of those | chained, one item held at a time |
-| an iterable of mappings | grouped into batches, typed by the declared schema or by the first batch |
-| an iterable of sequences | the same, once a declared schema names the columns |
+| `read_arrow_batch_reader` | `read_arrow_reader` |
+| `read_arrow` | `read_arrow_reader` |
+| `write_arrow_batch_reader` | `overwrite_arrow_reader` |
+| `append_arrow_batch_reader` | `append_arrow_reader` |
+| `write_arrow` | `overwrite_arrow_reader`, `overwrite_arrow_table`, `overwrite_arrow_record_batch`, or `overwrite_records` |
+| `append_arrow` | the matching `append_*` representation method |
+| mode-less `write_records(records)` | `overwrite_records(records)` or `write_records(records, mode)` |
+| mode-less `write_pandas` / `write_pandas_frame` | the matching explicit-intent method or the same name with required `mode` |
+| mode-less `write_polars` / `write_polars_frame` | the matching explicit-intent method or the same name with required `mode` |
+| `options.schema` | `options.field` |
 
-Nothing that could stream is collected. A generator is pulled one item at a time and each item is
-dropped before the next is asked for, so a sequence of tables larger than memory writes exactly as a
-reader would - and `write_arrow(rows)` on an unbounded generator of dictionaries groups them into
-batches of `options.batch_size` rather than building a list first.
-
-A Yggdryl record collection is the one row shape that does *not* belong here: `Record.from_dicts` and
-`Record.into_arrow_record_batch_reader` already own that conversion with its cached schema, and the
-reader they return is what `write_arrow` takes.
+Flattened record keywords such as `field=`, `select_by_names=`, `batch_size=`, and
+`merge_by_names=` are also gone from these methods. Set them on one `RecordOptions` value and pass
+that value as `options=`.
 
 ## pandas and polars
 
@@ -527,7 +771,7 @@ from yggdryl import IOBase
 
 handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
 
-handle.write_pandas_frame(pd.DataFrame({"id": [1, 2], "venue": ["XNAS", "XNYS"]}))
+handle.overwrite_pandas_frame(pd.DataFrame({"id": [1, 2], "venue": ["XNAS", "XNYS"]}))
 
 # The plural name streams: one frame per batch, converted when it is pulled.
 assert sum(len(frame) for frame in handle.read_pandas()) == 2
@@ -535,17 +779,18 @@ assert sum(len(frame) for frame in handle.read_pandas()) == 2
 assert list(handle.read_pandas_frame()["venue"]) == ["XNAS", "XNYS"]
 ```
 
-The eight names come in pairs, and the suffix is the whole difference:
+The suffix says whether the call takes exactly one frame. Intent stays explicit in both forms:
 
-| Streaming | One frame | What it does |
-| --- | --- | --- |
-| `read_pandas()` / `read_polars()` | `read_pandas_frame()` / `read_polars_frame()` | read one frame per batch, or every row in one |
-| `write_pandas(frames)` / `write_polars(frames)` | `write_pandas_frame(frame)` / `write_polars_frame(frame)` | write a frame or an iterable of them, or exactly one |
+| Streaming frames | Exactly one frame |
+| --- | --- |
+| `read_pandas()` / `read_polars()` | `read_pandas_frame()` / `read_polars_frame()` |
+| `overwrite_pandas(frames)` / `overwrite_polars(frames)` | `overwrite_pandas_frame(frame)` / `overwrite_polars_frame(frame)` |
+| `append_pandas(frames)` / `append_polars(frames)` | `append_pandas_frame(frame)` / `append_polars_frame(frame)` |
+| `merge_pandas(frames)` / `merge_polars(frames)` | `merge_pandas_frame(frame)` / `merge_polars_frame(frame)` |
 
-The named entry points are strict: `write_pandas` handed a polars frame is a mistake worth naming,
-and `write_arrow` already accepts both. A `polars.LazyFrame` is accepted and collected, because
-polars offers no way to hand its rows over a batch at a time - that is polars' boundary, not this
-one's.
+The named entry points are strict: `overwrite_pandas` handed a polars frame is a mistake worth
+naming. A `polars.LazyFrame` is accepted and collected, because polars offers no way to hand its
+rows over a batch at a time - that is polars' boundary, not this one's.
 
 ## An Iceberg table end to end
 

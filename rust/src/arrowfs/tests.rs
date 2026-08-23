@@ -9,8 +9,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::arrowfs::{ArrowFileSystem, File, FileInfo, Folder, MemoryFileSystem, Path};
-use crate::io::IOBase;
-use crate::{IOKind, MimeType, Result};
+use crate::io::{IOBase, IOMedia};
+use crate::{IOKind, MediaType, MimeType, Result};
+
+#[test]
+fn file_info_is_a_totally_ordered_hashable_snapshot() {
+    fn assert_traits<T: Clone + Eq + std::hash::Hash + Ord>() {}
+    assert_traits::<FileInfo>();
+    assert!(FileInfo::file("a", 1) < FileInfo::file("b", 1));
+}
 
 /// An empty in-memory filesystem.
 fn memory() -> Arc<MemoryFileSystem> {
@@ -134,9 +141,11 @@ mod laziness {
         let file = File::from_location(filesystem.clone(), "bucket/key.parquet").unwrap();
         let folder = Folder::from_location(filesystem.clone(), "bucket/lake").unwrap();
         let path = Path::from_location(filesystem.clone(), "bucket/anything").unwrap();
+        let located = crate::arrowfs::located(filesystem.clone(), path.url().clone());
 
-        // Not one call reached the vtable while three handles were built.
+        // Not one call reached the vtable while direct and generic handles were built.
         assert_eq!(filesystem.calls(), 0);
+        assert!(matches!(located, crate::generic::Holder::ArrowPath(_)));
 
         // Nor does borrowing what a handle already knows about itself.
         let _ = (file.url(), folder.url(), path.url());
@@ -723,6 +732,18 @@ mod hierarchy {
                 .unwrap()
                 .is_empty()
         );
+        let message = leaf
+            .child_by_path("deeper")
+            .expect_err("a file cannot resolve a child")
+            .to_string();
+        assert!(message.contains("expected a container"), "{message}");
+
+        let child = directory.child_by_path("a.bin").unwrap();
+        assert!(matches!(&child, crate::generic::Holder::ArrowPath(_)));
+        assert_eq!(child.media_type().base(), &MimeType::OCTET_STREAM);
+        let parent = child.parent().expect("the generic child has a parent");
+        assert!(matches!(&parent, crate::generic::Holder::ArrowPath(_)));
+        assert_eq!(parent.kind(), IOKind::Directory);
 
         // Nothing there yet has not decided what it is; a write settles it.
         let mut undecided = Path::from_location(filesystem, "bucket/lake/new.bin").unwrap();
@@ -731,6 +752,51 @@ mod hierarchy {
         undecided.close().unwrap();
         assert_eq!(undecided.kind(), IOKind::File);
         assert_eq!(undecided.read_all_bytes().unwrap(), b"decided");
+    }
+
+    #[test]
+    fn a_generic_leaf_keeps_media_inference_and_staged_identity() {
+        let filesystem = memory();
+        let mut leaf = Path::from_location(filesystem.clone(), "bucket/trades.arrows").unwrap();
+
+        assert_eq!(leaf.media_type().base(), &MimeType::ARROW_STREAM);
+        let bare = Path::from_location(filesystem.clone(), "bucket/plain").unwrap();
+        assert_eq!(bare.media_type().base(), &MimeType::FILE);
+        leaf.set_media_type(MediaType::from(MimeType::CSV));
+        assert_eq!(leaf.media_type().base(), &MimeType::CSV);
+        assert!(leaf.is_tabular());
+        assert!(!leaf.is_atomic());
+        assert_eq!(leaf.as_file().media_type().base(), &MimeType::CSV);
+
+        filesystem.create_dir("bucket/lake.parquet").unwrap();
+        let directory = Path::from_location(filesystem.clone(), "bucket/lake.parquet").unwrap();
+        assert_eq!(directory.media_type().base(), &MimeType::DIRECTORY);
+
+        leaf.pwrite(0, b"AAPL").unwrap();
+        assert_eq!(leaf.kind(), IOKind::File, "the retained stage is a leaf");
+        assert_eq!(
+            filesystem.file_info("bucket/trades.arrows").unwrap().kind,
+            IOKind::Unknown,
+            "a positional write remains unpublished"
+        );
+        leaf.flush().unwrap();
+        assert_eq!(
+            filesystem.file_info("bucket/trades.arrows").unwrap().kind,
+            IOKind::File
+        );
+    }
+
+    #[test]
+    fn clearing_a_generic_leaf_discards_its_retained_stage() {
+        let filesystem = memory();
+        let mut leaf = Path::from_location(filesystem.clone(), "bucket/staged.bin").unwrap();
+
+        leaf.pwrite(0, b"must-not-return").unwrap();
+        leaf.clear().unwrap();
+        leaf.close().unwrap();
+
+        let stored = File::from_location(filesystem, "bucket/staged.bin").unwrap();
+        assert!(stored.read_all_bytes().unwrap().is_empty());
     }
 }
 
@@ -905,7 +971,7 @@ mod records {
 
     fn reader() -> crate::arrow::BatchReader {
         let batch = RecordBatch::try_new(
-            crate::arrow::schema_from_field(&schema()).unwrap(),
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
             vec![
                 StdArc::new(Int64Array::from(vec![1, 2])),
                 StdArc::new(StringArray::from(vec![Some("AAPL"), None])),
@@ -917,7 +983,7 @@ mod records {
 
     fn rows(handle: &impl IOBase, options: &RecordOptions) -> usize {
         handle
-            .read_arrow_batch_reader(options)
+            .read_arrow_reader(options)
             .unwrap()
             .map(|batch| batch.unwrap().num_rows())
             .sum()
@@ -960,11 +1026,11 @@ mod records {
                 let options = handle
                     .record_options()
                     .unwrap()
-                    .with_schema(schema())
+                    .with_field(schema())
                     .with_safe(true);
 
                 handle
-                    .write_arrow_batch_reader(reader(), &options)
+                    .overwrite_arrow_reader(reader(), &options)
                     .unwrap_or_else(|error| panic!("{label}/{name}: {error}"));
                 handle.close().unwrap();
 
@@ -976,9 +1042,7 @@ mod records {
                 );
 
                 // The third method: appending reads, adds, and rewrites.
-                handle
-                    .append_arrow_batch_reader(reader(), &options)
-                    .unwrap();
+                handle.append_arrow_reader(reader(), &options).unwrap();
                 handle.close().unwrap();
                 assert_eq!(rows(&handle, &options), 4, "{label}/{name}");
             }
@@ -991,9 +1055,9 @@ mod records {
     fn a_missing_foreign_resource_reads_as_empty_with_its_schema_answered() {
         let filesystem = memory();
         let handle = File::from_location(filesystem, "bucket/absent.arrows").unwrap();
-        let options = handle.record_options().unwrap().with_schema(schema());
+        let options = handle.record_options().unwrap().with_field(schema());
 
-        assert_eq!(handle.read_arrow_batch_reader(&options).unwrap().count(), 0);
+        assert_eq!(handle.read_arrow_reader(&options).unwrap().count(), 0);
         assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
     }
 
@@ -1005,7 +1069,7 @@ mod records {
         // Two partitions, written through the folder itself.
         for (year, id) in [("2024", 1_i64), ("2025", 2_i64)] {
             let batch = RecordBatch::try_new(
-                crate::arrow::schema_from_field(&schema()).unwrap(),
+                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
                 vec![
                     StdArc::new(Int64Array::from(vec![id])),
                     StdArc::new(StringArray::from(vec![Some("AAPL")])),
@@ -1015,8 +1079,8 @@ mod records {
             let mut leaf = folder
                 .child_by_path(&format!("year={year}/part-0.arrows"))
                 .unwrap();
-            let options = leaf.record_options().unwrap().with_schema(schema());
-            leaf.write_arrow_batch_reader(
+            let options = leaf.record_options().unwrap().with_field(schema());
+            leaf.overwrite_arrow_reader(
                 crate::arrow::batch_reader(batch.schema(), [batch]),
                 &options,
             )
@@ -1061,7 +1125,7 @@ mod tables {
 
     fn batch(id: i64, symbol: &str) -> RecordBatch {
         RecordBatch::try_new(
-            crate::arrow::schema_from_field(&schema()).unwrap(),
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
             vec![
                 StdArc::new(Int64Array::from(vec![id])),
                 StdArc::new(StringArray::from(vec![Some(symbol.to_owned())])),
@@ -1099,7 +1163,7 @@ mod tables {
 
         let options = table.record_options().unwrap();
         let rows: usize = table
-            .read_arrow_batch_reader(&options)
+            .read_arrow_reader(&options)
             .unwrap()
             .map(|batch| batch.unwrap().num_rows())
             .sum();

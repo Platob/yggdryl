@@ -73,11 +73,11 @@ python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
 python/.venv/Scripts/python -m maturin develop --release --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
-python/.venv/Scripts/python -m mypy --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_records.py
+python/.venv/Scripts/python -m mypy --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```
 
-The record decorator, annotation mapping, safe dictionary conversion, and codec
-examples are documented in [`python/RECORDS.md`](../python/RECORDS.md) and
+The field decorator, annotation mapping, dataclass field definitions, and codec
+examples are documented in [`python/FIELDS.md`](../python/FIELDS.md) and
 [`python/README.md`](../python/README.md).
 
 Node.js development:

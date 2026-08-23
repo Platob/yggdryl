@@ -16,17 +16,16 @@ from typing import NamedTuple
 
 import pytest
 
-from yggdryl import DataType, Field, Uri, Url, Urn, json, yaml
-from yggdryl.records import record
+from yggdryl import DataType, Field, Uri, Url, Urn, json, scalar, yaml
 
 
-@record
+@scalar
 class Fill:
     price: Decimal
     when: dt.datetime
 
 
-@record
+@scalar
 class Order:
     order_id: int
     fill: Fill
@@ -53,10 +52,10 @@ def test_first_class_scalars_round_trip_exactly() -> None:
     restored = json.loads(encoded)
 
     assert isinstance(encoded, bytes)
-    # Bytes and the decimal stay themselves; every temporal is spelled as its
-    # classic ISO string - the loosely typed deal a schemaless wire makes.
-    assert restored["bytes"] == value["bytes"]
-    assert str(restored["decimal"]) == "123.4500"
+    # Types JSON cannot prove use interoperable text. An explicit Field is what
+    # restores bytes, decimals, and exact temporal widths.
+    assert restored["bytes"] == "AP8="
+    assert restored["decimal"] == "123.4500"
     assert restored["date"] == "2026-08-15"
     assert restored["time"] == "12:03:04.000005"
     assert restored["naive"] == "2026-08-15T12:03:04.000005"
@@ -77,12 +76,11 @@ def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
 
     encoded = json.dumps(value).decode()
 
-    # A temporal is the classic ISO string every runtime and every other tool
-    # reads; the decimal keeps the shared envelope vocabulary, so a document
-    # written here reads back the same way in the other runtimes.
+    # Values outside JSON's grammar use ordinary interoperable strings.
     assert '"at":"2026-08-15T00:00:00.000000Z"' in encoded
     assert '"on":"2026-08-15"' in encoded
-    assert '"type":"decimal","value":["-1050",2]' in encoded
+    assert '"price":"-10.50"' in encoded
+    assert "$yggdryl" not in encoded
     assert "python:" not in encoded
 
 
@@ -117,21 +115,31 @@ def test_values_without_a_native_shape_lower_and_lose_their_class() -> None:
     assert restored["frozen"] == ["a", "b"]
     # A deque's bound is not part of the value, so it does not survive either.
     assert restored["deque"] == [1, 2, 3]
-    assert restored["bytearray"] == b"abc"
-    assert restored["memoryview"] == b"xyz"
+    assert restored["bytearray"] == "YWJj"
+    assert restored["memoryview"] == "eHl6"
     assert restored["complex"] == [-1.5, 2.25]
     assert restored["range"] == [-4, 11, 3]
     assert restored["slice"] == [None, 8, 2]
     assert restored["counter"] == {"a": 3, "b": 2}
-    assert list(restored["ordered"].items()) == [("b", 2), ("a", 1)]
+    assert list(restored["ordered"].items()) == [("a", 1), ("b", 2)]
     assert restored["defaultdict"] == {"a": [1]}
-    assert [type(item) for item in restored.values()] == [
-        str, str, str,
-        list, list, list, list,
-        bytes, bytes,
-        list, list, list,
-        dict, dict, dict,
-    ]
+    assert {name: type(item) for name, item in restored.items()} == {
+        "huge": str,
+        "uuid": str,
+        "path": str,
+        "tuple": list,
+        "set": list,
+        "frozen": list,
+        "deque": list,
+        "bytearray": str,
+        "memoryview": str,
+        "complex": list,
+        "range": list,
+        "slice": list,
+        "counter": dict,
+        "ordered": dict,
+        "defaultdict": dict,
+    }
 
 
 def test_a_subclass_lowers_as_the_type_it_subclasses() -> None:
@@ -162,7 +170,7 @@ def test_a_subclass_lowers_as_the_type_it_subclasses() -> None:
         )
     )
 
-    assert restored == [b"abc", [1.5, -2.25], [1, 2], {"a": 1}, [7]]
+    assert restored == ["YWJj", [1.5, -2.25], [1, 2], {"a": 1}, [7]]
 
 
 def test_native_wrappers_lower_to_the_text_their_own_parser_reads() -> None:
@@ -215,8 +223,7 @@ def test_an_arbitrary_object_lowers_to_its_attributes() -> None:
         "price": 10,
     }
 
-    with pytest.raises(TypeError, match="unsupported value type"):
-        json.dumps(object())
+    assert json.loads(json.dumps(object())) == {}
 
 
 def test_json_envelope_shaped_user_mapping_round_trips_as_plain_data() -> None:
@@ -252,17 +259,17 @@ def test_dataclass_dump_hot_path_does_not_call_dataclasses_fields(
 
     monkeypatch.setattr(dataclasses, "fields", fail_fields)
     assert json.loads(json.dumps(Point(2, 3))) == {"x": 2, "y": 3}
-    record_bytes = Order(
+    field_bytes = json.dumps(Order(
         7, Fill(Decimal("1.25"), dt.datetime(2026, 8, 15))
-    ).into_json()
-    assert isinstance(record_bytes, bytes)
+    ))
+    assert isinstance(field_bytes, bytes)
 
 
-def test_nested_record_round_trips_as_plain_nested_mappings() -> None:
+def test_nested_field_class_round_trips_as_plain_nested_mappings() -> None:
     value = Order(7, Fill(Decimal("12.5"), dt.datetime(2026, 8, 15, 8)))
 
-    encoded = value.into_json()
-    restored = Order.from_json(encoded)
+    encoded = json.dumps(value)
+    restored = json.loads(encoded, cls=Order)
 
     assert restored == value
     # The document is the data and nothing else; the target supplies the type.
@@ -271,7 +278,7 @@ def test_nested_record_round_trips_as_plain_nested_mappings() -> None:
     assert b"python:" not in encoded
     assert json.loads(encoded) == {
         "order_id": 7,
-        "fill": {"price": Decimal("12.5"), "when": "2026-08-15T08:00:00.000000"},
+        "fill": {"price": "12.5", "when": "2026-08-15T08:00:00.000000"},
     }
 
 
@@ -286,48 +293,49 @@ def test_nested_dataclass_is_cast_then_constructed_exactly_once() -> None:
             assert type(self.value) is int
             post_init_calls.append(self.value)
 
-    @record
+    @scalar
     class Parent:
         child: Child
 
     encoded = json.dumps({"child": {"value": "7"}})
 
-    restored = Parent.from_json(encoded)
+    restored = json.loads(encoded, cls=Parent)
 
     assert restored.child.value == 7
     assert post_init_calls == [7]
 
 
-def test_record_codec_uses_same_safe_projection_as_to_dict() -> None:
-    @record
+def test_field_class_codec_uses_shared_safe_conversion() -> None:
+    @scalar
     class Casted:
         value: int | None
 
-    source = Casted("7")  # type: ignore[arg-type]
-    expected = Casted.from_dict(source.to_dict(safe=True))
-
-    assert Casted.from_json(source.into_json(safe=True)) == expected
-    shallow = Casted.from_json(source.into_json(safe=False), safe=False)
+    encoded = json.dumps({"value": "7"})
+    assert json.loads(encoded, cls=Casted).value == 7
+    shallow = json.loads(encoded, cls=Casted, safe=False)
     assert shallow.value == "7"
 
 
-def test_record_target_rejects_a_document_of_another_shape() -> None:
-    @record
+def test_field_class_target_rejects_a_document_of_another_shape() -> None:
+    @scalar
     class Other:
         symbol: str
 
     value = Order(1, Fill(Decimal("1"), dt.datetime(2026, 8, 15)))
 
     with pytest.raises(TypeError, match="unknown keys"):
-        Other.from_json(value.into_json())
+        json.loads(json.dumps(value), cls=Other)
 
 
-def test_path_and_content_sources(tmp_path: pathlib.Path) -> None:
+def test_source_intent_is_type_driven_without_existence_probes(
+    tmp_path: pathlib.Path,
+) -> None:
     path = tmp_path / "value.json"
     path.write_bytes(b'{"value":42}')
 
     assert json.loads(path) == {"value": 42}
-    assert json.loads(str(path)) == {"value": 42}
+    with pytest.raises(ValueError, match="invalid json data"):
+        json.loads(str(path))
     assert json.loads('{"value":43}') == {"value": 43}
     stream = io.BytesIO(b'{"value":44}')
     assert json.loads(stream) == {"value": 44}
@@ -374,7 +382,7 @@ def test_buffered_collection_encode_is_bounded_and_closes_generator() -> None:
         assert closed
 
 
-def test_json_lines_record_requires_exactly_one_row(tmp_path: pathlib.Path) -> None:
+def test_json_lines_materializes_field_classes_lazily(tmp_path: pathlib.Path) -> None:
     value = Order(1, Fill(Decimal("2"), dt.datetime(2026, 8, 15)))
     one = tmp_path / "one.jsonl"
     empty = tmp_path / "empty.jsonl"
@@ -383,14 +391,9 @@ def test_json_lines_record_requires_exactly_one_row(tmp_path: pathlib.Path) -> N
     empty.write_bytes(b"")
     json.dump_all((value, value), two)
 
-    assert Order.from_(one) == value
-    encoded = value.into_(format="jsonl")
-    assert isinstance(encoded, bytes)
-    assert Order.from_(encoded, format="jsonl") == value
-    with pytest.raises(ValueError, match="found none"):
-        Order.from_(empty)
-    with pytest.raises(ValueError, match="more than one"):
-        Order.from_(two)
+    assert list(json.load_all(one, cls=Order)) == [value]
+    assert list(json.load_all(empty, cls=Order)) == []
+    assert list(json.load_all(two, cls=Order)) == [value, value]
 
 
 def test_generic_output_infers_nonexistent_string_destinations(
@@ -401,12 +404,12 @@ def test_generic_output_infers_nonexistent_string_destinations(
     json_lines_path = str(tmp_path / "new.jsonl")
     yaml_path = str(tmp_path / "new.yaml")
 
-    assert value.into_(json_path) is None
-    assert value.into_(json_lines_path) is None
-    assert value.into_(yaml_path) is None
-    assert Order.from_(json_path) == value
-    assert Order.from_(json_lines_path) == value
-    assert Order.from_(yaml_path) == value
+    assert json.dump(value, json_path) is None
+    assert json.dump_all((value,), json_lines_path) is None
+    assert yaml.dump(value, yaml_path) is None
+    assert json.loads(pathlib.Path(json_path), cls=Order) == value
+    assert list(json.load_all(pathlib.Path(json_lines_path), cls=Order)) == [value]
+    assert yaml.loads(pathlib.Path(yaml_path), cls=Order) == value
 
 
 def test_bounded_reader_and_partial_writer() -> None:
@@ -543,7 +546,9 @@ def test_json_lines_enforces_cumulative_byte_and_document_budgets(
     monkeypatch.setattr(codec, "_MAX_STREAM_BYTES", 12)
     iterator = json.load_all(io.BytesIO(b'{"id":1}\n{"id":2}\n'))
     assert next(iterator) == {"id": 1}
-    with pytest.raises(ValueError, match="exceeds 12 bytes"):
+    with pytest.raises(
+        ValueError, match=r"invalid json data at byte 9: input byte limit exceeded"
+    ):
         next(iterator)
 
     monkeypatch.setattr(codec, "_MAX_STREAM_BYTES", 64)
@@ -551,17 +556,46 @@ def test_json_lines_enforces_cumulative_byte_and_document_budgets(
     iterator = json.load_all(io.BytesIO(b"1\n2\n3\n"))
     assert next(iterator) == 1
     assert next(iterator) == 2
-    with pytest.raises(ValueError, match="exceeds 2 documents"):
+    with pytest.raises(
+        ValueError, match=r"invalid json data at byte 4: document limit exceeded"
+    ):
         next(iterator)
 
 
-def test_json_lines_stream_errors_include_document_context() -> None:
-    iterator = json.load_all(io.BytesIO(b'{"id":1}\n{bad}\n'))
+def test_json_lines_stream_errors_use_core_cumulative_offsets() -> None:
+    stream = io.BytesIO(b'{"id":1}\n{bad}\n')
+    iterator = json.load_all(stream)
     assert next(iterator) == {"id": 1}
     with pytest.raises(
         ValueError,
-        match=r"JSON Lines document 2: .*at byte 10 \(document byte 1\)",
+        match=r"invalid json data at byte 10: JSON object key must be a string",
     ):
+        next(iterator)
+    with pytest.raises(StopIteration):
+        next(iterator)
+    assert not stream.closed
+
+
+def test_json_lines_reader_errors_preserve_identity_and_fuse() -> None:
+    expected = RuntimeError("reader failed")
+
+    class FailingReader:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def readline(self, size: int) -> bytes:
+            assert size > 0
+            self.calls += 1
+            if self.calls == 1:
+                return b"1\n"
+            raise expected
+
+    iterator = json.load_all(FailingReader())
+    assert next(iterator) == 1
+    with pytest.raises(RuntimeError) as failure:
+        next(iterator)
+    assert failure.value is expected
+    with pytest.raises(StopIteration):
         next(iterator)
 
 
@@ -573,7 +607,7 @@ def test_json_lines_stream_does_not_skip_non_json_whitespace(
 
     with pytest.raises(
         ValueError,
-        match=r"JSON Lines document 1: .*at byte 0 \(document byte 0\)",
+        match=r"invalid json data at byte 0: expected a JSON value",
     ):
         next(iterator)
 
@@ -666,14 +700,14 @@ def test_cycles_and_excessive_depth_are_rejected() -> None:
     with pytest.raises(ValueError, match="level codec limit"):
         json.dumps(deep)
 
-    @record
-    class CyclicRecord:
+    @scalar
+    class CyclicField:
         values: list[int]
 
     values: list[object] = []
     values.append(values)
-    with pytest.raises(ValueError, match="cyclic collection"):
-        CyclicRecord(values).into_json(safe=False)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="cyclic"):
+        json.dumps(CyclicField(values))  # type: ignore[arg-type]
 
 
 def test_maximum_native_nesting_is_safe_in_a_subprocess() -> None:
@@ -738,11 +772,11 @@ def test_text_and_io_sources_redirect_without_python_byte_staging(
     ]
 
 
-def test_generic_record_inference_replays_anonymous_io_exactly_once() -> None:
+def test_field_class_decode_reads_anonymous_io_exactly_once() -> None:
     value = Order(7, Fill(Decimal("12.50"), dt.datetime(2026, 8, 15)))
 
-    assert Order.from_(io.StringIO(value.into_json().decode())) == value
-    assert Order.from_(io.BytesIO(value.into_yaml())) == value
+    assert json.loads(io.StringIO(json.dumps(value).decode()), cls=Order) == value
+    assert yaml.loads(io.BytesIO(yaml.dumps(value)), cls=Order) == value
 
     class ReadOnce:
         def __init__(self, payload: bytes) -> None:
@@ -758,15 +792,15 @@ def test_generic_record_inference_replays_anonymous_io_exactly_once() -> None:
                 return b""
             raise AssertionError("anonymous stream was read a second time")
 
-    source = ReadOnce(value.into_json())
-    assert Order.from_(source) == value
+    source = ReadOnce(json.dumps(value))
+    assert json.loads(source, cls=Order) == value
     assert source.calls == 2
 
 
-def test_nonexistent_string_path_is_document_content_not_a_path() -> None:
+def test_every_string_source_is_document_content() -> None:
     assert json.loads('"missing/value.json"') == "missing/value.json"
     with pytest.raises(TypeError, match="must be a mapping"):
-        Order.from_("missing/value.yaml")
+        json.loads('"missing/value.yaml"', cls=Order)
 
 
 @pytest.mark.parametrize("codec", (json, yaml))

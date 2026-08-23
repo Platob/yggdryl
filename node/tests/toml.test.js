@@ -9,16 +9,12 @@ const { ReadableStream, WritableStream } = require('node:stream/web')
 const test = require('node:test')
 const { pathToFileURL } = require('node:url')
 
-const { DataType, Value, codec, toml } = require('yggdryl')
+const { DataType, Value, codec, fields, toml } = require('yggdryl')
 
-// A Map whose keys are not text has no plain TOML spelling, so each layer
-// expands into a wrapper table, its envelope body, the entry array, and one
-// pair - four wire levels for one JavaScript container. That gap is what the
-// preflight below has to see.
-function nestedMap(count) {
-  let value = 0
+function nestedRecord(count) {
+  let value = { leaf: 0 }
   for (let index = 0; index < count; index += 1) {
-    value = new Map([[1, value]])
+    value = { nested: value }
   }
   return value
 }
@@ -43,67 +39,83 @@ test('TOML is a byte-first single-document facade', () => {
   }
 })
 
-test('TOML lowers exotic JavaScript values through core envelopes', () => {
+test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
   const value = {
-    bigint: 2n ** 100n,
+    bigint: 2n ** 62n,
     bytes: Buffer.from([0, 1, 127, 255]),
     infinity: Infinity,
-    map: new Map([[{ key: true }, new Set(['XPAR', 'XNAS'])]]),
+    map: new Map([['venues', new Set(['XPAR', 'XNAS'])]]),
     nan: NaN,
     negativeZero: -0,
     regexp: new RegExp('a/b(?<name>c)', 'giu'),
     schema: DataType.fromString('struct<id:int64 not null>'),
     typed: new Uint16Array([0, 65535]),
-    undefined,
   }
 
-  const decoded = toml.loads(toml.dumps(value))
+  const encoded = toml.dumps(value)
+  const decoded = toml.loads(encoded)
+  assert.doesNotMatch(encoded.toString('utf8'), /\$yggdryl/)
   assert.equal(decoded.bigint, value.bigint)
-  assert.deepEqual(decoded.bytes, value.bytes)
+  assert.equal(decoded.bytes, value.bytes.toString('base64'))
   assert.equal(decoded.infinity, Infinity)
   assert.ok(Number.isNaN(decoded.nan))
   assert.ok(Object.is(decoded.negativeZero, -0))
   assert.equal(decoded.regexp, '/a\\/b(?<name>c)/giu')
-  assert.ok(decoded.map instanceof Map)
-  assert.deepEqual([...decoded.map.values()], [['XPAR', 'XNAS']])
+  assert.deepEqual(decoded.map, { venues: ['XPAR', 'XNAS'] })
   assert.equal(decoded.schema, value.schema.toString())
   assert.deepEqual(decoded.typed, [0, 65535])
-  assert.ok(Object.hasOwn(decoded, 'undefined'))
-  assert.equal(decoded.undefined, null)
 
   const collision = { $yggdryl: { version: 1, type: 'null' } }
   assert.deepEqual(toml.loads(toml.dumps(collision)), collision)
 
+  assert.throws(() => toml.dumps({ bigint: 2n ** 100n }), /exceeds i64/i)
+  assert.throws(() => toml.dumps({ map: new Map([[1, 2]]) }), /keys must be strings/i)
+  assert.throws(() => toml.dumps({ missing: undefined }), /cannot represent null/i)
   for (const root of [null, 'scalar root', [1, 2], Buffer.from([1, 2])]) {
-    assert.deepEqual(toml.loads(toml.dumps(root)), root)
+    assert.throws(() => toml.dumps(root), /root must be a record/i)
   }
 })
 
-test('TOML writes a temporal in its own syntax and a decimal in an envelope', () => {
+test('TOML writes natural temporals and field-directed exact decimals', () => {
   const written = toml.dumps({
     at: new Date('2026-08-15T12:30:00.000Z'),
-    on: Value.date(19723),
-    since: Value.time(27120n, 's'),
-    price: Value.decimal(-1050n, 2),
+    on: Value.date32(19723),
+    since: Value.time32(27120, 's'),
+    price: Value.d128(-1050n, 2),
+    wide: Value.d256(123456789012345678901234567890n, 4),
   })
 
   const text = written.toString('utf8')
   assert.match(text, /"at" = 2026-08-15T12:30:00/)
   assert.match(text, /"on" = 2024-01-01/)
   assert.match(text, /"since" = 07:32:00/)
-  // TOML has no decimal of its own, so an exact one keeps its envelope.
-  assert.match(text, /"price" = \{ "\$yggdryl" = \{ version = 1, type = "decimal"/)
+  assert.match(text, /"price" = "-10\.50"/)
+  assert.doesNotMatch(text, /\$yggdryl/)
 
   const decoded = toml.loads(written)
   assert.ok(decoded.at instanceof Date)
   assert.equal(decoded.at.toISOString(), '2026-08-15T12:30:00.000Z')
-  assert.ok(decoded.on.equals(Value.date(19723)))
-  assert.ok(decoded.since.equals(Value.time(27120n, 's')))
-  assert.ok(decoded.price.equals(Value.decimal(-1050n, 2)))
+  assert.ok(decoded.on.equals(Value.date32(19723)))
+  assert.ok(decoded.since.equals(Value.time32(27120, 's')))
+  assert.equal(decoded.price, '-10.50')
+
+  const field = fields.struct('root', [
+    fields.timestamp('at', 's', 'UTC', { nullable: false }),
+    fields.date32('on', { nullable: false }),
+    fields.decimal128('price', 10, 2, { nullable: false }),
+    fields.time32('since', 's', { nullable: false }),
+    fields.decimal256('wide', 40, 4, { nullable: false }),
+  ], { nullable: false })
+  const typed = toml.loads(written, { field })
+  assert.ok(typed.at instanceof Date)
+  assert.ok(typed.on.equals(Value.date32(19723)))
+  assert.ok(typed.price.equals(Value.d128(-1050n, 2)))
+  assert.ok(typed.since.equals(Value.time32(27120, 's')))
+  assert.ok(typed.wide.equals(Value.d256(123456789012345678901234567890n, 4)))
 })
 
-test('TOML emission applies requested depth to the expanded wire value', () => {
-  const defaultBoundary = nestedMap(12)
+test('TOML emission applies requested depth to the natural value', () => {
+  const defaultBoundary = nestedRecord(12)
   const defaultBytes = toml.dumps(defaultBoundary)
   assert.deepEqual(toml.loads(defaultBytes), defaultBoundary)
   assert.deepEqual(
@@ -112,15 +124,14 @@ test('TOML emission applies requested depth to the expanded wire value', () => {
     }),
     defaultBoundary,
   )
-  assert.throws(() => toml.dumps(nestedMap(13)), /depth/i)
-  assert.throws(() => codec.into(nestedMap(13), { format: 'toml' }), /depth/i)
-  assert.throws(() => toml.dumps(nestedMap(2), { maxDepth: 3 }), /depth/i)
+  assert.throws(() => toml.dumps(nestedRecord(49)), /depth/i)
+  assert.throws(() => codec.into(nestedRecord(49), { format: 'toml' }), /depth/i)
+  assert.throws(() => toml.dumps(nestedRecord(3), { maxDepth: 3 }), /depth/i)
 
-  const customBoundary = nestedMap(3)
-  const customBytes = toml.dumps(customBoundary, { maxDepth: 12 })
-  assert.deepEqual(toml.loads(customBytes, { maxDepth: 12 }), customBoundary)
-  assert.throws(() => toml.dumps(customBoundary, { maxDepth: 11 }), /depth/i)
-  assert.throws(() => toml.dumps(nestedMap(4), { maxDepth: 12 }), /depth/i)
+  const customBoundary = nestedRecord(6)
+  const customBytes = toml.dumps(customBoundary, { maxDepth: 7 })
+  assert.deepEqual(toml.loads(customBytes, { maxDepth: 7 }), customBoundary)
+  assert.throws(() => toml.dumps(customBoundary, { maxDepth: 6 }), /depth/i)
 })
 
 test('native TOML date-times arrive as temporal values and write back exactly', () => {
@@ -128,14 +139,11 @@ test('native TOML date-times arrive as temporal values and write back exactly', 
     'offset = 1979-05-27T07:32:00Z\nlocal = 1979-05-27T07:32:00\ndate = 1979-05-27\ntime = 07:32:00\n'
   const decoded = toml.loads(source)
 
-  // A local date-time is exactly what a Date holds - a naive count of whole
-  // milliseconds - so it arrives as one. The other three have no JavaScript
-  // spelling and stay native values rather than being rounded into a Date.
-  assert.ok(decoded.local instanceof Date)
-  assert.equal(decoded.local.toISOString(), '1979-05-27T07:32:00.000Z')
-  assert.ok(decoded.offset.equals(Value.timestamp(296638320n, 's', 'UTC')))
-  assert.ok(decoded.date.equals(Value.date(3433)))
-  assert.ok(decoded.time.equals(Value.time(27120n, 's')))
+  assert.ok(decoded.offset instanceof Date)
+  assert.equal(decoded.offset.toISOString(), '1979-05-27T07:32:00.000Z')
+  assert.ok(decoded.local.equals(Value.datetime64(296638320n, 's', 'NAIVE')))
+  assert.ok(decoded.date.equals(Value.date32(3433)))
+  assert.ok(decoded.time.equals(Value.time32(27120, 's')))
 
   assert.equal(
     toml.dumps(decoded).toString('utf8'),
@@ -188,7 +196,7 @@ test('generic content inference delegates ambiguous syntax to the core', () => {
   assert.deepEqual(codec.from('# TOML comment\n', { format: 'toml' }), {})
 })
 
-test('TOML paths and generic .toml inference use native readers and writers', () => {
+test('TOML file URLs use native readers while string destinations stay paths', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-toml-path-'))
   const source = path.join(directory, 'source.toml')
   const destination = path.join(directory, 'destination.toml')
@@ -201,8 +209,8 @@ test('TOML paths and generic .toml inference use native readers and writers', ()
     fs.readSync = () => {
       throw new Error('real TOML paths must bypass JavaScript read staging')
     }
-    assert.deepEqual(toml.load(source), { id: 46 })
-    assert.deepEqual(codec.from(source), { id: 46 })
+    assert.deepEqual(toml.load(pathToFileURL(source)), { id: 46 })
+    assert.deepEqual(codec.from(pathToFileURL(source)), { id: 46 })
 
     fs.writeFileSync = () => {
       throw new Error('real TOML paths must bypass JavaScript write staging')
@@ -216,7 +224,10 @@ test('TOML paths and generic .toml inference use native readers and writers', ()
 
   try {
     assert.deepEqual(toml.load(pathToFileURL(destination)), { id: 47 })
-    assert.deepEqual(codec.from(misleading, { format: 'toml' }), { id: 48 })
+    assert.deepEqual(
+      codec.from(pathToFileURL(misleading), { format: 'toml' }),
+      { id: 48 },
+    )
     assert.deepEqual(
       codec.from(Buffer.from('id = 49\n'), { format: 'toml' }),
       { id: 49 },
@@ -247,7 +258,7 @@ test('TOML file descriptors stay caller-owned', () => {
     fs.closeSync(destinationFd)
   }
   try {
-    assert.deepEqual(toml.load(destination), { id: 52 })
+    assert.deepEqual(toml.load(pathToFileURL(destination)), { id: 52 })
   } finally {
     fs.rmSync(directory, { force: true, recursive: true })
   }
@@ -346,13 +357,16 @@ test('TOML errors and limits stay native and path conversion is non-destructive'
   try {
     assert.throws(() => toml.dump(cyclic, destination), /cyclic/)
     assert.equal(fs.readFileSync(destination, 'utf8'), 'keep = "me"\n')
-    assert.throws(() => toml.dump(nestedMap(13), destination), /depth/i)
+    assert.throws(
+      () => toml.dump(nestedRecord(12), destination, { maxDepth: 12 }),
+      /depth/i,
+    )
     assert.equal(fs.readFileSync(destination, 'utf8'), 'keep = "me"\n')
     assert.throws(
       () =>
-        codec.into(nestedMap(4), destination, {
+        codec.into(nestedRecord(4), destination, {
           format: 'toml',
-          maxDepth: 12,
+          maxDepth: 4,
         }),
       /depth/i,
     )

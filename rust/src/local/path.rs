@@ -1,6 +1,6 @@
 //! One local location, whatever it turns out to be.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use super::File;
 use super::Folder;
@@ -39,6 +39,10 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 #[derive(Debug)]
 pub struct Path {
     url: Url,
+    /// An explicit representation supplied by the caller.
+    declared: Option<MediaType>,
+    /// Inference from the path's compound filename, computed on demand.
+    inferred: OnceLock<MediaType>,
     /// The implementation this location resolved to, kept so a mapped file's
     /// state survives between calls.
     resolved: Mutex<Option<Resolved>>,
@@ -80,6 +84,8 @@ impl Path {
     pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self> {
         Ok(Self {
             url: Url::from_path(path)?,
+            declared: None,
+            inferred: OnceLock::new(),
             resolved: Mutex::new(None),
         })
     }
@@ -90,9 +96,11 @@ impl Path {
     ///
     /// Returns an error when the URL is not local.
     pub fn from_url(url: Url) -> Result<Self> {
-        url.to_path()?;
+        url.clone().into_path()?;
         Ok(Self {
             url,
+            declared: None,
+            inferred: OnceLock::new(),
             resolved: Mutex::new(None),
         })
     }
@@ -108,7 +116,7 @@ impl Path {
     ///
     /// Returns an error when the URL cannot be expressed as a platform path.
     pub fn path(&self) -> Result<std::path::PathBuf> {
-        self.url.to_path()
+        self.url.clone().into_path()
     }
 
     /// Return whether the location exists yet.
@@ -132,7 +140,11 @@ impl Path {
     /// Returns an error when the URL is not local, or when this build has no
     /// local leaf implementation.
     pub fn as_file(&self) -> Result<File> {
-        File::new(self.path()?)
+        let mut file = File::new(self.path()?)?;
+        if let Some(media_type) = &self.declared {
+            file.set_media_type(media_type.clone());
+        }
+        Ok(file)
     }
 
     /// Build the leaf implementation this build provides.
@@ -200,6 +212,10 @@ impl IOPath for Path {
     }
 }
 
+impl crate::io::IOMedia for Path {
+    crate::impl_default_iomedia!();
+}
+
 impl IOBase for Path {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
@@ -245,11 +261,22 @@ impl IOBase for Path {
         if self.kind().is_container() {
             return &DIRECTORY;
         }
-        &FILE
+        if let Some(media_type) = &self.declared {
+            return media_type;
+        }
+        if self.url.extension().is_none() {
+            return &FILE;
+        }
+        self.inferred.get_or_init(|| self.url.media_type())
     }
 
-    fn set_media_type(&mut self, _media_type: MediaType) {
-        // A location is named by its path; its type follows from what is there.
+    fn set_media_type(&mut self, media_type: MediaType) {
+        if let Ok(mut resolved) = self.resolved.lock() {
+            if let Some(resolved) = resolved.as_mut() {
+                resolved.as_io_mut().set_media_type(media_type.clone());
+            }
+        }
+        self.declared = Some(media_type);
     }
 
     fn kind(&self) -> IOKind {
@@ -287,6 +314,9 @@ impl IOBase for Path {
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
+        if self.kind() == IOKind::File {
+            return self.as_file()?.child_by_path(name);
+        }
         Ok(Holder::Path(Self::from_url(self.url.joinpath(name)?)?))
     }
 
@@ -298,6 +328,18 @@ impl IOBase for Path {
     /// a second probe added for the lifecycle pair. An undecided location has
     /// nothing to empty.
     fn clear(&mut self) -> Result<()> {
+        {
+            let mut resolved = self.resolved.lock().map_err(|_| {
+                Error::Io(std::io::Error::other(
+                    "the resolved handle lock was poisoned",
+                ))
+            })?;
+            if let Some(resolved) = resolved.as_mut() {
+                // Clear the retained mapping itself: a fresh File would not
+                // own its mapping state, and its later close could restore it.
+                return resolved.as_io_mut().clear();
+            }
+        }
         match self.kind() {
             IOKind::Directory => self.as_directory()?.clear(),
             IOKind::Unknown => Ok(()),

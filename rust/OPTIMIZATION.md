@@ -120,37 +120,26 @@ measuring a representative workload.
   nesting, wide mapping validation, shared clones, exotic enveloped values, and
   reserved-envelope collisions before changing the wire representation.
 
-## Python record hot paths
+## Python field-class hot paths
 
 - Compile annotations once per dataclass. Cache the native root `Field`, the
-  ordered child-Field tuple, resolved hints, constructor fields, and accepted
-  input names together. Cached access must use a class-local fast path and must
-  not acquire the schema-construction lock.
-- A decorated class normally builds its schema once at decoration. Only an
-  unresolved forward sibling may defer construction; remove pending namespace
-  state immediately after success and do not let a weak-cache value retain its
-  own class key.
-- Generated record methods delegate to the module conversion functions. Keep
-  `safe=False` shallow: do not traverse annotations or copy nested containers.
-  In `safe=True`, allocate only the requested output/constructor mapping and
-  containers whose members actually require recursive conversion.
-- Check exact runtime union members before attempting casts, and handle bool
-  before int. Error context belongs on the exceptional path. Unknown keys are
-  never discarded by `errors="default"`; falling back to a declared default
-  must not call a default factory early or reuse its mutable result.
+  ordered child-Field tuple, and resolved hints together. Cached access through
+  the static `Class.field()` accessor and pure `field(Class)` builder must use a
+  class-local fast path without acquiring the schema-construction lock.
+- A scalar-decorated dataclass builds its native field on the first `field()`
+  call. Keep that lazy construction synchronized; remove
+  pending namespace state immediately after success and do not let a
+  weak-cache value retain its own class key.
 - Keep Python typing introspection in Python, but construct only native
   `DataType`/`Field` values. Scalar inference helpers and imported modules may
   be cached because native datatype wrappers are immutable; never cache a
   mutable standalone Field as a global annotation result.
-- Freeze record-owned root and child Fields before publishing their singleton
-  references. Reject mutation at the native boundary; never rebuild a root
-  Struct merely to reconcile a mutated detached child.
+- Freeze decorated-class-owned root and child Fields before publishing their
+  singleton references. Reject mutation at the native boundary; never rebuild
+  a root Struct merely to reconcile a mutated detached child.
 - Retain resolved annotations, not captured frames. Deferred schemas keep only
   bindings reachable from their annotation graph; nested generic schemas copy
   only the reachable resolved-cache subtree.
-- Treat safe output as validation plus projection. Never reconstruct an
-  already existing dataclass merely to bind generic parameters: doing so adds
-  an allocation and may execute user `__post_init__` code twice.
 
 ## Validation rules
 
@@ -200,7 +189,7 @@ cargo bench --manifest-path rust/Cargo.toml --bench uri
 cargo bench --manifest-path rust/Cargo.toml --bench text
 cargo bench --manifest-path rust/Cargo.toml --bench json
 cargo bench --manifest-path rust/Cargo.toml --bench yaml
-python python/benchmarks/records.py --iterations 100000
+python python/benchmarks/fields.py --iterations 100000
 ```
 
 The suite measures scalar and deeply nested parsing, canonical field parsing,
@@ -216,10 +205,10 @@ correctness baselines because malformed-input timing is not an optimization
 target.
 `BatchSize::SmallInput` keeps construction of cold fixtures outside their timed
 projection routines.
-The Python script separately measures cached schema access, shallow and safe
-mapping conversion, nested conversion, and cold record decoration. Run it with
-the same interpreter/build mode and do not compare debug-extension results to
-release-extension results.
+The Python script separately measures cached `Class.field()` and `field(Class)`
+calls, annotation inference, nested dataclass fields, and cold `@scalar`
+decoration. Use the same interpreter/build mode; never compare debug and release
+extension results.
 
 - Compare on the same machine, power mode, Rust toolchain, target features, and
   benchmark fixture. Record the command and commit IDs for both baseline and

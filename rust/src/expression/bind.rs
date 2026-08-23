@@ -291,15 +291,15 @@ impl Bound {
 
     /// Evaluate this expression for one row.
     ///
-    /// The row is a [`Value::Sequence`] of column values in schema order, or a
-    /// [`Value::Record`], which is the same thing carrying its own datatype.
-    /// This is the row target's [`ApplyExpression`](super::ApplyExpression),
-    /// spelled from the expression's side.
+    /// The row is a [`Value::Sequence`] of column values in schema order. This
+    /// is the row target's [`ApplyExpression`](super::ApplyExpression), spelled
+    /// from the expression's side.
     ///
     /// # Errors
     ///
-    /// Returns an error when the row does not match the bound schema, or when
-    /// a strict cast refuses a value.
+    /// Returns an error when the row does not match the bound schema, a strict
+    /// cast refuses a value, or checked arithmetic overflows, divides by zero,
+    /// or cannot represent an exact decimal result.
     pub fn eval(&self, row: &Value) -> Result<Value> {
         super::ApplyExpression::apply_expression(row, self)
     }
@@ -351,19 +351,16 @@ impl Bound {
     }
 }
 
-/// Borrow one row's column values, whichever row spelling was handed over.
+/// Borrow one row's column values.
 pub(crate) fn row_values<'row>(row: &'row Value, schema: &Field) -> Result<&'row [Value]> {
-    let values = match row {
-        Value::Record(_, values) => values.as_ref(),
-        other => other.as_sequence().ok_or_else(|| Error::InvalidRecord {
-            path: SmolStr::new(schema.name()),
-            reason: format_smolstr!(
-                "expected an ordered sequence of {} column values, got {}",
-                schema.field_len(),
-                other.kind()
-            ),
-        })?,
-    };
+    let values = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
+        path: SmolStr::new(schema.name()),
+        reason: format_smolstr!(
+            "expected an ordered sequence of {} column values, got {}",
+            schema.field_len(),
+            row.kind()
+        ),
+    })?;
     if values.len() != schema.field_len() {
         return Err(Error::InvalidRecord {
             path: SmolStr::new(schema.name()),

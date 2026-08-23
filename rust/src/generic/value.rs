@@ -1,9 +1,9 @@
 //! The one value every part of the project speaks.
 //!
 //! A [`Value`] is any native value: null, a boolean, a signed or unsigned
-//! integer at every width from 8 to 128 bits, a float at 32 or 64 bits, an
-//! exact decimal, a string, bytes, one of the five temporals, an ordered
-//! sequence, or an insertion-ordered mapping with arbitrary keys. It is what [`crate::json`], [`crate::yaml`], and
+//! integer at every width from 8 to 128 bits, a float at 16, 32, or 64 bits,
+//! an exact decimal, text, bytes, width-typed temporals, an ordered sequence,
+//! an arbitrary-key mapping, or a name-sorted record. It is what [`crate::json`], [`crate::yaml`], and
 //! [`crate::toml`] parse into and write from, what a [`crate::Field`] validates
 //! and canonicalizes, and what the language bindings convert their own objects
 //! into - so a value crosses every boundary in the project without being
@@ -20,19 +20,19 @@
 //! use yggdryl::Value;
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let quote = Value::from_mapping([
-//!     (Value::from("symbol"), Value::from("AAPL")),
-//!     (Value::from("price"), Value::from(12.5)),
+//! let quote = Value::from_record([
+//!     ("symbol", Value::from("AAPL")),
+//!     ("price", Value::d128(125, 1)),
 //! ])?;
 //!
-//! assert_eq!(quote.get_key_str("symbol").and_then(Value::as_str), Some("AAPL"));
+//! assert_eq!(quote.get_key_str("symbol").and_then(Value::as_utf8), Some("AAPL"));
 //! assert_eq!(quote.len(), 2);
 //! # Ok(())
 //! # }
 //! ```
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Index;
@@ -40,9 +40,9 @@ use std::sync::{Arc, OnceLock};
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
-use crate::{DataType, Error, Result, TimeUnit, Timezone};
+use crate::{Error, I256, Result, TimeUnit, Timezone};
 
 use super::decimal;
 use super::temporal::temporal_key;
@@ -52,9 +52,9 @@ use super::temporal::temporal_key;
 /// All NaN payloads are normalized at construction. Positive and negative
 /// zero remain distinct so codecs can round-trip their exact representation.
 #[derive(Clone, Copy, Default)]
-pub struct Float(u64);
+pub struct Float64(u64);
 
-impl Float {
+impl Float64 {
     /// Construct from a native `f64`.
     pub fn from_f64(value: f64) -> Self {
         if value.is_nan() {
@@ -73,59 +73,70 @@ impl Float {
     pub const fn into_f64(self) -> f64 {
         self.as_f64()
     }
+
+    /// Return the non-negative IEEE magnitude, preserving this width.
+    pub fn abs(self) -> Self {
+        Self::from_f64(self.as_f64().abs())
+    }
+
+    /// Return the deterministic hash of the canonical IEEE bits.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
 }
 
-impl fmt::Debug for Float {
+impl fmt::Debug for Float64 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_f64().fmt(formatter)
     }
 }
 
-impl fmt::Display for Float {
+impl fmt::Display for Float64 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_f64().fmt(formatter)
     }
 }
 
-impl PartialEq for Float {
+impl PartialEq for Float64 {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl Eq for Float {}
+impl Eq for Float64 {}
 
-impl PartialOrd for Float {
+impl PartialOrd for Float64 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Float {
+impl Ord for Float64 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.as_f64().total_cmp(&other.as_f64())
     }
 }
 
-impl Hash for Float {
+impl Hash for Float64 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state);
     }
 }
 
-impl From<f64> for Float {
+impl From<f64> for Float64 {
     fn from(value: f64) -> Self {
         Self::from_f64(value)
     }
 }
 
-impl From<Float> for f64 {
-    fn from(value: Float) -> Self {
+impl From<Float64> for f64 {
+    fn from(value: Float64) -> Self {
         value.into_f64()
     }
 }
 
-impl Serialize for Float {
+impl Serialize for Float64 {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -142,7 +153,7 @@ impl Serialize for Float {
     }
 }
 
-impl<'de> Deserialize<'de> for Float {
+impl<'de> Deserialize<'de> for Float64 {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -150,22 +161,22 @@ impl<'de> Deserialize<'de> for Float {
         struct FloatVisitor;
 
         impl<'de> serde::de::Visitor<'de> for FloatVisitor {
-            type Value = Float;
+            type Value = Float64;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str("an exact 0x-prefixed f64 bit string or floating number")
             }
 
             fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E> {
-                Ok(Float::from_f64(value))
+                Ok(Float64::from_f64(value))
             }
 
             fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E> {
-                Ok(Float::from_f64(value as f64))
+                Ok(Float64::from_f64(value as f64))
             }
 
             fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> {
-                Ok(Float::from_f64(value as f64))
+                Ok(Float64::from_f64(value as f64))
             }
 
             fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
@@ -180,7 +191,7 @@ impl<'de> Deserialize<'de> for Float {
                 }
                 let bits = u64::from_str_radix(digits, 16)
                     .map_err(|_| E::custom("float bits contain invalid hex"))?;
-                Ok(Float::from_f64(f64::from_bits(bits)))
+                Ok(Float64::from_f64(f64::from_bits(bits)))
             }
 
             fn visit_string<E>(self, value: String) -> std::result::Result<Self::Value, E>
@@ -195,9 +206,170 @@ impl<'de> Deserialize<'de> for Float {
     }
 }
 
+/// A bit-preserving, totally ordered IEEE 754 binary16 value.
+#[derive(Clone, Copy, Default)]
+pub struct Float16(u16);
+
+impl Float16 {
+    /// Construct from a native half-precision value.
+    pub fn from_f16(value: half::f16) -> Self {
+        if value.is_nan() {
+            Self(half::f16::NAN.to_bits())
+        } else {
+            Self(value.to_bits())
+        }
+    }
+
+    /// Return the native half-precision value.
+    pub const fn as_f16(self) -> half::f16 {
+        half::f16::from_bits(self.0)
+    }
+
+    /// Return the value widened exactly to `f32`.
+    pub fn as_f32(self) -> f32 {
+        self.as_f16().to_f32()
+    }
+
+    /// Return the value widened exactly to `f64`.
+    pub fn as_f64(self) -> f64 {
+        f64::from(self.as_f32())
+    }
+
+    /// Return the non-negative IEEE magnitude, preserving this width.
+    pub fn abs(self) -> Self {
+        Self::from_f16(half::f16::from_bits(self.0 & 0x7fff))
+    }
+
+    /// Return the deterministic hash of the canonical IEEE bits.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+}
+
+impl fmt::Debug for Float16 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_f16().fmt(formatter)
+    }
+}
+
+impl fmt::Display for Float16 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_f16().fmt(formatter)
+    }
+}
+
+impl PartialEq for Float16 {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Float16 {}
+
+impl PartialOrd for Float16 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Float16 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_f32().total_cmp(&other.as_f32())
+    }
+}
+
+impl Hash for Float16 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl From<half::f16> for Float16 {
+    fn from(value: half::f16) -> Self {
+        Self::from_f16(value)
+    }
+}
+
+impl From<Float16> for half::f16 {
+    fn from(value: Float16) -> Self {
+        value.as_f16()
+    }
+}
+
+impl Serialize for Float16 {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        struct Bits(u16);
+
+        impl fmt::Display for Bits {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "0x{:04x}", self.0)
+            }
+        }
+
+        serializer.collect_str(&Bits(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Float16 {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = Float16;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an exact 0x-prefixed f16 bit string or floating number")
+            }
+
+            fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E> {
+                Ok(Float16::from_f16(half::f16::from_f64(value)))
+            }
+
+            fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E> {
+                Ok(Float16::from_f16(half::f16::from_f64(value as f64)))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> {
+                Ok(Float16::from_f16(half::f16::from_f64(value as f64)))
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let digits = value
+                    .strip_prefix("0x")
+                    .ok_or_else(|| E::custom("float bits must start with 0x"))?;
+                if digits.len() != 4 {
+                    return Err(E::custom("f16 bits must contain exactly 4 hex digits"));
+                }
+                let bits = u16::from_str_radix(digits, 16)
+                    .map_err(|_| E::custom("float bits contain invalid hex"))?;
+                Ok(Float16::from_f16(half::f16::from_bits(bits)))
+            }
+
+            fn visit_string<E>(self, value: String) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&value)
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
 /// A bit-preserving, totally ordered 32-bit floating-point value.
 ///
-/// The narrow sibling of [`Float`], for a value that arrived through a
+/// The narrow sibling of [`Float64`], for a value that arrived through a
 /// `Float32` column and must leave through one: widening it to 64 bits would
 /// erase which width the column declared. All NaN payloads are normalized at
 /// construction; the two zeros remain distinct.
@@ -222,6 +394,17 @@ impl Float32 {
     /// Return the value widened to `f64`, which is exact for every `f32`.
     pub const fn as_f64(self) -> f64 {
         self.as_f32() as f64
+    }
+
+    /// Return the non-negative IEEE magnitude, preserving this width.
+    pub fn abs(self) -> Self {
+        Self::from_f32(self.as_f32().abs())
+    }
+
+    /// Return the deterministic hash of the canonical IEEE bits.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
     }
 }
 
@@ -372,19 +555,16 @@ pub enum Value {
     I128(i128),
     /// An unsigned 128-bit integer.
     U128(u128),
+    /// A 16-bit floating-point value.
+    F16(Float16),
     /// A 32-bit floating-point value.
     F32(Float32),
     /// A 64-bit floating-point value.
-    F64(Float),
-    /// An exact decimal: an unscaled integer and the power of ten it divides by.
-    ///
-    /// A decimal is stored the way Arrow stores one - the coefficient and the
-    /// scale, never a float - because `0.1` has no exact binary expansion, so a
-    /// price that arrives as `0.1` must leave as `0.1` and not as the nearest
-    /// double. The pair also carries the scale itself, which is data: `1.50`
-    /// and `1.5` are the same number written to different precision, and a
-    /// schema that declares scale 2 needs the first spelling back.
-    Decimal(i128, i8),
+    F64(Float64),
+    /// An exact decimal with a signed 128-bit coefficient and scale.
+    D128(i128, i8),
+    /// An exact decimal with a signed 256-bit coefficient and scale.
+    D256(I256, i8),
     /// A Unicode string.
     String(SmolStr),
     /// Arbitrary bytes.
@@ -395,35 +575,28 @@ pub enum Value {
     /// geospatial encoding stores and exchanges; [`crate::generic::wkb`] reads
     /// the bytes wherever a text spelling or a bound is needed.
     Geospatial(Arc<[u8]>),
-    /// A count of days since the Unix epoch.
-    Date(i32),
-    /// A count of `TimeUnit` since midnight.
-    Time(i64, TimeUnit),
-    /// A count of `TimeUnit` since the Unix epoch, in a required zone.
+    /// A 32-bit day count with its explicit day unit and zone marker.
+    Date32(i32, TimeUnit, Timezone),
+    /// A 64-bit millisecond date count and zone marker.
+    Date64(i64, TimeUnit, Timezone),
+    /// A 32-bit time-of-day count, unit, and zone marker.
+    Time32(i32, TimeUnit, Timezone),
+    /// A 64-bit time-of-day count, unit, and zone marker.
+    Time64(i64, TimeUnit, Timezone),
+    /// A 64-bit epoch count, unit, and non-optional zone.
     ///
-    /// The zone is required because "no zone" is not a display detail of an
-    /// instant - it is a different kind of reading, the naive wall clock, and
-    /// that kind is [`Self::DateTime`]. Splitting them keeps every timestamp
-    /// an instant someone can convert, and every naive reading honestly naive.
-    Timestamp(i64, TimeUnit, Timezone),
-    /// A naive wall-clock reading: a count of `TimeUnit` since the epoch, in
-    /// no zone at all - what `DataType::Timestamp(unit, None)` stores.
-    DateTime(i64, TimeUnit),
-    /// An elapsed count of `TimeUnit`.
-    Duration(i64, TimeUnit),
+    /// [`Timezone::NAIVE`] represents a wall-clock reading without a zone.
+    DateTime64(i64, TimeUnit, Timezone),
+    /// A 32-bit elapsed count, unit, and explicit zone-free marker.
+    Duration32(i32, TimeUnit, Timezone),
+    /// A 64-bit elapsed count, unit, and explicit zone-free marker.
+    Duration64(i64, TimeUnit, Timezone),
     /// An ordered sequence.
     Sequence(Arc<[Value]>),
     /// An insertion-ordered mapping with arbitrary unique keys.
     Mapping(Arc<[(Value, Value)]>),
-    /// A typed row: a struct datatype and one value per field, in field order.
-    ///
-    /// The datatype is the schema half a [`Self::Mapping`] does not carry: the
-    /// field names, their declared types, and their order. The values sit in
-    /// exactly that order, so the pair round-trips a row without consulting
-    /// anything outside itself. Text formats spell a record as the mapping of
-    /// its field names to its values, which is what a record *is* in a format
-    /// that has no schema of its own.
-    Record(Arc<DataType>, Arc<[Value]>),
+    /// A deterministic row mapping sorted by field name.
+    Record(Arc<BTreeMap<SmolStr, Value>>),
 }
 
 impl Serialize for Value {
@@ -464,11 +637,8 @@ impl Serialize for Value {
             }
         }
 
-        // The layout is the adjacently tagged {"type", "value"} document the
-        // derive produced before `Record` arrived - a unit variant carries the
-        // tag alone - and `Record` spells its datatype as the canonical
-        // string, so the wire never needs a serde implementation on the type
-        // tree itself.
+        // The layout is an adjacently tagged {"type", "value"} document; a
+        // unit variant carries the tag alone.
         fn tagged<S: serde::Serializer, T: Serialize>(
             serializer: S,
             tag: &'static str,
@@ -497,43 +667,60 @@ impl Serialize for Value {
             Self::U64(value) => tagged(serializer, "u64", value),
             Self::I128(value) => tagged(serializer, "i128", value),
             Self::U128(value) => tagged(serializer, "u128", value),
+            Self::F16(value) => tagged(serializer, "f16", value),
             Self::F32(value) => tagged(serializer, "f32", value),
             Self::F64(value) => tagged(serializer, "f64", value),
-            Self::Decimal(unscaled, scale) => tagged(serializer, "decimal", &Pair(unscaled, scale)),
+            Self::D128(unscaled, scale) => tagged(serializer, "d128", &Pair(unscaled, scale)),
+            Self::D256(unscaled, scale) => tagged(serializer, "d256", &Pair(unscaled, scale)),
             Self::String(value) => tagged(serializer, "string", value),
             Self::Bytes(value) => tagged(serializer, "bytes", value),
             Self::Geospatial(value) => tagged(serializer, "geospatial", value),
             // A temporal is its classic ISO spelling wherever it has one; a
             // reading with no classic spelling keeps its structural parts.
-            Self::Date(days) => match super::iso::format_date(*days) {
-                Some(spelled) => tagged(serializer, "date", &spelled),
-                None => tagged(serializer, "date", days),
+            Self::Date32(days, unit, zone) => match super::iso::format_date(*days) {
+                Some(spelled) if *unit == TimeUnit::Day && zone.is_naive() => {
+                    tagged(serializer, "date32", &spelled)
+                }
+                _ => tagged(serializer, "date32", &Triple(days, unit, zone)),
             },
-            Self::Time(count, unit) => match super::iso::format_time(*count, *unit) {
-                Some(spelled) => tagged(serializer, "time", &spelled),
-                None => tagged(serializer, "time", &Pair(count, unit)),
-            },
-            Self::Timestamp(count, unit, zone) => {
-                match super::iso::format_timestamp(*count, *unit, zone) {
-                    Some(spelled) => tagged(serializer, "timestamp", &spelled),
-                    None => tagged(serializer, "timestamp", &Triple(count, unit, zone)),
+            Self::Date64(count, unit, zone) => {
+                tagged(serializer, "date64", &Triple(count, unit, zone))
+            }
+            Self::Time32(count, unit, zone) => {
+                match super::iso::format_time(i64::from(*count), *unit) {
+                    Some(spelled) if zone.is_naive() => tagged(serializer, "time32", &spelled),
+                    _ => tagged(serializer, "time32", &Triple(count, unit, zone)),
                 }
             }
-            Self::DateTime(count, unit) => match super::iso::format_datetime(*count, *unit) {
-                Some(spelled) => tagged(serializer, "datetime", &spelled),
-                None => tagged(serializer, "datetime", &Pair(count, unit)),
+            Self::Time64(count, unit, zone) => match super::iso::format_time(*count, *unit) {
+                Some(spelled) if zone.is_naive() => tagged(serializer, "time64", &spelled),
+                _ => tagged(serializer, "time64", &Triple(count, unit, zone)),
             },
-            Self::Duration(count, unit) => match super::iso::format_duration(*count, *unit) {
-                Some(spelled) => tagged(serializer, "duration", &spelled),
-                None => tagged(serializer, "duration", &Pair(count, unit)),
+            Self::DateTime64(count, unit, zone) => {
+                let spelled = if zone.is_naive() {
+                    super::iso::format_datetime(*count, *unit)
+                } else {
+                    super::iso::format_timestamp(*count, *unit, zone)
+                };
+                match spelled {
+                    Some(spelled) => tagged(serializer, "datetime64", &spelled),
+                    None => tagged(serializer, "datetime64", &Triple(count, unit, zone)),
+                }
+            }
+            Self::Duration32(count, unit, zone) => {
+                match super::iso::format_duration(i64::from(*count), *unit) {
+                    Some(spelled) if zone.is_naive() => tagged(serializer, "duration32", &spelled),
+                    _ => tagged(serializer, "duration32", &Triple(count, unit, zone)),
+                }
+            }
+            Self::Duration64(count, unit, zone) => match super::iso::format_duration(*count, *unit)
+            {
+                Some(spelled) if zone.is_naive() => tagged(serializer, "duration64", &spelled),
+                _ => tagged(serializer, "duration64", &Triple(count, unit, zone)),
             },
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_ref()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_ref()),
-            Self::Record(data_type, values) => tagged(
-                serializer,
-                "record",
-                &Pair(&data_type.to_string(), &values.as_ref()),
-            ),
+            Self::Record(entries) => tagged(serializer, "record", &entries.as_ref()),
         }
     }
 }
@@ -543,31 +730,54 @@ impl<'de> Deserialize<'de> for Value {
     where
         D: Deserializer<'de>,
     {
-        /// A temporal payload: the classic ISO string, or the structural pair
-        /// a reading with no classic spelling keeps.
+        /// A 32-bit temporal payload.
         #[derive(Deserialize)]
         #[serde(untagged)]
-        enum CountPayload {
+        enum Temporal32 {
             Iso(SmolStr),
-            Pair(i64, TimeUnit),
+            Triple(i32, TimeUnit, Timezone),
         }
 
-        /// A date payload: the ISO string, or the raw day count.
+        /// A 64-bit temporal payload.
         #[derive(Deserialize)]
         #[serde(untagged)]
-        enum DatePayload {
+        enum Temporal64 {
             Iso(SmolStr),
-            Days(i32),
+            Triple(i64, TimeUnit, Timezone),
         }
 
-        /// A timestamp payload: the ISO string, or the structural triple. A
-        /// triple whose zone is null is the naive reading older documents
-        /// wrote, and reads back as the datetime it always was.
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum StampPayload {
-            Iso(SmolStr),
-            Triple(i64, TimeUnit, Option<Timezone>),
+        /// Record entries kept in input order until the canonical constructor
+        /// sorts them and rejects duplicate field names.
+        struct RecordEntries(Vec<(SmolStr, Value)>);
+
+        impl<'de> Deserialize<'de> for RecordEntries {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct Visitor;
+
+                impl<'de> serde::de::Visitor<'de> for Visitor {
+                    type Value = RecordEntries;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        formatter.write_str("a record object with unique field names")
+                    }
+
+                    fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+                    where
+                        A: serde::de::MapAccess<'de>,
+                    {
+                        let mut entries = Vec::with_capacity(map.size_hint().unwrap_or_default());
+                        while let Some(key) = map.next_key::<SmolStr>()? {
+                            entries.push((key, map.next_value()?));
+                        }
+                        Ok(RecordEntries(entries))
+                    }
+                }
+
+                deserializer.deserialize_map(Visitor)
+            }
         }
 
         // This mirror must stay variant-for-variant identical to `Value`: a
@@ -588,22 +798,25 @@ impl<'de> Deserialize<'de> for Value {
             U64(u64),
             I128(i128),
             U128(u128),
+            F16(Float16),
             F32(Float32),
-            #[serde(alias = "float")]
-            F64(Float),
-            Decimal(i128, i8),
+            F64(Float64),
+            D128(i128, i8),
+            D256(I256, i8),
             String(SmolStr),
             Bytes(Arc<[u8]>),
             Geospatial(Arc<[u8]>),
-            Date(DatePayload),
-            Time(CountPayload),
-            Timestamp(StampPayload),
-            #[serde(rename = "datetime")]
-            DateTime(CountPayload),
-            Duration(CountPayload),
+            Date32(Temporal32),
+            Date64(Temporal64),
+            Time32(Temporal32),
+            Time64(Temporal64),
+            #[serde(rename = "datetime64")]
+            DateTime64(Temporal64),
+            Duration32(Temporal32),
+            Duration64(Temporal64),
             Sequence(Vec<Value>),
             Mapping(Vec<(Value, Value)>),
-            Record(SmolStr, Vec<Value>),
+            Record(RecordEntries),
         }
 
         match StructuralValue::deserialize(deserializer)? {
@@ -619,54 +832,97 @@ impl<'de> Deserialize<'de> for Value {
             StructuralValue::U64(value) => Ok(Self::U64(value)),
             StructuralValue::I128(value) => Ok(Self::I128(value)),
             StructuralValue::U128(value) => Ok(Self::U128(value)),
+            StructuralValue::F16(value) => Ok(Self::F16(value)),
             StructuralValue::F32(value) => Ok(Self::F32(value)),
             StructuralValue::F64(value) => Ok(Self::F64(value)),
-            StructuralValue::Decimal(unscaled, scale) => Ok(Self::Decimal(unscaled, scale)),
+            StructuralValue::D128(unscaled, scale) => Ok(Self::D128(unscaled, scale)),
+            StructuralValue::D256(unscaled, scale) => Ok(Self::D256(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::String(value)),
             StructuralValue::Bytes(value) => Ok(Self::from(value)),
             StructuralValue::Geospatial(value) => Ok(Self::Geospatial(value)),
-            StructuralValue::Date(DatePayload::Days(days)) => Ok(Self::Date(days)),
-            StructuralValue::Date(DatePayload::Iso(spelled)) => super::iso::parse_date(&spelled)
-                .map(Self::Date)
-                .map_err(D::Error::custom),
-            StructuralValue::Time(CountPayload::Pair(count, unit)) => Ok(Self::Time(count, unit)),
-            StructuralValue::Time(CountPayload::Iso(spelled)) => super::iso::parse_time(&spelled)
-                .map(|(count, unit)| Self::Time(count, unit))
-                .map_err(D::Error::custom),
-            StructuralValue::Timestamp(StampPayload::Triple(count, unit, Some(zone))) => {
-                Ok(Self::Timestamp(count, unit, zone))
+            StructuralValue::Date32(Temporal32::Triple(count, unit, zone)) => {
+                Self::date32_in(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Timestamp(StampPayload::Triple(count, unit, None)) => {
-                Ok(Self::DateTime(count, unit))
+            StructuralValue::Date32(Temporal32::Iso(spelled)) => super::iso::parse_date(&spelled)
+                .map(Self::date32)
+                .map_err(D::Error::custom),
+            StructuralValue::Date64(Temporal64::Triple(count, unit, zone)) => {
+                Self::date64_in(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Timestamp(StampPayload::Iso(spelled)) => {
+            StructuralValue::Date64(Temporal64::Iso(spelled)) => super::iso::parse_date(&spelled)
+                .map(|days| Self::date64(i64::from(days) * 86_400_000))
+                .map_err(D::Error::custom),
+            StructuralValue::Time32(Temporal32::Triple(count, unit, zone)) => {
+                Self::time32(count, unit, zone).map_err(D::Error::custom)
+            }
+            StructuralValue::Time32(Temporal32::Iso(spelled)) => super::iso::parse_time(&spelled)
+                .and_then(|(count, unit)| {
+                    i32::try_from(count)
+                        .map(|count| (count, unit))
+                        .map_err(|_| Error::InvalidRecord {
+                            path: SmolStr::new_static("$"),
+                            reason: SmolStr::new(format!("time count {count} does not fit time32")),
+                        })
+                })
+                .and_then(|(count, unit)| Self::time32(count, unit, Timezone::NAIVE))
+                .map_err(D::Error::custom),
+            StructuralValue::Time64(Temporal64::Triple(count, unit, zone)) => {
+                Self::time64(count, unit, zone).map_err(D::Error::custom)
+            }
+            StructuralValue::Time64(Temporal64::Iso(spelled)) => super::iso::parse_time(&spelled)
+                .and_then(|(count, unit)| Self::time64(count, unit, Timezone::NAIVE))
+                .map_err(D::Error::custom),
+            StructuralValue::DateTime64(Temporal64::Triple(count, unit, zone)) => {
+                Self::datetime64(count, unit, zone).map_err(D::Error::custom)
+            }
+            StructuralValue::DateTime64(Temporal64::Iso(spelled)) => {
                 super::iso::parse_timestamp(&spelled)
-                    .map(|(count, unit, zone)| Self::Timestamp(count, unit, zone))
+                    .and_then(|(count, unit, zone)| Self::datetime64(count, unit, zone))
+                    .or_else(|_| {
+                        super::iso::parse_datetime(&spelled).and_then(|(count, unit)| {
+                            Self::datetime64(count, unit, Timezone::NAIVE)
+                        })
+                    })
                     .map_err(D::Error::custom)
             }
-            StructuralValue::DateTime(CountPayload::Pair(count, unit)) => {
-                Ok(Self::DateTime(count, unit))
+            StructuralValue::Duration32(Temporal32::Triple(count, unit, zone)) => {
+                if !zone.is_naive() {
+                    return Err(D::Error::custom("duration32 timezone must be NAIVE"));
+                }
+                Self::duration32(count, unit).map_err(D::Error::custom)
             }
-            StructuralValue::DateTime(CountPayload::Iso(spelled)) => {
-                super::iso::parse_datetime(&spelled)
-                    .map(|(count, unit)| Self::DateTime(count, unit))
-                    .map_err(D::Error::custom)
-            }
-            StructuralValue::Duration(CountPayload::Pair(count, unit)) => {
-                Ok(Self::Duration(count, unit))
-            }
-            StructuralValue::Duration(CountPayload::Iso(spelled)) => {
+            StructuralValue::Duration32(Temporal32::Iso(spelled)) => {
                 super::iso::parse_duration(&spelled)
-                    .map(|(count, unit)| Self::Duration(count, unit))
+                    .and_then(|(count, unit)| {
+                        i32::try_from(count)
+                            .map(|count| (count, unit))
+                            .map_err(|_| Error::InvalidRecord {
+                                path: SmolStr::new_static("$"),
+                                reason: SmolStr::new(format!(
+                                    "duration count {count} does not fit duration32"
+                                )),
+                            })
+                    })
+                    .and_then(|(count, unit)| Self::duration32(count, unit))
+                    .map_err(D::Error::custom)
+            }
+            StructuralValue::Duration64(Temporal64::Triple(count, unit, zone)) => {
+                if !zone.is_naive() {
+                    return Err(D::Error::custom("duration64 timezone must be NAIVE"));
+                }
+                Self::duration64(count, unit).map_err(D::Error::custom)
+            }
+            StructuralValue::Duration64(Temporal64::Iso(spelled)) => {
+                super::iso::parse_duration(&spelled)
+                    .and_then(|(count, unit)| Self::duration64(count, unit))
                     .map_err(D::Error::custom)
             }
             StructuralValue::Sequence(values) => Ok(Self::from_sequence(values)),
             StructuralValue::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
             }
-            StructuralValue::Record(data_type, values) => {
-                let data_type = DataType::from_str(&data_type).map_err(D::Error::custom)?;
-                Self::record(data_type, values).map_err(D::Error::custom)
+            StructuralValue::Record(entries) => {
+                Self::from_record(entries.0).map_err(D::Error::custom)
             }
         }
     }
@@ -690,8 +946,9 @@ impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (integer(self), integer(other)) {
             (Some(left), Some(right)) => return compare_integer(left, right),
-            (Some(_), None) => return value_rank(self).cmp(&value_rank(other)),
-            (None, Some(_)) => return value_rank(self).cmp(&value_rank(other)),
+            (Some(_), None) | (None, Some(_)) => {
+                return value_rank(self).cmp(&value_rank(other));
+            }
             (None, None) => {}
         }
         // Floats are one family across widths, exactly as the integers are:
@@ -699,6 +956,14 @@ impl Ord for Value {
         // are one value, not two kinds that happen to print alike.
         if let (Some(left), Some(right)) = (float(self), float(other)) {
             return left.cmp(&right);
+        }
+        if let (Some(left), Some(right)) = (decimal_value(self), decimal_value(other)) {
+            return decimal::compare(left.0, left.1, right.0, right.1);
+        }
+        if let (Some(left), Some(right)) = (temporal_value(self), temporal_value(other)) {
+            if left.0 == right.0 {
+                return left.1.cmp(&right.1).then_with(|| left.2.cmp(right.2));
+            }
         }
         let rank = value_rank(self).cmp(&value_rank(other));
         if rank != Ordering::Equal {
@@ -730,44 +995,25 @@ impl Ord for Value {
             | Self::U128(_) => {
                 unreachable!("every integer width returned above")
             }
-            Self::F32(_) | Self::F64(_) => unreachable!("both float widths returned above"),
-            Self::Decimal(unscaled, scale) => same_kind!(
-                Self::Decimal(other_unscaled, other_scale) =>
-                    decimal::compare(*unscaled, *scale, *other_unscaled, *other_scale)
-            ),
+            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+                unreachable!("all float widths returned above")
+            }
+            Self::D128(..) | Self::D256(..) => {
+                unreachable!("both decimal widths returned above")
+            }
             Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
-            Self::Date(left) => same_kind!(Self::Date(right) => left.cmp(right)),
-            Self::Time(count, unit) => same_kind!(
-                Self::Time(other_count, other_unit) =>
-                    temporal_key(*count, *unit).cmp(&temporal_key(*other_count, *other_unit))
-            ),
-            Self::Timestamp(count, unit, zone) => same_kind!(
-                Self::Timestamp(other_count, other_unit, other_zone) =>
-                    temporal_key(*count, *unit)
-                        .cmp(&temporal_key(*other_count, *other_unit))
-                        .then_with(|| zone.cmp(other_zone))
-            ),
-            Self::DateTime(count, unit) => same_kind!(
-                Self::DateTime(other_count, other_unit) =>
-                    temporal_key(*count, *unit).cmp(&temporal_key(*other_count, *other_unit))
-            ),
-            Self::Duration(count, unit) => same_kind!(
-                Self::Duration(other_count, other_unit) =>
-                    temporal_key(*count, *unit).cmp(&temporal_key(*other_count, *other_unit))
-            ),
+            Self::Date32(..)
+            | Self::Date64(..)
+            | Self::Time32(..)
+            | Self::Time64(..)
+            | Self::DateTime64(..)
+            | Self::Duration32(..)
+            | Self::Duration64(..) => unreachable!("temporal families returned above"),
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
-            Self::Record(data_type, values) => same_kind!(
-                Self::Record(other_type, other_values) =>
-                    // The canonical spelling is the type's total order, and
-                    // values only break the tie between equal types.
-                    data_type
-                        .to_string()
-                        .cmp(&other_type.to_string())
-                        .then_with(|| values.cmp(other_values))
-            ),
+            Self::Record(left) => same_kind!(Self::Record(right) => left.cmp(right)),
         }
     }
 }
@@ -779,10 +1025,19 @@ impl Hash for Value {
             integer.hash(state);
             return;
         }
-        // Both float widths hash their common 64-bit reading, which is what
+        // All float widths hash their common 64-bit reading, which is what
         // keeps `Hash` agreeing with `Ord` across the family.
         if let Some(float) = float(self) {
             float.hash(state);
+            return;
+        }
+        if let Some((unscaled, scale)) = decimal_value(self) {
+            decimal::normalize(unscaled, scale).hash(state);
+            return;
+        }
+        if let Some((_, count, zone)) = temporal_value(self) {
+            count.hash(state);
+            zone.hash(state);
             return;
         }
         match self {
@@ -798,27 +1053,22 @@ impl Hash for Value {
             | Self::U64(_)
             | Self::I128(_)
             | Self::U128(_) => unreachable!("integer values returned above"),
-            Self::F32(_) | Self::F64(_) => unreachable!("float values returned above"),
-            // Hashing the normalized pair is what keeps `Hash` agreeing with
-            // `Ord`, which treats `1.50` and `1.5` as one number.
-            Self::Decimal(unscaled, scale) => decimal::normalize(*unscaled, *scale).hash(state),
+            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+                unreachable!("float values returned above")
+            }
+            Self::D128(..) | Self::D256(..) => unreachable!("decimal values returned above"),
             Self::String(value) => value.hash(state),
-            Self::Bytes(value) => value.hash(state),
-            Self::Geospatial(value) => value.hash(state),
-            Self::Date(value) => value.hash(state),
-            Self::Time(count, unit) | Self::DateTime(count, unit) | Self::Duration(count, unit) => {
-                temporal_key(*count, *unit).hash(state);
-            }
-            Self::Timestamp(count, unit, zone) => {
-                temporal_key(*count, *unit).hash(state);
-                zone.hash(state);
-            }
+            Self::Bytes(value) | Self::Geospatial(value) => value.hash(state),
+            Self::Date32(..)
+            | Self::Date64(..)
+            | Self::Time32(..)
+            | Self::Time64(..)
+            | Self::DateTime64(..)
+            | Self::Duration32(..)
+            | Self::Duration64(..) => unreachable!("temporal values returned above"),
             Self::Sequence(value) => value.hash(state),
             Self::Mapping(value) => value.hash(state),
-            Self::Record(data_type, values) => {
-                data_type.to_string().hash(state);
-                values.hash(state);
-            }
+            Self::Record(value) => value.hash(state),
         }
     }
 }
@@ -852,14 +1102,39 @@ fn integer(value: &Value) -> Option<Integer> {
     }
 }
 
-/// The common 64-bit reading either float width reduces to for ordering.
+/// The common 64-bit reading every float width reduces to for ordering.
 ///
 /// Widening an `f32` to `f64` is exact, so one total order covers the family;
 /// the width stays on the value itself and on the wire.
-fn float(value: &Value) -> Option<Float> {
+fn float(value: &Value) -> Option<Float64> {
     match value {
-        Value::F32(value) => Some(Float::from_f64(value.as_f64())),
+        Value::F16(value) => Some(Float64::from_f64(value.as_f64())),
+        Value::F32(value) => Some(Float64::from_f64(value.as_f64())),
         Value::F64(value) => Some(*value),
+        _ => None,
+    }
+}
+
+fn decimal_value(value: &Value) -> Option<(I256, i8)> {
+    match value {
+        Value::D128(unscaled, scale) => Some((I256::from_i128(*unscaled), *scale)),
+        Value::D256(unscaled, scale) => Some((*unscaled, *scale)),
+        _ => None,
+    }
+}
+
+/// The family, normalized count, and zone of one temporal.
+fn temporal_value(value: &Value) -> Option<(u8, (u8, i128), &Timezone)> {
+    match value {
+        Value::Date32(count, unit, zone) => Some((0, temporal_key(i64::from(*count), *unit), zone)),
+        Value::Date64(count, unit, zone) => Some((0, temporal_key(*count, *unit), zone)),
+        Value::Time32(count, unit, zone) => Some((1, temporal_key(i64::from(*count), *unit), zone)),
+        Value::Time64(count, unit, zone) => Some((1, temporal_key(*count, *unit), zone)),
+        Value::DateTime64(count, unit, zone) => Some((2, temporal_key(*count, *unit), zone)),
+        Value::Duration32(count, unit, zone) => {
+            Some((3, temporal_key(i64::from(*count), *unit), zone))
+        }
+        Value::Duration64(count, unit, zone) => Some((3, temporal_key(*count, *unit), zone)),
         _ => None,
     }
 }
@@ -895,24 +1170,18 @@ const fn value_rank(value: &Value) -> u8 {
         | Value::U64(_)
         | Value::I128(_)
         | Value::U128(_) => 2,
-        Value::F32(_) | Value::F64(_) => 3,
-        Value::Decimal(..) => 4,
+        Value::F16(_) | Value::F32(_) | Value::F64(_) => 3,
+        Value::D128(..) | Value::D256(..) => 4,
         Value::String(_) => 5,
         Value::Bytes(_) => 6,
-        Value::Date(_) => 7,
-        Value::Time(..) => 8,
-        Value::Timestamp(..) => 9,
-        Value::Duration(..) => 10,
+        Value::Date32(..) | Value::Date64(..) => 7,
+        Value::Time32(..) | Value::Time64(..) => 8,
+        Value::DateTime64(..) => 9,
+        Value::Duration32(..) | Value::Duration64(..) => 10,
         Value::Sequence(_) => 11,
         Value::Mapping(_) => 12,
-        Value::Record(..) => 13,
-        // The naive reading arrived after the containers, and the numbering
-        // is kept, so it takes the next free number rather than the slot
-        // beside its zoned sibling.
-        Value::DateTime(..) => 14,
-        // A geometry arrived later still, and takes the next free number
-        // rather than the slot beside its bytes sibling, for the same reason.
-        Value::Geospatial(_) => 15,
+        Value::Record(_) => 13,
+        Value::Geospatial(_) => 14,
     }
 }
 
@@ -936,21 +1205,34 @@ impl Value {
             Self::U64(_) => "u64",
             Self::I128(_) => "i128",
             Self::U128(_) => "u128",
+            Self::F16(_) => "f16",
             Self::F32(_) => "f32",
             Self::F64(_) => "f64",
-            Self::Decimal(..) => "decimal",
+            Self::D128(..) => "d128",
+            Self::D256(..) => "d256",
             Self::String(_) => "string",
             Self::Bytes(_) => "bytes",
             Self::Geospatial(_) => "geospatial",
-            Self::Date(_) => "date",
-            Self::Time(..) => "time",
-            Self::Timestamp(..) => "timestamp",
-            Self::DateTime(..) => "datetime",
-            Self::Duration(..) => "duration",
+            Self::Date32(..) => "date32",
+            Self::Date64(..) => "date64",
+            Self::Time32(..) => "time32",
+            Self::Time64(..) => "time64",
+            Self::DateTime64(..) => "datetime64",
+            Self::Duration32(..) => "duration32",
+            Self::Duration64(..) => "duration64",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
-            Self::Record(..) => "record",
+            Self::Record(_) => "record",
         }
+    }
+
+    /// Return the deterministic 64-bit hash used by every binding.
+    ///
+    /// Equal values hash identically across integer, float, decimal, and
+    /// temporal widths because this delegates to the same canonical `Hash`
+    /// implementation as Rust collections.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
     }
 
     /// Construct an ordered sequence.
@@ -992,65 +1274,33 @@ impl Value {
         Ok(Self::Mapping(entries.into()))
     }
 
-    /// Build a typed row from a struct datatype and one value per field.
-    ///
-    /// The values arrive in the order the datatype declares its fields, which
-    /// is the only order a record has.
+    /// Construct a deterministic record sorted by field name.
     ///
     /// # Errors
     ///
-    /// Returns an error when the datatype declares no fields to type the
-    /// values with, or when the counts disagree.
-    pub fn record(data_type: DataType, values: impl IntoIterator<Item = Self>) -> Result<Self> {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let fields = data_type.field_len();
-        if data_type.as_fields().is_none() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!(
-                    "expected a struct datatype to type a record, got {data_type}"
-                ),
-            });
+    /// Returns an error when a field name occurs more than once.
+    pub fn from_record<K, I>(entries: I) -> Result<Self>
+    where
+        K: Into<SmolStr>,
+        I: IntoIterator<Item = (K, Self)>,
+    {
+        let mut record = BTreeMap::new();
+        for (index, (name, value)) in entries.into_iter().enumerate() {
+            if record.insert(name.into(), value).is_some() {
+                return Err(Error::Codec {
+                    format: "value",
+                    position: index,
+                    reason: "record contains a duplicate field name".into(),
+                });
+            }
         }
-        if fields != values.len() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!(
-                    "expected {fields} record values to match the datatype's fields, got {}",
-                    values.len()
-                ),
-            });
+        if record.is_empty() {
+            static EMPTY: OnceLock<Arc<BTreeMap<SmolStr, Value>>> = OnceLock::new();
+            return Ok(Self::Record(Arc::clone(
+                EMPTY.get_or_init(|| Arc::new(BTreeMap::new())),
+            )));
         }
-        Ok(Self::Record(Arc::new(data_type), values.into()))
-    }
-
-    /// Return the datatype and values when this is a record.
-    pub fn as_record(&self) -> Option<(&DataType, &[Self])> {
-        match self {
-            Self::Record(data_type, values) => Some((data_type, values)),
-            _ => None,
-        }
-    }
-
-    /// Spell a record as the mapping of its field names to its values.
-    ///
-    /// This is what every text format emits for a record, because a record in
-    /// a schemaless format *is* the named mapping; the datatype is what the
-    /// mapping spelling drops. Any other value returns as it stands.
-    #[must_use]
-    pub fn record_to_mapping(&self) -> Self {
-        let Self::Record(data_type, values) = self else {
-            return self.clone();
-        };
-        let Some(fields) = data_type.as_fields() else {
-            return Self::from_sequence(values.iter().cloned());
-        };
-        let entries: Vec<(Self, Self)> = fields
-            .iter()
-            .zip(values.iter())
-            .map(|(field, value)| (Self::String(SmolStr::new(field.name())), value.clone()))
-            .collect();
-        Self::Mapping(entries.into())
+        Ok(Self::Record(Arc::new(record)))
     }
 
     /// Return a boolean when this is a boolean.
@@ -1099,8 +1349,9 @@ impl Value {
     ///
     /// The 32-bit width widens exactly, so no float answers differently here
     /// than it would at its own width.
-    pub const fn as_f64(&self) -> Option<f64> {
+    pub fn as_f64(&self) -> Option<f64> {
         match self {
+            Self::F16(value) => Some(value.as_f64()),
             Self::F32(value) => Some(value.as_f64()),
             Self::F64(value) => Some(value.as_f64()),
             _ => None,
@@ -1112,9 +1363,18 @@ impl Value {
     /// The wide float does not narrow here, because `as_f64` widening is
     /// exact and narrowing is not; a caller who wants the rounding asks for
     /// it with `as f32` where the loss is visible.
-    pub const fn as_f32(&self) -> Option<f32> {
+    pub fn as_f32(&self) -> Option<f32> {
         match self {
+            Self::F16(value) => Some(value.as_f32()),
             Self::F32(value) => Some(value.as_f32()),
+            _ => None,
+        }
+    }
+
+    /// Return the 16-bit float when this is one.
+    pub const fn as_f16(&self) -> Option<half::f16> {
+        match self {
+            Self::F16(value) => Some(value.as_f16()),
             _ => None,
         }
     }
@@ -1127,12 +1387,27 @@ impl Value {
         }
     }
 
+    /// Return borrowed UTF-8 text when this is a string.
+    pub fn as_utf8(&self) -> Option<&str> {
+        self.as_str()
+    }
+
     /// Return bytes when this is a byte value.
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
-            Self::Bytes(value) => Some(value),
+            Self::Bytes(value) | Self::Geospatial(value) => Some(value),
             _ => None,
         }
+    }
+
+    /// Encode this value as compact JSON bytes.
+    pub fn as_json_bytes(&self) -> Result<Vec<u8>> {
+        crate::json::into_bytes(self)
+    }
+
+    /// Encode this value as compact JSON UTF-8.
+    pub fn as_json_utf8(&self) -> Result<String> {
+        crate::json::into_utf8(self)
     }
 
     /// Return the Well-Known Binary payload without allocating.
@@ -1140,11 +1415,7 @@ impl Value {
     /// A geospatial column also accepts plain [`Self::Bytes`] on the way in -
     /// canonicalization is what rewrites it - so this reads both spellings.
     pub fn as_wkb(&self) -> Option<&[u8]> {
-        match self {
-            Self::Geospatial(value) => Some(value),
-            Self::Bytes(value) => Some(value),
-            _ => None,
-        }
+        self.as_bytes()
     }
 
     /// Return sequence children without allocating.
@@ -1163,11 +1434,20 @@ impl Value {
         }
     }
 
+    /// Return record fields in deterministic name order.
+    pub fn as_record(&self) -> Option<&BTreeMap<SmolStr, Self>> {
+        match self {
+            Self::Record(entries) => Some(entries),
+            _ => None,
+        }
+    }
+
     /// Return the number of direct children or mapping entries.
     pub fn len(&self) -> usize {
         match self {
             Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.len(),
+            Self::Record(entries) => entries.len(),
             _ => 0,
         }
     }
@@ -1176,6 +1456,7 @@ impl Value {
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::Sequence(values) if values.is_empty())
             || matches!(self, Self::Mapping(entries) if entries.is_empty())
+            || matches!(self, Self::Record(entries) if entries.is_empty())
     }
 
     /// Look up a sequence index.
@@ -1192,16 +1473,23 @@ impl Value {
 
     /// Look up a string mapping key without constructing a temporary value.
     pub fn get_key_str(&self, key: &str) -> Option<&Self> {
+        if let Self::Record(entries) = self {
+            return entries.get(key);
+        }
         self.as_mapping()?
             .iter()
             .find_map(|(candidate, value)| (candidate.as_str() == Some(key)).then_some(value))
     }
 
-    /// Iterate over sequence values or mapping keys without allocating.
+    /// Iterate over sequence values, mapping keys, or record field values.
+    ///
+    /// Use [`Self::record_iter`] when both a record field's name and value are
+    /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
             Self::Sequence(values) => Children::Sequence(values.iter()),
             Self::Mapping(entries) => Children::Mapping(entries.iter()),
+            Self::Record(entries) => Children::Record(entries.values()),
             _ => Children::Sequence([].iter()),
         }
     }
@@ -1216,6 +1504,14 @@ impl Value {
         self.as_mapping().unwrap_or_default().iter()
     }
 
+    /// Iterate over record name/value pairs in deterministic name order.
+    pub fn record_iter(&self) -> std::collections::btree_map::Iter<'_, SmolStr, Self> {
+        static EMPTY: OnceLock<BTreeMap<SmolStr, Value>> = OnceLock::new();
+        self.as_record()
+            .unwrap_or_else(|| EMPTY.get_or_init(BTreeMap::new))
+            .iter()
+    }
+
     /// Return whether this is the null value.
     pub const fn is_null(&self) -> bool {
         matches!(self, Self::Null)
@@ -1223,7 +1519,7 @@ impl Value {
 
     /// Return whether this value holds other values.
     pub const fn is_container(&self) -> bool {
-        matches!(self, Self::Sequence(_) | Self::Mapping(_))
+        matches!(self, Self::Sequence(_) | Self::Mapping(_) | Self::Record(_))
     }
 
     /// Return whether this is any integer, signed or unsigned, at any width.
@@ -1245,7 +1541,11 @@ impl Value {
 
     /// Return whether this is a number of any width.
     pub const fn is_number(&self) -> bool {
-        self.is_integer() || matches!(self, Self::F32(_) | Self::F64(_))
+        self.is_integer()
+            || matches!(
+                self,
+                Self::F16(_) | Self::F32(_) | Self::F64(_) | Self::D128(..) | Self::D256(..)
+            )
     }
 
     /// Read this value as an `i64`, when it fits.
@@ -1296,7 +1596,7 @@ impl Value {
         let mut current = self;
         for segment in path.split('.').filter(|segment| !segment.is_empty()) {
             current = match current {
-                Self::Mapping(_) => current.get_key_str(segment)?,
+                Self::Mapping(_) | Self::Record(_) => current.get_key_str(segment)?,
                 Self::Sequence(_) => current.get(segment.parse::<usize>().ok()?)?,
                 _ => return None,
             };
@@ -1325,6 +1625,9 @@ impl Value {
     /// Non-string keys are skipped, because a caller asking for names wants the
     /// ones it can use.
     pub fn keys(&self) -> Vec<&str> {
+        if let Self::Record(entries) = self {
+            return entries.keys().map(SmolStr::as_str).collect();
+        }
         self.mapping_iter()
             .filter_map(|(key, _)| key.as_str())
             .collect()
@@ -1392,6 +1695,37 @@ impl Value {
                 .cloned(),
         )
     }
+
+    /// Return this record with one named field added or replaced.
+    pub fn with_field(&self, name: impl Into<SmolStr>, value: impl Into<Self>) -> Result<Self> {
+        let entries = self.as_record().ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: smol_str::format_smolstr!(
+                "expected a record to set a field on, got {}",
+                self.kind()
+            ),
+        })?;
+        let mut rebuilt = entries.clone();
+        rebuilt.insert(name.into(), value.into());
+        Ok(Self::Record(Arc::new(rebuilt)))
+    }
+
+    /// Return this record without `name`, preserving deterministic order.
+    pub fn without_field(&self, name: &str) -> Result<Self> {
+        let entries = self.as_record().ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: smol_str::format_smolstr!(
+                "expected a record to remove a field from, got {}",
+                self.kind()
+            ),
+        })?;
+        if !entries.contains_key(name) {
+            return Ok(self.clone());
+        }
+        let mut rebuilt = entries.clone();
+        rebuilt.remove(name);
+        Ok(Self::Record(Arc::new(rebuilt)))
+    }
 }
 
 /// A borrowed iterator over sequence values or mapping keys.
@@ -1400,6 +1734,8 @@ pub enum Children<'a> {
     Sequence(std::slice::Iter<'a, Value>),
     /// Mapping keys.
     Mapping(std::slice::Iter<'a, (Value, Value)>),
+    /// Record field values in sorted name order.
+    Record(std::collections::btree_map::Values<'a, SmolStr, Value>),
 }
 
 impl<'a> Iterator for Children<'a> {
@@ -1409,6 +1745,7 @@ impl<'a> Iterator for Children<'a> {
         match self {
             Self::Sequence(values) => values.next(),
             Self::Mapping(entries) => entries.next().map(|(key, _)| key),
+            Self::Record(entries) => entries.next(),
         }
     }
 
@@ -1423,6 +1760,7 @@ impl DoubleEndedIterator for Children<'_> {
         match self {
             Self::Sequence(values) => values.next_back(),
             Self::Mapping(entries) => entries.next_back().map(|(key, _)| key),
+            Self::Record(entries) => entries.next_back(),
         }
     }
 }
@@ -1432,6 +1770,7 @@ impl ExactSizeIterator for Children<'_> {
         match self {
             Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.len(),
+            Self::Record(entries) => entries.len(),
         }
     }
 }
@@ -1502,9 +1841,15 @@ impl From<f32> for Value {
     }
 }
 
+impl From<half::f16> for Value {
+    fn from(value: half::f16) -> Self {
+        Self::F16(Float16::from_f16(value))
+    }
+}
+
 impl From<f64> for Value {
     fn from(value: f64) -> Self {
-        Self::F64(Float::from_f64(value))
+        Self::F64(Float64::from_f64(value))
     }
 }
 
@@ -1600,7 +1945,10 @@ impl Index<&str> for Value {
 
 #[cfg(test)]
 mod tests {
-    use super::Value;
+    use std::sync::Arc;
+
+    use super::{Float16, Float32, Float64, Value};
+    use crate::{I256, TimeUnit, Timezone};
 
     fn order() -> Value {
         Value::from_mapping([
@@ -1645,10 +1993,44 @@ mod tests {
     }
 
     #[test]
+    fn float_stable_hashes_follow_canonical_nan_and_exact_zero_bits() {
+        let f16_nan = Float16::from_f16(half::f16::from_bits(0x7d01));
+        let f32_nan = Float32::from_f32(f32::from_bits(0x7f80_0001));
+        let f64_nan = Float64::from_f64(f64::from_bits(0x7ff0_0000_0000_0001));
+
+        assert_eq!(
+            f16_nan.stable_hash(),
+            Float16::from_f16(half::f16::NAN).stable_hash()
+        );
+        assert_eq!(
+            f32_nan.stable_hash(),
+            Float32::from_f32(f32::NAN).stable_hash()
+        );
+        assert_eq!(
+            f64_nan.stable_hash(),
+            Float64::from_f64(f64::NAN).stable_hash()
+        );
+        assert_ne!(
+            Float16::from_f16(half::f16::ZERO).stable_hash(),
+            Float16::from_f16(half::f16::NEG_ZERO).stable_hash()
+        );
+        assert_ne!(
+            Float32::from_f32(0.0).stable_hash(),
+            Float32::from_f32(-0.0).stable_hash()
+        );
+        assert_ne!(
+            Float64::from_f64(0.0).stable_hash(),
+            Float64::from_f64(-0.0).stable_hash()
+        );
+    }
+
+    #[test]
     fn shape_predicates_answer_without_matching() {
         assert!(Value::Null.is_null());
         assert!(Value::from(1_i64).is_integer());
         assert!(Value::from(1.5).is_number());
+        assert!(Value::d128(15, 1).is_number());
+        assert!(Value::d256(I256::from_i128(15), 1).is_number());
         assert!(!Value::from(1.5).is_integer());
         assert!(order().is_container());
         assert!(!Value::from("AAPL").is_container());
@@ -1717,6 +2099,25 @@ mod tests {
     }
 
     #[test]
+    fn structural_record_deserialization_canonicalizes_and_rejects_duplicates() {
+        let unordered = r#"{"type":"record","value":{
+            "z":{"type":"i8","value":2},
+            "a":{"type":"i8","value":1}
+        }}"#;
+        let record: Value = serde_json::from_str(unordered).unwrap();
+        assert_eq!(record.keys(), ["a", "z"]);
+
+        let duplicate = r#"{"type":"record","value":{
+            "a":{"type":"i8","value":1},
+            "a":{"type":"i8","value":2}
+        }}"#;
+        let message = serde_json::from_str::<Value>(duplicate)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("duplicate field name"), "{message}");
+    }
+
+    #[test]
     fn rebuilding_a_value_that_is_not_a_mapping_says_what_it_is() {
         let message = Value::from("AAPL")
             .with_key("symbol", "AAPL")
@@ -1724,5 +2125,89 @@ mod tests {
             .to_string();
         assert!(message.contains("expected a mapping"), "{message}");
         assert!(message.contains("string"), "{message}");
+    }
+
+    #[test]
+    fn equal_cross_width_values_have_one_stable_hash() {
+        let groups = [
+            vec![Value::I8(1), Value::U64(1), Value::I128(1)],
+            vec![
+                Value::F16(Float16::from_f16(half::f16::from_f32(1.0))),
+                Value::F32(Float32::from_f32(1.0)),
+                Value::F64(Float64::from_f64(1.0)),
+            ],
+            vec![Value::d128(100, 2), Value::d256(I256::from_i128(10), 1)],
+            vec![Value::date32(1), Value::date64(86_400_000)],
+            vec![
+                Value::duration32(1, TimeUnit::Second).unwrap(),
+                Value::duration64(1_000, TimeUnit::Millisecond).unwrap(),
+            ],
+        ];
+        for group in groups {
+            for value in &group[1..] {
+                assert_eq!(&group[0], value);
+                assert_eq!(group[0].stable_hash(), value.stable_hash());
+            }
+        }
+    }
+
+    #[test]
+    fn records_are_sorted_and_rebuilt_by_field_name() {
+        let record = Value::from_record([
+            ("z", Value::from(3)),
+            ("a", Value::from(1)),
+            ("m", Value::from(2)),
+        ])
+        .unwrap();
+        assert_eq!(record.keys(), vec!["a", "m", "z"]);
+        assert_eq!(
+            record
+                .record_iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "m", "z"]
+        );
+        assert_eq!(
+            record.iter().filter_map(Value::as_i64).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+
+        let updated = record
+            .with_field("b", 4)
+            .unwrap()
+            .without_field("m")
+            .unwrap();
+        assert_eq!(updated.keys(), vec!["a", "b", "z"]);
+        assert_eq!(updated.get_key_str("b").and_then(Value::as_i64), Some(4));
+        assert!(updated.without_field("absent").unwrap() == updated);
+        assert!(Value::from_mapping([]).unwrap().with_field("x", 1).is_err());
+    }
+
+    #[test]
+    fn native_and_json_accessors_have_explicit_borrowing_semantics() {
+        let text = Value::from("AAPL");
+        let bytes = Value::from(b"AAPL".as_slice());
+        let geometry = Value::Geospatial(Arc::from(b"WKB".as_slice()));
+        assert_eq!(text.as_utf8(), Some("AAPL"));
+        assert_eq!(text.as_bytes(), None);
+        assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
+        assert_eq!(bytes.as_utf8(), None);
+        assert_eq!(geometry.as_bytes(), Some(b"WKB".as_slice()));
+
+        let record = Value::from_record([
+            ("symbol", Value::from("AAPL")),
+            ("active", Value::from(true)),
+        ])
+        .unwrap();
+        let json_bytes = record.as_json_bytes().unwrap();
+        let json_utf8 = record.as_json_utf8().unwrap();
+        assert_eq!(json_bytes, json_utf8.as_bytes());
+        assert_eq!(crate::json::from_bytes(&json_bytes).unwrap(), record);
+    }
+
+    #[test]
+    fn time_datatype_inference_refuses_zones_it_cannot_preserve() {
+        let zoned = Value::Time64(1, TimeUnit::Microsecond, Timezone::UTC);
+        assert!(zoned.data_type().is_err());
     }
 }

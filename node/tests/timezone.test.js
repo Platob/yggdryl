@@ -103,8 +103,9 @@ test('local and UTC readings convert in both directions', () => {
   const paris = Timezone.from('Europe/Paris')
   const summer = utc(2024, 7, 15, 12)
 
-  assert.equal(paris.toLocal(summer), summer + 2 * 3600)
-  assert.equal(paris.toUtc(paris.toLocal(summer)), summer)
+  assert.equal(paris.intoLocal(summer), summer + 2 * 3600)
+  assert.equal(paris.toLocal, undefined)
+  assert.equal(paris.intoUtc(paris.intoLocal(summer)), summer)
   // The JavaScript spelling is minutes west, as `Date` reports it.
   assert.equal(paris.getTimezoneOffset(summer), -120)
   assert.equal(paris.getTimezoneOffset(utc(2024, 1, 15, 12)), -60)
@@ -122,7 +123,7 @@ test('a zone without rules declines to answer', () => {
   assert.equal(unknown.isSavingAt(0), null)
   assert.equal(unknown.getTimezoneOffset(0), null)
   // Refusing is recoverable; a plausible wrong offset is not.
-  assert.throws(() => unknown.toLocal(0))
+  assert.throws(() => unknown.intoLocal(0))
 })
 
 test('the registry needs no files, environment, or network', () => {

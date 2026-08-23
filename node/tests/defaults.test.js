@@ -40,7 +40,8 @@ function datatypeFixtures() {
     ['date64', fields.date64('value')],
     ['time32', fields.time32('value', 'ms')],
     ['time64', fields.time64('value', 'ns')],
-    ['duration', fields.duration('value', 'us')],
+    ['duration32', fields.duration32('value', 'ms')],
+    ['duration64', fields.duration64('value', 'us')],
     ['interval', fields.interval('value', 'month_day_nano')],
     ['binary', fields.binary('value')],
     ['fixed_size_binary', fields.fixedSizeBinary('value', 4)],
@@ -99,7 +100,8 @@ const DATATYPE_KINDS = new Map(
       'date64',
       'time32',
       'time64',
-      'duration',
+      'duration32',
+      'duration64',
       'interval',
     ],
     binary: ['binary', 'fixed_size_binary', 'large_binary', 'binary_view'],
@@ -119,9 +121,9 @@ const DATATYPE_KINDS = new Map(
   }).flatMap(([kind, ids]) => ids.map((id) => [id, kind])),
 )
 
-test('all 41 datatypes use canonical schema-directed JavaScript defaults', () => {
+test('all 42 datatypes use canonical schema-directed JavaScript defaults', () => {
   const fixtures = datatypeFixtures()
-  assert.equal(fixtures.size, 41)
+  assert.equal(fixtures.size, 42)
 
   const defaults = new Map(
     [...fixtures].map(([id, field]) => [id, field.dataType.defaultJSValue()]),
@@ -141,6 +143,7 @@ test('all 41 datatypes use canonical schema-directed JavaScript defaults', () =>
     'float64',
     'date32',
     'time32',
+    'duration32',
   ]) {
     assert.equal(defaults.get(id), 0, id)
   }
@@ -150,7 +153,7 @@ test('all 41 datatypes use canonical schema-directed JavaScript defaults', () =>
     'timestamp',
     'date64',
     'time64',
-    'duration',
+    'duration64',
     'decimal32',
     'decimal64',
     'decimal128',
@@ -597,11 +600,12 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
     { nullable: true, metadata: { owner: 'events' } },
   )
 
-  const arrow = source.toSchemeCompat('arrow')
+  const arrow = source.intoSchemeCompat('arrow')
+  assert.equal(source.toSchemeCompat, undefined)
   assert.ok(arrow.equals(source))
   assert.notEqual(arrow, source)
 
-  const spark = source.toSchemeCompat('spark')
+  const spark = source.intoSchemeCompat('spark')
   assert.equal(spark.name, 'payload')
   assert.equal(spark.nullable, true)
   assert.equal(spark.get('owner'), 'events')
@@ -619,23 +623,23 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
   assert.equal(String(spark.dataType.at(2).dataType.at(0).dataType), 'float32')
 
   assert.ok(
-    fields.uint64('wide').dataType.toSchemeCompat('spark').equals(
+    fields.uint64('wide').dataType.intoSchemeCompat('spark').equals(
       fields.decimal128('expected', 20, 0).dataType,
     ),
   )
   assert.throws(
-    () => fields.timestamp('created', 'nanosecond').toSchemeCompat('spark'),
+    () => fields.timestamp('created', 'nanosecond').intoSchemeCompat('spark'),
     /expected timestamp of us, got ns.*not a schema normalization/,
   )
   const extension = fields.largeUtf8('logical', {
     metadata: { 'ARROW:extension:name': 'example.logical' },
   })
   assert.throws(
-    () => extension.toSchemeCompat('spark'),
+    () => extension.intoSchemeCompat('spark'),
     /would relabel Arrow extension storage/,
   )
   assert.throws(
-    () => source.toSchemeCompat('postgres'),
+    () => source.intoSchemeCompat('postgres'),
     /expected one of arrow, spark, polars, pandas, iceberg, got "postgres"/,
   )
 })

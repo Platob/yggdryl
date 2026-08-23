@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::{FromPyArrow, PyArrowType, ToPyArrow};
+use arrow_pyarrow::{FromPyArrow, ToPyArrow};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyDict, PyString};
+use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use yggdryl::ArrowCast;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
@@ -32,6 +32,18 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
         return CoreField::from_str(value).map_err(value_error);
     }
 
+    if value
+        .py()
+        .import("dataclasses")?
+        .getattr("is_dataclass")?
+        .call1((value,))?
+        .extract::<bool>()?
+    {
+        let field = python_field(value)?;
+        let field = field.extract::<PyRef<'_, PyField>>()?;
+        return Ok(field.inner.clone());
+    }
+
     let imported: PyResult<CoreField> = (|| {
         let arrow_field = ArrowField::from_pyarrow_bound(value)?;
         let mut field = CoreField::try_from(arrow_field).map_err(value_error)?;
@@ -49,11 +61,67 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
     })();
     imported.map_err(|error| {
         if error.is_instance_of::<PyTypeError>(value.py()) {
-            PyTypeError::new_err("expected a yggdryl.Field, field string, or PyArrow Field")
+            PyTypeError::new_err(
+                "expected a yggdryl.Field, dataclass, field string, or PyArrow Field",
+            )
         } else {
             error
         }
     })
+}
+
+/// Return the exact native `Field` object cached for a dataclass class or instance.
+fn python_field<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let field = value
+        .py()
+        .import("yggdryl.fields._classes")?
+        .getattr("field")?
+        .call1((value,))?;
+    {
+        let _field = field.extract::<PyRef<'_, PyField>>()?;
+    }
+    Ok(field)
+}
+
+/// Import a complete `PyArrow` Schema without trusting its lossy aggregate C
+/// Schema children.  `PyArrow`'s standalone Field/DataType bridge carries
+/// nested flags such as `Map.keys_sorted`, while its Schema bridge does not.
+/// Root transport metadata still comes from the aggregate schema so native
+/// record-schema rules can consume reserved sidecars exactly once.
+pub(crate) fn core_schema_from_pyarrow(value: &Bound<'_, PyAny>) -> PyResult<ArrowSchema> {
+    let imported = ArrowSchema::from_pyarrow_bound(value)?;
+    let mut fields = Vec::with_capacity(imported.fields().len());
+    for value in value.try_iter()? {
+        let field = core_field_from_value(&value?)?;
+        fields.push(field.into_arrow_ref().map_err(value_error)?);
+    }
+    Ok(ArrowSchema::new_with_metadata(
+        fields,
+        imported.metadata().clone(),
+    ))
+}
+
+/// Export a complete `PyArrow` Schema from exact standalone native Fields.
+/// The aggregate Arrow C Schema path drops nested datatype flags, so it is
+/// used only to calculate transport metadata (including reserved sidecars).
+fn core_schema_to_pyarrow<'py>(py: Python<'py>, root: &CoreField) -> PyResult<Bound<'py, PyAny>> {
+    let transported = root
+        .clone()
+        .into_arrow_exchange_schema()
+        .map_err(value_error)?;
+    let fields = PyList::empty(py);
+    for field in root.fields() {
+        fields.append(core_field_to_pyarrow(py, field)?)?;
+    }
+    let metadata = PyDict::new(py);
+    for (key, value) in transported.metadata() {
+        metadata.set_item(key, value)?;
+    }
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("metadata", metadata)?;
+    py.import("pyarrow")?
+        .getattr("schema")?
+        .call((fields,), Some(&kwargs))
 }
 
 fn extend_metadata_pairs(
@@ -78,6 +146,7 @@ fn extend_metadata_pairs(
 pub(crate) struct PyField {
     pub(crate) inner: CoreField,
     read_only: bool,
+    hash_locked: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -114,9 +183,14 @@ impl FromPyObject<'_, '_> for ContentLength {
 
 impl PyField {
     pub(crate) fn from_inner(inner: CoreField) -> Self {
+        Self::from_inner_with_read_only(inner, false)
+    }
+
+    pub(crate) fn from_inner_with_read_only(inner: CoreField, read_only: bool) -> Self {
         Self {
             inner,
-            read_only: false,
+            read_only,
+            hash_locked: false,
         }
     }
 
@@ -180,8 +254,10 @@ impl PyField {
 
     fn require_mutable(&self) -> PyResult<()> {
         if self.read_only {
+            Err(PyTypeError::new_err("frozen fields are read-only"))
+        } else if self.hash_locked {
             Err(PyTypeError::new_err(
-                "frozen record schema fields are read-only",
+                "a hashed Field is frozen; copy it before mutation",
             ))
         } else {
             Ok(())
@@ -225,7 +301,7 @@ impl PyField {
         hint: &Bound<'_, PyAny>,
         metadata: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let module = hint.py().import("yggdryl.records._hints")?;
+        let module = hint.py().import("yggdryl.fields._hints")?;
         let inferred = if let Some(metadata) = metadata {
             module
                 .getattr("field_from_pyhint")?
@@ -244,30 +320,64 @@ impl PyField {
             .map_err(value_error)
     }
 
+    /// Rebuild pickle state without carrying a transient hash lock.
+    #[staticmethod]
+    fn _from_pickle(value: &str, read_only: bool) -> PyResult<Self> {
+        CoreField::from_str(value)
+            .map(|inner| Self::from_inner_with_read_only(inner, read_only))
+            .map_err(value_error)
+    }
+
     #[staticmethod]
     fn from_arrow(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         core_field_from_value(value).map(Self::from_inner)
     }
 
     /// Imports one complete Arrow Schema through Yggdryl's Arrow IPC metadata
-    /// rules. This is private glue for the Python record class factory.
+    /// rules as a non-nullable Struct Field.
     #[staticmethod]
-    fn _record_root_from_arrow_schema(
-        value: PyArrowType<ArrowSchema>,
-        name: &str,
-    ) -> PyResult<Self> {
-        let PyArrowType(schema) = value;
-        yggdryl::arrow::record_schema_from_arrow(name, &schema)
+    #[pyo3(signature = (schema, name = "row"))]
+    fn from_arrow_schema(schema: &Bound<'_, PyAny>, name: &str) -> PyResult<Self> {
+        let schema = core_schema_from_pyarrow(schema)?;
+        CoreField::from_arrow_schema(name, &schema)
             .map(Self::from_inner)
             .map_err(value_error)
     }
 
-    /// Projects a complete record root as an Arrow transport Schema while
+    /// Projects a complete Struct root as an Arrow transport Schema while
     /// keeping the reserved dictionary-ID sidecar out of Field metadata.
-    fn _record_root_to_arrow_transport_schema(&self) -> PyResult<PyArrowType<ArrowSchema>> {
-        yggdryl::arrow::record_schema_to_arrow(&self.inner)
-            .map(PyArrowType)
-            .map_err(value_error)
+    #[allow(clippy::wrong_self_convention)]
+    fn into_arrow_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        core_schema_to_pyarrow(py, &self.inner)
+    }
+
+    /// Builds a plain dataclass whose fields follow this native Struct field.
+    #[pyo3(signature = (name = None, *, module = None))]
+    fn into_dataclass<'py>(
+        slf: &Bound<'py, Self>,
+        name: Option<&str>,
+        module: Option<&str>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let invalid_root = {
+            let field = slf.borrow();
+            !field.inner.is_struct() || field.inner.is_nullable()
+        };
+        if invalid_root {
+            return Err(PyTypeError::new_err(
+                "into_dataclass requires a non-nullable Struct Field",
+            ));
+        }
+        let py = slf.py();
+        let kwargs = PyDict::new(py);
+        if let Some(name) = name {
+            kwargs.set_item("name", name)?;
+        }
+        if let Some(module) = module {
+            kwargs.set_item("module", module)?;
+        }
+        py.import("yggdryl.fields._classes")?
+            .getattr("_dataclass_from_field")?
+            .call((slf,), Some(&kwargs))
     }
 
     #[staticmethod]
@@ -277,14 +387,10 @@ impl PyField {
             .map_err(value_error)
     }
 
-    fn to_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        core_field_to_pyarrow(py, &self.inner)
-    }
-
     /// Returns the cached Python annotation corresponding to this Field.
     fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let field = Py::new(py, self.clone())?;
-        py.import("yggdryl.records._defaults")?
+        py.import("yggdryl.fields._defaults")?
             .getattr("_default_pyhint_from_field")?
             .call1((field,))
     }
@@ -300,16 +406,18 @@ impl PyField {
         let array = self.inner.default_arrow_array().map_err(value_error)?;
         let scalar = default_arrow_scalar_to_pyarrow(py, &self.inner, &array)?;
         let field = Py::new(py, self.clone())?;
-        py.import("yggdryl.records._defaults")?
+        py.import("yggdryl.fields._defaults")?
             .getattr("_default_pyvalue_from_field")?
             .call1((field, scalar))
     }
 
     /// Returns a recursively normalized field for a named compatibility target.
-    fn to_scheme_compat(&self, target: &str) -> PyResult<Self> {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
         let target = CoreScheme::from_str(target).map_err(value_error)?;
         self.inner
-            .to_scheme_compat(&target)
+            .clone()
+            .into_scheme_compat(&target)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -547,18 +655,13 @@ impl PyField {
     /// `indent=None` is compact - today's output and the default; an integer
     /// pretty-prints with that many spaces per nesting level, exactly as
     /// `json.dumps(indent=n)` reads.
-    #[pyo3(signature = (*, indent = None))]
-    fn to_json(&self, indent: Option<u8>) -> PyResult<String> {
-        self.inner
-            .to_json_with_formatting(crate::formatting_of(indent))
-            .map_err(value_error)
-    }
-
-    /// Consume and serialize as structural JSON.
     #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (*, indent = None))]
     fn into_json(&self, indent: Option<u8>) -> PyResult<String> {
-        self.to_json(indent)
+        self.inner
+            .clone()
+            .into_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
     /// Deserialize and validate from structural YAML.
@@ -577,18 +680,13 @@ impl PyField {
     /// `indent=2` is the default. `indent=None` asks for flow style -
     /// `{a: 1, b: 2}` on one line - which is valid YAML and round-trips, and
     /// is never what a caller gets by accident.
-    #[pyo3(signature = (*, indent = Some(2)))]
-    fn to_yaml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.inner
-            .to_yaml_with_formatting(crate::formatting_of(indent))
-            .map_err(value_error)
-    }
-
-    /// Consume and serialize as YAML.
     #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (*, indent = Some(2)))]
     fn into_yaml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.to_yaml(indent)
+        self.inner
+            .clone()
+            .into_yaml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
     /// Deserialize and validate from structural TOML.
@@ -603,34 +701,28 @@ impl PyField {
     ///
     /// TOML has no null, and this model never needs one: an unset optional
     /// attribute is omitted rather than faked, so nothing is lost.
-    #[pyo3(signature = (*, indent = None))]
-    fn to_toml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.inner
-            .to_toml_with_formatting(crate::formatting_of(indent))
-            .map_err(value_error)
-    }
-
-    /// Consume and serialize as TOML.
     #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (*, indent = None))]
     fn into_toml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.to_toml(indent)
+        self.inner
+            .clone()
+            .into_toml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
     /// Project this value onto a plain structural mapping.
     ///
     /// The core's one structural model - the model JSON, YAML, and TOML are
     /// all expressed over - handed back as a `dict`, so a schema drops into any
-    /// document a caller already builds. Spelled `to_dict` rather than
-    /// `to_value` because `from_value` is already this module's
-    /// boundary-inference entry point and a Python caller reads a `dict` here.
-    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::value::as_py(py, &self.inner.to_value())
+    /// document a caller already builds.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        crate::value::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
     ///
-    /// The inverse of `to_dict`, through the core's one conversion.
+    /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         CoreField::from_value(crate::value::from_py(value)?)
@@ -663,6 +755,7 @@ impl PyField {
     fn data_type(&self) -> PyDataType {
         PyDataType {
             inner: self.inner.data_type().clone(),
+            children_read_only: self.read_only,
         }
     }
 
@@ -1373,7 +1466,7 @@ impl PyField {
             .show_diff(&other.inner, with_metadata, return_equal)
     }
 
-    /// Makes a cached record schema value immutable at the Python boundary.
+    /// Makes a cached class field immutable at the Python boundary.
     fn _freeze(&mut self) {
         self.read_only = true;
     }
@@ -1405,7 +1498,8 @@ impl PyField {
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
-        crate::child_of(self.inner.data_type(), key).map(Self::from_inner)
+        crate::child_of(self.inner.data_type(), key)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
     }
 
     /// Replace a nested child, or append one under an unknown name.
@@ -1437,7 +1531,7 @@ impl PyField {
 
     /// Iterate the nested children, as `DataType` does.
     fn __iter__(&self) -> PyDataTypeIterator {
-        PyDataTypeIterator::over(self.inner.data_type().clone())
+        PyDataTypeIterator::over(self.inner.data_type().clone(), self.read_only)
     }
 
     /// Whether a child name, position, or field is among the children.
@@ -1469,21 +1563,26 @@ impl PyField {
             .unbind())
     }
 
-    fn __hash__(&self) -> u64 {
-        self.inner.stable_layout_hash()
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
-        let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
-        Ok((callable, (self.inner.to_string(),)))
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String, bool))> {
+        let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
+        Ok((callable, (self.inner.to_string(), self.read_only)))
     }
 
     fn __copy__(&self) -> Self {
-        self.clone()
+        Self::from_inner_with_read_only(self.inner.clone(), self.read_only)
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
+        Self::from_inner_with_read_only(self.inner.clone(), self.read_only)
     }
 }
 
@@ -1736,6 +1835,10 @@ impl PyFieldPropertyIterator {
 
 #[pymethods]
 impl PyFieldPropertyIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -1780,6 +1883,10 @@ impl PyFieldMetadataIterator {
 
 #[pymethods]
 impl PyFieldMetadataIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -1953,5 +2060,16 @@ impl PyFieldMetadata {
             .map(|(key, value)| format!("{key:?}: {value:?}"))
             .collect();
         Ok(format!("FieldMetadata({{{}}})", entries.join(", ")))
+    }
+
+    /// Compare the metadata entries, independently of the fields behind them.
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(py.NotImplemented());
+        };
+        let left = self.borrow_field(py)?;
+        let right = other.borrow_field(py)?;
+        let equal = left.inner.metadata_iter().eq(right.inner.metadata_iter());
+        Ok(PyBool::new(py, equal).to_owned().into_any().unbind())
     }
 }

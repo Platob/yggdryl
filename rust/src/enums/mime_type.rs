@@ -229,6 +229,15 @@ impl MimeType {
         matches!(self.0, MimeTypeValue::Directory)
     }
 
+    /// Return whether this MIME value can describe an I/O value.
+    ///
+    /// A directory is the one MIME value that names a container rather than a
+    /// value: every other known or custom MIME type can be presented as bytes
+    /// or records by an I/O handle.
+    pub const fn is_io(&self) -> bool {
+        !self.is_directory()
+    }
+
     /// Parse a canonical MIME name or one unambiguous extension/name alias.
     ///
     /// MIME parameters are deliberately outside this value. Use

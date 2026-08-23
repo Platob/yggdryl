@@ -7,8 +7,9 @@
 //! the file system, so the same code works over a local directory today and
 //! over an object store the moment a backend for one exists. The relationship
 //! runs both ways: [`Table`] itself implements [`IOBase`], so the generic
-//! record surface ([`IOBase::read_arrow_batch_reader`],
-//! [`IOBase::write_arrow_batch_reader`], [`IOBase::append_arrow_batch_reader`])
+//! record surface ([`crate::io::IOMedia::read_arrow_reader`],
+//! [`crate::io::IOMedia::overwrite_arrow_reader`], [`crate::io::IOMedia::append_arrow_reader`], and
+//! [`crate::io::IOMedia::merge_arrow_reader`])
 //! works on the table value directly, answered from the metadata it already
 //! holds rather than by probing the location again.
 //!
@@ -42,7 +43,7 @@
 //! // A table that has never been written to has no current snapshot.
 //! assert!(table.current_snapshot().is_none());
 //!
-//! let rows = yggdryl::arrow::batch_reader(schema.to_arrow_schema()?, []);
+//! let rows = yggdryl::arrow::batch_reader(schema.into_arrow_schema()?, []);
 //! table.append(rows)?;
 //! assert!(table.current_snapshot().is_some());
 //! # Ok(())
@@ -60,7 +61,7 @@
 //! use yggdryl::iceberg::{schema_from_json, schema_to_json};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let document = yggdryl::json::from_str(
+//! let document = yggdryl::json::from_utf8(
 //!     r#"{"type":"struct","schema-id":0,"fields":[
 //!         {"id":1,"name":"id","required":true,"type":"long"},
 //!         {"id":2,"name":"symbol","required":false,"type":"string"}
@@ -125,9 +126,9 @@ pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
 
-use crate::Result;
 use crate::generic::{Holder, RecordOptions};
-use crate::io::IOBase;
+use crate::io::{IOBase, IOMedia};
+use crate::{Error, Result};
 
 /// The directory an Iceberg table keeps its data files under.
 const DATA_DIR: &str = "data";
@@ -147,6 +148,46 @@ pub(crate) struct Located {
 }
 
 impl Located {
+    /// Return the table field used to shape every chunk of one resumed write.
+    pub(crate) fn stored_field(&self) -> Result<crate::Field> {
+        self.table.schema().cloned()
+    }
+
+    /// Publish one already-shaped overwrite cadence.
+    pub(crate) fn overwrite_prepared(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        safe: bool,
+    ) -> Result<()> {
+        let filters = self.filters.clone();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        self.table.merge_where(&pairs, batches, &[], safe)
+    }
+
+    /// Publish one already-shaped append cadence.
+    pub(crate) fn append_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
+        self.table.append(batches)
+    }
+
+    /// Publish one already-shaped merge cadence.
+    pub(crate) fn merge_prepared(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        merge_by_names: &[String],
+        safe: bool,
+    ) -> Result<()> {
+        let filters = self.filters.clone();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        self.table
+            .merge_where(&pairs, batches, merge_by_names, safe)
+    }
+
     /// Return the table a container handle addresses, if it addresses one.
     ///
     /// The probe is one child lookup per level and it stops immediately: a
@@ -206,28 +247,49 @@ impl Located {
     pub(crate) fn read(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         use crate::generic::IORecordOptions;
 
-        self.table.scan_where(&self.pairs(), options.schema())
+        self.table.scan_where(&self.pairs(), options.field())
     }
 
-    /// Replace or merge the table's rows, per the options' match key.
+    /// Replace the addressed table partition in one commit.
     ///
     /// # Errors
     ///
     /// Returns a metadata, manifest, read, or write failure.
-    pub(crate) fn write(
+    pub(crate) fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
+        options.require_write_mode(crate::WriteMode::Overwrite)?;
+        let commit_row_size = options.require_commit_row_size()?;
+        let stored = self.table.schema()?.clone();
+        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
         let filters: Vec<(String, String)> = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
+        if commit_row_size.is_none() {
+            return self.table.merge_where(&pairs, batches, &[], options.safe());
+        }
+        let schema = batches.schema();
+        let mut commits = options.commit_arrow_readers(batches)?;
+        let Some(first) = commits.next() else {
+            return self.table.merge_where(
+                &pairs,
+                crate::arrow::batch_reader(schema, []),
+                &[],
+                options.safe(),
+            );
+        };
         self.table
-            .merge_where(&pairs, batches, options.merge_by_names(), options.safe())
+            .merge_where(&pairs, first?, &[], options.safe())?;
+        for commit in commits {
+            self.table.append(commit?)?;
+        }
+        Ok(())
     }
 
     /// Add the rows as a new snapshot, keeping every stored file.
@@ -235,13 +297,126 @@ impl Located {
     /// # Errors
     ///
     /// Returns a metadata, manifest, or write failure.
-    pub(crate) fn append(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        self.table.append(batches)
+    pub(crate) fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        use crate::generic::IORecordOptions;
+
+        options.require_write_mode(crate::WriteMode::Append)?;
+        let commit_row_size = options.require_commit_row_size()?;
+        options.require_write_limits()?;
+        if options.write_limit_is_zero() {
+            return Ok(());
+        }
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        let stored = self.table.schema()?.clone();
+        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        if commit_row_size.is_none() {
+            return self.table.append(batches);
+        }
+        for commit in options.commit_arrow_readers(batches)? {
+            self.table.append(commit?)?;
+        }
+        Ok(())
+    }
+
+    /// Merge rows into the addressed table partition in one commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metadata, manifest, read, merge, or write failure.
+    pub(crate) fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        use crate::generic::IORecordOptions;
+
+        options.require_write_mode(crate::WriteMode::Merge)?;
+        let commit_row_size = options.require_commit_row_size()?;
+        options.require_write_limits()?;
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        let stored = self.table.schema()?.clone();
+        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        let filters: Vec<(String, String)> = self.filters.clone();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        if commit_row_size.is_none() {
+            return self.table.merge_where(
+                &pairs,
+                batches,
+                options.merge_by_names(),
+                options.safe(),
+            );
+        }
+        for commit in options.commit_arrow_readers(batches)? {
+            self.table
+                .merge_where(&pairs, commit?, options.merge_by_names(), options.safe())?;
+        }
+        Ok(())
+    }
+
+    /// Return the rows at the addressed table location.
+    ///
+    /// Partition predicates settled by manifest metadata need no data-file
+    /// read. A predicate left residual by the plan is counted from the scan,
+    /// because a file statistic can bound a value but cannot count matches.
+    pub(crate) fn row_size(&self) -> Result<u64> {
+        if self.filters.is_empty() {
+            return self.table.row_size();
+        }
+        let pairs = self.pairs();
+        let plan = self.table.plan(&pairs)?;
+        if plan.tasks.iter().all(|task| task.residual.is_empty()) {
+            return u64::try_from(plan.record_count()).map_err(|_| Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$"),
+                reason: smol_str::SmolStr::new_static(
+                    "expected Iceberg manifests to carry non-negative record counts",
+                ),
+            });
+        }
+        let mut rows = 0_u64;
+        for batch in self.table.scan_where(&pairs, None)? {
+            let batch = batch.map_err(crate::arrow::from_reader_error)?;
+            rows = rows
+                .checked_add(
+                    u64::try_from(batch.num_rows()).map_err(|_| Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$"),
+                        reason: smol_str::SmolStr::new_static(
+                            "logical row count does not fit in u64",
+                        ),
+                    })?,
+                )
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$"),
+                    reason: smol_str::SmolStr::new_static("logical row count exceeds u64::MAX"),
+                })?;
+        }
+        Ok(rows)
+    }
+
+    /// Return the addressed table's current schema width from metadata.
+    pub(crate) fn column_size(&self) -> Result<usize> {
+        self.table.column_size()
     }
 
     /// Return the encoding this table's data files are written in.
     ///
-    /// Answered by the table's own [`IOBase::record_options`], so the one
+    /// Answered by the table's own [`crate::io::IOMedia::record_options`], so the one
     /// place that knows what an Iceberg table's rows are is the table.
     pub(crate) fn record_options(&self) -> Result<RecordOptions> {
         self.table.record_options()

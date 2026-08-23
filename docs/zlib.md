@@ -237,9 +237,17 @@ assert_eq!(handle.size(), plain.len() as u64);
 assert_eq!(zlib::load(handle.handle().as_slice())?, plain);
 ```
 
-A coding cannot be written positionally, so the decoded value is materialized
-on first use and published on `flush` or `close`. `into_handle` publishes the
-pending write and hands back what it wrapped.
+A coding cannot be written positionally, so writes and opened sessions
+materialize the decoded value and publish it on `flush` or `close`.
+`into_handle` publishes the pending write and hands back what it wrapped.
+
+Sequential reads use [`IOBase::pstream_bytes`](io.md#streamed-bytes): zlib is
+decoded directly from the wrapped handle into bounded arrays, without opening
+the handle or retaining earlier decoded pages. A non-zero start decodes and
+discards the prefix because a zlib stream has no decoded seek. A surrounding
+`Buffered` cache stays empty on this path. The
+[stream benchmark](io.md#measured-streamed-byte-behavior) records first-chunk,
+full-drain, and whole-value costs beside gzip and zstd.
 
 ```rust
 use yggdryl::io::{Buffer, IOBase};

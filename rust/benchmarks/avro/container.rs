@@ -14,7 +14,7 @@ const ROWS: usize = 1_000;
 
 /// The writer schema every benchmark row is encoded against.
 fn schema() -> Value {
-    json::from_str(
+    json::from_utf8(
         r#"{"type": "record", "name": "row", "fields": [
             {"name": "code", "type": "int"},
             {"name": "name", "type": "string"},
@@ -77,6 +77,9 @@ pub(crate) fn avro_benchmarks(criterion: &mut Criterion) {
                 .expect("encodes");
             target
         });
+    });
+    group.bench_function("stable_hash_container", |bencher| {
+        bencher.iter(|| black_box(&container).stable_hash());
     });
 
     group.throughput(Throughput::Bytes(encoded_len as u64));

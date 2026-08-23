@@ -3,8 +3,8 @@
 Yggdryl is a schema, resource-identifier, and structured-codec core. The native
 public domain model is `DataType`, `Field`, `Uri`, `Url`, `Urn`, and the codec
 `Value`; Python and JavaScript are runtime views of those Rust values, never
-independent schema or codec implementations. Python records are a convenience
-layer compiling annotations into native values.
+independent schema or codec implementations. Python field classes are a
+convenience layer compiling dataclass annotations into one native `Field`.
 
 ## Order of work
 
@@ -21,7 +21,9 @@ layer compiling annotations into native values.
   `examples/` directories - runnable examples live in the docs.
 - **A struct `Field` is the schema.** A non-null `Struct` field describes rows;
   a row is one ordered `Value::Sequence` with a value per child. Never
-  reintroduce a `Record`/`RecordSchema` pair.
+  reintroduce a `Record`/`RecordSchema` pair. `Value::Record` is only a sorted
+  name-to-value input shape; struct-field canonicalization resolves its names
+  into that ordered sequence, so it never becomes a second schema model.
 - Schema behavior lives in categorized `rust/src/datatype/` and
   `rust/src/field/`: generic state and mutation in `field/mod.rs`, Arrow in
   `field/arrow.rs`, typed casting in `field/cast.rs`, grammar in
@@ -62,9 +64,8 @@ layer compiling annotations into native values.
   YAML, or TOML document parses into, so a reader is specifiable from
   configuration alone. Regex is the only structuring mechanism; there is no
   format-string parser and no user callback. Splitting records happens in one
-  place. It is a surface *beside* the three record methods, never a fourth
-  one, and it never introduces a tabular/dataset type or a second storage
-  trait.
+  place. It is a surface beside the `IOMedia` record operations and never
+  introduces a second storage trait.
 - One module per content coding - `rust/src/{gzip,zlib,zstd}/` - each with
   `load`/`dump`, `reader`/`writer`, and a transparent `IOBase` handle (`Gzip`,
   `Zlib`, `Zstd`). `Codec` in `enums/codec.rs` dispatches; never a fourth
@@ -76,7 +77,7 @@ layer compiling annotations into native values.
   remote backend (S3, GCS, Azure) is a sibling module - never a change to `io`
   or `local`.
 - Arrow interop in `rust/src/arrow/` (Struct scalars, StructArray,
-  RecordBatch, IPC, `schema_from_field`). Recursive casting lives with the
+  RecordBatch, IPC, `Field::into_arrow_schema`). Recursive casting lives with the
   schema in `rust/src/field/cast/` (plan engine `cast/plan.rs`, typed surface
   `cast/mod.rs`). `arrow` feature is default; schema-only callers use
   `default-features = false`. Never a separate Arrow crate.
@@ -105,7 +106,7 @@ layer compiling annotations into native values.
   `lib.rs` holds exports and shared error plumbing only.
 - Bindings mirror core domains as `src/{datatype,field,media,uri,codec}.rs`;
   each `lib.rs` is boundary helpers, exports, registration only. Python-only
-  annotation behavior below `python/yggdryl/records/`.
+  annotation and field-class behavior stays below `python/yggdryl/fields/`.
 - Protocol metadata is inert string properties `<scheme>:<property>`; reuse
   `Scheme` for the prefix and one generic property API. No protocol
   execution, network clients, or duplicate per-protocol maps. A per-protocol
@@ -168,13 +169,14 @@ layer compiling annotations into native values.
   each *are* an operation, so they flush when they finish: otherwise a second
   handle on the same location reads a pending value or the mapping's zero
   padding as content.
-- **The record surface is exactly three methods**:
-  `read_arrow_batch_reader(options)` -> `arrow::BatchReader`,
-  `write_arrow_batch_reader(reader, options)` (replace or merge),
-  `append_arrow_batch_reader(reader, options)`. Everything else routes through
-  them, so exactly one place decodes and one encodes each encoding. Never
-  reintroduce `overwrite_arrow_batches`, `append_arrow_batches`,
-  `upsert_arrow_batches`, or partitioned spellings. Record reads/writes never
+- **The primitive record surface names intent and lives on `IOMedia`**:
+  `read_arrow_reader(options)` -> `arrow::BatchReader`, required
+  `overwrite_arrow_reader(reader, options)`, and default streamed
+  `append_arrow_reader(reader, options)` / `merge_arrow_reader(reader,
+  options)`. `write_arrow_reader(reader, options, mode)` is the single
+  configurable dispatcher. Table, record-batch, and row-record entry points
+  infer or wrap their input and route through those primitives, so exactly one
+  place decodes and one encodes each encoding. Record reads/writes never
   take or return a `Vec`, slice, or borrowed iterator of batches - a shape
   requiring materialization cannot describe a resource larger than memory;
   `arrow::batch_reader` turns held batches into a reader. `record_options` and
@@ -184,6 +186,13 @@ layer compiling annotations into native values.
   encoding. Shared settings (schema, root name, cast strictness, batch size,
   compression level, match key) are flattened fields on each
   `IORecordOptions` implementation.
+- `commit_row_size` is the one optional publication boundary for streamed
+  writes. Unset publishes once; a non-zero `N` publishes each complete group
+  of `N` incoming rows and the final remainder. The splitter lives in Rust,
+  slices batches without reading past the current commit, and holds at most
+  one bounded commit. Overwrite uses overwrite for the first commit and append
+  thereafter; append and merge retain their intent for every commit. A later
+  failure leaves successful prefixes visible by design.
 - **A declared schema selects and casts during the read.** Stored columns the
   schema names become the encoding's own projection (Parquet
   `ProjectionMask`, IPC projection); results are cast to the declared shape
@@ -191,13 +200,15 @@ layer compiling annotations into native values.
   caller. A projection only drops columns; reorder, convert, and absent
   columns are the cast's business. Parquet's projection skips locating and
   decoding chunks; IPC's saves decode and allocation, not bytes - say so.
-- **A write is a replacement or a key-matched merge, nothing else.**
-  `merge_by_names` empty = overwrite (declared schema applied to incoming, then
-  safe-cast to the stored schema so rows are replaced, not columns
-  redefined). Non-empty = merge: stored rows read, incoming joined one batch
-  at a time, matched keys update, unmatched append, result rewritten. The
-  join streams over the incoming side; whatever must be held says why in a
-  comment. No positional upsert: a position is not a row identity.
+- **Write intent is explicit: overwrite, append, or key-matched merge.**
+  The selected method or `WriteMode` is authoritative; `merge_by_names` only
+  supplies merge keys and never selects a mode. Overwrite applies the declared
+  field and safe-casts to the stored field so rows are replaced, not columns
+  redefined. Append retains stored rows. Merge requires non-empty keys: stored
+  rows are read, incoming rows join one batch at a time, matches update and
+  misses append. The join streams over the incoming side; whatever must be
+  held says why in a comment. No positional upsert: a position is not a row
+  identity.
 - Globs: `Url::is_glob`, `glob_parts`, `matches_glob` (`.gitignore` rule: no
   separator matches at any depth, a separator anchors at the root). A glob is
   folder-like before the backend is touched; `IOBase::glob` descends every
@@ -312,8 +323,8 @@ meets all of these; a new media that cannot yet is not done:
 - **It is a wrapping handle first.** `Media<H: IOBase>` owns its handle,
   mirrors bytes via `delegate_iobase!`, and exposes the encoded value raw - so
   the file can be copied, uploaded, or handed to a foreign reader without
-  unwrapping. The encoding's smarts live behind the same three record methods
-  as every other, never as extra public entry points.
+  unwrapping. The encoding's smarts live behind the shared `IOMedia` primitive
+  methods, never as private public entry points.
 - **Rich metadata, contextually cached.** Whatever the format keeps re-reading
   - IPC's schema, Parquet's footer, statistics - is answered from a cache
   *only between `open` and `close`*: open fills it, close releases it, and a
@@ -371,9 +382,10 @@ meets all of these; a new media that cannot yet is not done:
   (same vocabulary as `children_where`), compared as text for `identity`
   partition columns and as the cast value elsewhere; statistics bound files,
   rows are filtered afterwards. Never scan by walking `data/`.
-- **A table answers the same three record methods as a folder**: read through
-  the snapshot, write/append as one commit each; `merge_by_names` upserts a table
-  exactly as a leaf; a handle on a `column=value` directory addresses that
+- **A table answers the same `IOMedia` primitives as a folder**: read through
+  the snapshot; overwrite, append, and merge commit their explicit intent;
+  `merge_by_names` supplies merge keys exactly as for a leaf; a handle on a
+  `column=value` directory addresses that
   partition. `Table` itself implements `IOBase` - bytes delegated to its root
   folder via `delegate_iobase!`, record surface overridden to answer from the
   parsed metadata: `read_arrow_field` is the stored schema with its field ids
@@ -493,6 +505,11 @@ meets all of these; a new media that cannot yet is not done:
   page adds/renames update the nav and links in the same change.
 - Example-first: smallest runnable example, then only what it cannot show.
   Several focused examples over one oversized one.
+- Keep descriptions lean in source and Markdown: state the contract, the
+  non-obvious edge, and measured behavior once. Remove repeated rationale,
+  throat-clearing, and prose that merely restates a signature or example.
+  A shorter accurate explanation is an optimization, and documentation-only
+  cleanup must preserve every guarantee and runnable assertion.
 - **One page per core module folder**: `docs/<module>.md` documents
   `yggdryl::<module>` and nothing else (`enums`, `datatype`, `field`,
   `arrow`, `io`, `expression`, `buffered`, `generic`, `local`, `gzip`,
@@ -550,9 +567,11 @@ Names follow ownership and cost; no aliases with different verbs.
 
 - `new`: direct infallible construction from native parts.
 - `from_*`: construct from a named representation; `Result` when validating.
-- `into_*`: consume self into another owned representation, reusing
-  allocations/caches.
-- `to_*`: borrow self, produce an owned value (may allocate / bump an `Arc`).
+- `into_*`: produce another representation, whether the receiver is borrowed
+  or consumed. Prefer consumption when it can reuse allocations or caches.
+  Public project APIs never introduce a plain `to_*` spelling; standard-library
+  traits and foreign runtime protocols such as `ToString`/`toString` are not
+  project aliases and keep their conventional names.
 - `as_*`: borrowed view, never allocates.
 - `is_*`/`has_*`: side-effect-free predicates.
 - `get`/`get_*`: borrowed lookup, no allocation; `get_mut` only when mutation
@@ -573,7 +592,7 @@ Keep exact; no alternate aliases:
 - `Scheme`: uppercase constants for common protocols; `from_str` for
   arbitrary valid schemes; `as_str` borrowed canonical. It doubles as the
   compatibility vocabulary: `ARROW`, `SPARK`, `POLARS`, `PANDAS`, `ICEBERG`
-  in `COMPATIBILITY_TARGETS`, accepted by `to_scheme_compat` (a non-target
+  in `COMPATIBILITY_TARGETS`, accepted by `into_scheme_compat` (a non-target
   parses fine, is rejected there, never by the parser);
   `is_compatibility_target`, `is_storage`, `default_port`. Never a second
   scheme-like enum. The Iceberg target widens losslessly; the Iceberg codec
@@ -610,8 +629,8 @@ Keep exact; no alternate aliases:
 - `IOKind`: `Memory`, `File`, `Directory`, `Table`, `Namespace`, `Catalog`,
   `Unknown`; derived `is_container`, `is_leaf`, `is_known`.
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
-  `to_arrow`, `into_arrow`, `to_json`, `into_json`, `as_fields`,
-  `default_value`, `is_default_value`, `to_scheme_compat`. Generic
+  `into_arrow`, `into_json`, `as_fields`, `default_value`,
+  `is_default_value`, `into_scheme_compat`. Generic
   finite-union constructor is exactly `dense_union`: Fields in declaration
   order, Arrow type IDs `0..`, canonical dense `Union` (kind `union`, dense
   display, lossless Arrow round trip, <=128 members); parser `variant(...)`
@@ -623,8 +642,8 @@ Keep exact; no alternate aliases:
   time32 (s/ms) or time64 (us/ns) likewise; intervals are rejected without
   selecting a width.
 - `Field`: `from_parts`, `from_str`, `from_arrow`, `from_arrow_ref`,
-  `from_json`, `to_arrow`, `to_arrow_ref`, `into_arrow`, `into_arrow_ref`,
-  `to_json`, `into_json`, `default_value`, `to_scheme_compat`.
+  `from_json`, `into_arrow`, `into_arrow_ref`, `into_json`, `default_value`,
+  `into_scheme_compat`.
 - Field mutation: `set_name`, `set_data_type`, `set_nullable`,
   `set_dictionary_options`, `set_metadata`, `insert_metadata`,
   `update_metadata`, `remove_metadata`, `clear_metadata`. Persistent:
@@ -666,12 +685,11 @@ Keep exact; no alternate aliases:
   `set_media_type`/`remove_media_type` update Content-Type and
   Content-Encoding as one transaction; failures leave metadata and Arrow
   caches unchanged. Bare `location` stays distinct from `http_location`.
-- `Metadata`: `new`, `from_entries`, `from_arrow`, `from_json`, `to_arrow`,
-  `into_arrow`, `to_json`, `into_json`, `get`, `contains_key`, `iter`,
-  `protocol`.
-- `Uri`/`Url`/`Urn`: `from_str`, `from_path`, `from_uri`, `to_json`,
-  `into_json`, `to_uri`, `into_uri` where meaningful; `Uri` adds `to_url`,
-  `into_url`, `to_urn`, `into_urn`; file values add `to_path`, `into_path`.
+- `Metadata`: `new`, `from_entries`, `from_arrow`, `from_json`, `into_arrow`,
+  `into_json`, `get`, `contains_key`, `iter`, `protocol`.
+- `Uri`/`Url`/`Urn`: `from_str`, `from_path`, `from_uri`, `into_json`,
+  `into_uri` where meaningful; `Uri` adds `into_url` and `into_urn`; file
+  values add `into_path`.
   Components: `scheme`, `authority`, `path`, `query`, `fragment`,
   `namespace`, `namespace_specific`; component newtypes expose `as_str`;
   full identifiers use `Display`.
@@ -686,22 +704,22 @@ Keep exact; no alternate aliases:
   `extension`; variants `Json`, `JsonLines`, `Yaml`, `Toml`; extensions
   `.json`, `.jsonl`, `.ndjson`, `.yaml`, `.yml`, `.toml` without opening the
   file.
-- Structured text: generic dispatch in `text::{from_str, from_slice,
-  from_reader, from_str_all, from_slice_all, from_reader_all,
-  from_reader_iter, from_str_inferred, from_slice_inferred, to_vec,
-  into_vec, to_writer, to_writer_all}`; `json`/`yaml`/`toml` mirror the same
-  vocabulary without a format argument; `json::from_lines_str` for JSON
-  Lines. `codec` re-exports for compatibility only. `_with_limits` forms only
-  where caller limits differ; no duplicate string-first serializers.
+- Structured text: generic dispatch in `text::{from_utf8, from_bytes,
+  from_reader, from_utf8_all, from_bytes_all, from_reader_all,
+  from_reader_iter, from_utf8_inferred, from_bytes_inferred, into_utf8,
+  into_bytes, into_writer}` with `_all` output forms; `json`/`yaml`/`toml`
+  mirror that vocabulary without a format argument. `json::from_lines_*`
+  covers JSON Lines. `codec` re-exports only; `_with_limits` exists only when
+  caller limits differ.
   Redirected TOML output calls `toml::validate_for_write_with_limits`
   (runtime decode limits) before opening a destination, then streams via
-  `to_writer`; core-default callers may use `validate_for_write`.
+  `into_writer`; core-default callers may use `validate_for_write`.
 - `TypedValue`: one value paired with its datatype, validated on
   construction, sharing Field's marker family - `TypedValue<K: FieldType>`,
   one alias per datatype (`Int64Value`, `Utf8Value`, ...), `AnyType` default.
   Narrowed: `try_from_parts`, `try_from_value`; dynamic: `from_parts`,
   `from_value`; static datatypes add `new`. Behind the `arrow` feature it is
-  the one scalar Arrow projection: `to_arrow_array`, `from_arrow_array`,
+  the one scalar Arrow projection: `into_arrow_array`, `from_arrow_array`,
   narrowed `try_from_arrow_array`; callers holding Field context use
   `arrow::scalar_array` / `arrow::scalar_value` instead. Never a second
   marker family, never a Field-owning scalar wrapper.
@@ -798,28 +816,26 @@ actual, where.
   total-order floats, bytes, sequences, ordered arbitrary-key mappings;
   shared nesting via immutable `Arc`; empty values without backing
   allocation.
-- Plain JSON stays plain. Values outside JSON's model use the one versioned
-  `$yggdryl` envelope; an ordinary mapping with that shape is escaped so user
-  data is never mistaken for a typed value.
-- `!yggdryl/*` YAML tags name kinds the value model has and select their
-  payloads; every other tag is an annotation whose node decodes as its plain
-  value. The write path emits no non-core tag. Comments are never consulted.
+- JSON, YAML, and TOML emit their ordinary native shapes, never Yggdryl tags or
+  versioned envelopes. A value the selected format cannot represent is refused
+  by kind instead of being hidden in a private wire protocol.
+- A caller may supply one [`Field`] while parsing. The field interprets natural
+  text spellings (for example decimals, binary, and temporals), orders record
+  members, and validates/canonicalizes the result in the Rust core. Without a
+  field, parsing returns only the types the document itself proves.
+- YAML input may contain standard or foreign tags, but tags are annotations:
+  the node decodes as its plain value. Comments are never consulted.
 - TOML: TOML 1.1 on the newest pinned `toml` keeping the 1.85 floor; decode
   the borrowed spanned `DeTable`/`DeValue` tree (no Serde datetime-marker
   collisions; byte positions retained). Root is always a table; empty
   documents decode as empty mappings. Native date/times decode to the
   temporal they name at the coarsest unit keeping every digit; a temporal
-  projects back as native TOML syntax exactly when TOML can spell it
-  (four-digit year, fixed offset, within one day) - otherwise, and for every
-  decimal, the typed envelope. No multi-document stream: `from_*_all`
-  returns exactly one value; `to_writer_all` rejects zero or two.
-  Root-scalar/null/bytes/unsigned-or-wide-integer/decimal/arbitrary-key/
-  unspellable-temporal use the envelope (same payloads as JSON/YAML);
-  colliding user mappings are escaped; a `type` naming nothing the model
-  holds decodes as the mapping it is. Native integers are signed 64-bit,
-  overflow rejected; non-native storage variants keep typed envelopes. Root
-  table counts as depth one; preflight the exact wire projection against the
-  published hard depth cap before writing.
+  projects back as native TOML syntax only when TOML can spell it (four-digit
+  year, fixed offset, within one day). Unsupported roots or scalar kinds are
+  refused. No multi-document stream: `from_*_all` returns exactly one value;
+  the multi-value writer rejects zero or two. Native integers are signed
+  64-bit and overflow is rejected. Root table counts as depth one; preflight
+  the natural wire projection against the published hard depth cap.
 - A decoded document never names a class: bindings construct classes only
   from caller-passed targets; never import, evaluate, construct, or mutate
   globals from untrusted content.
@@ -850,7 +866,7 @@ actual, where.
   resolved secret that is then dumped or written to a table has leaked. A
   document with no `{{` costs one linear scan and nothing else.
 - Benchmark slice parsing, reader streaming, vector and writer emission,
-  enveloped values, wide mappings, deep structures; keep allocation
+  field-directed values, wide mappings, deep structures; keep allocation
   baselines; report throughput rather than calling unmeasured code
   optimized.
 
@@ -864,13 +880,13 @@ actual, where.
   unchecked route that could swap the datatype behind `K`.
 - Lossless Arrow schema parity; validate at construction/import and cold
   projection boundaries, not per record or cache hit.
-- C Data Interface schemas go only through `DataType::to_arrow_ffi` and
-  `Field::to_arrow_ffi`, which own recursive child/dictionary/nullability/
+- C Data Interface schemas go only through `DataType::into_arrow_ffi` and
+  `Field::into_arrow_ffi`, which own recursive child/dictionary/nullability/
   ordering/metadata/flag repair; bindings import that schema and keep no
   second recursive FFI builder.
 - Both Arrow unit enums import infallibly into `TimeUnit`; exports are the
   fallible category conversions; never coerce across temporal/interval.
-- `to_arrow*` may clone shared refs; `into_arrow*` moves what Arrow permits.
+- `into_arrow*` may clone shared references and moves what Arrow permits.
 - Cache complete Arrow projections; no-op mutations retain the cache,
   effective ones invalidate exactly once; cache state never affects value
   traits or serialization. Arrow dictionary ID and ordering flags are owned
@@ -913,7 +929,7 @@ actual, where.
   `arrow::scalar_value` (validated foreign one-row array in, canonical
   `Value` out); the exact `Field` beside them is the authority on
   nullability, dictionary options, and extension identity. `TypedValue`
-  projects the same boundary without a Field (`to_arrow_array`,
+  projects the same boundary without a Field (`into_arrow_array`,
   `from_arrow_array`, marker-narrowed `try_from_arrow_array`) through a
   synthetic non-nullable Field with the canonical-default null exception.
   Defaults are `DataType::default_arrow_array` / `Field::default_arrow_array`
@@ -957,7 +973,7 @@ actual, where.
   boundary, not a dishonest optional accessor. `safe` follows Arrow's
   cast-failure policy and never bypasses physical validity, logical
   nullability, Map invariants, or descriptor checks.
-- Record adapters bulk-materialize through the native Field-directed paths:
+- Binding Arrow adapters bulk-materialize through the native Field-directed paths:
   batch- and row-lazy, one retained source batch, one cast plan per input
   schema, no row maps, no JSON bridge. Python exposes PyArrow holders; JS
   uses its standard copied IPC boundary and never claims zero-copy.
@@ -1064,7 +1080,7 @@ Both extensions:
   when `safe=False`, falling back to typed construction where inference
   cannot shape the target (e.g. map pairs). A bare `DataType` permits typed
   null; a non-nullable `Field` rejects `None` and null Scalars; child
-  nullability belongs to record builders. Both packages delegate
+  nullability belongs to field builders. Both packages delegate
   StructArray/RecordBatch/IPC materialization to `yggdryl::arrow`; neither
   keeps a second schema or value model.
 - Identifier components are read-only properties, segments a read-only
@@ -1073,26 +1089,26 @@ Both extensions:
   wrappers unhashable); both shared by identifier and Field APIs; no suffix,
   coding, or category inference in Python code.
 - `yggdryl.{json,toml,yaml}` are thin byte-oriented facades; recursive
-  conversion happens in Rust; orchestration may resolve I/O, record targets,
+  conversion happens in Rust; orchestration may resolve I/O, class targets,
   registries, but never serializes `dict -> str -> Rust`.
 - Python values (scalars, bytes-likes, temporals, decimal, UUID, enum, path,
-  collections, mappings, dataclasses, records) convert to the `Value`
+  collections, mappings, dataclasses) convert to the `Value`
   variant holding their parts; a value with no variant crosses as its plain
   shape (an over-wide integer keeps magnitude as decimal text, losing type).
-- Records expose exact `from_json`, `from_toml`, `from_yaml`, `from_`,
-  `into_json`, `into_toml`, `into_yaml`, `into_`, delegating to
-  `from_dict`/`to_dict` policy - no second record caster. Encoders return
-  bytes without a destination and never close caller streams.
-- **`pyarrow.RecordBatchReader` is the record shape**: every read returns
-  one, every write consumes one, over the C Stream interface only. Writes
-  accept anything PyArrow exports a stream from (reader, `Table`,
-  `RecordBatch`, `__arrow_c_stream__`, sequence of batches). Never a
-  row-level read/write; never a `Table` where the core returns a reader.
-- Record methods keep core names and order: `record_options`,
-  `read_arrow_field`, `read_arrow_batch_reader`, `write_arrow_batch_reader`,
-  `append_arrow_batch_reader`. No read-target argument (the schema lives on
-  the options). `options` is the one keyword, accepting the settings value
-  or anything naming an encoding; omitted, the media type decides.
+- Field classes inject no codec or conversion methods. The format facades own
+  `dumps`/`loads` and explicit `cls=` reconstruction; encoders return bytes
+  without a destination and never close caller streams.
+- **`pyarrow.RecordBatchReader` is the primitive record shape**: primitive
+  reads return one and primitive writes consume one over the C Stream
+  interface. Optimized `arrow_table` and `arrow_record_batch` methods wrap or
+  export that same stream, and row-record methods convert dataclass instances
+  row by row without creating a second codec.
+- Record-encoding methods keep core intent and order: `record_options`,
+  `read_arrow_field`, `read_arrow_reader`, `overwrite_arrow_reader`,
+  `append_arrow_reader`, `merge_arrow_reader`, followed by the corresponding
+  table, record-batch, and records triplets. No read-target argument (the field
+  lives on the options). `options` is the one keyword, accepting the settings
+  value or anything naming an encoding; omitted, the media type decides.
   `IOBase.media_type` is settable; `with` binds `open`/`close` (which
   publishes a written file at exact length).
 - `RecordOptions` is the core value, never a Python model. A setting another
@@ -1123,106 +1139,93 @@ Both extensions:
   accept what `Table.append` accepts and return the table. Names stay
   dotted.
 
-### Python records and annotations
+### Python field classes and annotations
 
-- Annotation inference and record conversion live below
-  `python/yggdryl/records/`; they may inspect typing objects but construct
-  native `DataType`/`Field` wrappers - never a parallel schema, never
+- Annotation inference and dataclass projection live below
+  `python/yggdryl/fields/`; they may inspect typing objects but construct
+  native `DataType`/`Field` wrappers - never a parallel schema and never
   PyArrow types created merely to re-import.
-- Entry points: `DataType.from_pyhint`, `Field.from_pyhint`.
-  `Optional[T]`/`T | None`/unions with `None` supply default nullability; an
-  `Annotated` `nullable` option overrides and governs safe input/output at
-  every nested boundary; a bare `None` default never changes schema
-  nullability and must satisfy the cached Field.
+- The public vocabulary is `scalar`, the pure builder `field(value,
+  name=None)`, cached `Class.field()`, `Field.from_arrow_schema`,
+  `Field.into_arrow_schema`, and `Field.into_dataclass`, plus
+  `DataType.from_pyhint` / `Field.from_pyhint`. There is no `Record` class,
+  `record` decorator, `records` module, `FIELD` metadata constant,
+  `into_field`, `into_struct_field`, `schema_field(s)`, or compatibility
+  alias.
+- `@scalar` and `@scalar(...)` produce a genuine stdlib dataclass and forward
+  every dataclass option. Their only addition is an argument-free static
+  `field()` method. The module-level `field()` remains a pure shape builder;
+  it is never a decorator.
+- `Class.field()` returns one cached, frozen, non-null Struct `Field`. The
+  installed `staticmethod` captures its decorated owner, so an undecorated
+  subclass reuses that root and a decorated subclass owns a fresh root.
+  Reject a declaration that already uses `field`; `FIELD` is an ordinary
+  user name with no Yggdryl meaning.
+- Class projection preserves dataclass field order and metadata and excludes
+  `ClassVar`, `InitVar`, and double-underscore working annotations from the
+  Struct. Persist `python.module`, `python.class`, `python.qualname`, and
+  `python.kind=field` on decorated roots (`dataclass` on ordinary dataclasses).
+  Freeze the root and its cached children together so no child can diverge
+  from the published schema.
+- Resolve inherited and forward annotations once per class; detect recursive
+  graphs, preserve local aliases and generic bindings, and never retain a
+  decorator frame. Pending classes retain only annotation-reachable bindings,
+  retry a failed lazy resolution, and synchronize first access so concurrent
+  callers cannot observe different cached Fields.
+- `Optional[T]`/`T | None`/unions with `None` supply default nullability; an
+  `Annotated` `nullable` option overrides it. A bare `None` default never
+  changes schema nullability. Defaults and factories are constructor behavior,
+  not schema declarations, and mutable defaults are never shared by generated
+  dataclasses.
 - Field options are exactly `arrow_type`, `nullable`, `metadata`, `id`,
   `dictionary_id`, `dictionary_is_ordered`, as `(key, value)` extras or an
   options mapping (reserved-leading tuples exactly two items). Resolve
   left-to-right, validate the final winner, merge metadata entry-wise, then
   overlay caller/dataclass metadata. A mapping naming one dictionary option
-  must name both; tuple extras may split them. A sole physical member
-  through Optional/NewType/TypeVar/alias supplies the baseline; outer
-  options overlay; a parent `arrow_type` owns its whole subtree.
+  must name both; tuple extras may split them. A sole physical member through
+  Optional/NewType/TypeVar/alias supplies the baseline; outer options overlay;
+  a parent `arrow_type` owns its whole subtree.
 - `arrow_type` accepts only an actual PyArrow datatype; preserve explicit
   ExtensionTypes through one native Field import; reject conflicting
   `ARROW:extension:*` overlays; extension metadata must be UTF-8. Bare
-  `DataType.from_pyhint` applies only `arrow_type`, rejects ExtensionType
-  and Field-only options; legacy all-string metadata-only mappings stay
-  ignored there.
-- `@record` produces a genuine stdlib dataclass; cache one tuple of child
-  Fields and one root Field per class, never per instance. Persist
-  `python.module`, `python.class`, `python.qualname`, `python.kind` as Field
-  metadata. Freeze published cached Fields: metadata mutation raises.
-- The records module re-exports the useful `dataclasses` surface; `to_dict`
-  and `from_dict` support records and plain dataclasses; generated methods
-  delegate to them.
-- `safe=False` is the explicit shallow path; `safe=True` recursively
-  validates and casts with path-aware errors: exact boolean casting,
-  fixed-size-list arity, no temporal truncation. Naive datetimes are UTC
-  only for exact `UTC` targets; other zoned targets need aware, zoneless
-  need naive; Arrow times reject aware. Error policies are exactly
-  `errors="raise"` and `errors="default"` (declared default or factory,
-  else raise).
-- Resolve inherited/forward annotations once per class; detect recursive
-  graphs, preserve declaration order, avoid shared mutable defaults;
-  benchmark cached schema access and safe vs shallow separately. Never
-  retain a decorator frame: pending records keep annotation-reachable
-  bindings only; parameterized aliases use per-conversion binding contexts
-  and never publish a specialization as its generic origin's schema.
-- Safe output validates existing instances without reconstruction or
-  `__init__`/`__post_init__`; thread declared generic hints through nested
-  traversal.
-- Class factories are exactly
-  `Record.from_arrow_field(field, *, class_name=None, module=None)` and
-  `Record.from_arrow_schema(...)`: import each Arrow field once through
-  `Field.from_arrow`, cache those exact Fields, derive casting annotations
-  from the cached graph (a language view only - never regenerate through
-  `from_pyhint`, which can erase widths, layout, dictionary state,
-  metadata). Assemble roots with `DataType.from_fields`, never via
-  `pa.struct` round trips or a second type table. Struct roots contribute
-  children; scalar roots one column. Require unique, valid, non-keyword
-  Python identifiers; never rename silently. Naming: explicit args, then
-  valid `python.class`/`python.module` metadata, then root-name/
-  `ArrowRecord` and `__main__`. Replace only the four generated identity
-  keys; keep other metadata. Preserve Schema metadata on the root and
-  project back via `into_arrow_schema`; accept UTF-8 byte pairs, reject
-  non-UTF-8 explicitly. The reserved `yggdryl:ipc:dictionary-ids` key is
-  transport state: route through `yggdryl::arrow`, restore IDs once, keep it
-  out of root metadata and `into_arrow_schema`; collection outputs may cache
-  one transport Schema; never parse the sidecar in Python.
-- Collection imports are exactly `from_dicts`, `from_arrow_record_batch`,
-  `from_arrow_record_batch_reader`, `from_arrow_table`, `from_arrow`: lazy
-  iterators reusing `from_dict` with the same `safe`/`errors` contract, no
-  per-row schemas or dictionaries as glue. `from_arrow` accepts RecordBatch,
-  Table, RecordBatchReader, `__arrow_c_stream__` exporters, or iterables of
-  batches; never invoke arbitrary `to_arrow` methods. Validate schemas at
-  the batch/source boundary (names, order, datatypes, nullability
-  recursively; transport metadata ignored). When validation is off but a
-  mismatch cast is needed, cache the target Arrow type once and call
-  `Scalar.cast` directly (not `Field.arrow_scalar` per cell); on output
-  normalize only explicit mismatched Scalars through `Field.arrow_scalar`;
-  use the same helper for one-cell error localization after a bulk builder
-  fails. Output `safe=False` skips annotation validation only - physical
-  validity always holds, unsafe overflow never enabled. PyArrow floor is 18
-  (correct run-end map and extension scalar paths); do not use
-  `maps_as_pydicts` - normalize map pairs in the adapter and reject
-  duplicate keys first.
-- Exports are exactly `into_arrow_field`, `into_arrow_schema`,
-  `into_arrow_record_batch`, `into_arrow_record_batches`,
-  `into_arrow_table`, `into_arrow_record_batch_reader`; collection forms are
-  classmethods over record iterables; batched forms take positive
-  `batch_size` default 65,536, stay lazy and bounded; empty eager outputs
-  use the cached schema. Reuse `to_dict`'s projection and `safe` behavior
-  but append values directly to Arrow columns (no temporary row map);
-  resolve the cached schema once. Output iterables accept only instances of
-  the receiving class, expose `safe` not `errors` (mapping rows go through
-  `from_dicts` first, where defaults and failure policy belong).
-- Regressions must cover empty/one-shot iterables, failures after a
-  successful batch, schema-metadata differences, incompatible nesting,
-  nullability, dictionary and exact widths, deep structs/lists/maps,
-  temporal and decimal values, safe vs shallow. Benchmarks separate class
-  materialization, schema validation, row casting, batch/table construction,
-  bounded reader iteration; fixtures outside measured loops; no allocation
-  claims from timings alone.
+  `DataType.from_pyhint` applies only `arrow_type`, rejects ExtensionType and
+  Field-only options; legacy all-string metadata-only mappings stay ignored
+  there.
+- `field` is the single shape-inference funnel: a native Field is itself; an
+  Arrow Schema/Field/datatype imports once; a decorated or ordinary dataclass
+  compiles through the same native boundary. Arbitrary attribute probing is
+  not inference. Its signature is
+  `field(value, name: str | None = None) -> Field`; every accepted shape
+  applies `name` identically and rejects a non-string name.
+- `Field.from_arrow_schema(schema, name="row")` imports the complete Schema
+  through `yggdryl::arrow`. It preserves exact widths, layout, nullability,
+  dictionary state, extension identity, and Schema metadata. The reserved
+  `yggdryl:ipc:dictionary-ids` sidecar is transport state: restore IDs once,
+  strip it from the native root's metadata, emit it only in
+  `into_arrow_schema`, and never parse it in Python.
+- `Field.into_dataclass` derives annotations from the exact cached Field graph,
+  never by re-running `from_pyhint`, which can erase physical detail. Require
+  unique valid non-keyword member names and reject unusable names rather than
+  silently renaming them. Nullable members default to `None`; nested Structs
+  become nested field dataclasses; the generated class's
+  `field()` result is the source Field and round-trips through
+  `into_arrow_schema`.
+- This is an intentional breaking API: `FIELD`, `field_of`,
+  `Field.from_dataclass`, `into_field`, and `into_struct_field` are removed
+  with no aliases.
+- Field classes participate in row-level I/O only as thin conversion plans.
+  Python record reads instantiate the requested dataclass one row at a time;
+  overwrite/append/merge infer the cached `field()` and redirect
+  through the native Arrow reader pipeline.
+- Regressions cover bare/configured decorators, all dataclass options,
+  inheritance, local forward references, generics, recursive rejection,
+  private annotations, `field` collisions, unrelated `FIELD`
+  members, concurrent first access, exact native cache identity, Arrow Schema
+  round trips, dictionary/extension state, nullability, and deep
+  structs/lists/maps. `python/benchmarks/fields.py` and `fields_arrow.py`
+  separate class materialization, cached access, schema import/export, and
+  native casting; fixtures stay outside measured loops and timings never stand
+  in for allocation measurements.
 
 ## JavaScript extension
 
@@ -1250,8 +1253,8 @@ Both extensions:
   batch crosses as one self-contained IPC stream (schema travels; say that
   per-batch header is the copied boundary's cost). `BatchReader.from` is the
   one inference point (reader, Arrow JS `Table`/`RecordBatch`, array of
-  batches, IPC bytes); `toIpc`/`toTable` drain. Never a row-level
-  read/write.
+  batches, IPC bytes); `intoIpc`/`intoTable` drain. Row-record methods infer plain
+  objects or record classes and redirect through that same reader.
 - Record and table calls take the settings value or anything naming an
   encoding; the encoding is never an argument (`recordOptions()` derives it;
   `mediaType` is settable). Settings another encoding lacks read `null`;

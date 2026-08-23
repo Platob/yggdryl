@@ -1,10 +1,9 @@
 //! Schema-directed scalar/array conversion.
 
 use std::collections::BTreeSet;
-use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::{DataType, Field, TimeUnit, UnionMode, Value};
+use crate::{DataType, Field, I256, TimeUnit, Timezone, UnionMode, Value};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
@@ -33,7 +32,7 @@ use super::{Error, Result};
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Value]) -> Result<ArrayRef> {
     let data_type = field.data_type();
-    let arrow_type = field.to_arrow_ref()?.data_type().clone();
+    let arrow_type = field.clone().into_arrow_ref()?.data_type().clone();
     // Arrow owns the canonical empty representation for every validated
     // datatype. Taking this path before schema-directed value materialization
     // avoids inventing defaults for children that have no physical slots.
@@ -117,12 +116,27 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Value]) -> Result<Arra
             TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(data_type, "invalid time64 unit")),
         },
-        DataType::Duration(unit) => match unit {
+        DataType::Duration32(unit) => match unit {
+            TimeUnit::Second => primitive!(DurationSecondArray, |value: &&Value| {
+                temporal_i32(*unit)(value).map(i64::from)
+            }),
+            TimeUnit::Millisecond => primitive!(DurationMillisecondArray, |value: &&Value| {
+                temporal_i32(*unit)(value).map(i64::from)
+            }),
+            TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, |value: &&Value| {
+                temporal_i32(*unit)(value).map(i64::from)
+            }),
+            TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, |value: &&Value| {
+                temporal_i32(*unit)(value).map(i64::from)
+            }),
+            _ => return Err(unsupported(data_type, "invalid duration32 unit")),
+        },
+        DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => primitive!(DurationMillisecondArray, temporal_i64(*unit)),
             TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, temporal_i64(*unit)),
-            _ => return Err(unsupported(data_type, "invalid duration unit")),
+            _ => return Err(unsupported(data_type, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
             primitive!(IntervalYearMonthArray, signed_i32)
@@ -211,7 +225,9 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Value]) -> Result<Arra
                 value, *scale
             ))
         }
-        DataType::Decimal256 { .. } => physical_primitive!(Decimal256Array, decimal256),
+        DataType::Decimal256 { scale, .. } => {
+            physical_primitive!(Decimal256Array, |value: &&Value| decimal256(value, *scale))
+        }
         DataType::Map(map) => map_array(map, values)?,
         DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
         // A geospatial value *is* its WKB payload, so the array is the bytes;
@@ -270,7 +286,7 @@ pub(crate) fn value_from_array(
         DataType::UInt16 => primitive!(UInt16Array, Value::from),
         DataType::UInt32 => primitive!(UInt32Array, Value::from),
         DataType::UInt64 => primitive!(UInt64Array, Value::from),
-        DataType::Float16 => primitive!(Float16Array, |value: f16| Value::from(value.to_f32())),
+        DataType::Float16 => primitive!(Float16Array, Value::from),
         DataType::Float32 => primitive!(Float32Array, Value::from),
         DataType::Float64 => primitive!(Float64Array, Value::from),
         // Every temporal reads as its typed value: the count alone is not
@@ -278,66 +294,72 @@ pub(crate) fn value_from_array(
         // serializes losslessly and compares across resolutions.
         DataType::Timestamp(unit, zone) => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
-                Value::timestamp_in(value, *unit, zone.clone())
+                Value::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
             }),
             TimeUnit::Millisecond => primitive!(TimestampMillisecondArray, |value| {
-                Value::timestamp_in(value, *unit, zone.clone())
+                Value::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
             }),
             TimeUnit::Microsecond => primitive!(TimestampMicrosecondArray, |value| {
-                Value::timestamp_in(value, *unit, zone.clone())
+                Value::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
             }),
             TimeUnit::Nanosecond => primitive!(TimestampNanosecondArray, |value| {
-                Value::timestamp_in(value, *unit, zone.clone())
+                Value::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
             }),
             _ => return Err(unsupported(data_type, "invalid timestamp unit")),
         },
-        DataType::Date32 => primitive!(Date32Array, Value::Date),
-        // A Date64 is a day spelled in milliseconds; the day is the datum.
-        DataType::Date64 => primitive!(Date64Array, |value: i64| Value::Date(
-            i32::try_from(value.div_euclid(86_400_000)).unwrap_or(i32::MAX)
-        )),
+        DataType::Date32 => primitive!(Date32Array, |value| {
+            Value::Date32(value, TimeUnit::Day, Timezone::NAIVE)
+        }),
+        DataType::Date64 => primitive!(Date64Array, |value| {
+            Value::Date64(value, TimeUnit::Millisecond, Timezone::NAIVE)
+        }),
         DataType::Time32(unit) => match unit {
             TimeUnit::Second => {
-                primitive!(Time32SecondArray, |value| Value::Time(
-                    i64::from(value),
-                    *unit
+                primitive!(Time32SecondArray, |value| Value::Time32(
+                    value,
+                    *unit,
+                    Timezone::NAIVE
                 ))
             }
-            TimeUnit::Millisecond => primitive!(Time32MillisecondArray, |value| Value::Time(
-                i64::from(value),
-                *unit
+            TimeUnit::Millisecond => primitive!(Time32MillisecondArray, |value| Value::Time32(
+                value,
+                *unit,
+                Timezone::NAIVE
             )),
             _ => return Err(unsupported(data_type, "invalid time32 unit")),
         },
         DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => {
-                primitive!(Time64MicrosecondArray, |value| Value::Time(value, *unit))
+                primitive!(Time64MicrosecondArray, |value| Value::Time64(
+                    value,
+                    *unit,
+                    Timezone::NAIVE
+                ))
             }
             TimeUnit::Nanosecond => {
-                primitive!(Time64NanosecondArray, |value| Value::Time(value, *unit))
+                primitive!(Time64NanosecondArray, |value| Value::Time64(
+                    value,
+                    *unit,
+                    Timezone::NAIVE
+                ))
             }
             _ => return Err(unsupported(data_type, "invalid time64 unit")),
         },
-        DataType::Duration(unit) => match unit {
-            TimeUnit::Second => {
-                primitive!(DurationSecondArray, |value| Value::Duration(value, *unit))
-            }
-            TimeUnit::Millisecond => {
-                primitive!(DurationMillisecondArray, |value| Value::Duration(
-                    value, *unit
-                ))
-            }
-            TimeUnit::Microsecond => {
-                primitive!(DurationMicrosecondArray, |value| Value::Duration(
-                    value, *unit
-                ))
-            }
-            TimeUnit::Nanosecond => {
-                primitive!(DurationNanosecondArray, |value| Value::Duration(
-                    value, *unit
-                ))
-            }
-            _ => return Err(unsupported(data_type, "invalid duration unit")),
+        DataType::Duration32(unit) => duration32_from_array(array, index, *unit)?,
+        DataType::Duration64(unit) => match unit {
+            TimeUnit::Second => primitive!(DurationSecondArray, |value| {
+                Value::Duration64(value, *unit, Timezone::NAIVE)
+            }),
+            TimeUnit::Millisecond => primitive!(DurationMillisecondArray, |value| {
+                Value::Duration64(value, *unit, Timezone::NAIVE)
+            }),
+            TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, |value| {
+                Value::Duration64(value, *unit, Timezone::NAIVE)
+            }),
+            TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, |value| {
+                Value::Duration64(value, *unit, Timezone::NAIVE)
+            }),
+            _ => return Err(unsupported(data_type, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
             primitive!(IntervalYearMonthArray, Value::from)
@@ -396,9 +418,7 @@ pub(crate) fn value_from_array(
                 .zip(array.columns())
                 .map(|(field, child)| value_from_array(field.data_type(), child.as_ref(), index))
                 .collect::<Result<Vec<_>>>()?;
-            // A struct row is a typed record: the datatype rides along, so a
-            // scan's rows serialize with their field names everywhere.
-            Value::record(data_type.clone(), values)?
+            Value::from_sequence(values)
         }
         DataType::Union(fields, _) => {
             let array = downcast::<UnionArray>(array)?;
@@ -419,17 +439,18 @@ pub(crate) fn value_from_array(
         DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
-            Value::Decimal(i128::from(value), *scale)
+            Value::d128(i128::from(value), *scale)
         }
         DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
-            Value::Decimal(i128::from(value), *scale)
+            Value::d128(i128::from(value), *scale)
         }
         DataType::Decimal128 { scale, .. } => {
-            Value::Decimal(downcast::<Decimal128Array>(array)?.value(index), *scale)
+            Value::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
         }
-        DataType::Decimal256 { .. } => {
-            Value::from(downcast::<Decimal256Array>(array)?.value(index).to_string())
+        DataType::Decimal256 { scale, .. } => {
+            let value = downcast::<Decimal256Array>(array)?.value(index);
+            Value::d256(I256::from_le_bytes(value.to_le_bytes()), *scale)
         }
         DataType::Map(map) => {
             let entries = downcast::<MapArray>(array)?.value(index);
@@ -751,7 +772,8 @@ impl MaterializationBudget {
             | DataType::Timestamp(..)
             | DataType::Date64
             | DataType::Time64(_)
-            | DataType::Duration(_)
+            | DataType::Duration32(_)
+            | DataType::Duration64(_)
             | DataType::Interval(TimeUnit::DayTime)
             | DataType::Decimal64 { .. }
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
@@ -846,7 +868,8 @@ impl MaterializationBudget {
             | DataType::Timestamp(..)
             | DataType::Date64
             | DataType::Time64(_)
-            | DataType::Duration(_)
+            | DataType::Duration32(_)
+            | DataType::Duration64(_)
             | DataType::Interval(TimeUnit::DayTime)
             | DataType::Decimal64 { .. }
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
@@ -1102,7 +1125,7 @@ fn list_parts<'a, O: Offset>(values: &'a [&Value]) -> Result<ListParts<'a, O>> {
 fn list_array<O: Offset>(child: &Field, values: &[&Value], kind: ListKind) -> Result<ArrayRef> {
     let (offsets, _, flattened, nulls) = list_parts::<O>(values)?;
     let child_array = array_from_values(child, &flattened)?;
-    let child = child.to_arrow_ref()?;
+    let child = child.clone().into_arrow_ref()?;
     let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
     match kind {
         ListKind::List => Ok(Arc::new(ListArray::try_new(
@@ -1129,7 +1152,7 @@ fn list_view_array<O: Offset>(
     let (offsets, sizes, flattened, nulls) = list_parts::<O>(values)?;
     let offsets = offsets.into_iter().take(values.len()).collect::<Vec<_>>();
     let child_array = array_from_values(child, &flattened)?;
-    let child = child.to_arrow_ref()?;
+    let child = child.clone().into_arrow_ref()?;
     match kind {
         ListKind::ListView => Ok(Arc::new(ListViewArray::try_new(
             child,
@@ -1226,7 +1249,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Value]) -> Result<
     }
     let child_array = array_from_values(child, &flattened)?;
     Ok(Arc::new(FixedSizeListArray::try_new_with_length(
-        child.to_arrow_ref()?,
+        child.clone().into_arrow_ref()?,
         size,
         child_array,
         nulls(validity),
@@ -1252,7 +1275,8 @@ fn struct_array(fields: &crate::Fields, values: &[&Value]) -> Result<ArrayRef> {
         .collect::<Vec<_>>();
     let arrow_fields = fields
         .iter()
-        .map(Field::to_arrow_ref)
+        .cloned()
+        .map(Field::into_arrow_ref)
         .collect::<crate::Result<Vec<_>>>()?;
     if fields.is_empty() {
         return Ok(Arc::new(StructArray::new_empty_fields(
@@ -1277,13 +1301,9 @@ fn struct_array(fields: &crate::Fields, values: &[&Value]) -> Result<ArrayRef> {
                     } else {
                         value
                             .as_sequence()
-                            .or_else(|| value.as_record().map(|(_, values)| values))
                             .and_then(|values| values.get(column))
                             .ok_or_else(|| {
-                                invalid_value_kind(
-                                    "a sequence or record for a struct column",
-                                    value,
-                                )
+                                invalid_value_kind("a sequence for a struct column", value)
                             })
                     }
                 })
@@ -1421,7 +1441,7 @@ fn union_array(
 
 fn fields_to_arrow_union(fields: &crate::UnionFields, mode: UnionMode) -> Result<ArrowDataType> {
     let data_type = DataType::union(fields.iter().map(|(id, field)| (id, field.clone())), mode)?;
-    data_type.to_arrow().map_err(Into::into)
+    data_type.into_arrow().map_err(Into::into)
 }
 
 fn dictionary_array(dictionary: &crate::DictionaryType, values: &[&Value]) -> Result<ArrayRef> {
@@ -1506,7 +1526,11 @@ fn map_array(map: &crate::MapType, values: &[&Value]) -> Result<ArrayRef> {
     let keys = entries.iter().map(|(key, _)| key).collect::<Vec<_>>();
     let vals = entries.iter().map(|(_, value)| value).collect::<Vec<_>>();
     let entries_array = StructArray::try_new_with_length(
-        vec![fields[0].to_arrow_ref()?, fields[1].to_arrow_ref()?].into(),
+        vec![
+            fields[0].clone().into_arrow_ref()?,
+            fields[1].clone().into_arrow_ref()?,
+        ]
+        .into(),
         vec![
             array_from_values(&fields[0], &keys)?,
             array_from_values(&fields[1], &vals)?,
@@ -1515,7 +1539,7 @@ fn map_array(map: &crate::MapType, values: &[&Value]) -> Result<ArrayRef> {
         entries.len(),
     )?;
     Ok(Arc::new(MapArray::try_new(
-        map.entries().to_arrow_ref()?,
+        map.entries().clone().into_arrow_ref()?,
         OffsetBuffer::new(ScalarBuffer::from(offsets)),
         entries_array,
         nulls(validity),
@@ -1536,8 +1560,8 @@ fn run_array(encoded: &crate::RunEndEncodedType, values: &[&Value]) -> Result<Ar
     }
     let values_array = array_from_values(encoded.values(), &run_values)?;
     let arrow_type = ArrowDataType::RunEndEncoded(
-        encoded.run_ends().to_arrow_ref()?,
-        encoded.values().to_arrow_ref()?,
+        encoded.run_ends().clone().into_arrow_ref()?,
+        encoded.values().clone().into_arrow_ref()?,
     );
     macro_rules! run {
         ($key:ty, $array:ty) => {{
@@ -1656,6 +1680,23 @@ fn downcast<T: Array + 'static>(array: &dyn Array) -> Result<&T> {
     })
 }
 
+fn duration32_from_array(array: &dyn Array, index: usize, unit: TimeUnit) -> Result<Value> {
+    let count = match unit {
+        TimeUnit::Second => downcast::<DurationSecondArray>(array)?.value(index),
+        TimeUnit::Millisecond => downcast::<DurationMillisecondArray>(array)?.value(index),
+        TimeUnit::Microsecond => downcast::<DurationMicrosecondArray>(array)?.value(index),
+        TimeUnit::Nanosecond => downcast::<DurationNanosecondArray>(array)?.value(index),
+        _ => {
+            return Err(unsupported(
+                &DataType::Duration32(unit),
+                "invalid duration32 unit",
+            ));
+        }
+    };
+    let count = i32::try_from(count).map_err(|_| invalid_value("duration32", count))?;
+    Value::duration32(count, unit).map_err(Into::into)
+}
+
 fn exact_i128(value: &Value) -> Result<i128> {
     value
         .as_i128()
@@ -1680,7 +1721,7 @@ fn signed_i64(value: &Value) -> Result<i64> {
 
 /// Read the coefficient a decimal column of `scale` stores.
 ///
-/// A [`Value::Decimal`] knows its own scale, so it is restated at the column's
+/// A decimal [`Value`] knows its own scale, so it is restated at the column's
 /// scale and refused when that would drop a digit. A bare integer is already
 /// the coefficient, which is how a decimal column has always been written and
 /// what a caller who never built a decimal value still means.
@@ -1723,19 +1764,16 @@ fn temporal_i32(unit: TimeUnit) -> impl Fn(&Value) -> Result<i32> {
 
 /// Read the day count a `Date32` column stores.
 fn date_i32(value: &Value) -> Result<i32> {
-    match value.as_date() {
-        Some(days) => Ok(days),
+    match value.temporal_count_at(TimeUnit::Day) {
+        Some(days) => i32::try_from(days).map_err(|_| invalid_value("date32", days)),
         None => signed_i32(value),
     }
 }
 
 /// Read the whole-day milliseconds a `Date64` column stores.
 fn date_i64(value: &Value) -> Result<i64> {
-    const MILLISECONDS_PER_DAY: i64 = 86_400_000;
-    match value.as_date() {
-        Some(days) => i64::from(days)
-            .checked_mul(MILLISECONDS_PER_DAY)
-            .ok_or_else(|| invalid_value("a date within date64 milliseconds", days)),
+    match value.temporal_count_at(TimeUnit::Millisecond) {
+        Some(milliseconds) => Ok(milliseconds),
         None => signed_i64(value),
     }
 }
@@ -1757,8 +1795,7 @@ fn optional_bytes(value: &Value) -> Result<Option<&[u8]>> {
 fn optional_wkb(value: &Value) -> Result<Option<&[u8]>> {
     match value {
         Value::Null => Ok(None),
-        Value::Geospatial(bytes) => Ok(Some(bytes)),
-        Value::Bytes(bytes) => Ok(Some(bytes)),
+        Value::Geospatial(bytes) | Value::Bytes(bytes) => Ok(Some(bytes)),
         _ => Err(invalid_value_kind("well-known binary", value)),
     }
 }
@@ -1825,16 +1862,16 @@ fn interval_month_day_nano(value: &Value) -> Result<IntervalMonthDayNano> {
     ))
 }
 
-fn decimal256(value: &Value) -> Result<i256> {
-    let value = value
-        .as_str()
-        .ok_or_else(|| invalid_value_kind("a decimal256 coefficient string", value))?;
-    i256::from_str(value).map_err(|_| {
-        invalid_value(
-            "a base-10 decimal256 coefficient",
-            crate::text::elide_to(value, 32),
-        )
-    })
+fn decimal256(value: &Value, scale: i8) -> Result<i256> {
+    value
+        .decimal256_unscaled_at(scale)
+        .map(|coefficient| i256::from_le_bytes(coefficient.into_le_bytes()))
+        .ok_or_else(|| {
+            invalid_value(
+                &format!("a decimal256 representable at scale {scale}"),
+                value.kind(),
+            )
+        })
 }
 
 fn unsupported(data_type: &DataType, reason: impl Into<String>) -> Error {

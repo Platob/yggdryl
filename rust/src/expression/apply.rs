@@ -83,8 +83,7 @@ pub trait ApplyExpressionStream {
 
 /// One row applies to the value the expression computes.
 ///
-/// The row is a [`Value::Sequence`] of column values in schema order, or a
-/// [`Value::Record`], which is the same thing carrying its own datatype.
+/// The row is a [`Value::Sequence`] of column values in schema order.
 impl ApplyExpression for Value {
     type Output = Value;
 

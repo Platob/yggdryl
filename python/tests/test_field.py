@@ -8,7 +8,7 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, MediaType, MimeType, Record, Uri, Url
+from yggdryl import DataType, Field, MediaType, MimeType, Uri, Url
 
 
 def test_field_infers_datatype_and_field_representations() -> None:
@@ -16,8 +16,17 @@ def test_field_infers_datatype_and_field_representations() -> None:
     arrow = pa.field("quantity", pa.decimal128(18, 4), nullable=False)
 
     assert Field("id", DataType("int64")).data_type == DataType("int64")
-    assert field.to_arrow() == arrow
     assert field.into_arrow() == arrow
+    for legacy in (
+        "to_arrow",
+        "to_arrow_schema",
+        "to_scheme_compat",
+        "to_json",
+        "to_yaml",
+        "to_toml",
+        "to_dict",
+    ):
+        assert not hasattr(field, legacy)
     assert Field.from_value(field) == field
     assert Field.from_value(arrow) == field
     assert Field.from_arrow(arrow) == field
@@ -97,7 +106,7 @@ def test_field_arrow_roundtrip_preserves_recursive_layout_flags() -> None:
         False,
     )
 
-    projected = Field.from_arrow(arrow).to_arrow()
+    projected = Field.from_arrow(arrow).into_arrow()
     assert projected.type.field("lookup").type.keys_sorted is True
     assert projected.type.field("codes").type.ordered is True
 
@@ -195,11 +204,11 @@ def test_field_typed_http_media_updates_are_atomic() -> None:
     )
     assert field.content_type == "text/csv"
     assert field.content_encoding == "gzip, compress, zstd"
-    before = field.to_json()
+    before = field.into_json()
 
     with pytest.raises(ValueError):
         field.set_media_type(MediaType.from_parts(MimeType.JSON, [MimeType.BZIP2]))
-    assert field.to_json() == before
+    assert field.into_json() == before
 
     field.set_mime_type(MimeType.JSON)
     assert field.content_type == "application/json"
@@ -209,32 +218,32 @@ def test_field_typed_http_media_updates_are_atomic() -> None:
 
     field.set_content_type("application/json")
     field.set_content_encoding("identity")
-    malformed = field.to_json()
+    malformed = field.into_json()
     with pytest.raises(ValueError):
         _ = field.media_type
     with pytest.raises(ValueError):
         field.remove_media_type()
-    assert field.to_json() == malformed
+    assert field.into_json() == malformed
 
 
 def test_field_string_json_order_hash_repr_and_pickle_protocols() -> None:
     field = Field("symbol", pa.string(), nullable=False, metadata={"venue": "XPAR"})
 
     assert Field.from_str(str(field)) == field
-    assert Field.from_json(field.to_json()) == field
     assert Field.from_json(field.into_json()) == field
     assert eval(repr(field), {"Field": Field}) == field
     assert copy.copy(field) == field
     assert pickle.loads(pickle.dumps(field)) == field
     assert hash(field) == hash(Field.from_value(field))
+    assert field.stable_hash() == Field.from_value(field).stable_hash()
     other = Field("symbol", pa.string(), metadata={"venue": "XPAR"})
     assert field < other or other < field
 
 
 def test_field_metadata_view_implements_the_mapping_protocol() -> None:
     field = Field("price", "float64", nullable=False, metadata={"venue": "XPAR"})
-    original_hash = hash(field)
-    keyed = {field: "stable"}
+    peer = Field("symbol", "utf8", metadata={"venue": "XPAR"})
+    before = field.stable_hash()
 
     # Item access on the field itself reaches a nested child; the metadata
     # mapping lives on the view, which is where a key means a key.
@@ -254,10 +263,16 @@ def test_field_metadata_view_implements_the_mapping_protocol() -> None:
     assert list(field.metadata.keys()) == ["venue"]
     assert list(field.metadata.values()) == ["XPAR"]
     assert list(field.metadata.items()) == [("venue", "XPAR")]
+    assert field.metadata == peer.metadata
+    assert field.metadata != object()
+    with pytest.raises(TypeError):
+        hash(field.metadata)
 
     field.metadata["currency"] = "EUR"
-    assert hash(field) == original_hash
-    assert keyed[field] == "stable"
+    assert field.metadata != peer.metadata
+    peer.metadata["currency"] = "EUR"
+    assert field.metadata == peer.metadata
+    assert field.stable_hash() != before
     field.metadata.update({"source": "exchange"}, venue="XEUR")
     assert dict(field.metadata.items()) == {
         "currency": "EUR",
@@ -519,12 +534,12 @@ def test_protocol_view_http_covers_https_and_ignores_header_case() -> None:
     assert not hasattr(field, "https")
 
 
-def test_protocol_view_refuses_writes_to_a_frozen_record_field() -> None:
-    row_type = Record.from_arrow_schema(
-        pa.schema([pa.field("id", pa.int64(), nullable=False)]),
-        class_name="FrozenViewRecord",
-    )
-    child = row_type.schema_fields()[0]
+def test_protocol_view_refuses_writes_to_a_generated_field_class() -> None:
+    row_type = Field.from_arrow_schema(
+        pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    ).into_dataclass(name="FrozenViewField")
+    frozen = row_type.field()
+    child = frozen.data_type[0]
     view = child.iceberg
 
     assert view.get("doc") is None
@@ -539,6 +554,9 @@ def test_protocol_view_refuses_writes_to_a_frozen_record_field() -> None:
         view.clear()
     with pytest.raises(TypeError, match="read-only"):
         child.set_partition(True)
+    for restored in (copy.copy(frozen), pickle.loads(pickle.dumps(frozen))):
+        with pytest.raises(TypeError, match="read-only"):
+            restored.metadata["owner"] = "tests"
     assert list(view.items()) == []
     assert not child.is_partition
 
@@ -626,7 +644,7 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
     )
     assert imported.parquet_field_id == 17
     assert imported.metadata["PARQUET:field_id"] == "17"
-    assert imported.to_arrow().metadata[b"PARQUET:field_id"] == b"17"
+    assert imported.into_arrow().metadata[b"PARQUET:field_id"] == b"17"
 
     field = Field("value", "int64")
     assert field.parquet_field_id is None
@@ -652,12 +670,12 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
             metadata={"PARQUET:field_id": "2147483648"},
         )
 
-    row_type = Record.from_arrow_schema(
-        pa.schema([imported.to_arrow()]), class_name="IdentifiedRecord"
-    )
-    child = row_type.schema_fields()[0]
+    row_type = Field.from_arrow_schema(
+        pa.schema([imported.into_arrow()])
+    ).into_dataclass(name="IdentifiedField")
+    child = row_type.field().data_type[0]
     assert child.parquet_field_id == 17
-    assert row_type.into_arrow_schema().field(0).metadata[
+    assert row_type.field().into_arrow_schema().field(0).metadata[
         b"PARQUET:field_id"
     ] == b"17"
     with pytest.raises(TypeError, match="read-only"):
@@ -668,7 +686,7 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
 
 def test_typed_metadata_validation_is_atomic_and_arrow_compatible() -> None:
     field = Field("id", "int64", metadata={"source": "feed"})
-    before = field.to_arrow()
+    before = field.into_arrow()
 
     with pytest.raises(ValueError):
         field.set_alias("")
@@ -679,13 +697,13 @@ def test_typed_metadata_validation_is_atomic_and_arrow_compatible() -> None:
     with pytest.raises(ValueError):
         field["location"] = "urn:isbn:9780131103627"
 
-    assert field.to_arrow() == before
+    assert field.into_arrow() == before
     assert field.set_property("postgres", "default", "") is None
     assert field.get_property("postgres", "default") == ""
     assert field.remove_property("postgres", "default") == ""
     field.set_table_name("events")
     field.set_property("arrow", "extension:name", "example.event")
-    arrow = field.to_arrow()
+    arrow = field.into_arrow()
     assert arrow.metadata[b"table_name"] == b"events"
     assert arrow.metadata[b"arrow:extension:name"] == b"example.event"
     imported = Field.from_arrow(arrow)
@@ -706,6 +724,14 @@ def test_dictionary_options_are_owned_and_validated_by_core() -> None:
     assert field.dictionary_is_ordered is False
     assert Field.from_str(str(field)) == field
 
+    keyed = {field: "stable"}
+    with pytest.raises(TypeError, match="hashed Field is frozen"):
+        field.set_dictionary_options(9, True)
+    assert keyed[field] == "stable"
+    copied = copy.copy(field)
+    copied.set_dictionary_options(9, True)
+    assert copied.dictionary_id == 9
+
     with pytest.raises(ValueError):
         Field("plain", "int64").set_dictionary_options(1, True)
 
@@ -714,7 +740,7 @@ def test_dictionary_options_are_owned_and_validated_by_core() -> None:
         'dictionary_id=9007199254740993,metadata={})'
     )
     assert wide.dictionary_id == 9_007_199_254_740_993
-    assert json.loads(wide.to_json())["dictionary_id"] == "9007199254740993"
+    assert json.loads(wide.into_json())["dictionary_id"] == "9007199254740993"
 
 
 class TestGenericCast:
@@ -872,6 +898,35 @@ def test_child_assignment_replaces_by_position_and_appends_by_unknown_name() -> 
     assert [child.name for child in row] == ["extra"]
     with pytest.raises(KeyError):
         del row["gone"]
+
+
+def test_hash_locks_all_field_equality_state() -> None:
+    row = Field(
+        "row",
+        DataType.from_fields([Field("id", "int64", nullable=False)]),
+        nullable=False,
+    )
+    keyed = {row: "stable"}
+
+    with pytest.raises(TypeError, match="hashed Field is frozen"):
+        row.metadata["owner"] = "tests"
+    with pytest.raises(TypeError, match="hashed Field is frozen"):
+        row["venue"] = Field("venue", "utf8")
+    with pytest.raises(TypeError, match="hashed Field is frozen"):
+        del row["id"]
+    assert keyed[row] == "stable"
+
+    copied = copy.copy(row)
+    copied.metadata["owner"] = "tests"
+    copied["venue"] = Field("venue", "utf8")
+    assert copied.metadata["owner"] == "tests"
+    assert "venue" in copied
+    assert "venue" not in row
+
+    restored = pickle.loads(pickle.dumps(row))
+    restored.metadata["owner"] = "tests"
+    restored["venue"] = Field("venue", "utf8")
+    assert "venue" in restored
 
 
 def test_a_datatype_is_a_read_only_child_collection() -> None:
@@ -1038,17 +1093,17 @@ def test_the_three_formats_share_one_structural_model() -> None:
 
     # One `dict` model, three writers over it - so the three agree by
     # construction rather than by three sets of tests.
-    assert Field.from_dict(field.to_dict()) == field
-    assert Field.from_json(field.to_json()) == field
-    assert Field.from_yaml(field.to_yaml()) == field
-    assert Field.from_toml(field.to_toml()) == field
+    assert Field.from_dict(field.into_dict()) == field
+    assert Field.from_json(field.into_json()) == field
+    assert Field.from_yaml(field.into_yaml()) == field
+    assert Field.from_toml(field.into_toml()) == field
 
-    assert DataType.from_dict(field.data_type.to_dict()) == field.data_type
-    assert DataType.from_yaml(field.data_type.to_yaml()) == field.data_type
-    assert DataType.from_toml(field.data_type.to_toml()) == field.data_type
+    assert DataType.from_dict(field.data_type.into_dict()) == field.data_type
+    assert DataType.from_yaml(field.data_type.into_yaml()) == field.data_type
+    assert DataType.from_toml(field.data_type.into_toml()) == field.data_type
 
     # The mapping is a plain dict a caller can build and edit.
-    shape = field.to_dict()
+    shape = field.into_dict()
     assert isinstance(shape, dict)
     assert shape["name"] == "order"
     assert shape["data_type"]["type"] == "struct"
@@ -1064,20 +1119,20 @@ def test_indent_lays_out_bytes_without_changing_meaning() -> None:
     )
 
     # JSON: compact by default, `json.dumps(indent=n)` on request.
-    assert "\n" not in field.to_json()
-    assert field.to_json(indent=2).startswith('{\n  "name": "row",')
-    assert field.to_json(indent=4).startswith('{\n    "name": "row",')
+    assert "\n" not in field.into_json()
+    assert field.into_json(indent=2).startswith('{\n  "name": "row",')
+    assert field.into_json(indent=4).startswith('{\n    "name": "row",')
 
     # YAML: block style at two spaces by default, flow style only on request.
-    assert field.to_yaml().startswith("name: row\ndata_type:\n  type: struct")
-    assert field.to_yaml(indent=4).startswith("name: row\ndata_type:\n    type: struct")
-    assert field.to_yaml(indent=None).startswith("{name: row,")
+    assert field.into_yaml().startswith("name: row\ndata_type:\n  type: struct")
+    assert field.into_yaml(indent=4).startswith("name: row\ndata_type:\n    type: struct")
+    assert field.into_yaml(indent=None).startswith("{name: row,")
 
     # Round-trip and idempotence, per format per setting.
     for dump, parse in (
-        (field.to_json, Field.from_json),
-        (field.to_yaml, Field.from_yaml),
-        (field.to_toml, Field.from_toml),
+        (field.into_json, Field.from_json),
+        (field.into_yaml, Field.from_yaml),
+        (field.into_toml, Field.from_toml),
     ):
         for indent in (None, 2, 4):
             text = dump(indent=indent)

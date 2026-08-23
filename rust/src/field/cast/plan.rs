@@ -155,7 +155,7 @@ pub(crate) fn cast_record_batch(
 
     // A batch carries its row count even with no columns, which a struct array
     // cannot, so the count is restored explicitly.
-    let schema = crate::arrow::schema_from_field(target)?;
+    let schema = crate::arrow::arrow_schema_from_field(target)?;
     let options = RecordBatchOptions::new().with_row_count(Some(row_count));
     RecordBatch::try_new_with_options(schema, columns, &options).map_err(Into::into)
 }
@@ -317,7 +317,7 @@ impl ArrayCastPlan {
             None => None,
         };
         check_extension_source(field, source_extension.as_ref())?;
-        let expected = field.to_arrow_ref()?.data_type().clone();
+        let expected = field.clone().into_arrow_ref()?.data_type().clone();
         // A geospatial target validates WKB on the way in, so an exact Binary
         // source must still take the planned path rather than the shortcut.
         let ingest_validated = matches!(
@@ -607,7 +607,9 @@ impl ArrayCastPlan {
             (
                 DataType::RunEndEncoded(encoded),
                 ArrowDataType::RunEndEncoded(source_runs, source_values),
-            ) if source_runs.data_type() == encoded.run_ends().to_arrow_ref()?.data_type() => {
+            ) if source_runs.data_type()
+                == encoded.run_ends().clone().into_arrow_ref()?.data_type() =>
+            {
                 ArrayCastKind::RunEndEncoded {
                     source_run_type: source_runs.data_type().clone(),
                     values: Box::new(Self::new_nested_from_arrow_field(
@@ -1225,7 +1227,7 @@ fn render_wkt_array(
 /// Renders one WKB cell as WKT, naming the field and row when the bytes are
 /// not one well-formed geometry.
 fn wkt_for_cell(field: &Field, index: usize, bytes: &[u8]) -> Result<String> {
-    wkb::to_wkt(bytes).map_err(|error| {
+    wkb::into_wkt(bytes).map_err(|error| {
         Error::IncompatibleSchema(format!(
             "field {:?} row {index}: expected WKB bytes to render as WKT, got {error}",
             field.name(),
@@ -1260,8 +1262,8 @@ fn validate_map_invariants(
     }
 
     // Small maps are faster with direct comparisons. Wide rows share one
-    // allocation across the complete array instead of creating a map, schema,
-    // and Record for every logical row.
+    // allocation across the complete array instead of creating a map and
+    // schema for every logical row.
     let mut ordered_indices = Vec::new();
     if maximum_row_len > 16 {
         budget.add_array(&DataType::UInt64, maximum_row_len)?;
@@ -1531,24 +1533,24 @@ fn make_yggdryl_comparator(
             let left_values = downcast::<Float16Array>(left.as_ref())?.values().clone();
             let right_values = downcast::<Float16Array>(right.as_ref())?.values().clone();
             Box::new(move |left, right| {
-                crate::Float::from_f64(left_values[left].to_f64())
-                    .cmp(&crate::Float::from_f64(right_values[right].to_f64()))
+                crate::Float16::from_f16(left_values[left])
+                    .cmp(&crate::Float16::from_f16(right_values[right]))
             })
         }
         DataType::Float32 => {
             let left_values = downcast::<Float32Array>(left.as_ref())?.values().clone();
             let right_values = downcast::<Float32Array>(right.as_ref())?.values().clone();
             Box::new(move |left, right| {
-                crate::Float::from_f64(f64::from(left_values[left]))
-                    .cmp(&crate::Float::from_f64(f64::from(right_values[right])))
+                crate::Float32::from_f32(left_values[left])
+                    .cmp(&crate::Float32::from_f32(right_values[right]))
             })
         }
         DataType::Float64 => {
             let left_values = downcast::<Float64Array>(left.as_ref())?.values().clone();
             let right_values = downcast::<Float64Array>(right.as_ref())?.values().clone();
             Box::new(move |left, right| {
-                crate::Float::from_f64(left_values[left])
-                    .cmp(&crate::Float::from_f64(right_values[right]))
+                crate::Float64::from_f64(left_values[left])
+                    .cmp(&crate::Float64::from_f64(right_values[right]))
             })
         }
         DataType::Decimal256 { .. } => {
@@ -2994,7 +2996,8 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
         | DataType::Date64
         | DataType::Time32(_)
         | DataType::Time64(_)
-        | DataType::Duration(_)
+        | DataType::Duration32(_)
+        | DataType::Duration64(_)
         | DataType::Interval(_) => 128,
         _ => 0,
     };
@@ -5182,7 +5185,7 @@ fn default_array(
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    let arrow_type = field.to_arrow_ref()?.data_type().clone();
+    let arrow_type = field.clone().into_arrow_ref()?.data_type().clone();
     if len == 0 {
         return Ok(arrow_array::new_empty_array(&arrow_type));
     }

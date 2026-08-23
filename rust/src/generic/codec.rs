@@ -128,10 +128,136 @@ impl<H: IOBase> Codec<H> {
     }
 }
 
+impl<H: IOBase> crate::io::IOMedia for Codec<H> {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self.as_io()
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self.as_io_mut()
+    }
+
+    #[cfg(feature = "arrow")]
+    fn row_size(&self) -> Result<u64> {
+        crate::io::IOMedia::row_size(self.as_io())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn column_size(&self) -> Result<usize> {
+        crate::io::IOMedia::column_size(self.as_io())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+        crate::io::IOMedia::record_options(self.as_io())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
+        crate::io::IOMedia::read_arrow_field(self.as_io(), options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_reader(
+        &self,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        crate::io::IOMedia::read_arrow_reader(self.as_io(), options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::overwrite_arrow_reader(self.as_io_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_prepared_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_io_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::overwrite_arrow_record_batch(self.as_io_mut(), batch, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::append_arrow_reader(self.as_io_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::append_arrow_record_batch(self.as_io_mut(), batch, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::merge_arrow_reader(self.as_io_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::merge_arrow_record_batch(self.as_io_mut(), batch, options)
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+        crate::io::IOMedia::read_parquet_statistics(self.as_io())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_geospatial_statistics(
+        &self,
+        column: &str,
+    ) -> Result<crate::parquet::GeospatialStatistics> {
+        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
+    }
+}
+
 /// A `Compression` is the decoded view of the handle it wraps.
 impl<H: IOBase> IOBase for Codec<H> {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_io().pread(offset, buffer)
+    }
+
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::io::ByteStream<'_>> {
+        self.as_io().pstream_bytes(position, batch_size)
+    }
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.as_io().read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.as_io().read_range(offset, length)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {

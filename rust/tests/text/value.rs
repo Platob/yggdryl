@@ -1,6 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use yggdryl::{TimeUnit, Value};
+use yggdryl::{I256, TimeUnit, Timezone, Value};
 
 /// One value of every kind, in the order [`Value`]'s total ordering puts them.
 ///
@@ -20,21 +20,24 @@ fn one_of_every_kind() -> Vec<Value> {
         Value::from(3_u32),
         Value::U64(u64::MAX),
         Value::U128(u128::MAX),
+        Value::from(half::f16::from_f32(1.0)),
         Value::from(1.25_f32),
         Value::from(1.5),
-        Value::decimal(-1_050, 2),
+        Value::d128(-1_050, 2),
+        Value::d256(I256::from_i128(1_050), 2),
         Value::from("AAPL"),
         Value::from(b"\x00\xff".as_slice()),
-        Value::date(19_723),
-        Value::time(45_296_000_000, TimeUnit::Microsecond),
-        Value::timestamp(1_700_000_000, TimeUnit::Second, Some("Europe/Paris")).unwrap(),
-        Value::duration(90, TimeUnit::Second),
+        Value::date32(19_723),
+        Value::date64(1_704_067_200_000),
+        Value::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+        Value::time64(2_000_000, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+        Value::datetime64_in(1_700_000_000, TimeUnit::Second, "Europe/Paris").unwrap(),
+        Value::duration32(1, TimeUnit::Second).unwrap(),
+        Value::duration64(2, TimeUnit::Second).unwrap(),
         Value::from_sequence([Value::Null]),
         Value::from_mapping([(Value::from("k"), Value::Null)]).unwrap(),
-        // The naive reading arrived after the containers, and the ordering
-        // numbering is kept, so its place is at the end rather than beside
-        // its zoned sibling.
-        Value::timestamp(1_700_000_000, TimeUnit::Second, None).unwrap(),
+        Value::from_record([("k", Value::Null)]).unwrap(),
+        Value::Geospatial([1_u8, 1, 0, 0, 0].as_slice().into()),
     ]
 }
 
@@ -43,7 +46,8 @@ fn structural_serde_reads_back_every_variant() {
     // The hand-written `Deserialize` mirrors `Value` variant for variant, and a
     // variant missing from the mirror is not a compile error - it is data serde
     // silently refuses to read. This is the check that makes it loud.
-    for value in one_of_every_kind() {
+    let naive = Value::datetime64(1_700_000_000, TimeUnit::Second, Timezone::NAIVE).unwrap();
+    for value in one_of_every_kind().into_iter().chain([naive]) {
         let encoded = serde_json::to_vec(&value).unwrap();
         let decoded = serde_json::from_slice::<Value>(&encoded).unwrap();
         assert_eq!(decoded, value, "{} did not survive serde", value.kind());
@@ -65,7 +69,7 @@ fn every_kind_has_its_own_place_in_the_total_ordering() {
     // Kinds arrive in runs rather than interleaved, so a value of one kind
     // never sorts between two of another. The integer widths are the
     // deliberate exception: they are one number line spelled ten ways, and
-    // the two float widths are another, spelled two ways.
+    // the three float widths are another, spelled three ways.
     let mut kinds = values.iter().map(Value::kind).collect::<Vec<_>>();
     kinds.dedup();
     assert_eq!(
@@ -89,15 +93,19 @@ fn null_answers_absence_everywhere_a_value_is_read() {
     assert!(null.as_u128().is_none());
     assert!(null.as_f32().is_none());
     assert!(null.as_f64().is_none());
+    assert!(null.as_f16().is_none());
     assert!(null.as_str().is_none());
+    assert!(null.as_utf8().is_none());
     assert!(null.as_bytes().is_none());
-    assert!(null.as_date().is_none());
-    assert!(null.as_time().is_none());
-    assert!(null.as_timestamp().is_none());
-    assert!(null.as_timestamp_in().is_none());
-    assert!(null.as_datetime().is_none());
-    assert!(null.as_duration().is_none());
-    assert!(null.as_decimal().is_none());
+    assert!(null.as_date32().is_none());
+    assert!(null.as_date64().is_none());
+    assert!(null.as_time32().is_none());
+    assert!(null.as_time64().is_none());
+    assert!(null.as_datetime64().is_none());
+    assert!(null.as_duration32().is_none());
+    assert!(null.as_duration64().is_none());
+    assert!(null.as_d128().is_none());
+    assert!(null.as_d256().is_none());
     assert!(null.as_sequence().is_none());
     assert!(null.as_mapping().is_none());
     assert!(null.as_record().is_none());
@@ -109,9 +117,9 @@ fn null_answers_absence_everywhere_a_value_is_read() {
     assert!(null.path("a.0.b").is_none());
     assert_eq!(null.iter().count(), 0);
     assert_eq!(null.entries().count(), 0);
+    assert_eq!(null.record_iter().count(), 0);
     assert!(null.keys().is_empty());
     assert!(!null.contains_key("k"));
-    assert_eq!(null.record_to_mapping(), Value::Null);
 
     // Rebuilding something that is not a mapping is an error, not a panic.
     assert!(null.with_key("k", Value::from(1_i64)).is_err());
@@ -137,23 +145,30 @@ fn every_accessor_tolerates_every_kind() {
         let _ = value.as_u128();
         let _ = value.as_f32();
         let _ = value.as_f64();
+        let _ = value.as_f16();
         let _ = value.as_str();
+        let _ = value.as_utf8();
         let _ = value.as_bytes();
-        let _ = value.as_date();
-        let _ = value.as_time();
-        let _ = value.as_timestamp();
-        let _ = value.as_datetime();
-        let _ = value.as_duration();
-        let _ = value.as_decimal();
+        let _ = value.as_date32();
+        let _ = value.as_date64();
+        let _ = value.as_time32();
+        let _ = value.as_time64();
+        let _ = value.as_datetime64();
+        let _ = value.as_duration32();
+        let _ = value.as_duration64();
+        let _ = value.as_d128();
+        let _ = value.as_d256();
         let _ = value.as_sequence();
         let _ = value.as_mapping();
         let _ = value.as_record();
+        let _ = value.record_iter().count();
+        let _ = value.as_json_bytes();
+        let _ = value.as_json_utf8();
         let _ = value.len();
         let _ = value.get(0);
         let _ = value.get_key_str("k");
         let _ = value.path("a.b");
         let _ = value.iter().count();
-        let _ = value.record_to_mapping();
         let _ = value.kind();
         let _ = value.data_type();
     }
@@ -267,6 +282,13 @@ fn empty_collections_share_process_wide_backing() {
     let left = Value::from_mapping([]).unwrap();
     let right = Value::from_mapping([]).unwrap();
     let (Value::Mapping(left), Value::Mapping(right)) = (&left, &right) else {
+        unreachable!();
+    };
+    assert!(std::sync::Arc::ptr_eq(left, right));
+
+    let left = Value::from_record(std::iter::empty::<(&str, Value)>()).unwrap();
+    let right = Value::from_record(std::iter::empty::<(&str, Value)>()).unwrap();
+    let (Value::Record(left), Value::Record(right)) = (&left, &right) else {
         unreachable!();
     };
     assert!(std::sync::Arc::ptr_eq(left, right));

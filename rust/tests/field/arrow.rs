@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, ffi::Flags};
+use arrow_schema::{
+    DataType as ArrowDataType, Field as ArrowField, Schema,
+    ffi::{FFI_ArrowSchema, Flags},
+};
+use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
 use yggdryl::{DataType, Field, TimeUnit};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
@@ -40,11 +44,11 @@ fn arrow_import_rebuilds_noncanonical_http_metadata_for_every_ownership_path() {
         ]));
 
     let borrowed = Field::from_arrow(&arrow).unwrap();
-    assert_canonical_http_metadata(&borrowed.to_arrow().unwrap());
+    assert_canonical_http_metadata(&borrowed.into_arrow().unwrap());
 
     let shared = Arc::new(arrow.clone());
     let shared_import = Field::from_arrow_ref(Arc::clone(&shared)).unwrap();
-    let shared_projection = shared_import.to_arrow_ref().unwrap();
+    let shared_projection = shared_import.into_arrow_ref().unwrap();
     assert!(!Arc::ptr_eq(&shared, &shared_projection));
     assert_canonical_http_metadata(shared_projection.as_ref());
 
@@ -71,7 +75,7 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
     let map = DataType::map(entries, true).unwrap();
     let root = Field::from_parts("lookup", map, true, [("owner", "core")]).unwrap();
 
-    let schema = root.to_arrow_ffi().unwrap();
+    let schema = root.clone().into_arrow_ffi().unwrap();
     assert_eq!(schema.name(), Some("lookup"));
     assert_eq!(
         schema.metadata().unwrap().get("owner"),
@@ -93,8 +97,8 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
     assert_flag(encoded, Flags::DICTIONARY_ORDERED);
     assert!(encoded.dictionary().is_some());
 
-    root.to_arrow_ref().unwrap();
-    let cached = root.to_arrow_ffi().unwrap();
+    root.clone().into_arrow_ref().unwrap();
+    let cached = root.into_arrow_ffi().unwrap();
     assert_flag(&cached, Flags::NULLABLE);
     assert_flag(&cached, Flags::MAP_KEYS_SORTED);
     assert_flag(cached.child(0).child(1), Flags::DICTIONARY_ORDERED);
@@ -105,15 +109,15 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
     let map = DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap();
     let data_type = DataType::from_fields([Field::new("lookup", map, true)]).unwrap();
 
-    let schema = data_type.to_arrow_ffi().unwrap();
+    let schema = data_type.into_arrow_ffi().unwrap();
     let map = schema.child(0);
     assert_flag(map, Flags::NULLABLE);
     assert_flag(map, Flags::MAP_KEYS_SORTED);
 
-    assert!(DataType::FixedSizeBinary(-1).to_arrow_ffi().is_err());
+    assert!(DataType::FixedSizeBinary(-1).into_arrow_ffi().is_err());
     assert!(
         Field::new("bad", DataType::Timestamp(TimeUnit::YearMonth, None), false,)
-            .to_arrow_ffi()
+            .into_arrow_ffi()
             .is_err()
     );
 }
@@ -128,7 +132,7 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     )
     .unwrap();
 
-    let schema = geography.to_arrow_ffi().unwrap();
+    let schema = geography.clone().into_arrow_ffi().unwrap();
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
@@ -144,15 +148,15 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     assert_eq!(imported, geography);
 
     // The cached projection path serves the same identity.
-    geography.to_arrow_ref().unwrap();
-    let cached = geography.to_arrow_ffi().unwrap();
+    geography.clone().into_arrow_ref().unwrap();
+    let cached = geography.into_arrow_ffi().unwrap();
     assert_eq!(
         cached.metadata().unwrap().get("ARROW:extension:name"),
         Some(&"geoarrow.wkb".to_owned())
     );
 
     // A bare datatype carries the identity too, variant included.
-    let schema = DataType::variant().to_arrow_ffi().unwrap();
+    let schema = DataType::variant().into_arrow_ffi().unwrap();
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
@@ -164,4 +168,151 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     );
     let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
     assert_eq!(imported.data_type(), &DataType::Variant);
+}
+
+#[test]
+fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() {
+    let mut region = Field::new(
+        "region",
+        DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+        true,
+    );
+    region.set_dictionary_options(-7, true).unwrap();
+
+    let mut catalog = Field::new(
+        "catalog",
+        DataType::dictionary(DataType::UInt8, DataType::from_fields([region]).unwrap()).unwrap(),
+        false,
+    );
+    catalog.set_dictionary_options(42, false).unwrap();
+
+    let mut item = Field::new(
+        "item",
+        DataType::dictionary(DataType::Int32, DataType::LargeUtf8).unwrap(),
+        true,
+    );
+    item.set_dictionary_options(i64::MIN, true).unwrap();
+
+    let root = Field::from_parts(
+        "row",
+        DataType::from_fields([catalog, Field::new("labels", DataType::list(item), true)]).unwrap(),
+        false,
+        [("owner", "core")],
+    )
+    .unwrap();
+
+    let projected = root.clone().into_arrow_exchange_schema().unwrap();
+    assert_eq!(
+        projected
+            .metadata()
+            .get(IPC_DICTIONARY_IDS_KEY)
+            .map(String::as_str),
+        Some("v1;0=42;0.0=-7;1.0=-9223372036854775808")
+    );
+
+    // This is the same interface PyArrow crosses.  Its schema has no
+    // dictionary-ID slot, but schema metadata and dictionary ordering survive.
+    let ffi = FFI_ArrowSchema::try_from(&projected).unwrap();
+    let crossed = Schema::try_from(&ffi).unwrap();
+    #[allow(deprecated)]
+    {
+        assert_eq!(crossed.field(0).dict_id(), Some(0));
+    }
+    assert_eq!(
+        crossed
+            .metadata()
+            .get(IPC_DICTIONARY_IDS_KEY)
+            .map(String::as_str),
+        Some("v1;0=42;0.0=-7;1.0=-9223372036854775808")
+    );
+
+    let restored = Field::from_arrow_schema("row", &crossed).unwrap();
+    assert_eq!(restored, root);
+    assert_eq!(restored.get_metadata("owner"), Some("core"));
+    assert!(!restored.has_metadata(IPC_DICTIONARY_IDS_KEY));
+}
+
+fn assert_dictionary_sidecar_error(schema: &Schema) {
+    match Field::from_arrow_schema("row", schema).unwrap_err() {
+        yggdryl::arrow::Error::Core(yggdryl::Error::InvalidMetadataValue { key, .. }) => {
+            assert_eq!(key, IPC_DICTIONARY_IDS_KEY)
+        }
+        error => panic!("expected a typed dictionary-sidecar error, got {error}"),
+    }
+}
+
+#[test]
+#[allow(deprecated)]
+fn arrow_exchange_sidecar_rejects_malformed_missing_and_conflicting_entries() {
+    let dictionary = ArrowField::new_dict(
+        "code",
+        ArrowDataType::Dictionary(
+            Box::new(ArrowDataType::Int16),
+            Box::new(ArrowDataType::Utf8),
+        ),
+        false,
+        0,
+        false,
+    );
+    for encoded in [
+        "",
+        "v2;0=1",
+        "v1;",
+        "v1;0=x",
+        "v1;00=1",
+        "v1;0=0",
+        "v1;0=1;0=2",
+        "v1;1=1;0=2",
+    ] {
+        let schema = Schema::new_with_metadata(
+            vec![dictionary.clone()],
+            HashMap::from([(IPC_DICTIONARY_IDS_KEY.to_owned(), encoded.to_owned())]),
+        );
+        assert_dictionary_sidecar_error(&schema);
+    }
+
+    let missing = Schema::new_with_metadata(
+        vec![dictionary.clone()],
+        HashMap::from([(IPC_DICTIONARY_IDS_KEY.to_owned(), "v1;1=9".to_owned())]),
+    );
+    assert_dictionary_sidecar_error(&missing);
+
+    let not_dictionary = Schema::new_with_metadata(
+        vec![ArrowField::new("code", ArrowDataType::Int16, false)],
+        HashMap::from([(IPC_DICTIONARY_IDS_KEY.to_owned(), "v1;0=9".to_owned())]),
+    );
+    assert_dictionary_sidecar_error(&not_dictionary);
+
+    let conflicting = Schema::new_with_metadata(
+        vec![ArrowField::new_dict(
+            "code",
+            ArrowDataType::Dictionary(
+                Box::new(ArrowDataType::Int16),
+                Box::new(ArrowDataType::Utf8),
+            ),
+            false,
+            7,
+            false,
+        )],
+        HashMap::from([(IPC_DICTIONARY_IDS_KEY.to_owned(), "v1;0=8".to_owned())]),
+    );
+    assert_dictionary_sidecar_error(&conflicting);
+}
+
+#[test]
+fn arrow_exchange_projection_refuses_caller_owned_sidecar_metadata() {
+    let root = Field::from_parts(
+        "row",
+        DataType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        false,
+        [(IPC_DICTIONARY_IDS_KEY, "v1;0=7")],
+    )
+    .unwrap();
+
+    match root.into_arrow_exchange_schema().unwrap_err() {
+        yggdryl::arrow::Error::Core(yggdryl::Error::InvalidMetadataValue { key, .. }) => {
+            assert_eq!(key, IPC_DICTIONARY_IDS_KEY)
+        }
+        error => panic!("expected a typed dictionary-sidecar error, got {error}"),
+    }
 }

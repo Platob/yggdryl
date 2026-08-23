@@ -1,4 +1,4 @@
-//! Shared byte-first structured-text values and format dispatch.
+//! Shared natural structured-text values and format dispatch.
 
 use std::borrow::Borrow;
 use std::io::{Read, Write};
@@ -13,47 +13,53 @@ pub mod line;
 mod loading;
 mod placeholder;
 pub(crate) mod position;
+pub(crate) mod typed;
 pub(crate) mod wire;
 
 pub use crate::generic::TypedValue;
-pub use crate::generic::value::{Children, Float, Float32, Value};
+pub use crate::generic::value::{Children, Float16, Float32, Float64, Value};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 #[cfg(feature = "arrow")]
 pub(crate) use display::ERROR_TEXT_LIMIT;
-pub(crate) use display::{elide_display, elide_to, expected_got, stable_hash_display};
+pub(crate) use display::{
+    elide_display, elide_to, expected_got, stable_hash_display, stable_hash_of,
+};
 pub use display::{stable_hash_bytes, stable_hash_chunks};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
 pub use io::{
-    Plan, dump, dump_all, dump_all_with, dump_with, dump_with_level, load, load_all,
-    load_all_with_limits, load_with, load_with_limits,
+    Plan, from_io, from_io_all, from_io_all_with_limits, from_io_with, from_io_with_field,
+    from_io_with_field_and_limits, from_io_with_limits, into_io, into_io_all,
+    into_io_all_with_formatting, into_io_with_formatting, into_io_with_level,
 };
 pub use limits::Limits;
 #[cfg(feature = "arrow")]
 pub use line::TextOptions;
-pub use line::{
-    LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines,
-    schema_from_pattern,
-};
+pub use line::{LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines};
 pub use loading::Loading;
 pub use placeholder::Placeholders;
 
-use crate::{Error, Result, json, toml, yaml};
+use crate::{Error, Field, Result, json, toml, yaml};
 
-/// A lazy iterator over values decoded from a borrowed byte reader.
-///
-/// Each item is parsed only when [`Iterator::next`] is called. The iterator
-/// keeps the reader borrowed for its lifetime and never materializes all
-/// documents as a prerequisite to iteration.
+/// A lazy iterator over decoded values.
 pub struct ValueIter<'a> {
     inner: Box<dyn Iterator<Item = Result<Value>> + 'a>,
+    field: Option<&'a Field>,
 }
 
 impl<'a> ValueIter<'a> {
     pub(crate) fn new(iterator: impl Iterator<Item = Result<Value>> + 'a) -> Self {
         Self {
             inner: Box::new(iterator),
+            field: None,
         }
+    }
+
+    /// Interpret every yielded natural value under one field without
+    /// materializing the iterator.
+    pub(crate) fn with_field(mut self, field: &'a Field) -> Self {
+        self.field = Some(field);
+        self
     }
 }
 
@@ -61,7 +67,10 @@ impl Iterator for ValueIter<'_> {
     type Item = Result<Value>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+        self.inner.next().map(|value| match self.field {
+            Some(field) => value.and_then(|value| field.from_natural_value(value)),
+            None => value,
+        })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -69,107 +78,113 @@ impl Iterator for ValueIter<'_> {
     }
 }
 
-/// Apply `loading`'s placeholders to a freshly parsed value, if any apply.
-///
-/// The cheap guard lives here: substitution is off unless a caller turned it
-/// on, and even then a document whose bytes contain no `{{` is returned
-/// untouched - no walk, no allocation, no per-scalar inspection. The
-/// overwhelming majority of documents have no placeholders and must not pay for
-/// the feature.
-///
-/// JSON is refused, not skipped: JSON is a data interchange format, and a
-/// JSON document that wants configuration templating is better written as
-/// YAML or TOML. Refusing loudly here keeps a misconfigured caller from
-/// silently reading `{{ NAME }}` as literal text.
 fn filled(value: Value, input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
-    let Some(placeholders) = loading.placeholders() else {
-        return Ok(value);
-    };
-    if matches!(format, Format::Json | Format::JsonLines) {
-        return Err(Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$.placeholders"),
-            reason: expected_got(
-                "a format with placeholder support (yaml, toml)",
-                format.as_str(),
-            ),
-        });
-    }
-    if !placeholder::present(input) {
-        return Ok(value);
-    }
-    placeholder::substitute(value, placeholders)
-}
-
-/// Decode one value from borrowed UTF-8 text using the selected format.
-///
-/// This delegates through the string's borrowed bytes without an intermediate
-/// UTF-8/byte input buffer. The returned owned value still allocates or shares
-/// storage for strings and collections.
-pub fn from_str(input: &str, format: Format) -> Result<Value> {
-    from_str_with_limits(input, format, Limits::default())
-}
-
-/// Decode one value from borrowed UTF-8 text with explicit resource limits.
-pub fn from_str_with_limits(input: &str, format: Format, limits: Limits) -> Result<Value> {
-    match format {
-        Format::Json => json::from_str_with_limits(input, limits),
-        Format::JsonLines => {
-            json::from_lines_str_with_limits(input, limits).map(Value::from_sequence)
+    let value = if let Some(placeholders) = loading.placeholders() {
+        if matches!(format, Format::Json | Format::JsonLines) {
+            return Err(Error::InvalidRecord {
+                path: "$.placeholders".into(),
+                reason: expected_got(
+                    "a format with placeholder support (yaml, toml)",
+                    format.as_str(),
+                ),
+            });
         }
-        Format::Yaml => yaml::from_str_with_limits(input, limits),
-        Format::Toml => toml::from_str_with_limits(input, limits),
+        if placeholder::present(input) {
+            placeholder::substitute(value, placeholders)?
+        } else {
+            value
+        }
+    } else {
+        value
+    };
+    match loading.field() {
+        Some(field) => field.from_natural_value(value),
+        None => Ok(value),
     }
 }
 
-/// Decode one value from borrowed UTF-8 text under [`Loading`].
-///
-/// The parse itself is unchanged - `loading`'s limits are the same limits - so
-/// a malformed document still fails exactly where it is malformed, with exact
-/// byte positions. `{{ }}` placeholders, when [`Loading::with_placeholders`]
-/// turned them on, are resolved *after* that, by walking the parsed value.
-///
-/// # Errors
-///
-/// Returns the codec's parse failure, or the substitution's refusal - an
-/// unresolved variable, a malformed placeholder - naming where it sits.
-pub fn from_str_with(input: &str, format: Format, loading: &Loading) -> Result<Value> {
-    let value = from_str_with_limits(input, format, loading.limits())?;
+/// Decode one value from UTF-8 using `format`.
+pub fn from_utf8(input: &str, format: Format) -> Result<Value> {
+    from_utf8_with_limits(input, format, Limits::default())
+}
+
+/// Decode one value from UTF-8 with explicit limits.
+pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Result<Value> {
+    match format {
+        Format::Json => json::from_utf8_with_limits(input, limits),
+        Format::JsonLines => {
+            json::from_lines_utf8_with_limits(input, limits).map(Value::from_sequence)
+        }
+        Format::Yaml => yaml::from_utf8_with_limits(input, limits),
+        Format::Toml => toml::from_utf8_with_limits(input, limits),
+    }
+}
+
+/// Decode UTF-8 and interpret the natural value under `field`.
+pub fn from_utf8_with_field(input: &str, format: Format, field: &Field) -> Result<Value> {
+    from_utf8_with_field_and_limits(input, format, field, Limits::default())
+}
+
+/// Decode schema-directed UTF-8 with explicit limits.
+pub fn from_utf8_with_field_and_limits(
+    input: &str,
+    format: Format,
+    field: &Field,
+    limits: Limits,
+) -> Result<Value> {
+    field.from_natural_value(from_utf8_with_limits(input, format, limits)?)
+}
+
+/// Decode one value from UTF-8 under `loading`.
+pub fn from_utf8_with(input: &str, format: Format, loading: &Loading) -> Result<Value> {
+    let value = from_utf8_with_limits(input, format, loading.limits())?;
     filled(value, input.as_bytes(), format, loading)
 }
 
-/// Decode one value using the selected format.
-pub fn from_slice(input: &[u8], format: Format) -> Result<Value> {
-    from_slice_with_limits(input, format, Limits::default())
+/// Decode one value from bytes using `format`.
+pub fn from_bytes(input: &[u8], format: Format) -> Result<Value> {
+    from_bytes_with_limits(input, format, Limits::default())
 }
 
-/// Decode one value using explicit resource limits.
-pub fn from_slice_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Value> {
+/// Decode one value from bytes with explicit limits.
+pub fn from_bytes_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Value> {
     match format {
-        Format::Json => json::from_slice_with_limits(input, limits),
+        Format::Json => json::from_bytes_with_limits(input, limits),
         Format::JsonLines => {
-            json::from_lines_slice_with_limits(input, limits).map(Value::from_sequence)
+            json::from_lines_bytes_with_limits(input, limits).map(Value::from_sequence)
         }
-        Format::Yaml => yaml::from_slice_with_limits(input, limits),
-        Format::Toml => toml::from_slice_with_limits(input, limits),
+        Format::Yaml => yaml::from_bytes_with_limits(input, limits),
+        Format::Toml => toml::from_bytes_with_limits(input, limits),
     }
 }
 
-/// Decode one value from bytes under [`Loading`], as [`from_str_with`] does.
-///
-/// # Errors
-///
-/// Returns the codec's parse failure, or the substitution's refusal.
-pub fn from_slice_with(input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
-    let value = from_slice_with_limits(input, format, loading.limits())?;
+/// Decode bytes and interpret the natural value under `field`.
+pub fn from_bytes_with_field(input: &[u8], format: Format, field: &Field) -> Result<Value> {
+    from_bytes_with_field_and_limits(input, format, field, Limits::default())
+}
+
+/// Decode schema-directed bytes with explicit limits.
+pub fn from_bytes_with_field_and_limits(
+    input: &[u8],
+    format: Format,
+    field: &Field,
+    limits: Limits,
+) -> Result<Value> {
+    field.from_natural_value(from_bytes_with_limits(input, format, limits)?)
+}
+
+/// Decode one value from bytes under `loading`.
+pub fn from_bytes_with(input: &[u8], format: Format, loading: &Loading) -> Result<Value> {
+    let value = from_bytes_with_limits(input, format, loading.limits())?;
     filled(value, input, format, loading)
 }
 
-/// Decode one value from a byte reader using the selected format.
+/// Decode one value from a standard byte reader.
 pub fn from_reader<R: Read>(reader: R, format: Format) -> Result<Value> {
     from_reader_with_limits(reader, format, Limits::default())
 }
 
-/// Decode one value from a byte reader with explicit resource limits.
+/// Decode one value from a reader with explicit limits.
 pub fn from_reader_with_limits<R: Read>(
     reader: R,
     format: Format,
@@ -185,74 +200,115 @@ pub fn from_reader_with_limits<R: Read>(
     }
 }
 
-/// Decode one value from a byte reader under [`Loading`].
-///
-/// With placeholders off this is [`from_reader_with_limits`] exactly, reader
-/// and all. With them on the reader is drained into memory first - bounded by
-/// [`Limits::max_input_bytes`] - because the cheap `{{` guard needs the bytes,
-/// and a document small enough to want substitution is small enough to hold.
-///
-/// # Errors
-///
-/// Returns the read failure, the codec's parse failure, or the substitution's
-/// refusal.
+/// Decode a reader and interpret the natural value under `field`.
+pub fn from_reader_with_field<R: Read>(reader: R, format: Format, field: &Field) -> Result<Value> {
+    from_reader_with_field_and_limits(reader, format, field, Limits::default())
+}
+
+/// Decode a schema-directed reader with explicit limits.
+pub fn from_reader_with_field_and_limits<R: Read>(
+    reader: R,
+    format: Format,
+    field: &Field,
+    limits: Limits,
+) -> Result<Value> {
+    field.from_natural_value(from_reader_with_limits(reader, format, limits)?)
+}
+
+/// Decode one value from a reader under `loading`.
 pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -> Result<Value> {
-    let Some(_) = loading.placeholders() else {
-        return from_reader_with_limits(reader, format, loading.limits());
-    };
+    if loading.placeholders().is_none() {
+        let value = from_reader_with_limits(reader, format, loading.limits())?;
+        return match loading.field() {
+            Some(field) => field.from_natural_value(value),
+            None => Ok(value),
+        };
+    }
     let mut bytes = Vec::new();
-    let limit = loading.limits().max_input_bytes();
-    // One past the limit, so exceeding it is the codec's own refusal rather
-    // than a silent truncation here.
     reader
-        .take(limit.saturating_add(1) as u64)
+        .take(loading.limits().max_input_bytes().saturating_add(1) as u64)
         .read_to_end(&mut bytes)?;
-    from_slice_with(&bytes, format, loading)
+    from_bytes_with(&bytes, format, loading)
 }
 
-/// Decode all values or documents in an in-memory byte stream.
-pub fn from_slice_all(input: &[u8], format: Format) -> Result<Vec<Value>> {
-    from_slice_all_with_limits(input, format, Limits::default())
+/// Decode all values from bytes.
+pub fn from_bytes_all(input: &[u8], format: Format) -> Result<Vec<Value>> {
+    from_bytes_all_with_limits(input, format, Limits::default())
 }
 
-/// Decode all values or documents in an in-memory byte stream with explicit
-/// resource limits.
-pub fn from_slice_all_with_limits(
+/// Decode all values from bytes with explicit limits.
+pub fn from_bytes_all_with_limits(
     input: &[u8],
     format: Format,
     limits: Limits,
 ) -> Result<Vec<Value>> {
     match format {
-        Format::Json => json::from_slice_all_with_limits(input, limits),
-        Format::JsonLines => json::from_lines_slice_with_limits(input, limits),
-        Format::Yaml => yaml::from_slice_all_with_limits(input, limits),
-        Format::Toml => toml::from_slice_all_with_limits(input, limits),
+        Format::Json => json::from_bytes_all_with_limits(input, limits),
+        Format::JsonLines => json::from_lines_bytes_with_limits(input, limits),
+        Format::Yaml => yaml::from_bytes_all_with_limits(input, limits),
+        Format::Toml => toml::from_bytes_all_with_limits(input, limits),
     }
 }
 
-/// Decode all values or documents from borrowed UTF-8 text.
-pub fn from_str_all(input: &str, format: Format) -> Result<Vec<Value>> {
-    from_str_all_with_limits(input, format, Limits::default())
+/// Decode all byte documents under `field`.
+pub fn from_bytes_all_with_field(
+    input: &[u8],
+    format: Format,
+    field: &Field,
+) -> Result<Vec<Value>> {
+    from_bytes_all_with_field_and_limits(input, format, field, Limits::default())
 }
 
-/// Decode all values or documents from borrowed UTF-8 text with explicit
-/// resource limits.
-pub fn from_str_all_with_limits(input: &str, format: Format, limits: Limits) -> Result<Vec<Value>> {
+/// Decode all schema-directed byte documents with explicit limits.
+pub fn from_bytes_all_with_field_and_limits(
+    input: &[u8],
+    format: Format,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Value>> {
+    apply_field(from_bytes_all_with_limits(input, format, limits)?, field)
+}
+
+/// Decode all values from UTF-8.
+pub fn from_utf8_all(input: &str, format: Format) -> Result<Vec<Value>> {
+    from_utf8_all_with_limits(input, format, Limits::default())
+}
+
+/// Decode all values from UTF-8 with explicit limits.
+pub fn from_utf8_all_with_limits(
+    input: &str,
+    format: Format,
+    limits: Limits,
+) -> Result<Vec<Value>> {
     match format {
-        Format::Json => json::from_str_all_with_limits(input, limits),
-        Format::JsonLines => json::from_lines_str_with_limits(input, limits),
-        Format::Yaml => yaml::from_str_all_with_limits(input, limits),
-        Format::Toml => toml::from_str_all_with_limits(input, limits),
+        Format::Json => json::from_utf8_all_with_limits(input, limits),
+        Format::JsonLines => json::from_lines_utf8_with_limits(input, limits),
+        Format::Yaml => yaml::from_utf8_all_with_limits(input, limits),
+        Format::Toml => toml::from_utf8_all_with_limits(input, limits),
     }
 }
 
-/// Decode all values or documents from a byte reader.
+/// Decode all UTF-8 documents under `field`.
+pub fn from_utf8_all_with_field(input: &str, format: Format, field: &Field) -> Result<Vec<Value>> {
+    from_utf8_all_with_field_and_limits(input, format, field, Limits::default())
+}
+
+/// Decode all schema-directed UTF-8 documents with explicit limits.
+pub fn from_utf8_all_with_field_and_limits(
+    input: &str,
+    format: Format,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Value>> {
+    apply_field(from_utf8_all_with_limits(input, format, limits)?, field)
+}
+
+/// Decode all values from a reader.
 pub fn from_reader_all<R: Read>(reader: R, format: Format) -> Result<Vec<Value>> {
     from_reader_all_with_limits(reader, format, Limits::default())
 }
 
-/// Decode all values or documents from a byte reader with explicit resource
-/// limits.
+/// Decode all reader documents with explicit limits.
 pub fn from_reader_all_with_limits<R: Read>(
     reader: R,
     format: Format,
@@ -266,12 +322,31 @@ pub fn from_reader_all_with_limits<R: Read>(
     }
 }
 
-/// Lazily decode values or documents from a borrowed byte reader.
+/// Decode all reader documents under `field`.
+pub fn from_reader_all_with_field<R: Read>(
+    reader: R,
+    format: Format,
+    field: &Field,
+) -> Result<Vec<Value>> {
+    from_reader_all_with_field_and_limits(reader, format, field, Limits::default())
+}
+
+/// Decode all schema-directed reader documents with explicit limits.
+pub fn from_reader_all_with_field_and_limits<R: Read>(
+    reader: R,
+    format: Format,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Value>> {
+    apply_field(from_reader_all_with_limits(reader, format, limits)?, field)
+}
+
+/// Lazily decode values from a borrowed reader.
 pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R, format: Format) -> ValueIter<'a> {
     from_reader_iter_with_limits(reader, format, Limits::default())
 }
 
-/// Lazily decode with explicit resource limits.
+/// Lazily decode values with explicit limits.
 pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
     reader: &'a mut R,
     format: Format,
@@ -285,109 +360,148 @@ pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
     }
 }
 
-/// Encode one value to a new byte vector.
-pub fn to_vec(value: &Value, format: Format) -> Result<Vec<u8>> {
-    to_vec_with_formatting(value, format, Formatting::default())
+/// Lazily decode values under `field`.
+pub fn from_reader_iter_with_field<'a, R: Read + 'a>(
+    reader: &'a mut R,
+    format: Format,
+    field: &'a Field,
+) -> ValueIter<'a> {
+    from_reader_iter_with_field_and_limits(reader, format, field, Limits::default())
 }
 
-/// Encode one value to a new byte vector, laid out as `formatting` asks.
-///
-/// Each format resolves the layout its own way - see
-/// [`json::to_vec_with_formatting`], [`yaml::to_vec_with_formatting`], and
-/// [`toml::to_vec_with_formatting`]. Formatting changes bytes, never meaning:
-/// parsing any formatting of the same value yields an equal value.
-///
-/// # Errors
-///
-/// Returns the format's encoding failure.
-pub fn to_vec_with_formatting(
+/// Lazily decode schema-directed values with explicit limits.
+pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
+    reader: &'a mut R,
+    format: Format,
+    field: &'a Field,
+    limits: Limits,
+) -> ValueIter<'a> {
+    from_reader_iter_with_limits(reader, format, limits).with_field(field)
+}
+
+/// Encode one value to bytes.
+pub fn into_bytes(value: &Value, format: Format) -> Result<Vec<u8>> {
+    into_bytes_with_formatting(value, format, Formatting::default())
+}
+
+/// Encode one value to bytes with explicit formatting.
+pub fn into_bytes_with_formatting(
     value: &Value,
     format: Format,
     formatting: Formatting,
 ) -> Result<Vec<u8>> {
     match format {
-        Format::Json => json::to_vec_with_formatting(value, formatting),
-        Format::JsonLines => {
-            if let Value::Sequence(values) = value {
-                json::to_vec_all_with_formatting(values, formatting)
-            } else {
-                json::to_vec_all_with_formatting(std::slice::from_ref(value), formatting)
-            }
-        }
-        Format::Yaml => yaml::to_vec_with_formatting(value, formatting),
-        Format::Toml => toml::to_vec_with_formatting(value, formatting),
+        Format::Json => json::into_bytes_with_formatting(value, formatting),
+        Format::JsonLines => match value {
+            Value::Sequence(values) => json::into_bytes_all_with_formatting(values, formatting),
+            value => json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting),
+        },
+        Format::Yaml => yaml::into_bytes_with_formatting(value, formatting),
+        Format::Toml => toml::into_bytes_with_formatting(value, formatting),
     }
 }
 
-/// Consume and encode one value to a new byte vector.
-///
-/// Encoding necessarily creates a distinct output buffer; consuming avoids an
-/// ownership-preserving clone but cannot reuse the value's typed storage.
-pub fn into_vec(value: Value, format: Format) -> Result<Vec<u8>> {
-    to_vec(&value, format)
+/// Encode one value to UTF-8.
+pub fn into_utf8(value: &Value, format: Format) -> Result<String> {
+    into_utf8_with_formatting(value, format, Formatting::default())
 }
 
-/// Consume and encode one value, laid out as `formatting` asks.
-///
-/// # Errors
-///
-/// Returns the format's encoding failure.
-pub fn into_vec_with_formatting(
-    value: Value,
+/// Encode one value to UTF-8 with explicit formatting.
+pub fn into_utf8_with_formatting(
+    value: &Value,
     format: Format,
     formatting: Formatting,
-) -> Result<Vec<u8>> {
-    to_vec_with_formatting(&value, format, formatting)
+) -> Result<String> {
+    match format {
+        Format::Json => json::into_utf8_with_formatting(value, formatting),
+        Format::JsonLines => match value {
+            Value::Sequence(values) => json::into_utf8_all_with_formatting(values, formatting),
+            value => json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting),
+        },
+        Format::Yaml => yaml::into_utf8_with_formatting(value, formatting),
+        Format::Toml => toml::into_utf8_with_formatting(value, formatting),
+    }
 }
 
-/// Encode one value to a byte writer.
-pub fn to_writer<W: Write>(writer: W, value: &Value, format: Format) -> Result<()> {
-    to_writer_with_formatting(writer, value, format, Formatting::default())
+/// Encode one value to a standard byte writer.
+pub fn into_writer<W: Write>(value: &Value, writer: W, format: Format) -> Result<()> {
+    into_writer_with_formatting(value, writer, format, Formatting::default())
 }
 
-/// Encode one value to a byte writer, laid out as `formatting` asks.
-///
-/// # Errors
-///
-/// Returns the format's encoding failure or the sink's.
-pub fn to_writer_with_formatting<W: Write>(
-    writer: W,
+/// Encode one value to a writer with explicit formatting.
+pub fn into_writer_with_formatting<W: Write>(
     value: &Value,
+    writer: W,
     format: Format,
     formatting: Formatting,
 ) -> Result<()> {
     match format {
-        Format::Json => json::to_writer_with_formatting(writer, value, formatting),
-        Format::JsonLines => {
-            if let Value::Sequence(values) = value {
-                json::to_writer_all_with_formatting(writer, values.iter(), formatting)
-            } else {
-                json::to_writer_all_with_formatting(writer, std::slice::from_ref(value), formatting)
+        Format::Json => json::into_writer_with_formatting(value, writer, formatting),
+        Format::JsonLines => match value {
+            Value::Sequence(values) => {
+                json::into_writer_all_with_formatting(values.iter(), writer, formatting)
             }
-        }
-        Format::Yaml => yaml::to_writer_with_formatting(writer, value, formatting),
-        Format::Toml => toml::to_writer_with_formatting(writer, value, formatting),
+            value => json::into_writer_all_with_formatting(
+                std::slice::from_ref(value),
+                writer,
+                formatting,
+            ),
+        },
+        Format::Yaml => yaml::into_writer_with_formatting(value, writer, formatting),
+        Format::Toml => toml::into_writer_with_formatting(value, writer, formatting),
     }
 }
 
-/// Encode multiple values or documents to a byte writer.
-pub fn to_writer_all<W, I, V>(writer: W, values: I, format: Format) -> Result<()>
+/// Encode values to bytes.
+pub fn into_bytes_all(values: &[Value], format: Format) -> Result<Vec<u8>> {
+    into_bytes_all_with_formatting(values, format, Formatting::default())
+}
+
+/// Encode values to bytes with explicit formatting.
+pub fn into_bytes_all_with_formatting(
+    values: &[Value],
+    format: Format,
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
+    let mut output = Vec::new();
+    into_writer_all_with_formatting(values, &mut output, format, formatting)?;
+    Ok(output)
+}
+
+/// Encode values to UTF-8.
+pub fn into_utf8_all(values: &[Value], format: Format) -> Result<String> {
+    into_utf8_all_with_formatting(values, format, Formatting::default())
+}
+
+/// Encode values to UTF-8 with explicit formatting.
+pub fn into_utf8_all_with_formatting(
+    values: &[Value],
+    format: Format,
+    formatting: Formatting,
+) -> Result<String> {
+    String::from_utf8(into_bytes_all_with_formatting(values, format, formatting)?).map_err(
+        |error| Error::Codec {
+            format: format.as_str(),
+            position: error.utf8_error().valid_up_to(),
+            reason: "encoded output is not valid UTF-8".into(),
+        },
+    )
+}
+
+/// Encode values to a standard byte writer.
+pub fn into_writer_all<W, I, V>(values: I, writer: W, format: Format) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
     V: Borrow<Value>,
 {
-    to_writer_all_with_formatting(writer, values, format, Formatting::default())
+    into_writer_all_with_formatting(values, writer, format, Formatting::default())
 }
 
-/// Encode multiple values or documents, laid out as `formatting` asks.
-///
-/// # Errors
-///
-/// Returns the format's encoding failure or the sink's.
-pub fn to_writer_all_with_formatting<W, I, V>(
-    writer: W,
+/// Encode values to a writer with explicit formatting.
+pub fn into_writer_all_with_formatting<W, I, V>(
     values: I,
+    writer: W,
     format: Format,
     formatting: Formatting,
 ) -> Result<()>
@@ -398,20 +512,14 @@ where
 {
     match format {
         Format::Json | Format::JsonLines => {
-            json::to_writer_all_with_formatting(writer, values, formatting)
+            json::into_writer_all_with_formatting(values, writer, formatting)
         }
-        Format::Yaml => yaml::to_writer_all_with_formatting(writer, values, formatting),
-        Format::Toml => toml::to_writer_all_with_formatting(writer, values, formatting),
+        Format::Yaml => yaml::into_writer_all_with_formatting(values, writer, formatting),
+        Format::Toml => toml::into_writer_all_with_formatting(values, writer, formatting),
     }
 }
 
-/// Infer JSON, TOML, or YAML from document content without path information.
-///
-/// Valid JSON wins because many JSON values are also valid YAML. Empty and
-/// YAML-comment-only inputs retain their historical YAML interpretation.
-/// Otherwise TOML is selected only when the complete bounded TOML document is
-/// valid; all remaining content is delegated to YAML. JSON Lines requires an
-/// explicit format or a path suffix because arbitrary newlines are ambiguous.
+/// Infer JSON, TOML, or YAML from document content.
 pub fn infer_format(input: &[u8]) -> Result<Format> {
     let limits = Limits::default();
     check_input_size(input, limits, "format")?;
@@ -420,44 +528,56 @@ pub fn infer_format(input: &[u8]) -> Result<Format> {
         position: error.valid_up_to(),
         reason: "structured-text content is not valid UTF-8".into(),
     })?;
-    Ok(match infer_str_decision(input, limits) {
+    Ok(match infer_utf8_decision(input, limits) {
         Inferred::Decoded(format, _) => format,
         Inferred::Yaml => Format::Yaml,
     })
 }
 
-/// Infer and decode one borrowed UTF-8 document without parsing it twice.
-pub fn from_str_inferred(input: &str) -> Result<(Format, Value)> {
-    from_str_inferred_with_limits(input, Limits::default())
+/// Infer and decode one UTF-8 document without parsing it twice.
+pub fn from_utf8_inferred(input: &str) -> Result<(Format, Value)> {
+    from_utf8_inferred_with_limits(input, Limits::default())
 }
 
-/// Infer and decode one borrowed document with explicit resource limits.
-pub fn from_str_inferred_with_limits(input: &str, limits: Limits) -> Result<(Format, Value)> {
+/// Infer and decode one UTF-8 document with explicit limits.
+pub fn from_utf8_inferred_with_limits(input: &str, limits: Limits) -> Result<(Format, Value)> {
     check_input_size(input.as_bytes(), limits, "format")?;
-    infer_str_impl(input, limits)
+    infer_utf8_impl(input, limits)
+}
+
+/// Infer and decode UTF-8 under `field` without parsing twice.
+pub fn from_utf8_inferred_with_field(input: &str, field: &Field) -> Result<(Format, Value)> {
+    let (format, value) = from_utf8_inferred(input)?;
+    Ok((format, field.from_natural_value(value)?))
 }
 
 /// Infer and decode one byte document without parsing it twice.
-pub fn from_slice_inferred(input: &[u8]) -> Result<(Format, Value)> {
-    from_slice_inferred_with_limits(input, Limits::default())
+pub fn from_bytes_inferred(input: &[u8]) -> Result<(Format, Value)> {
+    from_bytes_inferred_with_limits(input, Limits::default())
 }
 
-/// Infer and decode one byte document with explicit resource limits.
-pub fn from_slice_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Value)> {
+/// Infer and decode one byte document with explicit limits.
+pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Value)> {
     check_input_size(input, limits, "format")?;
     let input = std::str::from_utf8(input).map_err(|error| Error::Codec {
         format: "format",
         position: error.valid_up_to(),
         reason: "structured-text content is not valid UTF-8".into(),
     })?;
-    infer_str_impl(input, limits)
+    infer_utf8_impl(input, limits)
 }
 
-fn infer_str_impl(input: &str, limits: Limits) -> Result<(Format, Value)> {
-    match infer_str_decision(input, limits) {
+/// Infer and decode bytes under `field` without parsing twice.
+pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Value)> {
+    let (format, value) = from_bytes_inferred(input)?;
+    Ok((format, field.from_natural_value(value)?))
+}
+
+fn infer_utf8_impl(input: &str, limits: Limits) -> Result<(Format, Value)> {
+    match infer_utf8_decision(input, limits) {
         Inferred::Decoded(format, value) => Ok((format, value)),
         Inferred::Yaml => {
-            yaml::from_str_with_limits(input, limits).map(|value| (Format::Yaml, value))
+            yaml::from_utf8_with_limits(input, limits).map(|value| (Format::Yaml, value))
         }
     }
 }
@@ -467,14 +587,14 @@ enum Inferred {
     Yaml,
 }
 
-fn infer_str_decision(input: &str, limits: Limits) -> Inferred {
-    if let Ok(value) = json::from_str_with_limits(input, limits) {
+fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
+    if let Ok(value) = json::from_utf8_with_limits(input, limits) {
         return Inferred::Decoded(Format::Json, value);
     }
     if is_empty_or_comment_only(input.as_bytes()) {
         return Inferred::Yaml;
     }
-    if let Ok(value) = toml::from_str_with_limits(input, limits) {
+    if let Ok(value) = toml::from_utf8_with_limits(input, limits) {
         return Inferred::Decoded(Format::Toml, value);
     }
     Inferred::Yaml
@@ -488,6 +608,13 @@ fn is_empty_or_comment_only(input: &[u8]) -> bool {
             .find(|byte| !matches!(byte, b' ' | b'\t' | b'\r'));
         first.is_none() || first == Some(b'#')
     })
+}
+
+pub(crate) fn apply_field(values: Vec<Value>, field: &Field) -> Result<Vec<Value>> {
+    values
+        .into_iter()
+        .map(|value| field.from_natural_value(value))
+        .collect()
 }
 
 pub(crate) fn input_too_large(format: &'static str, position: usize) -> Error {
@@ -517,7 +644,7 @@ pub(crate) fn check_encode_depth(value: &Value, format: &'static str) -> Result<
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Value::Sequence(values) | Value::Record(_, values) => {
+            Value::Sequence(values) => {
                 for value in values.iter() {
                     visit(value, child_depth, maximum, format)?;
                 }
@@ -528,9 +655,11 @@ pub(crate) fn check_encode_depth(value: &Value, format: &'static str) -> Result<
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            // Spelled out rather than left to a wildcard: a value that holds
-            // other values and is not named here would escape the depth limit
-            // silently, so a new variant has to be classified to compile.
+            Value::Record(entries) => {
+                for value in entries.values() {
+                    visit(value, child_depth, maximum, format)?;
+                }
+            }
             Value::Null
             | Value::Bool(_)
             | Value::I8(_)
@@ -543,17 +672,21 @@ pub(crate) fn check_encode_depth(value: &Value, format: &'static str) -> Result<
             | Value::U64(_)
             | Value::I128(_)
             | Value::U128(_)
+            | Value::F16(_)
             | Value::F32(_)
             | Value::F64(_)
-            | Value::Decimal(..)
+            | Value::D128(..)
+            | Value::D256(..)
             | Value::String(_)
             | Value::Bytes(_)
             | Value::Geospatial(_)
-            | Value::Date(_)
-            | Value::Time(..)
-            | Value::Timestamp(..)
-            | Value::DateTime(..)
-            | Value::Duration(..) => {}
+            | Value::Date32(..)
+            | Value::Date64(..)
+            | Value::Time32(..)
+            | Value::Time64(..)
+            | Value::DateTime64(..)
+            | Value::Duration32(..)
+            | Value::Duration64(..) => {}
         }
         Ok(())
     }

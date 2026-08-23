@@ -69,6 +69,97 @@ Three invariants hold for every implementation:
   the current size creates.
 - `size` never exceeds `capacity`, and `reserve` changes only `capacity`.
 
+## Streamed bytes
+
+The canonical Rust entry point is
+`IOBase::pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>`.
+It starts at an explicit decoded byte position and yields owned arrays of at
+most `batch_size` bytes. Construction is lazy, never asks for `size`, and an
+error is yielded after every successful prefix before the iterator stays
+fused. `batch_size` must be non-zero.
+
+```rust
+use yggdryl::io::{Buffer, IOBase, IOCursor};
+
+let handle = Buffer::from_bytes(b"0123456789".to_vec());
+let chunks = handle
+    .pstream_bytes(2, 3)?
+    .collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(chunks, [b"234".to_vec(), b"567".to_vec(), b"89".to_vec()]);
+
+// The cursor form starts at `tell` and advances only when bytes are yielded.
+let mut cursor = handle.cursor_at(1);
+let first = cursor.stream_bytes(2)?.next().transpose()?.unwrap();
+assert_eq!(first, b"12");
+assert_eq!(cursor.tell(), 3);
+```
+
+The bindings expose the same lazy iterator with a 65,536-byte default batch:
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes(b"0123456789")
+    assert list(handle.pstream_bytes(2, 3)) == [b"234", b"567", b"89"]
+
+    cursor = handle.cursor(1)
+    stream = cursor.stream_bytes(2)
+    assert next(stream) == b"12"
+    assert cursor.tell() == 3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const handle = IOBase.fromBytes(Buffer.from('0123456789'))
+    assert.deepEqual(
+      [...handle.pstreamBytes(2, 3)].map((part) => part.toString()),
+      ['234', '567', '89'],
+    )
+
+    const cursor = handle.cursor(1)
+    const first = cursor.streamBytes(2).next()
+    assert.equal(first.value.toString(), '12')
+    assert.equal(cursor.tell(), 3)
+    ```
+
+`ByteStream` also implements `std::io::Read`, so codecs and parsers fill their
+own reusable windows without allocating an iterator item first. A coded handle
+decodes directly from the encoded source; a non-zero position is reached by
+decoding and discarding the prefix because compression frames are not
+seekable. The stream does not open the coded handle or retain decoded pages.
+Through `Buffered`, it deliberately bypasses the page cache, leaving
+`cached_pages() == 0`; use positional reads when retained pages are wanted.
+
+### Measured streamed-byte behavior
+
+Criterion measured the same 8 MiB decoded fixture on Windows 11 x86_64, an
+AMD Ryzen 5 150 (6 cores/12 threads), and rustc 1.96.1 on 2026-08-23. Values
+are medians; the stream cases retain no decoded pages.
+
+| operation | decoded bytes | plain | gzip | zlib | zstd |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| first `pstream_bytes` item | 64 KiB | 3.42 us | 80.96 us | 71.94 us | 281.24 us |
+| one `pread` | 64 KiB | 1.84 us | 73.09 us | 65.32 us | 260.15 us |
+| `pstream_bytes` drain | 8 MiB | 0.501 ms | 8.405 ms | 8.225 ms | 14.995 ms |
+| `read_all_bytes` | 8 MiB | 1.981 ms | 15.265 ms | 14.761 ms | 21.049 ms |
+| sixteen sequential `pread` calls | 1 MiB | 0.037 ms | 10.268 ms | 8.581 ms | 14.412 ms |
+
+The last row rebuilds a decoder at every compressed offset. Keep one
+`ByteStream` for a scan: it is both faster and bounded-memory. Whole-value
+reads deliberately trade those properties for one returned `Vec<u8>`.
+
+Regenerate with:
+
+```console
+cargo bench -p yggdryl --bench io --features parquet -- io_pstream --noplot
+```
+
 ## Built from what you already hold
 
 In Python, `IOBase(...)` accepts more than a path: callers hold open files and streams more often
@@ -249,7 +340,7 @@ bytes change.
     assert.ok(leaf.isFile())
     assert.ok(!leaf.isDir())
 
-    fs.rmSync(folder.toPath(), { recursive: true, force: true })
+    fs.rmSync(folder.intoPath(), { recursive: true, force: true })
     ```
 
 `IOKind` is the vocabulary every backend answers in: `Memory` for bytes with no location, `File` for a
@@ -330,13 +421,13 @@ and `is_file`.
 
     assert.ok(!root.isAtomic())
 
-    fs.rmSync(root.toPath(), { recursive: true, force: true })
+    fs.rmSync(root.intoPath(), { recursive: true, force: true })
     ```
 
 A handle presents its value one of two ways, and these are how a caller asks which. *Atomic* is the
 byte surface - `read_all_bytes` reads the value whole and `write_all_bytes` replaces it whole -
-while *tabular* is the record surface, [`read_arrow_batch_reader`](#arrow-batches) and its two
-writing siblings. Wherever bytes are held the two are complements; a container that holds neither
+while *tabular* is the record surface, [`read_arrow_reader`](#arrow-batches) and its three
+intent-specific writing siblings. Wherever bytes are held the two are complements; a container that holds neither
 rows nor one byte value - a plain folder of logs, a namespace, a catalog - answers `false` to both.
 
 The answers cost as little as they can. The media type settles every leaf and every location nothing
@@ -410,6 +501,94 @@ caller asks which surface a handle is for.
 
 `copy_into` moves bytes between two handles in chunks, so neither side is buffered whole, and it
 carries the media type across. It is `copy_into` in Python and `copyInto` in JavaScript.
+
+## Structured values
+
+`read_value` and `write_value` use the handle's media type to select JSON,
+YAML, or TOML and any outer gzip, zlib, or zstd coding. Reads feed the parser
+from `pstream_bytes`, so decoded pages are not retained. An optional `Field`
+directs native parsing and casting; omitting it infers the natural value.
+Rust keeps a typed Struct row as its canonical ordered `Value::Sequence`;
+Python and JavaScript restore the field names as dictionaries and objects by
+default. Python `cls=Value` and JavaScript `{ value: true }` return that exact
+core value instead.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{Field, Url, Value};
+
+    let media = Url::from_str("file:///trade.json.gz")?.media_type();
+    let mut handle = Buffer::new().with_media_type(media);
+    let value = Value::from_record([
+        ("quantity", Value::I64(2)),
+        ("symbol", Value::from("AAPL")),
+    ])?;
+    handle.write_value(&value)?;
+
+    let field = Field::from_str(
+        "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null",
+    )?;
+    assert_eq!(handle.read_value(Some(&field))?[0], Value::I64(2));
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, Value
+
+    path = pathlib.Path(tempfile.mkdtemp()) / "trade.json.gz"
+    handle = IOBase(path)
+    handle.write_value({"quantity": 2, "symbol": "AAPL"})
+    field = "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null"
+    assert handle.read_value(field) == {"quantity": 2, "symbol": "AAPL"}
+    value = handle.read_value(field, cls=Value)
+    assert value.kind == "sequence"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, Value } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-value-'))
+    const handle = new IOBase(path.join(root, 'trade.json.gz'))
+    handle.writeValue({ quantity: 2, symbol: 'AAPL' })
+    const field = 'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null'
+    assert.deepEqual(handle.readValue(field), { quantity: 2, symbol: 'AAPL' })
+    const value = handle.readValue({ field, value: true })
+    assert.ok(value instanceof Value)
+    assert.equal(value.kind, 'sequence')
+    ```
+
+### Measured structured-value I/O
+
+Criterion measured one 16,384-record JSON value through the same `IOBase`
+methods on Windows 11 x86_64, an AMD Ryzen 5 150 (6 cores/12 threads), and
+rustc 1.96.1 on 2026-08-23. The table uses Criterion's reported point
+estimate; each compressed case includes coding and parsing or rendering.
+
+| representation | `read_value` | read throughput | `write_value` | write throughput |
+| --- | ---: | ---: | ---: | ---: |
+| JSON | 71.445 ms | 11.880 MiB/s | 19.137 ms | 44.352 MiB/s |
+| JSON + gzip | 81.427 ms | 10.424 MiB/s | 394.83 ms | 2.150 MiB/s |
+| JSON + zlib | 79.588 ms | 10.665 MiB/s | 385.78 ms | 2.200 MiB/s |
+| JSON + zstd | 78.580 ms | 10.801 MiB/s | 195.60 ms | 4.339 MiB/s |
+
+Parsing dominates these reads; the write rows expose each compressor's cost.
+Regenerate the table with:
+
+```console
+cargo bench -p yggdryl --bench io --all-features -- io_value --noplot
+```
 
 ## Streaming adapters
 
@@ -499,6 +678,1734 @@ built on exactly it. In Python and JavaScript the cursor *shares the handle*
 - a write through it is a write there - and follows each language's file
 conventions: `seek(offset, whence)` and `read(size=-1)` in Python, `seek`,
 `tell`, and a `position` property in JavaScript.
+
+## What the bytes are
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::MimeType;
+
+    // Nothing names an in-memory buffer, so its type comes from its bytes.
+    let mut handle = Buffer::from_bytes(br#"{"symbol":"AAPL"}"#.to_vec());
+    assert_eq!(handle.media_type().base(), &MimeType::JSON);
+
+    // It is re-derived after the content changes.
+    handle.write_all_bytes(b"PAR1payload")?;
+    assert_eq!(handle.media_type().base(), &MimeType::PARQUET);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    # Nothing names an in-memory buffer, so its type comes from its bytes.
+    handle = IOBase.from_bytes(b'{"symbol":"AAPL"}')
+    assert str(handle.media_type.base) == "application/json"
+
+    # It is re-derived after the content changes.
+    handle.write_bytes(b"PAR1payload")
+    assert str(handle.media_type.base) == "application/vnd.apache.parquet"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase, MimeType } = require('yggdryl')
+
+    // Nothing names an in-memory buffer, so its type comes from its bytes.
+    const handle = IOBase.fromBytes(Buffer.from('{"symbol":"AAPL"}'))
+    assert.ok(handle.mediaType.base.equals(MimeType.JSON))
+
+    // It is re-derived after the content changes.
+    handle.writeBytes(Buffer.from('PAR1payload'))
+    assert.ok(handle.mediaType.base.equals(MimeType.PARQUET))
+    ```
+
+`media_type` is the second thing a handle carries, next to the optional `url` naming where the bytes
+live. It answers both questions a caller has: what representation the bytes are, and what content
+codings sit on top.
+
+```rust
+use yggdryl::io::{Buffer, IOBase};
+use yggdryl::{Codec, MimeType, Url};
+
+// A declared type wins, and the codings it carries are what `codec` reports.
+let named = Buffer::new().with_media_type(Url::from_str("file:///trades.json.gz")?.media_type());
+assert_eq!(named.media_type().base(), &MimeType::JSON);
+assert_eq!(named.codec(), Codec::Gzip);
+```
+
+`codec` reads the last coding out of the media type, which is how compression is never passed as a
+separate argument. `set_media_type` declares one explicitly, which is required for a format that
+content cannot identify. Both cross into the bindings - `codec` as a read-only property,
+`media_type` as a settable one - and the next section is what a caller does with the coding once it
+has been read.
+
+## Adding and removing a coding
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::{Codec, Url};
+
+    let mut plain = Buffer::new().with_media_type(Url::from_str("file:///rows.json")?.media_type());
+    plain.write_all_bytes(br#"{"symbol":"AAPL"}"#)?;
+    // Nothing wraps these bytes, so there is nothing to undo.
+    assert_eq!(plain.codec(), Codec::Identity);
+
+    let mut encoded =
+        Buffer::new().with_media_type(Url::from_str("file:///rows.json.gz")?.media_type());
+    assert_eq!(encoded.codec(), Codec::Gzip);
+
+    // The coding is an argument here, and the target's name is one place to read it from.
+    let codec = encoded.codec();
+    plain.compress_into(&mut encoded, codec)?;
+    assert_eq!(&encoded.read_all_bytes()?[..2], b"\x1f\x8b");
+
+    let mut decoded = Buffer::new();
+    encoded.decompress_into(&mut decoded)?;
+    assert_eq!(decoded.read_all_bytes()?, plain.read_all_bytes()?);
+    assert_eq!(decoded.codec(), Codec::Identity);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    plain = IOBase(root / "rows.json")
+    plain.write_bytes(b'{"symbol":"AAPL"}')
+
+    # Nothing wraps these bytes, so there is nothing to undo.
+    assert plain.codec is None
+
+    encoded = IOBase(root / "rows.json.gz")
+    assert encoded.codec == "gzip"
+
+    # The target's name already said gzip, so nothing here repeats it.
+    assert plain.compress_into(encoded) == encoded.size
+    assert encoded.read_bytes()[:2] == b"\x1f\x8b"
+
+    decoded = IOBase(root / "roundtrip.json")
+    assert encoded.decompress_into(decoded) == 17
+    assert decoded.read_bytes() == plain.read_bytes()
+    assert decoded.codec is None
+
+    # A target declaring no coding is refused rather than copied unchanged.
+    reason = None
+    try:
+        plain.compress_into(IOBase(root / "copy.json"))
+    except ValueError as error:
+        reason = str(error)
+    assert "expected a target declaring a content coding" in reason
+    assert not (root / "copy.json").exists()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const plain = new IOBase(path.join(root, 'rows.json'))
+    plain.writeBytes(Buffer.from('{"symbol":"AAPL"}'))
+
+    // Nothing wraps these bytes, so there is nothing to undo.
+    assert.equal(plain.codec, null)
+
+    const encoded = new IOBase(path.join(root, 'rows.json.gz'))
+    assert.equal(encoded.codec, 'gzip')
+
+    // The target's name already said gzip, so nothing here repeats it.
+    assert.equal(plain.compressInto(encoded), encoded.size)
+    assert.deepEqual([...encoded.readBytes().subarray(0, 2)], [0x1f, 0x8b])
+
+    const decoded = new IOBase(path.join(root, 'roundtrip.json'))
+    assert.equal(encoded.decompressInto(decoded), 17)
+    assert.equal(decoded.readText(), '{"symbol":"AAPL"}')
+    assert.equal(decoded.codec, null)
+
+    // An in-memory target has no name to declare a coding, so this one is named.
+    const memory = IOBase.fromBytes()
+    assert.ok(plain.compressInto(memory, 'zstd') > 0)
+    assert.equal(memory.codec, 'zstd')
+
+    // A target declaring no coding is refused rather than copied unchanged.
+    assert.throws(
+      () => plain.compressInto(new IOBase(path.join(root, 'copy.json'))),
+      /expected a target declaring a content coding/,
+    )
+    assert.equal(fs.existsSync(path.join(root, 'copy.json')), false)
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+`codec` answers what coding the handle's *own name* declares - `rows.json.gz` is gzip - and an
+in-memory handle answers off the media type it was told to hold. Absence is spelled as absence:
+Python answers `None` and JavaScript `null`, never the string `"identity"`, because the question a
+caller is asking here is whether there is anything to undo, and a sentinel spelling of "no" is one
+more value every branch has to know about.
+
+`compress_into` and `decompress_into` - `compressInto` and `decompressInto` in JavaScript - move
+every byte from one handle into another and add or remove a coding on the way. The coding defaults
+to the one a name already declares: the target's for a compress, the source's for a decompress, so
+writing a `rows.json` into a `rows.json.gz` never spells gzip twice, and reading it back needs no
+argument at all. That works because the transfer records the coding in the target's media type,
+which is the same place a located handle reads it from. Naming a coding explicitly overrides the
+default - the escape hatch for an in-memory target, which has no name to declare anything, and for
+bytes whose name lies about what they hold. `level` is the shared 0-9 scale.
+
+Both bindings refuse a compress into a target that declares no coding rather than writing the bytes
+through unchanged, and the refusal names the media type the target does carry. A coding nobody named
+is a coding nobody can decode by name later, so a silent identity copy is a failure that surfaces one
+reader downstream instead of here. Rust asks for the coding outright, so the question never arises:
+there is no name to default from until a caller reads one, which is what the Rust example above does
+in the open.
+
+None of this sits on the reading path. A record encoding and a text codec already read *through* the
+codings a name declares - `trades.arrows.gz` writes gzipped and reads straight back as batches, and
+[text.md](text.md)'s `load` peels the same coding off a `quote.json.gz` - while `read_lines` peels
+them as streams rather than as values. These two methods are for moving bytes between
+representations: publishing a plain file as a compressed one, or handing an outside tool a form it
+can open. What coding sits on the bytes is not something a reader has to think about. The codings
+themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), and
+[zstd.md](zstd.md).
+
+## Open and close
+
+The scoped pair is exposed in all three runtimes: Rust calls `open` / `close`
+directly, Python binds them to a context manager, and JavaScript exposes the
+same methods (plus `Symbol.dispose` where the runtime provides it).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, Coded, IOBase};
+    use yggdryl::Codec;
+
+    let mut handle = Coded::new(Buffer::new(), Codec::Zstd);
+    assert!(!handle.opened());
+
+    handle.open()?;
+    assert!(handle.opened());
+    handle.write_all_bytes(b"symbol,price\n")?;
+
+    // Closing publishes the pending write and releases the cache.
+    handle.close()?;
+    assert!(!handle.opened());
+
+    // The handle stays usable; the next read re-materializes.
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades.csv"
+
+    # `with` is the scoped pair: `__enter__` opens and `__exit__` closes.
+    with IOBase(path) as handle:
+        handle.write_text("symbol,price\n")
+        assert handle.opened
+        assert not handle.closed
+
+    # Closing published the bytes at their exact length, which is what another
+    # reader needs; the handle stays usable and simply re-materializes.
+    assert path.stat().st_size == 13
+    assert IOBase(path).read_text() == "symbol,price\n"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const target = path.join(root, 'value.bin')
+    fs.writeFileSync(target, 'symbol,price\n')
+
+    const handle = new IOBase(target)
+    handle.open()
+    assert.equal(handle.opened(), true)
+    handle.close()
+    assert.equal(handle.closed(), true)
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+A handle works without `open`: every operation materializes what it needs. Calling it moves that cost
+to a known point and keeps the cached state alive across many small operations instead of re-deriving
+it per call. Opening an already-open handle is a no-op, and opening a resource that does not exist yet
+succeeds without creating it - creation still waits for the first write. `close` flushes and releases
+what `open` cached; the handle remains usable afterwards.
+
+The cache is strictly opt-in, and that is the whole contract: **open caches, closed fetches**. A
+closed handle re-derives its metadata on every ask, so a resource that changes underneath it is seen
+immediately; an open one holds what `open` cached until `close`, which is what makes many small
+operations against one resource cheap. Nothing fills the cache as a side effect of an ordinary read,
+because a cache nobody asked for is how a handle serves a stale answer.
+
+What is cached depends on the implementation. `Buffer` has nothing to cache, so the trait defaults
+apply and `opened` stays `false`. `local::File` caches the descriptor and the memory mapping, while
+`Coded` retains the decoded value only for an explicitly opened session. Media wrappers retain the
+metadata their format keeps re-reading: IPC schema and dimensions, the Parquet footer, Avro header
+and block metadata, or Text's resolved field, coding plan, and dimensions. These are the operations
+a scoped context binds to, which is why the bindings can map `__enter__` / `__exit__` and
+`open` / `close` onto the same core lifecycle.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import IOBase
+
+target = pathlib.Path(tempfile.mkdtemp()) / "lake" / "trades.parquet"
+IOBase(target).overwrite_arrow_table(pa.table({"id": [1, 2], "venue": ["XNAS", "XNYS"]}))
+
+# Metadata-heavy work belongs inside the scope: the schema probe, the
+# per-batch reads, and the size checks all reuse what `open` cached, and
+# `close` releases it at a known point.
+rows = 0
+with IOBase(target) as handle:
+    field = handle.read_arrow_field()
+    for batch in handle.read_arrow_reader():
+        rows += batch.num_rows
+assert rows == 2
+
+# Outside a scope the same calls still work - each one just fetches fresh,
+# which is exactly right for a resource another writer may be changing.
+assert IOBase(target).read_arrow_field() == field
+```
+
+## Clearing and removing
+
+`clear` and `remove` are the lifecycle pair, and what they mean is stated by kind rather than
+implied by a byte operation. `clear` empties the contents and keeps the resource: a leaf keeps
+existing with size `0`, a container keeps existing and loses every child recursively. `remove`
+deletes the resource itself - completely, whatever "the resource" is for that handle. A wrapping
+handle removes what it *wraps*: `Gzip::remove` deletes the `.gz` resource rather than discarding a
+decoded buffer, and a media handle's cached schema or footer goes with it.
+
+Two rules hold on both, and they are the reason the pair exists at all:
+
+- **Absence is a no-op success.** Neither call is an error on a resource that is not there, and
+  neither creates one. `clear` is not a write.
+- **Absence is reached without a probe.** An implementation issues the delete and treats the
+  backend's own not-found answer as success. It never calls `kind`, `size`, an exists check, or
+  `ls` first to decide whether to proceed - on a remote backend each of those is a second round
+  trip, and a recursive delete would become a flood of them. Only not-found maps to success; a
+  permission, network, or busy failure stays the typed error it is.
+
+Because absence and successful removal are indistinguishable, `remove` returns nothing rather than
+a bool or a count - reporting "did something exist" would force exactly the probe this refuses.
+`recursive` is ignored on a leaf, and a container that still has children is refused by name rather
+than silently recursed into.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::local::Folder;
+
+    let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
+    let mut folder = Folder::new(&root)?;
+    folder.truncate(0)?;
+    folder.child_by_path("a.log")?.write_all_bytes(b"line\n")?;
+
+    // Clearing empties the container and keeps it.
+    folder.clear()?;
+    assert_eq!(folder.ls(true, false).count(), 0);
+    assert_eq!(folder.kind(), yggdryl::IOKind::Directory);
+
+    // Removing deletes it; a second call succeeds, having done nothing. A
+    // handle asked for as a container keeps answering `Directory`, because that
+    // is what it was asked for - the parent's listing is what shows it gone.
+    let leaf = root.join("nested");
+    let mut nested = Folder::new(&leaf)?;
+    nested.truncate(0)?;
+    assert_eq!(folder.ls(false, false).count(), 1);
+    nested.remove(false)?;
+    nested.remove(false)?;
+    assert_eq!(folder.ls(false, false).count(), 0);
+    folder.remove(false)?;
+
+    // A wrapping handle removes what it wraps, cache included.
+    let mut coded = yggdryl::gzip::Gzip::new(Buffer::new());
+    coded.write_all_bytes(b"symbol,price\n")?;
+    coded.remove(false)?;
+    assert_eq!(coded.size(), 0);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "logs")
+    handle.mkdir()
+    (handle / "a.log").write_text("line\n")
+
+    # Clearing empties the container and keeps it.
+    handle.clear()
+    assert list(handle.iterdir()) == []
+    assert handle.is_dir()
+
+    # Removing deletes it; a second call succeeds, having done nothing. A
+    # handle asked for as a container keeps answering `is_dir`, because that
+    # is what it was asked for - the parent's listing is what shows it gone.
+    handle.remove()
+    handle.remove()
+    assert list(IOBase(root).iterdir()) == []
+
+    # A container that still has children is refused rather than recursed into.
+    handle.mkdir()
+    (handle / "a.log").write_text("line\n")
+    try:
+        handle.remove()
+    except Exception as error:
+        assert "children" in str(error)
+    handle.remove(recursive=True)
+    assert list(IOBase(root).iterdir()) == []
+
+    # The handle stays usable and lazy - a write recreates the resource.
+    leaf = IOBase(root / "trades.csv")
+    leaf.write_text("symbol,price\n")
+    leaf.remove()
+    assert not leaf.exists()
+    leaf.write_text("symbol,price\n")
+    assert leaf.read_text() == "symbol,price\n"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = path.join(os.tmpdir(), `yggdryl-docs-lifecycle-${process.pid}`)
+    const handle = new IOBase(path.join(root, 'logs'))
+    handle.mkdir()
+    handle.joinpath(['a.log']).writeText('line\n')
+
+    // Clearing empties the container and keeps it.
+    handle.clear()
+    assert.equal([...handle.ls(true, false)].length, 0)
+
+    // Removing deletes it; a second call succeeds, having done nothing.
+    handle.remove()
+    handle.remove()
+    assert.equal([...new IOBase(root).ls(false, false)].length, 0)
+
+    // The handle stays usable and lazy - a write recreates the resource.
+    const leaf = new IOBase(path.join(root, 'trades.csv'))
+    leaf.writeText('symbol,price\n')
+    leaf.remove()
+    assert.equal(leaf.exists(), false)
+    leaf.writeText('symbol,price\n')
+    assert.equal(leaf.readText(), 'symbol,price\n')
+    new IOBase(root).remove(true)
+    ```
+
+`Table` decides both deliberately rather than inheriting a folder's answers. `clear` commits one
+snapshot carrying no data files, so the table still exists with its schema, properties, and history
+and holds zero rows - deleting files behind the manifests would leave exactly the orphaned state a
+complete operation must not. `remove` deletes the table's whole location, metadata tree and data
+files together, because dropping a table is not emptying it.
+
+## Buffer
+
+!!! note "Rust only"
+    The bindings reach the in-memory implementation through
+    `IOBase.from_bytes`, not through a `Buffer` class of their own.
+
+```rust
+use yggdryl::io::{Buffer, IOBase};
+use yggdryl::MimeType;
+
+let mut handle = Buffer::with_capacity(1_024);
+handle.reserve(4_096)?;
+assert!(handle.capacity() >= 4_096);
+// Reserving changes the allocation, never the length.
+assert_eq!(handle.size(), 0);
+
+handle.pwrite(0, b"symbol,price\n")?;
+assert_eq!(handle.as_slice(), b"symbol,price\n");
+
+// A format the bytes cannot identify is declared rather than guessed.
+let csv = Buffer::from_bytes(handle.into_bytes()).with_media_type(MimeType::CSV.into());
+assert_eq!(csv.media_type().base(), &MimeType::CSV);
+```
+
+`Buffer` is the in-memory implementation, and the one every example and test reaches for. The
+allocation doubles rather than growing exactly, so appending in many small writes stays amortized
+constant; `reserve` pre-sizes it when the final length is known. `as_slice`, `as_mut_slice`, and
+`into_bytes` reach the bytes directly, and taking a mutable slice discards any inferred media type,
+because the content's identity may change through it.
+
+A buffer is not stored anywhere, so `url` reports a synthetic `mem:` identity naming the process and
+the allocation - enough to tell two live buffers apart in a log, without pretending the bytes live
+somewhere. The other implementations in the core are [local.md](local.md), the memory-mapped local
+tree, and [arrowfs.md](arrowfs.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
+one you wrote - behind the same trait. Anything else is a sibling module supplying the same three
+roles, never a change to this one. Two wrapping handles sit over any of them and are handles
+themselves: `Coded` below, and the page cache in [buffered.md](buffered.md).
+
+## Coded
+
+!!! note "Rust only"
+    The Python and JavaScript packages do not expose the compression
+    wrappers.
+
+```rust
+use yggdryl::io::{Buffer, Coded, IOBase};
+use yggdryl::{Codec, Level, MimeType, Url};
+
+let inner = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
+let mut handle = Coded::new(inner, Codec::Gzip).with_level(Level::BEST);
+
+// The wrapper's bytes are decoded, so its media type has the coding removed.
+assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
+assert_eq!(handle.media_type().encoding_len(), 0);
+
+let payload = "symbol,price\n".repeat(64).into_bytes();
+handle.write_all_bytes(&payload)?;
+handle.flush()?;
+
+// Reads decompress; the wrapped handle only ever holds the encoded form.
+assert_eq!(handle.read_all_bytes()?, payload);
+assert!(handle.handle().size() < payload.len() as u64);
+```
+
+`Coded` wraps any handle and presents the decoded bytes: reads decompress, writes compress. It is an
+`IOBase` itself, so it goes anywhere a handle goes. The per-format aliases in [gzip.md](gzip.md),
+[zlib.md](zlib.md), and [zstd.md](zstd.md) are this type with the codec already chosen.
+
+A content coding is not seekable, which forces two tradeoffs. The decoded value is materialized once
+and held until `close`, so positional reads and writes work at all over a compressed payload; and a
+write is published to the wrapped handle on `flush` or `close`, not on every `pwrite`. `into_handle`
+publishes and returns the wrapped handle. `Codec::Identity` makes the wrapper a pass-through.
+
+## Buffered
+
+Rust exposes the typed `Buffered<H>` wrapper. Python and JavaScript keep their
+generic `IOBase` identity and configure the same core cache through
+`buffered(page_size=..., max_bytes=..., ttl=...)` or
+`buffered({ pageSize, maxBytes, ttlMs })`; repeated calls replace the options
+without stacking caches.
+
+```rust
+use yggdryl::buffered::BufferedOptions;
+use yggdryl::io::{Buffer, IOBase};
+
+let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
+
+// The first read fetches the page holding the range; the second is memory.
+assert_eq!(handle.read_range(0, 8)?, [4_u8; 8]);
+assert_eq!(handle.read_range(2_000, 8)?, [4_u8; 8]);
+assert_eq!(handle.cached_pages(), 1);
+```
+
+`Buffered` is the other wrapping handle: it serves reads from fixed-size pages under a byte budget
+and a time to live, writes through, and pins the value's first and last pages so a footer-first
+container never re-reads either end. Everything else it mirrors. [buffered.md](buffered.md) is the
+page.
+
+## Roles
+
+!!! note "Rust only"
+    The bindings expose one handle class rather than the three role traits
+    behind it.
+
+```rust
+use yggdryl::io::IOBase;
+use yggdryl::{IOKind, MimeType, local};
+
+let path = std::env::temp_dir().join("yggdryl-docs-io-folder");
+let _ = std::fs::remove_dir_all(&path);
+let mut folder = local::Folder::new(&path)?;
+
+// A container holds no bytes: reads are empty, byte writes are refused.
+let mut probe = [0_u8; 4];
+assert_eq!(folder.pread(0, &mut probe)?, 0);
+assert_eq!(folder.size(), 0);
+let refused = folder.pwrite(0, b"x").unwrap_err().to_string();
+assert!(refused.contains("got the directory"), "{refused}");
+
+// Truncating to zero is the write that brings a container into being.
+folder.truncate(0)?;
+assert!(folder.exists());
+assert_eq!(folder.kind(), IOKind::Directory);
+assert_eq!(folder.media_type().base(), &MimeType::DIRECTORY);
+assert_eq!(folder.ls(false, false).count(), 0);
+
+std::fs::remove_dir_all(&path)?;
+```
+
+`IOBase` says how to move bytes. The three role traits say what a resource *is*, and each declares only
+what the backend alone knows, pre-implementing the rest as methods the backend's `IOBase` impl forwards
+to:
+
+- **`IOFolder`** - a container. Declares `folder_url`, `folder_exists`, `create_folder`, `list_folder`.
+  Pre-implements `folder_pread` (reads nothing), `folder_pwrite` (refuses, naming the container),
+  `folder_truncate` (creates on `0`, errors otherwise), `folder_media_type` (`inode/directory`), and
+  `folder_kind` (`Directory`).
+- **`IOFile`** - a leaf. Declares `file_url` and `file_exists`. Pre-implements `file_ls` (lists
+  nothing), `file_child_by_path` (refuses, naming the file), and `file_kind` (`File` when it exists,
+  `Unknown` when it does not).
+- **`IOPath`** - a location whose role is not resolved yet. Declares `path_url`, `is_folder`,
+  `is_file`. Pre-implements `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), and
+  `path_media_type` (the container type, or the one the name implies).
+
+```rust
+use yggdryl::io::IOBase;
+use yggdryl::{IOKind, local};
+
+// A location that arrived from outside answers by looking at what is there.
+let existing = local::Path::new(std::env::temp_dir())?;
+assert_eq!(existing.kind(), IOKind::Directory);
+
+let undecided = local::Path::new(std::env::temp_dir().join("yggdryl-docs-io-undecided"))?;
+assert_eq!(undecided.kind(), IOKind::Unknown);
+assert!(undecided.read_all_bytes()?.is_empty());
+
+// A leaf is not a container: it lists nothing and resolves no child.
+let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
+assert_eq!(leaf.ls(true, false).count(), 0);
+assert!(leaf.child_by_path("nested").is_err());
+```
+
+`parent`, `child_by_path`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
+tree needs no type parameter. A resource that cannot contain others lists nothing rather than failing,
+so a caller can walk without testing each node first. `local::Path` is the reference `IOPath`: it
+resolves by looking, and a byte write is what settles an undecided location into a file. A remote
+store is the same three roles over a different transport.
+
+## Delegating to a wrapped handle
+
+!!! note "Rust only"
+    A backend implements `IOBase` in Rust; neither binding can add one.
+
+```rust
+use yggdryl::io::{Buffer, IOBase, IOMedia};
+
+/// A wrapper mirrors the handle's bytes rather than owning bytes of its own.
+struct Wrapped {
+    handle: Buffer,
+}
+
+impl IOMedia for Wrapped {
+    yggdryl::delegate_iomedia!(handle);
+}
+
+impl IOBase for Wrapped {
+    yggdryl::delegate_iobase!(handle);
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut wrapper = Wrapped {
+        handle: Buffer::new(),
+    };
+    wrapper.open()?;
+    wrapper.write_all_bytes(b"AAPL")?;
+
+    assert_eq!(wrapper.opened(), wrapper.handle.opened());
+    assert_eq!(wrapper.read_all_bytes()?, b"AAPL");
+    assert_eq!(wrapper.handle.as_slice(), b"AAPL");
+    Ok(())
+}
+```
+
+`delegate_iobase!` forwards the storage contract, including `open`, `opened`, and `close`; it does
+not forward record behavior. `delegate_iomedia!` independently forwards dimensions, options,
+Field/reader reads, and typed writes. A wrapper that changes any forwarded method uses the explicit
+list form and leaves that method out. [ipc.md](ipc.md), [parquet.md](parquet.md), and the compression
+handles choose the lists that match the state each wrapper owns.
+
+It has two other spellings, for two other shapes:
+
+- `delegate_iobase!(handle, except_lifecycle)` omits `clear`, `remove`, `is_atomic`, `is_tabular`,
+  and `is_io`. A caching wrapper writes the first pair so invalidation is part of the operation; a
+  record-encoding wrapper answers the three surface questions from its representation instead of
+  mirroring the bytes beneath it. `Ipc`, `Parquet`, and the [text handler](#text-records) are this
+  shape.
+- `delegate_iobase!(handle: pread, size, ...)` names the methods to mirror one by one, for a wrapper
+  that *changes* one of them - a method cannot be both expanded by the macro and written out
+  underneath it. [`Buffered`](buffered.md) is this shape: it owns the two positional primitives, the
+  resize that invalidates, the open/close pair, and the `clear`/`remove` pair, and mirrors the rest.
+  A method left out of the list falls back to the trait's own default, which for `clear` and `remove`
+  means truncating rather than reaching the resource - so leave them out only when writing them.
+
+## Arrow batches
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::arrow;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{DataType, Url};
+
+    // A non-null struct Field is the schema.
+    let schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("symbol"),
+    ])?
+    .required_field("row");
+
+    let arrow_schema = schema.clone().into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec![Some("AAPL"), None])),
+        ],
+    )?;
+
+    // The handle's own media type picks the encoding; no format argument is passed.
+    let mut handle = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
+    let options = handle.record_options()?;
+
+    // Overwrite takes a batch reader; the method name fixes the write intent.
+    handle.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
+    assert_eq!(handle.read_arrow_field(&options)?, schema);
+    assert_eq!((handle.row_size()?, handle.column_size()?), (2, 2));
+
+    // The read path returns one. Batches arrive one at a time, never as a vector.
+    let mut rows = 0;
+    for batch in handle.read_arrow_reader(&options)? {
+        rows += batch?.num_rows();
+    }
+    assert_eq!(rows, 2);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    # A PyArrow schema is the schema; the binding imports it once at the boundary.
+    schema = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("symbol", pa.string()),
+    ])
+    batch = pa.record_batch({"id": [1, 2], "symbol": ["AAPL", None]}, schema=schema)
+
+    # The handle's own media type picks the encoding; no format argument is passed.
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+    options = handle.record_options()
+
+    # The write path takes a batch reader and nothing else.
+    handle.overwrite_arrow_record_batch(batch, options=options)
+    assert handle.read_arrow_field(options=options).name == "row"
+
+    # The read path returns one. Batches arrive one at a time, never as a vector.
+    rows = sum(part.num_rows for part in handle.read_arrow_reader(options=options))
+    assert rows == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
+
+    // A non-null struct Field is the schema.
+    const schema = fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('symbol: utf8')],
+      { nullable: false },
+    )
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
+    })
+
+    // The handle's own media type picks the encoding; no format argument is passed.
+    const handle = IOBase.fromBytes()
+    handle.mediaType = MimeType.ARROW_STREAM
+    const options = handle.recordOptions()
+
+    // The write path takes a batch reader and nothing else.
+    handle.overwriteArrowReader(BatchReader.from(table), options)
+    assert.ok(handle.readArrowField(options).equals(schema))
+
+    // The read path returns one. Batches arrive one at a time, never as a vector.
+    let rows = 0
+    for (const batch of handle.readArrowReader(options)) {
+      rows += batch.numRows
+    }
+    assert.equal(rows, 2)
+    ```
+
+### Logical dimensions
+
+The media surface exposes two lazy dimensions:
+
+```text
+row_size(&self) -> Result<u64>
+column_size(&self) -> Result<usize>
+```
+
+They describe the whole logical media, so temporary projection, filter, and row-limit settings do
+not change either answer. Schema-bearing encodings read headers or footers and never decode row
+arrays; text streams its configured multiline extractor because only the extractor can identify a
+record boundary. A folder sums matching leaves, while a table format answers from its current
+metadata. An explicitly opened media caches the metadata answer until `close`; a closed handle asks
+the resource afresh each time. A declared Struct field remains authoritative for `column_size`, even
+when the resource has no rows. Python exposes the same values as `row_size` and `column_size`
+properties; JavaScript uses `rowSize` and `columnSize` getters.
+
+The same handles expose the core storage role without reconstructing it from
+`is_dir` / `is_file`: Rust returns `IOKind`, Python's `kind` property and
+JavaScript's `kind` getter return its canonical lowercase name (`memory`,
+`file`, `directory`, `table`, `namespace`, `catalog`, or `unknown`). This is a
+cheap redirection to the native handle and is the observable answer generic
+dispatch uses.
+
+`cargo bench -p yggdryl --bench io --all-features -- io_dimensions` compares fresh metadata reads with the
+explicitly opened cache for both accessors across IPC, Parquet, Avro, and multiline text fixtures.
+
+### Canonical record-write signatures
+
+The primitive record surface is one read and three explicit write intents. Each typed shape also has
+one required-mode dispatcher. The Rust argument order - input, then mode when present, then options -
+is canonical:
+
+```text
+overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
+append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
+merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
+
+overwrite_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
+append_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
+merge_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
+
+overwrite_records(&mut self, records, options: &RecordOptions) -> Result<()>
+append_records(&mut self, records, options: &RecordOptions) -> Result<()>
+merge_records(&mut self, records, options: &RecordOptions) -> Result<()>
+
+write_arrow_reader(&mut self, reader: BatchReader, mode: WriteMode, options: &RecordOptions) -> Result<()>
+write_arrow_record_batch(&mut self, batch: RecordBatch, mode: WriteMode, options: &RecordOptions) -> Result<()>
+write_records(&mut self, records, mode: WriteMode, options: &RecordOptions) -> Result<()>
+```
+
+The mode-selected method validates intent before touching its input, then selects the same-shape
+explicit method. That keeps a specialized held-batch or native-row adapter authoritative while all
+of those adapters still converge on the three reader primitives. There is no default mode and no
+untyped Rust `write` alias.
+
+`cargo bench -p yggdryl --bench io --all-features -- io_write_mode_dispatch` measures reader, held-batch, and
+native-row dispatch under all three modes. Each append and merge sample receives its stored side in
+Criterion setup, so the timer reports the selected operation rather than fixture construction.
+
+One local Windows x86_64 release run over 4,096 rows (Criterion point
+estimates; regenerate on the deployment host):
+
+| generic dispatcher | overwrite | append | merge |
+| --- | ---: | ---: | ---: |
+| `write_arrow_reader` | 255 us (16.1M rows/s) | 703 us (5.83M rows/s) | 3.27 ms (1.25M rows/s) |
+| `write_arrow_record_batch` | 92.0 us (44.5M rows/s) | 637 us (6.43M rows/s) | 4.14 ms (989k rows/s) |
+| `write_records` | 3.00 ms (1.36M rows/s) | 4.44 ms (922k rows/s) | 8.96 ms (457k rows/s) |
+
+The mode branch itself is shared by all three columns in a row. The larger
+differences are the selected operation: append re-encodes the stored side,
+merge indexes it by key, and native records additionally validate and
+materialize ordered `Value::Sequence` rows.
+
+Bindings keep the input-before-options order and the same intent errors while
+using their native naming and Arrow holders. Rust requires `&RecordOptions`;
+when a binding omits its optional settings value, the binding resolves exactly
+one default with `handle.record_options()` before redirecting to Rust. Python
+makes that one settings value keyword-only:
+
+```text
+read_arrow_reader(*, options=None) -> pyarrow.RecordBatchReader
+read_records(cls=None, *, options=None) -> Iterator[dict | dataclass]
+overwrite|append|merge_arrow_reader(reader, *, options=None) -> None
+overwrite|append|merge_arrow_table(table, *, options=None) -> None
+overwrite|append|merge_arrow_record_batch(batch, *, options=None) -> None
+overwrite|append|merge_records(records, *, options=None) -> None
+write_arrow_reader(reader, mode, *, options=None) -> None
+write_arrow_table(table, mode, *, options=None) -> None
+write_arrow_record_batch(batch, mode, *, options=None) -> None
+write_records(records, mode, *, options=None) -> None
+```
+
+JavaScript uses the same trailing optional value:
+
+```text
+readArrowReader(options?) -> BatchReader
+readRecords(options?) -> Iterable<object>
+readRecords(cls, options?) -> Iterable<object>
+overwrite|append|mergeArrowReader(reader, options?) -> void
+overwrite|append|mergeArrowTable(table, options?) -> void
+overwrite|append|mergeArrowRecordBatch(batch, options?) -> void
+overwrite|append|mergeRecords(records, options?) -> void | Promise<void>
+writeArrowReader(reader, mode, options?) -> void
+writeArrowTable(table, mode, options?) -> void
+writeArrowRecordBatch(batch, mode, options?) -> void
+writeRecords(records, mode, options?) -> void | Promise<void>
+```
+
+There are no flattened record-option keywords and no mode inference from
+`merge_by_names`: `options` is the only settings argument in both bindings.
+Each shape-named adapter rejects a different shape before crossing into the
+core. A non-empty row source may infer `options.field` from its decorated field
+class; an empty source has no class to inspect and therefore requires a field
+on the supplied options.
+
+`overwrite_arrow_reader` is the required publication hook for an implementor.
+The default append and merge implementations cast the incoming stream to
+`options.field` once, apply selection and limits once, and then remove the field
+from a cloned options value before delegating the resulting stream to overwrite.
+That handoff is deliberate: its rows already have the declared shape, so the
+publication hook must not cast them to the same field a second time.
+
+`options.commit_row_size` is the one optional streamed-write publication
+boundary. Unset, the operation publishes once when the source ends. A non-zero
+`N` publishes every complete group of `N` incoming rows and the final
+remainder. The splitter slices Arrow batches as views, stops pulling as soon as
+one cadence is full, and holds only that bounded cadence plus the current input
+remainder. Shaping still happens once: `options.field`, selection, and limits
+are applied before splitting, then both the field and cadence are removed from
+the delegated options.
+
+Overwrite uses overwrite for the first commit and append for every later one;
+append and merge retain their intent for every commit. A successful prefix is
+therefore intentionally visible if conversion, decoding, encoding, or
+publication fails later. An empty overwrite still publishes its shaped field;
+empty append and merge remain no-ops. `N = 0` is rejected before the input is
+pulled. Native Rust row conversion is bounded by the smaller of
+`options.batch_size` (or its default) and `commit_row_size`, so a failure at row
+`N + 1` cannot erase the completed `N`-row prefix.
+
+“Publishes once” is one native publication for a leaf or table. A plain folder
+has no cross-leaf transaction, rename, or compare-and-swap in `IOBase`, so it
+keeps the source streaming and publishes each routed leaf independently even
+when the cadence is unset. A failure can expose only the leaf prefixes already
+completed; setting `commit_row_size` additionally bounds how many incoming rows
+can belong to each visible prefix. An Iceberg folder is redirected first and
+uses its snapshot commit instead of this per-leaf exception.
+
+The defaults stay streaming. Append chains the stored reader before the
+incoming reader without collecting either. Merge must index the stored side so
+it can find a key after its reader has advanced, but it continues to consume and
+fold the incoming side one batch at a time; it never materializes the incoming
+reader.
+
+Intent is validated before any input is consumed. Overwrite and append reject a
+non-empty `merge_by_names` and direct the caller to merge. Merge requires at
+least one `merge_by_names` column and directs a keyless caller to overwrite or
+append. The key setting supplies row identity only; it never chooses the mode.
+
+`IOMedia::read_arrow_reader` returns [arrow.md](arrow.md)'s `BatchReader`, and
+all three write methods consume one. Together these primitives are the only
+place an encoding is decoded and encoded; every wider record operation routes
+through them.
+`arrow::batch_reader` is the constructor that turns batches a caller already has - a `Vec`, an array,
+a lazily-computed iterator - into one. The primitive core stays batch-native;
+record, table, and record-batch adapters infer and cast at their runtime
+boundary, then widen their input into this same reader instead of adding another
+encoder.
+
+The Rust `*_records` triplet takes any iterator whose row implements
+`TryInto<Value>`. A canonical row is one ordered `Value::Sequence` under
+`options.field`; a sorted name-to-value `Value::Record` is accepted as input
+and resolved to that order. The field is required, and there is no separate
+record/schema model. An infallible Rust struct implements
+`From<Row> for Value` and receives the standard blanket `TryInto`
+implementation. Conversion is lazy, batches hold at most `options.batch_size`
+rows and never more than `options.commit_row_size` when a cadence is set, and
+the resulting exact-schema reader redirects to the same three primitives
+above.
+
+```rust
+use yggdryl::generic::IORecordOptions;
+use yggdryl::io::{Buffer, IOBase, IOMedia};
+use yggdryl::{DataType, MimeType, Value};
+
+struct Quote(i32, &'static str);
+
+impl From<Quote> for Value {
+    fn from(row: Quote) -> Self {
+        Value::from_sequence([Value::from(row.0), Value::from(row.1)])
+    }
+}
+
+let field = DataType::from_fields([
+    DataType::Int32.required_field("id"),
+    DataType::Utf8.required_field("symbol"),
+])?
+.required_field("quote");
+let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+let options = handle.record_options()?.with_field(field);
+
+handle.overwrite_records([Quote(1, "AAPL"), Quote(2, "MSFT")], &options)?;
+handle.append_records([Quote(3, "AMD")], &options)?;
+handle.merge_records(
+    [Quote(2, "MSFT.O")],
+    &options.clone().with_merge_by_names(["id"]),
+)?;
+assert_eq!(
+    handle
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.unwrap().num_rows())
+        .sum::<usize>(),
+    3,
+);
+```
+
+`record_options` derives the encoding's settings from the handle's media type, so the encoding is
+never guessed - it is whatever the handle already says it holds. `read_arrow_field` returns the
+canonical non-null struct root `Field` described in [field.md](field.md). All of this is behind the
+default `arrow` feature.
+
+Content coding stays the handle's business. A handle named `trades.arrows.zst` round-trips compressed
+through the same methods, because the coding is in its media type and no call takes a coding
+argument.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::MimeType;
+
+    // An absent resource holds no batches rather than failing to parse.
+    let empty = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    assert_eq!(
+        empty.read_arrow_reader(&empty.record_options()?)?.count(),
+        0
+    );
+
+    // An encoding this build does not implement is named rather than guessed.
+    let csv = Buffer::new().with_media_type(MimeType::CSV.into());
+    let message = csv.record_options().unwrap_err().to_string();
+    assert!(message.contains("text/csv"), "{message}");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pytest
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    # An absent resource holds no batches rather than failing to parse.
+    empty = IOBase(root / "absent.arrows")
+    assert empty.read_arrow_reader().read_all().num_rows == 0
+
+    # An encoding this build does not implement is named rather than guessed.
+    csv = IOBase(root / "trades.csv")
+    with pytest.raises(ValueError, match="text/csv"):
+        csv.record_options()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase, MimeType } = require('yggdryl')
+
+    // An absent resource holds no batches rather than failing to parse.
+    const empty = IOBase.fromBytes()
+    empty.mediaType = MimeType.ARROW_STREAM
+    assert.equal([...empty.readArrowReader()].length, 0)
+
+    // An encoding this build does not implement is named rather than guessed.
+    const csv = IOBase.fromBytes()
+    csv.mediaType = MimeType.CSV
+    assert.throws(() => csv.recordOptions(), /text\/csv/)
+    ```
+
+The encodings `record_options` can return are the ones this build carries: Arrow IPC
+([ipc.md](ipc.md)), Avro ([avro.md](avro.md)), and plain-text line media ([text.md](text.md)) under
+the default Arrow feature, plus Apache Parquet under the non-default `parquet` feature
+([parquet.md](parquet.md)). Shared settings include the declared field, root name, cast strictness,
+batch and total limits, commit cadence, compression level, merge keys, selection, and partition
+filters; [`IORecordOptions`](generic.md) defines them once.
+
+## Rows as JavaScript objects
+
+!!! note "JavaScript example"
+    JavaScript's object-and-constructor behavior is shown below. Python exposes
+    the corresponding lazy `read_records` mapping/dataclass view and all three
+    record-write intents; Rust accepts typed `TryInto<Value>` rows on writes
+    and keeps its primitive read surface Arrow-native.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { IOBase } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+const handle = new IOBase(path.join(root, 'trades.arrows'))
+// Plain objects are rows; `overwriteRecords` widens them into the Arrow stream.
+handle.overwriteRecords([
+  { id: 1n, venue: 'XNAS' },
+  { id: 2n, venue: null },
+])
+
+// Plain objects out, streamed batch by batch ...
+assert.deepEqual([...handle.readRecords()].map((row) => row.id), [1n, 2n])
+
+// ... or instances of any class whose constructor takes the plain row.
+class Trade {
+  constructor(row) {
+    Object.assign(this, row)
+  }
+}
+const trades = [...handle.readRecords(Trade)]
+assert.ok(trades.every((t) => t instanceof Trade))
+
+// An absent resource yields no records rather than raising.
+assert.deepEqual([...new IOBase(path.join(root, 'absent.arrows')).readRecords()], [])
+
+fs.rmSync(root, { recursive: true, force: true })
+```
+
+`readRecords` returns plain objects or passes each one to the constructor it
+was given. `overwriteRecords`, `appendRecords`, and `mergeRecords` widen rows
+into the matching explicit reader intent. An absent resource reads as empty and an empty write is a
+no-op, so neither path needs an existence guard.
+
+## Lazy scans
+
+!!! note "Python only"
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import IOBase
+
+target = pathlib.Path(tempfile.mkdtemp()) / "trades.parquet"
+IOBase(target).overwrite_arrow_table(pa.table({"symbol": ["AAPL", "MSFT"], "price": [187.23, 402.11]}))
+
+# A local Parquet leaf becomes the real lazy scan - projection and
+# predicate pushdown belong to the engine, and the handle publishes its
+# bytes at their exact length first so the foreign reader sees a whole file.
+lazy = IOBase(target).scan_polars()
+assert lazy.select("symbol").head(10).collect().height == 2
+
+# The pyarrow spelling of the same idea, as a dataset Scanner.
+scanner = IOBase(target).scan_arrow()
+assert scanner.to_table().num_rows == 2
+
+# Anything a foreign scanner cannot mmap - an in-memory buffer, a
+# compressed name, an Arrow stream - streams through the native reader
+# instead, so both calls answer for every holder.
+memory = IOBase.from_bytes()
+memory.media_type = "application/vnd.apache.arrow.stream"
+memory.overwrite_arrow_table(pa.table({"symbol": ["AAPL"]}))
+assert memory.scan_arrow().to_table().num_rows == 1
+```
+
+`scan_polars` hands back a `polars.LazyFrame` and `scan_arrow` a `pyarrow.dataset.Scanner`. A
+plain local Parquet resource is scanned natively; everything else reads through the same native
+reader every other read uses and arrives as the lazy shape anyway, so callers never branch on
+where the bytes live.
+
+## Column pushdown
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
+    use yggdryl::arrow;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{DataType, MimeType};
+
+    let stored = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.required_field("symbol"),
+        DataType::Utf8.required_field("venue"),
+    ])?
+    .required_field("row");
+    let arrow_schema = stored.into_arrow_schema()?;
+
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
+            Arc::new(StringArray::from(vec!["XNAS", "XNAS"])),
+        ],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let plain = handle.record_options()?;
+    handle.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
+
+    // One of the three columns, declared as this read's schema.
+    let wanted = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+
+    let projected = handle.read_arrow_reader(&plain.clone().with_field(wanted))?;
+    assert_eq!(projected.schema().fields().len(), 1);
+    assert_eq!(projected.map(|batch| batch.unwrap().num_columns()).sum::<usize>(), 1);
+
+    // The resource is unchanged: it still holds all three.
+    assert_eq!(handle.read_arrow_field(&plain)?.field_len(), 3);
+
+    // A column it does not hold cannot be projected out of it, so the encoding
+    // reads everything and the cast supplies that column as nulls.
+    let invented = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("nowhere"),
+    ])?
+    .required_field("row");
+    let widened = handle.read_arrow_reader(&plain.with_field(invented))?;
+    assert_eq!(widened.schema().fields().len(), 2);
+    assert_eq!(widened.schema().field(1).name(), "nowhere");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    stored = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("symbol", pa.string(), nullable=False),
+        pa.field("venue", pa.string(), nullable=False),
+    ])
+    batch = pa.record_batch(
+        {"id": [1, 2], "symbol": ["AAPL", "MSFT"], "venue": ["XNAS", "XNAS"]},
+        schema=stored,
+    )
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+    handle.overwrite_arrow_record_batch(batch)
+
+    # One of the three columns, declared as this read's schema.
+    options = handle.record_options()
+    options.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+
+    projected = handle.read_arrow_reader(options=options)
+    assert projected.schema.names == ["id"]
+    assert projected.read_all().num_columns == 1
+
+    # The resource is unchanged: it still holds all three.
+    assert len(handle.read_arrow_field().data_type) == 3
+
+    # A column it does not hold cannot be projected out of it, so the encoding
+    # reads everything and the cast supplies that column as nulls.
+    options.field = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("nowhere", pa.string()),
+    ])
+    widened = handle.read_arrow_reader(options=options)
+    assert widened.schema.names == ["id", "nowhere"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+      venue: arrow.vectorFromArray(['XNAS', 'XNAS'], new arrow.Utf8()),
+    })
+
+    const handle = IOBase.fromBytes()
+    handle.mediaType = MimeType.ARROW_STREAM
+    handle.overwriteArrowReader(BatchReader.from(table))
+
+    // One of the three columns, declared as this read's schema.
+    const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const options = handle.recordOptions()
+
+    const projected = handle.readArrowReader(options.withField(wanted))
+    assert.equal(projected.field.dataType.length, 1)
+    assert.equal(projected.intoTable().numCols, 1)
+
+    // The resource is unchanged: it still holds all three.
+    assert.equal(handle.readArrowField().dataType.length, 3)
+
+    // A column it does not hold cannot be projected out of it, so the encoding
+    // reads everything and the cast supplies that column as nulls.
+    const invented = fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('nowhere: utf8?')],
+      { nullable: false },
+    )
+    const widened = handle.readArrowReader(options.withField(invented))
+    assert.equal(widened.field.dataType.length, 2)
+    ```
+
+The field on the options selects *and* casts, in one pass over the data. The columns it names that
+the resource stores are handed to the encoding as its own projection - a Parquet projection mask, an
+Arrow IPC projection - so the columns it leaves out are skipped rather than read and discarded.
+[parquet.md](parquet.md) is where that also means fewer bytes decoded, because a column chunk is
+separately addressable; [ipc.md](ipc.md) saves the decode and the allocation but still reads the
+message body, and says so rather than claiming otherwise.
+
+A projection can only drop columns, so the cast does everything else: reordering to the declared
+order, converting a stored type into the declared one, and filling a column the resource does not
+hold. Each batch is cast as it is pulled, so nothing is collected to do it. With no declared schema
+the stored shape is preserved exactly and no cast runs at all.
+
+`read_arrow_field` answers with the same shape this read produces, so the schema a caller reads and
+the batches a caller gets can never disagree.
+
+## Limiting a read or a write
+
+`max_row_size` bounds how many result rows flow in total - a count of rows,
+never a per-row byte cap - and `max_byte_size` bounds their Arrow in-memory
+bytes, counted uncompressed. Either bound applies *last*, after the fixed
+shaping order - declared schema, then selection, then completion cast, then
+partition filter - so a limit of ten combined with a filter means the first ten
+matching rows. A satisfied limit stops pulling, so the rest of the resource is
+never decoded.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
+    use yggdryl::arrow;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{DataType, MimeType};
+
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let arrow_schema = schema.into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow_schema),
+        vec![Arc::new(Int64Array::from_iter_values(0..1_000))],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let plain = handle.record_options()?;
+    handle.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
+
+    // Ten result rows, exactly: the batch the bound lands inside is sliced.
+    let first = handle.read_arrow_reader(&plain.clone().with_max_row_size(10))?;
+    assert_eq!(first.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 10);
+
+    // Zero is a valid ask: the shaped schema answers, and no batch flows.
+    let mut none = handle.read_arrow_reader(&plain.clone().with_max_row_size(0))?;
+    assert_eq!(none.schema().fields().len(), 1);
+    assert!(none.next().is_none());
+
+    // A non-zero byte bound always yields at least one row.
+    let narrow = handle.read_arrow_reader(&plain.clone().with_max_byte_size(1))?;
+    assert_eq!(narrow.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 1);
+
+    // A limited write truncates the data the caller offered: three rows land,
+    // and what the bound cut off is never pulled from the reader.
+    let mut copy = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    copy.overwrite_arrow_reader(
+        handle.read_arrow_reader(&plain)?,
+        &plain.clone().with_max_row_size(3),
+    )?;
+    let kept = copy.read_arrow_reader(&plain)?;
+    assert_eq!(kept.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes()
+    handle.media_type = "application/vnd.apache.arrow.stream"
+    handle.overwrite_arrow_table(pa.table({"id": list(range(1_000))}))
+
+    # Ten result rows, exactly: the batch the bound lands inside is sliced.
+    ten = handle.record_options()
+    ten.max_row_size = 10
+    assert handle.read_arrow_reader(options=ten).read_all().num_rows == 10
+
+    # Zero is a valid ask: the shaped schema answers, and no batch flows.
+    zero = handle.record_options()
+    zero.max_row_size = 0
+    empty = handle.read_arrow_reader(options=zero)
+    assert empty.schema.names == ["id"]
+    assert empty.read_all().num_rows == 0
+
+    # A non-zero byte bound always yields at least one row.
+    one_byte = handle.record_options()
+    one_byte.max_byte_size = 1
+    assert handle.read_arrow_reader(options=one_byte).read_all().num_rows == 1
+
+    # A limited write truncates the data the caller offered: three rows land,
+    # and what the bound cut off is never pulled from the reader.
+    copy = IOBase.from_bytes()
+    copy.media_type = "application/vnd.apache.arrow.stream"
+    first_three = copy.record_options()
+    first_three.max_row_size = 3
+    copy.overwrite_arrow_reader(handle.read_arrow_reader(), options=first_three)
+    assert copy.read_arrow_reader().read_all().num_rows == 3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, IOBase, MimeType } = require('yggdryl')
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray(
+        Array.from({ length: 1000 }, (_, index) => BigInt(index)),
+        new arrow.Int64(),
+      ),
+    })
+
+    const handle = IOBase.fromBytes()
+    handle.mediaType = MimeType.ARROW_STREAM
+    handle.overwriteArrowReader(BatchReader.from(table))
+    const options = handle.recordOptions()
+
+    // Ten result rows, exactly: the batch the bound lands inside is sliced.
+    assert.equal(handle.readArrowReader(options.withMaxRowSize(10)).intoTable().numRows, 10)
+
+    // Zero is a valid ask: the shaped schema answers, and no batch flows.
+    const empty = handle.readArrowReader(options.withMaxRowSize(0))
+    assert.equal(empty.field.dataType.length, 1)
+    assert.equal(empty.intoTable().numRows, 0)
+
+    // A non-zero byte bound always yields at least one row.
+    assert.equal(handle.readArrowReader(options.withMaxByteSize(1)).intoTable().numRows, 1)
+
+    // A limited write truncates the data the caller offered: three rows land,
+    // and what the bound cut off is never pulled from the reader.
+    const copy = IOBase.fromBytes()
+    copy.mediaType = MimeType.ARROW_STREAM
+    copy.overwriteArrowReader(handle.readArrowReader(), options.withMaxRowSize(3))
+    assert.equal(copy.readArrowReader().intoTable().numRows, 3)
+    ```
+
+A limit of zero yields a reader with the shaped schema and no batches rather
+than an error, so "just the schema, cheaply" is a valid ask. The row bound is
+exact: the batch it lands inside is cut with a slice, a view over the same
+buffers rather than a copy. The byte bound stops at the last row that keeps the
+running total at or under the limit, and a non-zero byte limit always yields at
+least one row rather than silently losing everything to one wide row. When both
+are set, whichever bound binds first wins.
+
+A limited write truncates the data the caller offered: the bounds cap the
+incoming reader exactly as they cap a read, and what they cut off is never
+pulled from it. A limit combined with a non-empty `merge_by_names` is refused
+naming both settings, because a truncated merge would update the matched keys
+it kept and silently drop the rest - corrupting the resource rather than
+shortening the write.
+
+## Appending and merging
+
+Overwrite replaces the resource, which is what an IPC stream or a Parquet file
+natively supports: each carries one field and one footer. Append retains stored
+rows. Merge updates matching keys and adds new ones. The called method is always
+the authority; `merge_by_names` supplies keys only to the merge method.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::arrow;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{DataType, Url};
+
+    let schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("symbol"),
+    ])?
+    .required_field("row");
+    let arrow_schema = schema.clone().into_arrow_schema()?;
+    let rows = |ids: Vec<i64>, symbols: Vec<&'static str>| {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![
+                Arc::new(Int64Array::from(ids)),
+                Arc::new(StringArray::from(symbols)),
+            ],
+        )
+        .expect("a batch matching the root");
+        arrow::batch_reader(batch.schema(), [batch])
+    };
+
+    let mut handle =
+        Buffer::new().with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
+    let options = handle.record_options()?.with_field(schema.clone());
+
+    // Overwrite replaces the resource.
+    handle.overwrite_arrow_reader(rows(vec![1, 2], vec!["AAPL", "MSFT"]), &options)?;
+
+    // Appending reads what is there, chains the new batches after it, and rewrites.
+    handle.append_arrow_reader(rows(vec![3], vec!["NVDA"]), &options)?;
+    let total: usize = handle
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(total, 3);
+
+    // Merge requires a match key: `2` updates and `9` appends.
+    let merging = options.clone().with_merge_by_names(["id"]);
+    handle.merge_arrow_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &merging)?;
+    let total: usize = handle
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(total, 4);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    schema = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("symbol", pa.string()),
+    ])
+    rows = lambda ids, symbols: pa.record_batch(
+        {"id": ids, "symbol": symbols}, schema=schema
+    )
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+    options = handle.record_options()
+    options.field = schema
+
+    # No match key: the resource is replaced.
+    handle.overwrite_arrow_record_batch(rows([1, 2], ["AAPL", "MSFT"]), options=options)
+
+    # Appending reads what is there, chains the new batches after it, and rewrites.
+    handle.append_arrow_record_batch(rows([3], ["NVDA"]), options=options)
+    assert handle.read_arrow_reader(options=options).read_all().num_rows == 3
+
+    # A match key merges: `2` is already stored and updates, `9` is new and appends.
+    merging = handle.record_options()
+    merging.field = schema
+    merging.merge_by_names = ["id"]
+    handle.merge_arrow_record_batch(rows([2, 9], ["MSFT.O", "AMD"]), options=merging)
+    assert handle.read_arrow_reader(options=options).read_all().num_rows == 4
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
+
+    const schema = fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('symbol: utf8?')],
+      { nullable: false },
+    )
+    const rows = (ids, symbols) =>
+      BatchReader.from(
+        new arrow.Table({
+          id: arrow.vectorFromArray(ids, new arrow.Int64()),
+          symbol: arrow.vectorFromArray(symbols, new arrow.Utf8()),
+        }),
+      )
+
+    const handle = IOBase.fromBytes()
+    handle.mediaType = MimeType.ARROW_STREAM
+    const options = handle.recordOptions().withField(schema)
+
+    // No match key: the resource is replaced.
+    handle.overwriteArrowReader(rows([1n, 2n], ['AAPL', 'MSFT']), options)
+
+    // Appending reads what is there, chains the new batches after it, and rewrites.
+    handle.appendArrowReader(rows([3n], ['NVDA']), options)
+    assert.equal(handle.readArrowReader(options).intoTable().numRows, 3)
+
+    // A match key merges: `2` is already stored and updates, `9` is new and appends.
+    const merging = options.withMergeByNames(['id'])
+    handle.mergeArrowReader(rows([2n, 9n], ['MSFT.O', 'AMD']), merging)
+    assert.equal(handle.readArrowReader(options).intoTable().numRows, 4)
+    ```
+
+`merge_by_names` is a shared record setting, so it means the same thing on every
+encoding. It is accepted only by `merge_arrow_reader`, where a non-empty value
+is required. An overwrite applies a declared field to the incoming rows and
+then casts the result to the field the resource already stores when it stores
+one - overwrite replaces rows, not columns, so a caller who really means to
+change a stored field clears the handle first.
+
+Non-empty names the columns that decide whether two rows are the same row. The
+key is encoded through Arrow's own row format, so a null key matches another
+null key exactly and a composite key compares column by column. A key stored more
+than once has every occurrence updated, because a match key is a rule and not a
+constraint the stored side was ever checked against; a key arriving more than
+once lets the last arrival win.
+
+The merge is streamed over the incoming side: one batch is pulled, matched,
+folded in, and dropped before the next is pulled. What has to be held is the
+stored side, because updating a row means finding it by key and a reader cannot
+be rewound to a row it has already yielded.
+
+Appending streams on both sides - the stored batches are chained ahead of the
+incoming ones and encoded as they arrive - and casts the incoming batches to the
+target shape first, so data whose schema merely *fits* is accepted.
+
+Without a commit boundary, one leaf or one table publishes once: nothing
+reaches that value until its replacement is complete, so a failure leaves it
+as it was. A plain folder is the explicit exception described above. It has no
+cross-leaf transaction in `IOBase`, so already-published leaves remain visible
+if routing or publication of a later leaf fails.
+
+`select_by_names` is the companion narrowing setting, and it works on both
+directions. On a read it yields exactly the named columns of the stored rows,
+in the order the names are given; on a write - overwrite, merge, or append - it
+keeps exactly the named columns of the incoming rows, so what it drops can
+never land. Names match ASCII case-insensitively, the way every cast selects,
+and a name the rows do not have is an error listing what is there, because a
+selection is a claim about the rows rather than a wish. An empty list, the
+default, selects everything.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{arrow, DataType, MimeType};
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use std::sync::Arc;
+    let schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("symbol"),
+    ])?
+    .required_field("row");
+    let batch = RecordBatch::try_new(
+        schema.into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2])),
+            Arc::new(StringArray::from(vec![Some("AAPL"), Some("MSFT")])),
+        ],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let options = handle.record_options()?;
+    handle.overwrite_arrow_reader(arrow::batch_reader(batch.schema(), [batch]), &options)?;
+
+    // A read narrowed to one column yields one column.
+    let selecting = options.with_select_by_names(["symbol"]);
+    let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
+    assert_eq!(first.num_columns(), 1);
+    assert_eq!(first.schema().field(0).name(), "symbol");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "orders.arrows")
+    handle.overwrite_arrow_table(pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}))
+
+    # Record settings live on the one options object shared by every operation.
+    options = handle.record_options()
+    options.select_by_names = ["symbol"]
+    narrowed = handle.read_arrow_reader(options=options).read_all()
+    assert narrowed.column_names == ["symbol"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'orders.arrows'))
+    handle.overwriteArrowTable(
+      new arrow.Table({
+        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+        symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+      }),
+    )
+
+    const narrowed = handle.recordOptions().withSelectByNames(['symbol'])
+    const table = handle.readArrowReader(narrowed).intoTable()
+    assert.deepEqual(table.schema.fields.map((field) => field.name), ['symbol'])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 ## Text records
 
@@ -633,10 +2540,10 @@ opens at every line whose first bytes parse as a timestamp.
     from yggdryl import IOBase
 
     target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
-    target.write_text(
-        "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
-        "  at frame one\n"
-        "2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
+    target.write_bytes(
+        b"2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
+        b"  at frame one\n"
+        b"2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
     )
 
     # A pattern names the opening line; `logs=True` needs no expression at all.
@@ -762,8 +2669,8 @@ holding it.
 
 `read_arrow_lines` projects the same records into a streaming Arrow reader - a *text-record*
 surface beside `read_lines`, never a fourth record method: the record surface stays exactly
-`read_arrow_batch_reader`, `write_arrow_batch_reader`, and `append_arrow_batch_reader`, and nothing
-here touches how a record encoding decodes rows. One batch is in memory at a time, content codings
+`read_arrow_reader`, `overwrite_arrow_reader`, `append_arrow_reader`, and
+`merge_arrow_reader`, and nothing here touches how a record encoding decodes rows. One batch is in memory at a time, content codings
 still decode as streams, and every column is a datatype the strict Iceberg codec accepts **as
 declared**, so the parsed batches append into an Iceberg table without a single widening:
 
@@ -890,7 +2797,7 @@ the whole record as `message`.
       '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S* \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]'
     const table = new IOBase(target)
       .readArrowLines(pattern, { customFields: { venue: 'XNAS' } })
-      .toTable()
+      .intoTable()
     assert.equal(table.numRows, 2)
     assert.deepEqual([...table.getChild('level')], ['ee', 'ii'])
     assert.equal([...table.getChild('unix')][0], 1_706_781_600_000_000_000n)
@@ -927,13 +2834,13 @@ capture type naming a capture the pattern does not have is an error, an unknown 
       source: gateway
     "#;
 
-    let options = TextLineOptions::from_value(yggdryl::yaml::from_str(document)?)?;
+    let options = TextLineOptions::from_value(yggdryl::yaml::from_utf8(document)?)?;
     assert_eq!(options.byte_size(), Some(1 << 20));
     assert_eq!(options.timestamp_capture(), Some("stamp"));
 
     // The schema answers from the document alone - no resource in sight - so
     // the table exists before the first log line does.
-    let names: Vec<&str> = options.schema().fields().iter().map(Field::name).collect();
+    let names: Vec<&str> = options.field().fields().iter().map(Field::name).collect();
     assert_eq!(names[names.len() - 2..], ["level", "source"]);
 
     let handle = Buffer::from_bytes(b"2024-02-01T10:00:00 [ERROR] boom\n".to_vec());
@@ -941,7 +2848,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     assert_eq!(batch.num_rows(), 1);
 
     // And the options project back out, so a reader can be persisted as one.
-    assert_eq!(TextLineOptions::from_value(options.to_value())?.pattern(), options.pattern());
+    assert_eq!(TextLineOptions::from_value(options.into_value())?.pattern(), options.pattern());
     ```
 
 === "Python"
@@ -950,7 +2857,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase, schema_from_pattern, yaml
+    from yggdryl import IOBase, field_from_pattern, yaml
 
     document = """
     pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
@@ -965,7 +2872,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     options = yaml.loads(document)
 
     # The schema answers from the document alone, with no resource in sight.
-    schema = schema_from_pattern(options=options)
+    schema = field_from_pattern(options=options)
     assert [field.name for field in schema][-2:] == ["level", "source"]
 
     target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
@@ -984,7 +2891,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase, schemaFromPattern, yaml } = require('yggdryl')
+    const { IOBase, fieldFromPattern, yaml } = require('yggdryl')
 
     const options = yaml.loads(
       [
@@ -998,35 +2905,36 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     )
 
     // The schema answers from the document alone, with no resource in sight.
-    const schema = schemaFromPattern(options)
+    const schema = fieldFromPattern(options)
     assert.equal(String(schema.dataType.get('source').dataType), 'utf8')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const target = path.join(root, 'app.log')
     fs.writeFileSync(target, '2024-02-01T10:00:00 [ERROR] boom\n')
-    const table = new IOBase(target).readArrowLines(options).toTable()
+    const table = new IOBase(target).readArrowLines(options).intoTable()
     assert.deepEqual([...table.getChild('source')], ['gateway'])
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-`schema_from_pattern` is the same builder without a reader, so a table can be created from the
-projection's root first and the parse appended after. Named captures arrive typed, by the
-deterministic sub-pattern table or by declaration:
+The dynamic bindings expose `field_from_pattern` / `fieldFromPattern` as the same builder without a
+reader, so a table can be created from the projection's root first and the parse appended after.
+Rust keeps that builder on `TextLineOptions`. Named captures arrive typed, by the deterministic
+sub-pattern table or by declaration:
 
 === "Rust"
 
     ```rust
     use arrow_array::Array;
     use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::text::{TextLineOptions, schema_from_pattern};
+    use yggdryl::text::TextLineOptions;
     use yggdryl::{DataType, Url};
 
     let pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>[0-9.]+)";
 
     // The standalone builder answers the emitted root without a reader:
     // `thread_id` types itself off its own `\d+` sub-pattern.
-    let schema = schema_from_pattern(pattern)?;
+    let schema = TextLineOptions::with_pattern(pattern)?.into_field();
     assert_eq!(
         schema.get_field_by_name("thread_id").unwrap().data_type(),
         &DataType::Int64
@@ -1065,7 +2973,7 @@ deterministic sub-pattern table or by declaration:
 
     import pyarrow as pa
 
-    from yggdryl import IOBase, schema_from_pattern
+    from yggdryl import IOBase, field_from_pattern
 
     pattern = (
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
@@ -1073,7 +2981,7 @@ deterministic sub-pattern table or by declaration:
     )
 
     # The standalone builder answers the emitted root without a reader.
-    schema = schema_from_pattern(pattern, capture_types={"qty": "decimal(9, 2)"})
+    schema = field_from_pattern(pattern, capture_types={"qty": "decimal(9, 2)"})
     assert str(schema.data_type["thread_id"].data_type) == "int64"
 
     target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
@@ -1095,7 +3003,7 @@ deterministic sub-pattern table or by declaration:
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase, schemaFromPattern } = require('yggdryl')
+    const { IOBase, fieldFromPattern } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const target = path.join(root, 'app.log')
@@ -1105,12 +3013,12 @@ deterministic sub-pattern table or by declaration:
       '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?<thread_id>\\d+)\\] \\((?<log_level>\\w+)\\) qty=(?<qty>[0-9.]+)'
 
     // The standalone builder answers the emitted root without a reader.
-    const schema = schemaFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+    const schema = fieldFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
     assert.equal(String(schema.dataType.get('thread_id').dataType), 'int64')
 
     const table = new IOBase(target)
       .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
-      .toTable()
+      .intoTable()
     assert.deepEqual([...table.getChild('thread_id')], [42n])
     assert.deepEqual([...table.getChild('log_level')], ['info'])
 
@@ -1197,11 +3105,11 @@ resolves it once or twice per file rather than once per row.
     const pattern = '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
 
     const source = new IOBase(target)
-    const naive = [...source.readArrowLines(pattern).toTable().getChild('unix')]
+    const naive = [...source.readArrowLines(pattern).intoTable().getChild('unix')]
     const zoned = [
       ...source
         .readArrowLines(pattern, { timezone: '+02:00', rstrip: 'ascii' })
-        .toTable()
+        .intoTable()
         .getChild('unix'),
     ]
     assert.equal(naive[0], 1_706_745_600_000_000_000n)
@@ -1441,7 +3349,7 @@ for the next reader to prune with.
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
     catalog
         .tables()
-        .create("logs.app", options.schema().with_partition_fields(&["level"])?)?;
+        .create("logs.app", options.field().with_partition_fields(&["level"])?)?;
 
     // The append consumes the parse itself: a lazy reader over both leaves,
     // the gzip one decoded as a stream, routed row by row into `level=...`
@@ -1588,7 +3496,7 @@ for the next reader to prune with.
     assert.equal(again.snapshots.length, 2)
     // a.log holds two records, so the totals accumulate 3 + 2.
     assert.equal(again.currentSnapshot.summary['total-records'], '5')
-    assert.equal(again.scan().toTable().numRows, 5)
+    assert.equal(again.scan().intoTable().numRows, 5)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
@@ -1603,7 +3511,7 @@ shape that carries a season of logs larger than memory.
 
 The stages, and what each one proves:
 
-1. **The table exists before the first record does.** `schema_from_pattern` derives the projection's
+1. **The table exists before the first record does.** `field_from_pattern` derives the projection's
    root from the extractor configuration alone - no resource, no reader - and its
    [partition marks](field.md#a-field-can-be-a-partition-column) become the table's spec.
 2. **One handle reads mixed codings.** `incoming/` holds `app-0.log.gz`, `app-1.log`, and
@@ -1670,7 +3578,7 @@ makes the line surface worth having.
     let options = TextLineOptions::with_pattern(pattern)?
         .try_with_custom_fields([("source", Value::from("gateway"))])?
         .with_byte_size(8 * 1024 * 1024);
-    let marked = options.schema().with_partition_fields(&["level"])?;
+    let marked = options.field().with_partition_fields(&["level"])?;
 
     let catalog = Catalog::new(Folder::new(root.join("warehouse"))?);
     let mut table = catalog.tables().create("logs.app", marked)?;
@@ -1728,7 +3636,7 @@ makes the line surface worth having.
     import pyarrow as pa
     import pyarrow.compute as pc
 
-    from yggdryl import IOBase, combined, schema_from_pattern, zstd
+    from yggdryl import IOBase, combined, field_from_pattern, zstd
     from yggdryl.iceberg import Catalog
 
     pattern = (
@@ -1775,7 +3683,7 @@ makes the line surface worth having.
     )
 
     # 1. The table exists before the first record does.
-    marked = schema_from_pattern(options=extractor).with_partition_fields(["level"])
+    marked = field_from_pattern(options=extractor).with_partition_fields(["level"])
     catalog = Catalog(root / "warehouse")
     table = catalog.tables.create("logs.app", marked)
 
@@ -1812,7 +3720,7 @@ makes the line surface worth having.
     const os = require('node:os')
     const path = require('node:path')
     const zlib = require('node:zlib')
-    const { IOBase, iceberg, schemaFromPattern, zstd } = require('yggdryl')
+    const { IOBase, iceberg, fieldFromPattern, zstd } = require('yggdryl')
 
     const pattern =
       '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S*' +
@@ -1865,7 +3773,7 @@ makes the line surface worth having.
     )
 
     // 1. The table exists before the first record does.
-    const marked = schemaFromPattern(extractor).withPartitionFields(['level'])
+    const marked = fieldFromPattern(extractor).withPartitionFields(['level'])
     const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
     const table = catalog.tables.create('logs.app', marked)
 
@@ -1878,7 +3786,7 @@ makes the line surface worth having.
     table.append(stream)
 
     // The read-back asserts on the table, not on anything held in memory.
-    const rows = table.scan().toTable()
+    const rows = table.scan().intoTable()
     // Five live records - not the seven lines they occupy - and one archived.
     assert.equal(rows.numRows, 6)
     const latency = [...rows.getChild('latency_us')].reduce((total, took) => total + took, 0n)
@@ -1888,1520 +3796,6 @@ makes the line surface worth having.
       new Set(rows.getChild('source')),
       new Set(['gateway', 'archive']),
     )
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-## What the bytes are
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::MimeType;
-
-    // Nothing names an in-memory buffer, so its type comes from its bytes.
-    let mut handle = Buffer::from_bytes(br#"{"symbol":"AAPL"}"#.to_vec());
-    assert_eq!(handle.media_type().base(), &MimeType::JSON);
-
-    // It is re-derived after the content changes.
-    handle.write_all_bytes(b"PAR1payload")?;
-    assert_eq!(handle.media_type().base(), &MimeType::PARQUET);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import IOBase
-
-    # Nothing names an in-memory buffer, so its type comes from its bytes.
-    handle = IOBase.from_bytes(b'{"symbol":"AAPL"}')
-    assert str(handle.media_type.base) == "application/json"
-
-    # It is re-derived after the content changes.
-    handle.write_bytes(b"PAR1payload")
-    assert str(handle.media_type.base) == "application/vnd.apache.parquet"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { IOBase, MimeType } = require('yggdryl')
-
-    // Nothing names an in-memory buffer, so its type comes from its bytes.
-    const handle = IOBase.fromBytes(Buffer.from('{"symbol":"AAPL"}'))
-    assert.ok(handle.mediaType.base.equals(MimeType.JSON))
-
-    // It is re-derived after the content changes.
-    handle.writeBytes(Buffer.from('PAR1payload'))
-    assert.ok(handle.mediaType.base.equals(MimeType.PARQUET))
-    ```
-
-`media_type` is the second thing a handle carries, next to the optional `url` naming where the bytes
-live. It answers both questions a caller has: what representation the bytes are, and what content
-codings sit on top.
-
-```rust
-use yggdryl::io::{Buffer, IOBase};
-use yggdryl::{Codec, MimeType, Url};
-
-// A declared type wins, and the codings it carries are what `codec` reports.
-let named = Buffer::new().with_media_type(Url::from_str("file:///trades.json.gz")?.media_type());
-assert_eq!(named.media_type().base(), &MimeType::JSON);
-assert_eq!(named.codec(), Codec::Gzip);
-```
-
-`codec` reads the last coding out of the media type, which is how compression is never passed as a
-separate argument. `set_media_type` declares one explicitly, which is required for a format that
-content cannot identify. Both cross into the bindings - `codec` as a read-only property,
-`media_type` as a settable one - and the next section is what a caller does with the coding once it
-has been read.
-
-## Adding and removing a coding
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{Codec, Url};
-
-    let mut plain = Buffer::new().with_media_type(Url::from_str("file:///rows.json")?.media_type());
-    plain.write_all_bytes(br#"{"symbol":"AAPL"}"#)?;
-    // Nothing wraps these bytes, so there is nothing to undo.
-    assert_eq!(plain.codec(), Codec::Identity);
-
-    let mut encoded =
-        Buffer::new().with_media_type(Url::from_str("file:///rows.json.gz")?.media_type());
-    assert_eq!(encoded.codec(), Codec::Gzip);
-
-    // The coding is an argument here, and the target's name is one place to read it from.
-    let codec = encoded.codec();
-    plain.compress_into(&mut encoded, codec)?;
-    assert_eq!(&encoded.read_all_bytes()?[..2], b"\x1f\x8b");
-
-    let mut decoded = Buffer::new();
-    encoded.decompress_into(&mut decoded)?;
-    assert_eq!(decoded.read_all_bytes()?, plain.read_all_bytes()?);
-    assert_eq!(decoded.codec(), Codec::Identity);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl import IOBase
-
-    root = pathlib.Path(tempfile.mkdtemp())
-    plain = IOBase(root / "rows.json")
-    plain.write_bytes(b'{"symbol":"AAPL"}')
-
-    # Nothing wraps these bytes, so there is nothing to undo.
-    assert plain.codec is None
-
-    encoded = IOBase(root / "rows.json.gz")
-    assert encoded.codec == "gzip"
-
-    # The target's name already said gzip, so nothing here repeats it.
-    assert plain.compress_into(encoded) == encoded.size
-    assert encoded.read_bytes()[:2] == b"\x1f\x8b"
-
-    decoded = IOBase(root / "roundtrip.json")
-    assert encoded.decompress_into(decoded) == 17
-    assert decoded.read_bytes() == plain.read_bytes()
-    assert decoded.codec is None
-
-    # A target declaring no coding is refused rather than copied unchanged.
-    reason = None
-    try:
-        plain.compress_into(IOBase(root / "copy.json"))
-    except ValueError as error:
-        reason = str(error)
-    assert "expected a target declaring a content coding" in reason
-    assert not (root / "copy.json").exists()
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const plain = new IOBase(path.join(root, 'rows.json'))
-    plain.writeBytes(Buffer.from('{"symbol":"AAPL"}'))
-
-    // Nothing wraps these bytes, so there is nothing to undo.
-    assert.equal(plain.codec, null)
-
-    const encoded = new IOBase(path.join(root, 'rows.json.gz'))
-    assert.equal(encoded.codec, 'gzip')
-
-    // The target's name already said gzip, so nothing here repeats it.
-    assert.equal(plain.compressInto(encoded), encoded.size)
-    assert.deepEqual([...encoded.readBytes().subarray(0, 2)], [0x1f, 0x8b])
-
-    const decoded = new IOBase(path.join(root, 'roundtrip.json'))
-    assert.equal(encoded.decompressInto(decoded), 17)
-    assert.equal(decoded.readText(), '{"symbol":"AAPL"}')
-    assert.equal(decoded.codec, null)
-
-    // An in-memory target has no name to declare a coding, so this one is named.
-    const memory = IOBase.fromBytes()
-    assert.ok(plain.compressInto(memory, 'zstd') > 0)
-    assert.equal(memory.codec, 'zstd')
-
-    // A target declaring no coding is refused rather than copied unchanged.
-    assert.throws(
-      () => plain.compressInto(new IOBase(path.join(root, 'copy.json'))),
-      /expected a target declaring a content coding/,
-    )
-    assert.equal(fs.existsSync(path.join(root, 'copy.json')), false)
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-`codec` answers what coding the handle's *own name* declares - `rows.json.gz` is gzip - and an
-in-memory handle answers off the media type it was told to hold. Absence is spelled as absence:
-Python answers `None` and JavaScript `null`, never the string `"identity"`, because the question a
-caller is asking here is whether there is anything to undo, and a sentinel spelling of "no" is one
-more value every branch has to know about.
-
-`compress_into` and `decompress_into` - `compressInto` and `decompressInto` in JavaScript - move
-every byte from one handle into another and add or remove a coding on the way. The coding defaults
-to the one a name already declares: the target's for a compress, the source's for a decompress, so
-writing a `rows.json` into a `rows.json.gz` never spells gzip twice, and reading it back needs no
-argument at all. That works because the transfer records the coding in the target's media type,
-which is the same place a located handle reads it from. Naming a coding explicitly overrides the
-default - the escape hatch for an in-memory target, which has no name to declare anything, and for
-bytes whose name lies about what they hold. `level` is the shared 0-9 scale.
-
-Both bindings refuse a compress into a target that declares no coding rather than writing the bytes
-through unchanged, and the refusal names the media type the target does carry. A coding nobody named
-is a coding nobody can decode by name later, so a silent identity copy is a failure that surfaces one
-reader downstream instead of here. Rust asks for the coding outright, so the question never arises:
-there is no name to default from until a caller reads one, which is what the Rust example above does
-in the open.
-
-None of this sits on the reading path. A record encoding and a text codec already read *through* the
-codings a name declares - `trades.arrows.gz` writes gzipped and reads straight back as batches, and
-[text.md](text.md)'s `load` peels the same coding off a `quote.json.gz` - while `read_lines` peels
-them as streams rather than as values. These two methods are for moving bytes between
-representations: publishing a plain file as a compressed one, or handing an outside tool a form it
-can open. What coding sits on the bytes is not something a reader has to think about. The codings
-themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), and
-[zstd.md](zstd.md).
-
-## Open and close
-
-!!! note "Rust and Python"
-    The JavaScript package does not expose the scoped pair yet.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::io::{Buffer, Coded, IOBase};
-    use yggdryl::Codec;
-
-    let mut handle = Coded::new(Buffer::new(), Codec::Zstd);
-    assert!(!handle.opened());
-
-    handle.open()?;
-    assert!(handle.opened());
-    handle.write_all_bytes(b"symbol,price\n")?;
-
-    // Closing publishes the pending write and releases the cache.
-    handle.close()?;
-    assert!(!handle.opened());
-
-    // The handle stays usable; the next read re-materializes.
-    assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl import IOBase
-
-    path = pathlib.Path(tempfile.mkdtemp()) / "trades.csv"
-
-    # `with` is the scoped pair: `__enter__` opens and `__exit__` closes.
-    with IOBase(path) as handle:
-        handle.write_text("symbol,price\n")
-        assert handle.opened
-        assert not handle.closed
-
-    # Closing published the bytes at their exact length, which is what another
-    # reader needs; the handle stays usable and simply re-materializes.
-    assert path.stat().st_size == 13
-    assert IOBase(path).read_text() == "symbol,price\n"
-    ```
-
-A handle works without `open`: every operation materializes what it needs. Calling it moves that cost
-to a known point and keeps the cached state alive across many small operations instead of re-deriving
-it per call. Opening an already-open handle is a no-op, and opening a resource that does not exist yet
-succeeds without creating it - creation still waits for the first write. `close` flushes and releases
-what `open` cached; the handle remains usable afterwards.
-
-The cache is strictly opt-in, and that is the whole contract: **open caches, closed fetches**. A
-closed handle re-derives its metadata on every ask, so a resource that changes underneath it is seen
-immediately; an open one holds what `open` cached until `close`, which is what makes many small
-operations against one resource cheap. Nothing fills the cache as a side effect of an ordinary read,
-because a cache nobody asked for is how a handle serves a stale answer.
-
-What is cached depends on the implementation. `Buffer` has nothing to cache, so the trait defaults
-apply and `opened` stays `false`. `local::File` caches the descriptor and the memory mapping.
-`Coded` caches the decoded value. The media wrappers cache exactly the metadata their format keeps
-re-reading: `Ipc` the stream's schema, `Parquet` the footer - so a schema probe, a statistics read,
-and a batch read inside one scope pay for the footer once. These are the operations a scoped context
-binds to, which is why the bindings can map `__enter__`/`using` onto them directly.
-
-```python
-import pathlib
-import tempfile
-
-import pyarrow as pa
-
-from yggdryl import IOBase
-
-target = pathlib.Path(tempfile.mkdtemp()) / "lake" / "trades.parquet"
-IOBase(target).write_arrow(pa.table({"id": [1, 2], "venue": ["XNAS", "XNYS"]}))
-
-# Metadata-heavy work belongs inside the scope: the schema probe, the
-# per-batch reads, and the size checks all reuse what `open` cached, and
-# `close` releases it at a known point.
-rows = 0
-with IOBase(target) as handle:
-    field = handle.read_arrow_field()
-    for batch in handle.read_arrow_batch_reader():
-        rows += batch.num_rows
-assert rows == 2
-
-# Outside a scope the same calls still work - each one just fetches fresh,
-# which is exactly right for a resource another writer may be changing.
-assert IOBase(target).read_arrow_field() == field
-```
-
-## Clearing and removing
-
-`clear` and `remove` are the lifecycle pair, and what they mean is stated by kind rather than
-implied by a byte operation. `clear` empties the contents and keeps the resource: a leaf keeps
-existing with size `0`, a container keeps existing and loses every child recursively. `remove`
-deletes the resource itself - completely, whatever "the resource" is for that handle. A wrapping
-handle removes what it *wraps*: `Gzip::remove` deletes the `.gz` resource rather than discarding a
-decoded buffer, and a media handle's cached schema or footer goes with it.
-
-Two rules hold on both, and they are the reason the pair exists at all:
-
-- **Absence is a no-op success.** Neither call is an error on a resource that is not there, and
-  neither creates one. `clear` is not a write.
-- **Absence is reached without a probe.** An implementation issues the delete and treats the
-  backend's own not-found answer as success. It never calls `kind`, `size`, an exists check, or
-  `ls` first to decide whether to proceed - on a remote backend each of those is a second round
-  trip, and a recursive delete would become a flood of them. Only not-found maps to success; a
-  permission, network, or busy failure stays the typed error it is.
-
-Because absence and successful removal are indistinguishable, `remove` returns nothing rather than
-a bool or a count - reporting "did something exist" would force exactly the probe this refuses.
-`recursive` is ignored on a leaf, and a container that still has children is refused by name rather
-than silently recursed into.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::local::Folder;
-
-    let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
-    let mut folder = Folder::new(&root)?;
-    folder.truncate(0)?;
-    folder.child_by_path("a.log")?.write_all_bytes(b"line\n")?;
-
-    // Clearing empties the container and keeps it.
-    folder.clear()?;
-    assert_eq!(folder.ls(true, false).count(), 0);
-    assert_eq!(folder.kind(), yggdryl::IOKind::Directory);
-
-    // Removing deletes it; a second call succeeds, having done nothing. A
-    // handle asked for as a container keeps answering `Directory`, because that
-    // is what it was asked for - the parent's listing is what shows it gone.
-    let leaf = root.join("nested");
-    let mut nested = Folder::new(&leaf)?;
-    nested.truncate(0)?;
-    assert_eq!(folder.ls(false, false).count(), 1);
-    nested.remove(false)?;
-    nested.remove(false)?;
-    assert_eq!(folder.ls(false, false).count(), 0);
-    folder.remove(false)?;
-
-    // A wrapping handle removes what it wraps, cache included.
-    let mut coded = yggdryl::gzip::Gzip::new(Buffer::new());
-    coded.write_all_bytes(b"symbol,price\n")?;
-    coded.remove(false)?;
-    assert_eq!(coded.size(), 0);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl import IOBase
-
-    root = pathlib.Path(tempfile.mkdtemp())
-    handle = IOBase(root / "logs")
-    handle.mkdir()
-    (handle / "a.log").write_text("line\n")
-
-    # Clearing empties the container and keeps it.
-    handle.clear()
-    assert list(handle.iterdir()) == []
-    assert handle.is_dir()
-
-    # Removing deletes it; a second call succeeds, having done nothing. A
-    # handle asked for as a container keeps answering `is_dir`, because that
-    # is what it was asked for - the parent's listing is what shows it gone.
-    handle.remove()
-    handle.remove()
-    assert list(IOBase(root).iterdir()) == []
-
-    # A container that still has children is refused rather than recursed into.
-    handle.mkdir()
-    (handle / "a.log").write_text("line\n")
-    try:
-        handle.remove()
-    except Exception as error:
-        assert "children" in str(error)
-    handle.remove(recursive=True)
-    assert list(IOBase(root).iterdir()) == []
-
-    # The handle stays usable and lazy - a write recreates the resource.
-    leaf = IOBase(root / "trades.csv")
-    leaf.write_text("symbol,price\n")
-    leaf.remove()
-    assert not leaf.exists()
-    leaf.write_text("symbol,price\n")
-    assert leaf.read_text() == "symbol,price\n"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { IOBase } = require('yggdryl')
-
-    const root = path.join(os.tmpdir(), `yggdryl-docs-lifecycle-${process.pid}`)
-    const handle = new IOBase(path.join(root, 'logs'))
-    handle.mkdir()
-    handle.joinpath(['a.log']).writeText('line\n')
-
-    // Clearing empties the container and keeps it.
-    handle.clear()
-    assert.equal([...handle.ls(true, false)].length, 0)
-
-    // Removing deletes it; a second call succeeds, having done nothing.
-    handle.remove()
-    handle.remove()
-    assert.equal([...new IOBase(root).ls(false, false)].length, 0)
-
-    // The handle stays usable and lazy - a write recreates the resource.
-    const leaf = new IOBase(path.join(root, 'trades.csv'))
-    leaf.writeText('symbol,price\n')
-    leaf.remove()
-    assert.equal(leaf.exists(), false)
-    leaf.writeText('symbol,price\n')
-    assert.equal(leaf.readText(), 'symbol,price\n')
-    new IOBase(root).remove(true)
-    ```
-
-`Table` decides both deliberately rather than inheriting a folder's answers. `clear` commits one
-snapshot carrying no data files, so the table still exists with its schema, properties, and history
-and holds zero rows - deleting files behind the manifests would leave exactly the orphaned state a
-complete operation must not. `remove` deletes the table's whole location, metadata tree and data
-files together, because dropping a table is not emptying it.
-
-## Buffer
-
-!!! note "Rust only"
-    The bindings reach the in-memory implementation through
-    `IOBase.from_bytes`, not through a `Buffer` class of their own.
-
-```rust
-use yggdryl::io::{Buffer, IOBase};
-use yggdryl::MimeType;
-
-let mut handle = Buffer::with_capacity(1_024);
-handle.reserve(4_096)?;
-assert!(handle.capacity() >= 4_096);
-// Reserving changes the allocation, never the length.
-assert_eq!(handle.size(), 0);
-
-handle.pwrite(0, b"symbol,price\n")?;
-assert_eq!(handle.as_slice(), b"symbol,price\n");
-
-// A format the bytes cannot identify is declared rather than guessed.
-let csv = Buffer::from_bytes(handle.into_bytes()).with_media_type(MimeType::CSV.into());
-assert_eq!(csv.media_type().base(), &MimeType::CSV);
-```
-
-`Buffer` is the in-memory implementation, and the one every example and test reaches for. The
-allocation doubles rather than growing exactly, so appending in many small writes stays amortized
-constant; `reserve` pre-sizes it when the final length is known. `as_slice`, `as_mut_slice`, and
-`into_bytes` reach the bytes directly, and taking a mutable slice discards any inferred media type,
-because the content's identity may change through it.
-
-A buffer is not stored anywhere, so `url` reports a synthetic `mem:` identity naming the process and
-the allocation - enough to tell two live buffers apart in a log, without pretending the bytes live
-somewhere. The other implementations in the core are [local.md](local.md), the memory-mapped local
-tree, and [arrowfs.md](arrowfs.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
-one you wrote - behind the same trait. Anything else is a sibling module supplying the same three
-roles, never a change to this one. Two wrapping handles sit over any of them and are handles
-themselves: `Coded` below, and the page cache in [buffered.md](buffered.md).
-
-## Coded
-
-!!! note "Rust only"
-    The Python and JavaScript packages do not expose the compression
-    wrappers.
-
-```rust
-use yggdryl::io::{Buffer, Coded, IOBase};
-use yggdryl::{Codec, Level, MimeType, Url};
-
-let inner = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
-let mut handle = Coded::new(inner, Codec::Gzip).with_level(Level::BEST);
-
-// The wrapper's bytes are decoded, so its media type has the coding removed.
-assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
-assert_eq!(handle.media_type().encoding_len(), 0);
-
-let payload = "symbol,price\n".repeat(64).into_bytes();
-handle.write_all_bytes(&payload)?;
-handle.flush()?;
-
-// Reads decompress; the wrapped handle only ever holds the encoded form.
-assert_eq!(handle.read_all_bytes()?, payload);
-assert!(handle.handle().size() < payload.len() as u64);
-```
-
-`Coded` wraps any handle and presents the decoded bytes: reads decompress, writes compress. It is an
-`IOBase` itself, so it goes anywhere a handle goes. The per-format aliases in [gzip.md](gzip.md),
-[zlib.md](zlib.md), and [zstd.md](zstd.md) are this type with the codec already chosen.
-
-A content coding is not seekable, which forces two tradeoffs. The decoded value is materialized once
-and held until `close`, so positional reads and writes work at all over a compressed payload; and a
-write is published to the wrapped handle on `flush` or `close`, not on every `pwrite`. `into_handle`
-publishes and returns the wrapped handle. `Codec::Identity` makes the wrapper a pass-through.
-
-## Buffered
-
-!!! note "Rust only"
-    The Python and JavaScript packages do not expose the page cache.
-
-```rust
-use yggdryl::buffered::BufferedOptions;
-use yggdryl::io::{Buffer, IOBase};
-
-let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
-
-// The first read fetches the page holding the range; the second is memory.
-assert_eq!(handle.read_range(0, 8)?, [4_u8; 8]);
-assert_eq!(handle.read_range(2_000, 8)?, [4_u8; 8]);
-assert_eq!(handle.cached_pages(), 1);
-```
-
-`Buffered` is the other wrapping handle: it serves reads from fixed-size pages under a byte budget
-and a time to live, writes through, and pins the value's first and last pages so a footer-first
-container never re-reads either end. Everything else it mirrors. [buffered.md](buffered.md) is the
-page.
-
-## Roles
-
-!!! note "Rust only"
-    The bindings expose one handle class rather than the three role traits
-    behind it.
-
-```rust
-use yggdryl::io::IOBase;
-use yggdryl::{IOKind, MimeType, local};
-
-let path = std::env::temp_dir().join("yggdryl-docs-io-folder");
-let _ = std::fs::remove_dir_all(&path);
-let mut folder = local::Folder::new(&path)?;
-
-// A container holds no bytes: reads are empty, byte writes are refused.
-let mut probe = [0_u8; 4];
-assert_eq!(folder.pread(0, &mut probe)?, 0);
-assert_eq!(folder.size(), 0);
-let refused = folder.pwrite(0, b"x").unwrap_err().to_string();
-assert!(refused.contains("got the directory"), "{refused}");
-
-// Truncating to zero is the write that brings a container into being.
-folder.truncate(0)?;
-assert!(folder.exists());
-assert_eq!(folder.kind(), IOKind::Directory);
-assert_eq!(folder.media_type().base(), &MimeType::DIRECTORY);
-assert_eq!(folder.ls(false, false).count(), 0);
-
-std::fs::remove_dir_all(&path)?;
-```
-
-`IOBase` says how to move bytes. The three role traits say what a resource *is*, and each declares only
-what the backend alone knows, pre-implementing the rest as methods the backend's `IOBase` impl forwards
-to:
-
-- **`IOFolder`** - a container. Declares `folder_url`, `folder_exists`, `create_folder`, `list_folder`.
-  Pre-implements `folder_pread` (reads nothing), `folder_pwrite` (refuses, naming the container),
-  `folder_truncate` (creates on `0`, errors otherwise), `folder_media_type` (`inode/directory`), and
-  `folder_kind` (`Directory`).
-- **`IOFile`** - a leaf. Declares `file_url` and `file_exists`. Pre-implements `file_ls` (lists
-  nothing), `file_child_by_path` (refuses, naming the file), and `file_kind` (`File` when it exists,
-  `Unknown` when it does not).
-- **`IOPath`** - a location whose role is not resolved yet. Declares `path_url`, `is_folder`,
-  `is_file`. Pre-implements `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), and
-  `path_media_type` (the container type, or the one the name implies).
-
-```rust
-use yggdryl::io::IOBase;
-use yggdryl::{IOKind, local};
-
-// A location that arrived from outside answers by looking at what is there.
-let existing = local::Path::new(std::env::temp_dir())?;
-assert_eq!(existing.kind(), IOKind::Directory);
-
-let undecided = local::Path::new(std::env::temp_dir().join("yggdryl-docs-io-undecided"))?;
-assert_eq!(undecided.kind(), IOKind::Unknown);
-assert!(undecided.read_all_bytes()?.is_empty());
-
-// A leaf is not a container: it lists nothing and resolves no child.
-let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
-assert_eq!(leaf.ls(true, false).count(), 0);
-assert!(leaf.child_by_path("nested").is_err());
-```
-
-`parent`, `child_by_path`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
-tree needs no type parameter. A resource that cannot contain others lists nothing rather than failing,
-so a caller can walk without testing each node first. `local::Path` is the reference `IOPath`: it
-resolves by looking, and a byte write is what settles an undecided location into a file. A remote
-store is the same three roles over a different transport.
-
-## Delegating to a wrapped handle
-
-!!! note "Rust only"
-    A backend implements `IOBase` in Rust; neither binding can add one.
-
-```rust
-use yggdryl::io::{Buffer, IOBase};
-
-/// A wrapper mirrors the handle's bytes rather than owning bytes of its own.
-struct Counted {
-    handle: Buffer,
-    opens: usize,
-}
-
-impl IOBase for Counted {
-    yggdryl::delegate_iobase!(handle);
-
-    fn open(&mut self) -> yggdryl::Result<()> {
-        self.opens += 1;
-        self.handle.open()
-    }
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut wrapper = Counted {
-        handle: Buffer::new(),
-        opens: 0,
-    };
-    wrapper.open()?;
-    wrapper.write_all_bytes(b"AAPL")?;
-
-    assert_eq!(wrapper.opens, 1);
-    assert_eq!(wrapper.read_all_bytes()?, b"AAPL");
-    assert_eq!(wrapper.handle.as_slice(), b"AAPL");
-    Ok(())
-}
-```
-
-`delegate_iobase!` expands to the forwarding bodies for every byte method - `pread`, `pwrite`, `size`,
-`capacity`, `reserve`, `truncate`, `url`, `media_type`, `set_media_type`, `flush`, `parent`,
-`child_by_path`, `ls`, `kind` - plus `clear` and `remove`, inside an `impl IOBase for` block. It
-deliberately does not forward `open`, `opened`, or `close`: a wrapper that caches something of its
-own writes those after the invocation, as the example does. [ipc.md](ipc.md),
-[parquet.md](parquet.md), and the compression handles are all built this way.
-
-It has two other spellings, for two other shapes:
-
-- `delegate_iobase!(handle, except_lifecycle)` is the same list **without** `clear` and `remove`, for
-  a wrapper that holds a cache: it writes that pair itself so the cache is invalidated as part of the
-  call rather than left to answer a later read with bytes that are gone. `Ipc`, `Parquet`, and the
-  [text handler](#text-records) are all this shape.
-- `delegate_iobase!(handle: pread, size, ...)` names the methods to mirror one by one, for a wrapper
-  that *changes* one of them - a method cannot be both expanded by the macro and written out
-  underneath it. [`Buffered`](buffered.md) is this shape: it owns the two positional primitives, the
-  resize that invalidates, the open/close pair, and the `clear`/`remove` pair, and mirrors the rest.
-  A method left out of the list falls back to the trait's own default, which for `clear` and `remove`
-  means truncating rather than reaching the resource - so leave them out only when writing them.
-
-## Arrow batches
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::arrow;
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{DataType, Url};
-
-    // A non-null struct Field is the schema.
-    let schema = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
-    ])?
-    .required_field("row");
-
-    let arrow_schema = schema.to_arrow_schema()?;
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![
-            Arc::new(Int64Array::from(vec![1, 2])),
-            Arc::new(StringArray::from(vec![Some("AAPL"), None])),
-        ],
-    )?;
-
-    // The handle's own media type picks the encoding; no format argument is passed.
-    let mut handle = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
-    let options = handle.record_options()?;
-
-    // The write path takes a batch reader and nothing else.
-    handle.write_arrow_batch_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
-    assert_eq!(handle.read_arrow_field(&options)?, schema);
-
-    // The read path returns one. Batches arrive one at a time, never as a vector.
-    let mut rows = 0;
-    for batch in handle.read_arrow_batch_reader(&options)? {
-        rows += batch?.num_rows();
-    }
-    assert_eq!(rows, 2);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    # A PyArrow schema is the schema; the binding imports it once at the boundary.
-    schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string()),
-    ])
-    batch = pa.record_batch({"id": [1, 2], "symbol": ["AAPL", None]}, schema=schema)
-
-    # The handle's own media type picks the encoding; no format argument is passed.
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    options = handle.record_options()
-
-    # The write path takes a batch reader and nothing else.
-    handle.write_arrow_batch_reader(batch, options=options)
-    assert handle.read_arrow_field(options=options).name == "row"
-
-    # The read path returns one. Batches arrive one at a time, never as a vector.
-    rows = sum(part.num_rows for part in handle.read_arrow_batch_reader(options=options))
-    assert rows == 2
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
-
-    // A non-null struct Field is the schema.
-    const schema = fields.struct(
-      'row',
-      [Field.from('id: int64'), Field.from('symbol: utf8')],
-      { nullable: false },
-    )
-
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-      symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
-    })
-
-    // The handle's own media type picks the encoding; no format argument is passed.
-    const handle = IOBase.fromBytes()
-    handle.mediaType = MimeType.ARROW_STREAM
-    const options = handle.recordOptions()
-
-    // The write path takes a batch reader and nothing else.
-    handle.writeArrowBatchReader(BatchReader.from(table), options)
-    assert.ok(handle.readArrowField(options).equals(schema))
-
-    // The read path returns one. Batches arrive one at a time, never as a vector.
-    let rows = 0
-    for (const batch of handle.readArrowBatchReader(options)) {
-      rows += batch.numRows
-    }
-    assert.equal(rows, 2)
-    ```
-
-The record surface is exactly three methods: `read_arrow_batch_reader` returns [arrow.md](arrow.md)'s
-`BatchReader`, `write_arrow_batch_reader` replaces or merges, and `append_arrow_batch_reader` adds
-after what is there. Between them they are the only place an encoding is decoded and the only place
-one is encoded, and every other record operation is expressed through them.
-`arrow::batch_reader` is the constructor that turns batches a caller already has - a `Vec`, an array,
-a lazily-computed iterator - into one. There is no row-level read or write anywhere: a batch is the
-unit.
-
-`record_options` derives the encoding's settings from the handle's media type, so the encoding is
-never guessed - it is whatever the handle already says it holds. `read_arrow_field` returns the
-canonical non-null struct root `Field` described in [field.md](field.md). All of this is behind the
-default `arrow` feature.
-
-Content coding stays the handle's business. A handle named `trades.arrows.zst` round-trips compressed
-through the same methods, because the coding is in its media type and no call takes a coding
-argument.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::MimeType;
-
-    // An absent resource holds no batches rather than failing to parse.
-    let empty = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    assert_eq!(
-        empty.read_arrow_batch_reader(&empty.record_options()?)?.count(),
-        0
-    );
-
-    // An encoding this build does not implement is named rather than guessed.
-    let csv = Buffer::new().with_media_type(MimeType::CSV.into());
-    let message = csv.record_options().unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pytest
-
-    from yggdryl import IOBase
-
-    root = pathlib.Path(tempfile.mkdtemp())
-
-    # An absent resource holds no batches rather than failing to parse.
-    empty = IOBase(root / "absent.arrows")
-    assert empty.read_arrow_batch_reader().read_all().num_rows == 0
-
-    # An encoding this build does not implement is named rather than guessed.
-    csv = IOBase(root / "trades.csv")
-    with pytest.raises(ValueError, match="text/csv"):
-        csv.record_options()
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { IOBase, MimeType } = require('yggdryl')
-
-    // An absent resource holds no batches rather than failing to parse.
-    const empty = IOBase.fromBytes()
-    empty.mediaType = MimeType.ARROW_STREAM
-    assert.equal([...empty.readArrowBatchReader()].length, 0)
-
-    // An encoding this build does not implement is named rather than guessed.
-    const csv = IOBase.fromBytes()
-    csv.mediaType = MimeType.CSV
-    assert.throws(() => csv.recordOptions(), /text\/csv/)
-    ```
-
-The encodings `record_options` can return are the ones this build carries: Arrow IPC always
-([ipc.md](ipc.md)), Apache Parquet under the non-default `parquet` feature
-([parquet.md](parquet.md)). The settings themselves - schema, root name, cast strictness, batch size,
-compression level, match key - are shared across encodings through `IORecordOptions`, documented in
-[generic.md](generic.md).
-
-## Rows as record instances
-
-!!! note "Python and JavaScript"
-    Rust reads batches; the record-instance layer is what the bindings add on
-    top of it.
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl import IOBase
-    from yggdryl.records import record
-
-    @record
-    class Trade:
-        id: int
-        venue: str | None
-
-    root = pathlib.Path(tempfile.mkdtemp())
-    handle = IOBase(root / "trades.arrows")
-    handle.write_records([Trade(1, "XNAS"), Trade(2, None)])
-
-    # Each stored row becomes one instance, batch by batch - nothing is
-    # collected - and rows cast flexibly onto the class: names reconcile,
-    # widths convert, missing columns default.
-    assert [t.id for t in handle.read_records(Trade)] == [1, 2]
-
-    # Omit the class and one is built at runtime from the stored schema.
-    assert [row.venue for row in handle.read_records()] == ["XNAS", None]
-
-    # An absent resource yields no rows, and an empty iterable writes
-    # nothing, so conditional pipelines need no existence checks.
-    assert list(IOBase(root / "absent.arrows").read_records()) == []
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const handle = new IOBase(path.join(root, 'trades.arrows'))
-    // Plain objects are rows; `writeRecords` is the generic write under
-    // the record name.
-    handle.writeRecords([
-      { id: 1n, venue: 'XNAS' },
-      { id: 2n, venue: null },
-    ])
-
-    // Plain objects out, streamed batch by batch ...
-    assert.deepEqual([...handle.readRecords()].map((row) => row.id), [1n, 2n])
-
-    // ... or instances of any class whose constructor takes the plain row.
-    class Trade {
-      constructor(row) {
-        Object.assign(this, row)
-      }
-    }
-    const trades = [...handle.readRecords(Trade)]
-    assert.ok(trades.every((t) => t instanceof Trade))
-
-    // An absent resource yields no records rather than raising.
-    assert.deepEqual([...new IOBase(path.join(root, 'absent.arrows')).readRecords()], [])
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-In Python, `read_records` hands back instances of a [record class](extensions/python.md) - the one you pass,
-or one built at runtime from the resource's own schema when you pass none - and `write_records` /
-`append_records` take any iterable of instances, inferring the class from the first row. The rows
-stream batch by batch through the same native reader every other read uses, casting flexibly onto
-the class's schema; `safe` and `errors` say what happens to a value that will not convert. In
-JavaScript the same three names read rows as plain objects or through any constructor that takes
-one, and the writes widen exactly as `writeArrow` does. In both languages an absent resource reads
-as empty and an empty write is a no-op, so nothing needs an existence check first.
-
-## Lazy scans
-
-!!! note "Python only"
-
-```python
-import pathlib
-import tempfile
-
-import pyarrow as pa
-
-from yggdryl import IOBase
-
-target = pathlib.Path(tempfile.mkdtemp()) / "trades.parquet"
-IOBase(target).write_arrow(pa.table({"symbol": ["AAPL", "MSFT"], "price": [187.23, 402.11]}))
-
-# A local Parquet leaf becomes the real lazy scan - projection and
-# predicate pushdown belong to the engine, and the handle publishes its
-# bytes at their exact length first so the foreign reader sees a whole file.
-lazy = IOBase(target).scan_polars()
-assert lazy.select("symbol").head(10).collect().height == 2
-
-# The pyarrow spelling of the same idea, as a dataset Scanner.
-scanner = IOBase(target).scan_arrow()
-assert scanner.to_table().num_rows == 2
-
-# Anything a foreign scanner cannot mmap - an in-memory buffer, a
-# compressed name, an Arrow stream - streams through the native reader
-# instead, so both calls answer for every holder.
-memory = IOBase.from_bytes()
-memory.media_type = "application/vnd.apache.arrow.stream"
-memory.write_arrow(pa.table({"symbol": ["AAPL"]}))
-assert memory.scan_arrow().to_table().num_rows == 1
-```
-
-`scan_polars` hands back a `polars.LazyFrame` and `scan_arrow` a `pyarrow.dataset.Scanner`. A
-plain local Parquet resource is scanned natively; everything else reads through the same native
-reader every other read uses and arrives as the lazy shape anyway, so callers never branch on
-where the bytes live.
-
-## Column pushdown
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
-    use yggdryl::arrow;
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{DataType, MimeType};
-
-    let stored = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
-        DataType::Utf8.required_field("venue"),
-    ])?
-    .required_field("row");
-    let arrow_schema = stored.to_arrow_schema()?;
-
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![
-            Arc::new(Int64Array::from(vec![1, 2])),
-            Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
-            Arc::new(StringArray::from(vec!["XNAS", "XNAS"])),
-        ],
-    )?;
-
-    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    let plain = handle.record_options()?;
-    handle.write_arrow_batch_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
-
-    // One of the three columns, declared as this read's schema.
-    let wanted = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-
-    let projected = handle.read_arrow_batch_reader(&plain.clone().with_schema(wanted))?;
-    assert_eq!(projected.schema().fields().len(), 1);
-    assert_eq!(projected.map(|batch| batch.unwrap().num_columns()).sum::<usize>(), 1);
-
-    // The resource is unchanged: it still holds all three.
-    assert_eq!(handle.read_arrow_field(&plain)?.field_len(), 3);
-
-    // A column it does not hold cannot be projected out of it, so the encoding
-    // reads everything and the cast supplies that column as nulls.
-    let invented = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("nowhere"),
-    ])?
-    .required_field("row");
-    let widened = handle.read_arrow_batch_reader(&plain.with_schema(invented))?;
-    assert_eq!(widened.schema().fields().len(), 2);
-    assert_eq!(widened.schema().field(1).name(), "nowhere");
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    stored = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string(), nullable=False),
-        pa.field("venue", pa.string(), nullable=False),
-    ])
-    batch = pa.record_batch(
-        {"id": [1, 2], "symbol": ["AAPL", "MSFT"], "venue": ["XNAS", "XNAS"]},
-        schema=stored,
-    )
-
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.write_arrow_batch_reader(batch)
-
-    # One of the three columns, declared as this read's schema.
-    options = handle.record_options()
-    options.schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-
-    projected = handle.read_arrow_batch_reader(options=options)
-    assert projected.schema.names == ["id"]
-    assert projected.read_all().num_columns == 1
-
-    # The resource is unchanged: it still holds all three.
-    assert len(handle.read_arrow_field().data_type) == 3
-
-    # A column it does not hold cannot be projected out of it, so the encoding
-    # reads everything and the cast supplies that column as nulls.
-    options.schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("nowhere", pa.string()),
-    ])
-    widened = handle.read_arrow_batch_reader(options=options)
-    assert widened.schema.names == ["id", "nowhere"]
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
-
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-      symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
-      venue: arrow.vectorFromArray(['XNAS', 'XNAS'], new arrow.Utf8()),
-    })
-
-    const handle = IOBase.fromBytes()
-    handle.mediaType = MimeType.ARROW_STREAM
-    handle.writeArrowBatchReader(BatchReader.from(table))
-
-    // One of the three columns, declared as this read's schema.
-    const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
-    const options = handle.recordOptions()
-
-    const projected = handle.readArrowBatchReader(options.withSchema(wanted))
-    assert.equal(projected.field.dataType.length, 1)
-    assert.equal(projected.toTable().numCols, 1)
-
-    // The resource is unchanged: it still holds all three.
-    assert.equal(handle.readArrowField().dataType.length, 3)
-
-    // A column it does not hold cannot be projected out of it, so the encoding
-    // reads everything and the cast supplies that column as nulls.
-    const invented = fields.struct(
-      'row',
-      [Field.from('id: int64'), Field.from('nowhere: utf8?')],
-      { nullable: false },
-    )
-    const widened = handle.readArrowBatchReader(options.withSchema(invented))
-    assert.equal(widened.field.dataType.length, 2)
-    ```
-
-The schema on the options selects *and* casts, in one pass over the data. The columns it names that
-the resource stores are handed to the encoding as its own projection - a Parquet projection mask, an
-Arrow IPC projection - so the columns it leaves out are skipped rather than read and discarded.
-[parquet.md](parquet.md) is where that also means fewer bytes decoded, because a column chunk is
-separately addressable; [ipc.md](ipc.md) saves the decode and the allocation but still reads the
-message body, and says so rather than claiming otherwise.
-
-A projection can only drop columns, so the cast does everything else: reordering to the declared
-order, converting a stored type into the declared one, and filling a column the resource does not
-hold. Each batch is cast as it is pulled, so nothing is collected to do it. With no declared schema
-the stored shape is preserved exactly and no cast runs at all.
-
-`read_arrow_field` answers with the same shape this read produces, so the schema a caller reads and
-the batches a caller gets can never disagree.
-
-## Limiting a read or a write
-
-`max_row_size` bounds how many result rows flow in total - a count of rows,
-never a per-row byte cap - and `max_byte_size` bounds their Arrow in-memory
-bytes, counted uncompressed. Either bound applies *last*, after the fixed
-shaping order - declared schema, then selection, then completion cast, then
-partition filter - so a limit of ten combined with a filter means the first ten
-matching rows. A satisfied limit stops pulling, so the rest of the resource is
-never decoded.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
-    use yggdryl::arrow;
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{DataType, MimeType};
-
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
-        .required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![Arc::new(Int64Array::from_iter_values(0..1_000))],
-    )?;
-
-    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    let plain = handle.record_options()?;
-    handle.write_arrow_batch_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
-
-    // Ten result rows, exactly: the batch the bound lands inside is sliced.
-    let first = handle.read_arrow_batch_reader(&plain.clone().with_max_row_size(10))?;
-    assert_eq!(first.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 10);
-
-    // Zero is a valid ask: the shaped schema answers, and no batch flows.
-    let mut none = handle.read_arrow_batch_reader(&plain.clone().with_max_row_size(0))?;
-    assert_eq!(none.schema().fields().len(), 1);
-    assert!(none.next().is_none());
-
-    // A non-zero byte bound always yields at least one row.
-    let narrow = handle.read_arrow_batch_reader(&plain.clone().with_max_byte_size(1))?;
-    assert_eq!(narrow.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 1);
-
-    // A limited write truncates the data the caller offered: three rows land,
-    // and what the bound cut off is never pulled from the reader.
-    let mut copy = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    copy.write_arrow_batch_reader(
-        handle.read_arrow_batch_reader(&plain)?,
-        &plain.clone().with_max_row_size(3),
-    )?;
-    let kept = copy.read_arrow_batch_reader(&plain)?;
-    assert_eq!(kept.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 3);
-    ```
-
-=== "Python"
-
-    ```python
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    handle = IOBase.from_bytes()
-    handle.media_type = "application/vnd.apache.arrow.stream"
-    handle.write_arrow_batch_reader(pa.table({"id": list(range(1_000))}))
-
-    # Ten result rows, exactly: the batch the bound lands inside is sliced.
-    assert handle.read_arrow_batch_reader(max_row_size=10).read_all().num_rows == 10
-
-    # Zero is a valid ask: the shaped schema answers, and no batch flows.
-    empty = handle.read_arrow_batch_reader(max_row_size=0)
-    assert empty.schema.names == ["id"]
-    assert empty.read_all().num_rows == 0
-
-    # A non-zero byte bound always yields at least one row.
-    assert handle.read_arrow_batch_reader(max_byte_size=1).read_all().num_rows == 1
-
-    # A limited write truncates the data the caller offered: three rows land,
-    # and what the bound cut off is never pulled from the reader.
-    copy = IOBase.from_bytes()
-    copy.media_type = "application/vnd.apache.arrow.stream"
-    copy.write_arrow_batch_reader(handle.read_arrow_batch_reader(), max_row_size=3)
-    assert copy.read_arrow_batch_reader().read_all().num_rows == 3
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const arrow = require('apache-arrow')
-    const { BatchReader, IOBase, MimeType } = require('yggdryl')
-
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray(
-        Array.from({ length: 1000 }, (_, index) => BigInt(index)),
-        new arrow.Int64(),
-      ),
-    })
-
-    const handle = IOBase.fromBytes()
-    handle.mediaType = MimeType.ARROW_STREAM
-    handle.writeArrowBatchReader(BatchReader.from(table))
-    const options = handle.recordOptions()
-
-    // Ten result rows, exactly: the batch the bound lands inside is sliced.
-    assert.equal(handle.readArrowBatchReader(options.withMaxRowSize(10)).toTable().numRows, 10)
-
-    // Zero is a valid ask: the shaped schema answers, and no batch flows.
-    const empty = handle.readArrowBatchReader(options.withMaxRowSize(0))
-    assert.equal(empty.field.dataType.length, 1)
-    assert.equal(empty.toTable().numRows, 0)
-
-    // A non-zero byte bound always yields at least one row.
-    assert.equal(handle.readArrowBatchReader(options.withMaxByteSize(1)).toTable().numRows, 1)
-
-    // A limited write truncates the data the caller offered: three rows land,
-    // and what the bound cut off is never pulled from the reader.
-    const copy = IOBase.fromBytes()
-    copy.mediaType = MimeType.ARROW_STREAM
-    copy.writeArrowBatchReader(handle.readArrowBatchReader(), options.withMaxRowSize(3))
-    assert.equal(copy.readArrowBatchReader().toTable().numRows, 3)
-    ```
-
-A limit of zero yields a reader with the shaped schema and no batches rather
-than an error, so "just the schema, cheaply" is a valid ask. The row bound is
-exact: the batch it lands inside is cut with a slice, a view over the same
-buffers rather than a copy. The byte bound stops at the last row that keeps the
-running total at or under the limit, and a non-zero byte limit always yields at
-least one row rather than silently losing everything to one wide row. When both
-are set, whichever bound binds first wins.
-
-A limited write truncates the data the caller offered: the bounds cap the
-incoming reader exactly as they cap a read, and what they cut off is never
-pulled from it. A limit combined with a non-empty `merge_by_names` is refused
-naming both settings, because a truncated merge would update the matched keys
-it kept and silently drop the rest - corrupting the resource rather than
-shortening the write.
-
-## Appending and merging
-
-A write with no match key replaces the resource, which is what an IPC stream or
-a Parquet file natively supports: each carries one schema and one footer. A
-match key turns the same call into a merge, and appending is the third method.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::arrow;
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{DataType, Url};
-
-    let schema = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
-    ])?
-    .required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
-    let rows = |ids: Vec<i64>, symbols: Vec<&'static str>| {
-        let batch = RecordBatch::try_new(
-            Arc::clone(&arrow_schema),
-            vec![
-                Arc::new(Int64Array::from(ids)),
-                Arc::new(StringArray::from(symbols)),
-            ],
-        )
-        .expect("a batch matching the root");
-        arrow::batch_reader(batch.schema(), [batch])
-    };
-
-    let mut handle =
-        Buffer::new().with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
-    let options = handle.record_options()?.with_schema(schema.clone());
-
-    // No match key: the resource is replaced.
-    handle.write_arrow_batch_reader(rows(vec![1, 2], vec!["AAPL", "MSFT"]), &options)?;
-
-    // Appending reads what is there, chains the new batches after it, and rewrites.
-    handle.append_arrow_batch_reader(rows(vec![3], vec!["NVDA"]), &options)?;
-    let total: usize = handle
-        .read_arrow_batch_reader(&options)?
-        .map(|batch| batch.unwrap().num_rows())
-        .sum();
-    assert_eq!(total, 3);
-
-    // A match key merges: `2` is already stored and updates, `9` is new and appends.
-    let merging = options.clone().with_merge_by_names(["id"]);
-    handle.write_arrow_batch_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &merging)?;
-    let total: usize = handle
-        .read_arrow_batch_reader(&options)?
-        .map(|batch| batch.unwrap().num_rows())
-        .sum();
-    assert_eq!(total, 4);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string()),
-    ])
-    rows = lambda ids, symbols: pa.record_batch(
-        {"id": ids, "symbol": symbols}, schema=schema
-    )
-
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    options = handle.record_options()
-    options.schema = schema
-
-    # No match key: the resource is replaced.
-    handle.write_arrow_batch_reader(rows([1, 2], ["AAPL", "MSFT"]), options=options)
-
-    # Appending reads what is there, chains the new batches after it, and rewrites.
-    handle.append_arrow_batch_reader(rows([3], ["NVDA"]), options=options)
-    assert handle.read_arrow_batch_reader(options=options).read_all().num_rows == 3
-
-    # A match key merges: `2` is already stored and updates, `9` is new and appends.
-    merging = handle.record_options()
-    merging.schema = schema
-    merging.merge_by_names = ["id"]
-    handle.write_arrow_batch_reader(rows([2, 9], ["MSFT.O", "AMD"]), options=merging)
-    assert handle.read_arrow_batch_reader(options=options).read_all().num_rows == 4
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const arrow = require('apache-arrow')
-    const { BatchReader, Field, IOBase, MimeType, fields } = require('yggdryl')
-
-    const schema = fields.struct(
-      'row',
-      [Field.from('id: int64'), Field.from('symbol: utf8?')],
-      { nullable: false },
-    )
-    const rows = (ids, symbols) =>
-      BatchReader.from(
-        new arrow.Table({
-          id: arrow.vectorFromArray(ids, new arrow.Int64()),
-          symbol: arrow.vectorFromArray(symbols, new arrow.Utf8()),
-        }),
-      )
-
-    const handle = IOBase.fromBytes()
-    handle.mediaType = MimeType.ARROW_STREAM
-    const options = handle.recordOptions().withSchema(schema)
-
-    // No match key: the resource is replaced.
-    handle.writeArrowBatchReader(rows([1n, 2n], ['AAPL', 'MSFT']), options)
-
-    // Appending reads what is there, chains the new batches after it, and rewrites.
-    handle.appendArrowBatchReader(rows([3n], ['NVDA']), options)
-    assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 3)
-
-    // A match key merges: `2` is already stored and updates, `9` is new and appends.
-    const merging = options.withMergeByNames(['id'])
-    handle.writeArrowBatchReader(rows([2n, 9n], ['MSFT.O', 'AMD']), merging)
-    assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 4)
-    ```
-
-`merge_by_names` is a shared record setting, so it means the same thing on every
-encoding. Empty is an overwrite: a declared schema is applied to the incoming
-rows, and the result is then cast to the schema the resource already stores when
-it stores one - an overwrite replaces rows, not columns, so a caller who really
-means to change a stored schema clears the handle first.
-
-Non-empty names the columns that decide whether two rows are the same row. The
-key is encoded through Arrow's own row format, so a null key matches another
-null key exactly and a composite key compares column by column. A key stored more
-than once has every occurrence updated, because a match key is a rule and not a
-constraint the stored side was ever checked against; a key arriving more than
-once lets the last arrival win.
-
-The merge is streamed over the incoming side: one batch is pulled, matched,
-folded in, and dropped before the next is pulled. What has to be held is the
-stored side, because updating a row means finding it by key and a reader cannot
-be rewound to a row it has already yielded.
-
-Appending streams on both sides - the stored batches are chained ahead of the
-incoming ones and encoded as they arrive - and casts the incoming batches to the
-target shape first, so data whose schema merely *fits* is accepted.
-
-All three are transactional in the sense that matters: nothing is written until
-the new contents are complete, so a failure leaves the resource as it was.
-
-`select_by_names` is the companion narrowing setting, and it works on both
-directions. On a read it yields exactly the named columns of the stored rows,
-in the order the names are given; on a write - overwrite, merge, or append - it
-keeps exactly the named columns of the incoming rows, so what it drops can
-never land. Names match ASCII case-insensitively, the way every cast selects,
-and a name the rows do not have is an error listing what is there, because a
-selection is a claim about the rows rather than a wish. An empty list, the
-default, selects everything.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{arrow, DataType, MimeType};
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use std::sync::Arc;
-    let schema = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
-    ])?
-    .required_field("row");
-    let batch = RecordBatch::try_new(
-        arrow::schema_from_field(&schema)?,
-        vec![
-            Arc::new(Int64Array::from(vec![1_i64, 2])),
-            Arc::new(StringArray::from(vec![Some("AAPL"), Some("MSFT")])),
-        ],
-    )?;
-
-    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    let options = handle.record_options()?;
-    handle.write_arrow_batch_reader(arrow::batch_reader(batch.schema(), [batch]), &options)?;
-
-    // A read narrowed to one column yields one column.
-    let selecting = options.with_select_by_names(["symbol"]);
-    let first = handle.read_arrow_batch_reader(&selecting)?.next().unwrap()?;
-    assert_eq!(first.num_columns(), 1);
-    assert_eq!(first.schema().field(0).name(), "symbol");
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "orders.arrows")
-    handle.write_arrow(pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}))
-
-    # A single setting is its own keyword; every record method takes each
-    # options field directly, and `options=` remains for reuse across calls.
-    narrowed = handle.read_arrow(select_by_names=["symbol"]).read_all()
-    assert narrowed.column_names == ["symbol"]
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const handle = new IOBase(path.join(root, 'orders.arrows'))
-    handle.writeArrowBatchReader(
-      new arrow.Table({
-        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-        symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
-      }),
-    )
-
-    const narrowed = handle.recordOptions().withSelectByNames(['symbol'])
-    const table = handle.readArrowBatchReader(narrowed).toTable()
-    assert.deepEqual(table.schema.fields.map((field) => field.name), ['symbol'])
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
@@ -3573,7 +3967,7 @@ letters.
 
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
         .with_filter_partitions([("year", "2024"), ("month", "01")]);
-    // handle.read_arrow_batch_reader(&options)? now reads only the January
+    // handle.read_arrow_reader(&options)? now reads only the January
     // 2024 leaves, and only their matching rows.
     ```
 
@@ -3588,17 +3982,17 @@ letters.
     from yggdryl import IOBase
 
     root = pathlib.Path(tempfile.mkdtemp()) / "lake"
-    IOBase(root / "year=2024" / "month=01" / "trades.arrows").write_arrow(
+    IOBase(root / "year=2024" / "month=01" / "trades.arrows").overwrite_arrow_table(
         pa.table({"id": [1, 2]})
     )
-    IOBase(root / "year=2024" / "month=02" / "trades.arrows").write_arrow(
+    IOBase(root / "year=2024" / "month=02" / "trades.arrows").overwrite_arrow_table(
         pa.table({"id": [3]})
     )
 
     lake = IOBase(root)
     options = lake.record_options()
     options.filter_partitions = [("year", "2024"), ("month", "01")]
-    reader = lake.read_arrow_batch_reader(options=options)
+    reader = lake.read_arrow_reader(options=options)
     assert reader.read_all().num_rows == 2
     ```
 
@@ -3614,16 +4008,16 @@ letters.
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const lake = path.join(root, 'lake')
     new IOBase(path.join(lake, 'year=2024', 'month=01', 'trades.arrows'))
-      .writeRecords([{ id: 1n }, { id: 2n }])
+      .overwriteRecords([{ id: 1n }, { id: 2n }])
     new IOBase(path.join(lake, 'year=2024', 'month=02', 'trades.arrows'))
-      .writeRecords([{ id: 3n }])
+      .overwriteRecords([{ id: 3n }])
 
     const handle = new IOBase(lake)
     const options = handle.recordOptions().withFilterPartitions([
       ['year', '2024'],
       ['month', '01'],
     ])
-    assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 2)
+    assert.equal(handle.readArrowReader(options).intoTable().numRows, 2)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
@@ -3637,15 +4031,15 @@ replaying a torn append would duplicate rows - so it fails honestly instead.
 ## Partition columns in the data
 
 A Hive layout stores a column in the path, so the file under `year=2024/month=01` leaves those values
-out of every row. Addressing the folder rather than the file is what puts them back: the three record
-methods resolve the leaves themselves, restore the columns their directory names spell out, and route
+out of every row. Addressing the folder rather than the file is what puts them back: the four record
+primitives resolve the leaves themselves, restore the columns their directory names spell out, and route
 each row of a write to the leaf its values name.
 
 === "Rust"
 
     ```rust
     use yggdryl::generic::{Holder, IORecordOptions, RecordOptions};
-    use yggdryl::io::IOBase;
+    use yggdryl::io::{IOBase, IOMedia};
     use yggdryl::{DataType, MimeType};
 
     let root = std::env::temp_dir().join("yggdryl-doc-partitioned");
@@ -3658,7 +4052,7 @@ each row of a write to the leaf its values name.
         DataType::Utf8.required_field("month"),
     ])?
     .required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = arrow_array::RecordBatch::try_new(
         std::sync::Arc::clone(&arrow_schema),
         vec![
@@ -3670,8 +4064,8 @@ each row of a write to the leaf its values name.
 
     // The rows carry every column; the write drops the two the path spells out.
     let mut lake = Holder::folder(&root)?;
-    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_schema(schema.clone());
-    lake.write_arrow_batch_reader(
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(schema.clone());
+    lake.overwrite_arrow_reader(
         yggdryl::arrow::batch_reader(arrow_schema, [batch]),
         &options,
     )?;
@@ -3685,7 +4079,7 @@ each row of a write to the leaf its values name.
 
     // Reading the folder restores them with their declared types.
     let restored = lake
-        .read_arrow_batch_reader(&options)?
+        .read_arrow_reader(&options)?
         .next()
         .expect("one batch")?;
     assert_eq!(restored.num_columns(), 3);
@@ -3721,15 +4115,15 @@ each row of a write to the leaf its values name.
     # The rows carry every column; the write drops the two the path spells out.
     lake = IOBase(root)
     options = RecordOptions("part.arrows")
-    options.schema = schema
-    lake.write_arrow_batch_reader(batch, options=options)
+    options.field = schema
+    lake.overwrite_arrow_record_batch(batch, options=options)
 
     # Only `price` reached the leaf; the other two are the directory names.
     leaf = lake / "year=2024" / "month=01" / "part-0.arrows"
     assert len(leaf.read_arrow_field().data_type) == 1
 
     # Reading the folder restores them with their declared types.
-    restored = lake.read_arrow_batch_reader(options=options).read_all()
+    restored = lake.read_arrow_reader(options=options).read_all()
     assert restored.column_names == ["price", "year", "month"]
     assert restored.schema.field("year").type == pa.int32()
 
@@ -3762,15 +4156,15 @@ each row of a write to the leaf its values name.
 
     // The rows carry every column; the write drops the two the path spells out.
     const lake = new IOBase(root)
-    const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM).withSchema(schema)
-    lake.writeArrowBatchReader(BatchReader.from(table), options)
+    const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM).withField(schema)
+    lake.overwriteArrowReader(BatchReader.from(table), options)
 
     // Only `price` reached the leaf; the other two are the directory names.
     const leaf = lake.joinpath('year=2024').joinpath('month=01').joinpath('part-0.arrows')
     assert.equal(leaf.readArrowField().dataType.length, 1)
 
     // Reading the folder restores them with their declared types.
-    const restored = lake.readArrowBatchReader(options).toTable()
+    const restored = lake.readArrowReader(options).intoTable()
     assert.equal(restored.numCols, 3)
     assert.equal(restored.schema.fields[1].type.toString(), 'Int32')
     assert.deepEqual(restored.getChild('month').toArray(), ['01', '01'])
@@ -3790,7 +4184,7 @@ and let the first write lay the directories out.
 
     ```rust
     use yggdryl::generic::{Holder, IORecordOptions, RecordOptions};
-    use yggdryl::io::IOBase;
+    use yggdryl::io::{IOBase, IOMedia};
     use yggdryl::{DataType, MimeType};
 
     let root = std::env::temp_dir().join("yggdryl-doc-declared-layout");
@@ -3806,7 +4200,7 @@ and let the first write lay the directories out.
     .with_partition_fields(&["year"])?;
     assert_eq!(schema.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = arrow_array::RecordBatch::try_new(
         std::sync::Arc::clone(&arrow_schema),
         vec![
@@ -3816,8 +4210,8 @@ and let the first write lay the directories out.
     )?;
 
     let mut lake = Holder::folder(&root)?;
-    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_schema(schema);
-    lake.write_arrow_batch_reader(
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(schema);
+    lake.overwrite_arrow_reader(
         yggdryl::arrow::batch_reader(arrow_schema, [batch]),
         &options,
     )?;

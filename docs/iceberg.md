@@ -38,7 +38,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     assert_eq!(table.scan(None)?.count(), 0);
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.into_arrow_schema()?,
         vec![
             Arc::new(Int64Array::from(vec![1_i64, 2])),
             Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
@@ -96,7 +96,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     assert len(table.data_files()) == 2, "one file per venue"
 
     # Reopening finds the table again, with no catalog in between.
-    reopened = Table.open(IOBase(root.url.to_path()))
+    reopened = Table.open(IOBase(root.url.into_path()))
     assert reopened.scan().read_all().num_rows == 2
     ```
 
@@ -121,7 +121,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
 
     // A table that has never been written to has no current snapshot.
     assert.equal(table.currentSnapshot, null)
-    assert.equal(table.scan().toTable().numRows, 0)
+    assert.equal(table.scan().intoTable().numRows, 0)
 
     table.append(
       new arrow.Table({
@@ -135,7 +135,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
 
     // Reopening finds the table again, with no catalog in between.
     const reopened = iceberg.Table.open(root)
-    assert.equal(reopened.scan().toTable().numRows, 2)
+    assert.equal(reopened.scan().intoTable().numRows, 2)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -191,7 +191,7 @@ a consumer that only needs schemas never compiles it.
     )?;
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.into_arrow_schema()?,
         vec![Arc::new(Int64Array::from(vec![1_i64]))],
     )?;
     table.append(arrow::batch_reader(batch.schema(), [batch]))?;
@@ -311,7 +311,7 @@ let v1 = TableMetadata::new(
     schema.clone(),
     PartitionSpec::unpartitioned(),
 )?;
-let document = v1.to_json()?;
+let document = v1.clone().into_json()?;
 assert!(document.contains_key("schema"));
 assert!(document.contains_key("partition-spec"));
 assert!(!document.contains_key("last-sequence-number"));
@@ -323,7 +323,7 @@ let v2 = TableMetadata::new(
     schema.clone(),
     PartitionSpec::unpartitioned(),
 )?;
-assert!(v2.to_json()?.contains_key("last-sequence-number"));
+assert!(v2.clone().into_json()?.contains_key("last-sequence-number"));
 
 // v3 adds row lineage.
 let v3 = TableMetadata::new(
@@ -333,11 +333,11 @@ let v3 = TableMetadata::new(
     PartitionSpec::unpartitioned(),
 )?;
 assert_eq!(v3.next_row_id, Some(0));
-assert!(v3.to_json()?.contains_key("next-row-id"));
+assert!(v3.clone().into_json()?.contains_key("next-row-id"));
 
 // Every version reads back as itself.
 for original in [v1, v2, v3] {
-    let read = TableMetadata::from_json(&original.to_json()?)?;
+    let read = TableMetadata::from_json(&original.clone().into_json()?)?;
     assert_eq!(read.format_version, original.format_version);
     assert!(read.current_snapshot().is_none());
 }
@@ -346,6 +346,12 @@ for original in [v1, v2, v3] {
 Reading normalizes: a v1 document's `schema` becomes a one-element `schemas`, and its bare
 `partition-spec` array becomes a spec with id zero, so nothing downstream has to ask which version
 it is looking at. Writing emits exactly what the declared version requires.
+
+`TableMetadata` has canonical value identity: schemas, partition specs, sort orders, snapshots,
+properties, and refs compare as keyed collections independent of document order, while snapshot
+and metadata logs retain their meaningful order. `Eq`, `Ord`, `Hash`, and `stable_hash` all use
+that same identity. The Iceberg identity benchmark measures `stable_hash` over representative
+metadata.
 
 The v3 additions this module implements are `next-row-id` on the table, `first-row-id` and
 `added-rows` on each snapshot, the nanosecond temporals `timestamp_ns` and `timestamptz_ns`, the
@@ -376,7 +382,7 @@ let metadata = TableMetadata::new(
 assert!(metadata.current_snapshot().is_none());
 
 // `-1` is the other way a document spells "no current snapshot".
-let document = metadata.to_json()?.with_key("current-snapshot-id", -1_i64)?;
+let document = metadata.into_json()?.with_key("current-snapshot-id", -1_i64)?;
 let read = TableMetadata::from_json(&document)?;
 assert!(read.current_snapshot_id.is_none());
 assert!(read.current_snapshot().is_none());
@@ -416,7 +422,7 @@ must yield no rows rather than fail.
     let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec.clone())?;
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.into_arrow_schema()?,
         vec![
             Arc::new(Int64Array::from(vec![1_i64, 2])),
             Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNAS")])),
@@ -663,7 +669,7 @@ value:
     let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.into_arrow_schema()?,
         vec![
             Arc::new(Int64Array::from(vec![1_i64, 2])),
             Arc::new(StringArray::from(vec![Some("XNAS"), None])),
@@ -766,7 +772,7 @@ value:
     )?;
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.clone().into_arrow_schema()?,
         vec![
             Arc::new(Int64Array::from(vec![1_i64, 2])),
             Arc::new(StringArray::from(vec![Some("AAPL"), Some("MSFT")])),
@@ -847,18 +853,18 @@ value:
     // The target names the columns to keep; each file's Parquet reader gets it as
     // its own projection mask, so the dropped column chunk is never decoded.
     const wanted = fields.struct('row', [schema.dataType.at(0)], { nullable: false })
-    const projected = table.scan(wanted).toTable()
+    const projected = table.scan(wanted).intoTable()
     assert.deepEqual(projected.schema.fields.map((child) => child.name), ['id'])
     assert.equal(projected.numRows, 2)
 
     // No target reads everything.
-    assert.equal(table.scan().toTable().numCols, 2)
+    assert.equal(table.scan().intoTable().numCols, 2)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
 `Table::scan` hands its optional `Field` to each data file as the schema
-[`IOBase::read_arrow_batch_reader`](io.md) reads under, minus the partition columns the file does not
+[`IOMedia::read_arrow_reader`](io.md) reads under, minus the partition columns the file does not
 store, then casts what comes back to the scan's own root. The pushdown is what makes a projected scan
 cheap; the cast is what makes a table whose schema evolved readable as one shape.
 
@@ -869,6 +875,14 @@ cheap; the cast is what makes a table whose schema evolved readable as one shape
     `plan_at` answer a `ScanPlan` in each language.
     [Filtered reads and filtered writes](#filtered-reads-and-filtered-writes)
     shows the same numbers from Python and JavaScript.
+
+    The Rust plan retains its scan tasks because writes need them. The Python
+    and JavaScript views deliberately retain only the bounded report
+    `(record_count, files_planned, files_skipped, manifests_read,
+    manifests_skipped)`. Those five counts are the complete binding value
+    identity. JavaScript exposes `equals`, `compare`, `stableHash`, and `clone`
+    over the camel-cased form of exactly that tuple; physical paths never enter
+    its equality, order, or hash.
 
 === "Rust"
 
@@ -895,7 +909,7 @@ cheap; the cast is what makes a table whose schema evolved readable as one shape
     // One commit per venue, so the manifest list has three rows to prune.
     for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON")] {
         let batch = RecordBatch::try_new(
-            schema.to_arrow_schema()?,
+            schema.clone().into_arrow_schema()?,
             vec![
                 Arc::new(Int64Array::from(vec![id])),
                 Arc::new(StringArray::from(vec![Some(venue)])),
@@ -945,6 +959,10 @@ filtered row by row afterwards - because a statistic bounds a *file* and does no
 `(column, value)` pairs and build an expression from them, with the text read through the column's
 own datatype. `ScanPlan` reports what was skipped at each level, so "a filtered read touches only the
 files the metadata says it must" is something a caller can assert on rather than believe.
+
+`ScanTask` and `ScanPlan` are complete immutable plan snapshots. Their `stable_hash` methods cover
+the full ordered task/exclusion/skip state and counters; no live reader or table handle enters the
+identity. Both have representative Criterion cases in the Iceberg identity benchmark group.
 
 === "Rust"
 
@@ -1001,7 +1019,7 @@ Reading one is an ordinary scan with the snapshot named:
         PartitionSpec::unpartitioned(),
     )?;
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let one = arrow_array::RecordBatch::try_new(
         std::sync::Arc::clone(&arrow_schema),
         vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![1]))],
@@ -1083,16 +1101,16 @@ Reading one is an ordinary scan with the snapshot named:
     table.overwrite(new arrow.Table({ id: arrow.vectorFromArray([9n], new arrow.Int64()) }))
 
     // The present shows the overwrite; the retained snapshot shows what was.
-    assert.deepEqual(table.scan().toTable().getChild('id').toArray(), BigInt64Array.from([9n]))
-    assert.deepEqual(table.scanAt(past).toTable().getChild('id').toArray(), BigInt64Array.from([1n]))
+    assert.deepEqual(table.scan().intoTable().getChild('id').toArray(), BigInt64Array.from([9n]))
+    assert.deepEqual(table.scanAt(past).intoTable().getChild('id').toArray(), BigInt64Array.from([1n]))
 
     // A branch or tag resolves by name, and every commit moves `main`.
     assert.equal(table.snapshotByRef('main').snapshotId, table.currentSnapshot.snapshotId)
 
     // The inspection readers render the table's own record as record batches.
-    assert.equal(table.inspectHistory().toTable().numRows, 2)
-    assert.equal(table.inspectSnapshots().toTable().getChild('operation').get(1), 'overwrite')
-    assert.equal(table.inspectFiles().toTable().numRows, 1)
+    assert.equal(table.inspectHistory().intoTable().numRows, 2)
+    assert.equal(table.inspectSnapshots().intoTable().getChild('operation').get(1), 'overwrite')
+    assert.equal(table.inspectFiles().intoTable().numRows, 1)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -1153,7 +1171,7 @@ over the snapshot a branch or tag names.
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let rows = |ids: Vec<i64>, venues: Vec<&'static str>, quantities: Vec<i64>| {
         let batch = RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -1326,7 +1344,7 @@ over the snapshot a branch or tag names.
     assert.equal(plan.recordCount, 1)
     assert.equal(plan.manifestsRead, 1)
     assert.equal(plan.manifestsSkipped, 2)
-    assert.equal(table.scanWhere({ venue: 'XNYS' }).toTable().numRows, 1)
+    assert.equal(table.scanWhere({ venue: 'XNYS' }).intoTable().numRows, 1)
 
     // A filter on a column the spec does not partition on prunes on the file's
     // own recorded bounds instead, then filters the rows the survivors hold.
@@ -1343,20 +1361,20 @@ over the snapshot a branch or tag names.
 
     // A merge upserts on the key: 3 is stored and updates, 4 is new and appends.
     table.merge(rows([3n, 4n], ['XLON', 'XLON'], [7n, 8n]), ['id'])
-    const merged = new Map(table.scan().toTable().toArray().map((row) => [row.id, row.qty]))
+    const merged = new Map(table.scan().intoTable().toArray().map((row) => [row.id, row.qty]))
     assert.deepEqual([...merged.keys()].sort(), [1n, 2n, 3n, 4n])
     assert.equal(merged.get(2n), 99n)
     assert.equal(merged.get(4n), 8n)
 
     // Narrowed first: a merge into one partition can read no other partition.
     table.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS'], [42n]), ['id'])
-    assert.equal(table.scanWhere({ venue: 'XNAS' }).toTable().getChild('qty').get(0), 42n)
+    assert.equal(table.scanWhere({ venue: 'XNAS' }).intoTable().getChild('qty').get(0), 42n)
 
     // History plans the same way: the snapshot before the overwrite still
     // selects one file for that partition, and it is the file that held 10.
     assert.equal(table.planAt(inserted, { venue: 'XNYS' }).filesPlanned, 1)
     assert.equal(
-      table.scanAt(inserted, { venue: 'XNYS' }).toTable().getChild('qty').get(0),
+      table.scanAt(inserted, { venue: 'XNYS' }).intoTable().getChild('qty').get(0),
       10n,
     )
 
@@ -1397,7 +1415,7 @@ have replaced, so both raise and leave the caller to re-plan.
     ```rust
     use yggdryl::generic::IORecordOptions;
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::io::IOBase;
+    use yggdryl::io::{IOBase, IOMedia};
     use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
@@ -1416,7 +1434,7 @@ have replaced, so both raise and leave the caller to re-plan.
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
         let batch = RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -1433,15 +1451,15 @@ have replaced, so both raise and leave the caller to re-plan.
     // options come from the metadata, before a single data file exists.
     let mut folder = Folder::new(&path)?;
     let options = folder.record_options()?;
-    folder.write_arrow_batch_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
-    folder.append_arrow_batch_reader(rows(vec![3], vec!["XLON"]), &options)?;
+    folder.overwrite_arrow_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
+    folder.append_arrow_reader(rows(vec![3], vec!["XLON"]), &options)?;
 
     // A match key upserts: `2` is stored and updates, `9` is new and appends.
     let merging = options.clone().with_merge_by_names(["id"]);
-    folder.write_arrow_batch_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
+    folder.merge_arrow_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
 
     let total: usize = folder
-        .read_arrow_batch_reader(&options)?
+        .read_arrow_reader(&options)?
         .map(|batch| batch.unwrap().num_rows())
         .sum();
     assert_eq!(total, 4);
@@ -1478,15 +1496,15 @@ have replaced, so both raise and leave the caller to re-plan.
     # options come from the metadata, before a single data file exists.
     folder = IOBase(path)
     options = folder.record_options()
-    folder.write_arrow_batch_reader(rows([1, 2], ["XNAS", "XNYS"]), options=options)
-    folder.append_arrow_batch_reader(rows([3], ["XLON"]), options=options)
+    folder.overwrite_arrow_record_batch(rows([1, 2], ["XNAS", "XNYS"]), options=options)
+    folder.append_arrow_record_batch(rows([3], ["XLON"]), options=options)
 
     # A match key upserts: `2` is stored and updates, `9` is new and appends.
     merging = folder.record_options()
     merging.merge_by_names = ["id"]
-    folder.write_arrow_batch_reader(rows([2, 9], ["XNYS", "XLON"]), options=merging)
+    folder.merge_arrow_record_batch(rows([2, 9], ["XNYS", "XLON"]), options=merging)
 
-    assert folder.read_arrow_batch_reader(options=options).read_all().num_rows == 4
+    assert folder.read_arrow_reader(options=options).read_all().num_rows == 4
 
     # Each call was one commit, and the read went through the last one.
     assert len(Table.open(IOBase(path)).snapshots) == 3
@@ -1520,16 +1538,16 @@ have replaced, so both raise and leave the caller to re-plan.
     // options come from the metadata, before a single data file exists.
     const folder = IOBase.from(root)
     const options = folder.recordOptions()
-    folder.writeArrowBatchReader(rows([1n, 2n], ['XNAS', 'XNYS']), options)
-    folder.appendArrowBatchReader(rows([3n], ['XLON']), options)
+    folder.overwriteArrowReader(rows([1n, 2n], ['XNAS', 'XNYS']), options)
+    folder.appendArrowReader(rows([3n], ['XLON']), options)
 
     // A match key upserts: `2` is stored and updates, `9` is new and appends.
-    folder.writeArrowBatchReader(
+    folder.mergeArrowReader(
       rows([2n, 9n], ['XNYS', 'XLON']),
       options.withMergeByNames(['id']),
     )
 
-    assert.equal(folder.readArrowBatchReader(options).toTable().numRows, 4)
+    assert.equal(folder.readArrowReader(options).intoTable().numRows, 4)
 
     // Each call was one commit, and the read went through the last one.
     assert.equal(iceberg.Table.open(root).snapshots.length, 3)
@@ -1539,21 +1557,22 @@ have replaced, so both raise and leave the caller to re-plan.
 
 A handle addressing a table's folder is not read as a folder of Parquet files: it
 is read through the current snapshot, so a file an overwrite replaced is never
-read back and a stray file nobody committed is never read at all. The three
-methods keep their meanings, and each one is a single commit:
+read back and a stray file nobody committed is never read at all. The shared
+[record-write contract](io.md#canonical-record-write-signatures) keeps each
+intent explicit, and each call is a single commit:
 
-- `read_arrow_batch_reader` scans the current snapshot, planning as above.
-- `write_arrow_batch_reader` with no match key replaces every row; with one it
-  merges, reading only the data files whose recorded bounds for the key columns
-  overlap the incoming keys and carrying the rest into the new snapshot untouched
+- `read_arrow_reader` scans the current snapshot, planning as above.
+- `overwrite_arrow_reader` replaces every row.
+- `merge_arrow_reader` requires match keys and reads only the data files whose recorded bounds for the key columns
+  overlap the incoming keys, carrying the rest into the new snapshot untouched
   - same location, same statistics, same commit order. That is what makes an
   upsert cost the files it can actually change, and it stays correct however
   coarse the statistics are, because a file that is not read keeps every row.
-- `append_arrow_batch_reader` writes new data files and keeps every manifest the
+- `append_arrow_reader` writes new data files and keeps every manifest the
   last snapshot had, so nothing stored is read or rewritten.
 
 The relationship runs the other way too: a `Table` value is itself a handle, so
-the same three methods work on it directly. The folder route above probes the
+the same primitives work on it directly. The folder route above probes the
 location for a table on every call; the `Table` implementation answers from the
 metadata the value already holds, and each answer is the better one.
 `record_options` names the data files' encoding before the first file exists,
@@ -1577,7 +1596,7 @@ skips it everywhere else.
 ```rust
 use yggdryl::generic::IORecordOptions;
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::io::IOBase;
+use yggdryl::io::{IOBase, IOMedia};
 use yggdryl::local::Folder;
 use yggdryl::{arrow, DataType, MimeType};
 
@@ -1611,7 +1630,7 @@ assert_eq!(
     Some(1),
 );
 
-let arrow_schema = schema.to_arrow_schema()?;
+let arrow_schema = schema.into_arrow_schema()?;
 let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -1626,9 +1645,9 @@ let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
 
 // Each generic write is one commit, and the value's metadata follows it
 // without reopening anything.
-table.append_arrow_batch_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
+table.append_arrow_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
 let merging = options.clone().with_merge_by_names(["id"]);
-table.write_arrow_batch_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
+table.merge_arrow_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
 assert_eq!(table.metadata().snapshots.len(), 2);
 assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
 
@@ -1636,7 +1655,7 @@ assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
 // files are never opened.
 let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
 let matching: usize = table
-    .read_arrow_batch_reader(&filtered)?
+    .read_arrow_reader(&filtered)?
     .map(|batch| batch.unwrap().num_rows())
     .sum();
 assert_eq!(matching, 1);
@@ -1649,7 +1668,7 @@ the files come from the manifest rather than from a directory listing:
 ```rust
 use yggdryl::generic::IORecordOptions;
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::io::IOBase;
+use yggdryl::io::{IOBase, IOMedia};
 use yggdryl::local::Folder;
 use yggdryl::{arrow, DataType};
 
@@ -1669,7 +1688,7 @@ let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
 let batch = RecordBatch::try_new(
-    schema.to_arrow_schema()?,
+    schema.into_arrow_schema()?,
     vec![
         Arc::new(Int64Array::from(vec![1_i64, 2])),
         Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
@@ -1680,7 +1699,7 @@ table.append(arrow::batch_reader(batch.schema(), [batch]))?;
 let partition = Folder::new(path.join("data").join("venue=XNYS"))?;
 let options = partition.record_options()?;
 let rows: usize = partition
-    .read_arrow_batch_reader(&options)?
+    .read_arrow_reader(&options)?
     .map(|batch| batch.unwrap().num_rows())
     .sum();
 assert_eq!(rows, 1);
@@ -1725,7 +1744,7 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
     ])?
     .required_field("row")
     .with_partition_fields(&["venue"])?;
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let rows = |ids: &[i64], venues: &[&str]| {
         RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -1790,7 +1809,7 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
         ]),
         nullable=False,
     ).with_partition_fields(["venue"])
-    columns = pa.schema([child.to_arrow() for child in marked.data_type])
+    columns = pa.schema([child.into_arrow() for child in marked.data_type])
 
     table = catalog.append(
         "nyc.trades", pa.table({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=columns)
@@ -1836,8 +1855,8 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
         venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
       })
     const table = catalog.append('nyc.trades', rows([1n, 2n], ['XNAS', 'XNYS']))
-    assert.equal(table.scan().toTable().numRows, 2)
-    assert.equal(catalog.append('nyc.trades', rows([3n], ['XNAS'])).scan().toTable().numRows, 3)
+    assert.equal(table.scan().intoTable().numRows, 2)
+    assert.equal(catalog.append('nyc.trades', rows([3n], ['XNAS'])).scan().intoTable().numRows, 3)
 
     // The dotted name is the folder nyc/trades, and the marks became the spec.
     assert.ok(catalog.tables.has('nyc.trades'))
@@ -2007,7 +2026,7 @@ for now).
     assert.equal(sales.tables.size(), 1)
 
     const table = catalog.namespaces.get('sales').tables.get('orders')
-    assert.equal(table.scan().toTable().numRows, 2)
+    assert.equal(table.scan().intoTable().numRows, 2)
 
     // A catalog and a namespace each carry properties, in one small document.
     sales.updateProperties({ region: 'eu' })
@@ -2052,7 +2071,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
     let one = |id: i64| {
         RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -2139,14 +2158,14 @@ rather than at it - and a table that has accumulated small files rewrites them:
     for (const value of [0n, 1n, 2n, 3n, 4n]) {
       table.append(new arrow.Table({ id: arrow.vectorFromArray([value], new arrow.Int64()) }))
     }
-    assert.equal(table.inspectFiles().toTable().numRows, 5)
+    assert.equal(table.inspectFiles().intoTable().numRows, 5)
 
     // Compaction rewrites the small groups as one replace commit and reports it.
     const compaction = table.compact()
     assert.equal(compaction.filesBefore, 5)
     assert.equal(compaction.filesAfter, 1)
     assert.ok(compaction.bytesRewritten > 0)
-    assert.equal(table.scan().toTable().numRows, 5)
+    assert.equal(table.scan().intoTable().numRows, 5)
 
     // Nothing to do is a no-op that commits nothing.
     assert.deepEqual(table.compact(), { filesBefore: 0, filesAfter: 0, bytesRewritten: 0 })
@@ -2352,7 +2371,7 @@ back to Parquet.
     )?;
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.into_arrow_schema()?,
         vec![Arc::new(Int64Array::from(vec![1_i64]))],
     )?;
 
@@ -2428,7 +2447,7 @@ back to Parquet.
 
     const formats = table.dataFiles().map((file) => file.fileFormat).sort()
     assert.deepEqual(formats, ['AVRO', 'PARQUET'])
-    assert.equal(table.scan().toTable().numRows, 2)
+    assert.equal(table.scan().intoTable().numRows, 2)
 
     // Stored per table, the spec's own key configures every writer.
     table.updateProperties({ 'write.format.default': 'avro' })
@@ -2488,7 +2507,7 @@ history:
     let mut left = Table::open(Folder::new(&root)?)?;
     let mut right = Table::open(Folder::new(&root)?)?;
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let one = |id: i64| {
         RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -2563,7 +2582,7 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
         PartitionSpec::unpartitioned(),
     )?;
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     let one = |id: i64| {
         RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -2679,9 +2698,9 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     table.createBranch('review', audited)
 
     // Every ref reads as the complete table it names.
-    assert.equal(table.scanRef('audit-2026').toTable().numRows, 1)
-    assert.equal(table.scanRef('review').toTable().numRows, 1)
-    assert.equal(table.scan().toTable().numRows, 2)
+    assert.equal(table.scanRef('audit-2026').intoTable().numRows, 1)
+    assert.equal(table.scanRef('review').intoTable().numRows, 1)
+    assert.equal(table.scan().intoTable().numRows, 2)
 
     // A branch fast-forwards only along its own ancestry: the target must reach
     // the branch's head by parent ids, so no history can be lost.
@@ -2749,7 +2768,7 @@ is the host's own parallelism, clamped to 1..=8. The order is the plan's order e
         PartitionSpec::unpartitioned(),
     )?;
 
-    let arrow_schema = schema.to_arrow_schema()?;
+    let arrow_schema = schema.into_arrow_schema()?;
     for id in 0..3 {
         let batch = RecordBatch::try_new(
             Arc::clone(&arrow_schema),
@@ -2820,7 +2839,7 @@ let mut table = catalog.tables().create("nyc.taxis", schema.clone())?;
 let schema = table.schema()?.clone();
 
 // INSERT INTO nyc.taxis VALUES (...)
-let arrow_schema = schema.to_arrow_schema()?;
+let arrow_schema = schema.into_arrow_schema()?;
 let taxis = |vendors: &[i64], trips: &[i64], distances: &[f32], fares: &[f64], flags: &[&str]| {
     RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -2942,7 +2961,7 @@ commit writes is ever mutated in place.
     )?;
 
     let batch = RecordBatch::try_new(
-        schema.to_arrow_schema()?,
+        schema.into_arrow_schema()?,
         vec![Arc::new(Int64Array::from(vec![1_i64]))],
     )?;
     table.append(arrow::batch_reader(batch.schema(), [batch]))?;
@@ -3032,7 +3051,7 @@ commit writes is ever mutated in place.
     assert.equal(table.schemas[0].dataType.length, 1)
 
     // And the file written before the column existed reads it as null.
-    const rows = table.scan().toTable()
+    const rows = table.scan().intoTable()
     assert.deepEqual(rows.schema.fields.map((child) => child.name), ['id', 'quantity'])
     assert.equal(rows.getChild('quantity').nullCount, rows.numRows)
 
@@ -3338,7 +3357,7 @@ grows, so a reader of an old file can never mistake a retired column for a new o
     use yggdryl::iceberg::{schema_from_json, schema_to_json};
     use yggdryl::{json, DataType};
 
-    let document = json::from_str(
+    let document = json::from_utf8(
         r#"{"type":"struct","schema-id":0,"fields":[
             {"id":1,"name":"id","required":true,"type":"long"},
             {"id":2,"name":"symbol","required":false,"type":"string"}
@@ -3450,30 +3469,30 @@ use yggdryl::iceberg::PrimitiveType;
 use yggdryl::{DataType, TimeUnit};
 
 // Every Iceberg primitive name has exactly one physical datatype.
-assert_eq!(PrimitiveType::from_str("long")?.to_data_type()?, DataType::Int64);
-assert_eq!(PrimitiveType::from_str("string")?.to_data_type()?, DataType::Utf8);
+assert_eq!(PrimitiveType::from_str("long")?.into_data_type()?, DataType::Int64);
+assert_eq!(PrimitiveType::from_str("string")?.into_data_type()?, DataType::Utf8);
 assert_eq!(
-    PrimitiveType::from_str("decimal(18, 4)")?.to_data_type()?,
+    PrimitiveType::from_str("decimal(18, 4)")?.into_data_type()?,
     DataType::decimal(18, 4)?
 );
 
 // Iceberg fixed every temporal resolution at microseconds until v3 added the
 // nanosecond pair.
 assert_eq!(
-    PrimitiveType::from_str("timestamp")?.to_data_type()?,
+    PrimitiveType::from_str("timestamp")?.into_data_type()?,
     DataType::Timestamp(TimeUnit::Microsecond, None)
 );
 assert_eq!(
-    PrimitiveType::from_str("timestamp_ns")?.to_data_type()?,
+    PrimitiveType::from_str("timestamp_ns")?.into_data_type()?,
     DataType::Timestamp(TimeUnit::Nanosecond, None)
 );
 assert_eq!(
-    PrimitiveType::from_str("time")?.to_data_type()?,
+    PrimitiveType::from_str("time")?.into_data_type()?,
     DataType::time(TimeUnit::Microsecond)?
 );
 
 // A v3 `unknown` column always reads as null, which Arrow spells exactly.
-assert_eq!(PrimitiveType::from_str("unknown")?.to_data_type()?, DataType::Null);
+assert_eq!(PrimitiveType::from_str("unknown")?.into_data_type()?, DataType::Null);
 
 // A name round trips through `Display`.
 assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
@@ -3502,7 +3521,7 @@ metadata JSON:
 | `binary` | `Binary` | v1 |
 | `unknown` | `Null` | v3 |
 
-`to_data_type` is total: every Iceberg type materializes without loss. `from_data_type` is not, and
+`into_data_type` is total: every Iceberg type materializes without loss. `from_data_type` is not, and
 that is the point - it names the datatype it refuses instead of widening it behind your back:
 
 ```rust
@@ -3525,7 +3544,7 @@ assert!(PrimitiveType::from_data_type(&DataType::Int16).is_err());
 
 // A UUID is 16 bytes on the wire and nothing more, so it writes back as `fixed[16]`.
 assert_eq!(
-    PrimitiveType::from_data_type(&PrimitiveType::Uuid.to_data_type()?)?.to_string(),
+    PrimitiveType::from_data_type(&PrimitiveType::Uuid.into_data_type()?)?.to_string(),
     "fixed[16]"
 );
 ```
@@ -3543,10 +3562,10 @@ use yggdryl::iceberg::PrimitiveType;
 use yggdryl::{DataType, Scheme};
 
 // The narrow integers widen; the refusals stay refusals.
-let widened = DataType::Int8.to_scheme_compat(&Scheme::ICEBERG)?;
+let widened = DataType::Int8.into_scheme_compat(&Scheme::ICEBERG)?;
 assert_eq!(widened, DataType::Int32);
 assert_eq!(PrimitiveType::from_data_type(&widened)?.to_string(), "int");
-assert!(DataType::Interval(yggdryl::TimeUnit::YearMonth).to_scheme_compat(&Scheme::ICEBERG).is_err());
+assert!(DataType::Interval(yggdryl::TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEBERG).is_err());
 ```
 
 ## Nested types
@@ -3559,7 +3578,7 @@ assert!(DataType::Interval(yggdryl::TimeUnit::YearMonth).to_scheme_compat(&Schem
 use yggdryl::iceberg::{schema_from_json, schema_to_json};
 use yggdryl::{json, DataType};
 
-let document = json::from_str(
+let document = json::from_utf8(
     r#"{"type":"struct","fields":[
         {"id":1,"name":"legs","required":false,"type":{
             "type":"list","element-id":2,"element":{
@@ -3613,11 +3632,11 @@ required when absent.
 use arrow_array::RecordBatch;
 use yggdryl::arrow;
 use yggdryl::iceberg::schema_from_json;
-use yggdryl::io::Buffer;
+use yggdryl::io::{Buffer, IOMedia};
 use yggdryl::json;
 use yggdryl::parquet::Parquet;
 
-let document = json::from_str(
+let document = json::from_utf8(
     r#"{"type":"struct","fields":[
         {"id":7,"name":"id","required":true,"type":"long"},
         {"id":8,"name":"symbol","required":false,"type":"string"}
@@ -3626,13 +3645,17 @@ let document = json::from_str(
 let schema = schema_from_json("row", &document)?;
 
 let mut media = Parquet::new(Buffer::new());
-media.write_batch_reader(arrow::batch_reader(
-    schema.to_arrow_schema()?,
-    std::iter::empty::<RecordBatch>(),
-))?;
+let options = media.record_options()?;
+media.overwrite_arrow_reader(
+    arrow::batch_reader(
+        schema.into_arrow_schema()?,
+        std::iter::empty::<RecordBatch>(),
+    ),
+    &options,
+)?;
 
 // The ids Iceberg assigned are the ids in the file.
-let written = media.read_field()?;
+let written = media.read_arrow_field(&options)?;
 assert_eq!(written.fields()[0].parquet_field_id()?, Some(7));
 assert_eq!(written.fields()[1].parquet_field_id()?, Some(8));
 assert!(!written.fields()[0].is_nullable());

@@ -11,6 +11,14 @@ fn zone(value: &str) -> Timezone {
     Timezone::from_str(value).expect("a valid time zone")
 }
 
+#[test]
+fn naive_is_a_canonical_non_zoned_marker() {
+    assert_eq!(zone("naive"), Timezone::NAIVE);
+    assert!(Timezone::NAIVE.is_naive());
+    assert_eq!(Timezone::NAIVE.as_str(), "NAIVE");
+    assert_eq!(Timezone::NAIVE.offset_at(0), None);
+}
+
 /// Seconds since the Unix epoch for a UTC civil date and time.
 fn utc(year: i32, month: u32, day: u32, hour: i64, minute: i64) -> i64 {
     super::days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60
@@ -325,10 +333,13 @@ mod conversions {
         let instant = utc(2024, 7, 4, 16, 0);
 
         // 16:00 UTC in July is 12:00 in New York, which is EDT.
-        assert_eq!(new_york.to_local(instant).unwrap(), utc(2024, 7, 4, 12, 0));
+        assert_eq!(
+            new_york.clone().into_local(instant).unwrap(),
+            utc(2024, 7, 4, 12, 0)
+        );
         // In January the same reading is one hour further back.
         let winter = utc(2024, 1, 4, 16, 0);
-        assert_eq!(new_york.to_local(winter).unwrap(), utc(2024, 1, 4, 11, 0));
+        assert_eq!(new_york.into_local(winter).unwrap(), utc(2024, 1, 4, 11, 0));
     }
 
     #[test]
@@ -337,11 +348,17 @@ mod conversions {
         let local = utc(2024, 7, 4, 14, 0);
 
         // 14:00 in Paris in July is 12:00 UTC.
-        assert_eq!(paris.to_utc(local).unwrap(), utc(2024, 7, 4, 12, 0));
+        assert_eq!(
+            paris.clone().into_utc(local).unwrap(),
+            utc(2024, 7, 4, 12, 0)
+        );
         // A round trip through both directions is the identity.
         let instant = utc(2024, 7, 4, 12, 0);
         assert_eq!(
-            paris.to_utc(paris.to_local(instant).unwrap()).unwrap(),
+            paris
+                .clone()
+                .into_utc(paris.into_local(instant).unwrap())
+                .unwrap(),
             instant
         );
     }
@@ -350,9 +367,9 @@ mod conversions {
     fn a_conversion_refuses_a_zone_it_has_no_rules_for() {
         let unknown = zone("Custom/Unknown");
 
-        let message = unknown.to_local(0).unwrap_err().to_string();
+        let message = unknown.clone().into_local(0).unwrap_err().to_string();
         assert!(message.contains("Custom/Unknown"), "{message}");
-        assert!(unknown.to_utc(0).is_err());
+        assert!(unknown.into_utc(0).is_err());
     }
 
     #[test]

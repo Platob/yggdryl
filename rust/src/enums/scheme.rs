@@ -167,7 +167,7 @@ impl Scheme {
 
     /// Return whether the scheme names a schema-compatibility target.
     ///
-    /// Only these values are accepted by `to_scheme_compat`.
+    /// Only these values are accepted by `into_scheme_compat`.
     pub const fn is_compatibility_target(&self) -> bool {
         matches!(
             self.0,

@@ -2,21 +2,42 @@
 
 A page cache that makes any [`IOBase`](io.md) handle buffered, with the value's first and last pages pinned.
 
-!!! note "Rust only"
-    The Python and JavaScript packages do not expose this module yet.
+=== "Rust"
 
-```rust
-use yggdryl::buffered::BufferedOptions;
-use yggdryl::io::{Buffer, IOBase};
+    ```rust
+    use yggdryl::buffered::BufferedOptions;
+    use yggdryl::io::{Buffer, IOBase};
 
-let handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
-    .buffered(BufferedOptions::default());
+    let handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
+        .buffered(BufferedOptions::default());
 
-// The first read fetches the page holding the range; the second is memory.
-assert_eq!(handle.read_range(0, 6)?, b"symbol");
-assert_eq!(handle.read_range(13, 4)?, b"AAPL");
-assert_eq!(handle.cached_pages(), 1);
-```
+    assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    assert_eq!(handle.read_range(13, 4)?, b"AAPL");
+    assert_eq!(handle.cached_pages(), 1);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes(b"symbol,price\nAAPL,1\n")
+    assert handle.buffered(page_size=64, max_bytes=256, ttl=30.0) is handle
+    assert handle.pread(0, 6) == b"symbol"
+    assert handle.pread(13, 4) == b"AAPL"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const handle = IOBase.fromBytes(Buffer.from('symbol,price\nAAPL,1\n'))
+    assert.equal(handle.buffered({ pageSize: 64, maxBytes: 256, ttlMs: 30_000 }), handle)
+    assert.deepEqual(handle.pread(0, 6), Buffer.from('symbol'))
+    assert.deepEqual(handle.pread(13, 4), Buffer.from('AAPL'))
+    ```
 
 `IOBase::buffered` wraps any handle, and what comes back is a handle: `Buffered<H>` mirrors
 everything it does not change, so `size`, `url`, `media_type`, `kind`, `parent`, `child_by_path`,
@@ -25,6 +46,8 @@ the same way [`Coded`](io.md) is invisible except for the coding.
 
 Nothing is cached at construction. Per the [laziness contract](io.md), a handle is a
 description of where bytes would live, and the cache only ever holds pages a read asked for.
+Calling `buffered` again reconfigures the same cache layer; it never stacks a second one.
+Rust additionally exposes page-inspection methods used by the detailed examples below.
 
 ## Pages
 
@@ -213,10 +236,9 @@ explicitly.
 
 ## Over a compressed handle
 
-A content coding is not seekable, so [`Coded`](io.md) answers a positional read by decoding
-the value - and *which* decode it pays depends on whether the handle is open. A handle nobody
-opened decodes the whole payload **for every `pread`**, because nothing may be cached as a
-side effect of an ordinary read. Wrapping it turns that into one decode per page miss.
+A content coding is not seekable. A closed [`Coded`](io.md) positional read decodes through
+the requested range and retains nothing. Wrapping it retains the decoded pages instead, so a
+hit performs no second decode and a miss restarts only as far as that page.
 
 ```rust
 use yggdryl::buffered::BufferedOptions;
@@ -241,16 +263,13 @@ assert_eq!(handle.size(), payload.len() as u64);
 
 Three things follow, and the [measurements below](#what-the-cache-buys-and-what-it-costs) cover all of them:
 
-- **The order of wrapping matters.** `Buffered<Coded<_>>` caches the *decoded* bytes, which
-  is what the reads want. `Coded<Buffered<_>>` would cache the compressed bytes and still
-  decode on every read, which buys nothing.
-- **`open` is still cheaper.** A caller who knows they hold a compressed value should open it:
-  that materializes the decoded value once, every read is then a range copy out of it, and
-  `close` releases it. The page cache is what makes an *unopened* coded handle behave - the
-  case a caller who does not know what they were handed is in.
-- **The cache does not make the decode disappear**, it divides it. A miss still decodes the
-  whole payload, so a scan of a value much larger than the budget still pays one decode per
-  page. For that shape, open the handle.
+- **The order of wrapping matters.** `Buffered<Coded<_>>` caches decoded bytes;
+  `Coded<Buffered<_>>` caches encoded transport.
+- **Choose by access shape.** `pstream_bytes` keeps one decoder and zero pages for a scan;
+  `Buffered<Coded<_>>` retains bounded decoded pages for locality; `open` materializes once
+  for repeated random access and `close` releases it.
+- **A page miss still starts at the frame beginning.** Compression has no decoded seek, so
+  later misses cost more than early ones even though none retains the whole value.
 
 ## Wrapping twice wraps once
 
@@ -421,21 +440,22 @@ the value, and *which* decode it pays depends on whether the handle is open. The
 cases read a 256 KiB gzip value in 64 reads of 4 KiB:
 
 ```text
-io_buffered/coded/closed     18.673 ms    13.389 MiB/s
-io_buffered/coded/open        4.2057 µs   58.050 GiB/s
-io_buffered/coded/buffered    7.8713 µs   31.017 GiB/s
+io_buffered/coded/closed      12.182 ms    20.522 MiB/s
+io_buffered/coded/open         5.8867 us   41.474 GiB/s
+io_buffered/coded/buffered    10.2080 us   23.916 GiB/s
 ```
 
-- **`closed` is the trap.** Nothing may be cached as a side effect of an ordinary read, so a
-  coded handle nobody opened decodes the **whole payload for every `pread`**: 64 reads, 64
-  decodes, 18.7 ms to read 256 KiB.
-- **`open` is the cure the coding already ships** - and it got **~100x faster in this diff**.
-  `Coded::pread` used to reach the materialized value through a helper that *cloned* it, so an
-  open handle copied the entire payload to serve four bytes; `size()` cloned it just to read
-  a length. Both now borrow. Measured on the same case: **420.40 µs to 4.2057 µs**.
-- **`buffered` is what the page cache is worth when the handle is not opened** - the case a
-  caller who does not know what they were handed is in. It turns one decode per read into one
-  decode per page miss: **2,372x faster than `closed`**, within 2x of the open path.
+- **`closed` restarts the decoder.** Each call now stops after its requested range rather than
+  decoding the whole value, but 64 progressive calls still create 64 decoders and repeatedly
+  discard growing prefixes.
+- **`open` serves the one decoded snapshot it explicitly owns.** It is the fastest repeated
+  random-access path when holding that complete value is acceptable.
+- **`buffered` retains only fetched decoded pages.** It turns decoder restarts into page misses
+  and stays within 2x of the opened path for this access pattern.
+
+For a scan, [`pstream_bytes`](io.md#streamed-bytes) is the zero-cache choice: it keeps one
+decoder and leaves `cached_pages() == 0`. The page cache is for reuse across genuinely
+positional reads, not a prerequisite for sequential decoding.
 
 The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the *decoded* bytes.
 `Coded<Buffered<_>>` would cache the compressed bytes and still decode on every read.
@@ -446,6 +466,8 @@ The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the *decode
 
 Every example on this page, as a notebook generated from these blocks and
 shipped unexecuted:
-[Rust](notebooks/rust/buffered.ipynb){ download }.
+[Rust](notebooks/rust/buffered.ipynb){ download },
+[Python](notebooks/python/buffered.ipynb){ download },
+[JavaScript](notebooks/javascript/buffered.ipynb){ download }.
 
 <!-- /notebooks -->

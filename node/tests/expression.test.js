@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { Expression, Field, IOBase, Statement, Value, fields, iceberg } = require('yggdryl')
+const { BatchReader, Expression, Field, IOBase, Statement, Value, fields, iceberg } = require('yggdryl')
 
 const TRADES = new Field(
   'trades',
@@ -49,6 +49,13 @@ test('text parses and round-trips through the canonical form', () => {
   assert.equal(filter.toString(), "ccy = 'EUR' and price > 100")
   assert.ok(new Expression(filter.toString()).equals(filter))
   assert.deepEqual(filter.columns, ['ccy', 'price'])
+  const clone = filter.clone()
+  assert.notEqual(clone, filter)
+  assert.ok(clone.equals(filter))
+  assert.equal(clone.compare(filter), 0)
+  assert.equal(clone.stableHash(), filter.stableHash())
+  assert.ok(new Expression("ccy = 'EUR'").compare("ccy = 'USD'") < 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(filter)), JSON.parse(filter.intoJson()))
 })
 
 test('text is never taken as a string literal', () => {
@@ -59,7 +66,8 @@ test('text is never taken as a string literal', () => {
 
 test('a document round-trips', () => {
   const filter = new Expression('size between 1 and 10')
-  assert.ok(Expression.fromJson(filter.toJson()).equals(filter))
+  assert.ok(Expression.fromJson(filter.intoJson()).equals(filter))
+  assert.equal(filter.toJson, undefined)
 })
 
 test('the tree is built from either spelling', () => {
@@ -67,6 +75,30 @@ test('the tree is built from either spelling', () => {
   assert.equal(left.and('size > 1').toString(), "ccy = 'EUR' and size > 1")
   assert.equal(left.or('size > 1').toString(), "ccy = 'EUR' or size > 1")
   assert.equal(left.not().toString(), "not ccy = 'EUR'")
+})
+
+test('arithmetic builders stay lazy expression nodes', () => {
+  const size = Expression.column('size')
+  assert.equal(size.add('1').toString(), 'size + 1')
+  assert.equal(size.add(1).toString(), 'size + 1')
+  assert.equal(size.add(Value.fromJs(1)).toString(), 'size + 1')
+  assert.equal(size.subtract('1').toString(), 'size - 1')
+  assert.equal(size.multiply('2').toString(), 'size * 2')
+  assert.equal(size.divide('2').toString(), 'size / 2')
+  assert.equal(size.remainder('2').toString(), 'size % 2')
+  assert.equal(size.negate().toString(), '-size')
+
+  const computed = size.add('1').bind(TRADES).eval(Value.fromJs(['EUR', null, 4]))
+  assert.ok(computed.equals(Value.fromJs(5)))
+  for (const hidden of [
+    '_addNative',
+    '_subtractNative',
+    '_multiplyNative',
+    '_divideNative',
+    '_remainderNative',
+  ]) {
+    assert.equal(size[hidden], undefined, hidden)
+  }
 })
 
 test('binding resolves the columns and folds the literals', () => {
@@ -99,6 +131,100 @@ test('a statement carries the whole read', () => {
   assert.equal(statement.predicate.toString(), "ccy = 'EUR'")
   assert.equal(statement.limit, 10)
   assert.equal(new Statement(statement.toString()).toString(), statement.toString())
+  const clone = statement.clone()
+  assert.notEqual(clone, statement)
+  assert.ok(clone.equals(statement))
+  assert.ok(new Statement(statement).equals(statement))
+  assert.equal(clone.compare(statement), 0)
+  assert.ok(new Statement('select ccy').compare('select price') < 0)
+  assert.equal(clone.stableHash(), statement.stableHash())
+  assert.deepEqual(JSON.parse(JSON.stringify(statement)), JSON.parse(statement.intoJson()))
+})
+
+const STATEMENT_SCHEMA = new Field(
+  'rows',
+  'struct(field("ccy",utf8,nullable=true,metadata={}),field("size",int64,nullable=true,metadata={}))',
+  false,
+)
+
+function statementBatch(ccy, size) {
+  return new arrow.Table({
+    ccy: arrow.vectorFromArray(ccy, new arrow.Utf8()),
+    size: arrow.vectorFromArray(size, new arrow.Int64()),
+  }).batches[0]
+}
+
+test('statement ordering, binding, and all are native views', () => {
+  const statement = new Statement(
+    'select ccy, size as quantity where size >= :floor ' +
+      'order by size desc nulls last limit 2',
+  )
+  const [order] = statement.ordering
+  assert.equal(order.expression.toString(), 'size')
+  assert.equal(order.direction, 'descending')
+  assert.equal(order.nulls, 'last')
+  assert.equal(statement.isAll, false)
+
+  assert.throws(() => statement.bind(STATEMENT_SCHEMA), /floor/)
+  const bound = statement.bind(STATEMENT_SCHEMA, { floor: 2 })
+  assert.ok(bound.schema.equals(STATEMENT_SCHEMA))
+  assert.equal(bound.output.name, 'rows')
+  assert.deepEqual(bound.projections.map((projection) => projection.field.name), ['ccy', 'size'])
+  assert.equal(bound.predicate.isPredicate, true)
+  assert.deepEqual(bound.ordering[0].expression.columns, ['size'])
+  assert.equal(bound.ordering[0].direction, 'descending')
+  assert.equal(bound.ordering[0].nulls, 'last')
+  assert.equal(bound.limit, 2)
+  assert.equal(bound.isAll, false)
+
+  const all = new Statement('select *').bind(STATEMENT_SCHEMA)
+  assert.equal(all.isAll, true)
+  assert.deepEqual(all.projections, [])
+})
+
+test('bound statement projection preserves each Arrow holder', () => {
+  const bound = new Statement(
+    'select ccy, size as quantity where size >= 2 limit 2',
+  ).bind(STATEMENT_SCHEMA)
+  const first = statementBatch(['A', 'B', 'C', 'D'], [1n, 4n, 3n, null])
+  const second = statementBatch(['E', 'F'], [5n, 6n])
+
+  const projectedBatch = bound.projectArrowRecordBatch(first)
+  assert.ok(arrow.isArrowRecordBatch(projectedBatch))
+  assert.deepEqual([...projectedBatch.getChild('quantity')], [4n, 3n])
+  assert.ok(arrow.isArrowRecordBatch(bound.projectArrow(first)))
+
+  const table = new arrow.Table([first, second])
+  const projectedTable = bound.projectArrowTable(table)
+  assert.ok(arrow.isArrowTable(projectedTable))
+  assert.deepEqual([...projectedTable.getChild('quantity')], [4n, 3n])
+  assert.ok(arrow.isArrowTable(bound.projectArrow(table)))
+
+  const projectedReader = bound.projectArrowReader(
+    BatchReader.from(new arrow.Table([first, second])),
+  )
+  assert.ok(projectedReader instanceof BatchReader)
+  assert.deepEqual([...projectedReader.intoTable().getChild('quantity')], [4n, 3n])
+  const inferredReader = bound.projectArrow(
+    BatchReader.from(new arrow.Table([first, second])),
+  )
+  assert.ok(inferredReader instanceof BatchReader)
+  assert.equal(inferredReader.intoTable().numRows, 2)
+
+  assert.throws(() => bound.projectArrowTable(first), /Arrow Table/)
+  assert.equal(bound._projectArrowReaderNative, undefined)
+})
+
+test('bound statement sorts one materialized batch', () => {
+  const bound = new Statement('select * order by size desc nulls last limit 2').bind(
+    STATEMENT_SCHEMA,
+  )
+  const source = statementBatch(['A', 'B', 'C', 'D'], [null, 2n, 5n, 3n])
+  const sorted = bound.sortArrowRecordBatch(source)
+  assert.ok(arrow.isArrowRecordBatch(sorted))
+  assert.deepEqual([...sorted.getChild('ccy')], ['C', 'D'])
+  assert.deepEqual([...sorted.getChild('size')], [5n, 3n])
+  assert.equal(bound._sortArrowRecordBatchNative, undefined)
 })
 
 test('a lake is filtered by the same predicate the rows are', () => {
@@ -150,15 +276,15 @@ test('an expression prunes manifests before a byte is read', () => {
     // of them, so neither can be dropped without changing the answer.
     const mixed = table
       .scanMatching("id >= 4 and symbol is not null and &holder.partition['venue'] = 'XLON'")
-      .toTable()
+      .intoTable()
     assert.deepEqual([...mixed.getChild('id')], [4n])
     assert.deepEqual([...mixed.getChild('symbol')], ['BP'])
     assert.deepEqual([...mixed.getChild('venue')], ['XLON'])
     assert.deepEqual(
-      [...table.scanMatching("&holder.partition['venue'] = 'XLON'").toTable().getChild('id')],
+      [...table.scanMatching("&holder.partition['venue'] = 'XLON'").intoTable().getChild('id')],
       [3n, 4n],
     )
-    assert.deepEqual([...table.scanMatching('id >= 4').toTable().getChild('id')], [4n])
+    assert.deepEqual([...table.scanMatching('id >= 4').intoTable().getChild('id')], [4n])
 
     // The pair spelling and the expression spelling are one plan and one read.
     // Each side is pinned to the measured number, so two broken sides cannot
@@ -171,8 +297,8 @@ test('an expression prunes manifests before a byte is read', () => {
     assert.equal(byPair.manifestsSkipped, 2)
     assert.equal(byText.recordCount, 2)
     assert.equal(byPair.recordCount, 2)
-    assert.deepEqual([...table.scanMatching("venue = 'XLON'").toTable().getChild('id')], [3n, 4n])
-    assert.deepEqual([...table.scanWhere({ venue: 'XLON' }).toTable().getChild('id')], [3n, 4n])
+    assert.deepEqual([...table.scanMatching("venue = 'XLON'").intoTable().getChild('id')], [3n, 4n])
+    assert.deepEqual([...table.scanWhere({ venue: 'XLON' }).intoTable().getChild('id')], [3n, 4n])
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }

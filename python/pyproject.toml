@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "yggdryl"
 version = "0.1.1"
-description = "Native Yggdryl schemas, dataclass-compatible records, identifiers, and byte codecs"
+description = "Native Yggdryl schemas, dataclass field definitions, identifiers, and byte codecs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# `pandas` and `polars` are the two frame libraries the generic entry points
+# `pandas` and `polars` are the two frame libraries the typed frame entry points
 # convert, and neither is a runtime dependency: they are installed here so the
 # tests and the documentation examples that exercise that boundary can run.
 # `tzdata` supplies the zone database on a platform whose Python has none.
@@ -50,3 +50,6 @@ markers = [
   "spark_interop: exchanges Iceberg tables with Apache Spark; provisioned by scripts/setup_spark_interop.py",
 ]
 testpaths = ["tests"]
+
+[tool.mypy]
+plugins = ["yggdryl.mypy"]

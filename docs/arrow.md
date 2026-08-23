@@ -43,9 +43,8 @@
 
 `default_arrow_array` is implemented on both `DataType` and `Field`, and it is how a canonical
 default becomes a physical array. The result is a one-row array, not a row object: this crate hands
-Arrow exactly two units, a `RecordBatch` and a one-row array. The row-to-Arrow conversion layer
-that used to sit between them is gone - there is no record type, no row iterator, and no
-`read_records`/`write_records` anywhere. Anything wider than one value is a batch, and batches are
+Arrow exactly two units, a `RecordBatch` and a one-row array. There is no Python
+row-object I/O surface between them. Anything wider than one value is a batch, and batches are
 read and written through [io.md](io.md), [ipc.md](ipc.md), and [parquet.md](parquet.md).
 
 The three runtimes hand the scalar back in their own Arrow vocabulary. Rust hands back the bare
@@ -141,7 +140,7 @@ Field method is the one that can return a logical null.
     );
 
     let row = scalar_value(&schema, schema.default_arrow_array()?.as_ref())?;
-    let (_, values) = row.as_record().ok_or("a struct row is a typed record")?;
+    let values = row.as_sequence().ok_or("a struct row is an ordered sequence")?;
     assert_eq!(values.len(), 2);
     assert_eq!(values[0].as_i128(), Some(0));
     assert_eq!(values[1], Value::Null);
@@ -250,7 +249,7 @@ use yggdryl::generic::Int64Value;
 use yggdryl::{DataType, TypedValue, Value};
 
 let price = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?;
-let array = price.to_arrow_array()?;
+let array = price.clone().into_arrow_array()?;
 assert_eq!(array.len(), 1);
 assert_eq!(TypedValue::from_arrow_array(DataType::Int64, array.as_ref())?, price);
 
@@ -260,15 +259,15 @@ assert_eq!(typed.value(), &Value::I64(7));
 
 // A null projects only when the datatype's own default spells it...
 let nothing = TypedValue::from_parts(DataType::Null, Value::Null)?;
-assert_eq!(nothing.to_arrow_array()?.logical_null_count(), 1);
+assert_eq!(nothing.into_arrow_array()?.logical_null_count(), 1);
 
 // ...an int64 null belongs to a nullable Field, so the pairing refuses it.
 let absent = TypedValue::from_parts(DataType::Int64, Value::Null)?;
-assert!(absent.to_arrow_array().is_err());
+assert!(absent.into_arrow_array().is_err());
 ```
 
 A caller holding a [`TypedValue`](generic.md) - one value and one datatype, with no Field around
-them - projects the same boundary directly: `to_arrow_array` materializes one row, and
+them - projects the same boundary directly: `into_arrow_array` materializes one row, and
 `from_arrow_array` (or the marker-narrowed `try_from_arrow_array`) decodes row zero of a one-row
 array into a validated pairing. The projection runs through a synthetic non-nullable Field over the
 pairing's datatype, with the same canonical-default exception the foreign-array door makes, so
@@ -281,7 +280,7 @@ nullable Field that would hold it.
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Datum, Int64Array, StringArray, StructArray};
-use yggdryl::arrow::{StructScalar, schema_from_field};
+use yggdryl::arrow::StructScalar;
 use yggdryl::{DataType, Field};
 
 let schema = Field::new(
@@ -293,7 +292,7 @@ let schema = Field::new(
     false,
 );
 
-let projected = schema.to_arrow_schema()?;
+let projected = schema.clone().into_arrow_schema()?;
 let array = StructArray::new(
     projected.fields().clone(),
     vec![
@@ -305,7 +304,7 @@ let array = StructArray::new(
 
 let row = StructScalar::from_parts(schema, array)?;
 assert_eq!(row.field().name(), "row");
-assert_eq!(row.schema().field_len(), 2);
+assert_eq!(row.field().field_len(), 2);
 
 // Children come back as zero-copy one-element slices, by position or by name.
 let (field, column) = row.entry(0).expect("first column");
@@ -314,58 +313,117 @@ assert_eq!(column.len(), 1);
 assert_eq!(row.get_by_name("symbol").map(|column| column.len()), Some(1));
 
 // Arrow's own scalar marker is a shallow clone away.
-let marker = row.to_arrow_scalar();
+let marker = row.into_arrow_scalar();
 let (inner, is_scalar) = marker.get();
 assert!(is_scalar);
 assert_eq!(inner.len(), 1);
 ```
 
 `StructScalar` is the same idea one level up: one present Arrow struct row paired with the root
-Field it satisfies - `schema` and `field` are two names for that one accessor. `from_parts` refuses
+Field it satisfies. `from_parts` refuses
 anything that is not exactly one row, refuses a null root - a native `Value` cannot represent one -
 and refuses a struct array whose columns are not exactly the ones the Field declares, naming both
 schemas in the error.
 
 `get`, `get_by_name`, and `entry` slice rather than copy, so reading one column out of a row costs
-a slice and an `Arc` bump. `to_arrow_scalar` and `into_arrow_scalar` produce Arrow's `Scalar`
+a slice and an `Arc` bump. `into_arrow_scalar` and `into_arrow_scalar` produce Arrow's `Scalar`
 marker, the `Datum` its kernels expect when one side of a binary operation is a single value.
 
 ## Projecting a schema
 
 ```rust
-use yggdryl::arrow::{record_schema_from_arrow, record_schema_to_arrow, schema_from_field};
+use arrow_schema::{Schema, ffi::FFI_ArrowSchema};
 use yggdryl::{DataType, Field};
+
+let mut symbol = DataType::dictionary(DataType::Int16, DataType::Utf8)?
+    .nullable_field("symbol");
+symbol.set_dictionary_options(-7, true)?;
 
 let schema = Field::from_parts(
     "row",
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        symbol,
     ])?,
     false,
     [("owner", "trading")],
 )?;
 
 // Root metadata becomes Arrow schema metadata, and comes back.
-let projected = record_schema_to_arrow(&schema)?;
+let projected = schema.clone().into_arrow_exchange_schema()?;
 assert_eq!(projected.fields().len(), 2);
 assert_eq!(projected.metadata().get("owner").map(String::as_str), Some("trading"));
-assert_eq!(record_schema_from_arrow("row", &projected)?, schema);
+assert_eq!(Field::from_arrow_schema("row", &projected)?, schema);
 
-// schema_from_field is the same projection, already behind an Arc.
-assert_eq!(schema.to_arrow_schema()?.as_ref(), &projected);
+// Arrow's C schema has no dictionary-ID slot.  This is the same boundary
+// PyArrow uses: the ID becomes zero, while the sidecar metadata survives.
+assert_eq!(
+    projected
+        .metadata()
+        .get("yggdryl:ipc:dictionary-ids")
+        .map(String::as_str),
+    Some("v1;1=-7"),
+);
+let ffi = FFI_ArrowSchema::try_from(&projected)?;
+let crossed = Schema::try_from(&ffi)?;
+#[allow(deprecated)]
+{
+    assert_eq!(crossed.field(1).dict_id(), Some(0));
+}
+let restored = Field::from_arrow_schema("row", &crossed)?;
+assert_eq!(restored, schema);
+assert!(!restored.has_metadata("yggdryl:ipc:dictionary-ids"));
+
+// Field::into_arrow_schema is the shared in-process projection. It retains the ID
+// on Arrow's Field directly and needs no transport sidecar.
+let in_process = schema.clone().into_arrow_schema()?;
+#[allow(deprecated)]
+{
+    assert_eq!(in_process.field(1).dict_id(), Some(-7));
+}
 
 // A root that is not a non-null Struct is refused, not coerced.
-assert!(record_schema_to_arrow(&Field::new("row", DataType::Int64, false)).is_err());
-assert!(record_schema_to_arrow(&schema.with_nullable(true)).is_err());
+assert!(Field::new("row", DataType::Int64, false)
+    .into_arrow_exchange_schema()
+    .is_err());
+assert!(schema.with_nullable(true).into_arrow_exchange_schema().is_err());
 ```
 
-`schema_from_field` is the one place a root Field becomes an `arrow_schema::Schema`, so every
-encoding sees the same field identifiers and the same root metadata. It validates that the root is
-bounded, non-nullable, and a Struct before projecting; `record_schema_to_arrow` is the owned form
-of it and `record_schema_from_arrow` is its inverse, taking the name the Arrow schema does not
-carry. Per-field projection - `Field::to_arrow`, `Field::from_arrow`, `DataType::to_arrow` - lives
-in [field.md](field.md) and [datatype.md](datatype.md).
+Rust's `Field::into_arrow_schema` is the shared in-process projection, so every encoding sees the
+same field identifiers and root metadata. It validates that the root is bounded, non-nullable, and
+a Struct. `Field::into_arrow_exchange_schema` is the exchange-safe owned projection used when a
+schema crosses the Arrow C Data Interface; for every non-zero dictionary ID
+it adds the reserved
+`yggdryl:ipc:dictionary-ids` schema-metadata entry, keyed by deterministic numeric field paths.
+The Arrow C Data Interface carries dictionary ordering but not those IDs; PyArrow crosses that
+interface, preserves the metadata entry, and resets the direct ID. `Field::from_arrow_schema` - and
+Python's `Field.from_arrow_schema()` - validates the entry, restores every nested ID, and strips it
+before constructing root Field metadata. A malformed entry, a path to a non-dictionary field, a
+conflict with a non-zero Arrow ID, or caller-owned root metadata under the reserved key is refused.
+Per-field projection - `Field::into_arrow`, `Field::from_arrow`, `DataType::into_arrow` - lives in
+[field.md](field.md) and [datatype.md](datatype.md).
+
+### What schema projection costs
+
+The `field` Criterion target measures the three Struct-root methods above over
+the same nested field. Construction of the fixture stays outside the timer:
+
+```console
+cargo bench -p yggdryl --bench field --all-features -- arrow/struct_field --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10
+```
+
+One local Windows x86_64 release run (Criterion point estimates; regenerate on
+the deployment host):
+
+| operation | estimate | 95% interval |
+| --- | ---: | ---: |
+| `Field::into_arrow_schema` | 1.48 us | 1.14-2.27 us |
+| `Field::into_arrow_exchange_schema` | 1.81 us | 1.71-1.95 us |
+| `Field::from_arrow_schema` | 2.59 us | 2.37-2.81 us |
+
+The exchange sidecar and its validation remain microsecond-scale even for the
+nested dictionary fixture. These numbers price schema projection only; no
+record batch is allocated or crossed.
 
 ## Streaming batches
 
@@ -385,7 +443,7 @@ let schema = Field::new(
     ])?,
     false,
 );
-let projected = schema.to_arrow_schema()?;
+let projected = schema.into_arrow_schema()?;
 
 let batch = |ids: Vec<i64>, symbols: Vec<Option<&str>>| {
     RecordBatch::try_new(
@@ -399,7 +457,7 @@ let batch = |ids: Vec<i64>, symbols: Vec<Option<&str>>| {
 
 let mut handle = Buffer::new();
 let options = IpcOptions::new();
-ipc::write_batch_reader(
+ipc::overwrite_batch_reader(
     &mut handle,
     yggdryl::arrow::batch_reader(
         Arc::clone(&projected),
@@ -422,10 +480,12 @@ assert_eq!(rows, 3);
 `BatchReader` is `Box<dyn arrow_array::RecordBatchReader + Send>` - a schema plus an iterator of
 `Result<RecordBatch>`. It is the only shape a record read or write has: every read path returns it -
 `ipc::read_batch_reader`, `parquet::read_batch_reader` under the non-default `parquet` feature,
-`Media::read_batch_reader`, and `IOBase::read_arrow_batch_reader` - and every write path consumes one.
-Passing a reader rather than a `Vec` leaves the decision of how much to hold in memory with the
-caller, and the box owns whatever it reads from, so it outlives the call that produced it and can
-be sent to another thread.
+and `IOMedia::read_arrow_reader` - and the explicit
+`overwrite_arrow_reader`, `append_arrow_reader`, and `merge_arrow_reader` paths consume one.
+Their canonical signatures and intent validation are documented in
+[io.md](io.md#canonical-record-write-signatures). Passing a reader rather than a `Vec` leaves the
+decision of how much to hold in memory with the caller, and the box owns whatever it reads from, so
+it outlives the call that produced it and can be sent to another thread.
 
 `arrow::batch_reader(schema, batches)` is the constructor for the write side. It takes any
 `IntoIterator` of owned batches - a `Vec`, an array, a lazily-computed iterator - under a schema the
@@ -477,8 +537,8 @@ is already the declared shape rather than rebuilding arrays it would hand back u
     ])?
     .required_field("row");
 
-    let left_schema = yggdryl::arrow::schema_from_field(&left_root)?;
-    let right_schema = yggdryl::arrow::schema_from_field(&right_root)?;
+    let left_schema = left_root.into_arrow_schema()?;
+    let right_schema = right_root.into_arrow_schema()?;
     let left = yggdryl::arrow::batch_reader(
         Arc::clone(&left_schema),
         [RecordBatch::try_new(left_schema, vec![Arc::new(Int64Array::from(vec![1_i64]))])?],
@@ -531,7 +591,7 @@ is already the declared shape rather than rebuilding arrays it would hand back u
 
     const joined = left.combined(right)
     assert.equal(joined.field.dataType.length, 1)
-    assert.equal(joined.toTable().numRows, 2)
+    assert.equal(joined.intoTable().numRows, 2)
     ```
 
 

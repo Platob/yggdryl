@@ -8,18 +8,24 @@
 //! runs against a bucket when that backend lands, because only the handle
 //! changes.
 
+use std::time::Duration;
+
 use napi::bindgen_prelude::{
     Buffer, ClassInstance, Either, Either3, Either4, Env, Function, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 
+use yggdryl::WriteMode;
+use yggdryl::buffered::BufferedOptions;
 use yggdryl::generic::{Holder, IORecordOptions as _};
-use yggdryl::io::IOBase as _;
+use yggdryl::io::{IOBase as _, IOMedia as _};
 use yggdryl::text::TextLineOptions;
 
 use crate::arrow::JsBatchReader;
 use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
-use crate::codec::JsCodecValue;
+use crate::codec::{
+    DEFAULT_JS_DEPTH, JsCodecValue, decoded_value_for_field, value_to_transport_for_field,
+};
 use crate::field::JsField;
 use crate::generic::JsRecordOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
@@ -27,6 +33,15 @@ use crate::{exact_u64, napi_error};
 
 /// Bytes accumulated before a record write is flushed to the resource.
 const LINE_WRITE_CHUNK: usize = 64 * 1024;
+/// Default byte-stream window, shared with the Rust core.
+const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::io::DEFAULT_STREAM_BATCH_SIZE;
+/// Largest integer a JavaScript `number` represents exactly.
+const JS_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
+/// Saturate a native count at JavaScript's exact-integer boundary.
+fn safe_js_count(value: u64) -> i64 {
+    i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
+}
 
 /// A native handle, a native `Url`, or anything that names a location.
 pub(crate) type LocationInput<'a> =
@@ -46,7 +61,7 @@ type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<St
 
 /// Build a local handle for the location a `Url` names.
 fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
-    Holder::local(url.to_path().map_err(napi_error)?).map_err(napi_error)
+    Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
 }
 
 /// Rebuild a foreign-file-system handle, keeping the file system it stands on.
@@ -105,13 +120,22 @@ pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
         Either3::B(url) => url.inner.clone(),
         Either3::C(value) => yggdryl::Url::from_str(&value).map_err(napi_error)?,
     };
-    Holder::folder(url.to_path().map_err(napi_error)?).map_err(napi_error)
+    Holder::folder(url.into_path().map_err(napi_error)?).map_err(napi_error)
 }
 
 /// A random-access resource: a local file, a directory, or a memory buffer.
 #[napi(js_name = "IOBase")]
 pub struct JsIOBase {
     inner: Holder,
+}
+
+/// Opaque state for one asynchronous, cadence-bounded record write.
+///
+/// The JavaScript loader removes this class from the public exports. Only the
+/// private `IOBase` bridges below can construct or advance it.
+#[napi(js_name = "ArrowWriteSession")]
+pub struct JsArrowWriteSession {
+    inner: yggdryl::io::ArrowWriteSession,
 }
 
 impl JsIOBase {
@@ -148,7 +172,7 @@ impl JsIOBase {
     /// Build a container handle for one recorded location.
     pub(crate) fn folder_at(location: &str) -> Result<Self> {
         let url = yggdryl::Url::from_str(location).map_err(napi_error)?;
-        Holder::folder(url.to_path().map_err(napi_error)?)
+        Holder::folder(url.into_path().map_err(napi_error)?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -224,7 +248,7 @@ impl JsIOBase {
     ///
     /// ```js
     /// const handle = IOBase.fromArrowFs(handler, 'bucket/key.parquet')
-    /// const rows = handle.readArrow().toTable()
+    /// const rows = handle.readArrowReader().intoTable()
     /// ```
     ///
     /// The result is an ordinary handle: `ls`, `glob`, `joinpath`, and
@@ -293,7 +317,37 @@ impl JsIOBase {
     /// The number of bytes here, as `fs.Stats.size`.
     #[napi(getter)]
     pub fn size(&self) -> i64 {
-        i64::try_from(self.inner.size()).unwrap_or(i64::MAX)
+        safe_js_count(self.inner.size())
+    }
+
+    /// The exact core storage role: memory, file, directory, table,
+    /// namespace, catalog, or unknown.
+    #[napi(getter)]
+    pub fn kind(&self) -> String {
+        self.inner.kind().as_str().to_owned()
+    }
+
+    /// The number of logical rows in this media value.
+    ///
+    /// This is metadata, not a materialized read. The core uses an encoding's
+    /// cheap count when it has one and caches successful answers while the
+    /// handle is open. Values beyond JavaScript's exact integer range saturate
+    /// at `Number.MAX_SAFE_INTEGER`, as [`Self::size`] does.
+    #[napi(getter)]
+    pub fn row_size(&self) -> Result<i64> {
+        self.inner.row_size().map(safe_js_count).map_err(napi_error)
+    }
+
+    /// The number of columns in this media value's logical root field.
+    ///
+    /// The core answers from schema metadata and caches successful answers
+    /// while the handle is open; no JavaScript-side schema or count is kept.
+    #[napi(getter)]
+    pub fn column_size(&self) -> Result<i64> {
+        self.inner
+            .column_size()
+            .map(|columns| safe_js_count(u64::try_from(columns).unwrap_or(u64::MAX)))
+            .map_err(napi_error)
     }
 
     /// The containing resource, as `path.dirname`.
@@ -335,6 +389,15 @@ impl JsIOBase {
         self.inner.kind() == yggdryl::IOKind::File
     }
 
+    /// Return whether this handle exposes either the byte or record surface.
+    ///
+    /// Media type answers first; only an undecided directory may need to ask
+    /// its first leaf. Containers holding neither bytes nor rows return false.
+    #[napi]
+    pub fn is_io(&self) -> bool {
+        self.inner.is_io()
+    }
+
     /// Return whether this resource is one whole byte value.
     ///
     /// The byte surface - `readBytes` and `writeBytes` - is for an atomic
@@ -347,8 +410,8 @@ impl JsIOBase {
 
     /// Return whether this resource holds rows and columns.
     ///
-    /// The record surface - `readArrowBatchReader` and its two writing
-    /// siblings - is for a tabular resource: a leaf whose media type names a
+    /// The record surface - `readArrowReader` and the three explicit write
+    /// intents - is for a tabular resource: a leaf whose media type names a
     /// record encoding, a folder that reads as the table beneath it, or a
     /// table format's own folder.
     #[napi]
@@ -482,6 +545,25 @@ impl JsIOBase {
         String::from_utf8(bytes).map_err(napi_error)
     }
 
+    /// Decode one structured value through the native inferred text codec.
+    #[napi(js_name = "_readValueNative", skip_typescript)]
+    pub fn read_value_native(
+        &self,
+        field: Option<ClassInstance<'_, JsField>>,
+        native_value: Option<bool>,
+    ) -> Result<Either<JsCodecValue, serde_json::Value>> {
+        let value = self
+            .inner
+            .read_value(field.as_ref().map(|field| &field.inner))
+            .map_err(napi_error)?;
+        decoded_value_for_field(
+            value,
+            field.as_ref().map(|field| &field.inner),
+            DEFAULT_JS_DEPTH,
+            native_value.unwrap_or(false),
+        )
+    }
+
     /// Replace what is here with `data`, as `fs.writeFileSync`.
     #[napi]
     pub fn write_bytes(&mut self, data: Uint8Array) -> Result<u32> {
@@ -498,6 +580,12 @@ impl JsIOBase {
         u32::try_from(text.len()).map_err(napi_error)
     }
 
+    /// Encode one native structured value through the inferred text codec.
+    #[napi(js_name = "_writeValueNative", skip_typescript)]
+    pub fn write_value_native(&mut self, value: &JsCodecValue) -> Result<()> {
+        self.inner.write_value(&value.inner).map_err(napi_error)
+    }
+
     /// Read `length` bytes from `offset`, which a path cannot do.
     #[napi]
     pub fn pread(&self, offset: f64, length: u32) -> Result<Buffer> {
@@ -505,6 +593,65 @@ impl JsIOBase {
             .read_range(exact_u64(offset, "offset")?, length as usize)
             .map(Buffer::from)
             .map_err(napi_error)
+    }
+
+    /// Stream bounded byte arrays from an explicit position.
+    ///
+    /// Construction performs no read. Each `next()` asks the Rust core for
+    /// exactly one bounded chunk, and the iterator keeps this native handle
+    /// alive for as long as JavaScript keeps the stream. `position` defaults
+    /// to zero and `batchSize` to 64 KiB.
+    #[napi]
+    pub fn pstream_bytes(
+        &self,
+        reference: Reference<JsIOBase>,
+        position: Option<f64>,
+        batch_size: Option<f64>,
+    ) -> Result<JsByteIterator> {
+        Ok(JsByteIterator {
+            source: ByteIteratorSource::Handle {
+                handle: reference,
+                position: position.map_or(Ok(0), |value| exact_u64(value, "position"))?,
+            },
+            batch_size: byte_stream_batch_size(batch_size)?,
+            done: false,
+        })
+    }
+
+    /// Replace this handle with one page-cached view of the same resource.
+    ///
+    /// The JavaScript wrapper returns `this` for chaining. Repeating the call
+    /// reconfigures the existing cache around its held resource rather than
+    /// stacking another cache layer.
+    #[napi(js_name = "_bufferedNative", skip_typescript)]
+    pub fn buffered_native(
+        &mut self,
+        page_size: Option<f64>,
+        max_bytes: Option<f64>,
+        ttl_ms: Option<f64>,
+    ) -> Result<()> {
+        let mut options = BufferedOptions::default();
+        if let Some(page_size) = page_size {
+            let page_size = exact_u64(page_size, "pageSize")?;
+            let page_size = usize::try_from(page_size).map_err(|_| {
+                napi_error(format!(
+                    "pageSize {page_size} exceeds this platform's byte-count range"
+                ))
+            })?;
+            options = options.with_page_size(page_size);
+        }
+        if let Some(max_bytes) = max_bytes {
+            options = options.with_max_bytes(exact_u64(max_bytes, "maxBytes")?);
+        }
+        if let Some(ttl_ms) = ttl_ms {
+            options = options.with_ttl(Duration::from_millis(exact_u64(ttl_ms, "ttlMs")?));
+        }
+
+        // Every fallible conversion happened above. The temporary is replaced
+        // immediately and can therefore never become observable to JavaScript.
+        let held = std::mem::replace(&mut self.inner, Holder::buffer(yggdryl::io::Buffer::new()));
+        self.inner = held.buffered(options);
+        Ok(())
     }
 
     /// Write `data` at `offset`, growing and zero-filling as needed.
@@ -543,7 +690,7 @@ impl JsIOBase {
                 .inner
                 .url()
                 .ok_or_else(|| napi_error("an in-memory resource cannot become a directory"))?;
-            Holder::folder(url.to_path().map_err(napi_error)?).map_err(napi_error)?
+            Holder::folder(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)?
         };
         folder.truncate(0).map_err(napi_error)?;
         self.inner = folder;
@@ -555,16 +702,11 @@ impl JsIOBase {
     /// An existing leaf keeps its bytes, as `touch` does.
     #[napi]
     pub fn touch(&mut self) -> Result<()> {
-        if self.inner.is_container() {
-            return Err(napi_error(format!(
-                "expected a file to touch, got the directory {}",
-                self.name()
-            )));
-        }
-        if self.exists() {
-            return Ok(());
-        }
-        self.inner.write_all_bytes(b"").map_err(napi_error)
+        // An empty positional write is the non-truncating act: it creates a
+        // missing leaf, preserves an existing value, and lets a directory
+        // reject the write itself. No existence or kind probe races the act.
+        self.inner.pwrite(0, b"").map_err(napi_error)?;
+        self.inner.flush().map_err(napi_error)
     }
 
     /// Delete the resource here, as `fs.unlinkSync` on a leaf.
@@ -865,6 +1007,26 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
+    /// Read one Parquet leaf's footer statistics without decoding rows.
+    #[napi(js_name = "_readParquetStatisticsNative", skip_typescript)]
+    pub fn read_parquet_statistics_native(&self) -> Result<serde_json::Value> {
+        let statistics = self.inner.read_parquet_statistics().map_err(napi_error)?;
+        value_to_transport_for_field(&yggdryl::Value::from(statistics), None, DEFAULT_JS_DEPTH)
+    }
+
+    /// Recompute one Parquet geospatial column's bounds and geometry types.
+    #[napi(js_name = "_readParquetGeospatialStatisticsNative", skip_typescript)]
+    pub fn read_parquet_geospatial_statistics_native(
+        &self,
+        column: String,
+    ) -> Result<serde_json::Value> {
+        let statistics = self
+            .inner
+            .read_parquet_geospatial_statistics(&column)
+            .map_err(napi_error)?;
+        value_to_transport_for_field(&yggdryl::Value::from(statistics), None, DEFAULT_JS_DEPTH)
+    }
+
     /// Read the canonical non-null struct root `Field` of this resource.
     #[napi]
     pub fn read_arrow_field(&self, options: Option<&JsRecordOptions>) -> Result<JsField> {
@@ -877,40 +1039,36 @@ impl JsIOBase {
 
     /// Read this resource's rows as one `BatchReader`.
     ///
-    /// A schema on the options selects and casts during the read: the columns it
+    /// A field on the options selects and casts during the read: the columns it
     /// names that this resource stores become the encoding's own projection, so
     /// the rest are skipped rather than read and discarded, and what comes back
     /// is the shape it declares. A handle addressing a folder reads across the
     /// partitions beneath it, restoring the columns their directory names spell
     /// out.
     #[napi]
-    pub fn read_arrow_batch_reader(
-        &self,
-        options: Option<&JsRecordOptions>,
-    ) -> Result<JsBatchReader> {
+    pub fn read_arrow_reader(&self, options: Option<&JsRecordOptions>) -> Result<JsBatchReader> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
-        let reader = self
-            .inner
-            .read_arrow_batch_reader(&options)
-            .map_err(napi_error)?;
+        let reader = self.inner.read_arrow_reader(&options).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, options.root_name()))
     }
 
-    /// Replace or merge this resource's rows with every batch `batches` yields.
+    /// Replace this resource's rows with every batch `batches` yields.
     ///
-    /// An empty `mergeByNames` overwrites. A non-empty one names the columns a row is
-    /// matched on, so a row whose key is already stored updates it and a row
-    /// whose key is not appends. Nothing reaches the handle until the last batch
-    /// is encoded, so a failure leaves the resource exactly as it was.
+    /// This is the native-reader publication hook. The incoming stream is cast
+    /// to `options.field` once in the core, and a match key is refused because
+    /// overwrite never infers merge intent.
     #[napi]
-    pub fn write_arrow_batch_reader(
+    pub fn overwrite_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
     ) -> Result<()> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
+        options
+            .require_write_mode(WriteMode::Overwrite)
+            .map_err(napi_error)?;
         self.inner
-            .write_arrow_batch_reader(batches.take()?, &options)
+            .overwrite_arrow_reader(batches.take()?, &options)
             .map_err(napi_error)
     }
 
@@ -919,25 +1077,107 @@ impl JsIOBase {
     /// Both sides stream: what is stored is chained ahead of what arrives, and
     /// incoming batches are cast to the target shape as they are pulled.
     #[napi]
-    pub fn append_arrow_batch_reader(
+    pub fn append_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
     ) -> Result<()> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
+        options
+            .require_write_mode(WriteMode::Append)
+            .map_err(napi_error)?;
         self.inner
-            .append_arrow_batch_reader(batches.take()?, &options)
+            .append_arrow_reader(batches.take()?, &options)
             .map_err(napi_error)
+    }
+
+    /// Merge every incoming row by `options.mergeByNames`.
+    ///
+    /// A non-empty match key is required. The core keeps the incoming reader
+    /// streaming, applies `options.field` once, and publishes through the
+    /// implementor's overwrite hook without casting the shaped rows twice.
+    #[napi]
+    pub fn merge_arrow_reader(
+        &mut self,
+        batches: &mut JsBatchReader,
+        options: Option<&JsRecordOptions>,
+    ) -> Result<()> {
+        let options = JsRecordOptions::resolved(options, &self.inner)?;
+        options
+            .require_write_mode(WriteMode::Merge)
+            .map_err(napi_error)?;
+        self.inner
+            .merge_arrow_reader(batches.take()?, &options)
+            .map_err(napi_error)
+    }
+
+    /// Write a native reader using one explicit mode.
+    ///
+    /// The JavaScript adapter exposes this method with the closed `WriteMode`
+    /// union and the wider `RecordOptionsInput`. Keep napi-rs from also
+    /// publishing a looser `string` overload in the generated declarations.
+    #[napi(skip_typescript)]
+    pub fn write_arrow_reader(
+        &mut self,
+        batches: &mut JsBatchReader,
+        mode: String,
+        options: Option<&JsRecordOptions>,
+    ) -> Result<()> {
+        let mode = WriteMode::from_str(&mode).map_err(napi_error)?;
+        let options = JsRecordOptions::resolved(options, &self.inner)?;
+        options.require_write_mode(mode).map_err(napi_error)?;
+        self.inner
+            .write_arrow_reader(batches.take()?, mode, &options)
+            .map_err(napi_error)
+    }
+
+    /// Start the private mode-selected session used between async pulls.
+    #[napi(js_name = "_beginArrowWriteSessionNative", skip_typescript)]
+    pub fn begin_arrow_write_session(
+        &self,
+        mode: String,
+        options: &JsRecordOptions,
+    ) -> Result<JsArrowWriteSession> {
+        let mode = WriteMode::from_str(&mode).map_err(napi_error)?;
+        yggdryl::io::ArrowWriteSession::new(mode, &options.inner)
+            .map(|inner| JsArrowWriteSession { inner })
+            .map_err(napi_error)
+    }
+
+    /// Push one decoded IPC chunk and report whether another may be pulled.
+    #[napi(js_name = "_pushArrowWriteSessionNative", skip_typescript)]
+    pub fn push_arrow_write_session(
+        &mut self,
+        session: &mut JsArrowWriteSession,
+        batches: &mut JsBatchReader,
+    ) -> Result<bool> {
+        session
+            .inner
+            .push(&mut self.inner, batches.take()?)
+            .map_err(napi_error)
+    }
+
+    /// Publish the final partial cadence and close the private session.
+    #[napi(js_name = "_finishArrowWriteSessionNative", skip_typescript)]
+    pub fn finish_arrow_write_session(&mut self, session: &mut JsArrowWriteSession) -> Result<()> {
+        session.inner.finish(&mut self.inner).map_err(napi_error)
+    }
+
+    /// Discard the private session's unpublished partial cadence.
+    #[napi(js_name = "_abortArrowWriteSessionNative", skip_typescript)]
+    pub fn abort_arrow_write_session(&mut self, session: &mut JsArrowWriteSession) {
+        session.inner.abort();
     }
 
     /// Decode this location as a host-independent forward-slash path.
     #[napi]
-    pub fn to_path(&self) -> Result<String> {
+    pub fn into_path(&self) -> Result<String> {
         let url = self
             .inner
             .url()
             .ok_or_else(|| napi_error("this resource has no file system path"))?;
-        url.to_path()
+        url.clone()
+            .into_path()
             .map_err(napi_error)?
             .into_os_string()
             .into_string()
@@ -945,8 +1185,8 @@ impl JsIOBase {
     }
 
     /// Return the location as text, so a handle prints where it points.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner
             .url()
             .map_or_else(|| "<memory>".to_owned(), ToString::to_string)
@@ -1013,6 +1253,89 @@ impl JsLineIterator {
     }
 }
 
+/// A lazy iterator of bounded byte arrays.
+///
+/// Built by `IOBase.pstreamBytes` and `IOCursor.streamBytes`. The iterator
+/// retains a native reference to its source, so dropping the originating
+/// JavaScript variable cannot invalidate an in-flight stream. One `next()`
+/// performs one bounded core stream step; EOF and the first failure fuse it.
+#[napi(js_name = "ByteIterator")]
+pub struct JsByteIterator {
+    source: ByteIteratorSource,
+    batch_size: usize,
+    done: bool,
+}
+
+enum ByteIteratorSource {
+    Handle {
+        handle: Reference<JsIOBase>,
+        position: u64,
+    },
+    Cursor {
+        cursor: Reference<JsIOCursor>,
+    },
+}
+
+#[napi]
+impl JsByteIterator {
+    /// Return the next byte chunk, or `null` after EOF.
+    #[napi]
+    pub fn next(&mut self) -> Result<Option<Buffer>> {
+        if self.done {
+            return Ok(None);
+        }
+
+        let item = match &mut self.source {
+            ByteIteratorSource::Handle { handle, position } => {
+                let next = match handle.inner.pstream_bytes(*position, self.batch_size) {
+                    Ok(mut stream) => stream.next(),
+                    Err(error) => {
+                        self.done = true;
+                        return Err(napi_error(error));
+                    }
+                };
+                match &next {
+                    Some(Ok(bytes)) => {
+                        *position = position
+                            .checked_add(bytes.len() as u64)
+                            .ok_or_else(|| napi_error("byte stream position exceeds u64::MAX"))?;
+                    }
+                    Some(Err(_)) | None => self.done = true,
+                }
+                next
+            }
+            ByteIteratorSource::Cursor { cursor } => {
+                let position = cursor.position;
+                let next = match cursor.handle.inner.pstream_bytes(position, self.batch_size) {
+                    Ok(mut stream) => stream.next(),
+                    Err(error) => {
+                        self.done = true;
+                        return Err(napi_error(error));
+                    }
+                };
+                match &next {
+                    Some(Ok(bytes)) => {
+                        cursor.position = position
+                            .checked_add(bytes.len() as u64)
+                            .ok_or_else(|| napi_error("byte stream position exceeds u64::MAX"))?;
+                    }
+                    Some(Err(_)) | None => self.done = true,
+                }
+                next
+            }
+        };
+
+        match item {
+            None => Ok(None),
+            Some(Ok(bytes)) => Ok(Some(Buffer::from(bytes))),
+            Some(Err(error)) => {
+                self.done = true;
+                Err(napi_error(error))
+            }
+        }
+    }
+}
+
 /// A positioned view over one handle, sharing the handle's bytes.
 ///
 /// Reads and writes advance the position; `seek`/`tell` move and report it;
@@ -1075,6 +1398,28 @@ impl JsIOCursor {
         Ok(Buffer::from(buffer))
     }
 
+    /// Stream bounded byte arrays from the current position.
+    ///
+    /// The iterator keeps this cursor and its backing handle alive. Its
+    /// position advances only as chunks are yielded, so dropping a partially
+    /// consumed iterator leaves the cursor immediately after the last chunk.
+    /// `batchSize` defaults to 64 KiB.
+    #[napi]
+    // This must remain an object method: NAPI supplies `reference` for this
+    // exact cursor instance so the iterator can own it after the call returns.
+    #[allow(clippy::unused_self)]
+    pub fn stream_bytes(
+        &self,
+        reference: Reference<JsIOCursor>,
+        batch_size: Option<f64>,
+    ) -> Result<JsByteIterator> {
+        Ok(JsByteIterator {
+            source: ByteIteratorSource::Cursor { cursor: reference },
+            batch_size: byte_stream_batch_size(batch_size)?,
+            done: false,
+        })
+    }
+
     /// Write at the position, advancing it, returning the bytes written.
     #[napi]
     pub fn write(&mut self, data: Uint8Array) -> Result<f64> {
@@ -1094,21 +1439,35 @@ impl JsIOCursor {
     }
 }
 
+/// Validate and narrow a JavaScript byte-stream batch size.
+fn byte_stream_batch_size(value: Option<f64>) -> Result<usize> {
+    let value = value.map_or(Ok(BYTE_STREAM_BATCH_SIZE as u64), |value| {
+        exact_u64(value, "batchSize")
+    })?;
+    let value = usize::try_from(value).map_err(|_| napi_error("batchSize is too large"))?;
+    if value == 0 {
+        return Err(napi_error(
+            "byte stream batch_size must be greater than zero",
+        ));
+    }
+    Ok(value)
+}
+
 /// Build the line projection's root Struct Field straight from a pattern.
 ///
-/// The loader's `schemaFromPattern` wraps this with the same option coercion
+/// The loader's `fieldFromPattern` wraps this with the same option coercion
 /// `readArrowLines` uses: the schema the reader emits - named captures typed
 /// by inference or declaration - without a resource or a reader in sight, so
 /// a caller marks its partition columns and creates the Iceberg table before
 /// the first log line exists.
-#[napi(js_name = "_schemaFromPatternNative", skip_typescript)]
+#[napi(js_name = "_fieldFromPatternNative", skip_typescript)]
 // Discovered through NAPI's generated registration inventory rather than an
 // ordinary Rust call site.
 #[allow(dead_code)]
-pub fn schema_from_pattern_native(
+pub fn field_from_pattern_native(
     options: Option<ClassInstance<'_, JsCodecValue>>,
 ) -> Result<JsField> {
-    text_line_options(options.as_deref()).map(|options| JsField::from_core(options.into_schema()))
+    text_line_options(options.as_deref()).map(|options| JsField::from_core(options.into_field()))
 }
 
 /// Read the whole extractor out of the one native `Value` the loader built.

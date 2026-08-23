@@ -62,6 +62,7 @@
 //! which is also what makes a parse deterministic and testable.
 
 use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -88,20 +89,26 @@ const OPEN: &[u8; 2] = b"{{";
 /// let loading = Loading::new().with_placeholders(placeholders);
 ///
 /// let document = "path: \"{{ ROOT }}/app\"\nport: \"{{ PORT }}\"\n";
-/// let value = yggdryl::text::from_str_with(document, Format::Yaml, &loading)?;
+/// let value = yggdryl::text::from_utf8_with(document, Format::Yaml, &loading)?;
 ///
 /// // Embedded: textual, and the result is a string.
-/// assert_eq!(value.get_key_str("path").and_then(Value::as_str), Some("/var/log/app"));
+/// assert_eq!(value.get_key_str("path").and_then(Value::as_utf8), Some("/var/log/app"));
 /// // Whole-scalar: the resolved value's own type.
 /// assert_eq!(value.get_key_str("port"), Some(&Value::I64(8080)));
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct Placeholders {
     /// Caller-supplied variables, in the order they were given.
     variables: Vec<(SmolStr, Value)>,
     /// Whether the process environment is consulted when the mapping misses.
+    environment: bool,
+}
+
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct PlaceholdersIdentity<'a> {
+    variables: Vec<&'a (SmolStr, Value)>,
     environment: bool,
 }
 
@@ -115,28 +122,36 @@ impl Placeholders {
         }
     }
 
-    /// Resolve from a mapping [`Value`] - what a configuration document parses
-    /// into, so the variables can themselves come from a file.
+    /// Resolve from a named record or string-keyed mapping [`Value`].
     ///
     /// # Errors
     ///
-    /// Returns an error when `variables` is not a mapping, or when a key is not
-    /// a string.
+    /// Returns an error when `variables` is neither shape, or when a mapping
+    /// key is not a string.
     pub fn from_variables(variables: &Value) -> Result<Self> {
+        let mut placeholders = Self::new();
+        if let Some(entries) = variables.as_record() {
+            placeholders.variables.extend(
+                entries
+                    .iter()
+                    .map(|(name, value)| (name.clone(), value.clone())),
+            );
+            return Ok(placeholders);
+        }
         let entries = variables.as_mapping().ok_or_else(|| Error::InvalidRecord {
             path: SmolStr::new_static("$"),
-            reason: crate::text::expected_got("a mapping of variables", variables.kind()),
+            reason: crate::text::expected_got(
+                "a record or string-keyed mapping of variables",
+                variables.kind(),
+            ),
         })?;
-        let mut placeholders = Self::new();
         placeholders.variables.reserve(entries.len());
         for (name, value) in entries {
             let name = name.as_str().ok_or_else(|| Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
                 reason: crate::text::expected_got("string variable names", name.kind()),
             })?;
-            placeholders
-                .variables
-                .push((SmolStr::new(name), value.clone()));
+            placeholders.variables.push((name.into(), value.clone()));
         }
         Ok(placeholders)
     }
@@ -174,6 +189,13 @@ impl Placeholders {
         self.environment
     }
 
+    fn identity(&self) -> PlaceholdersIdentity<'_> {
+        PlaceholdersIdentity {
+            variables: crate::generic::sorted_pairs(&self.variables),
+            environment: self.environment,
+        }
+    }
+
     /// Resolve one name: the supplied mapping first, the environment second.
     ///
     /// The mapping wins so a test can override anything without touching the
@@ -189,6 +211,32 @@ impl Placeholders {
         std::env::var(name)
             .ok()
             .map(|value| Value::String(SmolStr::new(value)))
+    }
+}
+
+impl PartialEq for Placeholders {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Placeholders {}
+
+impl PartialOrd for Placeholders {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Placeholders {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for Placeholders {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
     }
 }
 
@@ -258,6 +306,22 @@ fn walk(value: Value, placeholders: &Placeholders, path: &mut String) -> Result<
                 replaced.push((key, held));
             }
             Value::from_mapping(replaced)
+        }
+        Value::Record(entries) => {
+            let mut replaced = Vec::with_capacity(entries.len());
+            for (name, held) in entries.iter() {
+                let mark = path.len();
+                path.push('.');
+                path.push_str(name);
+                let name = scalar(name, placeholders, path)?;
+                let name = name.as_str().ok_or_else(|| {
+                    refusal(path, 0, "a placeholder in an object key to resolve to text")
+                })?;
+                let held = walk(held.clone(), placeholders, path)?;
+                path.truncate(mark);
+                replaced.push((SmolStr::new(name), held));
+            }
+            Value::from_record(replaced)
         }
         // Every other value is moved through untouched: only string scalars can
         // hold a placeholder, in any of the three formats.
@@ -383,7 +447,7 @@ fn default_literal(filter: &str, path: &str, at: usize) -> Result<Value> {
         })?;
     // One literal syntax, and it is one the workspace already parses: a JSON
     // scalar, so a default carries its own type rather than always being text.
-    let value = crate::json::from_str(literal.trim()).map_err(|error| {
+    let value = crate::json::from_utf8(literal.trim()).map_err(|error| {
         refusal(
             path,
             at,
@@ -392,7 +456,7 @@ fn default_literal(filter: &str, path: &str, at: usize) -> Result<Value> {
     })?;
     if matches!(
         value,
-        Value::Sequence(_) | Value::Mapping(_) | Value::Record(..)
+        Value::Sequence(_) | Value::Mapping(_) | Value::Record(_)
     ) {
         return Err(refusal(
             path,
@@ -435,23 +499,40 @@ fn text_form(value: &Value) -> Option<Cow<'_, str>> {
         Value::U64(held) => held.to_string(),
         Value::I128(held) => held.to_string(),
         Value::U128(held) => held.to_string(),
+        Value::F16(held) => held.as_f32().to_string(),
         Value::F32(held) => held.as_f32().to_string(),
         Value::F64(held) => held.as_f64().to_string(),
-        Value::Decimal(unscaled, scale) => decimal_text(*unscaled, *scale),
-        Value::Date(days) => iso::format_date(*days)?.to_string(),
-        Value::Time(count, unit) => iso::format_time(*count, *unit)?.to_string(),
-        Value::DateTime(count, unit) => iso::format_datetime(*count, *unit)?.to_string(),
-        Value::Timestamp(count, unit, zone) => {
+        Value::D128(unscaled, scale) => {
+            crate::generic::decimal::decimal_text(crate::I256::from_i128(*unscaled), *scale)
+        }
+        Value::D256(unscaled, scale) => crate::generic::decimal::decimal_text(*unscaled, *scale),
+        Value::Date32(days, _, _) => iso::format_date(*days)?.to_string(),
+        Value::Date64(milliseconds, _, _) => {
+            let days = milliseconds.checked_div(86_400_000)?;
+            if days.checked_mul(86_400_000)? != *milliseconds {
+                return None;
+            }
+            iso::format_date(i32::try_from(days).ok()?)?.to_string()
+        }
+        Value::Time32(count, unit, zone) => time_text(i64::from(*count), *unit, zone)?,
+        Value::Time64(count, unit, zone) => time_text(*count, *unit, zone)?,
+        Value::DateTime64(count, unit, zone) if zone.is_naive() => {
+            iso::format_datetime(*count, *unit)?.to_string()
+        }
+        Value::DateTime64(count, unit, zone) => {
             iso::format_timestamp(*count, *unit, zone)?.to_string()
         }
-        Value::Duration(count, unit) => iso::format_duration(*count, *unit)?.to_string(),
+        Value::Duration32(count, unit, _) => {
+            iso::format_duration(i64::from(*count), *unit)?.to_string()
+        }
+        Value::Duration64(count, unit, _) => iso::format_duration(*count, *unit)?.to_string(),
         // A geometry's canonical text is WKT, the spelling every geospatial
         // reader already reads. Malformed WKB still embeds losslessly - as the
         // hex of its bytes - rather than refusing, because the value holds
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
         Value::Geospatial(bytes) => {
-            crate::generic::wkb::to_wkt(bytes).unwrap_or_else(|_| hex_text(bytes))
+            crate::generic::wkb::into_wkt(bytes).unwrap_or_else(|_| hex_text(bytes))
         }
         // Null included: rendering "nothing" into the middle of a path is how a
         // configuration silently points somewhere wrong.
@@ -470,28 +551,12 @@ fn hex_text(bytes: &[u8]) -> String {
     text
 }
 
-/// An exact decimal's plain text: the coefficient with the point put back.
-///
-/// Never through a float, for the reason [`Value::Decimal`] stores the pair in
-/// the first place - `0.1` has no exact binary expansion, and a price that
-/// arrived as `0.1` must be embedded as `0.1`.
-fn decimal_text(unscaled: i128, scale: i8) -> String {
-    if scale <= 0 {
-        let mut text = unscaled.to_string();
-        for _ in 0..scale.unsigned_abs() {
-            text.push('0');
-        }
-        return text;
+fn time_text(count: i64, unit: crate::TimeUnit, zone: &crate::Timezone) -> Option<String> {
+    let text = iso::format_time(count, unit)?.to_string();
+    if zone.is_naive() {
+        return Some(text);
     }
-    let scale = usize::from(scale.unsigned_abs());
-    let digits = unscaled.unsigned_abs().to_string();
-    let sign = if unscaled < 0 { "-" } else { "" };
-    if digits.len() <= scale {
-        let padding = "0".repeat(scale - digits.len());
-        return format!("{sign}0.{padding}{digits}");
-    }
-    let (whole, fraction) = digits.split_at(digits.len() - scale);
-    format!("{sign}{whole}.{fraction}")
+    None
 }
 
 /// A typed refusal naming the value's path and where in it the failure sits.

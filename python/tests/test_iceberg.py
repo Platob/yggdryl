@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import pathlib
+import pickle
 
 import pyarrow as pa
 import pytest
@@ -11,8 +13,12 @@ from yggdryl import DataType, Field, IOBase
 from yggdryl.iceberg import (
     Catalog,
     Compaction,
+    DataFile,
     IcebergOptions,
+    ManifestFile,
+    PartitionField,
     PartitionSpec,
+    Snapshot,
     Table,
     assign_field_ids,
     can_promote,
@@ -123,6 +129,45 @@ class TestCreatingAndOpening:
 
         # An empty table reads as no rows rather than as a failure.
         assert table.scan().read_all().num_rows == 0
+
+    def test_immutable_metadata_views_use_complete_native_value_protocols(
+        self, table: Table
+    ) -> None:
+        table.append(_rows())
+        spec = table.spec
+        field = spec.fields[0]
+        snapshot = table.current_snapshot
+        assert snapshot is not None
+        manifest = table.manifests()[0]
+        data_file, file_spec = table.data_files()[0]
+
+        values = [spec, field, snapshot, manifest, data_file]
+        namespaces = {
+            "PartitionSpec": PartitionSpec,
+            "PartitionField": PartitionField,
+            "Snapshot": Snapshot,
+            "ManifestFile": ManifestFile,
+            "DataFile": DataFile,
+        }
+        for value in values:
+            copied = copy.copy(value)
+            deep = copy.deepcopy(value)
+            restored = pickle.loads(pickle.dumps(value))
+            represented = eval(repr(value), namespaces)
+            assert copied == value
+            assert deep == value
+            assert restored == value
+            assert represented == value
+            assert copied.stable_hash() == value.stable_hash()
+            assert hash(copied) == hash(value)
+            assert {value: "held"}[copied] == "held"
+            assert value <= copied and value >= copied
+            assert value != object()
+
+        assert file_spec == spec
+        assert PartitionSpec.from_json(spec.into_json()) == spec
+        assert PartitionField.from_json(field.into_json()) == field
+        assert Snapshot.from_json(snapshot.into_json()) == snapshot
 
     def test_create_numbers_a_plain_pyarrow_schema_itself(
         self, tmp_path: pathlib.Path
@@ -446,7 +491,7 @@ class TestCatalog:
             ),
             nullable=False,
         ).with_partition_fields(["venue"])
-        columns = pa.schema([child.to_arrow() for child in marked.data_type])
+        columns = pa.schema([child.into_arrow() for child in marked.data_type])
         rows = pa.table(
             {"id": [1, 2, 3], "venue": ["XNAS", "XNYS", None]}, schema=columns
         )
@@ -814,6 +859,13 @@ class TestCompaction:
         assert result.files_before == 3
         assert result.files_after == 1
         assert result.bytes_rewritten == recorded
+        same = copy.copy(result)
+        assert same == result
+        assert same.stable_hash() == result.stable_hash()
+        assert hash(same) == hash(result)
+        assert pickle.loads(pickle.dumps(result)) == result
+        assert eval(repr(result), {"Compaction": Compaction}) == result
+        assert result <= same and result >= same
 
         assert table.inspect_files().read_all().num_rows == 1
         assert table.scan().read_all().num_rows == 9
@@ -924,6 +976,45 @@ class TestIcebergOptions:
         assert options.target_file_size == 1024
         with pytest.raises(TypeError, match="commit_retres"):
             IcebergOptions(commit_retres=2)
+
+    def test_native_identity_hash_locks_every_setter_and_copies_unlock(self) -> None:
+        options = IcebergOptions(commit_retries=4, data_format="parquet")
+        same = IcebergOptions(commit_retries=4, data_format="parquet")
+        unset = IcebergOptions()
+
+        # Explicit defaults and an unset option resolve to the same getters but
+        # are different values because only the former shadows table properties.
+        assert options.commit_retries == unset.commit_retries == 4
+        assert options != unset
+        assert options == same
+        assert options.stable_hash() == same.stable_hash()
+        assert hash(options) == hash(same)
+        assert {options: "held"}[same] == "held"
+        assert options <= same and options >= same
+
+        for name, value in [
+            ("commit_retries", 3),
+            ("commit_min_backoff_ms", 1),
+            ("commit_max_backoff_ms", 2),
+            ("target_file_size", 1024),
+            ("read_parallelism", 1),
+            ("read_parallel_min_files", 1),
+            ("read_parallel_min_file_size", 1),
+            ("compact_after_commits", 1),
+            ("data_format", "avro"),
+        ]:
+            with pytest.raises(TypeError, match="hashed IcebergOptions"):
+                setattr(options, name, value)
+
+        for unlocked in [
+            copy.copy(options),
+            copy.deepcopy(options),
+            pickle.loads(pickle.dumps(options)),
+            eval(repr(options), {"IcebergOptions": IcebergOptions}),
+        ]:
+            assert unlocked == options
+            unlocked.commit_retries = 2
+            assert unlocked.commit_retries == 2
 
     def test_append_takes_the_option_fields_as_keywords(
         self, table: Table

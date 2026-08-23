@@ -8,6 +8,7 @@ criterion_group!(
     benchmarks::floating::decimal_benchmarks,
     benchmarks::temporal::time_builder_benchmarks,
     benchmarks::temporal::time_unit_benchmarks,
+    benchmarks::value::value_benchmarks,
     benchmarks::parser::parser_benchmarks,
     benchmarks::nested::value_benchmarks,
     benchmarks::default::default_and_compatibility_benchmarks,

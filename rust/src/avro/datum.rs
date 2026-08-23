@@ -215,148 +215,165 @@ impl DatumCodec<'_> {
     }
 
     /// Decode one value against a schema node.
-    pub(crate) fn decode(
-        &self,
-        node: &Node,
+    pub(crate) fn decode<'node>(
+        &'node self,
+        mut node: &'node Node,
         cursor: &mut Cursor<'_>,
-        depth: usize,
+        mut depth: usize,
         budget: &mut usize,
     ) -> Result<Value> {
-        self.spend(budget)?;
-        Ok(match node {
-            Node::Null => Value::Null,
-            Node::Boolean => Value::Bool(cursor.take(1)?.first().is_some_and(|byte| *byte != 0)),
-            Node::Int => Value::I32(cursor.int()?),
-            Node::Long => Value::I64(cursor.long()?),
-            Node::Float => Value::from(cursor.float()?),
-            Node::Double => Value::from(cursor.double()?),
-            Node::Bytes => Value::Bytes(Arc::from(cursor.bytes()?)),
-            Node::String | Node::Uuid => Value::String(SmolStr::new(cursor.string()?)),
-            Node::Date => Value::Date(cursor.int()?),
-            Node::TimeMillis => Value::Time(i64::from(cursor.int()?), TimeUnit::Millisecond),
-            Node::TimeMicros => Value::Time(cursor.long()?, TimeUnit::Microsecond),
-            Node::TimestampMillis => {
-                Value::Timestamp(cursor.long()?, TimeUnit::Millisecond, Timezone::UTC)
-            }
-            Node::TimestampMicros => {
-                Value::Timestamp(cursor.long()?, TimeUnit::Microsecond, Timezone::UTC)
-            }
-            Node::TimestampNanos => {
-                Value::Timestamp(cursor.long()?, TimeUnit::Nanosecond, Timezone::UTC)
-            }
-            Node::LocalTimestampMillis => Value::DateTime(cursor.long()?, TimeUnit::Millisecond),
-            Node::LocalTimestampMicros => Value::DateTime(cursor.long()?, TimeUnit::Microsecond),
-            Node::LocalTimestampNanos => Value::DateTime(cursor.long()?, TimeUnit::Nanosecond),
-            Node::Decimal(decimal) => {
-                let bytes = match &decimal.fixed {
-                    Some(fixed) => cursor.take(fixed.size)?,
-                    None => cursor.bytes()?,
-                };
-                let unscaled = decimal_from_bytes(bytes).ok_or_else(|| {
-                    codec(
-                        cursor.position,
-                        format_smolstr!(
-                            "expected a decimal of at most 38 digits, got {} bytes",
-                            bytes.len()
-                        ),
-                    )
-                })?;
-                Value::Decimal(unscaled, decimal.scale as i8)
-            }
-            // DESIGN: the value model has no three-part month/day/millisecond
-            // interval, so a duration keeps its twelve raw bytes; the Arrow
-            // bridge is where they become a typed interval.
-            Node::Duration(fixed) | Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
-                Value::Bytes(Arc::from(cursor.take(fixed.size)?))
-            }
-            Node::Enum(symbols) => {
-                let index = cursor.long()?;
-                let symbol = usize::try_from(index)
-                    .ok()
-                    .and_then(|index| symbols.symbols.get(index))
-                    .ok_or_else(|| {
+        loop {
+            self.spend(budget)?;
+            let value = match node {
+                Node::Null => Value::Null,
+                Node::Boolean => {
+                    Value::Bool(cursor.take(1)?.first().is_some_and(|byte| *byte != 0))
+                }
+                Node::Int => Value::I32(cursor.int()?),
+                Node::Long => Value::I64(cursor.long()?),
+                Node::Float => Value::from(cursor.float()?),
+                Node::Double => Value::from(cursor.double()?),
+                Node::Bytes => Value::Bytes(Arc::from(cursor.bytes()?)),
+                Node::String | Node::Uuid => Value::String(SmolStr::new(cursor.string()?)),
+                Node::Date => Value::date32(cursor.int()?),
+                Node::TimeMillis => {
+                    Value::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?
+                }
+                Node::TimeMicros => {
+                    Value::time64(cursor.long()?, TimeUnit::Microsecond, Timezone::NAIVE)?
+                }
+                Node::TimestampMillis => {
+                    Value::datetime64(cursor.long()?, TimeUnit::Millisecond, Timezone::UTC)?
+                }
+                Node::TimestampMicros => {
+                    Value::datetime64(cursor.long()?, TimeUnit::Microsecond, Timezone::UTC)?
+                }
+                Node::TimestampNanos => {
+                    Value::datetime64(cursor.long()?, TimeUnit::Nanosecond, Timezone::UTC)?
+                }
+                Node::LocalTimestampMillis => {
+                    Value::datetime64(cursor.long()?, TimeUnit::Millisecond, Timezone::NAIVE)?
+                }
+                Node::LocalTimestampMicros => {
+                    Value::datetime64(cursor.long()?, TimeUnit::Microsecond, Timezone::NAIVE)?
+                }
+                Node::LocalTimestampNanos => {
+                    Value::datetime64(cursor.long()?, TimeUnit::Nanosecond, Timezone::NAIVE)?
+                }
+                Node::Decimal(decimal) => {
+                    let bytes = match &decimal.fixed {
+                        Some(fixed) => cursor.take(fixed.size)?,
+                        None => cursor.bytes()?,
+                    };
+                    let unscaled = decimal_from_bytes(bytes).ok_or_else(|| {
                         codec(
                             cursor.position,
                             format_smolstr!(
-                                "expected an Avro enum index below {}, got {index}",
-                                symbols.symbols.len()
+                                "expected a decimal of at most 38 digits, got {} bytes",
+                                bytes.len()
                             ),
                         )
                     })?;
-                Value::String(symbol.clone())
-            }
-            Node::Record(record) => {
-                let depth = self.descend(depth)?;
-                let mut entries = Vec::with_capacity(record.fields.len());
-                for field in &record.fields {
-                    entries.push((
-                        Value::from(field.name.clone()),
-                        self.decode(&field.schema, cursor, depth, budget)?,
-                    ));
+                    Value::D128(unscaled, decimal.scale as i8)
                 }
-                Value::from_mapping(entries)?
-            }
-            Node::Array(items) => {
-                let depth = self.descend(depth)?;
-                let mut values = Vec::new();
-                loop {
-                    let (count, _) = block_count(cursor)?;
-                    if count == 0 {
-                        break;
-                    }
-                    for _ in 0..count {
-                        values.push(self.decode(items, cursor, depth, budget)?);
-                    }
+                // DESIGN: the value model has no three-part month/day/millisecond
+                // interval, so a duration keeps its twelve raw bytes; the Arrow
+                // bridge is where they become a typed interval.
+                Node::Duration(fixed) | Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
+                    Value::Bytes(Arc::from(cursor.take(fixed.size)?))
                 }
-                Value::from_sequence(values)
-            }
-            Node::Map(values) => {
-                let depth = self.descend(depth)?;
-                let mut entries = Vec::new();
-                loop {
-                    let (count, _) = block_count(cursor)?;
-                    if count == 0 {
-                        break;
-                    }
-                    for _ in 0..count {
-                        self.spend(budget)?;
-                        let key = std::str::from_utf8(cursor.bytes()?).map_err(|error| {
+                Node::Enum(symbols) => {
+                    let index = cursor.long()?;
+                    let symbol = usize::try_from(index)
+                        .ok()
+                        .and_then(|index| symbols.symbols.get(index))
+                        .ok_or_else(|| {
                             codec(
                                 cursor.position,
-                                format_smolstr!("expected UTF-8 in an Avro map key, got {error}"),
+                                format_smolstr!(
+                                    "expected an Avro enum index below {}, got {index}",
+                                    symbols.symbols.len()
+                                ),
                             )
                         })?;
+                    Value::String(symbol.clone())
+                }
+                Node::Record(record) => {
+                    let depth = self.descend(depth)?;
+                    let mut entries = Vec::with_capacity(record.fields.len());
+                    for field in &record.fields {
                         entries.push((
-                            Value::from(key),
-                            self.decode(values, cursor, depth, budget)?,
+                            field.name.clone(),
+                            self.decode(&field.schema, cursor, depth, budget)?,
                         ));
                     }
+                    Value::from_record(entries)?
                 }
-                Value::from_mapping(entries)?
-            }
-            Node::Union(branches) => {
-                let depth = self.descend(depth)?;
-                let index = cursor.long()?;
-                let branch = usize::try_from(index)
-                    .ok()
-                    .and_then(|index| branches.get(index))
-                    .ok_or_else(|| {
-                        codec(
-                            cursor.position,
-                            format_smolstr!(
-                                "expected an Avro union branch below {}, got {index}",
-                                branches.len()
-                            ),
-                        )
-                    })?;
-                self.decode(branch, cursor, depth, budget)?
-            }
-            Node::Ref(name) => {
-                let target = self.resolve(name)?;
-                let depth = self.descend(depth)?;
-                self.decode(target, cursor, depth, budget)?
-            }
-        })
+                Node::Array(items) => {
+                    let depth = self.descend(depth)?;
+                    let mut values = Vec::new();
+                    loop {
+                        let (count, _) = block_count(cursor)?;
+                        if count == 0 {
+                            break;
+                        }
+                        for _ in 0..count {
+                            values.push(self.decode(items, cursor, depth, budget)?);
+                        }
+                    }
+                    Value::from_sequence(values)
+                }
+                Node::Map(values) => {
+                    let depth = self.descend(depth)?;
+                    let mut entries = Vec::new();
+                    loop {
+                        let (count, _) = block_count(cursor)?;
+                        if count == 0 {
+                            break;
+                        }
+                        for _ in 0..count {
+                            self.spend(budget)?;
+                            let key = std::str::from_utf8(cursor.bytes()?).map_err(|error| {
+                                codec(
+                                    cursor.position,
+                                    format_smolstr!(
+                                        "expected UTF-8 in an Avro map key, got {error}"
+                                    ),
+                                )
+                            })?;
+                            entries.push((
+                                Value::from(key),
+                                self.decode(values, cursor, depth, budget)?,
+                            ));
+                        }
+                    }
+                    Value::from_mapping(entries)?
+                }
+                Node::Union(branches) => {
+                    depth = self.descend(depth)?;
+                    let index = cursor.long()?;
+                    node = usize::try_from(index)
+                        .ok()
+                        .and_then(|index| branches.get(index))
+                        .ok_or_else(|| {
+                            codec(
+                                cursor.position,
+                                format_smolstr!(
+                                    "expected an Avro union branch below {}, got {index}",
+                                    branches.len()
+                                ),
+                            )
+                        })?;
+                    continue;
+                }
+                Node::Ref(name) => {
+                    node = self.resolve(name)?;
+                    depth = self.descend(depth)?;
+                    continue;
+                }
+            };
+            return Ok(value);
+        }
     }
 
     /// Skip one value without decoding it.
@@ -365,117 +382,119 @@ impl DatumCodec<'_> {
     /// their width, and an array or map block written in the size-carrying
     /// form jumps by its byte size without visiting a single item - which is
     /// what makes a projection cheap.
-    pub(crate) fn skip(
-        &self,
-        node: &Node,
+    pub(crate) fn skip<'node>(
+        &'node self,
+        mut node: &'node Node,
         cursor: &mut Cursor<'_>,
-        depth: usize,
+        mut depth: usize,
         budget: &mut usize,
     ) -> Result<()> {
-        self.spend(budget)?;
-        match node {
-            Node::Null => {}
-            Node::Boolean => {
-                cursor.take(1)?;
-            }
-            Node::Int
-            | Node::Long
-            | Node::Date
-            | Node::TimeMillis
-            | Node::TimeMicros
-            | Node::TimestampMillis
-            | Node::TimestampMicros
-            | Node::TimestampNanos
-            | Node::LocalTimestampMillis
-            | Node::LocalTimestampMicros
-            | Node::LocalTimestampNanos
-            | Node::Enum(_) => {
-                cursor.long()?;
-            }
-            Node::Float => {
-                cursor.take(4)?;
-            }
-            Node::Double => {
-                cursor.take(8)?;
-            }
-            Node::Bytes | Node::String | Node::Uuid => {
-                cursor.bytes()?;
-            }
-            Node::Decimal(decimal) => match &decimal.fixed {
-                Some(fixed) => {
-                    cursor.take(fixed.size)?;
+        loop {
+            self.spend(budget)?;
+            match node {
+                Node::Null => {}
+                Node::Boolean => {
+                    cursor.take(1)?;
                 }
-                None => {
+                Node::Int
+                | Node::Long
+                | Node::Date
+                | Node::TimeMillis
+                | Node::TimeMicros
+                | Node::TimestampMillis
+                | Node::TimestampMicros
+                | Node::TimestampNanos
+                | Node::LocalTimestampMillis
+                | Node::LocalTimestampMicros
+                | Node::LocalTimestampNanos
+                | Node::Enum(_) => {
+                    cursor.long()?;
+                }
+                Node::Float => {
+                    cursor.take(4)?;
+                }
+                Node::Double => {
+                    cursor.take(8)?;
+                }
+                Node::Bytes | Node::String | Node::Uuid => {
                     cursor.bytes()?;
                 }
-            },
-            Node::Duration(fixed) | Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
-                cursor.take(fixed.size)?;
-            }
-            Node::Record(record) => {
-                let depth = self.descend(depth)?;
-                for field in &record.fields {
-                    self.skip(&field.schema, cursor, depth, budget)?;
-                }
-            }
-            Node::Array(items) => {
-                let depth = self.descend(depth)?;
-                loop {
-                    let (count, size) = block_count(cursor)?;
-                    if count == 0 {
-                        break;
+                Node::Decimal(decimal) => match &decimal.fixed {
+                    Some(fixed) => {
+                        cursor.take(fixed.size)?;
                     }
-                    if let Some(size) = size {
-                        cursor.take(size)?;
-                        continue;
-                    }
-                    for _ in 0..count {
-                        self.skip(items, cursor, depth, budget)?;
-                    }
-                }
-            }
-            Node::Map(values) => {
-                let depth = self.descend(depth)?;
-                loop {
-                    let (count, size) = block_count(cursor)?;
-                    if count == 0 {
-                        break;
-                    }
-                    if let Some(size) = size {
-                        cursor.take(size)?;
-                        continue;
-                    }
-                    for _ in 0..count {
-                        self.spend(budget)?;
+                    None => {
                         cursor.bytes()?;
-                        self.skip(values, cursor, depth, budget)?;
+                    }
+                },
+                Node::Duration(fixed) | Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
+                    cursor.take(fixed.size)?;
+                }
+                Node::Record(record) => {
+                    let depth = self.descend(depth)?;
+                    for field in &record.fields {
+                        self.skip(&field.schema, cursor, depth, budget)?;
                     }
                 }
+                Node::Array(items) => {
+                    let depth = self.descend(depth)?;
+                    loop {
+                        let (count, size) = block_count(cursor)?;
+                        if count == 0 {
+                            break;
+                        }
+                        if let Some(size) = size {
+                            cursor.take(size)?;
+                            continue;
+                        }
+                        for _ in 0..count {
+                            self.skip(items, cursor, depth, budget)?;
+                        }
+                    }
+                }
+                Node::Map(values) => {
+                    let depth = self.descend(depth)?;
+                    loop {
+                        let (count, size) = block_count(cursor)?;
+                        if count == 0 {
+                            break;
+                        }
+                        if let Some(size) = size {
+                            cursor.take(size)?;
+                            continue;
+                        }
+                        for _ in 0..count {
+                            self.spend(budget)?;
+                            cursor.bytes()?;
+                            self.skip(values, cursor, depth, budget)?;
+                        }
+                    }
+                }
+                Node::Union(branches) => {
+                    depth = self.descend(depth)?;
+                    let index = cursor.long()?;
+                    node = usize::try_from(index)
+                        .ok()
+                        .and_then(|index| branches.get(index))
+                        .ok_or_else(|| {
+                            codec(
+                                cursor.position,
+                                format_smolstr!(
+                                    "expected an Avro union branch below {}, got {index}",
+                                    branches.len()
+                                ),
+                            )
+                        })?;
+                    continue;
+                }
+                Node::Ref(name) => {
+                    node = self.resolve(name)?;
+                    depth = self.descend(depth)?;
+                    continue;
+                }
             }
-            Node::Union(branches) => {
-                let depth = self.descend(depth)?;
-                let index = cursor.long()?;
-                let branch = usize::try_from(index)
-                    .ok()
-                    .and_then(|index| branches.get(index))
-                    .ok_or_else(|| {
-                        codec(
-                            cursor.position,
-                            format_smolstr!(
-                                "expected an Avro union branch below {}, got {index}",
-                                branches.len()
-                            ),
-                        )
-                    })?;
-                self.skip(branch, cursor, depth, budget)?;
-            }
-            Node::Ref(name) => {
-                let target = self.resolve(name)?;
-                let depth = self.descend(depth)?;
-                self.skip(target, cursor, depth, budget)?;
-            }
+            return Ok(());
         }
-        Ok(())
     }
 
     /// Encode one value against a schema node.
@@ -483,255 +502,272 @@ impl DatumCodec<'_> {
     /// # Errors
     ///
     /// Returns an error when the value does not fit the schema, naming both.
-    pub(crate) fn encode(
-        &self,
-        node: &Node,
+    pub(crate) fn encode<'node>(
+        &'node self,
+        mut node: &'node Node,
         value: &Value,
         target: &mut Vec<u8>,
-        depth: usize,
+        mut depth: usize,
     ) -> Result<()> {
-        match node {
-            Node::Null => {
-                if !value.is_null() {
-                    return Err(mismatch("null", value));
-                }
-            }
-            Node::Boolean => target.push(u8::from(
-                value.as_bool().ok_or_else(|| mismatch("boolean", value))?,
-            )),
-            Node::Int => put_long(target, i64::from(int_value(value, "int")?)),
-            Node::Long => put_long(
-                target,
-                value.as_i64().ok_or_else(|| mismatch("long", value))?,
-            ),
-            Node::Float => {
-                let number = value.as_f64().ok_or_else(|| mismatch("float", value))?;
-                target.extend_from_slice(&(number as f32).to_le_bytes());
-            }
-            Node::Double => {
-                let number = value.as_f64().ok_or_else(|| mismatch("double", value))?;
-                target.extend_from_slice(&number.to_le_bytes());
-            }
-            Node::Bytes => put_bytes(
-                target,
-                value.as_bytes().ok_or_else(|| mismatch("bytes", value))?,
-            ),
-            Node::String | Node::Uuid => put_bytes(
-                target,
-                value
-                    .as_str()
-                    .ok_or_else(|| mismatch(node.kind(), value))?
-                    .as_bytes(),
-            ),
-            Node::Date => {
-                let days = match value {
-                    Value::Date(days) => *days,
-                    other => int_value(other, "date")?,
-                };
-                put_long(target, i64::from(days));
-            }
-            Node::TimeMillis => {
-                let count =
-                    temporal_count(value, "time-millis", TimeUnit::Millisecond, time_parts)?;
-                let count = i32::try_from(count).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected an Avro time-millis within 32 bits, got {count}"
-                    ))
-                })?;
-                put_long(target, i64::from(count));
-            }
-            Node::TimeMicros => put_long(
-                target,
-                temporal_count(value, "time-micros", TimeUnit::Microsecond, time_parts)?,
-            ),
-            Node::TimestampMillis => put_long(
-                target,
-                temporal_count(
-                    value,
-                    "timestamp-millis",
-                    TimeUnit::Millisecond,
-                    instant_parts,
-                )?,
-            ),
-            Node::TimestampMicros => put_long(
-                target,
-                temporal_count(
-                    value,
-                    "timestamp-micros",
-                    TimeUnit::Microsecond,
-                    instant_parts,
-                )?,
-            ),
-            Node::TimestampNanos => put_long(
-                target,
-                temporal_count(
-                    value,
-                    "timestamp-nanos",
-                    TimeUnit::Nanosecond,
-                    instant_parts,
-                )?,
-            ),
-            Node::LocalTimestampMillis => put_long(
-                target,
-                temporal_count(
-                    value,
-                    "local-timestamp-millis",
-                    TimeUnit::Millisecond,
-                    datetime_parts,
-                )?,
-            ),
-            Node::LocalTimestampMicros => put_long(
-                target,
-                temporal_count(
-                    value,
-                    "local-timestamp-micros",
-                    TimeUnit::Microsecond,
-                    datetime_parts,
-                )?,
-            ),
-            Node::LocalTimestampNanos => put_long(
-                target,
-                temporal_count(
-                    value,
-                    "local-timestamp-nanos",
-                    TimeUnit::Nanosecond,
-                    datetime_parts,
-                )?,
-            ),
-            Node::Decimal(decimal) => {
-                let unscaled = decimal_unscaled(value, decimal.scale)?;
-                let digits = unscaled
-                    .unsigned_abs()
-                    .checked_ilog10()
-                    .map_or(1, |log| log + 1);
-                if digits > decimal.precision {
-                    return Err(invalid(format_smolstr!(
-                        "expected a decimal of at most {} digits, got {unscaled}",
-                        decimal.precision
-                    )));
-                }
-                match &decimal.fixed {
-                    Some(fixed) => {
-                        let bytes = decimal_to_fixed(unscaled, fixed.size).ok_or_else(|| {
-                            invalid(format_smolstr!(
-                                "expected a decimal fitting {} fixed bytes, got {unscaled}",
-                                fixed.size
-                            ))
-                        })?;
-                        target.extend_from_slice(&bytes);
+        loop {
+            match node {
+                Node::Null => {
+                    if !value.is_null() {
+                        return Err(mismatch("null", value));
                     }
-                    None => put_bytes(target, &decimal_to_bytes(unscaled)),
                 }
-            }
-            Node::Duration(fixed) => {
-                let bytes = value
-                    .as_bytes()
-                    .ok_or_else(|| mismatch("duration", value))?;
-                if bytes.len() != fixed.size {
-                    return Err(invalid(format_smolstr!(
-                        "expected {} bytes for an Avro duration, got {}",
-                        fixed.size,
-                        bytes.len()
-                    )));
+                Node::Boolean => target.push(u8::from(
+                    value.as_bool().ok_or_else(|| mismatch("boolean", value))?,
+                )),
+                Node::Int => put_long(target, i64::from(int_value(value, "int")?)),
+                Node::Long => put_long(
+                    target,
+                    value.as_i64().ok_or_else(|| mismatch("long", value))?,
+                ),
+                Node::Float => {
+                    let number = value.as_f64().ok_or_else(|| mismatch("float", value))?;
+                    target.extend_from_slice(&(number as f32).to_le_bytes());
                 }
-                target.extend_from_slice(bytes);
-            }
-            Node::UuidFixed(fixed) => {
-                if let Some(text) = value.as_str() {
-                    let bytes = uuid_bytes(text).ok_or_else(|| {
+                Node::Double => {
+                    let number = value.as_f64().ok_or_else(|| mismatch("double", value))?;
+                    target.extend_from_slice(&number.to_le_bytes());
+                }
+                Node::Bytes => put_bytes(
+                    target,
+                    value.as_bytes().ok_or_else(|| mismatch("bytes", value))?,
+                ),
+                Node::String | Node::Uuid => put_bytes(
+                    target,
+                    value
+                        .as_str()
+                        .ok_or_else(|| mismatch(node.kind(), value))?
+                        .as_bytes(),
+                ),
+                Node::Date => {
+                    let days = match value {
+                        Value::Date32(days, _, _) => *days,
+                        other => int_value(other, "date")?,
+                    };
+                    put_long(target, i64::from(days));
+                }
+                Node::TimeMillis => {
+                    let count =
+                        temporal_count(value, "time-millis", TimeUnit::Millisecond, time_parts)?;
+                    let count = i32::try_from(count).map_err(|_| {
                         invalid(format_smolstr!(
-                            "expected an RFC 4122 uuid string, got {text:?}"
+                            "expected an Avro time-millis within 32 bits, got {count}"
                         ))
                     })?;
-                    target.extend_from_slice(&bytes);
-                } else {
-                    let bytes = value.as_bytes().ok_or_else(|| mismatch("uuid", value))?;
+                    put_long(target, i64::from(count));
+                }
+                Node::TimeMicros => put_long(
+                    target,
+                    temporal_count(value, "time-micros", TimeUnit::Microsecond, time_parts)?,
+                ),
+                Node::TimestampMillis => put_long(
+                    target,
+                    temporal_count(
+                        value,
+                        "timestamp-millis",
+                        TimeUnit::Millisecond,
+                        instant_parts,
+                    )?,
+                ),
+                Node::TimestampMicros => put_long(
+                    target,
+                    temporal_count(
+                        value,
+                        "timestamp-micros",
+                        TimeUnit::Microsecond,
+                        instant_parts,
+                    )?,
+                ),
+                Node::TimestampNanos => put_long(
+                    target,
+                    temporal_count(
+                        value,
+                        "timestamp-nanos",
+                        TimeUnit::Nanosecond,
+                        instant_parts,
+                    )?,
+                ),
+                Node::LocalTimestampMillis => put_long(
+                    target,
+                    temporal_count(
+                        value,
+                        "local-timestamp-millis",
+                        TimeUnit::Millisecond,
+                        datetime_parts,
+                    )?,
+                ),
+                Node::LocalTimestampMicros => put_long(
+                    target,
+                    temporal_count(
+                        value,
+                        "local-timestamp-micros",
+                        TimeUnit::Microsecond,
+                        datetime_parts,
+                    )?,
+                ),
+                Node::LocalTimestampNanos => put_long(
+                    target,
+                    temporal_count(
+                        value,
+                        "local-timestamp-nanos",
+                        TimeUnit::Nanosecond,
+                        datetime_parts,
+                    )?,
+                ),
+                Node::Decimal(decimal) => {
+                    let unscaled = decimal_unscaled(value, decimal.scale)?;
+                    let digits = unscaled
+                        .unsigned_abs()
+                        .checked_ilog10()
+                        .map_or(1, |log| log + 1);
+                    if digits > decimal.precision {
+                        return Err(invalid(format_smolstr!(
+                            "expected a decimal of at most {} digits, got {unscaled}",
+                            decimal.precision
+                        )));
+                    }
+                    match &decimal.fixed {
+                        Some(fixed) => {
+                            let bytes =
+                                decimal_to_fixed(unscaled, fixed.size).ok_or_else(|| {
+                                    invalid(format_smolstr!(
+                                        "expected a decimal fitting {} fixed bytes, got {unscaled}",
+                                        fixed.size
+                                    ))
+                                })?;
+                            target.extend_from_slice(&bytes);
+                        }
+                        None => put_bytes(target, &decimal_to_bytes(unscaled)),
+                    }
+                }
+                Node::Duration(fixed) => {
+                    let bytes = value
+                        .as_bytes()
+                        .ok_or_else(|| mismatch("duration", value))?;
                     if bytes.len() != fixed.size {
                         return Err(invalid(format_smolstr!(
-                            "expected {} bytes for an Avro uuid, got {}",
+                            "expected {} bytes for an Avro duration, got {}",
                             fixed.size,
                             bytes.len()
                         )));
                     }
                     target.extend_from_slice(bytes);
                 }
-            }
-            Node::Fixed(fixed) => {
-                let bytes = value.as_bytes().ok_or_else(|| mismatch("fixed", value))?;
-                if bytes.len() != fixed.size {
-                    return Err(invalid(format_smolstr!(
-                        "expected {} bytes for an Avro fixed value, got {}",
-                        fixed.size,
-                        bytes.len()
-                    )));
+                Node::UuidFixed(fixed) => {
+                    if let Some(text) = value.as_str() {
+                        let bytes = uuid_bytes(text).ok_or_else(|| {
+                            invalid(format_smolstr!(
+                                "expected an RFC 4122 uuid string, got {text:?}"
+                            ))
+                        })?;
+                        target.extend_from_slice(&bytes);
+                    } else {
+                        let bytes = value.as_bytes().ok_or_else(|| mismatch("uuid", value))?;
+                        if bytes.len() != fixed.size {
+                            return Err(invalid(format_smolstr!(
+                                "expected {} bytes for an Avro uuid, got {}",
+                                fixed.size,
+                                bytes.len()
+                            )));
+                        }
+                        target.extend_from_slice(bytes);
+                    }
                 }
-                target.extend_from_slice(bytes);
-            }
-            Node::Enum(symbols) => {
-                let symbol = value.as_str().ok_or_else(|| mismatch("enum", value))?;
-                let index = symbols
-                    .symbols
-                    .iter()
-                    .position(|candidate| candidate == symbol)
-                    .ok_or_else(|| {
+                Node::Fixed(fixed) => {
+                    let bytes = value.as_bytes().ok_or_else(|| mismatch("fixed", value))?;
+                    if bytes.len() != fixed.size {
+                        return Err(invalid(format_smolstr!(
+                            "expected {} bytes for an Avro fixed value, got {}",
+                            fixed.size,
+                            bytes.len()
+                        )));
+                    }
+                    target.extend_from_slice(bytes);
+                }
+                Node::Enum(symbols) => {
+                    let symbol = value.as_str().ok_or_else(|| mismatch("enum", value))?;
+                    let index = symbols
+                        .symbols
+                        .iter()
+                        .position(|candidate| candidate == symbol)
+                        .ok_or_else(|| {
+                            invalid(format_smolstr!(
+                                "expected one of the Avro enum symbols {:?}, got {symbol:?}",
+                                symbols.symbols
+                            ))
+                        })?;
+                    put_long(target, index as i64);
+                }
+                Node::Record(record) => {
+                    let depth = self.descend(depth)?;
+                    self.encode_record(record, value, target, depth)?;
+                }
+                Node::Array(items) => {
+                    let depth = self.descend(depth)?;
+                    let values = value
+                        .as_sequence()
+                        .ok_or_else(|| mismatch("array", value))?;
+                    if !values.is_empty() {
+                        put_long(target, values.len() as i64);
+                        for item in values {
+                            self.encode(items, item, target, depth)?;
+                        }
+                    }
+                    // A zero count closes the last block, so an empty array is one byte.
+                    put_long(target, 0);
+                }
+                Node::Map(values) => {
+                    let depth = self.descend(depth)?;
+                    match value {
+                        Value::Record(entries) => {
+                            if !entries.is_empty() {
+                                put_long(target, entries.len() as i64);
+                                for (key, item) in entries.iter() {
+                                    put_bytes(target, key.as_bytes());
+                                    self.encode(values, item, target, depth)?;
+                                }
+                            }
+                        }
+                        Value::Mapping(entries) => {
+                            if !entries.is_empty() {
+                                put_long(target, entries.len() as i64);
+                                for (key, item) in entries.iter() {
+                                    let key = key
+                                        .as_str()
+                                        .ok_or_else(|| mismatch("map key string", key))?;
+                                    put_bytes(target, key.as_bytes());
+                                    self.encode(values, item, target, depth)?;
+                                }
+                            }
+                        }
+                        _ => return Err(mismatch("map", value)),
+                    }
+                    put_long(target, 0);
+                }
+                Node::Union(branches) => {
+                    depth = self.descend(depth)?;
+                    let index = self.union_branch(branches, value).ok_or_else(|| {
                         invalid(format_smolstr!(
-                            "expected one of the Avro enum symbols {:?}, got {symbol:?}",
-                            symbols.symbols
+                            "expected a value matching one Avro union branch, got {}",
+                            value.kind()
                         ))
                     })?;
-                put_long(target, index as i64);
-            }
-            Node::Record(record) => {
-                let depth = self.descend(depth)?;
-                self.encode_record(record, value, target, depth)?;
-            }
-            Node::Array(items) => {
-                let depth = self.descend(depth)?;
-                let values = value
-                    .as_sequence()
-                    .ok_or_else(|| mismatch("array", value))?;
-                if !values.is_empty() {
-                    put_long(target, values.len() as i64);
-                    for item in values {
-                        self.encode(items, item, target, depth)?;
-                    }
+                    put_long(target, index as i64);
+                    node = &branches[index];
+                    continue;
                 }
-                // A zero count closes the last block, so an empty array is one byte.
-                put_long(target, 0);
-            }
-            Node::Map(values) => {
-                let depth = self.descend(depth)?;
-                let entries = value.as_mapping().ok_or_else(|| mismatch("map", value))?;
-                if !entries.is_empty() {
-                    put_long(target, entries.len() as i64);
-                    for (key, item) in entries {
-                        let key = key
-                            .as_str()
-                            .ok_or_else(|| mismatch("map key string", key))?;
-                        put_bytes(target, key.as_bytes());
-                        self.encode(values, item, target, depth)?;
-                    }
+                Node::Ref(name) => {
+                    node = self.resolve(name)?;
+                    depth = self.descend(depth)?;
+                    continue;
                 }
-                put_long(target, 0);
             }
-            Node::Union(branches) => {
-                let depth = self.descend(depth)?;
-                let index = self.union_branch(branches, value).ok_or_else(|| {
-                    invalid(format_smolstr!(
-                        "expected a value matching one Avro union branch, got {}",
-                        value.kind()
-                    ))
-                })?;
-                put_long(target, index as i64);
-                self.encode(&branches[index], value, target, depth)?;
-            }
-            Node::Ref(name) => {
-                let target_node = self.resolve(name)?;
-                let depth = self.descend(depth)?;
-                self.encode(target_node, value, target, depth)?;
-            }
+            return Ok(());
         }
-        Ok(())
     }
 
     /// Encode a record's fields in declaration order.
@@ -742,7 +778,7 @@ impl DatumCodec<'_> {
         target: &mut Vec<u8>,
         depth: usize,
     ) -> Result<()> {
-        if value.as_mapping().is_none() {
+        if value.as_record().is_none() && value.as_mapping().is_none() {
             return Err(mismatch(&format_smolstr!("record {}", record.name), value));
         }
         for field in &record.fields {
@@ -783,18 +819,20 @@ impl DatumCodec<'_> {
             Node::Float | Node::Double => value.as_f64().is_some(),
             Node::Bytes => value.as_bytes().is_some(),
             Node::String | Node::Uuid | Node::Enum(_) => value.as_str().is_some(),
-            Node::Date => matches!(value, Value::Date(_)) || value.as_i64().is_some(),
+            Node::Date => matches!(value, Value::Date32(..)) || value.as_i64().is_some(),
             Node::TimeMillis | Node::TimeMicros => {
-                matches!(value, Value::Time(..)) || value.as_i64().is_some()
+                matches!(value, Value::Time32(..) | Value::Time64(..)) || value.as_i64().is_some()
             }
             Node::TimestampMillis | Node::TimestampMicros | Node::TimestampNanos => {
-                matches!(value, Value::Timestamp(..)) || value.as_i64().is_some()
+                matches!(value, Value::DateTime64(_, _, zone) if !zone.is_naive())
+                    || value.as_i64().is_some()
             }
             Node::LocalTimestampMillis | Node::LocalTimestampMicros | Node::LocalTimestampNanos => {
-                matches!(value, Value::DateTime(..)) || value.as_i64().is_some()
+                matches!(value, Value::DateTime64(_, _, zone) if zone.is_naive())
+                    || value.as_i64().is_some()
             }
             Node::Decimal(_) => {
-                matches!(value, Value::Decimal(..))
+                matches!(value, Value::D128(..) | Value::D256(..))
                     || value.as_i64().is_some()
                     || value.as_bytes().is_some()
             }
@@ -809,7 +847,8 @@ impl DatumCodec<'_> {
                         .as_str()
                         .is_some_and(|text| uuid_bytes(text).is_some())
             }
-            Node::Record(_) | Node::Map(_) => value.as_mapping().is_some(),
+            Node::Record(_) => value.as_record().is_some() || value.as_mapping().is_some(),
+            Node::Map(_) => value.as_record().is_some() || value.as_mapping().is_some(),
             Node::Array(_) => value.as_sequence().is_some(),
             Node::Union(_) => false,
             Node::Ref(name) => self
@@ -838,7 +877,8 @@ fn int_value(value: &Value, expected: &str) -> Result<i32> {
 /// Split a time-of-day value into its count and unit.
 fn time_parts(value: &Value) -> Option<(i64, TimeUnit)> {
     match value {
-        Value::Time(count, unit) => Some((*count, *unit)),
+        Value::Time32(count, unit, _) => Some((i64::from(*count), *unit)),
+        Value::Time64(count, unit, _) => Some((*count, *unit)),
         _ => None,
     }
 }
@@ -846,7 +886,7 @@ fn time_parts(value: &Value) -> Option<(i64, TimeUnit)> {
 /// Split an instant value into its count and unit.
 fn instant_parts(value: &Value) -> Option<(i64, TimeUnit)> {
     match value {
-        Value::Timestamp(count, unit, _) => Some((*count, *unit)),
+        Value::DateTime64(count, unit, zone) if !zone.is_naive() => Some((*count, *unit)),
         _ => None,
     }
 }
@@ -854,7 +894,7 @@ fn instant_parts(value: &Value) -> Option<(i64, TimeUnit)> {
 /// Split a naive wall-clock value into its count and unit.
 fn datetime_parts(value: &Value) -> Option<(i64, TimeUnit)> {
     match value {
-        Value::DateTime(count, unit) => Some((*count, *unit)),
+        Value::DateTime64(count, unit, zone) if zone.is_naive() => Some((*count, *unit)),
         _ => None,
     }
 }
@@ -900,7 +940,7 @@ fn convert_count(count: i64, from: TimeUnit, to: TimeUnit) -> Option<i64> {
 /// Read a decimal's unscaled integer at the schema's scale.
 fn decimal_unscaled(value: &Value, scale: u32) -> Result<i128> {
     match value {
-        Value::Decimal(unscaled, declared) => {
+        Value::D128(unscaled, declared) => {
             let declared = i64::from(*declared);
             if declared == i64::from(scale) {
                 Ok(*unscaled)

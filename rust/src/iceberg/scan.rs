@@ -43,7 +43,7 @@ use crate::generic::Holder;
 use crate::{DataType, Error, Expression, Field, Result, Value};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ScanTask {
     /// The manifest entry, with the numbers its manifest supplied filled in.
     pub entry: ManifestEntry,
@@ -54,6 +54,12 @@ pub struct ScanTask {
 }
 
 impl ScanTask {
+    /// Return a deterministic hash of this complete executable task.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Borrow the data file this task reads.
     pub const fn data_file(&self) -> &DataFile {
         &self.entry.data_file
@@ -66,7 +72,7 @@ impl ScanTask {
 /// and what it carries into the new snapshot untouched is `excluded` plus the
 /// whole of `skipped` - a manifest nobody opened does not have to be rewritten
 /// to stay true.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ScanPlan {
     /// The data files the scan will open, in manifest order.
     pub tasks: Vec<ScanTask>,
@@ -79,6 +85,12 @@ pub struct ScanPlan {
 }
 
 impl ScanPlan {
+    /// Return a deterministic hash of the ordered tasks and pruning report.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Return the rows the planned files hold, as the manifests counted them.
     pub fn record_count(&self) -> i64 {
         self.tasks
@@ -402,7 +414,7 @@ impl Refine {
     /// [`restore_partitions`] is about to put back.
     fn file_options(&self, part: &ScanPart) -> Result<crate::generic::RecordOptions> {
         use crate::generic::IORecordOptions;
-        use crate::io::IOBase;
+        use crate::io::IOMedia;
 
         let options = part.handle.record_options()?;
         if self.target.is_none() {
@@ -418,7 +430,7 @@ impl Refine {
         match self.read_root.without_fields(&columns) {
             Ok(stored) if stored.field_len() > 0 => {
                 let projected = file_projection(&part.handle, &options, &stored);
-                Ok(options.with_schema(projected))
+                Ok(options.with_field(projected))
             }
             // A read root that is nothing but partition columns leaves the file
             // read unprojected; there is no column left to ask it for.
@@ -429,7 +441,7 @@ impl Refine {
     /// Open one planned file with its resolved options.
     fn open(&self, part: &ScanPart) -> Result<BatchReader> {
         let options = self.file_options(part)?;
-        crate::io::IOBase::read_arrow_batch_reader(&part.handle, &options)
+        crate::io::IOMedia::read_arrow_reader(&part.handle, &options)
     }
 
     /// Restore, align, cast, filter, and project one decoded batch.
@@ -490,7 +502,7 @@ pub(super) fn reader(
     predicates: Vec<Bound>,
     parallel: &super::options::ReadSettings,
 ) -> Result<BatchReader> {
-    let schema = crate::arrow::schema_from_field(&root)?;
+    let schema = crate::arrow::arrow_schema_from_field(&root)?;
     let refine = Arc::new(Refine {
         project: read_root.field_len() != root.field_len(),
         read_root,
@@ -776,7 +788,7 @@ fn file_projection(
     options: &crate::generic::RecordOptions,
     wanted: &Field,
 ) -> Field {
-    let Ok(file_root) = crate::io::IOBase::read_arrow_field(handle, options) else {
+    let Ok(file_root) = crate::io::IOMedia::read_arrow_field(handle, options) else {
         return wanted.clone();
     };
     let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());
@@ -880,7 +892,7 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Resu
         let scalar = crate::arrow::scalar_array(field, value)
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
         columns.push(repeat(&scalar, batch.num_rows())?);
-        fields.push(field.to_arrow_ref()?);
+        fields.push(field.clone().into_arrow_ref()?);
     }
     let schema =
         Arc::new(ArrowSchema::new(fields).with_metadata(batch.schema().metadata().clone()));

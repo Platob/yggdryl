@@ -1,9 +1,9 @@
 //! The datatype a value names, and what it refuses to name.
 
-use crate::{DataType, Field, TimeUnit, Value};
+use crate::{DataType, Field, I256, TimeUnit, Timezone, Value};
 
 mod scalars {
-    use super::{DataType, TimeUnit, Value};
+    use super::{DataType, I256, TimeUnit, Timezone, Value};
 
     #[test]
     fn each_integer_width_keeps_the_column_that_holds_it() {
@@ -37,40 +37,43 @@ mod scalars {
     }
 
     #[test]
-    fn a_float_is_a_double_and_an_f32_is_recorded_exactly() {
+    fn each_float_keeps_its_real_width() {
         assert_eq!(Value::from(1.5_f64).data_type().unwrap(), DataType::Float64);
 
-        // A value has one float width. An `f32` widens into it exactly - every
-        // f32 is a double - so nothing is invented and nothing is lost.
         for value in [0.1_f32, f32::MIN_POSITIVE, f32::MAX, -0.0_f32] {
             let recorded = Value::from(value);
-            assert_eq!(recorded.as_f64(), Some(f64::from(value)));
-            #[allow(clippy::cast_possible_truncation)]
-            let narrowed = recorded.as_f64().unwrap() as f32;
-            assert_eq!(narrowed.to_bits(), value.to_bits(), "{value} round-trips");
+            assert_eq!(recorded.data_type().unwrap(), DataType::Float32);
+            assert_eq!(recorded.as_f32().map(f32::to_bits), Some(value.to_bits()));
         }
+
+        let half = half::f16::from_f32(1.5);
+        let recorded = Value::from(half);
+        assert_eq!(recorded.data_type().unwrap(), DataType::Float16);
+        assert_eq!(recorded.as_f16(), Some(half));
     }
 
     #[test]
     fn a_decimal_names_the_precision_its_digits_need() {
         assert_eq!(
-            Value::decimal(1_050, 2).data_type().unwrap(),
-            DataType::decimal(4, 2).unwrap()
+            Value::d128(1_050, 2).data_type().unwrap(),
+            DataType::decimal128(4, 2).unwrap()
         );
         // A coefficient smaller than its scale is still `0.00…`, which needs
         // precision enough to hold the scale.
         assert_eq!(
-            Value::decimal(5, 3).data_type().unwrap(),
-            DataType::decimal(3, 3).unwrap()
+            Value::d128(5, 3).data_type().unwrap(),
+            DataType::decimal128(3, 3).unwrap()
         );
         // Thirty-nine digits are past Decimal128 and land on Decimal256.
         assert_eq!(
-            Value::decimal(i128::MIN, 0).data_type().unwrap(),
-            DataType::decimal(39, 0).unwrap()
+            Value::d256(I256::from_i128(i128::MIN), 0)
+                .data_type()
+                .unwrap(),
+            DataType::decimal256(39, 0).unwrap()
         );
         assert_eq!(
-            Value::decimal(0, 0).data_type().unwrap(),
-            DataType::decimal(1, 0).unwrap()
+            Value::d128(0, 0).data_type().unwrap(),
+            DataType::decimal128(1, 0).unwrap()
         );
     }
 
@@ -87,23 +90,37 @@ mod scalars {
 
     #[test]
     fn a_temporal_names_its_unit_and_its_zone() {
-        assert_eq!(Value::date(0).data_type().unwrap(), DataType::Date32);
+        assert_eq!(Value::date32(0).data_type().unwrap(), DataType::Date32);
         assert_eq!(
-            Value::time(0, TimeUnit::Microsecond).data_type().unwrap(),
+            Value::time64(0, TimeUnit::Microsecond, Timezone::NAIVE)
+                .unwrap()
+                .data_type()
+                .unwrap(),
             DataType::Time64(TimeUnit::Microsecond)
         );
         assert_eq!(
-            Value::time(0, TimeUnit::Second).data_type().unwrap(),
+            Value::time32(0, TimeUnit::Second, Timezone::NAIVE)
+                .unwrap()
+                .data_type()
+                .unwrap(),
             DataType::Time32(TimeUnit::Second)
         );
         assert_eq!(
-            Value::duration(0, TimeUnit::Nanosecond)
+            Value::duration32(0, TimeUnit::Nanosecond)
+                .unwrap()
                 .data_type()
                 .unwrap(),
-            DataType::Duration(TimeUnit::Nanosecond)
+            DataType::Duration32(TimeUnit::Nanosecond)
         );
         assert_eq!(
-            Value::timestamp(0, TimeUnit::Microsecond, Some("Asia/Calcutta"))
+            Value::duration64(0, TimeUnit::Nanosecond)
+                .unwrap()
+                .data_type()
+                .unwrap(),
+            DataType::Duration64(TimeUnit::Nanosecond)
+        );
+        assert_eq!(
+            Value::datetime64_in(0, TimeUnit::Microsecond, "Asia/Calcutta")
                 .unwrap()
                 .data_type()
                 .unwrap(),
@@ -153,10 +170,80 @@ mod containers {
             DataType::map_of(DataType::Utf8, DataType::Utf8, false).unwrap()
         );
     }
+
+    #[test]
+    fn record_fields_merge_nullability_by_name() {
+        let rows = Value::from_sequence([
+            Value::from_record([("id", Value::from(1_i64)), ("venue", Value::Null)]).unwrap(),
+            Value::from_record([("id", Value::from(2_i64)), ("venue", Value::from("XNAS"))])
+                .unwrap(),
+        ]);
+        let data_type = rows.data_type().unwrap();
+        let DataType::List(item) = data_type else {
+            panic!("expected a list")
+        };
+        let fields = item.data_type().as_fields().expect("record fields");
+        assert_eq!(fields[0].name(), "id");
+        assert!(!fields[0].is_nullable());
+        assert_eq!(fields[1].name(), "venue");
+        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        assert!(fields[1].is_nullable());
+    }
+}
+
+mod fields {
+    use super::{DataType, Value};
+
+    #[test]
+    fn shape_specific_fields_have_one_cross_language_name() {
+        let scalar = Value::from(7_i64).inferred_scalar_field().unwrap();
+        assert_eq!(scalar.name(), "value");
+        assert_eq!(scalar.data_type(), &DataType::Int64);
+
+        let array = Value::from_sequence([Value::from(1_i64), Value::Null])
+            .inferred_array_field()
+            .unwrap();
+        assert_eq!(array.name(), "item");
+        assert!(array.is_nullable());
+
+        let rows = Value::from_sequence([
+            Value::from_record([("id", Value::from(1_i64)), ("venue", Value::Null)]).unwrap(),
+            Value::from_record([("id", Value::from(2_i64)), ("venue", Value::from("XNAS"))])
+                .unwrap(),
+        ]);
+        let root = rows.inferred_struct_field().unwrap();
+        assert_eq!(root.name(), "row");
+        assert!(!root.is_nullable());
+        assert!(root.get_field_by_name("venue").unwrap().is_nullable());
+    }
+
+    #[test]
+    fn ambiguous_shapes_require_a_declared_field() {
+        for message in [
+            Value::from(1_i64)
+                .inferred_array_field()
+                .unwrap_err()
+                .to_string(),
+            Value::from_sequence([])
+                .inferred_array_field()
+                .unwrap_err()
+                .to_string(),
+            Value::from_sequence([])
+                .inferred_struct_field()
+                .unwrap_err()
+                .to_string(),
+            Value::from_sequence([Value::from_sequence([Value::from(1_i64)])])
+                .inferred_struct_field()
+                .unwrap_err()
+                .to_string(),
+        ] {
+            assert!(message.contains("Field"), "{message}");
+        }
+    }
 }
 
 mod refusals {
-    use super::{TimeUnit, Value};
+    use super::{TimeUnit, Timezone, Value};
 
     #[test]
     fn children_that_disagree_are_an_error_and_not_a_guess() {
@@ -170,11 +257,27 @@ mod refusals {
 
     #[test]
     fn an_interval_layout_is_not_a_temporal_resolution() {
-        let message = Value::duration(1, TimeUnit::YearMonth)
-            .data_type()
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("temporal resolution"), "{message}");
+        for message in [
+            Value::duration32(1, TimeUnit::YearMonth)
+                .unwrap_err()
+                .to_string(),
+            Value::duration64(1, TimeUnit::YearMonth)
+                .unwrap_err()
+                .to_string(),
+        ] {
+            assert!(message.contains("fixed temporal unit"), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_time_of_day_timezone_is_never_silently_discarded() {
+        for value in [
+            Value::Time32(1, TimeUnit::Second, Timezone::UTC),
+            Value::Time64(1, TimeUnit::Microsecond, Timezone::UTC),
+        ] {
+            let message = value.data_type().unwrap_err().to_string();
+            assert!(message.contains("timezone"), "{message}");
+        }
     }
 
     #[test]

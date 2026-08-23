@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, btree_map, btree_map::Entry};
 use std::fmt;
 use std::fmt::Write as _;
@@ -407,11 +408,6 @@ impl Metadata {
         self.get(HTTP_VARY_KEY)
     }
 
-    /// Serializes this snapshot as deterministic structural JSON.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
-    }
-
     /// Consumes and serializes this snapshot as deterministic structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
@@ -420,16 +416,6 @@ impl Metadata {
     /// Returns a deterministic cross-language hash of canonical display output.
     pub fn stable_hash(&self) -> u64 {
         stable_hash_display(self)
-    }
-
-    /// Projects a borrowed snapshot to Arrow metadata.
-    ///
-    /// Arrow owns a mutable standard `HashMap`, so this borrowed conversion
-    /// must clone its strings.
-    pub fn to_arrow(&self) -> HashMap<String, String> {
-        self.iter()
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
-            .collect()
     }
 
     /// Consumes this snapshot and projects it to Arrow metadata.
@@ -915,7 +901,7 @@ impl<'metadata> ProtocolMetadata<'metadata> {
     ///
     /// Returns an error only when a property fails the validation it already
     /// passed, which externally corrupted serialized state can produce.
-    pub fn to_metadata(&self) -> Result<Metadata> {
+    pub fn into_metadata(self) -> Result<Metadata> {
         Metadata::from_entries(self.iter().map(|(name, value)| (self.key(name), value)))
     }
 }
@@ -954,6 +940,27 @@ impl PartialEq for ProtocolMetadata<'_> {
 }
 
 impl Eq for ProtocolMetadata<'_> {}
+
+impl PartialOrd for ProtocolMetadata<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ProtocolMetadata<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iter().cmp(other.iter())
+    }
+}
+
+impl Hash for ProtocolMetadata<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.len().hash(state);
+        for entry in self.iter() {
+            entry.hash(state);
+        }
+    }
+}
 
 impl Index<&str> for ProtocolMetadata<'_> {
     type Output = str;
@@ -1405,6 +1412,7 @@ pub(crate) fn write_json_string(formatter: &mut fmt::Formatter<'_>, value: &str)
 
 #[cfg(test)]
 mod tests {
+    use std::hash::{Hash, Hasher};
     use std::sync::Arc;
 
     use super::Metadata;
@@ -1485,6 +1493,23 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 1_024);
+    }
+
+    #[test]
+    fn protocol_views_order_and_hash_the_properties_they_expose() {
+        fn hash(value: &impl Hash) -> u64 {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            value.hash(&mut hasher);
+            hasher.finish()
+        }
+
+        let first = Metadata::from_entries([("postgres:a", "1")]).unwrap();
+        let equal =
+            Metadata::from_entries([("postgres:a", "1"), ("s3:bucket", "ignored")]).unwrap();
+        let later = Metadata::from_entries([("postgres:b", "1")]).unwrap();
+        assert_eq!(first.postgres(), equal.postgres());
+        assert_eq!(hash(&first.postgres()), hash(&equal.postgres()));
+        assert!(first.postgres() < later.postgres());
     }
 
     #[test]

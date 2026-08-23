@@ -99,7 +99,7 @@ impl GeospatialType {
     /// A geometry writes `{"crs": <crs>}`; a geography adds its edge
     /// algorithm as `"edges"`. The CRS is always written, defaults included,
     /// so the projected document never depends on what the reader would fill.
-    pub(crate) fn to_geoarrow_json(&self) -> String {
+    pub(crate) fn geoarrow_json(&self) -> String {
         let mut document = serde_json::Map::with_capacity(2);
         document.insert(
             "crs".to_owned(),
@@ -180,7 +180,7 @@ pub(crate) fn arrow_extension_parts(data_type: &DataType) -> Option<(&'static st
     match data_type {
         DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
-            Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.to_geoarrow_json()))
+            Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
         _ => None,
     }

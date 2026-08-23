@@ -179,7 +179,7 @@ fn bracketed(rest: &str, keyword: &str) -> Result<i32> {
 }
 
 /// One partition column: a source column, a transform, and a name.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PartitionField {
     /// Identifier of the schema field this partitions on.
     pub source_id: i32,
@@ -192,6 +192,11 @@ pub struct PartitionField {
 }
 
 impl PartitionField {
+    /// Return a deterministic hash of this complete partition field.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Partition on a source column's value unchanged.
     pub fn identity(source_id: i32, field_id: i32, name: impl Into<SmolStr>) -> Self {
         Self {
@@ -243,7 +248,7 @@ impl PartitionField {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn to_json(&self) -> Result<Value> {
+    pub fn into_json(self) -> Result<Value> {
         Value::from_mapping([
             (Value::from("name"), Value::from(self.name.clone())),
             (
@@ -263,7 +268,7 @@ impl PartitionField {
 }
 
 /// An ordered set of partition fields, identified by a spec id.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PartitionSpec {
     /// Identifier of this spec within the table.
     pub spec_id: i32,
@@ -272,6 +277,11 @@ pub struct PartitionSpec {
 }
 
 impl PartitionSpec {
+    /// Return a deterministic hash of this complete partition specification.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// The unpartitioned spec, which every table has as spec zero.
     pub const fn unpartitioned() -> Self {
         Self {
@@ -565,10 +575,10 @@ impl PartitionSpec {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn to_json(&self) -> Result<Value> {
+    pub fn into_json(self) -> Result<Value> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
-            fields.push(field.to_json()?);
+            fields.push(field.clone().into_json()?);
         }
         Value::from_mapping([
             (Value::from("spec-id"), Value::from(i64::from(self.spec_id))),
@@ -581,10 +591,10 @@ impl PartitionSpec {
     /// # Errors
     ///
     /// Returns an error only when a field mapping cannot be built.
-    pub fn to_v1_json(&self) -> Result<Value> {
+    pub fn into_v1_json(self) -> Result<Value> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
-            fields.push(field.to_json()?);
+            fields.push(field.clone().into_json()?);
         }
         Ok(Value::from_sequence(fields))
     }

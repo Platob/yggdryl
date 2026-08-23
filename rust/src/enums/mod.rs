@@ -12,6 +12,7 @@ mod scheme;
 mod time_unit;
 pub(crate) mod timezone;
 mod union_mode;
+mod write_mode;
 
 pub use codec::{Codec, Encoder, Level};
 pub use datatype_id::DataTypeId;
@@ -25,3 +26,4 @@ pub use scheme::Scheme;
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 pub use union_mode::UnionMode;
+pub use write_mode::WriteMode;

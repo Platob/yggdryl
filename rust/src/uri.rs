@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::iter::FusedIterator;
 use std::net::Ipv6Addr;
+use std::ops::Div;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -193,6 +194,44 @@ impl Authority {
     /// Return whether this concrete authority is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Return the user name before the first user-information colon.
+    pub fn user(&self) -> Option<&str> {
+        let user_information = self.as_str().rsplit_once('@')?.0;
+        Some(
+            user_information
+                .split_once(':')
+                .map_or(user_information, |(user, _)| user),
+        )
+    }
+
+    /// Return the password after the first user-information colon.
+    ///
+    /// Later colons belong to the password, so `user:pass:word@host` returns
+    /// `pass:word` without allocating.
+    pub fn password(&self) -> Option<&str> {
+        self.as_str()
+            .rsplit_once('@')?
+            .0
+            .split_once(':')
+            .map(|(_, password)| password)
+    }
+
+    /// Return the host without user information, brackets, or a port.
+    pub fn host(&self) -> &str {
+        let host_port = self
+            .as_str()
+            .rsplit_once('@')
+            .map_or(self.as_str(), |(_, host_port)| host_port);
+        if let Some(bracketed) = host_port.strip_prefix('[') {
+            return bracketed
+                .split_once(']')
+                .map_or(bracketed, |(host, _)| host);
+        }
+        host_port
+            .rsplit_once(':')
+            .map_or(host_port, |(host, _)| host)
     }
 
     /// Return a deterministic cross-language hash of the authority.
@@ -835,6 +874,22 @@ impl Iterator for Parents {
     }
 }
 
+impl Div<&str> for &UriPath {
+    type Output = Result<UriPath>;
+
+    fn div(self, value: &str) -> Self::Output {
+        self.joinpath(value)
+    }
+}
+
+impl Div<&str> for UriPath {
+    type Output = Result<Self>;
+
+    fn div(self, value: &str) -> Self::Output {
+        self.joinpath(value)
+    }
+}
+
 impl ExactSizeIterator for Parents {}
 
 impl FusedIterator for Parents {}
@@ -1092,19 +1147,9 @@ impl Uri {
         serde_json::from_str(value).map_err(Error::from)
     }
 
-    /// Serialize this URI as version-independent structural JSON.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
-    }
-
     /// Consume this URI and serialize it as structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
-    }
-
-    /// Validate and clone this URI as a URL.
-    pub fn to_url(&self) -> Result<Url> {
-        Url::from_uri(self.clone())
     }
 
     /// Validate and consume this URI as a URL without cloning.
@@ -1112,22 +1157,9 @@ impl Uri {
         Url::from_uri(self)
     }
 
-    /// Validate and clone this URI as a URN.
-    pub fn to_urn(&self) -> Result<Urn> {
-        Urn::from_uri(self.clone())
-    }
-
     /// Validate and consume this URI as a URN without cloning.
     pub fn into_urn(self) -> Result<Urn> {
         Urn::from_uri(self)
-    }
-
-    /// Convert a canonical `file:` URI into a platform path.
-    ///
-    /// Percent escapes are decoded exactly once. Encoded path separators and
-    /// NUL bytes are rejected so decoding cannot change the path structure.
-    pub fn to_path(&self) -> Result<PathBuf> {
-        file_path_from_uri(self)
     }
 
     /// Consume a canonical `file:` URI and return its platform path.
@@ -1175,6 +1207,39 @@ impl Uri {
     /// Return the concrete authority component.
     pub fn authority(&self) -> &Authority {
         &self.authority
+    }
+
+    /// Return the authority user name, if present.
+    pub fn user(&self) -> Option<&str> {
+        self.authority.user()
+    }
+
+    /// Return the authority password, preserving any later colons.
+    pub fn password(&self) -> Option<&str> {
+        self.authority.password()
+    }
+
+    /// Return the network hostname, if this URI has one.
+    ///
+    /// For `s3`, an authority or first path part ending in `.com` or `.io` is
+    /// a hostname; any other first part is a bucket name.
+    pub fn hostname(&self) -> Option<&str> {
+        if self.scheme == Scheme::S3 {
+            return self.s3_location().and_then(|location| location.hostname);
+        }
+        (!self.authority.is_empty()).then(|| self.authority.host())
+    }
+
+    /// Return the S3 bucket name when this is an `s3` URI.
+    pub fn bucket(&self) -> Option<&str> {
+        self.s3_location().and_then(|location| location.bucket)
+    }
+
+    /// Infer an AWS region from a recognized S3 hostname.
+    ///
+    /// This borrows the region from the URI and performs no network lookup.
+    pub fn region(&self) -> Option<&str> {
+        self.s3_location().and_then(|location| location.region)
     }
 
     /// Return whether canonical syntax contains an authority marker.
@@ -1385,6 +1450,108 @@ impl Uri {
     pub fn stable_hash(&self) -> u64 {
         stable_hash_display(self)
     }
+
+    fn s3_location(&self) -> Option<S3Location<'_>> {
+        if self.scheme != Scheme::S3 {
+            return None;
+        }
+
+        let mut path = self.path_segments();
+        let first = if self.has_authority && !self.authority.is_empty() {
+            self.authority.host()
+        } else {
+            path.next()?
+        };
+
+        if let Some(aws) = parse_aws_s3_hostname(first) {
+            return Some(S3Location {
+                hostname: Some(first),
+                bucket: aws.bucket.or_else(|| path.next()),
+                region: aws.region,
+            });
+        }
+        if is_s3_hostname(first) {
+            return Some(S3Location {
+                hostname: Some(first),
+                bucket: path.next(),
+                region: None,
+            });
+        }
+        Some(S3Location {
+            hostname: None,
+            bucket: Some(first),
+            region: None,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct S3Location<'a> {
+    hostname: Option<&'a str>,
+    bucket: Option<&'a str>,
+    region: Option<&'a str>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AwsS3Hostname<'a> {
+    bucket: Option<&'a str>,
+    region: Option<&'a str>,
+}
+
+fn is_s3_hostname(value: &str) -> bool {
+    [".com", ".io"].iter().any(|suffix| {
+        value
+            .get(value.len().saturating_sub(suffix.len())..)
+            .is_some_and(|ending| ending.eq_ignore_ascii_case(suffix))
+    })
+}
+
+fn strip_suffix_ascii_case<'a>(value: &'a str, suffix: &str) -> Option<&'a str> {
+    let head = value.get(..value.len().checked_sub(suffix.len())?)?;
+    value[head.len()..]
+        .eq_ignore_ascii_case(suffix)
+        .then_some(head)
+}
+
+fn strip_prefix_ascii_case<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    let tail = value.get(prefix.len()..)?;
+    value[..prefix.len()]
+        .eq_ignore_ascii_case(prefix)
+        .then_some(tail)
+}
+
+fn parse_aws_s3_hostname(hostname: &str) -> Option<AwsS3Hostname<'_>> {
+    let body = strip_suffix_ascii_case(hostname, ".amazonaws.com.cn")
+        .or_else(|| strip_suffix_ascii_case(hostname, ".amazonaws.com"))?;
+    let mut start = 0;
+    loop {
+        let endpoint = &body[start..];
+        if let Some(region) = parse_aws_s3_endpoint(endpoint) {
+            return Some(AwsS3Hostname {
+                bucket: (start != 0).then(|| &body[..start - 1]),
+                region,
+            });
+        }
+        let dot = body[start..].find('.')?;
+        start += dot + 1;
+    }
+}
+
+fn parse_aws_s3_endpoint(value: &str) -> Option<Option<&str>> {
+    if value.eq_ignore_ascii_case("s3")
+        || value.eq_ignore_ascii_case("s3-accelerate")
+        || value.eq_ignore_ascii_case("s3-accelerate.dualstack")
+    {
+        return Some(None);
+    }
+
+    for prefix in ["s3.dualstack.", "s3-fips.dualstack.", "s3.", "s3-fips."] {
+        if let Some(region) = strip_prefix_ascii_case(value, prefix) {
+            return (!region.is_empty() && !region.contains('.')).then_some(Some(region));
+        }
+    }
+    strip_prefix_ascii_case(value, "s3-")
+        .and_then(|region| (!region.is_empty() && !region.contains('.')).then_some(Some(region)))
 }
 
 /// An iterator from a URI's immediate parent up to its root.
@@ -1413,6 +1580,22 @@ impl Iterator for UriParents<'_> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, self.paths.size_hint().1)
+    }
+}
+
+impl Div<&str> for &Uri {
+    type Output = Result<Uri>;
+
+    fn div(self, value: &str) -> Self::Output {
+        self.joinpath(value)
+    }
+}
+
+impl Div<&str> for Uri {
+    type Output = Result<Self>;
+
+    fn div(self, value: &str) -> Self::Output {
+        self.joinpath(value)
     }
 }
 
@@ -1563,7 +1746,7 @@ impl TryFrom<&Uri> for PathBuf {
     type Error = Error;
 
     fn try_from(value: &Uri) -> Result<Self> {
-        value.to_path()
+        value.clone().into_path()
     }
 }
 
@@ -2047,29 +2230,14 @@ impl Url {
         serde_json::from_str(value).map_err(Error::from)
     }
 
-    /// Serialize this URL as structural JSON.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
-    }
-
     /// Consume this URL and serialize it as structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
     }
 
-    /// Return a cloned URI view of this URL.
-    pub fn to_uri(&self) -> Uri {
-        self.0.clone()
-    }
-
     /// Consume this URL and return its URI without allocating.
     pub fn into_uri(self) -> Uri {
         self.0
-    }
-
-    /// Convert this `file:` URL into a platform path.
-    pub fn to_path(&self) -> Result<PathBuf> {
-        self.0.to_path()
     }
 
     /// Consume this `file:` URL and return its platform path.
@@ -2131,17 +2299,17 @@ impl Url {
     /// A non-local URL is never reported as existing, because answering would
     /// require a network round trip this accessor does not make.
     pub fn exists(&self) -> bool {
-        self.to_path().is_ok_and(|path| path.exists())
+        self.clone().into_path().is_ok_and(|path| path.exists())
     }
 
     /// Return whether this URL locates an existing local directory.
     pub fn is_dir(&self) -> bool {
-        self.to_path().is_ok_and(|path| path.is_dir())
+        self.clone().into_path().is_ok_and(|path| path.is_dir())
     }
 
     /// Return whether this URL locates an existing local regular file.
     pub fn is_file(&self) -> bool {
-        self.to_path().is_ok_and(|path| path.is_file())
+        self.clone().into_path().is_ok_and(|path| path.is_file())
     }
 
     /// Report the MIME type of the local entry this URL locates.
@@ -2150,7 +2318,7 @@ impl Url {
     /// identified from the name, falling back to [`MimeType::FILE`] locally and
     /// to [`Self::mime_type`] for a remote URL.
     pub fn local_mime_type(&self) -> MimeType {
-        match self.to_path() {
+        match self.clone().into_path() {
             Ok(path) => MimeType::from_local_path(path),
             Err(_) => self.mime_type(),
         }
@@ -2164,6 +2332,31 @@ impl Url {
     /// Return the concrete URL authority.
     pub fn authority(&self) -> &Authority {
         self.0.authority()
+    }
+
+    /// Return the authority user name, if present.
+    pub fn user(&self) -> Option<&str> {
+        self.0.user()
+    }
+
+    /// Return the authority password, preserving any later colons.
+    pub fn password(&self) -> Option<&str> {
+        self.0.password()
+    }
+
+    /// Return the network hostname under the URI's S3-aware rules.
+    pub fn hostname(&self) -> Option<&str> {
+        self.0.hostname()
+    }
+
+    /// Return the S3 bucket name when this is an `s3` URL.
+    pub fn bucket(&self) -> Option<&str> {
+        self.0.bucket()
+    }
+
+    /// Infer an AWS region from a recognized S3 hostname.
+    pub fn region(&self) -> Option<&str> {
+        self.0.region()
     }
 
     /// Return the concrete URL path.
@@ -2356,6 +2549,22 @@ impl Iterator for UrlParents<'_> {
     }
 }
 
+impl Div<&str> for &Url {
+    type Output = Result<Url>;
+
+    fn div(self, value: &str) -> Self::Output {
+        self.joinpath(value)
+    }
+}
+
+impl Div<&str> for Url {
+    type Output = Result<Self>;
+
+    fn div(self, value: &str) -> Self::Output {
+        self.joinpath(value)
+    }
+}
+
 impl FusedIterator for UrlParents<'_> {}
 
 impl FromStr for Url {
@@ -2418,7 +2627,7 @@ impl TryFrom<&Url> for PathBuf {
     type Error = Error;
 
     fn try_from(value: &Url) -> Result<Self> {
-        value.to_path()
+        value.clone().into_path()
     }
 }
 
@@ -2430,7 +2639,7 @@ impl From<Url> for Uri {
 
 impl From<&Url> for Uri {
     fn from(value: &Url) -> Self {
-        value.to_uri()
+        value.clone().into_uri()
     }
 }
 
@@ -2529,19 +2738,9 @@ impl Urn {
         serde_json::from_str(value).map_err(Error::from)
     }
 
-    /// Serialize this URN as structural JSON.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
-    }
-
     /// Consume this URN and serialize it as structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
-    }
-
-    /// Return a cloned URI view of this URN.
-    pub fn to_uri(&self) -> Uri {
-        self.0.clone()
     }
 
     /// Consume this URN and return its URI without allocating.
@@ -2866,7 +3065,7 @@ impl From<Urn> for Uri {
 
 impl From<&Urn> for Uri {
     fn from(value: &Urn) -> Self {
-        value.to_uri()
+        value.clone().into_uri()
     }
 }
 

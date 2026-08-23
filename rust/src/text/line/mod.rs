@@ -1,9 +1,9 @@
 //! The one home of every line read and write.
 //!
 //! This is a *text-line* surface, **not a fourth record method**. The record
-//! surface stays exactly [`read_arrow_batch_reader`](crate::io::IOBase::read_arrow_batch_reader),
-//! [`write_arrow_batch_reader`](crate::io::IOBase::write_arrow_batch_reader),
-//! and [`append_arrow_batch_reader`](crate::io::IOBase::append_arrow_batch_reader),
+//! surface stays exactly [`read_arrow_reader`](crate::io::IOMedia::read_arrow_reader),
+//! [`overwrite_arrow_reader`](crate::io::IOMedia::overwrite_arrow_reader),
+//! and [`append_arrow_reader`](crate::io::IOMedia::append_arrow_reader),
 //! and nothing here decodes a record encoding. What it reads is *text*: bytes
 //! split into records by a line terminator, grouped by a pattern, and either
 //! handed back as borrowed views or projected into Arrow batches.
@@ -51,8 +51,10 @@ pub mod arrow;
 
 pub use handle::{Text, TextLines};
 
-pub(crate) use handle::{borrowed_lines, coded_lines};
-pub use options::{Opening, TextLineOptions, schema_from_pattern};
+pub(crate) use handle::borrowed_lines;
+#[cfg(any(feature = "arrow", test))]
+pub(crate) use handle::row_size;
+pub use options::{Opening, TextLineOptions};
 #[cfg(feature = "arrow")]
 pub use record::TextOptions;
 pub use sep::LineSep;

@@ -6,18 +6,10 @@
 //! say what offset any of them implied, and nothing rejected a typo. This type
 //! is the single answer to all four.
 //!
-//! Three things it deliberately is *not*:
-//!
-//! - **Not a naive marker.** Naive - a wall-clock reading with no offset at
-//!   all - is the *absence* of a zone, spelled `None` in
-//!   `DataType::Timestamp(unit, None)`, exactly as Arrow spells it. Adding a
-//!   `Naive` variant here would give the project two ways to say one thing,
-//!   which is the disease this type was written to cure.
-//! - **Not a copy.** The stored name shares its heap allocation with Arrow's
-//!   `Arc<str>` in both directions, so importing and re-exporting a schema
-//!   moves no bytes. That invariant is pinned by pointer-identity tests.
-//! - **Not a history.** [`Self::offset_at`] applies the rules in force *today*.
-//!   See [`registry`] for why a short honest table beats a long guessing one.
+//! [`Self::NAIVE`] gives every native temporal value a non-optional zone while
+//! `DataType::Timestamp(unit, None)` retains Arrow's schema spelling. Named
+//! zones share their allocation with Arrow, and [`Self::offset_at`] applies
+//! the registry rules bundled by this build.
 //!
 //! ```
 //! use yggdryl::Timezone;
@@ -66,6 +58,9 @@ const DAY: i64 = 86_400;
 pub struct Timezone(SmolStr);
 
 impl Timezone {
+    /// A wall-clock value with no time-zone interpretation.
+    pub const NAIVE: Self = Self(SmolStr::new_inline("NAIVE"));
+
     /// Coordinated Universal Time, the zero point every other zone offsets
     /// from and the one zone that is always registered.
     pub const UTC: Self = Self(SmolStr::new_inline("UTC"));
@@ -133,6 +128,11 @@ impl Timezone {
     /// Return whether this zone is UTC itself.
     pub fn is_utc(&self) -> bool {
         self.0 == "UTC"
+    }
+
+    /// Return whether this is the explicit zone-free marker.
+    pub fn is_naive(&self) -> bool {
+        self.0 == "NAIVE"
     }
 
     /// Return whether this build knows the rules for this zone.
@@ -217,7 +217,7 @@ impl Timezone {
     ///
     /// Returns an error when this build has no rules for the zone, because a
     /// silently unconverted instant is worse than a refusal.
-    pub fn to_local(&self, epoch: i64) -> Result<i64> {
+    pub fn into_local(self, epoch: i64) -> Result<i64> {
         let offset = self.offset_at(epoch).ok_or_else(|| self.unknown_error())?;
         Ok(epoch + i64::from(offset))
     }
@@ -233,7 +233,7 @@ impl Timezone {
     /// # Errors
     ///
     /// Returns an error when this build has no rules for the zone.
-    pub fn to_utc(&self, local: i64) -> Result<i64> {
+    pub fn into_utc(self, local: i64) -> Result<i64> {
         // The offset depends on the instant, and the instant is what is being
         // solved for, so guess with the standard offset and correct once.
         let standard = self.standard_offset().ok_or_else(|| self.unknown_error())?;
@@ -276,6 +276,9 @@ impl Timezone {
 
     /// Read a fixed offset out of the name, when the name is one.
     fn fixed_offset(&self) -> Option<i32> {
+        if self.is_naive() {
+            return None;
+        }
         if self.is_utc() {
             return Some(0);
         }
@@ -496,6 +499,10 @@ impl FromStr for Timezone {
                 position,
                 "a time zone name must not hold a control character",
             ));
+        }
+
+        if value.eq_ignore_ascii_case("naive") {
+            return Ok(Self::NAIVE);
         }
 
         // A fixed offset is canonical as `+HH:MM`, and `+00:00` is UTC itself.

@@ -55,8 +55,10 @@ pub enum DataTypeId {
     Time32,
     /// 64-bit time of day.
     Time64,
-    /// Elapsed time.
-    Duration,
+    /// 32-bit elapsed time.
+    Duration32,
+    /// 64-bit elapsed time.
+    Duration64,
     /// Calendar interval.
     Interval,
     /// Variable-width binary with 32-bit offsets.
@@ -111,7 +113,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 45] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -130,7 +132,8 @@ impl DataTypeId {
         Self::Date64,
         Self::Time32,
         Self::Time64,
-        Self::Duration,
+        Self::Duration32,
+        Self::Duration64,
         Self::Interval,
         Self::Binary,
         Self::FixedSizeBinary,
@@ -193,7 +196,8 @@ impl DataTypeId {
             Self::Date64 => "date64",
             Self::Time32 => "time32",
             Self::Time64 => "time64",
-            Self::Duration => "duration",
+            Self::Duration32 => "duration32",
+            Self::Duration64 => "duration64",
             Self::Interval => "interval",
             Self::Binary => "binary",
             Self::FixedSizeBinary => "fixed_size_binary",
@@ -244,7 +248,8 @@ impl DataTypeId {
             | Self::Date64
             | Self::Time32
             | Self::Time64
-            | Self::Duration
+            | Self::Duration32
+            | Self::Duration64
             | Self::Interval => DataTypeKind::Temporal,
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
                 DataTypeKind::Binary
@@ -275,7 +280,8 @@ impl DataTypeId {
             Self::Timestamp
                 | Self::Time32
                 | Self::Time64
-                | Self::Duration
+                | Self::Duration32
+                | Self::Duration64
                 | Self::Interval
                 | Self::FixedSizeBinary
                 | Self::List
@@ -366,9 +372,10 @@ impl DataTypeId {
             | Self::UInt64
             | Self::Float64
             | Self::Date64
-            | Self::Duration
+            | Self::Duration64
             | Self::Timestamp
             | Self::Decimal64 => Some(8),
+            Self::Duration32 => Some(4),
             Self::Decimal128 => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,

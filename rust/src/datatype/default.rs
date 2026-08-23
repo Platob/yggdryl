@@ -211,7 +211,8 @@ pub(crate) fn preflight_schema_shape(data_type: &DataType, kind: &'static str) -
             | DataType::Date64
             | DataType::Time32(_)
             | DataType::Time64(_)
-            | DataType::Duration(_)
+            | DataType::Duration32(_)
+            | DataType::Duration64(_)
             | DataType::Interval(_)
             | DataType::Binary
             | DataType::FixedSizeBinary(_)
@@ -288,7 +289,8 @@ fn plan_data_type<'a>(
         | D::Date64
         | D::Time32(_)
         | D::Time64(_)
-        | D::Duration(_)
+        | D::Duration32(_)
+        | D::Duration64(_)
         | D::Interval(TimeUnit::YearMonth) => scalar(DefaultPlan::Signed, false),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => scalar(DefaultPlan::Unsigned, false),
         D::Float16 | D::Float32 | D::Float64 => scalar(DefaultPlan::Float, false),
@@ -568,7 +570,7 @@ fn materialize(plan: DefaultPlan) -> Result<Value> {
         DefaultPlan::Unsigned => Ok(Value::U64(0)),
         DefaultPlan::Float => Ok(Value::from(0.0_f64)),
         DefaultPlan::Decimal => Ok(Value::I128(0)),
-        DefaultPlan::Decimal256 => Ok(Value::from("0")),
+        DefaultPlan::Decimal256 => Ok(Value::d256(crate::I256::ZERO, 0)),
         DefaultPlan::String => Ok(Value::from("")),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
@@ -629,11 +631,13 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
                 | Value::I16(0)
                 | Value::I32(0)
                 | Value::I64(0)
-                | Value::Date(0)
-                | Value::Time(0, _)
-                | Value::Timestamp(0, _, _)
-                | Value::DateTime(0, _)
-                | Value::Duration(0, _)
+                | Value::Date32(0, _, _)
+                | Value::Date64(0, _, _)
+                | Value::Time32(0, _, _)
+                | Value::Time64(0, _, _)
+                | Value::DateTime64(0, _, _)
+                | Value::Duration32(0, _, _)
+                | Value::Duration64(0, _, _)
         ),
         DefaultPlan::Unsigned => {
             matches!(
@@ -645,25 +649,22 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
         // A zero coefficient is zero at every scale.
-        DefaultPlan::Decimal => matches!(value, Value::I128(0) | Value::Decimal(0, _)),
-        DefaultPlan::Decimal256 => value.as_str() == Some("0"),
+        DefaultPlan::Decimal => matches!(value, Value::I128(0) | Value::D128(0, _)),
+        DefaultPlan::Decimal256 => value
+            .as_d256()
+            .is_some_and(|(coefficient, _)| coefficient == crate::I256::ZERO),
         DefaultPlan::String => value.as_str() == Some(""),
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),
         DefaultPlan::EmptySequence => value.as_sequence().is_some_and(<[Value]>::is_empty),
-        // A struct row reads back as a typed record; its values are the same
-        // halves the sequence spelling carries.
-        DefaultPlan::Sequence(plans) => value
-            .as_sequence()
-            .or_else(|| value.as_record().map(|(_, values)| values))
-            .is_some_and(|values| {
-                values.len() == plans.len()
-                    && plans
-                        .iter()
-                        .zip(values)
-                        .all(|(plan, value)| plan_matches_value(plan, value))
-            }),
+        DefaultPlan::Sequence(plans) => value.as_sequence().is_some_and(|values| {
+            values.len() == plans.len()
+                && plans
+                    .iter()
+                    .zip(values)
+                    .all(|(plan, value)| plan_matches_value(plan, value))
+        }),
         DefaultPlan::Repeated(plan, length) => value.as_sequence().is_some_and(|values| {
             values.len() == *length && values.iter().all(|value| plan_matches_value(plan, value))
         }),

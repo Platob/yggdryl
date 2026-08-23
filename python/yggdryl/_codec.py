@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import io
 import os
-import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import Any, Literal, Protocol, TypeAlias, TypeVar, cast
 
@@ -67,6 +66,43 @@ Destination: TypeAlias = (
 _T = TypeVar("_T")
 _MAX_STREAM_BYTES = 64 * 1024 * 1024
 _MAX_STREAM_DOCUMENTS = 1_024
+_DEFAULT_INDENT = object()
+
+
+def _indent_code(indent: object) -> int:
+    """Normalize one language-level indent request for core Formatting."""
+
+    if indent is _DEFAULT_INDENT:
+        return -2
+    if indent is None:
+        return -1
+    if indent == "\t":
+        return -3
+    if isinstance(indent, bool) or not isinstance(indent, int):
+        raise TypeError("indent must be None, a non-negative int, or '\\t'")
+    if not 0 <= indent <= 255:
+        raise ValueError("indent must be between 0 and 255")
+    return indent
+
+
+def _limit_values(
+    max_depth: int | None,
+    max_input_bytes: int | None,
+    max_nodes: int | None,
+    max_documents: int | None,
+) -> tuple[int | None, int | None, int | None, int | None]:
+    values = {
+        "max_depth": max_depth,
+        "max_input_bytes": max_input_bytes,
+        "max_nodes": max_nodes,
+        "max_documents": max_documents,
+    }
+    for name, value in values.items():
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise TypeError(f"{name} must be int or None")
+        if value is not None and value < 0:
+            raise ValueError(f"{name} must be non-negative")
+    return max_depth, max_input_bytes, max_nodes, max_documents
 
 
 def _normalize_format(format: str) -> Format:
@@ -93,7 +129,7 @@ def _format_from_path(name: str, *, destination: bool = False) -> Format:
 
 
 def infer_format(source: Source, format: str | None = None) -> Format:
-    """Infer a codec from an explicit name, path suffix, or document prefix."""
+    """Infer a codec from an explicit name, declared path, or document prefix."""
 
     if format is not None:
         return _normalize_format(format)
@@ -101,8 +137,6 @@ def infer_format(source: Source, format: str | None = None) -> Format:
     name: object | None = None
     if isinstance(source, os.PathLike):
         name = os.fspath(source)
-    elif isinstance(source, str) and _is_file(source):
-        name = source
     elif hasattr(source, "name"):
         name = getattr(source, "name")
 
@@ -129,8 +163,6 @@ def prepare_source(
     name: object | None = None
     if isinstance(source, os.PathLike):
         name = os.fspath(source)
-    elif isinstance(source, str) and _is_file(source):
-        name = source
     elif hasattr(source, "name"):
         name = getattr(source, "name")
     if isinstance(name, bytes):
@@ -158,7 +190,7 @@ def _source_needs_content_inference(source: Source) -> bool:
     if isinstance(source, os.PathLike):
         return False
     if isinstance(source, str):
-        return not _is_file(source)
+        return True
     if isinstance(source, (bytes, bytearray, memoryview)):
         return True
     name = getattr(source, "name", None)
@@ -169,23 +201,47 @@ def _decode_inferred(
     source: Source,
     *,
     cls: type[_T] | None = None,
+    field: object | None = None,
     safe: bool = True,
     errors: ErrorPolicy = "raise",
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+    max_documents: int | None = None,
 ) -> _T | Any:
     """Infer and decode retained content through one native parse."""
 
     _check_decode_options(cls, safe, errors)
-    if isinstance(source, str):
-        decoded = _native._codec_decode_inferred_text(source)
+    native_value = cls is _native.Value
+    limits = _limit_values(max_depth, max_input_bytes, max_nodes, max_documents)
+    if isinstance(source, os.PathLike):
+        with open(source, "rb") as stream:
+            decoded = _native._codec_decode_inferred(
+                _read_bounded(stream.read, max_input_bytes),
+                _decode_field(field),
+                native_value,
+                *limits,
+            )
+    elif isinstance(source, str):
+        decoded = _native._codec_decode_inferred_text(
+            source, _decode_field(field), native_value, *limits
+        )
     elif isinstance(source, (bytes, bytearray, memoryview)):
-        decoded = _native._codec_decode_inferred(source)
+        decoded = _native._codec_decode_inferred(
+            source, _decode_field(field), native_value, *limits
+        )
     else:
         reader = getattr(source, "read", None)
         if reader is None:
             raise TypeError(
                 "source must be bytes-like, str, PathLike, or a readable file object"
             )
-        decoded = _native._codec_decode_inferred(_read_bounded(reader))
+        decoded = _native._codec_decode_inferred(
+            _read_bounded(reader, max_input_bytes),
+            _decode_field(field),
+            native_value,
+            *limits,
+        )
     return _materialize_decoded(decoded, cls, safe=safe, errors=errors)
 
 
@@ -209,7 +265,7 @@ def infer_destination_format(
 
 
 def read_bytes(source: Source) -> bytes:
-    """Read bytes without treating a non-existent string path as a path."""
+    """Read declared paths and readers; encode every string as content."""
 
     if isinstance(source, bytes):
         return _check_input_size(source)
@@ -221,9 +277,6 @@ def read_bytes(source: Source) -> bytes:
         with open(source, "rb") as stream:
             return _read_bounded(stream.read)
     if isinstance(source, str):
-        if _is_file(source):
-            with open(source, "rb") as stream:
-                return _read_bounded(stream.read)
         return _check_input_size(source.encode("utf-8"))
     reader = getattr(source, "read", None)
     if reader is None:
@@ -233,12 +286,13 @@ def read_bytes(source: Source) -> bytes:
     return _read_bounded(reader)
 
 
-def _read_bounded(reader: Any) -> bytes:
+def _read_bounded(reader: Any, maximum: int | None = None) -> bytes:
+    maximum = _MAX_STREAM_BYTES if maximum is None else maximum
     chunks: list[bytes] = []
     total = 0
     while True:
         try:
-            value = reader(_MAX_STREAM_BYTES - total + 1)
+            value = reader(maximum - total + 1)
         except TypeError as error:
             raise TypeError("file read() must accept a finite size argument") from error
         if isinstance(value, str):
@@ -252,8 +306,8 @@ def _read_bounded(reader: Any) -> bytes:
         if not chunk:
             break
         total += len(chunk)
-        if total > _MAX_STREAM_BYTES:
-            raise ValueError(f"codec input exceeds {_MAX_STREAM_BYTES} bytes")
+        if total > maximum:
+            raise ValueError(f"codec input exceeds {maximum} bytes")
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -305,19 +359,36 @@ def _write_all(writer: Any, data: bytes | str) -> None:
         offset += written
 
 
-def dumps(value: object, *, format: str) -> bytes:
-    return _native._codec_encode(value, format)
+def dumps(
+    value: object,
+    *,
+    format: str,
+    indent: int | str | None | object = _DEFAULT_INDENT,
+) -> bytes:
+    return _native._codec_encode(value, format, _indent_code(indent))
 
 
-def dump(value: object, destination: Destination, *, format: str) -> None:
-    """Encode directly to a path or caller-owned text/binary writer."""
+def dump(
+    value: object,
+    destination: Destination | None = None,
+    *,
+    format: str,
+    utf8: bool = False,
+    indent: int | str | None | object = _DEFAULT_INDENT,
+) -> bytes | str | None:
+    """Return encoded content, or write it when a destination is supplied."""
+
+    if destination is None:
+        encoded = dumps(value, format=format, indent=indent)
+        return encoded.decode("utf-8") if utf8 else encoded
 
     if isinstance(destination, (str, os.PathLike)):
-        _native._codec_encode_path(value, destination, format)
-        return
+        _native._codec_encode_path(value, destination, format, _indent_code(indent))
+        return None
     if getattr(destination, "write", None) is None:
         raise TypeError("destination must be a path or writable file object")
-    _native._codec_encode_writer(value, destination, format)
+    _native._codec_encode_writer(value, destination, format, _indent_code(indent))
+    return None
 
 
 def loads(
@@ -325,14 +396,25 @@ def loads(
     *,
     format: str,
     cls: type[_T] | None = None,
+    field: object | None = None,
     safe: bool = True,
     errors: ErrorPolicy = "raise",
     placeholders: Mapping[str, Any] | None = None,
     environment: bool = False,
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+    max_documents: int | None = None,
 ) -> _T | Any:
     _check_decode_options(cls, safe, errors)
     decoded = _decode_source(
-        source, format, placeholders=placeholders, environment=environment
+        source,
+        format,
+        placeholders=placeholders,
+        environment=environment,
+        field=_decode_field(field),
+        native_value=cls is _native.Value,
+        limits=_limit_values(max_depth, max_input_bytes, max_nodes, max_documents),
     )
     return _materialize_decoded(decoded, cls, safe=safe, errors=errors)
 
@@ -343,37 +425,51 @@ def _decode_source(
     *,
     placeholders: Mapping[str, Any] | None = None,
     environment: bool = False,
+    field: object | None = None,
+    native_value: bool = False,
+    limits: tuple[int | None, int | None, int | None, int | None] = (
+        None,
+        None,
+        None,
+        None,
+    ),
 ) -> Any:
     # Both switches travel to the core untouched: `placeholders=None` with
     # `environment=False` is the plain parse, and nothing here decides for the
     # caller which of the two they meant.
     filling = (placeholders, environment)
     if isinstance(source, (bytes, bytearray, memoryview)):
-        return _native._codec_decode(source, format, *filling)
+        return _native._codec_decode(
+            source, format, *filling, field, native_value, *limits
+        )
     if isinstance(source, os.PathLike):
         with open(source, "rb") as stream:
-            return _native._codec_decode_reader(stream, format, *filling)
+            return _native._codec_decode_reader(
+                stream, format, *filling, field, native_value, *limits
+            )
     if isinstance(source, str):
-        if _is_file(source):
-            with open(source, "rb") as stream:
-                return _native._codec_decode_reader(stream, format, *filling)
-        return _native._codec_decode_text(source, format, *filling)
+        return _native._codec_decode_text(
+            source, format, *filling, field, native_value, *limits
+        )
     if getattr(source, "read", None) is None:
         raise TypeError(
             "source must be bytes-like, str, PathLike, or a readable file object"
         )
-    return _native._codec_decode_reader(source, format, *filling)
+    return _native._codec_decode_reader(
+        source, format, *filling, field, native_value, *limits
+    )
 
 
 def dumps_all(
     values: Iterable[object],
     *,
     format: str,
+    indent: int | str | None | object = _DEFAULT_INDENT,
 ) -> bytes:
     selected = _normalize_format(format)
     if selected == "toml":
         raise ValueError("TOML supports exactly one document; use dumps()")
-    return _native._codec_encode_all(values, selected)
+    return _native._codec_encode_all(values, selected, _indent_code(indent))
 
 
 def loads_all(
@@ -381,14 +477,25 @@ def loads_all(
     *,
     format: str,
     cls: type[_T] | None = None,
+    field: object | None = None,
     safe: bool = True,
     errors: ErrorPolicy = "raise",
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+    max_documents: int | None = None,
 ) -> Iterator[_T | Any]:
     selected = _normalize_format(format)
     if selected == "toml":
         raise ValueError("TOML supports exactly one document; use loads()")
     _check_decode_options(cls, safe, errors)
-    decoded = _decode_all_source(source, selected)
+    decoded = _decode_all_source(
+        source,
+        selected,
+        _decode_field(field),
+        native_value=cls is _native.Value,
+        limits=_limit_values(max_depth, max_input_bytes, max_nodes, max_documents),
+    )
 
     def materialize() -> Iterator[_T | Any]:
         for value in decoded:
@@ -397,22 +504,43 @@ def loads_all(
     return materialize()
 
 
-def _decode_all_source(source: Source, format: str) -> list[Any]:
+def _decode_all_source(
+    source: Source,
+    format: str,
+    field: object | None,
+    *,
+    native_value: bool = False,
+    limits: tuple[int | None, int | None, int | None, int | None] = (
+        None,
+        None,
+        None,
+        None,
+    ),
+) -> list[Any]:
     if isinstance(source, (bytes, bytearray, memoryview)):
-        return _native._codec_decode_all(source, format)
+        return _native._codec_decode_all(source, format, field, native_value, *limits)
     if isinstance(source, os.PathLike):
         with open(source, "rb") as stream:
-            return _native._codec_decode_all_reader(stream, format)
+            return _native._codec_decode_all_reader(
+                stream, format, field, native_value, *limits
+            )
     if isinstance(source, str):
-        if _is_file(source):
-            with open(source, "rb") as stream:
-                return _native._codec_decode_all_reader(stream, format)
-        return _native._codec_decode_all_text(source, format)
+        return _native._codec_decode_all_text(
+            source, format, field, native_value, *limits
+        )
     if getattr(source, "read", None) is None:
         raise TypeError(
             "source must be bytes-like, str, PathLike, or a readable file object"
         )
-    return _native._codec_decode_all_reader(source, format)
+    return _native._codec_decode_all_reader(
+        source, format, field, native_value, *limits
+    )
+
+
+def _decode_field(field: object | None) -> object | None:
+    """Keep core field parsing explicit; ``cls`` retains wrapper casting."""
+
+    return field
 
 
 def _materialize_decoded(
@@ -426,12 +554,17 @@ def _materialize_decoded(
 
     if cls is None:
         return decoded
+    if cls is _native.Value:
+        # The core already built this exact value. Returning it directly keeps
+        # narrow floats, integers, temporal layouts, and geospatial bytes from
+        # taking a lossy round trip through Python's natural types.
+        return cast(_T, decoded)
     if dataclasses.is_dataclass(cls):
         if not isinstance(decoded, Mapping):
             raise TypeError(
                 f"decoded data for {cls.__module__}.{cls.__qualname__} must be a mapping"
             )
-        from .records import from_dict
+        from .fields._classes import from_dict
 
         return from_dict(cls, decoded, safe=safe, errors=errors)
     return cast(Callable[[Any], _T], cls)(decoded)
@@ -455,8 +588,13 @@ def load_all_stream(
     *,
     format: str,
     cls: type[_T] | None = None,
+    field: object | None = None,
     safe: bool = True,
     errors: ErrorPolicy = "raise",
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+    max_documents: int | None = None,
 ) -> Iterator[_T | Any]:
     """Lazily frame and decode documents from a path or readable stream."""
 
@@ -468,26 +606,53 @@ def load_all_stream(
             source,
             format=selected,
             cls=cls,
+            field=field,
             safe=safe,
             errors=errors,
+            max_depth=max_depth,
+            max_input_bytes=max_input_bytes,
+            max_nodes=max_nodes,
+            max_documents=max_documents,
         )
 
     def values() -> Iterator[_T | Any]:
         if isinstance(source, (str, os.PathLike)):
             with open(source, "rb") as stream:
-                yield from _decode_framed(
-                    stream, selected, cls=cls, safe=safe, errors=errors
+                yield from _decode_stream(
+                    stream,
+                    selected,
+                    cls=cls,
+                    field=field,
+                    safe=safe,
+                    errors=errors,
+                    max_depth=max_depth,
+                    max_input_bytes=max_input_bytes,
+                    max_nodes=max_nodes,
+                    max_documents=max_documents,
                 )
         else:
-            yield from _decode_framed(
-                source, selected, cls=cls, safe=safe, errors=errors
+            yield from _decode_stream(
+                source,
+                selected,
+                cls=cls,
+                field=field,
+                safe=safe,
+                errors=errors,
+                max_depth=max_depth,
+                max_input_bytes=max_input_bytes,
+                max_nodes=max_nodes,
+                max_documents=max_documents,
             )
 
     return values()
 
 
 def dump_all_stream(
-    values: Iterable[object], destination: Destination, *, format: str
+    values: Iterable[object],
+    destination: Destination,
+    *,
+    format: str,
+    indent: int | str | None | object = _DEFAULT_INDENT,
 ) -> None:
     """Encode and write one stream item at a time."""
 
@@ -497,293 +662,55 @@ def dump_all_stream(
 
     if isinstance(destination, (str, os.PathLike)):
         with open(destination, "wb") as stream:
-            _native._codec_encode_all_writer(values, stream, selected)
+            _native._codec_encode_all_writer(
+                values, stream, selected, _indent_code(indent)
+            )
         return
     if getattr(destination, "write", None) is None:
         raise TypeError("destination must be a path or writable file object")
-    _native._codec_encode_all_writer(values, destination, selected)
-
-
-def _is_content_source(source: object) -> bool:
-    return isinstance(source, (bytes, bytearray, memoryview)) or (
-        isinstance(source, str) and not _is_file(source)
+    _native._codec_encode_all_writer(
+        values, destination, selected, _indent_code(indent)
     )
 
 
-def _decode_framed(
+def _is_content_source(source: object) -> bool:
+    return isinstance(source, (str, bytes, bytearray, memoryview))
+
+
+def _decode_stream(
     stream: object,
     format: Format,
     *,
     cls: type[_T] | None,
+    field: object | None,
     safe: bool,
     errors: ErrorPolicy,
+    max_depth: int | None,
+    max_input_bytes: int | None,
+    max_nodes: int | None,
+    max_documents: int | None,
 ) -> Iterator[_T | Any]:
+    """Adapt Python reads and targets around the core's lazy decoder."""
+
     _check_decode_options(cls, safe, errors)
-    reader = (
-        getattr(stream, "read", None)
-        if format == "yaml"
-        else getattr(stream, "readline", None)
+    # The native iterator still owns cumulative accounting across chunks and
+    # documents; these are its explicit Python stream defaults.
+    limits = _limit_values(
+        max_depth,
+        _MAX_STREAM_BYTES if max_input_bytes is None else max_input_bytes,
+        max_nodes,
+        _MAX_STREAM_DOCUMENTS if max_documents is None else max_documents,
     )
-    if format == "yaml" and not callable(reader):
-        reader = getattr(stream, "readline", None)
-    if not callable(reader):
-        decoded_values = _native._codec_decode_all(
-            read_bytes(cast(Source, stream)), format
+    for decoded_value in _native._codec_decode_iter(
+        stream,
+        format,
+        *limits,
+        _decode_field(field),
+        cls is _native.Value,
+    ):
+        yield _materialize_decoded(
+            decoded_value, cls, safe=safe, errors=errors
         )
-        for value in decoded_values:
-            yield _materialize_decoded(value, cls, safe=safe, errors=errors)
-        return
-    chunks: Iterable[tuple[int, bytes]]
-    if format == "yaml":
-        chunks = _yaml_documents(reader)
-    else:
-        chunks = _json_lines(reader)
-    for index, (source_offset, chunk) in enumerate(chunks, 1):
-        if not chunk:
-            break
-        parse_format = "yaml" if format == "yaml" else "json"
-        try:
-            decoded_value = _native._codec_decode(chunk, parse_format)
-            yield _materialize_decoded(
-                decoded_value, cls, safe=safe, errors=errors
-            )
-        except (TypeError, ValueError, OverflowError) as error:
-            label = (
-                "YAML document"
-                if format == "yaml"
-                else "JSON Lines document"
-            )
-            message = _offset_stream_error(str(error), source_offset)
-            raise type(error)(f"{label} {index}: {message}") from error
-
-
-_BYTE_POSITION = re.compile(r"\bat byte (\d+)")
-
-
-def _offset_stream_error(message: str, source_offset: int) -> str:
-    """Map a framed parser byte position back to the original stream."""
-
-    match = _BYTE_POSITION.search(message)
-    if match is None:
-        return message
-    local_offset = int(match.group(1))
-    return (
-        message[: match.start()]
-        + f"at byte {source_offset + local_offset} (document byte {local_offset})"
-        + message[match.end() :]
-    )
-
-
-def _yaml_documents(reader: Any) -> Iterator[tuple[int, bytes]]:
-    current = bytearray()
-    current_start = 0
-    has_data = False
-    document_started = False
-    explicit_start = False
-    total = 0
-    documents = 0
-    for line in _yaml_lines(reader):
-        line_start = total
-        total += len(line)
-        start_marker = _is_yaml_start(line)
-        end_marker = _is_yaml_end(line)
-        if start_marker and (has_data or explicit_start):
-            documents += 1
-            if documents > _MAX_STREAM_DOCUMENTS:
-                raise ValueError(
-                    f"YAML stream exceeds {_MAX_STREAM_DOCUMENTS} documents"
-                )
-            # Parsing the frame at artificial EOF changes empty clip/keep
-            # block scalars (`|`, `>`, `|+`, `>+`). Supply the same document
-            # boundary context as the following source marker without adding
-            # those synthetic bytes to source offsets.
-            current.extend(b"...")
-            framed = bytes(current)
-            del current[-3:]
-            yield current_start, framed
-            current.clear()
-            current_start = line_start
-            has_data = False
-            document_started = False
-            explicit_start = False
-        current.extend(line)
-        stripped = line.strip(b" \t\r\n")
-        if start_marker or stripped.startswith(b"%"):
-            document_started = True
-        if start_marker:
-            explicit_start = True
-        if (
-            stripped
-            and not stripped.startswith((b"#", b"%"))
-            and not start_marker
-            and not end_marker
-        ):
-            has_data = True
-            document_started = True
-        if end_marker and document_started:
-            documents += 1
-            if documents > _MAX_STREAM_DOCUMENTS:
-                raise ValueError(
-                    f"YAML stream exceeds {_MAX_STREAM_DOCUMENTS} documents"
-                )
-            yield current_start, bytes(current)
-            current.clear()
-            current_start = total
-            has_data = False
-            document_started = False
-            explicit_start = False
-    if current and document_started:
-        documents += 1
-        if documents > _MAX_STREAM_DOCUMENTS:
-            raise ValueError(
-                f"YAML stream exceeds {_MAX_STREAM_DOCUMENTS} documents"
-            )
-        yield current_start, bytes(current)
-
-
-def _yaml_lines(reader: Any) -> Iterator[bytes]:
-    """Yield YAML lines for LF, CRLF, and lone-CR byte streams."""
-
-    pending = bytearray()
-    line_start = 0
-    search_start = 0
-    total = 0
-    while True:
-        carriage = pending.find(b"\r", search_start)
-        newline = pending.find(b"\n", search_start)
-        boundary = (
-            newline
-            if carriage < 0
-            else carriage
-            if newline < 0
-            else min(carriage, newline)
-        )
-        if boundary >= 0:
-            boundary += 1
-            yield bytes(pending[line_start:boundary])
-            line_start = boundary
-            search_start = boundary
-            continue
-
-        if line_start:
-            del pending[:line_start]
-            line_start = 0
-        search_start = len(pending)
-
-        capacity = min(8 * 1024, _MAX_STREAM_BYTES - total + 1)
-        try:
-            value = reader(max(1, capacity))
-        except TypeError as error:
-            raise TypeError(
-                "file read() must accept a finite size argument"
-            ) from error
-        chunk = _line_bytes(value)
-        returned = len(value) if isinstance(value, str) else len(chunk)
-        if returned > capacity:
-            unit = "characters" if isinstance(value, str) else "data"
-            raise OSError(
-                f"file read() returned more {unit} than requested"
-            )
-        if not chunk:
-            if pending:
-                yield bytes(pending)
-            return
-        total += len(chunk)
-        if total > _MAX_STREAM_BYTES:
-            raise ValueError(
-                f"YAML stream exceeds {_MAX_STREAM_BYTES} bytes at byte {total}"
-            )
-        pending.extend(chunk)
-
-
-def _json_lines(reader: Any) -> Iterator[tuple[int, bytes]]:
-    total = 0
-    documents = 0
-    while True:
-        line_start = total
-        line = _readline_bounded(reader, _MAX_STREAM_BYTES - total)
-        if not line:
-            return
-        total += len(line)
-        if total > _MAX_STREAM_BYTES:
-            raise ValueError(
-                f"JSON Lines stream exceeds {_MAX_STREAM_BYTES} bytes at byte {total}"
-            )
-        if not _is_json_whitespace(line):
-            documents += 1
-            if documents > _MAX_STREAM_DOCUMENTS:
-                raise ValueError(
-                    f"JSON Lines stream exceeds {_MAX_STREAM_DOCUMENTS} documents"
-                )
-            yield line_start, line
-
-
-def _is_json_whitespace(value: bytes) -> bool:
-    """Recognize only the four whitespace bytes permitted by JSON."""
-
-    for byte in value:
-        if byte not in (0x09, 0x0A, 0x0D, 0x20):
-            return False
-    return True
-
-
-def _line_bytes(value: object) -> bytes:
-    if not value:
-        return b""
-    if isinstance(value, str):
-        return value.encode("utf-8")
-    if isinstance(value, bytes):
-        return value
-    if isinstance(value, (bytearray, memoryview)):
-        return bytes(value)
-    raise TypeError("file readline() must return str or bytes-like data")
-
-
-def _readline_bounded(reader: Any, remaining: int) -> bytes:
-    """Read one logical line from readers that may return short fragments."""
-
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        try:
-            value = reader(max(1, remaining - total + 1))
-        except TypeError as error:
-            raise TypeError(
-                "file readline() must accept a finite size argument"
-            ) from error
-        chunk = _line_bytes(value)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-        if total > remaining or chunk.endswith(b"\n"):
-            break
-    return b"".join(chunks)
-
-
-def _is_yaml_start(line: bytes) -> bool:
-    return _is_yaml_marker(line, b"---")
-
-
-def _is_yaml_end(line: bytes) -> bool:
-    return _is_yaml_marker(line, b"...")
-
-
-def _is_yaml_marker(line: bytes, marker: bytes) -> bool:
-    if line[:1] in (b" ", b"\t"):
-        return False
-    stripped = line.rstrip(b"\r\n")
-    if not stripped.startswith(marker):
-        return False
-    suffix = stripped[len(marker) :]
-    return not suffix or suffix[:1] in (b" ", b"\t")
-
-
-def _is_file(value: str) -> bool:
-    try:
-        return os.path.isfile(value)
-    except (OSError, ValueError):
-        return False
 
 
 __all__ = [

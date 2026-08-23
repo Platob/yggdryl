@@ -31,7 +31,7 @@ pub(crate) const fn per_second(unit: TimeUnit) -> Option<i64> {
         TimeUnit::Millisecond => Some(1_000),
         TimeUnit::Microsecond => Some(1_000_000),
         TimeUnit::Nanosecond => Some(1_000_000_000),
-        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => None,
+        TimeUnit::Day | TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => None,
     }
 }
 

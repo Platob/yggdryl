@@ -1,162 +1,196 @@
-//! The five temporals, spelled the same way in every language.
-//!
-//! A temporal is a count plus a unit, and for a timestamp a zone as well. Those
-//! parts used to live in a tagged payload - a name over a sequence - which meant
-//! nothing checked that a value tagged `timestamp` actually held a unit, and a
-//! reader had to parse the unit back out of a string on every access. They are
-//! now fields on the value, so a timestamp cannot be built without its unit and
-//! cannot be read without getting one - and a timestamp cannot be built
-//! without its zone, because the zoneless reading is its own kind,
-//! [`Value::DateTime`].
-//!
-//! Each variant carries exactly the shape the matching Arrow datatype carries,
-//! so a value converts to a column without a lookup table:
-//!
-//! | Variant | Payload | Arrow datatype |
-//! | --- | --- | --- |
-//! | [`Value::Timestamp`] | count of unit since the epoch, zone | `Timestamp(unit, Some(zone))` |
-//! | [`Value::DateTime`] | count of unit since the epoch, naive | `Timestamp(unit, None)` |
-//! | [`Value::Date`] | days since the epoch | `Date32` |
-//! | [`Value::Time`] | count of unit since midnight | `Time32`/`Time64(unit)` |
-//! | [`Value::Duration`] | elapsed count of unit | `Duration(unit)` |
+//! Width-accurate temporal values with explicit units and zones.
 //!
 //! ```
-//! use yggdryl::{TimeUnit, Value};
+//! use yggdryl::{TimeUnit, Timezone, Value};
 //!
-//! # fn main() -> yggdryl::Result<()> {
-//! let at = Value::timestamp(1_700_000_000_000_000, TimeUnit::Microsecond, Some("UTC"))?;
-//!
-//! let (count, unit, zone) = at.as_timestamp().expect("a canonical timestamp");
-//! assert_eq!(count, 1_700_000_000_000_000);
-//! assert_eq!(unit, TimeUnit::Microsecond);
-//! assert_eq!(zone, Some("UTC"));
-//!
-//! // One instant spelled two ways is one value.
-//! assert_eq!(Value::duration(1, TimeUnit::Second), Value::duration(1_000, TimeUnit::Millisecond));
-//! # Ok(())
-//! # }
+//! let day = Value::date32(20_000);
+//! let at = Value::datetime64(1, TimeUnit::Microsecond, Timezone::UTC)?;
+//! assert_eq!(day.as_date32().map(|parts| parts.1), Some(TimeUnit::Day));
+//! assert_eq!(at.temporal_timezone(), Some(&Timezone::UTC));
+//! # Ok::<(), yggdryl::Error>(())
 //! ```
 
 use super::value::Value;
-use crate::{DataType, Result, TimeUnit, Timezone};
+use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
 impl Value {
-    /// Build a timestamp: a count of `unit` since the Unix epoch.
-    ///
-    /// The count is always relative to UTC, as Arrow defines it; the zone says
-    /// how to display it. Passing no zone builds the naive wall-clock reading,
-    /// [`Value::DateTime`], because "no zone" is not a display detail of an
-    /// instant - it is a different kind of value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when `zone` is not a time zone name or a fixed offset.
-    pub fn timestamp(count: i64, unit: TimeUnit, zone: Option<&str>) -> Result<Self> {
-        match zone {
-            Some(zone) => Ok(Self::Timestamp(count, unit, Timezone::from_str(zone)?)),
-            None => Ok(Self::DateTime(count, unit)),
-        }
+    /// Build a Date32 day count.
+    pub const fn date32(days: i32) -> Self {
+        Self::Date32(days, TimeUnit::Day, Timezone::NAIVE)
     }
 
-    /// Build a timestamp from a zone that is already validated.
-    ///
-    /// An absent zone builds the naive [`Value::DateTime`].
-    pub fn timestamp_in(count: i64, unit: TimeUnit, zone: Option<Timezone>) -> Self {
-        match zone {
-            Some(zone) => Self::Timestamp(count, unit, zone),
-            None => Self::DateTime(count, unit),
-        }
+    /// Build a Date32 after validating its unit and zone.
+    pub fn date32_in(days: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(unit == TimeUnit::Day, "date32 unit must be day")?;
+        require(zone.is_naive(), "date32 timezone must be NAIVE")?;
+        Ok(Self::Date32(days, unit, zone))
     }
 
-    /// Build a naive wall-clock reading: a count of `unit` since the epoch,
-    /// in no zone at all.
-    pub const fn datetime(count: i64, unit: TimeUnit) -> Self {
-        Self::DateTime(count, unit)
+    /// Build a Date64 millisecond count.
+    pub const fn date64(milliseconds: i64) -> Self {
+        Self::Date64(milliseconds, TimeUnit::Millisecond, Timezone::NAIVE)
     }
 
-    /// Build a date: a count of days since the Unix epoch.
-    pub const fn date(days: i32) -> Self {
-        Self::Date(days)
+    /// Build a Date64 after validating its unit and zone.
+    pub fn date64_in(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(
+            unit == TimeUnit::Millisecond,
+            "date64 unit must be millisecond",
+        )?;
+        require(zone.is_naive(), "date64 timezone must be NAIVE")?;
+        Ok(Self::Date64(count, unit, zone))
     }
 
-    /// Build a time of day: a count of `unit` since midnight.
-    pub const fn time(count: i64, unit: TimeUnit) -> Self {
-        Self::Time(count, unit)
+    /// Build a 32-bit time of day.
+    pub fn time32(count: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(
+            matches!(unit, TimeUnit::Second | TimeUnit::Millisecond),
+            "time32 unit must be second or millisecond",
+        )?;
+        require(
+            zone.is_naive(),
+            "time32 timezone must be NAIVE because its datatype has no timezone",
+        )?;
+        Ok(Self::Time32(count, unit, zone))
     }
 
-    /// Build a duration: an elapsed count of `unit`.
-    pub const fn duration(count: i64, unit: TimeUnit) -> Self {
-        Self::Duration(count, unit)
+    /// Build a 64-bit time of day.
+    pub fn time64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(
+            matches!(unit, TimeUnit::Microsecond | TimeUnit::Nanosecond),
+            "time64 unit must be microsecond or nanosecond",
+        )?;
+        require(
+            zone.is_naive(),
+            "time64 timezone must be NAIVE because its datatype has no timezone",
+        )?;
+        Ok(Self::Time64(count, unit, zone))
     }
 
-    /// Read a zoned timestamp or a naive datetime as its count, unit, and
-    /// zone name - `None` for the naive reading.
-    ///
-    /// Both kinds answer, because a caller who asks this question is writing
-    /// into a timestamp column, and the column's own declaration says which
-    /// kind belongs in it.
-    pub fn as_timestamp(&self) -> Option<(i64, TimeUnit, Option<&str>)> {
+    /// Build a timestamp or wall-clock datetime at 64-bit width.
+    pub fn datetime64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(
+            unit.is_arrow_time(),
+            "datetime64 requires an Arrow time unit",
+        )?;
+        Ok(Self::DateTime64(count, unit, zone))
+    }
+
+    /// Parse a timezone and build a 64-bit datetime.
+    pub fn datetime64_in(count: i64, unit: TimeUnit, zone: &str) -> Result<Self> {
+        Self::datetime64(count, unit, Timezone::from_str(zone)?)
+    }
+
+    /// Build a 32-bit duration.
+    pub fn duration32(count: i32, unit: TimeUnit) -> Result<Self> {
+        Self::duration32_in(count, unit, Timezone::NAIVE)
+    }
+
+    /// Build a 32-bit duration after validating its explicit timezone marker.
+    pub fn duration32_in(count: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(
+            unit.is_temporal(),
+            "duration32 requires a fixed temporal unit",
+        )?;
+        require(zone.is_naive(), "duration32 timezone must be NAIVE")?;
+        Ok(Self::Duration32(count, unit, zone))
+    }
+
+    /// Build a 64-bit duration.
+    pub fn duration64(count: i64, unit: TimeUnit) -> Result<Self> {
+        Self::duration64_in(count, unit, Timezone::NAIVE)
+    }
+
+    /// Build a 64-bit duration after validating its explicit timezone marker.
+    pub fn duration64_in(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
+        require(
+            unit.is_temporal(),
+            "duration64 requires a fixed temporal unit",
+        )?;
+        require(zone.is_naive(), "duration64 timezone must be NAIVE")?;
+        Ok(Self::Duration64(count, unit, zone))
+    }
+
+    /// Return Date32's count, unit, and zone.
+    pub const fn as_date32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
         match self {
-            Self::Timestamp(count, unit, zone) => Some((*count, *unit, Some(zone.as_str()))),
-            Self::DateTime(count, unit) => Some((*count, *unit, None)),
+            Self::Date32(count, unit, zone) => Some((*count, *unit, zone)),
             _ => None,
         }
     }
 
-    /// Read a zoned timestamp or a naive datetime as its count, unit, and
-    /// validated zone - `None` for the naive reading.
-    pub const fn as_timestamp_in(&self) -> Option<(i64, TimeUnit, Option<&Timezone>)> {
+    /// Return Date64's count, unit, and zone.
+    pub const fn as_date64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Timestamp(count, unit, zone) => Some((*count, *unit, Some(zone))),
-            Self::DateTime(count, unit) => Some((*count, *unit, None)),
+            Self::Date64(count, unit, zone) => Some((*count, *unit, zone)),
             _ => None,
         }
     }
 
-    /// Read a naive wall-clock reading as its count and unit.
-    pub const fn as_datetime(&self) -> Option<(i64, TimeUnit)> {
+    /// Return Time32's count, unit, and zone.
+    pub const fn as_time32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
         match self {
-            Self::DateTime(count, unit) => Some((*count, *unit)),
+            Self::Time32(count, unit, zone) => Some((*count, *unit, zone)),
             _ => None,
         }
     }
 
-    /// Read a date as its day count since the Unix epoch.
-    pub const fn as_date(&self) -> Option<i32> {
+    /// Return Time64's count, unit, and zone.
+    pub const fn as_time64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Date(days) => Some(*days),
+            Self::Time64(count, unit, zone) => Some((*count, *unit, zone)),
             _ => None,
         }
     }
 
-    /// Read a time of day as its count and unit.
-    pub const fn as_time(&self) -> Option<(i64, TimeUnit)> {
+    /// Return DateTime64's count, unit, and zone.
+    pub const fn as_datetime64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Time(count, unit) => Some((*count, *unit)),
+            Self::DateTime64(count, unit, zone) => Some((*count, *unit, zone)),
             _ => None,
         }
     }
 
-    /// Read a duration as its count and unit.
-    pub const fn as_duration(&self) -> Option<(i64, TimeUnit)> {
+    /// Return Duration32's count, unit, and zone.
+    pub const fn as_duration32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
         match self {
-            Self::Duration(count, unit) => Some((*count, *unit)),
+            Self::Duration32(count, unit, zone) => Some((*count, *unit, zone)),
             _ => None,
         }
     }
 
-    /// Return this temporal's count restated in `unit`, when it is exact.
-    ///
-    /// A column declares its own resolution, so a temporal written into one has
-    /// to be restated at that resolution. Restating a nanosecond count as
-    /// seconds would drop digits, so it answers `None` rather than truncating.
-    /// A date carries no unit and answers `None`.
+    /// Return Duration64's count, unit, and zone.
+    pub const fn as_duration64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
+        match self {
+            Self::Duration64(count, unit, zone) => Some((*count, *unit, zone)),
+            _ => None,
+        }
+    }
+
+    /// Return the non-optional timezone carried by any temporal.
+    pub const fn temporal_timezone(&self) -> Option<&Timezone> {
+        match self {
+            Self::Date32(_, _, zone)
+            | Self::Date64(_, _, zone)
+            | Self::Time32(_, _, zone)
+            | Self::Time64(_, _, zone)
+            | Self::DateTime64(_, _, zone)
+            | Self::Duration32(_, _, zone)
+            | Self::Duration64(_, _, zone) => Some(zone),
+            _ => None,
+        }
+    }
+
+    /// Return this temporal's count restated in `unit`, when exact.
     pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64> {
         let (count, current) = match self {
-            Self::Timestamp(count, current, _)
-            | Self::DateTime(count, current)
-            | Self::Time(count, current)
-            | Self::Duration(count, current) => (*count, *current),
+            Self::Date32(count, current, _)
+            | Self::Time32(count, current, _)
+            | Self::Duration32(count, current, _) => (i64::from(*count), *current),
+            Self::Date64(count, current, _)
+            | Self::Time64(count, current, _)
+            | Self::DateTime64(count, current, _)
+            | Self::Duration64(count, current, _) => (*count, *current),
             _ => return None,
         };
         if current == unit {
@@ -169,36 +203,40 @@ impl Value {
             .flatten()
     }
 
-    /// Return whether this value is any of the five temporals.
+    /// Return whether this is a temporal value.
     pub const fn is_temporal(&self) -> bool {
         matches!(
             self,
-            Self::Timestamp(..)
-                | Self::DateTime(..)
-                | Self::Date(_)
-                | Self::Time(..)
-                | Self::Duration(..)
+            Self::Date32(..)
+                | Self::Date64(..)
+                | Self::Time32(..)
+                | Self::Time64(..)
+                | Self::DateTime64(..)
+                | Self::Duration32(..)
+                | Self::Duration64(..)
         )
     }
 
-    /// Return the datatype a temporal materializes into.
-    ///
-    /// This is [`Value::data_type`] narrowed to the temporals: it answers
-    /// `None` for every other kind rather than describing it.
+    /// Return the datatype this temporal materializes into.
     pub fn temporal_data_type(&self) -> Option<DataType> {
-        if !self.is_temporal() {
-            return None;
-        }
-        self.data_type().ok()
+        self.is_temporal().then(|| self.data_type().ok()).flatten()
     }
 }
 
-/// The nanoseconds one resolution unit is worth.
-///
-/// A calendar interval layout answers `None`, because a month is not a fixed
-/// number of nanoseconds and pretending otherwise is how a date silently moves.
+fn require(valid: bool, reason: &'static str) -> Result<()> {
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::InvalidRecord {
+            path: "$".into(),
+            reason: reason.into(),
+        })
+    }
+}
+
 const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
     match unit {
+        TimeUnit::Day => Some(86_400_000_000_000),
         TimeUnit::Second => Some(1_000_000_000),
         TimeUnit::Millisecond => Some(1_000_000),
         TimeUnit::Microsecond => Some(1_000),
@@ -207,18 +245,10 @@ const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
     }
 }
 
-/// The sort key one count and unit reduce to.
-///
-/// A resolution unit reduces to a nanosecond count, so a duration of one second
-/// and a duration of a thousand milliseconds are one value rather than two
-/// spellings that sort apart. A count of nanoseconds is at most `i64::MAX`
-/// nanoseconds, so the widest product here is nine thousand times smaller than
-/// `i128::MAX` and cannot overflow. An interval layout has no fixed nanosecond
-/// width - a month is not a number of seconds - so it keeps its own bucket
-/// instead of being given one it does not have.
 pub(super) fn temporal_key(count: i64, unit: TimeUnit) -> (u8, i128) {
     let count = i128::from(count);
     match unit {
+        TimeUnit::Day => (0, count * 86_400_000_000_000),
         TimeUnit::Second => (0, count * 1_000_000_000),
         TimeUnit::Millisecond => (0, count * 1_000_000),
         TimeUnit::Microsecond => (0, count * 1_000),
@@ -230,4 +260,44 @@ pub(super) fn temporal_key(count: i64, unit: TimeUnit) -> (u8, i128) {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructors_reject_illegal_width_unit_combinations() {
+        assert!(Value::time32(1, TimeUnit::Microsecond, Timezone::NAIVE).is_err());
+        assert!(Value::time64(1, TimeUnit::Millisecond, Timezone::NAIVE).is_err());
+        assert!(Value::duration32(1, TimeUnit::DayTime).is_err());
+        assert!(Value::duration64(1, TimeUnit::DayTime).is_err());
+        assert!(Value::duration32_in(1, TimeUnit::Second, Timezone::UTC).is_err());
+        assert!(Value::duration64_in(1, TimeUnit::Second, Timezone::UTC).is_err());
+        assert!(Value::date32_in(1, TimeUnit::DayTime, Timezone::NAIVE).is_err());
+        assert!(Value::date64_in(1, TimeUnit::Second, Timezone::NAIVE).is_err());
+    }
+
+    #[test]
+    fn time_of_day_refuses_a_zone_its_datatype_would_lose() {
+        for error in [
+            Value::time32(1, TimeUnit::Second, Timezone::UTC).unwrap_err(),
+            Value::time64(1, TimeUnit::Microsecond, Timezone::UTC).unwrap_err(),
+        ] {
+            let message = error.to_string();
+            assert!(message.contains("timezone"), "{message}");
+            assert!(message.contains("no timezone"), "{message}");
+        }
+    }
+
+    #[test]
+    fn every_temporal_carries_a_zone() {
+        let values = [
+            Value::date32(1),
+            Value::date64(86_400_000),
+            Value::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Value::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+            Value::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+            Value::duration32(1, TimeUnit::Millisecond).unwrap(),
+            Value::duration64(1, TimeUnit::Microsecond).unwrap(),
+        ];
+        assert!(values.iter().all(Value::is_temporal));
+    }
+}

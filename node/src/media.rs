@@ -305,6 +305,12 @@ impl JsMimeType {
         self.inner.is_tabular()
     }
 
+    /// Whether this MIME value can describe an I/O value.
+    #[napi]
+    pub fn is_io(&self) -> bool {
+        self.inner.is_io()
+    }
+
     /// Whether this MIME value denotes a transparent encoding.
     #[napi]
     pub fn is_encoding(&self) -> bool {
@@ -348,14 +354,14 @@ impl JsMimeType {
     }
 
     /// Canonical MIME syntax.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }
@@ -645,6 +651,12 @@ impl JsMediaType {
         self.inner.is_tabular()
     }
 
+    /// Whether the base MIME value can describe an I/O value.
+    #[napi]
+    pub fn is_io(&self) -> bool {
+        self.inner.is_io()
+    }
+
     /// Whether the base MIME value itself denotes an encoding.
     #[napi]
     pub fn is_encoding(&self) -> bool {
@@ -688,14 +700,14 @@ impl JsMediaType {
     }
 
     /// Canonical media syntax.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }

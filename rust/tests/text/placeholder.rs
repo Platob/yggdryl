@@ -22,7 +22,7 @@ fn resolved(scalar: &str, placeholders: Placeholders) -> Vec<yggdryl::Result<Val
     documents(scalar)
         .into_iter()
         .map(|(format, document)| {
-            text::from_str_with(&document, format, &loading)
+            text::from_utf8_with(&document, format, &loading)
                 .map(|value| value.get_key_str("value").cloned().unwrap_or(Value::Null))
         })
         .collect()
@@ -67,7 +67,7 @@ fn an_embedded_placeholder_substitutes_textually_and_stays_a_string() {
     let placeholders = Placeholders::new()
         .with_variable("ROOT", Value::from("/var/log"))
         .with_variable("PORT", Value::I64(8080))
-        .with_variable("PRICE", Value::decimal(150, 2));
+        .with_variable("PRICE", Value::d128(150, 2));
 
     for value in resolved("{{ ROOT }}/app", placeholders.clone()) {
         assert_eq!(value.unwrap(), Value::from("/var/log/app"));
@@ -140,7 +140,7 @@ fn a_missing_variable_is_a_typed_error_naming_it_and_its_position() {
     }
     // And the path names which value in the document failed.
     let loading = Loading::new().with_placeholders(Placeholders::new());
-    let refused = text::from_str_with(
+    let refused = text::from_utf8_with(
         "server:\n  hosts:\n    - ok\n    - \"{{ MISSING }}\"\n",
         Format::Yaml,
         &loading,
@@ -216,7 +216,7 @@ fn placeholders_reach_keys_nested_structures_and_toml_tables() {
     let loading = Loading::new().with_placeholders(placeholders);
 
     // A key is substituted exactly as a value is.
-    let yaml = text::from_str_with(
+    let yaml = text::from_utf8_with(
         "\"{{ SECTION }}\":\n  host: \"{{ HOST }}\"\n  ports:\n    - \"{{ PORT }}\"\n    - 1\n",
         Format::Yaml,
         &loading,
@@ -233,7 +233,7 @@ fn placeholders_reach_keys_nested_structures_and_toml_tables() {
     );
 
     // A TOML table, with the placeholder inside its own values.
-    let table = text::from_str_with(
+    let table = text::from_utf8_with(
         "[database]\nhost = \"{{ HOST }}\"\nport = \"{{ PORT }}\"\n",
         Format::Toml,
         &loading,
@@ -288,13 +288,13 @@ fn a_document_without_placeholders_parses_identically_either_way() {
         (Format::Toml, "a = \"plain\"\nb = [1, 2]\n[c]\n"),
     ] {
         assert_eq!(
-            text::from_str_with(document, format, &on).unwrap(),
-            text::from_str_with(document, format, &off).unwrap(),
+            text::from_utf8_with(document, format, &on).unwrap(),
+            text::from_utf8_with(document, format, &off).unwrap(),
         );
         // And a scalar that merely *mentions* a brace is not a placeholder.
         assert_eq!(
-            text::from_str_with("a: \"a { b } c\"\n", Format::Yaml, &on).unwrap(),
-            text::from_str_with("a: \"a { b } c\"\n", Format::Yaml, &off).unwrap(),
+            text::from_utf8_with("a: \"a { b } c\"\n", Format::Yaml, &on).unwrap(),
+            text::from_utf8_with("a: \"a { b } c\"\n", Format::Yaml, &off).unwrap(),
         );
     }
 }
@@ -307,8 +307,8 @@ fn every_entry_point_carries_the_same_loading() {
     let document = "name: \"{{ NAME }}\"\n";
     let expected = Value::from("app");
 
-    let from_str = text::from_str_with(document, Format::Yaml, &loading).unwrap();
-    let from_slice = text::from_slice_with(document.as_bytes(), Format::Yaml, &loading).unwrap();
+    let from_str = text::from_utf8_with(document, Format::Yaml, &loading).unwrap();
+    let from_slice = text::from_bytes_with(document.as_bytes(), Format::Yaml, &loading).unwrap();
     let from_reader =
         text::from_reader_with(std::io::Cursor::new(document), Format::Yaml, &loading).unwrap();
     assert_eq!(from_str, from_slice);
@@ -325,14 +325,14 @@ fn every_entry_point_carries_the_same_loading() {
     handle
         .write_all_bytes(&yggdryl::gzip::dump(document.as_bytes()).unwrap())
         .unwrap();
-    let loaded = text::load_with(&handle, &loading).unwrap();
+    let loaded = text::from_io_with(&handle, &loading).unwrap();
     assert_eq!(loaded.get_key_str("name"), Some(&expected));
 
     // Dumping never re-introduces a placeholder: substitution is a load-time
     // transformation, so a round trip yields the resolved document.
     let mut target =
         Buffer::new().with_media_type(Url::from_str("file:///out.yaml").unwrap().media_type());
-    text::dump(&mut target, &loaded).unwrap();
+    text::into_io(&loaded, &mut target).unwrap();
     assert_eq!(target.read_all_bytes().unwrap(), b"name: app\n");
 }
 
@@ -342,13 +342,13 @@ fn an_unquoted_yaml_placeholder_is_what_yaml_says_it_is() {
         .with_placeholders(Placeholders::new().with_variable("PORT", Value::I64(8080)));
 
     // Quoted - the form the docs show - is a string scalar and resolves.
-    let quoted = text::from_str_with("port: \"{{ PORT }}\"\n", Format::Yaml, &loading).unwrap();
+    let quoted = text::from_utf8_with("port: \"{{ PORT }}\"\n", Format::Yaml, &loading).unwrap();
     assert_eq!(quoted.get_key_str("port"), Some(&Value::I64(8080)));
 
     // Unquoted, YAML has already read `{{ PORT }}` as a flow mapping whose one
     // key is itself a flow mapping - there is no string scalar to substitute
     // into, and nothing here changes the document's shape to invent one.
-    let bare = text::from_str_with("port: {{ PORT }}\n", Format::Yaml, &loading).unwrap();
+    let bare = text::from_utf8_with("port: {{ PORT }}\n", Format::Yaml, &loading).unwrap();
     let port = bare.get_key_str("port").expect("a value under `port`");
     assert!(
         port.as_mapping().is_some(),
@@ -366,7 +366,7 @@ fn json_refuses_placeholders_by_name() {
     // would be the worst way to learn about it.
     for document in [r#"{"name": "{{ NAME }}"}"#, r#"{"name": "plain"}"#] {
         for format in [Format::Json, Format::JsonLines] {
-            let refused = text::from_str_with(document, format, &loading)
+            let refused = text::from_utf8_with(document, format, &loading)
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("yaml, toml"), "{refused}");
@@ -374,6 +374,6 @@ fn json_refuses_placeholders_by_name() {
     }
 
     // Without placeholders, the same Loading reads JSON exactly as before.
-    let plain = text::from_str_with(r#"{"a": 1}"#, Format::Json, &Loading::new()).unwrap();
+    let plain = text::from_utf8_with(r#"{"a": 1}"#, Format::Json, &Loading::new()).unwrap();
     assert_eq!(plain.get_key_str("a"), Some(&Value::U64(1)));
 }

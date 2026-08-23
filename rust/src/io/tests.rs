@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 
 use super::{Buffer, IOBase};
 use crate::Codec;
-use crate::{MediaType, MimeType, Url};
+use crate::{Field, MediaType, MimeType, Url, Value};
 
 #[test]
 fn positional_writes_grow_and_zero_fill_the_gap() {
@@ -113,6 +113,49 @@ fn an_undeclared_media_type_is_inferred_from_content() {
     let opaque = Buffer::from_bytes(vec![0xAB, 0xCD, 0xEF]);
     assert_eq!(opaque.media_type().base(), &MimeType::OCTET_STREAM);
     assert!(Buffer::new().media_type().base() == &MimeType::OCTET_STREAM);
+}
+
+#[test]
+fn structured_values_follow_the_declared_format_and_content_coding() {
+    let expected =
+        Value::from_record([("quantity", Value::I64(2)), ("symbol", Value::from("AAPL"))]).unwrap();
+
+    for name in [
+        "trade.json",
+        "trade.json.gz",
+        "trade.json.zz",
+        "trade.json.zst",
+        "trade.yaml",
+        "trade.toml",
+    ] {
+        let media = Url::from_str(&format!("file:///{name}"))
+            .unwrap()
+            .media_type();
+        let mut handle = Buffer::new().with_media_type(media);
+        handle
+            .write_value(&expected)
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let actual = handle
+            .read_value(None)
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert_eq!(actual, expected, "{name}");
+    }
+}
+
+#[test]
+fn structured_value_fields_direct_parsing_and_casting() {
+    let media = Url::from_str("file:///trade.json").unwrap().media_type();
+    let source = Buffer::from_bytes(br#"{"quantity":2}"#.to_vec()).with_media_type(media);
+    let field = Field::from_str("trade: struct<quantity: int32 not null> not null").unwrap();
+    let expected = Value::from_sequence([Value::I64(2)]);
+
+    assert_eq!(source.read_value(Some(&field)).unwrap(), expected);
+
+    let invalid = Buffer::from_bytes(br#"{"quantity":"many"}"#.to_vec())
+        .with_media_type(Url::from_str("file:///trade.json").unwrap().media_type());
+    let message = invalid.read_value(Some(&field)).unwrap_err().to_string();
+    assert!(message.contains("quantity"), "{message}");
+    assert!(message.contains("int32"), "{message}");
 }
 
 #[test]
@@ -225,19 +268,116 @@ fn write_all_bytes_replaces_the_whole_value() {
     assert_eq!(buffer.size(), 5);
 }
 
-/// Any handle reads and writes Arrow batches through exactly three methods:
-/// one read, one write, one append. The encoding comes from the handle's own
-/// media type, and every one of the three takes or returns a batch reader.
+#[test]
+fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use crate::generic::Holder;
+    use crate::io::{IOMedia, Listing};
+    use crate::{IOKind, Result};
+
+    struct Probe {
+        bytes: Buffer,
+        opened: Arc<AtomicBool>,
+    }
+
+    impl IOMedia for Probe {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for Probe {
+        crate::delegate_iobase!(bytes: pread, pstream_bytes, pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, clear, remove);
+
+        fn open(&mut self) -> Result<()> {
+            self.opened.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn opened(&self) -> bool {
+            self.opened.load(Ordering::SeqCst)
+        }
+
+        fn close(&mut self) -> Result<()> {
+            self.opened.store(false, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn parent(&self) -> Option<Holder> {
+            Some(Holder::buffer(Buffer::from_bytes(b"parent".to_vec())))
+        }
+
+        fn child_by_path(&self, path: &str) -> Result<Holder> {
+            Ok(Holder::buffer(Buffer::from_bytes(path.as_bytes().to_vec())))
+        }
+
+        fn ls(&self, recursive: bool, include_private: bool) -> Listing {
+            let value = format!("{recursive}:{include_private}");
+            Listing::new(std::iter::once(Ok(Holder::buffer(Buffer::from_bytes(
+                value.into_bytes(),
+            )))))
+        }
+
+        fn kind(&self) -> IOKind {
+            IOKind::Directory
+        }
+    }
+
+    let state = Arc::new(AtomicBool::new(false));
+    let mut handle: Box<dyn IOBase> = Box::new(crate::io::Cursor::new(Probe {
+        bytes: Buffer::new(),
+        opened: Arc::clone(&state),
+    }));
+
+    assert_eq!(handle.kind(), IOKind::Directory);
+    assert!(handle.is_container());
+    assert_eq!(
+        handle.parent().unwrap().read_all_bytes().unwrap(),
+        b"parent"
+    );
+    assert_eq!(
+        handle
+            .child_by_path("nested/leaf")
+            .unwrap()
+            .read_all_bytes()
+            .unwrap(),
+        b"nested/leaf"
+    );
+    assert_eq!(
+        handle
+            .ls(true, true)
+            .next()
+            .unwrap()
+            .unwrap()
+            .read_all_bytes()
+            .unwrap(),
+        b"true:true"
+    );
+
+    handle.open().unwrap();
+    assert!(handle.opened());
+    assert!(state.load(Ordering::SeqCst));
+    handle.close().unwrap();
+    assert!(handle.closed());
+    assert!(!state.load(Ordering::SeqCst));
+}
+
+/// Any handle reads through one reader and writes through three explicit
+/// intents. Held record batches are zero-copy adapters over those primitives.
 #[cfg(feature = "arrow")]
 mod records {
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
+    use arrow_schema::{ArrowError, SchemaRef};
 
     use crate::arrow::BatchReader;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOBase};
-    use crate::{DataType, Field, MimeType, Url};
+    use crate::io::{ArrowWriteSession, Buffer, IOBase, IOMedia};
+    use crate::{DataType, Error, Field, MimeType, Url, Value, WriteMode};
 
     fn schema() -> Field {
         DataType::from_fields([
@@ -250,7 +390,7 @@ mod records {
 
     fn batch() -> RecordBatch {
         RecordBatch::try_new(
-            crate::arrow::schema_from_field(&schema()).unwrap(),
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
             vec![
                 Arc::new(Int64Array::from(vec![1, 2])),
                 Arc::new(StringArray::from(vec![Some("AAPL"), None])),
@@ -262,7 +402,7 @@ mod records {
     /// The batches a write takes: one reader over one two-row batch.
     fn reader() -> BatchReader {
         crate::arrow::batch_reader(
-            crate::arrow::schema_from_field(&schema()).unwrap(),
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
             [batch()],
         )
     }
@@ -278,10 +418,150 @@ mod records {
     /// The total row count a handle currently holds.
     fn rows(handle: &impl IOBase, options: &RecordOptions) -> usize {
         handle
-            .read_arrow_batch_reader(options)
+            .read_arrow_reader(options)
             .unwrap()
             .map(|batch| batch.unwrap().num_rows())
             .sum()
+    }
+
+    fn rows_batch(ids: &[i64]) -> RecordBatch {
+        RecordBatch::try_new(
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())),
+                Arc::new(StringArray::from(
+                    ids.iter().map(|_| Some("S")).collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .unwrap()
+    }
+
+    /// A byte handle that observes each complete encoded publication.
+    struct PublicationProbe {
+        handle: Buffer,
+        publications: Arc<AtomicUsize>,
+        source_pulls: Arc<AtomicUsize>,
+        pulls_when_published: Arc<Mutex<Vec<usize>>>,
+        destination_touches: Arc<AtomicUsize>,
+        fail_publication: Option<usize>,
+    }
+
+    impl PublicationProbe {
+        fn new(name: &str, source_pulls: Arc<AtomicUsize>) -> Self {
+            Self {
+                handle: handle(name),
+                publications: Arc::new(AtomicUsize::new(0)),
+                source_pulls,
+                pulls_when_published: Arc::new(Mutex::new(Vec::new())),
+                destination_touches: Arc::new(AtomicUsize::new(0)),
+                fail_publication: None,
+            }
+        }
+
+        fn reset_publications(&self) {
+            self.publications.store(0, Ordering::SeqCst);
+            self.pulls_when_published.lock().unwrap().clear();
+        }
+
+        fn fail_on_publication(&mut self, publication: usize) {
+            self.fail_publication = Some(publication);
+        }
+    }
+
+    impl crate::io::IOMedia for PublicationProbe {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for PublicationProbe {
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+            self.handle.pread(offset, buffer)
+        }
+
+        fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+            self.handle.pwrite(offset, bytes)
+        }
+
+        fn size(&self) -> u64 {
+            self.handle.size()
+        }
+
+        fn capacity(&self) -> u64 {
+            self.handle.capacity()
+        }
+
+        fn reserve(&mut self, capacity: u64) -> crate::Result<()> {
+            self.handle.reserve(capacity)
+        }
+
+        fn truncate(&mut self, size: u64) -> crate::Result<()> {
+            self.handle.truncate(size)
+        }
+
+        fn url(&self) -> Option<&Url> {
+            self.handle.url()
+        }
+
+        fn media_type(&self) -> &crate::MediaType {
+            self.handle.media_type()
+        }
+
+        fn set_media_type(&mut self, media_type: crate::MediaType) {
+            self.handle.set_media_type(media_type);
+        }
+
+        fn kind(&self) -> crate::IOKind {
+            self.destination_touches.fetch_add(1, Ordering::SeqCst);
+            crate::IOKind::Memory
+        }
+
+        fn write_all_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
+            let publication = self.publications.fetch_add(1, Ordering::SeqCst) + 1;
+            self.pulls_when_published
+                .lock()
+                .unwrap()
+                .push(self.source_pulls.load(Ordering::SeqCst));
+            if self.fail_publication == Some(publication) {
+                return Err(crate::Error::Io(std::io::Error::other(format!(
+                    "publication {publication} refused"
+                ))));
+            }
+            self.handle.write_all_bytes(bytes)
+        }
+    }
+
+    /// A fallible source whose exact pull frontier is observable.
+    struct CountedSource {
+        schema: SchemaRef,
+        batches: std::collections::VecDeque<std::result::Result<RecordBatch, ArrowError>>,
+        pulls: Arc<AtomicUsize>,
+    }
+
+    impl Iterator for CountedSource {
+        type Item = std::result::Result<RecordBatch, ArrowError>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let item = self.batches.pop_front()?;
+            self.pulls.fetch_add(1, Ordering::SeqCst);
+            Some(item)
+        }
+    }
+
+    impl RecordBatchReader for CountedSource {
+        fn schema(&self) -> SchemaRef {
+            Arc::clone(&self.schema)
+        }
+    }
+
+    fn counted_source(
+        pulls: Arc<AtomicUsize>,
+        batches: impl IntoIterator<Item = std::result::Result<RecordBatch, ArrowError>>,
+    ) -> BatchReader {
+        Box::new(CountedSource {
+            schema: crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            batches: batches.into_iter().collect(),
+            pulls,
+        })
     }
 
     #[test]
@@ -313,11 +593,11 @@ mod records {
             let options = handle
                 .record_options()
                 .unwrap()
-                .with_schema(schema())
+                .with_field(schema())
                 .with_safe(true);
 
             handle
-                .write_arrow_batch_reader(reader(), &options)
+                .overwrite_arrow_reader(reader(), &options)
                 .unwrap_or_else(|error| panic!("{name}: {error}"));
             assert_eq!(rows(&handle, &options), 2, "{name}");
             assert_eq!(
@@ -336,12 +616,12 @@ mod records {
         // The write path takes a reader and nothing else, so with nothing
         // declared and nothing stored the reader's own schema is what the
         // resource ends up holding.
-        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
 
         assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
         assert_eq!(
             handle
-                .read_arrow_batch_reader(&options)
+                .read_arrow_reader(&options)
                 .unwrap()
                 .schema()
                 .fields()
@@ -354,7 +634,7 @@ mod records {
     fn an_overwrite_keeps_the_schema_the_resource_already_stores() {
         let mut handle = handle("stable.arrows");
         let options = handle.record_options().unwrap();
-        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
 
         // The incoming rows declare `id` as text and drop `symbol` entirely. An
         // overwrite replaces rows, so the stored columns survive it and the
@@ -363,12 +643,12 @@ mod records {
             .unwrap()
             .required_field("row");
         let incoming = RecordBatch::try_new(
-            crate::arrow::schema_from_field(&loose).unwrap(),
+            crate::arrow::arrow_schema_from_field(&loose).unwrap(),
             vec![Arc::new(StringArray::from(vec!["7"]))],
         )
         .unwrap();
         handle
-            .write_arrow_batch_reader(
+            .overwrite_arrow_reader(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
                 &options,
             )
@@ -381,51 +661,1484 @@ mod records {
     #[test]
     fn a_missing_resource_reads_as_empty_rather_than_failing() {
         let handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-        let options = handle.record_options().unwrap().with_schema(schema());
+        let options = handle.record_options().unwrap().with_field(schema());
 
-        assert_eq!(handle.read_arrow_batch_reader(&options).unwrap().count(), 0);
+        assert_eq!(handle.read_arrow_reader(&options).unwrap().count(), 0);
         assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
     }
 
     #[test]
     fn appending_reads_adds_and_rewrites() {
         let mut handle = handle("append.arrows");
-        let options = handle.record_options().unwrap().with_schema(schema());
+        let options = handle.record_options().unwrap().with_field(schema());
 
         // Appending to nothing simply writes.
-        handle
-            .append_arrow_batch_reader(reader(), &options)
-            .unwrap();
+        handle.append_arrow_reader(reader(), &options).unwrap();
         assert_eq!(rows(&handle, &options), 2);
 
-        handle
-            .append_arrow_batch_reader(reader(), &options)
-            .unwrap();
+        handle.append_arrow_reader(reader(), &options).unwrap();
         assert_eq!(rows(&handle, &options), 4);
+    }
+
+    #[test]
+    fn commit_row_size_controls_exact_publication_counts() {
+        for (label, cadence, expected) in [
+            ("unset", None, 1),
+            ("one", Some(1), 4),
+            ("across-batches", Some(3), 2),
+            ("larger-than-stream", Some(10), 1),
+        ] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut handle = PublicationProbe::new(
+                &format!("commit-publications-{label}.arrows"),
+                Arc::clone(&pulls),
+            );
+            let mut options = handle.record_options().unwrap().with_field(schema());
+            options.set_commit_row_size(cadence);
+            let source = crate::arrow::batch_reader(
+                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                [rows_batch(&[1, 2]), rows_batch(&[3, 4])],
+            );
+
+            handle.overwrite_arrow_reader(source, &options).unwrap();
+
+            assert_eq!(
+                handle.publications.load(Ordering::SeqCst),
+                expected,
+                "{label}"
+            );
+            assert_eq!(rows(&handle, &options), 4, "{label}");
+        }
+    }
+
+    #[test]
+    fn every_write_intent_retains_its_intent_for_each_commit() {
+        for intent in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut handle = PublicationProbe::new(
+                &format!("commit-intent-{intent}.arrows"),
+                Arc::clone(&pulls),
+            );
+            let plain = handle.record_options().unwrap().with_field(schema());
+            handle
+                .overwrite_arrow_reader(
+                    crate::arrow::batch_reader(
+                        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                        [rows_batch(&[1, 2])],
+                    ),
+                    &plain,
+                )
+                .unwrap();
+            handle.reset_publications();
+
+            let options = plain.clone().with_commit_row_size(2);
+            let incoming = crate::arrow::batch_reader(
+                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                [rows_batch(&[1, 3, 4, 5])],
+            );
+            match intent {
+                "overwrite" => handle.overwrite_arrow_reader(incoming, &options).unwrap(),
+                "append" => handle.append_arrow_reader(incoming, &options).unwrap(),
+                "merge" => handle
+                    .merge_arrow_reader(incoming, &options.with_merge_by_names(["id"]))
+                    .unwrap(),
+                _ => unreachable!(),
+            }
+
+            assert_eq!(handle.publications.load(Ordering::SeqCst), 2, "{intent}");
+            let expected_rows = match intent {
+                "overwrite" => 4,
+                "append" => 6,
+                "merge" => 5,
+                _ => unreachable!(),
+            };
+            assert_eq!(rows(&handle, &plain), expected_rows, "{intent}");
+        }
+    }
+
+    #[test]
+    fn held_batch_and_native_row_adapters_inherit_commit_boundaries() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut batch_handle = PublicationProbe::new("commit-batch.arrows", Arc::clone(&pulls));
+        let options = batch_handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(1);
+        batch_handle
+            .overwrite_arrow_record_batch(rows_batch(&[1, 2]), &options)
+            .unwrap();
+        assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
+
+        let mut row_handle = PublicationProbe::new("commit-rows.arrows", pulls);
+        row_handle
+            .overwrite_records(
+                [
+                    NativeRow {
+                        id: 1,
+                        symbol: Some("AAPL"),
+                    },
+                    NativeRow {
+                        id: 2,
+                        symbol: Some("MSFT"),
+                    },
+                ],
+                &options,
+            )
+            .unwrap();
+        assert_eq!(row_handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&row_handle, &options), 2);
+    }
+
+    #[test]
+    fn zero_commit_row_size_is_rejected_before_any_input_pull() {
+        for intent in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut handle =
+                PublicationProbe::new(&format!("zero-commit-{intent}.arrows"), Arc::clone(&pulls));
+            let options = handle
+                .record_options()
+                .unwrap()
+                .with_field(schema())
+                .with_commit_row_size(0);
+            let source = counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1]))]);
+            let result = match intent {
+                "overwrite" => handle.overwrite_arrow_reader(source, &options),
+                "append" => handle.append_arrow_reader(source, &options),
+                "merge" => {
+                    handle.merge_arrow_reader(source, &options.clone().with_merge_by_names(["id"]))
+                }
+                _ => unreachable!(),
+            };
+
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("commit_row_size"), "{intent}: {message}");
+            assert_eq!(pulls.load(Ordering::SeqCst), 0, "{intent}");
+            assert_eq!(handle.publications.load(Ordering::SeqCst), 0, "{intent}");
+        }
+
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&pulls);
+        let records = std::iter::from_fn(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            Some(NativeRow {
+                id: 1,
+                symbol: None,
+            })
+        });
+        let mut handle = handle("zero-commit-native.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(0);
+        let message = handle
+            .overwrite_records(records, &options)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("commit_row_size"), "{message}");
+        assert_eq!(pulls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn empty_append_and_merge_do_not_touch_the_destination() {
+        let source_pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("empty-no-touch.arrows", source_pulls);
+        let options = handle.record_options().unwrap().with_field(schema());
+        let touches = Arc::clone(&handle.destination_touches);
+        // Option discovery is outside the write; count only destination work
+        // performed after the empty source crosses the primitive boundary.
+        touches.store(0, Ordering::SeqCst);
+        let empty = || {
+            crate::arrow::batch_reader(
+                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                [],
+            )
+        };
+
+        handle.append_arrow_reader(empty(), &options).unwrap();
+        handle
+            .merge_arrow_reader(empty(), &options.with_merge_by_names(["id"]))
+            .unwrap();
+
+        assert_eq!(touches.load(Ordering::SeqCst), 0);
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn zero_append_limits_and_invalid_merge_limits_do_not_pull() {
+        for options in [
+            handle("limit-options.arrows")
+                .record_options()
+                .unwrap()
+                .with_field(schema())
+                .with_max_row_size(0),
+            handle("limit-options.arrows")
+                .record_options()
+                .unwrap()
+                .with_field(schema())
+                .with_max_byte_size(0),
+        ] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let source = counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1]))]);
+            let mut destination = handle("zero-limit-append.arrows");
+            destination.append_arrow_reader(source, &options).unwrap();
+            assert_eq!(pulls.load(Ordering::SeqCst), 0);
+        }
+
+        for limited in [
+            handle("merge-limit-options.arrows")
+                .record_options()
+                .unwrap()
+                .with_field(schema())
+                .with_merge_by_names(["id"])
+                .with_max_row_size(1),
+            handle("merge-limit-options.arrows")
+                .record_options()
+                .unwrap()
+                .with_field(schema())
+                .with_merge_by_names(["id"])
+                .with_max_byte_size(1),
+        ] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let source = counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1]))]);
+            let mut destination = handle("invalid-limit-merge.arrows");
+            let message = destination
+                .merge_arrow_reader(source, &limited)
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains("merge_by_names"), "{message}");
+            assert_eq!(pulls.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[test]
+    fn a_later_source_failure_leaves_each_successful_prefix_visible() {
+        for intent in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut handle = PublicationProbe::new(
+                &format!("partial-commit-{intent}.arrows"),
+                Arc::clone(&pulls),
+            );
+            let plain = handle.record_options().unwrap().with_field(schema());
+            if intent != "overwrite" {
+                handle
+                    .overwrite_arrow_reader(
+                        crate::arrow::batch_reader(
+                            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                            [rows_batch(&[1, 2])],
+                        ),
+                        &plain,
+                    )
+                    .unwrap();
+                handle.reset_publications();
+            }
+            let options = plain.clone().with_commit_row_size(2);
+            let source = counted_source(
+                Arc::clone(&pulls),
+                [
+                    Ok(rows_batch(&[2, 3])),
+                    Ok(rows_batch(&[99])),
+                    Err(ArrowError::ComputeError("later source failure".into())),
+                ],
+            );
+            let result = match intent {
+                "overwrite" => handle.overwrite_arrow_reader(source, &options),
+                "append" => handle.append_arrow_reader(source, &options),
+                "merge" => {
+                    handle.merge_arrow_reader(source, &options.clone().with_merge_by_names(["id"]))
+                }
+                _ => unreachable!(),
+            };
+
+            let message = result.unwrap_err().to_string();
+            assert!(
+                message.contains("later source failure"),
+                "{intent}: {message}"
+            );
+            assert_eq!(handle.publications.load(Ordering::SeqCst), 1, "{intent}");
+            assert_eq!(
+                handle.pulls_when_published.lock().unwrap().as_slice(),
+                [1],
+                "{intent}: the second batch must not be pulled before commit one publishes"
+            );
+            assert_eq!(
+                pulls.load(Ordering::SeqCst),
+                3,
+                "{intent}: the one-row second cadence is discarded when its next pull fails"
+            );
+            let expected_rows = match intent {
+                "overwrite" => 2,
+                "append" => 4,
+                "merge" => 3,
+                _ => unreachable!(),
+            };
+            assert_eq!(rows(&handle, &plain), expected_rows, "{intent}");
+        }
+    }
+
+    #[test]
+    fn a_second_publication_failure_keeps_the_first_commit_visible() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("second-publication-failure.arrows", pulls);
+        handle.fail_on_publication(2);
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(2);
+        let source = crate::arrow::batch_reader(
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            [rows_batch(&[1, 2, 3, 4])],
+        );
+
+        let message = handle
+            .overwrite_arrow_reader(source, &options)
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("publication 2 refused"), "{message}");
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&handle, &options), 2);
+    }
+
+    #[test]
+    fn resumed_write_publishes_complete_cadences_and_abort_drops_only_the_remainder() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("resumed-write.arrows", pulls);
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(3);
+        let mut session = ArrowWriteSession::overwrite(&options).unwrap();
+
+        assert!(
+            session
+                .push(
+                    &mut handle,
+                    crate::arrow::batch_reader(
+                        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                        [rows_batch(&[1, 2])],
+                    ),
+                )
+                .unwrap()
+        );
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 0);
+
+        assert!(
+            session
+                .push(
+                    &mut handle,
+                    crate::arrow::batch_reader(
+                        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                        [rows_batch(&[3])],
+                    ),
+                )
+                .unwrap()
+        );
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&handle, &options), 3);
+
+        session
+            .push(
+                &mut handle,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[4])],
+                ),
+            )
+            .unwrap();
+        session.abort();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&handle, &options), 3);
+    }
+
+    #[test]
+    fn resumed_write_keeps_global_limits_and_stops_before_another_chunk_pull() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("resumed-limit.arrows", Arc::clone(&pulls));
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(2)
+            .with_max_row_size(3);
+        let mut session = ArrowWriteSession::overwrite(&options).unwrap();
+
+        assert!(
+            session
+                .push(
+                    &mut handle,
+                    counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1, 2]))]),
+                )
+                .unwrap()
+        );
+        let second = counted_source(
+            Arc::clone(&pulls),
+            [Ok(rows_batch(&[3, 4])), Ok(rows_batch(&[99]))],
+        );
+        assert!(!session.push(&mut handle, second).unwrap());
+        session.finish(&mut handle).unwrap();
+
+        assert_eq!(pulls.load(Ordering::SeqCst), 2);
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&handle, &options), 3);
+    }
+
+    #[test]
+    fn resumed_zero_limits_need_no_source_and_only_overwrite_publishes() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("resumed-zero.arrows", pulls);
+        let base = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(2)
+            .with_max_row_size(0);
+        handle.destination_touches.store(0, Ordering::SeqCst);
+
+        let mut append = ArrowWriteSession::append(&base).unwrap();
+        append.finish(&mut handle).unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 0);
+        assert_eq!(handle.destination_touches.load(Ordering::SeqCst), 0);
+
+        let mut overwrite = ArrowWriteSession::overwrite(&base).unwrap();
+        overwrite.finish(&mut handle).unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&handle, &base), 0);
+        assert_eq!(handle.read_arrow_field(&base).unwrap(), schema());
+    }
+
+    #[test]
+    fn resumed_sessions_keep_append_and_merge_intent_for_every_cadence() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("resumed-intents.arrows", pulls);
+        let plain = handle.record_options().unwrap().with_field(schema());
+        handle
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[1, 2])],
+                ),
+                &plain,
+            )
+            .unwrap();
+
+        handle.reset_publications();
+        let append_options = plain.clone().with_commit_row_size(1);
+        let mut append = ArrowWriteSession::append(&append_options).unwrap();
+        append
+            .push(
+                &mut handle,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[3, 4])],
+                ),
+            )
+            .unwrap();
+        append.finish(&mut handle).unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&handle, &plain), 4);
+
+        handle.reset_publications();
+        let merge_options = plain
+            .clone()
+            .with_commit_row_size(1)
+            .with_merge_by_names(["id"]);
+        let mut merge = ArrowWriteSession::merge(&merge_options).unwrap();
+        merge
+            .push(
+                &mut handle,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[2, 5])],
+                ),
+            )
+            .unwrap();
+        merge.finish(&mut handle).unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&handle, &plain), 5);
+    }
+
+    #[test]
+    fn resumed_session_covers_large_cadence_multiple_commits_and_terminal_reuse() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut large = PublicationProbe::new("resumed-large-cadence.arrows", Arc::clone(&pulls));
+        let large_options = large
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(10);
+        let mut session = ArrowWriteSession::overwrite(&large_options).unwrap();
+        session
+            .push(
+                &mut large,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[1, 2])],
+                ),
+            )
+            .unwrap();
+        assert_eq!(large.publications.load(Ordering::SeqCst), 0);
+        session.finish(&mut large).unwrap();
+        assert_eq!(large.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&large, &large_options), 2);
+        let message = session
+            .push(
+                &mut large,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[3])],
+                ),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("cannot be reused"), "{message}");
+
+        let mut exact = PublicationProbe::new("resumed-multiple.arrows", pulls);
+        let exact_options = exact
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(2);
+        let mut exact_session = ArrowWriteSession::overwrite(&exact_options).unwrap();
+        exact_session
+            .push(
+                &mut exact,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[1, 2, 3, 4])],
+                ),
+            )
+            .unwrap();
+        exact_session.finish(&mut exact).unwrap();
+        assert_eq!(exact.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&exact, &exact_options), 4);
+    }
+
+    #[test]
+    fn resumed_session_fuses_on_schema_source_and_publication_failures() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut mismatch = PublicationProbe::new("resumed-schema.arrows", Arc::clone(&pulls));
+        let options = mismatch
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(2);
+        let mut session = ArrowWriteSession::overwrite(&options).unwrap();
+        session
+            .push(
+                &mut mismatch,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[1])],
+                ),
+            )
+            .unwrap();
+        let other = DataType::from_fields([DataType::Utf8.required_field("id")])
+            .unwrap()
+            .required_field("row");
+        let other_batch = RecordBatch::try_new(
+            crate::arrow::arrow_schema_from_field(&other).unwrap(),
+            vec![Arc::new(StringArray::from(vec!["2"]))],
+        )
+        .unwrap();
+        let message = session
+            .push(
+                &mut mismatch,
+                crate::arrow::batch_reader(other_batch.schema(), [other_batch]),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("later chunk schema"), "{message}");
+        assert_eq!(mismatch.publications.load(Ordering::SeqCst), 0);
+
+        let mut source_failure =
+            PublicationProbe::new("resumed-source-error.arrows", Arc::clone(&pulls));
+        let source_options = source_failure
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(2);
+        let mut source_session = ArrowWriteSession::overwrite(&source_options).unwrap();
+        let error = source_session
+            .push(
+                &mut source_failure,
+                counted_source(
+                    Arc::clone(&pulls),
+                    [
+                        Ok(rows_batch(&[1, 2])),
+                        Err(ArrowError::ComputeError("resumed source failed".into())),
+                    ],
+                ),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("resumed source failed"));
+        assert_eq!(source_failure.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&source_failure, &source_options), 2);
+
+        let mut publication = PublicationProbe::new("resumed-publication-error.arrows", pulls);
+        publication.fail_on_publication(2);
+        let publication_options = publication
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(1);
+        let mut publication_session = ArrowWriteSession::overwrite(&publication_options).unwrap();
+        let error = publication_session
+            .push(
+                &mut publication,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[1, 2])],
+                ),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("publication 2 refused"));
+        assert_eq!(publication.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(rows(&publication, &publication_options), 1);
+    }
+
+    #[test]
+    fn resumed_leaf_keeps_the_target_captured_before_an_external_replacement() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("resumed-stable-target.arrows", pulls);
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(1);
+        let mut session = ArrowWriteSession::overwrite(&options).unwrap();
+        session
+            .push(
+                &mut handle,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[1])],
+                ),
+            )
+            .unwrap();
+
+        handle.clear().unwrap();
+        let loose = DataType::from_fields([DataType::Utf8.required_field("id")])
+            .unwrap()
+            .required_field("other");
+        let loose_batch = RecordBatch::try_new(
+            crate::arrow::arrow_schema_from_field(&loose).unwrap(),
+            vec![Arc::new(StringArray::from(vec!["9"]))],
+        )
+        .unwrap();
+        let external = handle.record_options().unwrap();
+        handle
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(loose_batch.schema(), [loose_batch]),
+                &external,
+            )
+            .unwrap();
+        let replaced = handle.read_arrow_field(&external).unwrap();
+        assert_eq!(replaced.data_type(), loose.data_type());
+        assert_ne!(replaced, schema());
+
+        session
+            .push(
+                &mut handle,
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [rows_batch(&[2])],
+                ),
+            )
+            .unwrap();
+        session.finish(&mut handle).unwrap();
+
+        assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
+        assert_eq!(rows(&handle, &options), 2);
+    }
+
+    #[test]
+    fn bounded_empty_intents_publish_only_overwrite() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("bounded-empty.arrows", pulls);
+        let plain = handle.record_options().unwrap().with_field(schema());
+        handle.overwrite_arrow_reader(reader(), &plain).unwrap();
+        handle.reset_publications();
+        let bounded = plain.clone().with_commit_row_size(2);
+        let empty = || {
+            crate::arrow::batch_reader(
+                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                [],
+            )
+        };
+
+        handle.append_arrow_reader(empty(), &bounded).unwrap();
+        handle
+            .merge_arrow_reader(empty(), &bounded.clone().with_merge_by_names(["id"]))
+            .unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 0);
+        assert_eq!(rows(&handle, &plain), 2);
+
+        handle.overwrite_arrow_reader(empty(), &bounded).unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&handle, &plain), 0);
+        assert_eq!(handle.read_arrow_field(&plain).unwrap(), schema());
     }
 
     #[cfg(feature = "parquet")]
     #[test]
     fn the_three_methods_behave_the_same_way_on_parquet() {
         let mut handle = handle("three.parquet");
-        let options = handle.record_options().unwrap().with_schema(schema());
+        let options = handle.record_options().unwrap().with_field(schema());
+
+        handle.append_arrow_reader(reader(), &options).unwrap();
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
+        handle.append_arrow_reader(reader(), &options).unwrap();
+
+        assert_eq!(rows(&handle, &options), 4);
+    }
+
+    #[test]
+    fn record_batch_adapters_route_to_each_explicit_reader_primitive() {
+        let mut handle = handle("record-batch-adapters.arrows");
+        let options = handle.record_options().unwrap().with_field(schema());
 
         handle
-            .append_arrow_batch_reader(reader(), &options)
+            .overwrite_arrow_record_batch(batch(), &options)
             .unwrap();
-        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        handle.append_arrow_record_batch(batch(), &options).unwrap();
+        assert_eq!(rows(&handle, &options), 4);
+
+        let merging = options.clone().with_merge_by_names(["id"]);
+        handle.merge_arrow_record_batch(batch(), &merging).unwrap();
+        // Both stored copies of each key update in place; merge does not turn
+        // either incoming row into a third copy.
+        assert_eq!(rows(&handle, &options), 4);
+    }
+
+    #[derive(Clone)]
+    struct NativeRow {
+        id: i64,
+        symbol: Option<&'static str>,
+    }
+
+    impl From<NativeRow> for Value {
+        fn from(row: NativeRow) -> Self {
+            Value::from_sequence([
+                Value::from(row.id),
+                row.symbol.map_or(Value::Null, Value::from),
+            ])
+        }
+    }
+
+    #[test]
+    fn generic_write_entry_points_compose_the_three_typed_shapes() {
+        let mut handle = handle("generic-write-mode.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_batch_size(1);
+
         handle
-            .append_arrow_batch_reader(reader(), &options)
+            .write_arrow_reader(reader(), WriteMode::Overwrite, &options)
+            .unwrap();
+        handle
+            .write_arrow_record_batch(rows_batch(&[3]), WriteMode::Append, &options)
+            .unwrap();
+        handle
+            .write_records(
+                [
+                    NativeRow {
+                        id: 2,
+                        symbol: Some("updated"),
+                    },
+                    NativeRow {
+                        id: 4,
+                        symbol: Some("AMD"),
+                    },
+                ],
+                WriteMode::Merge,
+                &options.clone().with_merge_by_names(["id"]),
+            )
             .unwrap();
 
         assert_eq!(rows(&handle, &options), 4);
     }
 
     #[test]
+    fn generic_write_entry_points_preserve_commit_cadence() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut reader_handle =
+            PublicationProbe::new("generic-reader-commits.arrows", Arc::clone(&pulls));
+        let options = reader_handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_commit_row_size(1);
+        reader_handle
+            .write_arrow_reader(reader(), WriteMode::Overwrite, &options)
+            .unwrap();
+        assert_eq!(reader_handle.publications.load(Ordering::SeqCst), 2);
+
+        let mut batch_handle =
+            PublicationProbe::new("generic-batch-commits.arrows", Arc::clone(&pulls));
+        batch_handle
+            .write_arrow_record_batch(batch(), WriteMode::Overwrite, &options)
+            .unwrap();
+        assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
+
+        let mut record_handle = PublicationProbe::new("generic-row-commits.arrows", pulls);
+        record_handle
+            .write_records(
+                [
+                    NativeRow {
+                        id: 1,
+                        symbol: Some("AAPL"),
+                    },
+                    NativeRow {
+                        id: 2,
+                        symbol: Some("MSFT"),
+                    },
+                ],
+                WriteMode::Overwrite,
+                &options,
+            )
+            .unwrap();
+        assert_eq!(record_handle.publications.load(Ordering::SeqCst), 2);
+    }
+
+    /// A media may preserve a same-shape optimization while still converging
+    /// on the reader primitives. The generic entry points must select that
+    /// authoritative adapter rather than rebuilding its input themselves.
+    struct TypedDispatchProbe {
+        handle: Buffer,
+        reader_calls: [usize; 3],
+        batch_calls: [usize; 3],
+        record_calls: [usize; 3],
+    }
+
+    impl TypedDispatchProbe {
+        fn new() -> Self {
+            Self {
+                handle: handle("typed-dispatch-probe.arrows"),
+                reader_calls: [0; 3],
+                batch_calls: [0; 3],
+                record_calls: [0; 3],
+            }
+        }
+    }
+
+    impl IOMedia for TypedDispatchProbe {
+        fn as_io_base(&self) -> &dyn IOBase {
+            self
+        }
+
+        fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+            self
+        }
+
+        fn overwrite_arrow_reader(
+            &mut self,
+            _batches: BatchReader,
+            _options: &RecordOptions,
+        ) -> crate::Result<()> {
+            self.reader_calls[0] += 1;
+            Ok(())
+        }
+
+        fn append_arrow_reader(
+            &mut self,
+            _batches: BatchReader,
+            _options: &RecordOptions,
+        ) -> crate::Result<()> {
+            self.reader_calls[1] += 1;
+            Ok(())
+        }
+
+        fn merge_arrow_reader(
+            &mut self,
+            _batches: BatchReader,
+            _options: &RecordOptions,
+        ) -> crate::Result<()> {
+            self.reader_calls[2] += 1;
+            Ok(())
+        }
+
+        fn overwrite_arrow_record_batch(
+            &mut self,
+            _batch: RecordBatch,
+            _options: &RecordOptions,
+        ) -> crate::Result<()> {
+            self.batch_calls[0] += 1;
+            Ok(())
+        }
+
+        fn append_arrow_record_batch(
+            &mut self,
+            _batch: RecordBatch,
+            _options: &RecordOptions,
+        ) -> crate::Result<()> {
+            self.batch_calls[1] += 1;
+            Ok(())
+        }
+
+        fn merge_arrow_record_batch(
+            &mut self,
+            _batch: RecordBatch,
+            _options: &RecordOptions,
+        ) -> crate::Result<()> {
+            self.batch_calls[2] += 1;
+            Ok(())
+        }
+
+        fn overwrite_records<I, R>(
+            &mut self,
+            _records: I,
+            _options: &RecordOptions,
+        ) -> crate::Result<()>
+        where
+            Self: Sized,
+            I: IntoIterator<Item = R>,
+            I::IntoIter: Send + 'static,
+            R: TryInto<Value>,
+            R::Error: Into<Error>,
+        {
+            self.record_calls[0] += 1;
+            Ok(())
+        }
+
+        fn append_records<I, R>(
+            &mut self,
+            _records: I,
+            _options: &RecordOptions,
+        ) -> crate::Result<()>
+        where
+            Self: Sized,
+            I: IntoIterator<Item = R>,
+            I::IntoIter: Send + 'static,
+            R: TryInto<Value>,
+            R::Error: Into<Error>,
+        {
+            self.record_calls[1] += 1;
+            Ok(())
+        }
+
+        fn merge_records<I, R>(
+            &mut self,
+            _records: I,
+            _options: &RecordOptions,
+        ) -> crate::Result<()>
+        where
+            Self: Sized,
+            I: IntoIterator<Item = R>,
+            I::IntoIter: Send + 'static,
+            R: TryInto<Value>,
+            R::Error: Into<Error>,
+        {
+            self.record_calls[2] += 1;
+            Ok(())
+        }
+    }
+
+    impl IOBase for TypedDispatchProbe {
+        crate::delegate_iobase!(handle);
+    }
+
+    #[test]
+    fn generic_writes_select_the_same_shape_for_every_mode() {
+        let mut probe = TypedDispatchProbe::new();
+        let plain = probe.record_options().unwrap().with_field(schema());
+
+        for mode in WriteMode::ALL {
+            let options = if mode == WriteMode::Merge {
+                plain.clone().with_merge_by_names(["id"])
+            } else {
+                plain.clone()
+            };
+            probe.write_arrow_reader(reader(), mode, &options).unwrap();
+            probe
+                .write_arrow_record_batch(batch(), mode, &options)
+                .unwrap();
+            probe
+                .write_records(std::iter::empty::<NativeRow>(), mode, &options)
+                .unwrap();
+        }
+
+        assert_eq!(probe.reader_calls, [1, 1, 1]);
+        assert_eq!(probe.batch_calls, [1, 1, 1]);
+        assert_eq!(probe.record_calls, [1, 1, 1]);
+    }
+
+    #[test]
+    fn generic_arrow_writes_remain_object_safe() {
+        let mut probe = TypedDispatchProbe::new();
+        let options = probe.record_options().unwrap().with_field(schema());
+        let media: &mut dyn IOMedia = &mut probe;
+
+        media
+            .write_arrow_reader(reader(), WriteMode::Overwrite, &options)
+            .unwrap();
+        media
+            .write_arrow_record_batch(batch(), WriteMode::Append, &options)
+            .unwrap();
+
+        assert_eq!(probe.reader_calls, [1, 0, 0]);
+        assert_eq!(probe.batch_calls, [0, 1, 0]);
+    }
+
+    #[test]
+    fn generic_writes_validate_mode_before_touching_input() {
+        let mut handle = handle("generic-write-mode-validation.arrows");
+        let options = handle.record_options().unwrap().with_field(schema());
+
+        // The required mode is validated before a one-shot source is pulled;
+        // a match key never silently turns overwrite into merge.
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let source = counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[5]))]);
+        let error = handle
+            .write_arrow_reader(
+                source,
+                WriteMode::Overwrite,
+                &options.clone().with_merge_by_names(["id"]),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("write mode overwrite"));
+        assert_eq!(pulls.load(Ordering::SeqCst), 0);
+
+        // A held batch is already materialized, but invalid intent still does
+        // not reach the destination or silently select merge.
+        let before = handle.as_slice().to_vec();
+        let error = handle
+            .write_arrow_record_batch(
+                rows_batch(&[6]),
+                WriteMode::Overwrite,
+                &options.clone().with_merge_by_names(["id"]),
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("write mode overwrite"));
+        assert_eq!(handle.as_slice(), before.as_slice());
+
+        struct CountedIntoRows(Arc<AtomicUsize>);
+
+        impl IntoIterator for CountedIntoRows {
+            type Item = NativeRow;
+            type IntoIter = std::iter::Empty<NativeRow>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                std::iter::empty()
+            }
+        }
+
+        // Mode validation also wins over the missing-field error and happens
+        // before even constructing a native row iterator.
+        let into_iters = Arc::new(AtomicUsize::new(0));
+        let untyped = handle.record_options().unwrap().with_merge_by_names(["id"]);
+        let error = handle
+            .write_records(
+                CountedIntoRows(Arc::clone(&into_iters)),
+                WriteMode::Overwrite,
+                &untyped,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("write mode overwrite"));
+        assert_eq!(into_iters.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn native_struct_row_adapters_route_all_three_intents() {
+        let mut handle = handle("native-row-adapters.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_batch_size(1);
+
+        handle
+            .overwrite_records(
+                [
+                    NativeRow {
+                        id: 1,
+                        symbol: Some("AAPL"),
+                    },
+                    NativeRow {
+                        id: 2,
+                        symbol: None,
+                    },
+                ],
+                &options,
+            )
+            .unwrap();
+        handle
+            .append_records(
+                [NativeRow {
+                    id: 3,
+                    symbol: Some("MSFT"),
+                }],
+                &options,
+            )
+            .unwrap();
+        handle
+            .merge_records(
+                [
+                    NativeRow {
+                        id: 2,
+                        symbol: Some("updated"),
+                    },
+                    NativeRow {
+                        id: 4,
+                        symbol: Some("AMD"),
+                    },
+                ],
+                &options.clone().with_merge_by_names(["id"]),
+            )
+            .unwrap();
+
+        assert_eq!(rows(&handle, &options), 4);
+        assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
+    }
+
+    #[test]
+    fn native_row_methods_require_a_field_before_pulling() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountedRows(Arc<AtomicUsize>);
+
+        impl Iterator for CountedRows {
+            type Item = NativeRow;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Some(NativeRow {
+                    id: 1,
+                    symbol: None,
+                })
+            }
+        }
+
+        for intent in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut handle = handle(&format!("native-row-no-field-{intent}.arrows"));
+            let options = handle.record_options().unwrap();
+            let result = match intent {
+                "overwrite" => handle.overwrite_records(CountedRows(Arc::clone(&pulls)), &options),
+                "append" => handle.append_records(CountedRows(Arc::clone(&pulls)), &options),
+                "merge" => handle.merge_records(
+                    CountedRows(Arc::clone(&pulls)),
+                    &options.with_merge_by_names(["id"]),
+                ),
+                _ => unreachable!(),
+            };
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("with_field"), "{intent}: {message}");
+            assert_eq!(pulls.load(Ordering::SeqCst), 0, "{intent}");
+            assert!(handle.is_empty(), "{intent}");
+        }
+    }
+
+    #[test]
+    fn native_row_methods_validate_intent_before_building_or_pulling_the_iterator() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        for intent in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let counted = Arc::clone(&pulls);
+            let records = std::iter::from_fn(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                Some(NativeRow {
+                    id: 1,
+                    symbol: None,
+                })
+            });
+            let mut handle = handle(&format!("native-row-invalid-intent-{intent}.arrows"));
+            let plain = handle.record_options().unwrap().with_field(schema());
+            let result = match intent {
+                "overwrite" => {
+                    handle.overwrite_records(records, &plain.clone().with_merge_by_names(["id"]))
+                }
+                "append" => {
+                    handle.append_records(records, &plain.clone().with_merge_by_names(["id"]))
+                }
+                "merge" => handle.merge_records(records, &plain),
+                _ => unreachable!(),
+            };
+
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("merge_by_names"), "{intent}: {message}");
+            assert_eq!(pulls.load(Ordering::SeqCst), 0, "{intent}");
+            assert!(handle.is_empty(), "{intent}");
+        }
+    }
+
+    struct FallibleRow(std::result::Result<Value, Error>);
+
+    impl TryFrom<FallibleRow> for Value {
+        type Error = Error;
+
+        fn try_from(row: FallibleRow) -> std::result::Result<Self, Self::Error> {
+            row.0
+        }
+    }
+
+    struct CountedFallibleRow {
+        value: std::result::Result<Value, Error>,
+        conversions: Arc<AtomicUsize>,
+    }
+
+    impl TryFrom<CountedFallibleRow> for Value {
+        type Error = Error;
+
+        fn try_from(row: CountedFallibleRow) -> std::result::Result<Self, Self::Error> {
+            row.conversions.fetch_add(1, Ordering::SeqCst);
+            row.value
+        }
+    }
+
+    #[test]
+    fn native_row_conversion_failure_is_typed_and_does_not_publish() {
+        let mut handle = handle("native-row-failure.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_batch_size(1);
+        handle
+            .overwrite_records(
+                [NativeRow {
+                    id: 9,
+                    symbol: Some("kept"),
+                }],
+                &options,
+            )
+            .unwrap();
+        let before = handle.as_slice().to_vec();
+
+        let error = handle
+            .append_records(
+                [
+                    FallibleRow(Ok(Value::from_sequence([
+                        Value::from(10_i64),
+                        Value::from("not-published"),
+                    ]))),
+                    FallibleRow(Err(Error::InvalidRecord {
+                        path: "$.row".into(),
+                        reason: "conversion refused".into(),
+                    })),
+                ],
+                &options,
+            )
+            .unwrap_err();
+        assert!(matches!(error, Error::InvalidRecord { .. }));
+        assert_eq!(handle.as_slice(), before.as_slice());
+    }
+
+    #[test]
+    fn native_row_conversion_stops_at_each_commit_for_all_intents() {
+        for intent in ["overwrite", "append", "merge"] {
+            let conversions = Arc::new(AtomicUsize::new(0));
+            let mut handle = PublicationProbe::new(
+                &format!("native-partial-{intent}.arrows"),
+                Arc::clone(&conversions),
+            );
+            let plain = handle.record_options().unwrap().with_field(schema());
+            if intent != "overwrite" {
+                handle.overwrite_arrow_reader(reader(), &plain).unwrap();
+                handle.reset_publications();
+            }
+            let records = [
+                CountedFallibleRow {
+                    value: Ok(Value::from_sequence([
+                        Value::from(3_i64),
+                        Value::from("committed"),
+                    ])),
+                    conversions: Arc::clone(&conversions),
+                },
+                CountedFallibleRow {
+                    value: Err(Error::InvalidRecord {
+                        path: "$.row[1]".into(),
+                        reason: "later native conversion failure".into(),
+                    }),
+                    conversions: Arc::clone(&conversions),
+                },
+            ];
+            let committed = plain.clone().with_commit_row_size(1);
+            let result = match intent {
+                "overwrite" => handle.overwrite_records(records, &committed),
+                "append" => handle.append_records(records, &committed),
+                "merge" => {
+                    handle.merge_records(records, &committed.clone().with_merge_by_names(["id"]))
+                }
+                _ => unreachable!(),
+            };
+
+            let error = result.unwrap_err();
+            assert!(matches!(error, Error::InvalidRecord { .. }), "{intent}");
+            assert_eq!(handle.publications.load(Ordering::SeqCst), 1, "{intent}");
+            assert_eq!(
+                handle.pulls_when_published.lock().unwrap().as_slice(),
+                [1],
+                "{intent}: row two must not convert before row one publishes"
+            );
+            assert_eq!(conversions.load(Ordering::SeqCst), 2, "{intent}");
+            assert_eq!(
+                rows(&handle, &plain),
+                if intent == "overwrite" { 1 } else { 3 },
+                "{intent}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_rows_align_a_non_divisible_batch_before_the_next_conversion() {
+        let conversions = Arc::new(AtomicUsize::new(0));
+        let mut handle =
+            PublicationProbe::new("native-non-divisible.arrows", Arc::clone(&conversions));
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_batch_size(2)
+            .with_commit_row_size(3);
+        let mut records = Vec::new();
+        for id in 1..=3_i64 {
+            records.push(CountedFallibleRow {
+                value: Ok(Value::from_sequence([
+                    Value::from(id),
+                    Value::from("committed"),
+                ])),
+                conversions: Arc::clone(&conversions),
+            });
+        }
+        records.push(CountedFallibleRow {
+            value: Err(Error::InvalidRecord {
+                path: "$.row[3]".into(),
+                reason: "conversion after a non-divisible cadence".into(),
+            }),
+            conversions: Arc::clone(&conversions),
+        });
+
+        let error = handle.overwrite_records(records, &options).unwrap_err();
+        assert!(matches!(error, Error::InvalidRecord { .. }));
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            handle.pulls_when_published.lock().unwrap().as_slice(),
+            [3],
+            "row four must not convert before the three-row cadence publishes"
+        );
+        assert_eq!(conversions.load(Ordering::SeqCst), 4);
+        assert_eq!(rows(&handle, &options), 3);
+    }
+
+    #[test]
+    fn native_rows_stop_at_the_global_row_limit_without_one_extra_pull() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&pulls);
+        let records = std::iter::from_fn(move || {
+            let id = counted.fetch_add(1, Ordering::SeqCst) as i64;
+            Some(NativeRow {
+                id,
+                symbol: Some("bounded"),
+            })
+        });
+        let mut handle = handle("native-global-row-limit.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_batch_size(2)
+            .with_max_row_size(3);
+
+        handle.overwrite_records(records, &options).unwrap();
+
+        assert_eq!(pulls.load(Ordering::SeqCst), 3);
+        assert_eq!(rows(&handle, &options), 3);
+    }
+
+    #[test]
+    fn empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops() {
+        let mut missing = handle("empty-native-row-append.arrows");
+        let options = missing.record_options().unwrap().with_field(schema());
+        missing
+            .append_records(std::iter::empty::<NativeRow>(), &options)
+            .unwrap();
+        assert!(missing.is_empty());
+
+        let mut handle = handle("empty-native-row-overwrite.arrows");
+        handle
+            .overwrite_records(std::iter::empty::<NativeRow>(), &options)
+            .unwrap();
+        assert_eq!(rows(&handle, &options), 0);
+        assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
+        let before = handle.as_slice().to_vec();
+
+        handle
+            .append_records(
+                std::iter::empty::<NativeRow>(),
+                &options.clone().with_select_by_names(["absent"]),
+            )
+            .unwrap();
+        handle
+            .merge_records(
+                std::iter::empty::<NativeRow>(),
+                &options
+                    .clone()
+                    .with_merge_by_names(["id"])
+                    .with_select_by_names(["absent"]),
+            )
+            .unwrap();
+        assert_eq!(handle.as_slice(), before.as_slice());
+    }
+
+    #[test]
+    fn an_empty_record_batch_overwrite_keeps_its_field_and_no_rows() {
+        let mut handle = handle("empty-record-batch.arrows");
+        let options = handle.record_options().unwrap();
+        let empty =
+            RecordBatch::new_empty(crate::arrow::arrow_schema_from_field(&schema()).unwrap());
+
+        handle
+            .overwrite_arrow_record_batch(empty, &options)
+            .unwrap();
+
+        assert_eq!(rows(&handle, &options), 0);
+        assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
+    }
+
+    #[test]
+    fn empty_append_and_merge_are_byte_for_byte_no_ops() {
+        let mut missing = handle("empty-no-op.arrows");
+        let options = missing.record_options().unwrap().with_field(schema());
+        missing
+            .append_arrow_reader(
+                crate::arrow::batch_reader(
+                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    [],
+                ),
+                &options.clone().with_select_by_names(["absent"]),
+            )
+            .unwrap();
+        assert!(missing.is_empty(), "an empty append must not create bytes");
+
+        missing.overwrite_arrow_reader(reader(), &options).unwrap();
+        let before = missing.as_slice().to_vec();
+        let zero =
+            RecordBatch::new_empty(crate::arrow::arrow_schema_from_field(&schema()).unwrap());
+        missing
+            .merge_arrow_reader(
+                crate::arrow::batch_reader(zero.schema(), [zero]),
+                &options
+                    .clone()
+                    .with_merge_by_names(["id"])
+                    .with_select_by_names(["absent"]),
+            )
+            .unwrap();
+        assert_eq!(missing.as_slice(), before.as_slice());
+    }
+
+    #[test]
     fn appending_casts_incoming_batches_to_the_target_shape() {
         let mut handle = handle("cast-append.arrows");
-        let options = handle.record_options().unwrap().with_schema(schema());
-        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        let options = handle.record_options().unwrap().with_field(schema());
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
 
         // The incoming batch merely fits: `id` is narrower and the columns are
         // the other way round.
@@ -436,7 +2149,7 @@ mod records {
         .unwrap()
         .required_field("row");
         let incoming = RecordBatch::try_new(
-            crate::arrow::schema_from_field(&loose).unwrap(),
+            crate::arrow::arrow_schema_from_field(&loose).unwrap(),
             vec![
                 Arc::new(StringArray::from(vec![Some("MSFT")])),
                 Arc::new(arrow_array::Int32Array::from(vec![3])),
@@ -445,14 +2158,14 @@ mod records {
         .unwrap();
 
         handle
-            .append_arrow_batch_reader(
+            .append_arrow_reader(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
                 &options,
             )
             .unwrap();
 
         let batches = handle
-            .read_arrow_batch_reader(&options)
+            .read_arrow_reader(&options)
             .unwrap()
             .map(std::result::Result::unwrap)
             .collect::<Vec<_>>();
@@ -464,8 +2177,8 @@ mod records {
     #[test]
     fn a_cast_that_cannot_be_planned_leaves_the_resource_alone() {
         let mut handle = handle("failed-append.arrows");
-        let options = handle.record_options().unwrap().with_schema(schema());
-        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        let options = handle.record_options().unwrap().with_field(schema());
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
         let before = handle.as_slice().to_vec();
 
         // Text that is not a number cannot become the declared Int64, and this
@@ -475,13 +2188,13 @@ mod records {
             .unwrap()
             .required_field("row");
         let incoming = RecordBatch::try_new(
-            crate::arrow::schema_from_field(&hostile).unwrap(),
+            crate::arrow::arrow_schema_from_field(&hostile).unwrap(),
             vec![Arc::new(StringArray::from(vec!["not a number"]))],
         )
         .unwrap();
 
         let message = handle
-            .append_arrow_batch_reader(
+            .append_arrow_reader(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
                 &options,
             )
@@ -497,8 +2210,8 @@ mod records {
     #[test]
     fn a_row_limit_bounds_a_read_at_below_and_above_the_stored_count() {
         let mut handle = handle("row-limited.arrows");
-        let options = handle.record_options().unwrap().with_schema(schema());
-        handle.write_arrow_batch_reader(reader(), &options).unwrap();
+        let options = handle.record_options().unwrap().with_field(schema());
+        handle.overwrite_arrow_reader(reader(), &options).unwrap();
 
         // The bound is exact: one below slices, the count itself keeps
         // everything, and one above changes nothing.
@@ -508,21 +2221,31 @@ mod records {
     }
 
     #[test]
-    fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
+    fn overwrite_refuses_a_match_key_and_a_limited_merge_names_both_settings() {
         let mut handle = handle("limited-merge.arrows");
-        let options = handle
+        let keyed = handle
             .record_options()
             .unwrap()
-            .with_schema(schema())
-            .with_merge_by_names(["id"])
-            .with_max_row_size(1);
+            .with_field(schema())
+            .with_merge_by_names(["id"]);
         let before = handle.as_slice().to_vec();
+
+        // The operation carries intent: overwrite never silently becomes a
+        // merge because its options happen to carry keys.
+        let message = handle
+            .overwrite_arrow_reader(reader(), &keyed)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("write mode overwrite"), "{message}");
+        assert!(message.contains("merge_by_names"), "{message}");
+        assert_eq!(handle.as_slice(), before.as_slice());
 
         // A truncated merge would update the matched keys it kept and
         // silently drop the rest, so the combination is refused by name
         // before a single row moves.
+        let limited = keyed.with_max_row_size(1);
         let message = handle
-            .write_arrow_batch_reader(reader(), &options)
+            .merge_arrow_reader(reader(), &limited)
             .unwrap_err()
             .to_string();
         assert!(message.contains("max_row_size = 1"), "{message}");
@@ -530,15 +2253,59 @@ mod records {
         assert_eq!(handle.as_slice(), before.as_slice());
     }
 
+    #[test]
+    fn merge_refuses_an_empty_match_key_before_pulling_the_reader() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Counting {
+            schema: arrow_schema::SchemaRef,
+            pulls: Arc<AtomicUsize>,
+        }
+
+        impl Iterator for Counting {
+            type Item = std::result::Result<RecordBatch, arrow_schema::ArrowError>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.pulls.fetch_add(1, Ordering::SeqCst);
+                Some(Ok(batch()))
+            }
+        }
+
+        impl RecordBatchReader for Counting {
+            fn schema(&self) -> arrow_schema::SchemaRef {
+                Arc::clone(&self.schema)
+            }
+        }
+
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let reader: BatchReader = Box::new(Counting {
+            schema: crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            pulls: Arc::clone(&pulls),
+        });
+        let mut handle = handle("missing-merge-key.arrows");
+        let options = handle.record_options().unwrap().with_field(schema());
+        let message = handle
+            .merge_arrow_reader(reader, &options)
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("requires at least one"), "{message}");
+        assert!(message.contains("merge_by_names"), "{message}");
+        assert_eq!(pulls.load(Ordering::SeqCst), 0);
+        assert!(handle.is_empty());
+    }
+
     /// A declared schema is what a read selects *and* casts to: the columns it
     /// names become the encoding's own projection, and what comes back is the
     /// shape it declares rather than the shape the resource stores.
     mod pushdown {
-        use super::{Buffer, DataType, Field, IOBase, IORecordOptions, RecordBatchReader, handle};
+        use super::{Buffer, DataType, Field, IORecordOptions, RecordBatchReader, handle};
 
         use std::sync::Arc;
 
         use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
+
+        use crate::io::IOMedia;
 
         /// Four columns, so a two-column read is a genuine subset.
         fn wide() -> Field {
@@ -566,7 +2333,7 @@ mod records {
             let mut handle = handle(name);
             let options = handle.record_options().unwrap();
             let batch = RecordBatch::try_new(
-                crate::arrow::schema_from_field(&wide()).unwrap(),
+                crate::arrow::arrow_schema_from_field(&wide()).unwrap(),
                 vec![
                     Arc::new(Int64Array::from(vec![1, 2])),
                     Arc::new(StringArray::from(vec![Some("AAPL"), None])),
@@ -576,7 +2343,7 @@ mod records {
             )
             .unwrap();
             handle
-                .write_arrow_batch_reader(
+                .overwrite_arrow_reader(
                     crate::arrow::batch_reader(batch.schema(), [batch]),
                     &options,
                 )
@@ -602,9 +2369,9 @@ mod records {
                     "{name}"
                 );
 
-                let options = plain.with_schema(narrow());
+                let options = plain.with_field(narrow());
                 let reader = handle
-                    .read_arrow_batch_reader(&options)
+                    .read_arrow_reader(&options)
                     .unwrap_or_else(|error| panic!("{name}: {error}"));
                 // The schema is narrowed before a single batch is decoded.
                 assert_eq!(reader.schema().fields().len(), 2, "{name}");
@@ -624,7 +2391,7 @@ mod records {
 
             // Every stored column: there is nothing to skip.
             let all = handle
-                .read_arrow_batch_reader(&plain.clone().with_schema(wide()))
+                .read_arrow_reader(&plain.clone().with_field(wide()))
                 .unwrap()
                 .schema();
             assert_eq!(all.fields().len(), 4);
@@ -638,7 +2405,7 @@ mod records {
             .unwrap()
             .required_field("row");
             let batches = handle
-                .read_arrow_batch_reader(&plain.with_schema(invented))
+                .read_arrow_reader(&plain.with_field(invented))
                 .unwrap()
                 .map(std::result::Result::unwrap)
                 .collect::<Vec<_>>();
@@ -656,10 +2423,10 @@ mod records {
             ])
             .unwrap()
             .required_field("row");
-            let options = handle.record_options().unwrap().with_schema(reversed);
+            let options = handle.record_options().unwrap().with_field(reversed);
 
             let batches = handle
-                .read_arrow_batch_reader(&options)
+                .read_arrow_reader(&options)
                 .unwrap()
                 .map(std::result::Result::unwrap)
                 .collect::<Vec<_>>();
@@ -670,9 +2437,9 @@ mod records {
         #[test]
         fn an_absent_resource_narrows_its_declared_schema_too() {
             let handle = handle("absent.arrows");
-            let options = handle.record_options().unwrap().with_schema(narrow());
+            let options = handle.record_options().unwrap().with_field(narrow());
 
-            let reader = handle.read_arrow_batch_reader(&options).unwrap();
+            let reader = handle.read_arrow_reader(&options).unwrap();
             assert_eq!(reader.schema().fields().len(), 2);
             assert_eq!(reader.count(), 0);
         }
@@ -1190,6 +2957,8 @@ mod conformance {
 /// success reached without a probe.
 mod lifecycle {
     use super::*;
+    #[cfg(feature = "arrow")]
+    use crate::io::IOMedia;
     use crate::local::{File, Folder, Path};
 
     /// A temp root nothing else in this file uses.
@@ -1221,6 +2990,10 @@ mod lifecycle {
     // would supply is one this double has to count. The counters are
     // per-handle and never shared across threads; `IOBase` requires `Send`,
     // and `Cell` is `Send` when its contents are.
+    impl crate::io::IOMedia for Counted {
+        crate::impl_default_iomedia!();
+    }
+
     impl IOBase for Counted {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
             self.bytes.pread(offset, buffer)
@@ -1481,12 +3254,12 @@ mod lifecycle {
         let field = crate::DataType::from_fields([crate::DataType::Int64.required_field("id")])
             .expect("a struct root")
             .required_field("row");
-        let schema = crate::arrow::schema_from_field(&field).expect("an Arrow schema");
+        let schema = crate::arrow::arrow_schema_from_field(&field).expect("an Arrow schema");
 
-        let options = crate::generic::RecordOptions::Ipc(crate::ipc::IpcOptions::new());
         let mut media = Ipc::new(Buffer::new());
+        let options = media.record_options().expect("IPC options");
         media
-            .write_arrow_batch_reader(batch_reader(schema, []), &options)
+            .overwrite_arrow_reader(batch_reader(schema, []), &options)
             .expect("a write");
         media.open().expect("an opened media");
         assert!(media.opened(), "the schema is cached");
@@ -1533,6 +3306,7 @@ mod shape {
             // Exactly one of the two, because a leaf is read one way or the
             // other and never both.
             assert_eq!(handle.is_atomic(), !tabular, "{mime}");
+            assert!(handle.is_io(), "{mime}");
         }
     }
 
@@ -1569,6 +3343,7 @@ mod shape {
         // still says which surface reads it, exactly as the media type does.
         let missing = crate::local::Path::new(path.join("trades.parquet")).unwrap();
         assert_eq!(missing.kind(), IOKind::Unknown);
+        assert_eq!(missing.media_type().base(), &MimeType::PARQUET);
         assert!(missing.is_tabular());
         assert!(!missing.is_atomic());
 
@@ -1608,11 +3383,13 @@ mod shape {
         let folder = crate::local::Folder::new(&logs).unwrap();
         assert!(!folder.is_tabular());
         assert!(!folder.is_atomic());
+        assert!(!folder.is_io());
 
         // So is an empty one, and so is a folder that does not exist yet.
         let empty = crate::local::Folder::new(path.join("empty")).unwrap();
         assert!(!empty.is_tabular());
         assert!(!empty.is_atomic());
+        assert!(!empty.is_io());
 
         // A location resolving to that lake answers exactly as the folder did.
         let located = crate::local::Path::new(&lake).unwrap();
@@ -1677,6 +3454,49 @@ mod shape {
         assert!(held.is_atomic());
         assert!(!held.is_tabular());
     }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn folder_dimensions_sum_only_the_selected_record_encoding() {
+        use std::sync::Arc;
+
+        use arrow_array::{Int64Array, RecordBatch};
+
+        use crate::io::IOMedia as _;
+
+        fn rows(values: &[i64]) -> RecordBatch {
+            let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+                "id",
+                arrow_schema::DataType::Int64,
+                false,
+            )]));
+            RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values.to_vec()))])
+                .expect("a dimension fixture")
+        }
+
+        let path = root("dimensions");
+        let lake = path.join("lake");
+        for (name, values) in [("a.arrows", vec![1, 2]), ("b.arrows", vec![3])] {
+            let mut leaf = crate::local::Path::new(lake.join(name)).expect("a lazy leaf");
+            let batch = rows(&values);
+            let options = leaf.record_options().expect("IPC options");
+            leaf.overwrite_arrow_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .expect("a published IPC leaf");
+        }
+        crate::local::Path::new(lake.join("notes.txt"))
+            .expect("a text leaf")
+            .write_all_bytes(b"not a table row")
+            .expect("a published unrelated leaf");
+
+        let folder = crate::local::Folder::new(&lake).expect("the lake folder");
+        assert_eq!(folder.row_size().expect("metadata row count"), 3);
+        assert_eq!(folder.column_size().expect("metadata field width"), 1);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
 }
 
 /// A listing must never require holding all of it, and the way to prove that is
@@ -1729,6 +3549,10 @@ mod laziness {
         fn produced(&self) -> usize {
             self.produced.load(Ordering::Relaxed)
         }
+    }
+
+    impl crate::io::IOMedia for Wide {
+        crate::impl_default_iomedia!();
     }
 
     impl IOBase for Wide {

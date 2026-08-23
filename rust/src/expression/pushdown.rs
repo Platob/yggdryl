@@ -66,7 +66,7 @@ impl Certainty {
 }
 
 /// One column's statistics: what it holds at least, at most, and how often not.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ColumnBounds {
     minimum: Option<Value>,
     maximum: Option<Value>,
@@ -98,7 +98,7 @@ impl ColumnBounds {
 /// Built the same way from every source that has them - a Parquet row-group
 /// footer, an Iceberg manifest entry, a Hive path whose partition value is
 /// both the minimum and the maximum - so the pruning rule is written once.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Bounds {
     columns: Vec<(SmolStr, ColumnBounds)>,
     attributes: Vec<(Selector, ColumnBounds)>,
@@ -263,7 +263,7 @@ impl Bounds {
 ///
 /// The two halves conjoined are the original predicate, which is the property
 /// that makes running them in two places sound.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Residual {
     answerable: Expression,
     remaining: Expression,

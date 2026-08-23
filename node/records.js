@@ -8,13 +8,10 @@
 // argument coercion around it. Every schema decision, projection, and cast
 // stays native; nothing here reads a datatype.
 //
-// `readArrow`, `writeArrow`, and `appendArrow` are the same three calls with
-// the argument widened to whatever a JavaScript caller is holding: an Arrow JS
-// `Table`, `RecordBatch`, or `RecordBatchReader`, a `Vector`, an object of
-// named columns, an array or iterable of any of those, plain records, or an
-// async iterable. Each one becomes the single native reader and is handed to
-// the same native method, so widening the argument never adds a second way to
-// write.
+// Write intent and representation are both explicit. Each of ArrowReader,
+// ArrowTable, ArrowRecordBatch, and Records has overwrite/append/merge entry
+// points. The representation-specific adapter widens to one native reader and
+// the intent-specific call redirects to the matching Rust primitive.
 
 const { arrow, ipcBytes } = require('./values.js')
 
@@ -72,11 +69,47 @@ function installRecords({
   Table,
   Tables,
 }) {
+  const classFields = new WeakMap()
   const nextIpc = BatchReader.prototype._nextIpcNative
   if (typeof nextIpc !== 'function') {
     throw new TypeError('native binding is missing BatchReader._nextIpcNative')
   }
   delete BatchReader.prototype._nextIpcNative
+  const chainIpcPull = BatchReader.prototype._chainIpcPullNative
+  if (typeof chainIpcPull !== 'function') {
+    throw new TypeError('native binding is missing BatchReader._chainIpcPullNative')
+  }
+  delete BatchReader.prototype._chainIpcPullNative
+  const emptyFromField = Field.prototype._emptyArrowReaderNative
+  if (typeof emptyFromField !== 'function') {
+    throw new TypeError('native binding is missing Field._emptyArrowReaderNative')
+  }
+  delete Field.prototype._emptyArrowReaderNative
+  const requireWritePreflight = RecordOptions.prototype._requireWritePreflightNative
+  if (typeof requireWritePreflight !== 'function') {
+    throw new TypeError('native binding is missing RecordOptions._requireWritePreflightNative')
+  }
+  delete RecordOptions.prototype._requireWritePreflightNative
+  const beginWriteSession = IOBase.prototype._beginArrowWriteSessionNative
+  if (typeof beginWriteSession !== 'function') {
+    throw new TypeError(
+      'native binding is missing IOBase._beginArrowWriteSessionNative',
+    )
+  }
+  delete IOBase.prototype._beginArrowWriteSessionNative
+  const pushWriteSession = IOBase.prototype._pushArrowWriteSessionNative
+  const finishWriteSession = IOBase.prototype._finishArrowWriteSessionNative
+  const abortWriteSession = IOBase.prototype._abortArrowWriteSessionNative
+  for (const [name, method] of [
+    ['_pushArrowWriteSessionNative', pushWriteSession],
+    ['_finishArrowWriteSessionNative', finishWriteSession],
+    ['_abortArrowWriteSessionNative', abortWriteSession],
+  ]) {
+    if (typeof method !== 'function') {
+      throw new TypeError(`native binding is missing IOBase.${name}`)
+    }
+    delete IOBase.prototype[name]
+  }
 
   // One batch arrives as its own IPC stream, so its schema travels with it and
   // Arrow JS needs no separate handshake. That per-batch header is what a
@@ -105,9 +138,9 @@ function installRecords({
 
   // Whatever a caller already holds becomes the one native reader shape: a
   // reader passes through, bytes already are a stream, and an Arrow JS value is
-  // encoded by Arrow JS itself. This is the reader contract `BatchReader.from`
-  // and the two `*ArrowBatchReader` writes publish; `rowsReader` below is the
-  // wider one the generic entry points infer with.
+  // encoded by Arrow JS itself. This is the explicit `BatchReader.from`
+  // conversion contract; write methods do not silently accept a different
+  // representation than their names declare.
   function batchReader(source, rootName) {
     if (source instanceof BatchReader) return source
     if (isBytes(source)) {
@@ -122,106 +155,203 @@ function installRecords({
     return BatchReader.fromIpc(arrow().tableToIPC(table), rootName)
   }
 
-  // The batches one source contributes, appended to `into` so a sequence of
-  // sources becomes one table rather than one table each. `column` is the name
-  // a bare `Vector` fills, which only a one-column declared schema can supply.
-  function collectBatches(source, into, column) {
-    const runtime = arrow()
-    switch (arrowKind(source)) {
-      case 'Table':
-        into.push(...source.batches)
-        return
-      case 'RecordBatch':
-        into.push(source)
-        return
-      case 'RecordBatchReader':
-        into.push(...source.readAll())
-        return
-      case 'Vector': {
-        if (column === undefined) {
-          throw new TypeError(
-            'a bare Vector names no column; pass an object of named columns, or declare a one-column schema on the options',
-          )
-        }
-        into.push(...new runtime.Table({ [column]: source }).batches)
-        return
-      }
-      default:
-        break
-    }
-    if (source instanceof BatchReader) {
-      into.push(...runtime.tableFromIPC(source.toIpc()).batches)
-      return
-    }
-    if (isBytes(source)) {
-      into.push(...runtime.tableFromIPC(ipcBytes(source, 'Arrow IPC batches')).batches)
-      return
-    }
-    if (isPlainRecord(source)) {
-      // An object is either one row or a set of named columns, and a column is
-      // the only one of the two whose values are sequences of their own.
-      const columns = Object.values(source)
-      const columnar =
-        columns.length !== 0 &&
-        columns.every(
-          (column) =>
-            arrowKind(column) === 'Vector' ||
-            Array.isArray(column) ||
-            ArrayBuffer.isView(column),
-        )
-      const table = columnar
-        ? runtime.tableFromArrays(source)
-        : runtime.tableFromJSON([source])
-      into.push(...table.batches)
-      return
-    }
-    if (typeof source[Symbol.iterator] === 'function') {
-      const items = [...source]
-      if (items.length === 0) {
-        throw new TypeError(
-          'an empty sequence names no schema; write an Arrow Table instead',
-        )
-      }
-      // A sequence of plain records is one table, not one table per row: Arrow
-      // JS infers the schema from all of them at once.
-      if (items.every(isPlainRecord)) {
-        into.push(...runtime.tableFromJSON(items).batches)
-        return
-      }
-      for (const item of items) collectBatches(item, into, column)
-      return
-    }
+  function nativeArrowReader(source) {
+    if (source instanceof BatchReader) return source
     throw new TypeError(
-      'rows must be a BatchReader, an Apache Arrow JS Table, RecordBatch, RecordBatchReader or Vector, an object of named columns, plain records, Arrow IPC bytes, or an iterable of those',
+      'reader must be a native BatchReader; use BatchReader.from(value) to convert another Arrow representation',
     )
   }
 
-  // The one column a bare `Vector` fills, when the declared schema names
-  // exactly one. Nothing else in a vector says which column it is.
-  function soleColumn(schema) {
-    if (schema === undefined || schema === null) return undefined
-    const children = schema.dataType
-    return children.length === 1 ? children.at(0)?.name : undefined
+  // The representation-specific paths deliberately skip the generic source
+  // classifier. Arrow JS has no C Data consumer, so each already-materialized
+  // holder is encoded once into the native streaming reader boundary.
+  function arrowTableReader(source, rootName) {
+    if (arrowKind(source) !== 'Table') {
+      throw new TypeError('table must be an Apache Arrow JS Table')
+    }
+    return BatchReader.fromIpc(arrow().tableToIPC(source), rootName)
   }
 
-  // Whatever a caller is holding becomes the one native reader shape. The
-  // batches are concatenated into a single Arrow JS table first, because Arrow
-  // IPC is what this boundary copies and one stream is one schema.
-  function rowsReader(source, settings) {
-    const name = rootName(settings?.schema)
-    if (source instanceof BatchReader) return source
-    if (isBytes(source)) {
-      return BatchReader.fromIpc(ipcBytes(source, 'Arrow IPC batches'), name)
+  function arrowRecordBatchReader(source, rootName) {
+    if (arrowKind(source) !== 'RecordBatch') {
+      throw new TypeError('batch must be an Apache Arrow JS RecordBatch')
     }
-    if (source === undefined || source === null) {
-      throw new TypeError('rows must be given; got nothing to write')
-    }
-    const batches = []
-    collectBatches(source, batches, soleColumn(settings?.schema))
     const runtime = arrow()
-    const table =
-      batches.length === 1 ? new runtime.Table(batches[0]) : new runtime.Table(batches)
-    return BatchReader.fromIpc(runtime.tableToIPC(table), name)
+    return BatchReader.fromIpc(
+      runtime.tableToIPC(new runtime.Table(source)),
+      rootName,
+    )
+  }
+
+  function isStructRecord(value) {
+    if (isPlainRecord(value)) return true
+    if (value === null || typeof value !== 'object') return false
+    const owner = value.constructor
+    return (
+      typeof owner === 'function' &&
+      'intoStructField' in owner
+    )
+  }
+
+  function plainStructRecord(value) {
+    if (!isStructRecord(value)) {
+      throw new TypeError(
+        'records must be plain JavaScript objects or instances whose class exposes a static intoStructField getter',
+      )
+    }
+    return {
+      field: isPlainRecord(value) ? undefined : intoField(value),
+      record: Object.fromEntries(Object.entries(value)),
+    }
+  }
+
+  // One record stream becomes bounded Arrow IPC chunks. The first chunk fixes
+  // the Arrow JS physical schema; every later chunk builds vectors under those
+  // exact types so one native BatchReader remains a valid stream. The native
+  // pull bridge asks for a chunk only as the core drains it, preserving one
+  // logical write and one publication without holding the incoming iterable.
+  function recordChunker(settings, defaultBatchSize) {
+    const rowSize = settings.batchSize ?? defaultBatchSize
+    const cadence = settings.commitRowSize
+    let rowsToCommit = cadence
+    let remainingRows = settings.maxRowSize
+    let arrowSchema
+    let inferred
+    let recordKind
+
+    function convert(value) {
+      const item = plainStructRecord(value)
+      const kind = item.field === undefined ? 'plain' : 'field-class'
+      if (recordKind === undefined) {
+        recordKind = kind
+      } else if (recordKind !== kind) {
+        throw new TypeError(
+          'one record write cannot mix plain objects with field-class instances',
+        )
+      }
+      if (item.field !== undefined) {
+        if (inferred === undefined) {
+          inferred = item.field
+        } else if (inferred !== item.field && !inferred.equals(item.field)) {
+          throw new TypeError(
+            'record instances in one write must expose the same intoStructField getter',
+          )
+        }
+      }
+      return item.record
+    }
+
+    function encode(records) {
+      const runtime = arrow()
+      let table
+      if (arrowSchema === undefined) {
+        table = runtime.tableFromJSON(records)
+        arrowSchema = table.schema
+      } else {
+        const columns = Object.create(null)
+        for (const field of arrowSchema.fields) {
+          columns[field.name] = runtime.vectorFromArray(
+            records.map((record) => record[field.name]),
+            field.type,
+          )
+        }
+        table = new runtime.Table(columns)
+      }
+      return runtime.tableToIPC(table)
+    }
+
+    function nextRowSize() {
+      let size = rowSize
+      if (rowsToCommit !== null) size = Math.min(size, rowsToCommit)
+      if (remainingRows !== null) size = Math.min(size, remainingRows)
+      return size
+    }
+
+    function accepted(rows) {
+      if (remainingRows !== null) remainingRows -= rows
+      if (rowsToCommit !== null) {
+        rowsToCommit -= rows
+        if (rowsToCommit === 0) rowsToCommit = cadence
+      }
+    }
+
+    function sync(iterator) {
+      const size = nextRowSize()
+      if (size === 0) return undefined
+      const records = []
+      while (records.length < size) {
+        const item = iterator.next()
+        if (item.done) break
+        records.push(convert(item.value))
+      }
+      if (records.length === 0) return undefined
+      const bytes = encode(records)
+      accepted(records.length)
+      return bytes
+    }
+
+    async function asynchronous(iterator) {
+      const size = nextRowSize()
+      if (size === 0) return undefined
+      const records = []
+      while (records.length < size) {
+        const item = await iterator.next()
+        if (item.done) break
+        records.push(convert(item.value))
+      }
+      if (records.length === 0) return undefined
+      const bytes = encode(records)
+      accepted(records.length)
+      return bytes
+    }
+
+    return {
+      async: asynchronous,
+      inferred: () => inferred,
+      sync,
+    }
+  }
+
+  function emptyRecordsReader(settings) {
+    if (settings.field === null) {
+      throw new TypeError('an empty record sequence requires options.field')
+    }
+    return {
+      reader: Reflect.apply(emptyFromField, settings.field, []),
+      settings,
+    }
+  }
+
+  function syncRecordIterator(source) {
+    if (isStructRecord(source)) return [source][Symbol.iterator]()
+    if (
+      source !== null &&
+      source !== undefined &&
+      typeof source[Symbol.iterator] === 'function'
+    ) {
+      return source[Symbol.iterator]()
+    }
+    throw new TypeError(
+      'records must be a JavaScript struct or an iterable of JavaScript structs',
+    )
+  }
+
+  function recordsReader(source, settings, defaultBatchSize) {
+    const chunks = recordChunker(settings, defaultBatchSize)
+    const iterator = syncRecordIterator(source)
+    const first = chunks.sync(iterator)
+    if (first === undefined) return emptyRecordsReader(settings)
+
+    const inferred = chunks.inferred()
+    let reader = BatchReader.fromIpc(first, rootName(inferred ?? settings.field))
+    // An explicit field wins. Otherwise a field class supplies its cached root;
+    // plain objects take the native field inferred from the bounded first
+    // chunk. The core remains the one place that applies the declared cast.
+    if (settings.field === null) {
+      settings = settings.withField(inferred ?? reader.field)
+    }
+    reader = Reflect.apply(chainIpcPull, reader, [() => chunks.sync(iterator)])
+    return { reader, settings }
   }
 
   // A value that implements both iteration protocols is treated as the
@@ -236,14 +366,171 @@ function installRecords({
     )
   }
 
-  // An async source cannot be drained by a synchronous native call, so the
-  // items are awaited first. Nothing is lost by holding them: this boundary
-  // already encodes one Arrow IPC stream, so the batches were going to be
-  // materialized either way.
-  async function awaitedRowsReader(source, settings) {
-    const items = []
-    for await (const item of source) items.push(item)
-    return rowsReader(items, settings)
+  // An async iterator cannot be pulled from a synchronous core call. Its
+  // bounded IPC chunks are therefore spooled to one private temporary file,
+  // then replayed through the same native pull reader. RAM stays bounded and
+  // the resource still sees one core write/publication; cleanup runs on every
+  // success and failure path.
+  async function awaitedRecordsReader(source, settings, defaultBatchSize) {
+    const iterator = source[Symbol.asyncIterator]()
+    const chunks = recordChunker(settings, defaultBatchSize)
+    const first = await chunks.async(iterator)
+    if (first === undefined) return emptyRecordsReader(settings)
+
+    if (settings.field === null) {
+      const inferred = BatchReader.fromIpc(first, rootName(settings.field))
+      settings = settings.withField(chunks.inferred() ?? inferred.field)
+    }
+
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-records-'))
+    const location = path.join(directory, 'chunks.ipc')
+    let descriptor
+    let writePosition = 0
+    let readPosition = 0
+
+    function close() {
+      if (descriptor !== undefined) {
+        fs.closeSync(descriptor)
+        descriptor = undefined
+      }
+      fs.rmSync(location, { force: true })
+      fs.rmdirSync(directory)
+    }
+
+    function write(buffer) {
+      if (writePosition + buffer.length > Number.MAX_SAFE_INTEGER) {
+        throw new RangeError('the private record spool exceeds JavaScript safe file offsets')
+      }
+      let offset = 0
+      while (offset < buffer.length) {
+        const size = fs.writeSync(
+          descriptor,
+          buffer,
+          offset,
+          buffer.length - offset,
+          writePosition + offset,
+        )
+        if (size === 0) {
+          throw new Error('the private record spool accepted no bytes')
+        }
+        offset += size
+      }
+      writePosition += buffer.length
+    }
+
+    try {
+      descriptor = fs.openSync(location, 'wx+')
+      for (;;) {
+        const bytes = await chunks.async(iterator)
+        if (bytes === undefined) break
+        const header = Buffer.allocUnsafe(8)
+        header.writeBigUInt64LE(BigInt(bytes.byteLength))
+        write(header)
+        write(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+      }
+
+      function read(buffer) {
+        let offset = 0
+        while (offset < buffer.length) {
+          const size = fs.readSync(
+            descriptor,
+            buffer,
+            offset,
+            buffer.length - offset,
+            readPosition + offset,
+          )
+          if (size === 0) {
+            throw new Error('the private record spool ended inside an IPC chunk')
+          }
+          offset += size
+        }
+        readPosition += buffer.length
+      }
+
+      const pull = () => {
+        if (readPosition === writePosition) return undefined
+        const header = Buffer.allocUnsafe(8)
+        read(header)
+        const length = Number(header.readBigUInt64LE())
+        if (!Number.isSafeInteger(length)) {
+          throw new RangeError('a spooled Arrow IPC chunk exceeds JavaScript safe length')
+        }
+        const bytes = Buffer.allocUnsafe(length)
+        read(bytes)
+        return bytes
+      }
+      let reader = BatchReader.fromIpc(first, rootName(settings.field))
+      reader = Reflect.apply(chainIpcPull, reader, [pull])
+      return { close, reader, settings }
+    } catch (error) {
+      close()
+      throw error
+    }
+  }
+
+  // A bounded async source alternates exactly one await with one synchronous
+  // core push. The Rust session retains the operation-wide cast, byte/row
+  // limits, cadence remainder, and destination routing plan, so a later
+  // source/conversion failure leaves every earlier complete prefix visible.
+  async function awaitedCommittedRecordsWrite(
+    handle,
+    source,
+    settings,
+    defaultBatchSize,
+    intent,
+    publish,
+  ) {
+    const iterator = source[Symbol.asyncIterator]()
+    const chunks = recordChunker(settings, defaultBatchSize)
+    let session
+    let finished = false
+    try {
+      for (;;) {
+        const bytes = await chunks.async(iterator)
+        if (bytes === undefined) break
+        const reader = BatchReader.fromIpc(bytes, rootName(settings.field))
+        if (settings.field === null) {
+          settings = settings.withField(chunks.inferred() ?? reader.field)
+        }
+        if (session === undefined) {
+          session = Reflect.apply(beginWriteSession, handle, [intent, settings])
+        }
+        const more = Reflect.apply(pushWriteSession, handle, [session, reader])
+        if (!more) {
+          Reflect.apply(finishWriteSession, handle, [session])
+          finished = true
+          if (typeof iterator.return === 'function') await iterator.return()
+          return
+        }
+      }
+
+      if (session === undefined) {
+        const converted = emptyRecordsReader(settings)
+        return publish(converted.reader, converted.settings)
+      }
+      Reflect.apply(finishWriteSession, handle, [session])
+      finished = true
+    } catch (error) {
+      if (session !== undefined && !finished) {
+        try {
+          Reflect.apply(abortWriteSession, handle, [session])
+        } catch {
+          // Preserve the source, conversion, or publication error that caused
+          // the abort; completed cadences are already visible.
+        }
+      }
+      if (typeof iterator.return === 'function') {
+        try {
+          await iterator.return()
+        } catch {
+          // As above, cleanup cannot mask the operation's original failure.
+        }
+      }
+      throw error
+    }
   }
 
   function recordOptions(options) {
@@ -252,10 +539,123 @@ function installRecords({
     return RecordOptions.from(options)
   }
 
-  function schemaField(field) {
-    if (field === undefined || field === null) return field
-    if (field instanceof Field) return field
-    return Field.from(field)
+  // Every write crosses with one concrete options value. This resolves the
+  // handle's encoding at the JavaScript boundary, where representation
+  // inference can attach a Field without mutating caller-owned options.
+  function resolvedRecordOptions(handle, options) {
+    return recordOptions(options) ?? handle.recordOptions()
+  }
+
+  function inferredRecordOptions(settings, reader) {
+    return settings.field === null ? settings.withField(reader.field) : settings
+  }
+
+  function preflightWriteIntent(settings, intent) {
+    return Reflect.apply(requireWritePreflight, settings, [intent])
+  }
+
+  function writeMode(mode) {
+    if (typeof mode !== 'string') {
+      throw new TypeError('mode must be overwrite, append, or merge')
+    }
+    const canonical = mode.trim().toLowerCase()
+    if (!['overwrite', 'append', 'merge'].includes(canonical)) {
+      throw new TypeError(`unknown write mode ${JSON.stringify(mode)}`)
+    }
+    return canonical
+  }
+
+  function writeLimitIsZero(settings) {
+    return settings.maxRowSize === 0 || settings.maxByteSize === 0
+  }
+
+  // Metadata must be an accessor, not a stored value or a method. Looking up
+  // the descriptor before reading the property prevents a method/static Field
+  // compatibility path from silently reappearing. An inherited getter remains
+  // a getter; its result is still memoized for the concrete owner below.
+  function structFieldGetter(owner) {
+    for (
+      let current = owner;
+      typeof current === 'function';
+      current = Object.getPrototypeOf(current)
+    ) {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        current,
+        'intoStructField',
+      )
+      if (descriptor === undefined) continue
+      if (typeof descriptor.get !== 'function') {
+        throw new TypeError(
+          'intoStructField must be a static getter returning a native Field',
+        )
+      }
+      return descriptor.get
+    }
+    return undefined
+  }
+
+  function intoField(value, name) {
+    if (name !== undefined && name !== null && typeof name !== 'string') {
+      throw new TypeError('name must be a string, null, or undefined')
+    }
+    if (value === undefined || value === null) {
+      throw new TypeError(
+        'value must be a Field, field expression, or class with a static intoStructField getter',
+      )
+    }
+
+    let converted
+    if (value instanceof Field) {
+      converted = value
+    } else {
+      const owner =
+        typeof value === 'function'
+          ? value
+          : typeof value === 'object'
+            ? value.constructor
+            : undefined
+      converted = owner === undefined ? undefined : classFields.get(owner)
+      if (converted === undefined && owner !== undefined) {
+        const getter = structFieldGetter(owner)
+        if (getter !== undefined) {
+          converted = Reflect.apply(getter, owner, [])
+          if (
+            !(converted instanceof Field) ||
+            converted.dataType.kind !== 'struct' ||
+            converted.nullable
+          ) {
+            throw new TypeError(
+              'intoStructField must return a non-null native struct Field',
+            )
+          }
+          classFields.set(owner, converted)
+        }
+      }
+      if (converted === undefined) {
+        if (typeof value === 'string') {
+          converted = Field.from(value)
+        } else {
+          throw new TypeError(
+            'value must be a Field, field expression, or class with a static intoStructField getter',
+          )
+        }
+      }
+    }
+
+    if (name === undefined || name === null || name === converted.name) {
+      return converted
+    }
+    const renamed = new Field(converted)
+    renamed.setName(name)
+    return renamed
+  }
+
+  // Native projection arguments are optional even though the public converter
+  // is not. Keep that distinction here so `intoField(null)` has the same error
+  // contract as Python while a scan that omits its projection still passes
+  // `null` through to the core.
+  function optionalField(value) {
+    return value === undefined || value === null ? value : intoField(value)
   }
 
   function rootName(field) {
@@ -274,10 +674,10 @@ function installRecords({
         }
       },
     },
-    toTable: {
+    intoTable: {
       configurable: true,
       value() {
-        return arrow().tableFromIPC(this.toIpc())
+        return arrow().tableFromIPC(this.intoIpc())
       },
     },
   })
@@ -289,21 +689,83 @@ function installRecords({
     },
   })
 
-  // Both writes take the batches in the same position, so the coercion is one
-  // wrapper applied by name rather than one per method.
-  for (const name of ['writeArrowBatchReader', 'appendArrowBatchReader']) {
-    const native = IOBase.prototype[name]
-    Object.defineProperty(IOBase.prototype, name, {
+  const intents = ['overwrite', 'append', 'merge']
+  const nativeWrite = IOBase.prototype.writeArrowReader
+  if (typeof nativeWrite !== 'function') {
+    throw new TypeError('native binding is missing IOBase.writeArrowReader')
+  }
+  const nativeWrites = Object.fromEntries(
+    intents.map((intent) => {
+      const name = `${intent}ArrowReader`
+      const native = IOBase.prototype[name]
+      if (typeof native !== 'function') {
+        throw new TypeError(`native binding is missing IOBase.${name}`)
+      }
+      return [intent, native]
+    }),
+  )
+
+  // Intent and representation stay visible in every method name. Arrow JS has
+  // no C Data consumer, so Table and RecordBatch take one IPC bridge into a
+  // native BatchReader; the reader method itself accepts only that native
+  // stream. Each path infers a Field at the boundary when none was declared,
+  // then redirects to the matching Rust primitive.
+  const representations = [
+    ['ArrowReader', nativeArrowReader],
+    ['ArrowTable', arrowTableReader],
+    ['ArrowRecordBatch', arrowRecordBatchReader],
+  ]
+  for (const intent of intents) {
+    const native = nativeWrites[intent]
+    for (const [suffix, convert] of representations) {
+      const name = `${intent}${suffix}`
+      Object.defineProperty(IOBase.prototype, name, {
+        configurable: true,
+        value(source, options) {
+          let settings = resolvedRecordOptions(this, options)
+          preflightWriteIntent(settings, intent)
+          if (writeLimitIsZero(settings)) {
+            if (intent === 'append') return undefined
+            const converted = emptyRecordsReader(settings)
+            return native.call(this, converted.reader, converted.settings)
+          }
+          const reader = convert(source, rootName(settings.field))
+          settings = inferredRecordOptions(settings, reader)
+          return native.call(this, reader, settings)
+        },
+      })
+    }
+  }
+
+  // Generic entry points keep the same representation-specific conversion,
+  // then pass the required mode into the core's one dispatcher. Input, mode,
+  // options is the canonical order in every language.
+  for (const [suffix, convert] of representations) {
+    Object.defineProperty(IOBase.prototype, `write${suffix}`, {
       configurable: true,
-      value(batches, options) {
-        const settings = recordOptions(options)
-        return native.call(this, batchReader(batches, rootName(settings?.schema)), settings)
+      value(source, mode, options) {
+        const intent = writeMode(mode)
+        let settings = resolvedRecordOptions(this, options)
+        preflightWriteIntent(settings, intent)
+        if (writeLimitIsZero(settings)) {
+          if (intent === 'append') return undefined
+          const converted = emptyRecordsReader(settings)
+          return nativeWrite.call(
+            this,
+            converted.reader,
+            intent,
+            converted.settings,
+          )
+        }
+        const reader = convert(source, rootName(settings.field))
+        settings = inferredRecordOptions(settings, reader)
+        return nativeWrite.call(this, reader, intent, settings)
       },
     })
   }
 
-  const readBatches = IOBase.prototype.readArrowBatchReader
-  Object.defineProperty(IOBase.prototype, 'readArrowBatchReader', {
+  const readBatches = IOBase.prototype.readArrowReader
+  Object.defineProperty(IOBase.prototype, 'readArrowReader', {
     configurable: true,
     value(options) {
       return readBatches.call(this, recordOptions(options))
@@ -318,38 +780,6 @@ function installRecords({
     },
   })
 
-  // `readArrow` is the short name for the same read: a `BatchReader` is the
-  // record shape here, so a generic read has nothing to infer.
-  Object.defineProperty(IOBase.prototype, 'readArrow', {
-    configurable: true,
-    value(options) {
-      return this.readArrowBatchReader(options)
-    },
-  })
-
-  // The two generic writes differ only in which native method they end at, so
-  // the inference is installed once and named twice.
-  for (const [name, target] of [
-    ['writeArrow', 'writeArrowBatchReader'],
-    ['appendArrow', 'appendArrowBatchReader'],
-  ]) {
-    const native = IOBase.prototype[target]
-    Object.defineProperty(IOBase.prototype, name, {
-      configurable: true,
-      value(source, options) {
-        const settings = recordOptions(options)
-        // An async source makes the call async, because its rows do not exist
-        // until they are awaited. A synchronous source stays synchronous.
-        if (needsAwait(source)) {
-          return awaitedRowsReader(source, settings).then((batches) =>
-            native.call(this, batches, settings),
-          )
-        }
-        return native.call(this, rowsReader(source, settings), settings)
-      },
-    })
-  }
-
   // The generic cast: whatever Arrow JS holds - a Table, a RecordBatch, a
   // BatchReader, IPC bytes - casts to this exact Field batch by batch and
   // comes back a Table. `cast` is the same call under the generic name.
@@ -358,7 +788,7 @@ function installRecords({
       configurable: true,
       value(rows, options) {
         const safe = options?.safe ?? true
-        const bytes = batchReader(rows, this.name).toIpc()
+        const bytes = batchReader(rows, this.name).intoIpc()
         return arrow().tableFromIPC(this._castArrowIpc(bytes, safe))
       },
     })
@@ -372,11 +802,24 @@ function installRecords({
   Object.defineProperty(IOBase.prototype, 'readRecords', {
     configurable: true,
     value(cls, options) {
-      if (typeof cls !== 'function' && options === undefined) {
+      if (typeof cls !== 'function') {
+        if (options !== undefined) {
+          throw new TypeError(
+            'readRecords accepts one options value, or a record class followed by one options value',
+          )
+        }
         options = cls
         cls = undefined
       }
-      const reader = this.readArrowBatchReader(options)
+      let settings = recordOptions(options)
+      if (
+        cls !== undefined &&
+        'intoStructField' in cls &&
+        (settings === undefined || settings === null || settings.field === null)
+      ) {
+        settings = (settings ?? this.recordOptions()).withField(intoField(cls))
+      }
+      const reader = this.readArrowReader(settings)
       return (function* records() {
         for (const batch of reader) {
           for (const row of batch) {
@@ -388,20 +831,73 @@ function installRecords({
     },
   })
 
-  // The record writes are the generic writes under the names the read pairs
-  // with: `writeArrow` already widens to plain records and record instances,
-  // so these add vocabulary, never a second path.
-  for (const [name, target] of [
-    ['writeRecords', 'writeArrow'],
-    ['appendRecords', 'appendArrow'],
-  ]) {
-    Object.defineProperty(IOBase.prototype, name, {
+  // Plain objects and field-class instances are inferred by a bounded first
+  // chunk, then streamed through the chosen core primitive. Async records
+  // return a Promise; synchronous records stay lazy.
+  function writeRecordSource(handle, rows, options, intent, publish) {
+    const settings = resolvedRecordOptions(handle, options)
+    const defaultBatchSize = preflightWriteIntent(settings, intent)
+    if (writeLimitIsZero(settings)) {
+      if (intent === 'append') return undefined
+      // A limited merge was rejected by preflight. Overwrite still publishes
+      // the explicitly typed empty value without inspecting the input.
+      const converted = emptyRecordsReader(settings)
+      return publish(converted.reader, converted.settings)
+    }
+    const asynchronous = needsAwait(rows)
+    if (asynchronous && settings.commitRowSize !== null) {
+      return awaitedCommittedRecordsWrite(
+        handle,
+        rows,
+        settings,
+        defaultBatchSize,
+        intent,
+        publish,
+      )
+    }
+    if (asynchronous) {
+      return awaitedRecordsReader(rows, settings, defaultBatchSize).then((converted) => {
+        try {
+          return publish(converted.reader, converted.settings)
+        } finally {
+          converted.close?.()
+        }
+      })
+    }
+    const converted = recordsReader(rows, settings, defaultBatchSize)
+    return publish(converted.reader, converted.settings)
+  }
+
+  for (const intent of intents) {
+    const native = nativeWrites[intent]
+    Object.defineProperty(IOBase.prototype, `${intent}Records`, {
       configurable: true,
       value(rows, options) {
-        return this[target](rows, options)
+        return writeRecordSource(
+          this,
+          rows,
+          options,
+          intent,
+          (reader, settings) => native.call(this, reader, settings),
+        )
       },
     })
   }
+
+  Object.defineProperty(IOBase.prototype, 'writeRecords', {
+    configurable: true,
+    value(rows, mode, options) {
+      const intent = writeMode(mode)
+      return writeRecordSource(
+        this,
+        rows,
+        options,
+        intent,
+        (reader, settings) =>
+          nativeWrite.call(this, reader, intent, settings),
+      )
+    },
+  })
 
   // The writes that take rows widen them the way every other write here does,
   // and pass the trailing per-call options through untouched. Forwarding it
@@ -468,7 +964,7 @@ function installRecords({
       // coerced wherever it sits.
       value(...args) {
         const at = name === 'scan' ? 0 : name === 'scanWhere' ? 1 : 2
-        if (args.length > at) args[at] = schemaField(args[at])
+        if (args.length > at) args[at] = optionalField(args[at])
         return native.apply(this, args)
       },
     })
@@ -478,7 +974,7 @@ function installRecords({
   Object.defineProperty(Table.prototype, 'scanAt', {
     configurable: true,
     value(snapshotId, filters, field, options) {
-      return scanAt.call(this, snapshotId, filters, schemaField(field), options)
+      return scanAt.call(this, snapshotId, filters, optionalField(field), options)
     },
   })
 
@@ -486,7 +982,7 @@ function installRecords({
   Object.defineProperty(Table.prototype, 'evolveSchema', {
     configurable: true,
     value(schema) {
-      return evolveSchema.call(this, schemaField(schema))
+      return evolveSchema.call(this, intoField(schema))
     },
   })
 
@@ -514,12 +1010,14 @@ function installRecords({
           return native.call(
             this,
             table,
-            Array.isArray(schema) ? schema : schemaField(schema),
+            Array.isArray(schema) ? schema : intoField(schema),
           )
         },
       })
     }
   }
+
+  return Object.freeze({ intoField })
 }
 
 module.exports = { installRecords }

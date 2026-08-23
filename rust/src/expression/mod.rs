@@ -619,6 +619,11 @@ pub enum Expression {
 }
 
 impl Expression {
+    /// Return a deterministic hash of the canonical expression text.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_display(self)
+    }
+
     /// The expression that is true for every row.
     #[must_use]
     pub fn always_true() -> Self {
@@ -1195,12 +1200,7 @@ impl Expression {
 
 /// A total order over expressions, consistent with structural equality.
 ///
-/// [`DataType`] is an unordered vocabulary - `Eq + Hash` but not `Ord` - so the
-/// two places an ordering needs one compare canonical datatype text. That text
-/// round-trips through the type grammar, so text equality is datatype equality
-/// and the order stays consistent with `==`; it allocates only when two casts
-/// or two literals are compared at the same position, which is why it lives
-/// here rather than in a hot path.
+/// Variant order is stable, followed by each variant's structural contents.
 impl Ord for Expression {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering;
@@ -1210,10 +1210,7 @@ impl Ord for Expression {
             return rank;
         }
         match (self, other) {
-            (Self::Literal(left), Self::Literal(right)) => left
-                .value()
-                .cmp(right.value())
-                .then_with(|| type_key(left.data_type()).cmp(&type_key(right.data_type()))),
+            (Self::Literal(left), Self::Literal(right)) => left.cmp(right),
             (Self::Column(left), Self::Column(right))
             | (Self::Parameter(left), Self::Parameter(right)) => left.cmp(right),
             (Self::Attribute(left), Self::Attribute(right)) => left.cmp(right),
@@ -1277,7 +1274,7 @@ impl Ord for Expression {
                 .then_with(|| left_args.iter().cmp(right_args.iter())),
             (Self::Cast(left, left_type, left_safe), Self::Cast(right, right_type, right_safe)) => {
                 left.cmp(right)
-                    .then_with(|| type_key(left_type).cmp(&type_key(right_type)))
+                    .then_with(|| left_type.cmp(right_type))
                     .then_with(|| left_safe.cmp(right_safe))
             }
             (
@@ -1305,11 +1302,6 @@ impl PartialOrd for Expression {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
-}
-
-/// The canonical text of a datatype, which is its ordering key.
-fn type_key(data_type: &DataType) -> String {
-    data_type.to_string()
 }
 
 /// Order the variants themselves, so a mixed pair never compares equal.
@@ -1358,10 +1350,7 @@ impl Ord for Segment {
         match (self, other) {
             (Self::Field(left), Self::Field(right)) => left.cmp(right),
             (Self::Index(left), Self::Index(right)) => left.cmp(right),
-            (Self::Key(left), Self::Key(right)) => left
-                .value()
-                .cmp(right.value())
-                .then_with(|| type_key(left.data_type()).cmp(&type_key(right.data_type()))),
+            (Self::Key(left), Self::Key(right)) => left.cmp(right),
             _ => Ordering::Equal,
         }
     }
@@ -1379,19 +1368,23 @@ impl PartialOrd for Segment {
 /// a `uint8` and silently widening it would change the type a comparison runs
 /// in. A value that cannot be negated keeps its [`Expression::Negate`] node.
 fn negate_value(value: &crate::Value) -> Option<crate::Value> {
-    use crate::Value as V;
-    Some(match value {
-        V::I8(held) => V::I8(held.checked_neg()?),
-        V::I16(held) => V::I16(held.checked_neg()?),
-        V::I32(held) => V::I32(held.checked_neg()?),
-        V::I64(held) => V::I64(held.checked_neg()?),
-        V::I128(held) => V::I128(held.checked_neg()?),
-        V::F32(held) => V::F32(crate::Float32::from_f32(-held.as_f32())),
-        V::F64(held) => V::F64(crate::Float::from_f64(-held.as_f64())),
-        V::Decimal(unscaled, scale) => V::Decimal(unscaled.checked_neg()?, *scale),
-        V::Duration(count, unit) => V::Duration(count.checked_neg()?, *unit),
-        _ => return None,
-    })
+    matches!(
+        value,
+        crate::Value::I8(_)
+            | crate::Value::I16(_)
+            | crate::Value::I32(_)
+            | crate::Value::I64(_)
+            | crate::Value::I128(_)
+            | crate::Value::F16(_)
+            | crate::Value::F32(_)
+            | crate::Value::F64(_)
+            | crate::Value::D128(..)
+            | crate::Value::D256(..)
+            | crate::Value::Duration32(..)
+            | crate::Value::Duration64(..)
+    )
+    .then(|| value.checked_neg().ok())
+    .flatten()
 }
 
 /// Anything a call site may hand over where an expression is wanted.

@@ -18,7 +18,7 @@
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let filter: Expression = "ccy = 'EUR'".parse()?;
-//! let document = filter.to_json()?;
+//! let document = filter.clone().into_json()?;
 //! assert_eq!(Expression::from_json(&document)?, filter);
 //! # Ok(())
 //! # }
@@ -50,15 +50,6 @@ impl Expression {
         Ok(expression)
     }
 
-    /// Write this expression as a structural JSON document.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the document cannot be produced.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
-    }
-
     /// Consume this expression and write it as a structural JSON document.
     ///
     /// # Errors
@@ -88,15 +79,6 @@ impl Statement {
             order.expression().check_budget()?;
         }
         Ok(statement)
-    }
-
-    /// Write this statement as a structural JSON document.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the document cannot be produced.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
     }
 
     /// Consume this statement and write it as a structural JSON document.

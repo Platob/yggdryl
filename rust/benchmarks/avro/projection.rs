@@ -49,7 +49,7 @@ pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
     group.sample_size(30);
 
     let root = wide();
-    let arrow_schema = root.to_arrow_schema().expect("an arrow schema");
+    let arrow_schema = root.into_arrow_schema().expect("an arrow schema");
     let columns: Vec<ArrayRef> = (0..COLUMNS)
         .map(|index| -> ArrayRef {
             if index % 2 == 0 {
@@ -73,7 +73,7 @@ pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
     // The null codec isolates the skip itself: with compression on, the
     // whole block is decompressed either way and the decompression dominates.
     let options = AvroOptions::new().with_codec("null");
-    avro::write_batch_reader(
+    avro::overwrite_batch_reader(
         &mut stored,
         yggdryl::arrow::batch_reader(arrow_schema, [batch]),
         &options,

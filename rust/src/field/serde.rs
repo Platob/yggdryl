@@ -19,11 +19,6 @@ impl Field {
         serde_json::from_str(value).map_err(Error::from)
     }
 
-    /// Serializes this value as deterministic structural JSON.
-    pub fn to_json(&self) -> Result<String> {
-        Ok(serde_json::to_string(self)?)
-    }
-
     /// Consumes and serializes this value as deterministic structural JSON.
     pub fn into_json(self) -> Result<String> {
         Ok(serde_json::to_string(&self)?)
@@ -163,7 +158,7 @@ impl Field {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = DataType::Int64.required_field("id");
-    /// let value = field.to_value();
+    /// let value = field.clone().into_value();
     ///
     /// // Unset optional attributes are absent rather than null.
     /// assert!(value.get_key_str("dictionary_id").is_none());
@@ -172,10 +167,10 @@ impl Field {
     /// # }
     /// ```
     #[must_use]
-    pub fn to_value(&self) -> Value {
+    pub fn into_value(self) -> Value {
         let mut entries: Vec<(Value, Value)> = Vec::with_capacity(6);
         entries.push((key("name"), Value::String(self.name.clone())));
-        entries.push((key("data_type"), self.data_type.to_value()));
+        entries.push((key("data_type"), self.data_type.clone().into_value()));
         entries.push((key("nullable"), Value::Bool(self.nullable)));
         if self.dictionary_id != 0 {
             // Decimal text, as the JSON path emits it: a 64-bit identifier
@@ -216,7 +211,7 @@ impl Field {
     /// ])?
     /// .required_field("row");
     ///
-    /// assert_eq!(Field::from_value(nested.to_value())?, nested);
+    /// assert_eq!(Field::from_value(nested.clone().into_value())?, nested);
     /// # Ok(())
     /// # }
     /// ```
@@ -227,15 +222,10 @@ impl Field {
     /// not a field mapping, a required key is missing or wrongly typed, or the
     /// assembled field does not validate.
     pub fn from_value(value: Value) -> Result<Self> {
-        let entries = value
-            .as_mapping()
-            .ok_or_else(|| invalid("$", "a field mapping", value.kind()))?;
-        let at = |name: &str| -> Option<&Value> {
-            entries
-                .iter()
-                .find(|(held, _)| held.as_str() == Some(name))
-                .map(|(_, held)| held)
-        };
+        if value.as_mapping().is_none() && value.as_record().is_none() {
+            return Err(invalid("$", "a field mapping", value.kind()));
+        }
+        let at = |name: &str| value.get_key_str(name);
         let name = at("name")
             .and_then(Value::as_str)
             .ok_or_else(|| invalid("$.name", "a field name", "nothing"))?;
@@ -268,22 +258,38 @@ impl Field {
         }
 
         if let Some(held) = at("metadata").filter(|held| !matches!(held, Value::Null)) {
-            let pairs = held
-                .as_mapping()
-                .ok_or_else(|| invalid("$.metadata", "a mapping of string entries", held.kind()))?;
-            let mut collected = Vec::with_capacity(pairs.len());
-            for (name, value) in pairs {
-                let name = name
-                    .as_str()
-                    .ok_or_else(|| invalid("$.metadata", "string metadata keys", name.kind()))?;
-                let value = value.as_str().ok_or_else(|| {
-                    invalid(
-                        &format!("$.metadata[{name:?}]"),
-                        "a string metadata value",
-                        value.kind(),
-                    )
-                })?;
-                collected.push((SmolStr::new(name), SmolStr::new(value)));
+            let mut collected = Vec::with_capacity(held.len());
+            if let Some(pairs) = held.as_record() {
+                for (name, value) in pairs {
+                    let value = value.as_str().ok_or_else(|| {
+                        invalid(
+                            &format!("$.metadata[{name:?}]"),
+                            "a string metadata value",
+                            value.kind(),
+                        )
+                    })?;
+                    collected.push((name.clone(), SmolStr::new(value)));
+                }
+            } else if let Some(pairs) = held.as_mapping() {
+                for (name, value) in pairs {
+                    let name = name.as_str().ok_or_else(|| {
+                        invalid("$.metadata", "string metadata keys", name.kind())
+                    })?;
+                    let value = value.as_str().ok_or_else(|| {
+                        invalid(
+                            &format!("$.metadata[{name:?}]"),
+                            "a string metadata value",
+                            value.kind(),
+                        )
+                    })?;
+                    collected.push((SmolStr::new(name), SmolStr::new(value)));
+                }
+            } else {
+                return Err(invalid(
+                    "$.metadata",
+                    "a mapping of string entries",
+                    held.kind(),
+                ));
             }
             field.set_metadata(Metadata::from_entries(collected)?)?;
         }
@@ -295,7 +301,7 @@ impl Field {
 
 impl From<&Field> for Value {
     fn from(value: &Field) -> Self {
-        value.to_value()
+        value.clone().into_value()
     }
 }
 
@@ -310,81 +316,40 @@ impl TryFrom<Value> for Field {
 // ---------------------------------------------------------------------------
 // The three formats, all over the one `Value` conversion.
 //
-// `to_json` keeps the Serde path because `Field` is `Serialize`/`Deserialize`
+// `into_json` keeps the Serde path because `Field` is `Serialize`/`Deserialize`
 // for the serde ecosystem - it is nested inside other derived structures
 // across the tree, and AGENTS.md requires those traits on a native value. The
 // two are not a second structural model: the parity test in
 // `tests/field/serde.rs` dumps every shape through both routes and compares the
 // bytes, so the Serde impl cannot drift from the `Value` mapping without
-// failing a test. Every *other* format goes through `to_value` alone.
+// failing a test. Every *other* format goes through `into_value` alone.
 // ---------------------------------------------------------------------------
 
 impl Field {
     /// Serialize this value as deterministic structural JSON, laid out as asked.
     ///
-    /// The companion of [`Self::to_json`]; see
-    /// [`json::to_vec_with_formatting`](crate::json::to_vec_with_formatting)
+    /// The companion of [`Self::into_json`]; see
+    /// [`json::into_bytes_with_formatting`](crate::json::into_bytes_with_formatting)
     /// for what each [`Indent`](crate::text::Indent) means.
     ///
     /// # Errors
     ///
     /// Returns the encoder's failure.
-    pub fn to_json_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::json::to_vec_with_formatting(
-            &self.to_value(),
+    pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        text_of(crate::json::into_bytes_with_formatting(
+            &self.into_value(),
             formatting,
         )?)
     }
 
-    /// Consume and serialize as structural JSON, laid out as asked.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        self.to_json_with_formatting(formatting)
-    }
-
-    /// Deserialize and validate from structural YAML.
-    ///
-    /// The same structure [`Self::from_json`] reads, in YAML's syntax - so a
-    /// configuration document can carry a declared schema inline beside the
-    /// rest of its settings, with no JSON-string-inside-YAML awkwardness.
+    /// Deserialize and validate the same structure as [`Self::from_json`].
     ///
     /// # Errors
     ///
     /// Returns the parser's failure, or the structural refusal naming the path
     /// and the expectation.
     pub fn from_yaml(value: &str) -> Result<Self> {
-        Self::from_value(crate::yaml::from_str(value)?)
-    }
-
-    /// Serialize as YAML: block style, one key per line, one indent per level.
-    ///
-    /// Key order is the same as the JSON emit, so the two are comparable side
-    /// by side, and an unset optional attribute is omitted rather than emitted
-    /// as null.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_yaml(&self) -> Result<String> {
-        self.to_yaml_with_formatting(crate::text::Formatting::default())
-    }
-
-    /// Serialize as YAML, laid out as asked.
-    ///
-    /// Block style at the requested width; flow style only if a caller
-    /// explicitly asks for [`Indent::None`](crate::text::Indent::None).
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_yaml_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::yaml::to_vec_with_formatting(
-            &self.to_value(),
-            formatting,
-        )?)
+        Self::from_value(crate::yaml::from_utf8(value)?)
     }
 
     /// Consume and serialize as YAML.
@@ -393,7 +358,7 @@ impl Field {
     ///
     /// Returns the encoder's failure.
     pub fn into_yaml(self) -> Result<String> {
-        self.to_yaml()
+        self.into_yaml_with_formatting(crate::text::Formatting::default())
     }
 
     /// Consume and serialize as YAML, laid out as asked.
@@ -402,7 +367,10 @@ impl Field {
     ///
     /// Returns the encoder's failure.
     pub fn into_yaml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        self.to_yaml_with_formatting(formatting)
+        text_of(crate::yaml::into_bytes_with_formatting(
+            &self.into_value(),
+            formatting,
+        )?)
     }
 
     /// Deserialize and validate from structural TOML.
@@ -412,32 +380,7 @@ impl Field {
     /// Returns the parser's failure, or the structural refusal naming the path
     /// and the expectation.
     pub fn from_toml(value: &str) -> Result<Self> {
-        Self::from_value(crate::toml::from_str(value)?)
-    }
-
-    /// Serialize as TOML.
-    ///
-    /// TOML has no null, and this model never needs one: an unset optional
-    /// attribute is *omitted* rather than faked, so nothing is lost on the way
-    /// out and `from_toml` reads the same value back.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_toml(&self) -> Result<String> {
-        self.to_toml_with_formatting(crate::text::Formatting::default())
-    }
-
-    /// Serialize as TOML, laid out as asked.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_toml_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::toml::to_vec_with_formatting(
-            &self.to_value(),
-            formatting,
-        )?)
+        Self::from_value(crate::toml::from_utf8(value)?)
     }
 
     /// Consume and serialize as TOML.
@@ -446,7 +389,7 @@ impl Field {
     ///
     /// Returns the encoder's failure.
     pub fn into_toml(self) -> Result<String> {
-        self.to_toml()
+        self.into_toml_with_formatting(crate::text::Formatting::default())
     }
 
     /// Consume and serialize as TOML, laid out as asked.
@@ -455,7 +398,10 @@ impl Field {
     ///
     /// Returns the encoder's failure.
     pub fn into_toml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        self.to_toml_with_formatting(formatting)
+        text_of(crate::toml::into_bytes_with_formatting(
+            &self.into_value(),
+            formatting,
+        )?)
     }
 }
 

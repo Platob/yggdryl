@@ -35,7 +35,7 @@ use arrow_array::{Array, ArrayRef, RecordBatch, Scalar};
 
 use super::Field;
 use super::typed::{FieldType, TypedField, TypedFieldRef};
-use crate::arrow::{Error, Result, schema_from_field};
+use crate::arrow::{Error, Result, arrow_schema_from_field};
 
 mod plan;
 
@@ -150,7 +150,8 @@ typed_array!(super::geospatial::Geography, arrow_array::BinaryArray);
 opaque_array!(super::temporal::Timestamp);
 opaque_array!(super::temporal::Time32);
 opaque_array!(super::temporal::Time64);
-opaque_array!(super::temporal::Duration);
+opaque_array!(super::temporal::Duration32);
+opaque_array!(super::temporal::Duration64);
 opaque_array!(super::temporal::Interval);
 opaque_array!(super::nested::Dictionary);
 opaque_array!(super::nested::RunEndEncoded);
@@ -248,7 +249,7 @@ pub fn preflight_arrow_batch_cast(
     target: Option<&Field>,
     safe: bool,
 ) -> Result<()> {
-    let schema = schema_from_field(source)?;
+    let schema = arrow_schema_from_field(source)?;
     let target = target.unwrap_or(source);
     // An empty batch of the source schema exercises the whole recursive plan
     // without materializing a row.

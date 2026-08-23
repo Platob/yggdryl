@@ -8,29 +8,28 @@ from decimal import Decimal
 
 import pytest
 
-from yggdryl import yaml
-from yggdryl.records import record
+from yggdryl import scalar, yaml
 
 
-@record
+@scalar
 class Leg:
     symbol: str
     price: Decimal
 
 
-@record
+@scalar
 class Trade:
     trade_id: int
     leg: Leg
     executed_at: dt.datetime
 
 
-@record(frozen=True)
+@scalar(frozen=True)
 class Atom:
     value: int
 
 
-@record
+@scalar
 class Containers:
     listed: list[Atom]
     tupled: tuple[Atom, ...]
@@ -44,15 +43,15 @@ class Containers:
     frozen_keyed: dict[frozenset[Atom], str]
 
 
-def test_nested_record_yaml_is_ordinary_yaml_with_no_class_name() -> None:
+def test_nested_field_class_yaml_is_ordinary_yaml_with_no_class_name() -> None:
     value = Trade(
         42,
         Leg("ABC", Decimal("12.50")),
         dt.datetime(2026, 8, 15, 10, 30),
     )
 
-    encoded = value.into_yaml()
-    restored = Trade.from_yaml(encoded)
+    encoded = yaml.dumps(value)
+    restored = yaml.loads(encoded, cls=Trade)
 
     assert restored == value
     # A custom `!yggdryl/*` tag would make the document unreadable to other
@@ -63,12 +62,12 @@ def test_nested_record_yaml_is_ordinary_yaml_with_no_class_name() -> None:
     assert b"Trade" not in encoded
     assert yaml.loads(encoded) == {
         "trade_id": 42,
-        "leg": {"symbol": "ABC", "price": Decimal("12.50")},
+        "leg": {"symbol": "ABC", "price": "12.50"},
         "executed_at": "2026-08-15T10:30:00.000000",
     }
 
 
-def test_nested_records_round_trip_through_supported_collections() -> None:
+def test_nested_field_classes_round_trip_through_supported_collections() -> None:
     first = Atom(1)
     second = Atom(2)
     value = Containers(
@@ -84,23 +83,23 @@ def test_nested_records_round_trip_through_supported_collections() -> None:
         {frozenset((first, second)): "frozenset"},
     )
 
-    encoded = value.into_yaml()
+    encoded = yaml.dumps(value)
 
-    # A record used as a mapping key has to be hashable on the way back, so it
-    # decodes as the tuple of its entries; the annotation reads it as a record.
-    assert Containers.from_yaml(encoded) == value
+    # A field class used as a mapping key has to be hashable on the way back,
+    # so it decodes as the tuple of its entries; the annotation restores it.
+    assert yaml.loads(encoded, cls=Containers) == value
     assert b"Atom" not in encoded
 
 
-def test_plain_yaml_mapping_is_inferred_for_record() -> None:
-    @record
+def test_plain_yaml_mapping_materializes_a_field_class() -> None:
+    @scalar
     class Item:
         id: int
 
-    assert Item.from_("id: 42\n") == Item(42)
-    encoded = Item(43).into_(format="yml")
+    assert yaml.loads("id: 42\n", cls=Item) == Item(42)
+    encoded = yaml.dumps(Item(43))
     assert isinstance(encoded, bytes)
-    assert Item.from_(encoded, format="yml") == Item(43)
+    assert yaml.loads(encoded, cls=Item) == Item(43)
 
 
 def test_a_document_written_with_a_tag_decodes_as_ordinary_data() -> None:
@@ -149,21 +148,26 @@ def test_yaml_document_stream_uses_incremental_file_reads() -> None:
     class TrackingBytesIO(io.BytesIO):
         def __init__(self, value: bytes) -> None:
             super().__init__(value)
-            self.lines = 0
+            self.reads = 0
 
-        def readline(self, *args: object, **kwargs: object) -> bytes:
-            assert args and isinstance(args[0], int) and args[0] > 0
-            self.lines += 1
-            return super().readline(*args, **kwargs)
+        def read(self, size: int) -> bytes:
+            assert size > 0
+            self.reads += 1
+            return super().read(min(size, 4))
 
-    stream = TrackingBytesIO(b"---\nid: 1\n---\nid: 2\n")
+    padding = b"x" * 20_000
+    stream = TrackingBytesIO(
+        b"---\nid: 1\n---\nid: 2\npadding: " + padding + b"\n"
+    )
     iterator = yaml.load_all(stream)
-    assert stream.lines == 0
+    assert stream.reads == 0
     assert next(iterator) == {"id": 1}
-    assert stream.lines < 5
-    assert next(iterator) == {"id": 2}
+    assert stream.reads > 0
+    assert stream.tell() < len(stream.getvalue())
+    assert next(iterator) == {"id": 2, "padding": padding.decode()}
     with pytest.raises(StopIteration):
         next(iterator)
+    assert not stream.closed
 
 
 def test_yaml_explicit_end_can_precede_implicit_document() -> None:
@@ -304,13 +308,15 @@ def test_yaml_stream_does_not_split_indented_block_scalar_markers() -> None:
     ]
 
 
-def test_yaml_stream_errors_report_original_cumulative_byte() -> None:
+def test_yaml_stream_errors_use_core_cumulative_offsets() -> None:
     iterator = yaml.load_all(io.BytesIO(b"id: 1\n---\nitems: [1, 2\n"))
     assert next(iterator) == {"id": 1}
     with pytest.raises(
         ValueError,
-        match=r"YAML document 2: .*at byte 23 \(document byte 17\)",
+        match=r"invalid yaml data at byte 23: .*expected ',' or ']'",
     ):
+        next(iterator)
+    with pytest.raises(StopIteration):
         next(iterator)
 
 
@@ -334,10 +340,25 @@ def test_yaml_dump_all_streams_generator(tmp_path: pathlib.Path) -> None:
     assert list(yaml.load_all(path)) == [{"id": 0}, {"id": 1}, {"id": 2}]
 
 
-def test_str_non_file_is_content_but_pathlike_is_always_path(
+def test_strings_are_content_and_pathlike_values_are_always_paths(
     tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import yggdryl._codec as codec
+
     assert yaml.loads("answer: 42") == {"answer": 42}
+    existing = tmp_path / "existing.yaml"
+    existing.write_text("answer: 43\n")
+
+    def unexpected_probe(_value: object) -> bool:
+        raise AssertionError("string sources must not probe the filesystem")
+
+    monkeypatch.setattr(
+        codec.os.path,
+        "isfile",
+        unexpected_probe,
+    )
+    assert yaml.loads(str(existing)) == str(existing)
     missing = tmp_path / "missing.yaml"
     with pytest.raises(FileNotFoundError):
         yaml.loads(missing)

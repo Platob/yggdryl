@@ -17,7 +17,7 @@ fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &
 fn borrowed_and_consuming_arrow_datatype_paths_are_lossless() {
     let data_type =
         DataType::from_str("struct<id:bigint,values:map<string,array<decimal(38,18)>>>").unwrap();
-    let borrowed = data_type.to_arrow().unwrap();
+    let borrowed = data_type.clone().into_arrow().unwrap();
     assert_eq!(DataType::from_arrow(&borrowed).unwrap(), data_type);
     let owned = data_type.clone().into_arrow().unwrap();
     assert_eq!(DataType::try_from(owned).unwrap(), data_type);
@@ -33,7 +33,7 @@ fn direct_arrow_values_round_trip_through_core() {
         .into(),
     );
     let core = DataType::from_arrow(&arrow).unwrap();
-    assert_eq!(core.to_arrow().unwrap(), arrow);
+    assert_eq!(core.clone().into_arrow().unwrap(), arrow);
     assert_eq!(core.get_field(0).unwrap().name(), "id");
     assert_eq!(
         core.get_field_by_name("name").unwrap().data_type(),
@@ -55,10 +55,10 @@ fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
         DataType::Time32(TimeUnit::Millisecond),
         DataType::Time64(TimeUnit::Microsecond),
         DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration(TimeUnit::Second),
-        DataType::Duration(TimeUnit::Millisecond),
-        DataType::Duration(TimeUnit::Microsecond),
-        DataType::Duration(TimeUnit::Nanosecond),
+        DataType::Duration64(TimeUnit::Second),
+        DataType::Duration64(TimeUnit::Millisecond),
+        DataType::Duration64(TimeUnit::Microsecond),
+        DataType::Duration64(TimeUnit::Nanosecond),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
@@ -66,16 +66,37 @@ fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
 
     for value in values {
         value.validate().unwrap();
-        let arrow = value.to_arrow().unwrap();
+        let arrow = value.clone().into_arrow().unwrap();
         assert_eq!(DataType::from_arrow(&arrow).unwrap(), value);
         assert_eq!(DataType::try_from(arrow.clone()).unwrap(), value);
         assert_eq!(value.clone().into_arrow().unwrap(), arrow);
 
         let displayed = value.to_string();
         assert_eq!(DataType::from_str(&displayed).unwrap(), value);
-        let json = value.to_json().unwrap();
+        let json = value.clone().into_json().unwrap();
         assert_eq!(DataType::from_json(&json).unwrap(), value);
         assert_eq!(serde_json::from_str::<DataType>(&json).unwrap(), value);
+    }
+}
+
+#[test]
+fn duration32_projects_to_arrow_and_imports_at_arrows_native_width() {
+    for unit in [
+        TimeUnit::Second,
+        TimeUnit::Millisecond,
+        TimeUnit::Microsecond,
+        TimeUnit::Nanosecond,
+    ] {
+        let narrow = DataType::duration32(unit).unwrap();
+        let arrow = narrow.into_arrow().unwrap();
+        assert_eq!(
+            arrow,
+            ArrowDataType::Duration(unit.into_arrow_time().unwrap())
+        );
+        assert_eq!(
+            DataType::from_arrow(&arrow).unwrap(),
+            DataType::Duration64(unit)
+        );
     }
 }
 
@@ -115,7 +136,7 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::Date64,
         DataType::Time32(TimeUnit::Millisecond),
         DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration(TimeUnit::Nanosecond),
+        DataType::Duration64(TimeUnit::Nanosecond),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
@@ -154,15 +175,15 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     ];
 
     for value in values {
-        let borrowed = value.to_arrow().unwrap();
-        let ffi = value.to_arrow_ffi().unwrap();
+        let borrowed = value.clone().into_arrow().unwrap();
+        let ffi = value.clone().into_arrow_ffi().unwrap();
         assert_eq!(ArrowDataType::try_from(&ffi).unwrap(), borrowed);
         assert_eq!(DataType::from_arrow(&borrowed).unwrap(), value);
         assert_eq!(DataType::try_from(borrowed.clone()).unwrap(), value);
         assert_eq!(value.clone().into_arrow().unwrap(), borrowed);
         assert_eq!(DataType::from_str(&value.to_string()).unwrap(), value);
         assert_eq!(
-            DataType::from_json(&value.to_json().unwrap()).unwrap(),
+            DataType::from_json(&value.clone().into_json().unwrap()).unwrap(),
             value
         );
         let debug = format!("{borrowed:?}");
@@ -178,12 +199,13 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
     assert!(DataType::Time64(TimeUnit::Second).validate().is_err());
     for invalid in [
         DataType::Timestamp(TimeUnit::YearMonth, None),
-        DataType::Duration(TimeUnit::DayTime),
+        DataType::Duration32(TimeUnit::DayTime),
+        DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),
     ] {
         assert!(invalid.validate().is_err());
-        assert!(invalid.to_arrow().is_err());
-        assert!(invalid.to_json().is_err());
+        assert!(invalid.clone().into_arrow().is_err());
+        assert!(invalid.into_json().is_err());
     }
     assert!(DataType::fixed_size_binary(-1).is_err());
     assert!(DataType::fixed_size_list(Field::new("item", DataType::Utf8, true), -1).is_err());
@@ -230,9 +252,8 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     for error in [
         DataType::time32(TimeUnit::Nanosecond).unwrap_err(),
         invalid_time.validate().unwrap_err(),
-        invalid_time.to_arrow().unwrap_err(),
         invalid_time.clone().into_arrow().unwrap_err(),
-        invalid_time.to_arrow_ffi().unwrap_err(),
+        invalid_time.into_arrow_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "Time32", "unit must be second or millisecond");
     }
@@ -241,9 +262,8 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     for error in [
         DataType::fixed_size_binary(-1).unwrap_err(),
         invalid_binary.validate().unwrap_err(),
-        invalid_binary.to_arrow().unwrap_err(),
         invalid_binary.clone().into_arrow().unwrap_err(),
-        invalid_binary.to_arrow_ffi().unwrap_err(),
+        invalid_binary.into_arrow_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "FixedSizeBinary", "width must be non-negative: -1");
     }
@@ -253,9 +273,8 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     for error in [
         DataType::fixed_size_list(item, -1).unwrap_err(),
         invalid_list.validate().unwrap_err(),
-        invalid_list.to_arrow().unwrap_err(),
         invalid_list.clone().into_arrow().unwrap_err(),
-        invalid_list.to_arrow_ffi().unwrap_err(),
+        invalid_list.into_arrow_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "FixedSizeList", "length must be non-negative: -1");
     }

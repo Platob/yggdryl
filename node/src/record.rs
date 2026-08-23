@@ -68,6 +68,7 @@ pub(crate) fn data_type_js_hint(data_type: &DataType) -> Result<JsValueHint> {
         | D::Float16
         | D::Float32
         | D::Float64
+        | D::Duration32(_)
         | D::Interval(TimeUnit::YearMonth) => JsValueHint::Number,
         // 64-bit and wider integers exceed the safe-integer range.
         D::Int64
@@ -75,7 +76,7 @@ pub(crate) fn data_type_js_hint(data_type: &DataType) -> Result<JsValueHint> {
         | D::Timestamp(..)
         | D::Date64
         | D::Time64(_)
-        | D::Duration(_)
+        | D::Duration64(_)
         | D::Decimal32 { .. }
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
@@ -154,65 +155,17 @@ fn data_type_to_js<'env>(
     if matches!(value, Value::Null) {
         return Null.into_unknown(env);
     }
+    if let Some(value) = numeric_to_js(env, data_type, value)? {
+        return Ok(value);
+    }
+    if let Some(value) = temporal_to_js(env, data_type, value)? {
+        return Ok(value);
+    }
+    if let Some(value) = text_or_binary_to_js(env, data_type, value)? {
+        return Ok(value);
+    }
     match data_type {
         D::Null => Null.into_unknown(env),
-        D::Boolean => value
-            .as_bool()
-            .ok_or_else(|| napi_error("invalid native boolean record value"))?
-            .into_unknown(env),
-        D::Int8 | D::Int16 | D::Int32 | D::Date32 | D::Time32(_) => {
-            let integer = value
-                .as_i128()
-                .ok_or_else(|| napi_error("invalid native 32-bit integer record value"))?;
-            let integer = i32::try_from(integer)
-                .map_err(|_| napi_error("native integer is out of signed 32-bit range"))?;
-            integer.into_unknown(env)
-        }
-        D::UInt8 | D::UInt16 | D::UInt32 => {
-            let integer = value
-                .as_u128()
-                .ok_or_else(|| napi_error("invalid native unsigned record value"))?;
-            let integer = u32::try_from(integer)
-                .map_err(|_| napi_error("native integer is out of unsigned 32-bit range"))?;
-            integer.into_unknown(env)
-        }
-        D::Int64 | D::Timestamp(..) | D::Date64 | D::Time64(_) | D::Duration(_) => value
-            .as_i128()
-            .ok_or_else(|| napi_error("invalid native signed integer record value"))
-            .and_then(|value| BigInt::from(value).into_unknown(env)),
-        D::UInt64 => value
-            .as_u128()
-            .ok_or_else(|| napi_error("invalid native unsigned integer record value"))
-            .and_then(|value| BigInt::from(value).into_unknown(env)),
-        D::Float16 | D::Float32 | D::Float64 => value
-            .as_f64()
-            .ok_or_else(|| napi_error("invalid native floating record value"))?
-            .into_unknown(env),
-        D::Interval(TimeUnit::YearMonth) => {
-            let value = i32::try_from(
-                value
-                    .as_i128()
-                    .ok_or_else(|| napi_error("invalid interval"))?,
-            )
-            .map_err(napi_error)?;
-            value.into_unknown(env)
-        }
-        D::Interval(unit @ (TimeUnit::DayTime | TimeUnit::MonthDayNano)) => {
-            integer_tuple_to_js(env, value, *unit)
-        }
-        D::Interval(_) => Err(napi_error("invalid native interval layout")),
-        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => Buffer::from(
-            value
-                .as_bytes()
-                .ok_or_else(|| napi_error("invalid native binary record value"))?
-                .to_vec(),
-        )
-        .into_unknown(env),
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => value
-            .as_str()
-            .ok_or_else(|| napi_error("invalid native string record value"))?
-            .to_owned()
-            .into_unknown(env),
         D::List(item)
         | D::ListView(item)
         | D::FixedSizeList(item, _)
@@ -226,22 +179,8 @@ fn data_type_to_js<'env>(
         D::Dictionary(dictionary) => {
             data_type_to_js(env, dictionary.value(), value, root_schema, path)
         }
-        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } => value
-            .as_i128()
-            .ok_or_else(|| napi_error("invalid native decimal record value"))
-            .and_then(|value| BigInt::from(value).into_unknown(env)),
-        D::Decimal256 { .. } => decimal256_to_js(env, value),
         D::Map(map) => map_to_js(env, map, value, root_schema, path),
         D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value, root_schema, path),
-        // A geospatial value is its Well-Known Binary payload, so it crosses
-        // exactly as the binary family does.
-        D::Geometry(_) | D::Geography(_) => Buffer::from(
-            value
-                .as_wkb()
-                .ok_or_else(|| napi_error("invalid native geospatial record value"))?
-                .to_vec(),
-        )
-        .into_unknown(env),
         // A non-null variant value crosses as the Parquet Variant binary
         // encoding, which the Iceberg v3 layer owns; refuse by name until
         // that codec lands rather than inventing a second encoding here.
@@ -253,6 +192,159 @@ fn data_type_to_js<'env>(
             "unsupported native datatype {data_type}"
         ))),
     }
+}
+
+fn numeric_to_js<'env>(
+    env: &'env Env,
+    data_type: &DataType,
+    value: &Value,
+) -> Result<Option<Unknown<'env>>> {
+    use DataType as D;
+
+    let output = match data_type {
+        D::Boolean => value
+            .as_bool()
+            .ok_or_else(|| napi_error("invalid native boolean record value"))?
+            .into_unknown(env)?,
+        D::Int8 | D::Int16 | D::Int32 => {
+            let integer = value
+                .as_i128()
+                .ok_or_else(|| napi_error("invalid native 32-bit integer record value"))?;
+            i32::try_from(integer)
+                .map_err(|_| napi_error("native integer is out of signed 32-bit range"))?
+                .into_unknown(env)?
+        }
+        D::UInt8 | D::UInt16 | D::UInt32 => {
+            let integer = value
+                .as_u128()
+                .ok_or_else(|| napi_error("invalid native unsigned record value"))?;
+            u32::try_from(integer)
+                .map_err(|_| napi_error("native integer is out of unsigned 32-bit range"))?
+                .into_unknown(env)?
+        }
+        D::Int64 => BigInt::from(
+            value
+                .as_i128()
+                .ok_or_else(|| napi_error("invalid native signed integer record value"))?,
+        )
+        .into_unknown(env)?,
+        D::UInt64 => BigInt::from(
+            value
+                .as_u128()
+                .ok_or_else(|| napi_error("invalid native unsigned integer record value"))?,
+        )
+        .into_unknown(env)?,
+        D::Float16 | D::Float32 | D::Float64 => value
+            .as_f64()
+            .ok_or_else(|| napi_error("invalid native floating record value"))?
+            .into_unknown(env)?,
+        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } => BigInt::from(
+            value
+                .as_d128()
+                .map(|(unscaled, _)| unscaled)
+                .or_else(|| value.as_i128())
+                .ok_or_else(|| napi_error("invalid native decimal record value"))?,
+        )
+        .into_unknown(env)?,
+        D::Decimal256 { .. } => decimal256_to_js(env, value)?,
+        _ => return Ok(None),
+    };
+    Ok(Some(output))
+}
+
+fn temporal_to_js<'env>(
+    env: &'env Env,
+    data_type: &DataType,
+    value: &Value,
+) -> Result<Option<Unknown<'env>>> {
+    use DataType as D;
+
+    let output = match data_type {
+        D::Date32 => temporal32_to_js(env, value.as_date32().map(|(count, _, _)| count), value)?,
+        D::Time32(_) => temporal32_to_js(env, value.as_time32().map(|(count, _, _)| count), value)?,
+        D::Duration32(_) => {
+            temporal32_to_js(env, value.as_duration32().map(|(count, _, _)| count), value)?
+        }
+        D::Timestamp(..) => {
+            temporal64_to_js(env, value.as_datetime64().map(|(count, _, _)| count), value)?
+        }
+        D::Date64 => temporal64_to_js(env, value.as_date64().map(|(count, _, _)| count), value)?,
+        D::Time64(_) => temporal64_to_js(env, value.as_time64().map(|(count, _, _)| count), value)?,
+        D::Duration64(_) => {
+            temporal64_to_js(env, value.as_duration64().map(|(count, _, _)| count), value)?
+        }
+        D::Interval(TimeUnit::YearMonth) => i32::try_from(
+            value
+                .as_i128()
+                .ok_or_else(|| napi_error("invalid interval"))?,
+        )
+        .map_err(napi_error)?
+        .into_unknown(env)?,
+        D::Interval(unit @ (TimeUnit::DayTime | TimeUnit::MonthDayNano)) => {
+            integer_tuple_to_js(env, value, *unit)?
+        }
+        D::Interval(_) => return Err(napi_error("invalid native interval layout")),
+        _ => return Ok(None),
+    };
+    Ok(Some(output))
+}
+
+fn temporal32_to_js<'env>(
+    env: &'env Env,
+    temporal: Option<i32>,
+    value: &Value,
+) -> Result<Unknown<'env>> {
+    temporal
+        .or_else(|| value.as_i128().and_then(|count| i32::try_from(count).ok()))
+        .ok_or_else(|| napi_error("invalid native 32-bit temporal record value"))?
+        .into_unknown(env)
+}
+
+fn temporal64_to_js<'env>(
+    env: &'env Env,
+    temporal: Option<i64>,
+    value: &Value,
+) -> Result<Unknown<'env>> {
+    BigInt::from(
+        temporal
+            .or_else(|| value.as_i128().and_then(|count| i64::try_from(count).ok()))
+            .ok_or_else(|| napi_error("invalid native 64-bit temporal record value"))?,
+    )
+    .into_unknown(env)
+}
+
+fn text_or_binary_to_js<'env>(
+    env: &'env Env,
+    data_type: &DataType,
+    value: &Value,
+) -> Result<Option<Unknown<'env>>> {
+    use DataType as D;
+
+    let output = match data_type {
+        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => Buffer::from(
+            value
+                .as_bytes()
+                .ok_or_else(|| napi_error("invalid native binary record value"))?
+                .to_vec(),
+        )
+        .into_unknown(env)?,
+        D::Utf8 | D::LargeUtf8 | D::Utf8View => value
+            .as_str()
+            .ok_or_else(|| napi_error("invalid native string record value"))?
+            .to_owned()
+            .into_unknown(env)?,
+        // A geospatial value is its Well-Known Binary payload, so it crosses
+        // exactly as the binary family does.
+        D::Geometry(_) | D::Geography(_) => Buffer::from(
+            value
+                .as_wkb()
+                .ok_or_else(|| napi_error("invalid native geospatial record value"))?
+                .to_vec(),
+        )
+        .into_unknown(env)?,
+        _ => return Ok(None),
+    };
+    Ok(Some(output))
 }
 
 fn integer_tuple_to_js<'env>(
@@ -387,12 +479,14 @@ fn union_to_js<'env>(
 
 fn decimal256_to_js<'env>(env: &'env Env, value: &Value) -> Result<Unknown<'env>> {
     let encoded = value
-        .as_str()
-        .ok_or_else(|| napi_error("invalid native decimal256 coefficient string"))?;
+        .as_d256()
+        .map(|(unscaled, _)| unscaled.to_string())
+        .or_else(|| value.as_i128().map(|unscaled| unscaled.to_string()))
+        .ok_or_else(|| napi_error("invalid native decimal256 record value"))?;
     let global = env.get_global()?;
     let bigint: Function<'_, FnArgs<(String,)>, Unknown<'_>> =
         global.get_named_property("BigInt")?;
-    bigint.call((encoded.to_owned(),).into())
+    bigint.call((encoded,).into())
 }
 
 fn map_to_js<'env>(
@@ -462,7 +556,10 @@ pub(crate) fn arrow_scalar_to_ipc(
     use arrow_ipc::writer::StreamWriter;
     use arrow_schema::Schema;
 
-    let schema = Arc::new(Schema::new([field.to_arrow_ref().map_err(napi_error)?]));
+    let schema = Arc::new(Schema::new([field
+        .clone()
+        .into_arrow_ref()
+        .map_err(napi_error)?]));
     let options = RecordBatchOptions::new().with_row_count(Some(1));
     let batch =
         RecordBatch::try_new_with_options(schema, vec![array], &options).map_err(napi_error)?;

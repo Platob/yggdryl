@@ -1,4 +1,4 @@
-"""Allocation-conscious schema, record, and resource identifier values.
+"""Allocation-conscious schema, codec, and resource identifier values.
 
 The ``gzip``, ``zlib``, and ``zstd`` submodules carry the standard library's
 names on purpose: they hold the same wire formats behind the same
@@ -8,6 +8,7 @@ underneath and nothing else.
 
 from ._native import (
     Bound,
+    BoundStatement,
     DataType,
     Expression,
     Field,
@@ -21,15 +22,18 @@ from ._native import (
     Uri,
     Url,
     Urn,
+    Value,
     __version__,
     combined,
-    schema_from_pattern,
+    field_from_pattern,
 )
-from . import enums, fields, gzip, iceberg, json, toml, yaml, zlib, zstd
-from .records import Record, from_dict, record, schema_field, schema_fields, to_dict
+from . import avro, codec, enums, fields, gzip, iceberg, json, toml, yaml, zlib, zstd
+from .fields import field
+from .fields._classes import scalar
 
 __all__ = [
     "Bound",
+    "BoundStatement",
     "DataType",
     "Expression",
     "Field",
@@ -37,27 +41,26 @@ __all__ = [
     "MediaType",
     "MimeType",
     "ProtocolMetadata",
-    "Record",
     "RecordOptions",
     "Statement",
     "Timezone",
     "Uri",
     "Url",
     "Urn",
+    "Value",
     "__version__",
     "combined",
-    "from_dict",
+    "codec",
+    "avro",
     "enums",
+    "field",
+    "scalar",
     "fields",
     "gzip",
     "iceberg",
     "json",
-    "record",
-    "schema_field",
-    "schema_fields",
-    "schema_from_pattern",
+    "field_from_pattern",
     "toml",
-    "to_dict",
     "yaml",
     "zlib",
     "zstd",

@@ -8,6 +8,12 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
+// Capture the private native preflight before the public loader hides it. Its
+// return value is the core-owned conversion bound used only when batchSize is
+// absent, so this protects the language boundary from growing its own default.
+const nativeBinding = require('../index.js')
+const requireWritePreflightNative =
+  nativeBinding.RecordOptions.prototype._requireWritePreflightNative
 const { BatchReader, Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
 
 function scratch() {
@@ -37,6 +43,15 @@ function trades() {
   return rows([1n, 2n], ['AAPL', 'MSFT'], ['XNAS', 'XNAS'])
 }
 
+function wkbPoint(x, y) {
+  const bytes = Buffer.allocUnsafe(21)
+  bytes.writeUInt8(1, 0)
+  bytes.writeUInt32LE(1, 1)
+  bytes.writeDoubleLE(x, 5)
+  bytes.writeDoubleLE(y, 13)
+  return bytes
+}
+
 test('a handle names its own encoding and round-trips Arrow batches', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
@@ -48,11 +63,13 @@ test('a handle names its own encoding and round-trips Arrow batches', () => {
   assert.equal(options.safe, false)
   assert.equal(options.batchSize, null)
 
-  handle.writeArrowBatchReader(BatchReader.from(trades()))
+  handle.overwriteArrowReader(BatchReader.from(trades()))
   assert.ok(handle.size > 0)
   assert.ok(handle.readArrowField().equals(schema()))
 
-  const reader = handle.readArrowBatchReader()
+  const reader = handle.readArrowReader()
+  assert.equal(reader.toIpc, undefined)
+  assert.equal(reader.toTable, undefined)
   assert.ok(reader.field.equals(schema()))
   let read = 0
   for (const batch of reader) {
@@ -61,11 +78,11 @@ test('a handle names its own encoding and round-trips Arrow batches', () => {
   assert.equal(read, 2)
   // A stream is read once, and says so rather than reading as empty.
   assert.ok(reader.consumed)
-  assert.throws(() => reader.toIpc(), /already been consumed/)
+  assert.throws(() => reader.intoIpc(), /already been consumed/)
 
   // A reader a write took reports the same, rather than iterating as no rows.
   const written = BatchReader.from(trades())
-  handle.writeArrowBatchReader(written)
+  handle.overwriteArrowReader(written)
   assert.ok(written.consumed)
   assert.throws(() => [...written], /already been consumed/)
 })
@@ -77,7 +94,7 @@ test('a batch reader is built from whatever a caller already holds', () => {
   for (const source of [table, table.batches[0], [...table.batches], ipc]) {
     const reader = BatchReader.from(source)
     assert.ok(reader.field.equals(schema()))
-    assert.equal(reader.toTable().numRows, 2)
+    assert.equal(reader.intoTable().numRows, 2)
   }
 
   // A reader passes through itself, so a caller never wraps one twice.
@@ -90,13 +107,13 @@ test('a batch reader is built from whatever a caller already holds', () => {
 test('a declared schema selects and then casts', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  handle.writeArrowBatchReader(trades())
+  handle.overwriteArrowTable(trades())
   const plain = handle.recordOptions()
 
   const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
-  const projected = handle.readArrowBatchReader(plain.withSchema(wanted))
+  const projected = handle.readArrowReader(plain.withField(wanted))
   assert.equal(projected.field.dataType.length, 1)
-  assert.equal(projected.toTable().numCols, 1)
+  assert.equal(projected.intoTable().numCols, 1)
 
   // The resource is unchanged: it still holds all three columns.
   assert.equal(handle.readArrowField().dataType.length, 3)
@@ -108,7 +125,7 @@ test('a declared schema selects and then casts', () => {
     [Field.from('id: int64'), Field.from('nowhere: utf8')],
     { nullable: false },
   )
-  const widened = handle.readArrowBatchReader(plain.withSchema(invented))
+  const widened = handle.readArrowReader(plain.withField(invented))
   assert.equal(widened.field.dataType.length, 2)
 })
 
@@ -118,21 +135,82 @@ test('parquet is chosen by the file name and nothing else', (t) => {
 
   const file = new IOBase(path.join(root, 'trades.parquet'))
   assert.equal(file.recordOptions().toString(), 'application/vnd.apache.parquet')
+  assert.equal(file._readParquetStatisticsNative, undefined)
+  assert.equal(file._readParquetGeospatialStatisticsNative, undefined)
 
-  const declared = file.recordOptions().withSchema(schema())
-  file.writeArrowBatchReader(trades(), declared)
+  const declared = file
+    .recordOptions()
+    .withField(schema())
+    .withMaxRowGroupSize(1)
+    .withKeyValue('writer', 'node')
+  file.overwriteArrowTable(trades(), declared)
   assert.ok(file.size > 0)
   assert.ok(file.readArrowField().equals(schema()))
-  assert.equal(file.readArrowBatchReader().toTable().numRows, 2)
+  assert.equal(file.readArrowReader().intoTable().numRows, 2)
+
+  const statistics = file.readParquetStatistics()
+  assert.equal(statistics.num_rows, 2)
+  assert.equal(statistics.row_groups.length, 2)
+  assert.equal(
+    statistics.key_value_metadata.find(({ key }) => key === 'writer').value,
+    'node',
+  )
+  const identifier = statistics.row_groups[0].columns.find(
+    ({ path: column }) => column === 'id',
+  )
+  assert.ok(Buffer.isBuffer(identifier.min_bytes))
+  assert.ok(Buffer.isBuffer(identifier.max_bytes))
+  assert.throws(
+    () => file.readParquetGeospatialStatistics('id'),
+    /WKB binary storage/,
+  )
 
   // Both sides of an append stream, and the incoming batches are cast first.
-  file.appendArrowBatchReader(rows([3n], ['NVDA'], ['XNAS']), declared)
-  const table = file.readArrowBatchReader().toTable()
+  file.appendArrowTable(rows([3n], ['NVDA'], ['XNAS']), declared)
+  const table = file.readArrowReader().intoTable()
   assert.equal(table.numRows, 3)
   assert.deepEqual(
     table.getChild('symbol').toArray(),
     ['AAPL', 'MSFT', 'NVDA'],
   )
+})
+
+test('Parquet statistics reject another inferred encoding before parsing bytes', () => {
+  const stream = IOBase.fromBytes()
+  stream.mediaType = MimeType.ARROW_STREAM
+  assert.throws(() => stream.readParquetStatistics(), /expected Parquet media/)
+  assert.throws(
+    () => stream.readParquetGeospatialStatistics('shape'),
+    /expected Parquet media/,
+  )
+})
+
+test('Parquet geospatial statistics scan one projected WKB column', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = new IOBase(path.join(root, 'shapes.parquet'))
+  file.overwriteArrowTable(
+    new arrow.Table({
+      shape: arrow.vectorFromArray(
+        [wkbPoint(1, 2), null, wkbPoint(-3, 7)],
+        new arrow.Binary(),
+      ),
+    }),
+  )
+
+  assert.deepEqual(file.readParquetGeospatialStatistics('shape'), {
+    bounding_box: {
+      mmax: null,
+      mmin: null,
+      xmax: 1,
+      xmin: -3,
+      ymax: 7,
+      ymin: 2,
+      zmax: null,
+      zmin: null,
+    },
+    geometry_types: [1],
+  })
 })
 
 test('a declared root that a batch cannot satisfy is refused', (t) => {
@@ -147,20 +225,20 @@ test('a declared root that a batch cannot satisfy is refused', (t) => {
     [Field.from('id: int64 not null'), Field.from('symbol: utf8'), Field.from('venue: utf8')],
     { nullable: false },
   )
-  file.writeArrowBatchReader(trades(), file.recordOptions().withSchema(required))
+  file.overwriteArrowTable(trades(), file.recordOptions().withField(required))
   assert.ok(file.readArrowField().equals(required))
 })
 
 test('a match key updates a stored row and appends a new one', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  handle.writeArrowBatchReader(trades())
+  handle.overwriteArrowTable(trades())
 
   const merging = handle.recordOptions().withMergeByNames(['id'])
   assert.deepEqual(merging.mergeByNames, ['id'])
-  handle.writeArrowBatchReader(rows([2n, 9n], ['MSFT.O', 'NVDA'], ['XNYS', 'XNYS']), merging)
+  handle.mergeArrowTable(rows([2n, 9n], ['MSFT.O', 'NVDA'], ['XNYS', 'XNYS']), merging)
 
-  const table = handle.readArrowBatchReader().toTable()
+  const table = handle.readArrowReader().intoTable()
   assert.equal(table.numRows, 3)
   assert.deepEqual(table.getChild('symbol').toArray(), ['AAPL', 'MSFT.O', 'NVDA'])
 })
@@ -168,12 +246,12 @@ test('a match key updates a stored row and appends a new one', () => {
 test('a zero row limit reads the schema and no batches', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  handle.writeArrowBatchReader(trades())
+  handle.overwriteArrowTable(trades())
 
   // `0` is a valid ask, not an error: the shaped schema still answers.
-  const reader = handle.readArrowBatchReader(handle.recordOptions().withMaxRowSize(0))
+  const reader = handle.readArrowReader(handle.recordOptions().withMaxRowSize(0))
   assert.ok(reader.field.equals(schema()))
-  assert.equal(reader.toTable().numRows, 0)
+  assert.equal(reader.intoTable().numRows, 0)
 })
 
 test('a row limit is exact over a bigger file', (t) => {
@@ -187,35 +265,35 @@ test('a row limit is exact over a bigger file', (t) => {
     Array.from({ length: count }, () => 'AAPL'),
     Array.from({ length: count }, () => 'XNAS'),
   )
-  file.writeArrowBatchReader(BatchReader.from(many))
+  file.overwriteArrowReader(BatchReader.from(many))
 
   const options = file.recordOptions()
   options.maxRowSize = 10
   assert.equal(options.maxRowSize, 10)
-  assert.equal(file.readArrowBatchReader(options).toTable().numRows, 10)
+  assert.equal(file.readArrowReader(options).intoTable().numRows, 10)
 })
 
 test('a small byte limit still yields at least one row', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  handle.writeArrowBatchReader(trades())
+  handle.overwriteArrowTable(trades())
 
   // One byte admits no whole row, but a bounded read must never be a silent
   // total loss: only a limit of zero yields nothing.
   const options = handle.recordOptions().withMaxByteSize(1)
-  assert.equal(handle.readArrowBatchReader(options).toTable().numRows, 1)
+  assert.equal(handle.readArrowReader(options).intoTable().numRows, 1)
 })
 
 test('a limit with a match key is refused naming both settings', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  handle.writeArrowBatchReader(trades())
+  handle.overwriteArrowTable(trades())
 
   // A truncated merge would update the matched keys it kept and silently drop
   // the rest, so the combination is refused rather than corrupting.
   const limited = handle.recordOptions().withMergeByNames(['id']).withMaxRowSize(10)
   assert.throws(
-    () => handle.writeArrowBatchReader(trades(), limited),
+    () => handle.mergeArrowTable(trades(), limited),
     /max_row_size = 10.*merge_by_names/,
   )
 })
@@ -226,14 +304,14 @@ test('a folder is one table, and a write routes rows to their partition', (t) =>
   fs.mkdirSync(path.join(root, 'venue=XNAS'), { recursive: true })
 
   const lake = new IOBase(root)
-  const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM).withSchema(schema())
-  lake.writeArrowBatchReader(trades(), options)
+  const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM).withField(schema())
+  lake.overwriteArrowTable(trades(), options)
 
   // The value the directory spells is not stored again in every row.
   const leaf = lake.joinpath('venue=XNAS').joinpath('part-0.arrows')
   assert.equal(leaf.readArrowField().dataType.length, 2)
 
-  const restored = lake.readArrowBatchReader(options).toTable()
+  const restored = lake.readArrowReader(options).intoTable()
   assert.equal(restored.numCols, 3)
   assert.deepEqual(restored.getChild('venue').toArray(), ['XNAS', 'XNAS'])
 })
@@ -241,12 +319,14 @@ test('a folder is one table, and a write routes rows to their partition', (t) =>
 test('record options are values, and a setting is set or carried forward', () => {
   const options = RecordOptions.forMimeType(MimeType.PARQUET)
   assert.equal(options.mimeType.toString(), 'application/vnd.apache.parquet')
-  assert.equal(options.schema, null)
+  assert.equal(options.field, null)
 
-  const declared = options.withSchema(schema()).withBatchSize(1024).withSafe(true)
-  assert.ok(declared.schema.equals(schema()))
+  const declared = options.withField(schema()).withBatchSize(1024).withSafe(true)
+  assert.ok(declared.field.equals(schema()))
   assert.equal(declared.batchSize, 1024)
   assert.equal(declared.safe, true)
+  assert.equal('schema' in options, false)
+  assert.equal(options.withSchema, undefined)
   // `with*` returns a new value, so the one it was built from is untouched.
   assert.equal(options.batchSize, null)
   assert.equal(options.safe, false)
@@ -261,6 +341,53 @@ test('record options are values, and a setting is set or carried forward', () =>
     () => RecordOptions.forMimeType('text/csv'),
     /expected a record encoding this build implements/,
   )
+})
+
+test('record option value protocols delegate every encoding to the core', () => {
+  const marker = Buffer.from('0123456789abcdef')
+  const variants = [
+    RecordOptions.from('trades.arrows')
+      .withRootName('ipc-row')
+      .withBatchSize(64),
+    RecordOptions.from('trades.avro')
+      .withBlockCodec('null')
+      .withSyncMarker(marker),
+    RecordOptions.from('trades.parquet')
+      .withCompression('snappy')
+      .withMaxRowGroupSize(512)
+      .withKeyValue('source', 'protocol-test'),
+    // Text is a real RecordOptions variant, not IPC options inferred from the
+    // same shared fields. Its core identity also owns the line extractor,
+    // including the canonical regex source when one is configured in Rust.
+    RecordOptions.from('trades.txt')
+      .withRootName('line')
+      .withBatchSize(32),
+  ]
+
+  for (const options of variants) {
+    const originalHash = options.stableHash()
+    const clone = options.clone()
+    assert.notEqual(clone, options)
+    assert.ok(clone.equals(options), options.toString())
+    assert.equal(clone.compare(options), 0, options.toString())
+    assert.equal(clone.stableHash(), originalHash, options.toString())
+    assert.equal(typeof originalHash, 'bigint')
+
+    // A clone owns its core value. Mutation changes only that copy and all
+    // three value protocols observe the new complete state.
+    clone.safe = !clone.safe
+    assert.ok(!clone.equals(options), options.toString())
+    assert.notEqual(clone.compare(options), 0, options.toString())
+    assert.equal(options.stableHash(), originalHash, options.toString())
+  }
+
+  // The encoding variant itself participates, even when shared fields agree.
+  for (let left = 0; left < variants.length; left += 1) {
+    for (let right = left + 1; right < variants.length; right += 1) {
+      assert.ok(!variants[left].equals(variants[right]))
+      assert.notEqual(variants[left].compare(variants[right]), 0)
+    }
+  }
 })
 
 test('a setting one encoding has is absent on the others', (t) => {
@@ -288,14 +415,14 @@ test('a setting one encoding has is absent on the others', (t) => {
   const sizes = ['uncompressed', 'snappy'].map((compression) => {
     const file = new IOBase(path.join(root, `trades-${compression}.parquet`))
     const ids = Array.from({ length: 4_000 }, (_, index) => BigInt(index))
-    file.writeArrowBatchReader(
+    file.overwriteArrowTable(
       new arrow.Table({
         id: arrow.vectorFromArray(ids, new arrow.Int64()),
         symbol: arrow.vectorFromArray(ids.map(() => 'AAPL'), new arrow.Utf8()),
       }),
       file.recordOptions().withCompression(compression),
     )
-    assert.equal(file.readArrowBatchReader().toTable().numRows, 4_000, compression)
+    assert.equal(file.readArrowReader().intoTable().numRows, 4_000, compression)
     return file.size
   })
   assert.ok(sizes[0] > sizes[1], sizes.join())
@@ -312,13 +439,58 @@ test('a setting one encoding has is absent on the others', (t) => {
   assert.throws(() => parquet.withCompression('nope'), /nope/)
 })
 
+test('Avro record options expose validated block settings', () => {
+  const options = RecordOptions.from('trades.avro')
+  assert.equal(options.blockCodec, 'deflate')
+  assert.equal(options.syncMarker, null)
+
+  options.blockCodec = 'null'
+  options.syncMarker = Buffer.from('0123456789abcdef')
+  assert.equal(options.blockCodec, 'null')
+  assert.deepEqual(options.syncMarker, Buffer.from('0123456789abcdef'))
+
+  const copied = options
+    .withBlockCodec('zstandard')
+    .withSyncMarker(Buffer.from('fedcba9876543210'))
+  assert.equal(copied.blockCodec, 'zstandard')
+  assert.deepEqual(copied.syncMarker, Buffer.from('fedcba9876543210'))
+  assert.equal(options.blockCodec, 'null')
+  assert.deepEqual(options.withSyncMarker(null).syncMarker, null)
+
+  assert.throws(() => {
+    options.blockCodec = 'brotli'
+  }, /brotli/)
+  assert.throws(() => {
+    options.syncMarker = Buffer.from('short')
+  }, /exactly 16 bytes/)
+
+  const ipc = RecordOptions.from('trades.arrows')
+  assert.equal(ipc.blockCodec, null)
+  assert.equal(ipc.syncMarker, null)
+  assert.throws(() => {
+    ipc.blockCodec = 'null'
+  }, /expected Avro options/)
+  assert.throws(() => {
+    ipc.syncMarker = null
+  }, /expected Avro options/)
+})
+
+test('native record conversion uses the shared core batch default', () => {
+  const options = nativeBinding.RecordOptions.from('trades.arrows')
+  assert.equal(
+    Reflect.apply(requireWritePreflightNative, options, ['overwrite']),
+    65_536,
+  )
+  assert.equal(RecordOptions.prototype._requireWritePreflightNative, undefined)
+})
+
 test('a resource that is not there holds no batches', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const absent = new IOBase(path.join(root, 'absent.arrows'))
   assert.ok(!absent.exists())
-  assert.equal(absent.readArrowBatchReader().toTable().numRows, 0)
+  assert.equal(absent.readArrowReader().intoTable().numRows, 0)
 })
 
 test('content coding belongs to the handle rather than to the encoding', (t) => {
@@ -329,8 +501,8 @@ test('content coding belongs to the handle rather than to the encoding', (t) => 
   const compressed = new IOBase(path.join(root, 'trades.arrows.gz'))
   assert.equal(compressed.mediaType.toString(), 'application/vnd.apache.arrow.stream;encodings=application/gzip')
 
-  compressed.writeArrowBatchReader(trades())
-  assert.equal(compressed.readArrowBatchReader().toTable().numRows, 2)
+  compressed.overwriteArrowTable(trades())
+  assert.equal(compressed.readArrowReader().intoTable().numRows, 2)
   assert.notEqual(compressed.readBytes().subarray(0, 2).toString('hex'), 'ffff')
 })
 
@@ -339,9 +511,8 @@ test('rows read back as records, plain or through a runtime class', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const handle = new IOBase(path.join(root, 'trades.arrows'))
-  // The record write is the generic write under the record name, so plain
-  // objects are rows.
-  handle.writeRecords([
+  // The record-specific overwrite infers plain objects as rows.
+  handle.overwriteRecords([
     { id: 1n, symbol: 'AAPL', venue: 'XNAS' },
     { id: 2n, symbol: 'MSFT', venue: 'XNAS' },
   ])
@@ -353,7 +524,7 @@ test('rows read back as records, plain or through a runtime class', (t) => {
     ['AAPL', 'MSFT'],
   )
 
-  // A class whose constructor takes the plain row is a runtime record class.
+  // A class whose constructor takes the plain row is a runtime row adapter.
   class Trade {
     constructor(row) {
       Object.assign(this, row)

@@ -163,13 +163,15 @@ impl PyTimezone {
     }
 
     /// The local reading, in epoch seconds, of a UTC instant.
-    fn to_local(&self, epoch: i64) -> PyResult<i64> {
-        self.inner.to_local(epoch).map_err(value_error)
+    #[allow(clippy::wrong_self_convention)]
+    fn into_local(&self, epoch: i64) -> PyResult<i64> {
+        self.inner.clone().into_local(epoch).map_err(value_error)
     }
 
     /// The UTC instant a local reading names.
-    fn to_utc(&self, local: i64) -> PyResult<i64> {
-        self.inner.to_utc(local).map_err(value_error)
+    #[allow(clippy::wrong_self_convention)]
+    fn into_utc(&self, local: i64) -> PyResult<i64> {
+        self.inner.clone().into_utc(local).map_err(value_error)
     }
 
     /// The offset as a `datetime.timedelta`, as `tzinfo.utcoffset` returns.
@@ -199,8 +201,8 @@ impl PyTimezone {
         format!("Timezone({:?})", self.inner.as_str())
     }
 
-    fn __hash__(&self) -> u64 {
-        self.inner.stable_hash()
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
     }
 
     fn __richcmp__(
@@ -208,13 +210,11 @@ impl PyTimezone {
         other: &Bound<'_, PyAny>,
         operation: pyo3::basic::CompareOp,
     ) -> PyResult<Py<PyAny>> {
-        // Comparing against a plain name or a ZoneInfo is the point: the core
-        // canonicalizes both, so two spellings of one zone compare equal.
         let py = other.py();
-        let Ok(other) = core_timezone_from_value(other) else {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return Ok(py.NotImplemented());
         };
-        Ok(crate::compare(self.inner.cmp(&other), operation)
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
             .into_pyobject(py)?
             .to_owned()
             .into_any()

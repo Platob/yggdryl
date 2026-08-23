@@ -65,6 +65,13 @@ class TestOffsets:
         assert new_york.is_saving_at(utc(2024, 7, 15))
         assert not new_york.is_saving_at(utc(2024, 1, 15))
 
+    def test_explicit_local_and_utc_conversions_use_into_names(self) -> None:
+        instant = utc(2024, 1, 15, 12)
+        assert Timezone.UTC.into_local(instant) == instant
+        assert Timezone.UTC.into_utc(instant) == instant
+        assert not hasattr(Timezone.UTC, "to_local")
+        assert not hasattr(Timezone.UTC, "to_utc")
+
     def test_a_southern_zone_is_saving_across_the_new_year(self) -> None:
         sydney = Timezone("Australia/Sydney")
 
@@ -102,7 +109,7 @@ class TestOffsets:
         assert unknown.standard_offset is None
         # Refusing is recoverable; a plausible wrong offset is not.
         with pytest.raises(ValueError):
-            unknown.to_local(0)
+            unknown.into_local(0)
 
     def test_utcoffset_duck_types_as_a_tzinfo(self) -> None:
         paris = Timezone("Europe/Paris")
@@ -141,6 +148,8 @@ class TestProtocols:
     def test_it_hashes_compares_and_sorts(self) -> None:
         assert hash(Timezone("US/Eastern")) == hash(Timezone("America/New_York"))
         assert Timezone("Europe/Paris") != Timezone("Europe/Berlin")
+        assert Timezone("UTC") != "UTC"
+        assert Timezone("UTC") != zoneinfo.ZoneInfo("UTC")
         assert sorted([Timezone("UTC"), Timezone("Europe/Paris")])[0].key == "Europe/Paris"
         assert {Timezone("Z"), Timezone("UTC")} == {Timezone.UTC}
 

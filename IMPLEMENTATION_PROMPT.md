@@ -238,8 +238,8 @@ are **no per-record maps or schemas**: a `Bound` holds the resolved plan and a
 batch evaluation touches no name lookup. Three evaluation surfaces, one plan:
 
 1. **Scalar** — `Bound::eval(&Value) -> Result<Value>` and
-   `Bound::matches(&Value) -> Result<bool>` over a `Value::Record`/`Sequence`
-   row. This is the tier that works in a build without the `arrow` feature; the
+   `Bound::matches(&Value) -> Result<bool>` over a schema-ordered
+   `Value::Sequence` row. This is the tier that works in a build without the `arrow` feature; the
    whole module below `arrow.rs` compiles with `--no-default-features`.
 2. **Vectorized** — `Bound::evaluate(&RecordBatch) -> Result<ArrayRef>` and
    `filter_mask(&RecordBatch) -> Result<BooleanArray>`, built from the pinned
@@ -411,7 +411,7 @@ no Python-side parsing, no Python-side evaluation (`AGENTS.md:841`):
   `.like("%.parquet")`, `holder.size`, `holder.partition["year"]`. Operator
   overloads construct native nodes directly.
 - Every existing filter argument accepts `str | Expression` beside the pairs it
-  accepts today: `IOBase.children_where`, `read_arrow_batch_reader` options,
+  accepts today: `IOBase.children_where`, `read_arrow_reader` options,
   `Table.scan_where`. A `str` is parsed natively; a `pyarrow.compute.Expression`
   is refused naming what was expected (do not silently reinterpret a foreign
   expression object).
@@ -443,6 +443,9 @@ tier via fixtures, nested types, and type-level checks for the builder.
 
 ## 8. Phase 4: documentation
 
+- Keep source rustdoc/docstrings and Markdown lean: state each contract,
+  non-obvious edge, and measured behavior once; remove repeated rationale,
+  signature restatements, and prose already expressed by names or examples.
 - New page `docs/expression.md` — one H1, exactly one opening sentence, then
   example-first sections: parse a predicate; the grammar (a compact table);
   typing against a schema; scalar vs vectorized vs streaming; `&holder.*`

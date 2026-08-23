@@ -56,7 +56,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
 
     let row = Value::from_sequence([
         Value::from("EUR"),
-        Value::Decimal(15_000, 2),
+        Value::D128(15_000, 2),
         Value::I64(5),
     ]);
     assert!(bound.matches(&row)?);
@@ -106,7 +106,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
 
     // The price is an exact decimal, because the column is exact and so is
     // the comparison: a JavaScript number here would be a different one.
-    const price = Value.decimal(15000n, 2)
+    const price = Value.d128(15000n, 2)
     assert.equal(bound.matches(Value.fromJs(['EUR', price, 5])), true)
     assert.equal(bound.matches(Value.fromJs(['USD', price, 5])), false)
     ```
@@ -326,6 +326,61 @@ Measured over 65,536 rows against the raw kernel call written by hand, the expre
 a few percent for every predicate family, and parse and bind together cost single-digit microseconds
 once per stream. The numbers, and how to reproduce them, are [below](#against-the-raw-arrow-kernels).
 
+## Bind a whole statement once
+
+`Statement::bind` resolves projections, predicate, ordering, parameters, and output field against one
+struct `Field`. The resulting `BoundStatement` exposes that resolved plan without reparsing it.
+`ordering` reports each expression with its direction and optional null placement; `is_all` is true
+only for an unfiltered, unordered, unlimited `select *`.
+
+Rust uses `bind_with(&field, &[(name, Value)])`. Python accepts a mapping in
+`statement.bind(field, parameters=None)`, and JavaScript accepts a native `Value` record or an ordinary
+object in `statement.bind(fieldLike, parameters?)`; both redirect to the same core binder.
+
+Arrow projection is streamed where the holder permits it. `project_reader` wraps a `BatchReader`,
+applies the predicate and projection batch by batch, and enforces one limit across the stream. Python's
+`project_arrow` and JavaScript's `projectArrow` preserve a record batch, table, or reader input; their
+spelled-out methods make the return type explicit. Global ordering cannot be correct without seeing
+all rows, so `sort` / `sort_arrow_record_batch` / `sortArrowRecordBatch` intentionally sort one
+materialized batch.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expression::Statement;
+    use yggdryl::Field;
+
+    let field: Field = "rows:struct<ccy:utf8,size:bigint>".parse()?;
+    let statement: Statement = "select ccy, size as quantity where size >= 2 limit 10".parse()?;
+    let bound = statement.bind(&field)?;
+    assert_eq!(bound.output().fields()[1].name(), "quantity");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field, Statement
+
+    field = Field("rows", "struct<ccy:utf8,size:bigint>", False)
+    bound = Statement(
+        "select ccy, size as quantity where size >= :floor limit 10"
+    ).bind(field, {"floor": 2})
+    assert bound.output.name == "rows"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Statement } = require('yggdryl')
+
+    const field = new Field('rows', 'struct<ccy:utf8,size:bigint>', false)
+    const bound = new Statement(
+      'select ccy, size as quantity where size >= :floor limit 10',
+    ).bind(field, { floor: 2 })
+    assert.equal(bound.output.name, 'rows')
+    ```
+
 ## Targets own their application
 
 `Bound` does not grow one method per thing an expression can run over. The `ApplyExpression` trait
@@ -365,7 +420,7 @@ let row = Value::from_sequence([Value::from("EUR"), Value::I64(25)]);
 assert_eq!(row.apply_expression(&bound)?, Value::Bool(true));
 
 // One batch applies to one column of answers, one per row.
-let arrow_schema = schema.to_arrow_schema()?;
+let arrow_schema = schema.into_arrow_schema()?;
 let batch = RecordBatch::try_new(
     Arc::clone(&arrow_schema),
     vec![
@@ -536,14 +591,16 @@ ship. What follows is what this grammar accepts, what it refuses, and what it ke
   `-0.0` sorts below `+0.0`. This is Arrow's own predicate: the two tiers agreeing with *each other*
   matters more than either agreeing with another engine, because a disagreement between them is a
   correctness bug and a disagreement with DuckDB is a documented difference.
-- **A decimal never silently becomes a float.** The only decimal-to-float transitions are an explicit
-  cast and an arithmetic node with a float operand the caller wrote. `f64` holds about 16 decimal
-  digits against `decimal(38, s)`'s 38, and the loss is invisible in the plan.
-- **An exact quotient keeps room to be one.** Division floors at six fractional places, because at
-  the operands' own scale `1.00 / 3.00` is `0.33` - a rounding, not a division.
-- **Overflow and an unrepresentable conversion answer null, not garbage.** `try_cast` is the spelling
-  for a caller who wants the null explicitly; `cast` refuses. Arithmetic that cannot be represented
-  answers unknown, which is what the read path means everywhere else by absence.
+- **A decimal never silently becomes a float.** Exact decimals and approximate floats do not share
+  an implicit arithmetic type; an explicit cast is required. `f64` holds about 16 decimal digits
+  against `decimal(38, s)`'s 38, and an implicit loss would be invisible in the plan.
+- **An exact quotient keeps room to be one.** Division uses at least six fractional places, because at
+  the operands' own scale `1.00 / 3.00` would be `0.33` - a rounding, not a division. If the quotient
+  is still inexact at the declared scale, evaluation returns the core inexact-arithmetic error.
+- **Null propagates; failed arithmetic is an error.** A null operand produces null. Overflow,
+  division by zero, an inexact quotient, and an undefined operand pair remain distinct core errors
+  through `Bound::eval`; none is silently rewritten as unknown. `try_cast` is the explicit spelling
+  for a caller who wants a failed conversion to become null, while `cast` refuses it.
 
 ### Deliberately refused
 

@@ -147,9 +147,9 @@ impl<W: Write> FlateFinish for DeflateEncoder<W> {
 ///
 /// Reads decompress and writes compress, so anything that takes an [`IOBase`] -
 /// a media reader, a codec, another handle - sees the decoded bytes while the
-/// wrapped handle holds the zlib form. The decoded value is materialized on
-/// first use and published on [`IOBase::flush`] or [`IOBase::close`], because a
-/// coding cannot be written positionally.
+/// wrapped handle holds the zlib form. Sequential and closed positional reads
+/// decode through bounded windows; positional mutation and explicit
+/// [`IOBase::open`] materialize the decoded value until close.
 ///
 /// ```
 /// use yggdryl::io::{Buffer, IOBase};
@@ -207,13 +207,22 @@ impl<H: IOBase> Zlib<H> {
     }
 }
 
+impl<H: IOBase> crate::io::IOMedia for Zlib<H> {
+    crate::delegate_iomedia!(coded);
+}
+
 impl<H: IOBase> IOBase for Zlib<H> {
     crate::delegate_iobase!(coded);
 
-    /// The borrowed projection reads a snapshot of the *decoded* value: this
-    /// view presents bytes its location does not hold, so the default's
-    /// reopen-the-location route would hand back the encoded form. See
-    /// [`crate::io::Coded`]'s override.
+    fn read_all_bytes(&self) -> crate::Result<Vec<u8>> {
+        self.coded.read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
+        self.coded.read_range(offset, length)
+    }
+
+    /// Use the coding view's owning streamed projection.
     #[cfg(feature = "arrow")]
     fn read_arrow_lines(
         &self,
@@ -222,19 +231,7 @@ impl<H: IOBase> IOBase for Zlib<H> {
     where
         Self: Sized,
     {
-        crate::text::line::arrow::snapshot_arrow_lines(self, options)
-    }
-
-    fn open(&mut self) -> crate::Result<()> {
-        self.coded.open()
-    }
-
-    fn opened(&self) -> bool {
-        self.coded.opened()
-    }
-
-    fn close(&mut self) -> crate::Result<()> {
-        self.coded.close()
+        self.coded.read_arrow_lines(options)
     }
 }
 

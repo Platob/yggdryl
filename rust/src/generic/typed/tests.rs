@@ -1,6 +1,6 @@
 //! What a datatype accepts beside it, and what it refuses.
 
-use crate::{DataType, Field, TimeUnit, TypedValue, Value};
+use crate::{DataType, Field, TimeUnit, Timezone, TypedValue, Value};
 
 #[test]
 fn a_pairing_holds_only_a_value_its_datatype_accepts() {
@@ -93,6 +93,18 @@ fn both_halves_come_back_out() {
 
     assert_eq!(data_type, DataType::Utf8);
     assert_eq!(value, Value::from("AAPL"));
+}
+
+#[test]
+fn pairings_order_and_stably_hash_both_halves() {
+    let first = TypedValue::from_parts(DataType::Int32, Value::I32(7)).unwrap();
+    let equal = first.clone();
+    let later_value = TypedValue::from_parts(DataType::Int32, Value::I32(8)).unwrap();
+    let later_type = TypedValue::from_parts(DataType::Int64, Value::I64(7)).unwrap();
+
+    assert_eq!(first.stable_hash(), equal.stable_hash());
+    assert!(first < later_value);
+    assert!(first < later_type);
 }
 
 #[test]
@@ -196,7 +208,7 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
     // A parameterized datatype keeps its parameters in the pairing, not the marker.
     let stamp = TimestampValue::try_from_parts(
         DataType::Timestamp(TimeUnit::Microsecond, None),
-        Value::timestamp(0, TimeUnit::Microsecond, None).unwrap(),
+        Value::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
     )
     .unwrap();
     assert_eq!(
@@ -204,7 +216,7 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
         &DataType::Timestamp(TimeUnit::Microsecond, None)
     );
     assert!(
-        TimestampValue::try_from_parts(DataType::Date32, Value::Date(0)).is_err(),
+        TimestampValue::try_from_parts(DataType::Date32, Value::date32(0)).is_err(),
         "a date is not a timestamp"
     );
 }
@@ -237,7 +249,7 @@ mod arrow {
     #[test]
     fn a_pairing_round_trips_through_its_one_row_arrow_array() {
         let typed = TypedValue::from_parts(DataType::Int64, Value::from(7_i64)).unwrap();
-        let array = typed.to_arrow_array().unwrap();
+        let array = typed.clone().into_arrow_array().unwrap();
         assert_eq!(array.len(), 1);
         assert_eq!(
             TypedValue::from_arrow_array(DataType::Int64, array.as_ref()).unwrap(),
@@ -251,7 +263,7 @@ mod arrow {
 
         let array = Int64Value::new(Value::from(7_i64))
             .unwrap()
-            .to_arrow_array()
+            .into_arrow_array()
             .unwrap();
         let typed = Int64Value::try_from_arrow_array(DataType::Int64, array.as_ref()).unwrap();
         assert_eq!(typed.value(), &Value::I64(7));
@@ -269,7 +281,7 @@ mod arrow {
     fn a_decode_refuses_a_foreign_array_that_is_not_one_exact_row() {
         let array = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))
             .unwrap()
-            .to_arrow_array()
+            .into_arrow_array()
             .unwrap();
         // Two rows are not a scalar, and neither is a different datatype.
         let error = TypedValue::from_arrow_array(DataType::Int64, array.slice(0, 0).as_ref())
@@ -286,7 +298,7 @@ mod arrow {
     fn a_null_projects_only_when_the_datatype_default_spells_it() {
         // Null's canonical default is null, so the projection holds...
         let nothing = TypedValue::from_parts(DataType::Null, Value::Null).unwrap();
-        let array = nothing.to_arrow_array().unwrap();
+        let array = nothing.clone().into_arrow_array().unwrap();
         assert_eq!(array.len(), 1);
         assert_eq!(
             TypedValue::from_arrow_array(DataType::Null, array.as_ref()).unwrap(),
@@ -296,7 +308,7 @@ mod arrow {
         // ...while an int64 null belongs to a nullable column, which is a
         // Field's business rather than a bare datatype's.
         let absent = TypedValue::from_parts(DataType::Int64, Value::Null).unwrap();
-        assert!(absent.to_arrow_array().is_err());
+        assert!(absent.clone().into_arrow_array().is_err());
         let column = Field::new("value", DataType::Int64, true);
         let array = crate::arrow::scalar_array(&column, &Value::Null).unwrap();
         assert_eq!(
@@ -314,11 +326,10 @@ mod arrow {
         .unwrap();
         let row = Value::from_sequence([Value::from(7_i64), Value::from("XNAS")]);
         let typed = TypedValue::from_parts(structure.clone(), row.clone()).unwrap();
-        let array = typed.to_arrow_array().unwrap();
-        // The Arrow reading spells the row as its typed record; the decode
-        // canonicalizes it back to the plain sequence the validator speaks.
+        let array = typed.into_arrow_array().unwrap();
+        // Arrow and the validator use the same schema-ordered row sequence.
         let decoded = TypedValue::from_arrow_array(structure, array.as_ref()).unwrap();
         assert_eq!(decoded.value(), &row);
-        assert_eq!(decoded.to_arrow_array().unwrap().as_ref(), array.as_ref());
+        assert_eq!(decoded.into_arrow_array().unwrap().as_ref(), array.as_ref());
     }
 }

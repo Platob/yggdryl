@@ -18,7 +18,7 @@ Run the checks for whatever you changed, and make code, tests, and documentation
     cd python
     .venv/Scripts/python -m maturin develop
     .venv/Scripts/python -m pytest
-    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_records.py
+    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
     ```
 
 === "JavaScript"
@@ -48,7 +48,7 @@ rust/src/text/       Value and text codecs -> rust/tests/text/          -> docs/
 rust/src/json|yaml|toml/ formats           -> rust/tests/<format>.rs    -> docs/<format>.md
 
 python/src/*.rs      PyO3 views of core values
-python/yggdryl/      Python-only facades: json/toml/yaml I/O and records
+python/yggdryl/      Python-only facades: structured I/O and dataclass fields
 node/src/*.rs        Node-API views of core values
 node/*.js            JavaScript facade: loader, defaults, fields, values
 ```
@@ -93,6 +93,10 @@ Every page mirrors one module folder, opens with one H1 and exactly one sentence
 example in all three languages unless the module carries the Rust-only note. Every block is executed
 by `python scripts/check_docs_examples.py`, so a renamed method breaks the docs exactly as it breaks
 the code.
+
+Keep source documentation and Markdown compact: state the contract, one non-obvious edge, and
+measured behavior once. Remove repeated rationale, signature restatements, and prose already made
+obvious by names or examples; keep safety, streaming, failure, and compatibility guarantees.
 
 That same run generates the notebooks under `docs/notebooks/` and the `Notebooks` section it links
 them from, between the two comment markers at the foot of the page. Both are outputs: change the

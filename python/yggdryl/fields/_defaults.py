@@ -10,16 +10,16 @@ import types
 import typing
 from typing import Any
 
-from .._native import DataType, Field as SchemaField
+from .._native import DataType, Field as NativeField
 from ._arrow import (
+    _adopt_dataclass_schema,
     _arrow_scalar_value,
-    _adopt_record_schema,
     _hint_from_datatype,
     _hint_from_field,
     _prepare_type_plan,
     _validate_column_names,
 )
-from ._records import Record, _convert
+from ._classes import _convert
 
 
 class _DataTypeLayoutKey:
@@ -62,9 +62,25 @@ def _cache_name(
     return f"{prefix}_{identity:016x}_{suffix}"
 
 
+def _metadata_free_data_type(data_type: DataType) -> DataType:
+    """Clone one exact native layout while removing every child Field's metadata."""
+
+    def strip(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: ({} if key == "metadata" else strip(member))
+                for key, member in value.items()
+            }
+        if isinstance(value, list):
+            return [strip(member) for member in value]
+        return value
+
+    return DataType.from_dict(strip(data_type.into_dict()))
+
+
 @functools.cache
 def _datatype_hint_cached(layout: _DataTypeLayoutKey) -> Any:
-    data_type = layout.data_type
+    data_type = _metadata_free_data_type(layout.data_type)
     return _hint_from_datatype(
         data_type,
         module=__name__,
@@ -82,8 +98,8 @@ def _datatype_hint(data_type: DataType) -> Any:
 def _field_hint_cached(layout: _DataTypeLayoutKey, nullable: bool) -> Any:
     # Name and metadata intentionally do not participate in Python hint
     # identity. The physical Field remains authoritative for value conversion.
-    data_type = layout.data_type
-    field = SchemaField("value", data_type, nullable=nullable)
+    data_type = _metadata_free_data_type(layout.data_type)
+    field = NativeField("value", data_type, nullable=nullable)
     return _hint_from_field(
         field,
         module=__name__,
@@ -98,7 +114,7 @@ def _field_hint(data_type: DataType, nullable: bool) -> Any:
 
 
 @functools.cache
-def _conversion_owner(data_type: DataType, nullable: bool) -> type[Record]:
+def _conversion_owner(data_type: DataType, nullable: bool) -> type[Any]:
     """Own nested hint resolution without compiling a parallel value schema."""
 
     hint = _field_hint(data_type, nullable)
@@ -108,16 +124,15 @@ def _conversion_owner(data_type: DataType, nullable: bool) -> type[Record]:
     generated = dc.make_dataclass(
         name,
         [("value", hint)],
-        bases=(Record,),
-        namespace={"__module__": __name__, "__yggdryl_record__": True},
+        namespace={"__module__": __name__},
         slots=True,
     )
     generated.__module__ = __name__
     generated.__qualname__ = name
-    return typing.cast(type[Record], generated)
+    return generated
 
 
-def _struct_fields(field: SchemaField) -> typing.Iterator[SchemaField]:
+def _struct_fields(field: NativeField) -> typing.Iterator[NativeField]:
     data_type = field.data_type
     kind = data_type.id
     if kind == "struct":
@@ -141,7 +156,7 @@ def _struct_fields(field: SchemaField) -> typing.Iterator[SchemaField]:
             yield from _struct_fields(child)
     elif kind == "dictionary":
         yield from _struct_fields(
-            SchemaField(
+            NativeField(
                 "dictionary",
                 data_type._dictionary_value_type(),
                 nullable=False,
@@ -151,34 +166,34 @@ def _struct_fields(field: SchemaField) -> typing.Iterator[SchemaField]:
         yield from _struct_fields(data_type[1])
 
 
-def _record_classes(hint: Any) -> typing.Iterator[type[Record]]:
+def _dataclass_classes(hint: Any) -> typing.Iterator[type[Any]]:
     origin = typing.get_origin(hint)
     if origin in (typing.Union, types.UnionType):
         for member in typing.get_args(hint):
             if member is not type(None):
-                yield from _record_classes(member)
+                yield from _dataclass_classes(member)
         return
-    if isinstance(hint, type) and dc.is_dataclass(hint) and issubclass(hint, Record):
+    if isinstance(hint, type) and dc.is_dataclass(hint):
         yield hint
         for field in dc.fields(hint):
-            yield from _record_classes(field.type)
+            yield from _dataclass_classes(field.type)
         return
     if typing.is_typeddict(hint):
         for member in hint.__annotations__.values():
-            yield from _record_classes(member)
+            yield from _dataclass_classes(member)
         return
     for member in typing.get_args(hint):
-        yield from _record_classes(member)
+        yield from _dataclass_classes(member)
 
 
-def _replace_record_classes(
-    hint: Any, replacements: typing.Mapping[type[Record], type[Record]]
+def _replace_dataclass_classes(
+    hint: Any, replacements: typing.Mapping[type[Any], type[Any]]
 ) -> Any:
     if isinstance(hint, type) and hint in replacements:
         return replacements[hint]
     if typing.is_typeddict(hint):
         replaced_fields = {
-            name: _replace_record_classes(member, replacements)
+            name: _replace_dataclass_classes(member, replacements)
             for name, member in hint.__annotations__.items()
         }
         fallback = typing.TypedDict(  # type: ignore[misc]
@@ -193,7 +208,8 @@ def _replace_record_classes(
     if not arguments:
         return hint
     replaced_arguments = tuple(
-        _replace_record_classes(argument, replacements) for argument in arguments
+        _replace_dataclass_classes(argument, replacements)
+        for argument in arguments
     )
     origin = typing.get_origin(hint)
     if origin in (typing.Union, types.UnionType):
@@ -204,59 +220,55 @@ def _replace_record_classes(
 
 
 @functools.cache
-def _value_hint(field: SchemaField, hint: Any) -> Any:
+def _value_hint(field: NativeField, hint: Any) -> Any:
     """Build exact value classes without mutating metadata-free hint classes."""
 
     native = tuple(_struct_fields(field))
-    classes = tuple(_record_classes(hint))
+    classes = tuple(_dataclass_classes(hint))
     if len(native) != len(classes):
         raise TypeError(
-            "native Struct defaults and generated Record hints have different layouts"
+            "native Struct defaults and generated dataclass hints have different layouts"
         )
-    replacements: dict[type[Record], type[Record]] = {}
-    identity = hashlib.blake2b(field.to_json().encode(), digest_size=8).hexdigest()
+    replacements: dict[type[Any], type[Any]] = {}
+    identity = hashlib.blake2b(field.into_json().encode(), digest_size=8).hexdigest()
     # Create exact subclasses from children upward. The public cached hint
     # classes remain metadata-free and therefore cannot be poisoned by two
     # same-layout Fields with different names or metadata.
     for index, (native_field, hint_type) in reversed(
         tuple(enumerate(zip(native, classes)))
     ):
-        name = f"DefaultValue_{identity}_{index}_Record"
+        name = f"DefaultValue_{identity}_{index}_Field"
         generated = dc.make_dataclass(
             name,
             [],
             bases=(hint_type,),
-            namespace={"__module__": __name__, "__yggdryl_record__": True},
+            namespace={"__module__": __name__},
             slots=True,
         )
         generated.__module__ = __name__
         generated.__qualname__ = name
-        value_type = typing.cast(type[Record], generated)
+        value_type = generated
         replacements[hint_type] = value_type
         hints = {
-            child.name: _replace_record_classes(child.type, replacements)
+            child.name: _replace_dataclass_classes(child.type, replacements)
             for child in dc.fields(typing.cast(Any, hint_type))
         }
-        # A Record root is intrinsically present. Its parent Field retains the
-        # original nullability in the enclosing exact schema; all other Field
-        # state, including metadata and extension identity, remains intact.
-        root = SchemaField(
+        # A generated dataclass root is intrinsically present. Its parent
+        # Field retains the original nullability in the enclosing exact
+        # schema; all other Field state remains intact.
+        root = NativeField(
             native_field.name,
             native_field.data_type,
             nullable=False,
             metadata=dict(native_field.metadata.items()),
         )
-        _adopt_record_schema(
+        _adopt_dataclass_schema(
             value_type,
             root,
             tuple(native_field.data_type),
             hints,
-            class_name=name,
-            module=__name__,
-            schema_metadata=dict(native_field.metadata.items()),
-            preserve_root=True,
         )
-    return _replace_record_classes(hint, replacements)
+    return _replace_dataclass_classes(hint, replacements)
 
 
 def _default_pyhint_from_datatype(data_type: DataType) -> Any:
@@ -265,14 +277,14 @@ def _default_pyhint_from_datatype(data_type: DataType) -> Any:
     return _datatype_hint(data_type)
 
 
-def _default_pyhint_from_field(field: SchemaField) -> Any:
+def _default_pyhint_from_field(field: NativeField) -> Any:
     """Return the cached Python hint while honoring only Field nullability."""
 
     return _field_hint(field.data_type, field.nullable)
 
 
 def _convert_default(
-    field: SchemaField,
+    field: NativeField,
     scalar: Any,
     hint: Any,
 ) -> Any:
@@ -293,16 +305,16 @@ def _convert_default(
         owner,
         "$",
         "raise",
-        schema_field=field,
+        physical_field=field,
     )
 
 
 def _default_pyvalue_from_datatype(data_type: DataType, scalar: Any) -> Any:
-    field = SchemaField("value", data_type, nullable=False)
+    field = NativeField("value", data_type, nullable=False)
     return _convert_default(field, scalar, _datatype_hint(data_type))
 
 
-def _default_pyvalue_from_field(field: SchemaField, scalar: Any) -> Any:
+def _default_pyvalue_from_field(field: NativeField, scalar: Any) -> Any:
     return _convert_default(
         field,
         scalar,

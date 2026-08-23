@@ -1,12 +1,16 @@
 pub(crate) mod buffered;
+pub(crate) mod dimensions;
 pub(crate) mod listing;
 pub(crate) mod pushdown;
 pub(crate) mod record;
+pub(crate) mod stream;
+pub(crate) mod value;
+pub(crate) mod write;
 
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::{Buffer, IOMedia};
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per fixture, chosen so a column chunk is worth skipping.
@@ -43,7 +47,7 @@ pub(crate) fn batch() -> RecordBatch {
     #[allow(clippy::cast_precision_loss)]
     let prices: Vec<f64> = ids.iter().map(|id| *id as f64).collect();
     RecordBatch::try_new(
-        yggdryl::arrow::schema_from_field(&wide()).expect("a projectable root"),
+        wide().into_arrow_schema().expect("a projectable root"),
         vec![
             Arc::new(Int64Array::from(ids.clone())),
             Arc::new(StringArray::from(
@@ -71,18 +75,29 @@ pub(crate) fn handle(name: &str) -> Buffer {
     )
 }
 
-/// A handle already holding the wide fixture in the named encoding.
-pub(crate) fn stored(name: &str) -> Buffer {
+/// Widen one held batch into the streaming shape every write primitive takes.
+pub(crate) fn reader(batch: &RecordBatch) -> yggdryl::arrow::BatchReader {
+    yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()])
+}
+
+/// A handle already holding `source`, without rebuilding the fixture arrays.
+///
+/// Criterion setup closures use this spelling so preparing an append or merge
+/// is excluded from the timed operation without paying to format the wide
+/// string columns again on every sample.
+pub(crate) fn stored_with(name: &str, source: &RecordBatch) -> Buffer {
     let mut handle = handle(name);
     let options = handle.record_options().expect("an implemented encoding");
-    let batch = batch();
     handle
-        .write_arrow_batch_reader(
-            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-            &options,
-        )
+        .overwrite_arrow_reader(reader(source), &options)
         .expect("the fixture must write");
     handle
+}
+
+/// A handle already holding the wide fixture in the named encoding.
+pub(crate) fn stored(name: &str) -> Buffer {
+    let batch = batch();
+    stored_with(name, &batch)
 }
 
 /// Bytes every array a read materializes occupies.

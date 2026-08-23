@@ -477,13 +477,9 @@ impl PyMimeType {
             .map_err(value_error)
     }
 
-    fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner).map_err(value_error)
-    }
-
     #[allow(clippy::wrong_self_convention)]
     fn into_json(&self) -> PyResult<String> {
-        self.to_json()
+        serde_json::to_string(&self.inner).map_err(value_error)
     }
 
     #[getter]
@@ -572,6 +568,10 @@ impl PyMimeType {
         self.inner.is_tabular()
     }
 
+    fn is_io(&self) -> bool {
+        self.inner.is_io()
+    }
+
     fn is_encoding(&self) -> bool {
         self.inner.is_encoding()
     }
@@ -607,8 +607,8 @@ impl PyMimeType {
             .unbind())
     }
 
-    fn __hash__(&self) -> u64 {
-        self.inner.stable_hash()
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
     }
 
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
@@ -626,23 +626,38 @@ impl PyMimeType {
 }
 
 /// A base MIME type plus ordered transparent encodings.
+///
+/// The Python view stays mutable until it is first hashed. Hashing locks that
+/// one wrapper so its value can no longer change while it is used as a mapping
+/// key; copies and deserialized values are independent, unlocked wrappers.
 #[pyclass(name = "MediaType", module = "yggdryl._native", skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyMediaType {
     pub(crate) inner: CoreMediaType,
+    hash_locked: bool,
 }
 
 impl PyMediaType {
     pub(crate) fn from_core(inner: CoreMediaType) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "a hashed MediaType is frozen; copy it before mutation",
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
 #[pymethods]
 impl PyMediaType {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
     #[new]
     #[pyo3(signature = (value=None))]
     fn new(value: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
@@ -716,13 +731,9 @@ impl PyMediaType {
             .map_err(value_error)
     }
 
-    fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner).map_err(value_error)
-    }
-
     #[allow(clippy::wrong_self_convention)]
     fn into_json(&self) -> PyResult<String> {
-        self.to_json()
+        serde_json::to_string(&self.inner).map_err(value_error)
     }
 
     #[getter]
@@ -758,24 +769,28 @@ impl PyMediaType {
     }
 
     fn set_base(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_base(core_mime_type_from_value(value)?);
         Ok(())
     }
 
     fn set_encodings(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_encodings(mime_types_from_iterable(values)?)
             .map_err(value_error)
     }
 
     fn push_encoding(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .push_encoding(core_mime_type_from_value(value)?)
             .map_err(value_error)
     }
 
-    fn clear_encodings(&mut self) -> bool {
-        self.inner.clear_encodings()
+    fn clear_encodings(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.clear_encodings())
     }
 
     fn is_encoded(&self) -> bool {
@@ -832,6 +847,10 @@ impl PyMediaType {
 
     fn is_tabular(&self) -> bool {
         self.inner.is_tabular()
+    }
+
+    fn is_io(&self) -> bool {
+        self.inner.is_io()
     }
 
     fn is_encoding(&self) -> bool {
@@ -894,17 +913,22 @@ impl PyMediaType {
             .unbind())
     }
 
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
         let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
         Ok((callable, (self.inner.to_string(),)))
     }
 
     fn __copy__(&self) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 }
 
@@ -917,6 +941,10 @@ pub(crate) struct PyMediaTypeIterator {
 
 #[pymethods]
 impl PyMediaTypeIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }

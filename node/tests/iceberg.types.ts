@@ -14,17 +14,19 @@ import {
   type DataFile,
   type FieldBound,
   type FieldCount,
-  type ManifestFileView,
-  type PartitionFieldView,
+  type FieldSummaryView,
+  type ManifestFile,
+  type PartitionField,
   type PartitionSpec,
+  type PartitionSpecDocument,
   type SchemaUpdate,
-  type SnapshotView,
+  type Snapshot,
+  type SnapshotRef,
   type Table,
 } from '..'
 import {
   IcebergOptions,
   type ScanPlan,
-  type SnapshotRefView,
 } from '../index'
 
 declare const schema: Field
@@ -39,8 +41,26 @@ const unpartitioned: PartitionSpec = iceberg.PartitionSpec.unpartitioned()
 const spec: PartitionSpec = iceberg.PartitionSpec.identity(numbered, ['venue'], 1)
 const byName: PartitionInput = ['venue']
 const specId: number = spec.specId
-const specFields: PartitionFieldView[] = spec.fields
+const specFields: PartitionField[] = spec.fields
+const compactionClass = iceberg.Compaction
+const manifestClass = iceberg.ManifestFile
+const partitionFieldClass = iceberg.PartitionField
+const snapshotClass = iceberg.Snapshot
+const snapshotRefClass = iceberg.SnapshotRef
 const flat: boolean = spec.isUnpartitioned()
+const clonedSpec: PartitionSpec = spec.clone()
+const equalSpec: boolean = spec.equals(clonedSpec)
+const specOrder: number = spec.compare(clonedSpec)
+const specHash: bigint = spec.stableHash()
+const specDocument: PartitionSpecDocument = spec.intoJSON()
+const parsedSpec: PartitionSpec = iceberg.PartitionSpec.fromJSON(specDocument)
+const serializedSpec: PartitionSpecDocument = spec.toJSON()
+
+void compactionClass
+void manifestClass
+void partitionFieldClass
+void snapshotClass
+void snapshotRefClass
 
 const created: Table = iceberg.Table.create('file:///lake/trades', numbered, spec)
 const opened: Table = iceberg.Table.open(new IOBase('file:///lake/trades'))
@@ -62,9 +82,9 @@ const current: Field = created.schema
 const every: Field[] = created.schemas
 const currentSpec: PartitionSpec = created.spec
 const container: IOBase = created.root
-const snapshot: SnapshotView | null = created.currentSnapshot
-const snapshots: SnapshotView[] = created.snapshots
-const manifests: ManifestFileView[] = created.manifests()
+const snapshot: Snapshot | null = created.currentSnapshot
+const snapshots: Snapshot[] = created.snapshots
+const manifests: ManifestFile[] = created.manifests()
 const files: DataFile[] = created.dataFiles()
 const printed: string = created.toString()
 
@@ -88,20 +108,48 @@ const columnSizes: FieldCount[] = file.columnSizes
 const lower: FieldBound[] = file.lowerBounds
 const upper: FieldBound[] = file.upperBounds
 const sortOrderId: number | null = file.sortOrderId
+const clonedFile: DataFile = file.clone()
+const equalFile: boolean = file.equals(clonedFile)
+const fileOrder: number = file.compare(clonedFile)
+const fileHash: bigint = file.stableHash()
 
-declare const view: SnapshotView
+declare const view: Snapshot
 const snapshotId: bigint = view.snapshotId
-const parentSnapshotId: bigint | undefined = view.parentSnapshotId
+const parentSnapshotId: bigint | null = view.parentSnapshotId
 const timestampMs: number = view.timestampMs
 const operation: string = view.operation
 const summary: Record<string, string> = view.summary
 const manifestList: string = view.manifestList
+const snapshotSequence: number | null = view.sequenceNumber
+const snapshotSchemaId: number | null = view.schemaId
+const snapshotFirstRowId: bigint | null = view.firstRowId
+const snapshotAddedRows: number | null = view.addedRows
+const clonedSnapshot: Snapshot = view.clone()
+const equalSnapshot: boolean = view.equals(clonedSnapshot)
+const snapshotOrder: number = view.compare(clonedSnapshot)
+const snapshotHash: bigint = view.stableHash()
 
-declare const manifest: ManifestFileView
+declare const manifest: ManifestFile
 const manifestPath: string = manifest.manifestPath
 const addedSnapshotId: bigint = manifest.addedSnapshotId
 const addedFilesCount: number = manifest.addedFilesCount
 const manifestContent: string = manifest.content
+const manifestPartitions: FieldSummaryView[] = manifest.partitions
+const manifestFirstRowId: bigint | null = manifest.firstRowId
+const clonedManifest: ManifestFile = manifest.clone()
+const equalManifest: boolean = manifest.equals(clonedManifest)
+const manifestOrder: number = manifest.compare(clonedManifest)
+const manifestHash: bigint = manifest.stableHash()
+
+declare const partitionField: PartitionField
+const partitionSourceId: number = partitionField.sourceId
+const partitionFieldId: number = partitionField.fieldId
+const partitionName: string = partitionField.name
+const partitionTransform: string = partitionField.transform
+const clonedPartitionField: PartitionField = partitionField.clone()
+const equalPartitionField: boolean = partitionField.equals(clonedPartitionField)
+const partitionFieldOrder: number = partitionField.compare(clonedPartitionField)
+const partitionFieldHash: bigint = partitionField.stableHash()
 
 const catalog: Catalog = new iceberg.Catalog('file:///lake/warehouse')
 const fromHandle: Catalog = new iceberg.Catalog(new IOBase('file:///lake/warehouse'))
@@ -134,12 +182,16 @@ const atFiltered: BatchReader = created.scanAt(1n, { venue: 'XNAS' })
 const atMapped: BatchReader = created.scanAt(1n, new Map([['venue', 'XNAS']]), numbered)
 const atProjected: BatchReader = created.scanAt(1n, [['venue', 'XNAS']], 'id: int64')
 
-const byRef: SnapshotView = created.snapshotByRef('main')
+const byRef: Snapshot = created.snapshotByRef('main')
 const target: number = created.targetFileSize
 const compaction: Compaction = created.compact()
 const filesBefore: number = compaction.filesBefore
 const filesAfter: number = compaction.filesAfter
 const bytesRewritten: number = compaction.bytesRewritten
+const clonedCompaction: Compaction = compaction.clone()
+const equalCompaction: boolean = compaction.equals(clonedCompaction)
+const compactionOrder: number = compaction.compare(clonedCompaction)
+const compactionHash: bigint = compaction.stableHash()
 const history: BatchReader = created.inspectHistory()
 const snapshotsReader: BatchReader = created.inspectSnapshots()
 const filesReader: BatchReader = created.inspectFiles()
@@ -164,9 +216,7 @@ const committed: number = chained.commit()
 iceberg.canPromote('int32', 'int64')
 iceberg.canPromote(DataType.from('float32'), DataType.from('float64'))
 
-// The options value, the scan plan, and the reference view are declared in
-// `index.d.ts` but not yet re-exported through the curated `iceberg` namespace
-// in `binding.d.ts`, so they are exercised where they are written.
+// Every native Iceberg value is also reachable through the curated namespace.
 const options: IcebergOptions = new IcebergOptions({
   commitRetries: 4,
   commitMinBackoffMs: 100,
@@ -179,6 +229,10 @@ const options: IcebergOptions = new IcebergOptions({
   dataFormat: 'avro',
 })
 const emptyOptions: IcebergOptions = new IcebergOptions()
+const clonedOptions: IcebergOptions = options.clone()
+const equalOptions: boolean = options.equals(clonedOptions)
+const optionsOrder: number = options.compare(clonedOptions)
+const optionsHash: bigint = options.stableHash()
 options.commitRetries = 2
 options.commitMinBackoffMs = 50
 options.commitMaxBackoffMs = 5_000
@@ -222,6 +276,10 @@ const plannedFiles: number = filteredPlan.filesPlanned
 const skippedFiles: number = filteredPlan.filesSkipped
 const readManifests: number = filteredPlan.manifestsRead
 const skippedManifests: number = filteredPlan.manifestsSkipped
+const clonedPlan: ScanPlan = filteredPlan.clone()
+const plansEqual: boolean = filteredPlan.equals(clonedPlan)
+const planOrder: number = filteredPlan.compare(wholePlan)
+const planHash: bigint = filteredPlan.stableHash()
 
 created.overwriteWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable))
 created.merge(BatchReader.from(arrowTable), ['id'])
@@ -239,13 +297,17 @@ created.merge(BatchReader.from(arrowTable), ['id'], false, options)
 created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), ['id'], true, options)
 
 const expired: bigint[] = created.expireSnapshots(1)
-const pastManifests: ManifestFileView[] = created.manifestsAt(1n)
+const pastManifests: ManifestFile[] = created.manifestsAt(1n)
 created.createBranch('audit', 1n)
 created.createTag('nightly', 1)
 created.fastForward('audit', 1n)
-const dropped: SnapshotRefView = created.removeRef('nightly')
+const dropped: SnapshotRef = created.removeRef('nightly')
 const droppedSnapshot: bigint = dropped.snapshotId
 const droppedKind: string = dropped.kind
+const droppedClone: SnapshotRef = dropped.clone()
+const droppedEqual: boolean = dropped.equals(droppedClone)
+const droppedOrder: number = dropped.compare(droppedClone)
+const droppedHash: bigint = dropped.stableHash()
 
 const namespacesView = catalog.namespaces
 const namespaceNames: string[] = namespacesView.names()

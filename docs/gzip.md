@@ -189,10 +189,16 @@ assert_eq!(gzip::load(inner.as_slice())?, b"symbol,price\nAAPL,1\n");
 and everything downstream sees the decoded bytes. That is what lets a record encoding or
 a text codec work over a compressed resource without knowing it is compressed.
 
-A coding is not seekable, so positional reads and writes cannot go straight through. The
-decoded value is materialized on first use and the encoded form is republished on
-`flush`, on `close`, or by `into_handle` - not on every `pwrite`. Skipping that flush
-loses the write.
+A coding is not seekable, so positional writes and opened sessions materialize the
+decoded value. The encoded form is republished on `flush`, on `close`, or by
+`into_handle` - not on every `pwrite`. Skipping that flush loses the write.
+
+Sequential reads use [`IOBase::pstream_bytes`](io.md#streamed-bytes): gzip is decoded
+directly from the wrapped handle into bounded arrays, without opening the handle or
+retaining earlier decoded pages. Starting after byte zero decodes and discards the
+prefix because a gzip member has no decoded seek. A surrounding `Buffered` cache stays
+empty on this path. The [stream benchmark](io.md#measured-streamed-byte-behavior)
+records first-chunk, full-drain, and whole-value costs beside zlib and zstd.
 
 A level set on the handle reaches the encoder that publishes it:
 

@@ -21,7 +21,7 @@ const SINGLE_MAGIC: [u8; 2] = [0xC3, 0x01];
 /// # Errors
 ///
 /// Returns an error when the value does not fit the schema, naming both.
-pub fn to_single_object_vec(schema: &Schema, value: &Value) -> Result<Vec<u8>> {
+pub fn into_single_object_vec(schema: &Schema, value: &Value) -> Result<Vec<u8>> {
     let datum = DatumCodec {
         names: &schema.names,
         limits: Limits::default(),

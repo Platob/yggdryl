@@ -1,25 +1,58 @@
 //! Byte-first JSON, YAML, and TOML adapters for JavaScript values.
 
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Cursor, Write};
 use std::path::Path;
+use std::sync::Arc;
 
+use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
+use arrow_ipc::reader::StreamReader;
+use arrow_ipc::writer::StreamWriter;
+use arrow_schema::{Schema, SchemaRef};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use napi::JsGlobal;
 use napi::bindgen_prelude::{
-    Array, ArrayBuffer, BigInt, Buffer, ClassInstance, Either, Env, Function, JavaScriptClassExt,
-    JsObjectValue, JsValue, Object, Result, TypedArray, TypedArrayType, Uint8Array,
-    Uint8ClampedArray, Unknown, ValueType,
+    Array, ArrayBuffer, BigInt, Buffer, ClassInstance, Either, Env, Function, Generator,
+    JavaScriptClassExt, JsObjectValue, JsValue, Object, Result, TypedArray, TypedArrayType,
+    Uint8Array, Uint8ClampedArray, Unknown, ValueType,
 };
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
-use yggdryl::text::{Float, Format, Limits, Value};
-use yggdryl::{TimeUnit, json, text, toml, yaml};
+use yggdryl::text::{Format, Formatting, Indent, Limits, Value};
+use yggdryl::{
+    ArrowCast, DataType as CoreDataType, Field as CoreField, Fields as CoreFields, Float16,
+    Float32, Float64, I256, MapType as CoreMapType, TimeUnit, Timezone, json, text, toml, yaml,
+};
 
+use crate::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, napi_error};
 
-const DEFAULT_JS_DEPTH: usize = 48;
+/// Preserve the core's typed arithmetic failures as JavaScript error classes.
+fn arithmetic_error(env: Env, error: yggdryl::Error) -> napi::Error {
+    let reason = error.to_string();
+    let thrown = match error {
+        yggdryl::Error::InvalidArithmetic { .. } => {
+            env.throw_type_error(&reason, Some("ERR_YGGDRYL_INVALID_ARITHMETIC"))
+        }
+        yggdryl::Error::ArithmeticOverflow { .. } => {
+            env.throw_range_error(&reason, Some("ERR_YGGDRYL_ARITHMETIC_OVERFLOW"))
+        }
+        yggdryl::Error::DivisionByZero { .. } => {
+            env.throw_range_error(&reason, Some("ERR_YGGDRYL_DIVISION_BY_ZERO"))
+        }
+        yggdryl::Error::InexactArithmetic { .. } => {
+            env.throw_range_error(&reason, Some("ERR_YGGDRYL_INEXACT_ARITHMETIC"))
+        }
+        _ => env.throw_error(&reason, Some("ERR_YGGDRYL_ARITHMETIC")),
+    };
+    match thrown {
+        Ok(()) => napi::Error::new(napi::Status::PendingException, reason),
+        Err(error) => error,
+    }
+}
+
+pub(crate) const DEFAULT_JS_DEPTH: usize = 48;
 const MAX_JS_DEPTH: usize = 48;
 const MAX_JS_DOCUMENTS: u32 = 1_024;
 const TRANSPORT_KEY: &str = "__yggdryl_codec__";
@@ -29,6 +62,19 @@ const JS_SAFE_INTEGER_F64: f64 = 9_007_199_254_740_991.0;
 const MAX_REPORTED_DIGITS: usize = 40;
 /// The widest instant a JavaScript `Date` holds, in milliseconds either way.
 const MAX_DATE_MILLISECONDS: u64 = 8_640_000_000_000_000;
+
+/// Nullable parser bounds normalized by the JavaScript codec facade.
+#[napi(object)]
+pub struct CodecLimitsInput {
+    /// Maximum recursive container depth.
+    pub max_depth: Option<f64>,
+    /// Maximum encoded bytes read by one decoder.
+    pub max_input_bytes: Option<f64>,
+    /// Maximum decoded nodes per document.
+    pub max_nodes: Option<f64>,
+    /// Maximum values yielded by a multi-document decoder.
+    pub max_documents: Option<f64>,
+}
 
 /// One native codec value: the pivot every JavaScript value crosses.
 ///
@@ -41,8 +87,29 @@ const MAX_DATE_MILLISECONDS: u64 = 8_640_000_000_000_000;
 /// exact decimal, a date, a time of day, a duration, and any timestamp whose
 /// resolution or zone a `Date` cannot hold.
 #[napi(js_name = "Value")]
+#[derive(Clone)]
 pub struct JsCodecValue {
     pub(crate) inner: Value,
+}
+
+/// An owning iterator over one native value's direct children.
+///
+/// The iterator snapshots cheap `Value` clones. Nested containers retain their
+/// shared native storage, so an exact temporal or decimal never crosses the
+/// lossy JavaScript projection merely because its parent is iterated.
+#[napi(iterator, js_name = "ValueIterator")]
+pub struct JsCodecValueIterator {
+    inner: std::vec::IntoIter<Value>,
+}
+
+impl Generator for JsCodecValueIterator {
+    type Yield = JsCodecValue;
+    type Next = ();
+    type Return = ();
+
+    fn next(&mut self, _value: Option<Self::Next>) -> Option<Self::Yield> {
+        self.inner.next().map(JsCodecValue::from_core)
+    }
 }
 
 impl JsCodecValue {
@@ -79,107 +146,483 @@ impl JsCodecValue {
         value_to_transport(&self.inner, 0, checked_depth(max_depth)?)
     }
 
-    /// Build an exact decimal: `unscaled` times ten to the minus `scale`.
+    /// Build a 16-bit float, rounding once to IEEE binary16.
     #[napi(factory)]
-    pub fn decimal(unscaled: BigInt, scale: f64) -> Result<Self> {
+    pub fn f16(value: f64) -> Self {
+        Self {
+            inner: Value::F16(Float16::from_f16(half::f16::from_f64(value))),
+        }
+    }
+
+    /// Build a real 32-bit float.
+    #[napi(factory)]
+    pub fn f32(value: f64) -> Self {
+        Self {
+            #[allow(clippy::cast_possible_truncation)]
+            inner: Value::F32(Float32::from_f32(value as f32)),
+        }
+    }
+
+    /// Build a 64-bit float.
+    #[napi(factory)]
+    pub fn f64(value: f64) -> Self {
+        Self {
+            inner: Value::F64(Float64::from_f64(value)),
+        }
+    }
+
+    /// Build a 128-bit exact decimal.
+    #[napi(factory)]
+    pub fn d128(unscaled: BigInt, scale: f64) -> Result<Self> {
         let scale = crate::exact_i8(scale, "scale")?;
         Ok(Self {
-            inner: Value::decimal(exact_i128(&unscaled, "unscaled")?, scale),
+            inner: Value::d128(exact_i128(&unscaled, "unscaled")?, scale),
         })
     }
 
-    /// Build a timestamp: a count of `unit` since the Unix epoch.
+    /// Build a 256-bit exact decimal.
     #[napi(factory)]
-    pub fn timestamp(count: BigInt, unit: String, zone: Option<String>) -> Result<Self> {
-        let inner = Value::timestamp(
-            exact_i64(&count, "count")?,
-            time_unit(&unit)?,
-            zone.as_deref(),
-        )
-        .map_err(napi_error)?;
-        Ok(Self { inner })
-    }
-
-    /// Build a date: a count of days since the Unix epoch.
-    #[napi(factory)]
-    pub fn date(days: f64) -> Result<Self> {
+    pub fn d256(unscaled: BigInt, scale: f64) -> Result<Self> {
         Ok(Self {
-            inner: Value::date(crate::exact_i32(days, "days")?),
+            inner: Value::d256(
+                exact_i256(&unscaled, "unscaled")?,
+                crate::exact_i8(scale, "scale")?,
+            ),
         })
     }
 
-    /// Build a time of day: a count of `unit` since midnight.
+    /// Build a Date32 day count with its explicit unit and non-null timezone.
     #[napi(factory)]
-    pub fn time(count: BigInt, unit: String) -> Result<Self> {
+    pub fn date32(
+        count: f64,
+        unit: Option<String>,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
         Ok(Self {
-            inner: Value::time(exact_i64(&count, "count")?, time_unit(&unit)?),
+            inner: Value::date32_in(
+                crate::exact_i32(count, "count")?,
+                time_unit(unit.as_deref().unwrap_or("d"))?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
         })
     }
 
-    /// Build a duration: an elapsed count of `unit`.
+    /// Build a Date64 millisecond count with its explicit unit and non-null timezone.
     #[napi(factory)]
-    pub fn duration(count: BigInt, unit: String) -> Result<Self> {
+    pub fn date64(
+        count: BigInt,
+        unit: Option<String>,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
         Ok(Self {
-            inner: Value::duration(exact_i64(&count, "count")?, time_unit(&unit)?),
+            inner: Value::date64_in(
+                exact_i64(&count, "count")?,
+                time_unit(unit.as_deref().unwrap_or("ms"))?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
         })
     }
 
-    /// The canonical vocabulary name for this kind, such as `timestamp`.
+    /// Build a 32-bit time-of-day count with a non-null timezone.
+    #[napi(factory)]
+    pub fn time32(count: f64, unit: String, timezone: Option<TimezoneInput<'_>>) -> Result<Self> {
+        Ok(Self {
+            inner: Value::time32(
+                crate::exact_i32(count, "count")?,
+                time_unit(&unit)?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
+        })
+    }
+
+    /// Build a 64-bit time-of-day count with a non-null timezone.
+    #[napi(factory)]
+    pub fn time64(
+        count: BigInt,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Ok(Self {
+            inner: Value::time64(
+                exact_i64(&count, "count")?,
+                time_unit(&unit)?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
+        })
+    }
+
+    /// Build a 64-bit epoch or wall-clock datetime with a non-null timezone.
+    #[napi(factory)]
+    pub fn datetime64(
+        count: BigInt,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Ok(Self {
+            inner: Value::datetime64(
+                exact_i64(&count, "count")?,
+                time_unit(&unit)?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
+        })
+    }
+
+    /// Build a 32-bit elapsed count whose explicit timezone must be NAIVE.
+    #[napi(factory)]
+    pub fn duration32(
+        count: f64,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Ok(Self {
+            inner: Value::duration32_in(
+                crate::exact_i32(count, "count")?,
+                time_unit(&unit)?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
+        })
+    }
+
+    /// Build a 64-bit elapsed count whose explicit timezone must be NAIVE.
+    #[napi(factory)]
+    pub fn duration64(
+        count: BigInt,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Ok(Self {
+            inner: Value::duration64_in(
+                exact_i64(&count, "count")?,
+                time_unit(&unit)?,
+                timezone_or_naive(timezone)?,
+            )
+            .map_err(napi_error)?,
+        })
+    }
+
+    /// The canonical width-specific vocabulary name.
     #[napi(getter)]
     pub fn kind(&self) -> String {
         self.inner.kind().to_owned()
     }
 
-    /// The count a temporal holds, in days for a date, or `null`.
+    /// The number of direct sequence children, mapping entries, or record fields.
+    #[napi(getter)]
+    pub fn length(&self) -> f64 {
+        #[allow(clippy::cast_precision_loss)]
+        let length = self.inner.len() as f64;
+        length
+    }
+
+    /// Whether this is an empty sequence, mapping, or record.
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Look up one non-negative sequence index without projecting its value.
+    #[napi]
+    pub fn at(&self, index: f64) -> Result<Option<JsCodecValue>> {
+        let index = crate::exact_u64(index, "index")?;
+        let index = usize::try_from(index)
+            .map_err(|_| napi_error(format!("index {index} exceeds this platform's range")))?;
+        Ok(self.inner.get(index).cloned().map(Self::from_core))
+    }
+
+    /// Look up a dotted mapping/record key and sequence-index path.
+    #[napi]
+    pub fn path(&self, path: String) -> Option<JsCodecValue> {
+        self.inner.path(&path).cloned().map(Self::from_core)
+    }
+
+    /// Iterate direct children under the core convention.
+    ///
+    /// Sequences yield values, mappings yield keys, and records yield values
+    /// in deterministic field-name order.
+    #[napi(js_name = "_iterNative", skip_typescript)]
+    pub fn iter_native(&self) -> JsCodecValueIterator {
+        JsCodecValueIterator {
+            inner: self.inner.iter().cloned().collect::<Vec<_>>().into_iter(),
+        }
+    }
+
+    /// Look up a mapping key or record name without a JavaScript projection.
+    #[napi(js_name = "_getNative", skip_typescript)]
+    pub fn get_native(&self, key: &JsCodecValue) -> Option<JsCodecValue> {
+        let value = match &self.inner {
+            Value::Record(_) => key
+                .inner
+                .as_str()
+                .and_then(|name| self.inner.get_key_str(name)),
+            Value::Mapping(_) => self.inner.get_key(&key.inner),
+            _ => None,
+        };
+        value.cloned().map(Self::from_core)
+    }
+
+    /// Return this mapping or record with one persistent replacement.
+    #[napi(js_name = "_setNative", skip_typescript)]
+    pub fn set_native(&self, key: &JsCodecValue, value: &JsCodecValue) -> Result<Self> {
+        let rebuilt = match &self.inner {
+            Value::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
+            Value::Record(_) => {
+                let name = key
+                    .inner
+                    .as_str()
+                    .ok_or_else(|| napi_error("record field names must be strings"))?;
+                self.inner.with_field(name, value.inner.clone())
+            }
+            _ => {
+                return Err(napi_error(format!(
+                    "expected a mapping or record to set a value on, got {}",
+                    self.inner.kind()
+                )));
+            }
+        };
+        rebuilt.map(Self::from_core).map_err(napi_error)
+    }
+
+    /// Return this mapping or record without one string key.
+    #[napi(js_name = "_removeNative", skip_typescript)]
+    pub fn remove_native(&self, key: &JsCodecValue) -> Result<Self> {
+        let name = key
+            .inner
+            .as_str()
+            .ok_or_else(|| napi_error("remove requires a string key"))?;
+        let rebuilt = match &self.inner {
+            Value::Mapping(_) => self.inner.without_key(name),
+            Value::Record(_) => self.inner.without_field(name),
+            _ => {
+                return Err(napi_error(format!(
+                    "expected a mapping or record to remove a value from, got {}",
+                    self.inner.kind()
+                )));
+            }
+        };
+        rebuilt.map(Self::from_core).map_err(napi_error)
+    }
+
+    /// The count a temporal holds, or `null`.
     #[napi(getter)]
     pub fn count(&self) -> Option<BigInt> {
-        if let Some(days) = self.inner.as_date() {
-            return Some(BigInt::from(i64::from(days)));
-        }
         let count = self
             .inner
-            .as_timestamp()
-            .map(|(count, _, _)| count)
-            .or_else(|| self.inner.as_time().map(|(count, _)| count))
-            .or_else(|| self.inner.as_duration().map(|(count, _)| count))?;
+            .as_date32()
+            .map(|(count, _, _)| i64::from(count))
+            .or_else(|| self.inner.as_date64().map(|(count, _, _)| count))
+            .or_else(|| self.inner.as_time32().map(|(count, _, _)| i64::from(count)))
+            .or_else(|| self.inner.as_time64().map(|(count, _, _)| count))
+            .or_else(|| self.inner.as_datetime64().map(|(count, _, _)| count))
+            .or_else(|| {
+                self.inner
+                    .as_duration32()
+                    .map(|(count, _, _)| i64::from(count))
+            })
+            .or_else(|| self.inner.as_duration64().map(|(count, _, _)| count))?;
         Some(BigInt::from(count))
     }
 
-    /// The resolution a time, timestamp, or duration counts in, or `null`.
-    ///
-    /// A date has none: its count is always days, which is what Arrow stores.
+    /// The unit carried by a temporal, or `null`.
     #[napi(getter)]
     pub fn unit(&self) -> Option<String> {
         let unit = self
             .inner
-            .as_timestamp()
+            .as_date32()
             .map(|(_, unit, _)| unit)
-            .or_else(|| self.inner.as_time().map(|(_, unit)| unit))
-            .or_else(|| self.inner.as_duration().map(|(_, unit)| unit))?;
+            .or_else(|| self.inner.as_date64().map(|(_, unit, _)| unit))
+            .or_else(|| self.inner.as_time32().map(|(_, unit, _)| unit))
+            .or_else(|| self.inner.as_time64().map(|(_, unit, _)| unit))
+            .or_else(|| self.inner.as_datetime64().map(|(_, unit, _)| unit))
+            .or_else(|| self.inner.as_duration32().map(|(_, unit, _)| unit))
+            .or_else(|| self.inner.as_duration64().map(|(_, unit, _)| unit))?;
         Some(unit.as_str().to_owned())
     }
 
-    /// The zone a timestamp reads in, or `null` for a naive one.
+    /// The non-null timezone marker carried by a temporal, or `null`.
     #[napi(getter)]
     pub fn zone(&self) -> Option<String> {
-        self.inner
-            .as_timestamp()
-            .and_then(|(_, _, zone)| zone)
-            .map(ToOwned::to_owned)
+        self.inner.temporal_timezone().map(ToString::to_string)
     }
 
     /// The unscaled coefficient of an exact decimal, or `null`.
     #[napi(getter)]
     pub fn unscaled(&self) -> Option<BigInt> {
         self.inner
-            .as_decimal()
+            .as_d128()
             .map(|(unscaled, _)| BigInt::from(unscaled))
+            .or_else(|| {
+                self.inner
+                    .as_d256()
+                    .map(|(unscaled, _)| bigint_from_i256(unscaled))
+            })
     }
 
     /// The scale of an exact decimal, or `null`.
     #[napi(getter)]
     pub fn scale(&self) -> Option<i32> {
-        self.inner.as_decimal().map(|(_, scale)| i32::from(scale))
+        self.inner
+            .as_d128()
+            .map(|(_, scale)| i32::from(scale))
+            .or_else(|| self.inner.as_d256().map(|(_, scale)| i32::from(scale)))
+    }
+
+    /// Infer the exact native datatype this value names.
+    #[napi(getter)]
+    pub fn data_type(&self) -> Result<JsDataType> {
+        self.inner
+            .data_type()
+            .map(JsDataType::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Infer the exact native Field for this scalar value.
+    #[napi]
+    pub fn into_field(&self) -> Result<JsField> {
+        self.inner
+            .inferred_scalar_field()
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Infer the exact item Field for this non-empty outer Sequence.
+    #[napi]
+    pub fn into_array_field(&self) -> Result<JsField> {
+        self.inner
+            .inferred_array_field()
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Infer a non-null Struct root from named Record rows.
+    #[napi]
+    pub fn into_struct_field(&self) -> Result<JsField> {
+        self.inner
+            .inferred_struct_field()
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return deterministic hash bits shared with Rust and Python.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Compare two native values by the core's total value order.
+    ///
+    /// Numeric widths compare by value, as equality does: `i8(1)` and
+    /// `u64(1)` compare equal, and exact decimals are normalized first.
+    #[napi]
+    pub fn compare(&self, other: &JsCodecValue) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Make a cheap native clone without projecting through JavaScript.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
+
+    /// Add two already-inferred native numeric values.
+    #[napi(js_name = "_addNative", skip_typescript)]
+    pub fn add_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+        self.inner
+            .checked_add(&other.inner)
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Subtract two already-inferred native numeric values.
+    #[napi(js_name = "_subtractNative", skip_typescript)]
+    pub fn subtract_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+        self.inner
+            .checked_sub(&other.inner)
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Multiply two already-inferred native numeric values.
+    #[napi(js_name = "_multiplyNative", skip_typescript)]
+    pub fn multiply_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+        self.inner
+            .checked_mul(&other.inner)
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Divide two already-inferred native numeric values.
+    #[napi(js_name = "_divideNative", skip_typescript)]
+    pub fn divide_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+        self.inner
+            .checked_div(&other.inner)
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Take the remainder of two already-inferred native numeric values.
+    #[napi(js_name = "_remainderNative", skip_typescript)]
+    pub fn remainder_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+        self.inner
+            .checked_rem(&other.inner)
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Negate one already-inferred native numeric value.
+    #[napi(js_name = "_negateNative", skip_typescript)]
+    pub fn negate_native(&self, env: Env) -> Result<Self> {
+        self.inner
+            .checked_neg()
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Return the absolute value of one already-inferred native number.
+    #[napi(js_name = "_absoluteNative", skip_typescript)]
+    pub fn absolute_native(&self, env: Env) -> Result<Self> {
+        self.inner
+            .checked_abs()
+            .map(Self::from_core)
+            .map_err(|error| arithmetic_error(env, error))
+    }
+
+    /// Borrow binary content as a Buffer, or `null` for another kind.
+    #[napi]
+    pub fn as_bytes(&self) -> Option<Buffer> {
+        self.inner.as_bytes().map(|value| value.to_vec().into())
+    }
+
+    /// Borrow string content, or `null` for another kind.
+    #[napi]
+    pub fn as_utf8(&self) -> Option<String> {
+        self.inner.as_utf8().map(ToOwned::to_owned)
+    }
+
+    /// Encode this value as natural compact JSON bytes.
+    #[napi]
+    pub fn as_json_bytes(&self) -> Result<Buffer> {
+        self.inner
+            .as_json_bytes()
+            .map(Into::into)
+            .map_err(napi_error)
+    }
+
+    /// Encode this value as natural compact JSON UTF-8.
+    #[napi]
+    pub fn as_json_utf8(&self) -> Result<String> {
+        self.inner.as_json_utf8().map_err(napi_error)
+    }
+
+    /// Natural compact JSON for the standard JavaScript string protocol.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> Result<String> {
+        self.as_json_utf8()
     }
 
     /// Whether two native values are the same value.
@@ -191,10 +634,238 @@ impl JsCodecValue {
     pub fn equals(&self, other: &JsCodecValue) -> bool {
         self.inner == other.inner
     }
+
+    /// Decode one Arrow JS scalar from its one-column IPC bridge.
+    #[napi(factory, js_name = "_fromArrowScalarIpcNative", skip_typescript)]
+    pub fn from_arrow_scalar_ipc_native(
+        bytes: Uint8Array,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Self> {
+        let (schema, batches) = arrow_batches(&bytes)?;
+        ensure_one_column(&schema, "Arrow scalar")?;
+        let rows = batches.iter().map(RecordBatch::num_rows).sum::<usize>();
+        if rows != 1 {
+            return Err(napi_error(format!(
+                "Arrow scalar IPC must contain exactly one row, got {rows}"
+            )));
+        }
+        let inferred =
+            CoreField::from_arrow_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
+        let field = field
+            .as_ref()
+            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
+        let array = batches
+            .into_iter()
+            .find(|batch| batch.num_rows() != 0)
+            .and_then(|batch| batch.columns().first().cloned())
+            .ok_or_else(|| napi_error("Arrow scalar IPC has no value column"))?;
+        let array = if field == inferred {
+            array
+        } else {
+            field.cast_arrow_array(array, true).map_err(napi_error)?
+        };
+        yggdryl::arrow::scalar_value(&field, array.as_ref())
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Decode one Arrow JS vector from its one-column IPC bridge.
+    #[napi(factory, js_name = "_fromArrowArrayIpcNative", skip_typescript)]
+    pub fn from_arrow_array_ipc_native(
+        bytes: Uint8Array,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Self> {
+        let (schema, batches) = arrow_batches(&bytes)?;
+        ensure_one_column(&schema, "Arrow array")?;
+        let inferred =
+            CoreField::from_arrow_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
+        let field = field
+            .as_ref()
+            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
+        let mut values = Vec::new();
+        for batch in batches {
+            let array = batch
+                .columns()
+                .first()
+                .cloned()
+                .ok_or_else(|| napi_error("Arrow array IPC has no value column"))?;
+            let array = if field == inferred {
+                array
+            } else {
+                field.cast_arrow_array(array, true).map_err(napi_error)?
+            };
+            let decoded =
+                yggdryl::arrow::array_to_value(&field, array.as_ref()).map_err(napi_error)?;
+            values.extend_from_slice(decoded.as_sequence().ok_or_else(|| {
+                napi_error("native Arrow array decode did not return a sequence")
+            })?);
+        }
+        Ok(Self::from_core(Value::from_sequence(values)))
+    }
+
+    /// Decode Arrow JS record batches from standard IPC.
+    #[napi(factory, js_name = "_fromArrowRecordBatchIpcNative", skip_typescript)]
+    pub fn from_arrow_record_batch_ipc_native(
+        bytes: Uint8Array,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Self> {
+        Self::from_arrow_batches_ipc(&bytes, field)
+    }
+
+    /// Decode an Arrow JS table from standard IPC.
+    #[napi(factory, js_name = "_fromArrowTableIpcNative", skip_typescript)]
+    pub fn from_arrow_table_ipc_native(
+        bytes: Uint8Array,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Self> {
+        Self::from_arrow_batches_ipc(&bytes, field)
+    }
+
+    /// Encode this value as a one-row, one-column Arrow IPC scalar.
+    #[napi(js_name = "_intoArrowScalarIpcNative", skip_typescript)]
+    pub fn into_arrow_scalar_ipc_native(
+        &self,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Buffer> {
+        let field = field
+            .as_ref()
+            .map(|field| field.inner.clone())
+            .map_or_else(
+                || self.inner.inferred_scalar_field().map_err(napi_error),
+                Ok,
+            )?;
+        let array = yggdryl::arrow::scalar_array(&field, &self.inner).map_err(napi_error)?;
+        arrow_array_ipc(&field, array)
+    }
+
+    /// Encode this sequence as a one-column Arrow IPC array.
+    #[napi(js_name = "_intoArrowArrayIpcNative", skip_typescript)]
+    pub fn into_arrow_array_ipc_native(
+        &self,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Buffer> {
+        let field = field
+            .as_ref()
+            .map(|field| field.inner.clone())
+            .map_or_else(|| self.inner.inferred_array_field().map_err(napi_error), Ok)?;
+        let array = yggdryl::arrow::array_from_value(&field, &self.inner).map_err(napi_error)?;
+        arrow_array_ipc(&field, array)
+    }
+
+    /// Encode record values as one Arrow IPC record batch.
+    #[napi(js_name = "_intoArrowRecordBatchIpcNative", skip_typescript)]
+    pub fn into_arrow_record_batch_ipc_native(
+        &self,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Buffer> {
+        self.arrow_batches_ipc(field)
+    }
+
+    /// Encode record values as one Arrow IPC table.
+    #[napi(js_name = "_intoArrowTableIpcNative", skip_typescript)]
+    pub fn into_arrow_table_ipc_native(
+        &self,
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Buffer> {
+        self.arrow_batches_ipc(field)
+    }
+}
+
+impl JsCodecValue {
+    fn from_arrow_batches_ipc(
+        bytes: &[u8],
+        field: Option<ClassInstance<'_, JsField>>,
+    ) -> Result<Self> {
+        let (schema, batches) = arrow_batches(bytes)?;
+        let inferred = CoreField::from_arrow_schema("row", schema.as_ref()).map_err(napi_error)?;
+        let field = field
+            .as_ref()
+            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
+        field.validate_struct_root().map_err(napi_error)?;
+        let mut rows = Vec::new();
+        for batch in batches {
+            let batch = if field == inferred {
+                batch
+            } else {
+                field.cast_arrow_batch(batch, true).map_err(napi_error)?
+            };
+            let decoded = yggdryl::arrow::batch_to_value(&batch).map_err(napi_error)?;
+            rows.extend_from_slice(
+                decoded
+                    .as_sequence()
+                    .ok_or_else(|| napi_error("native Arrow batch decode did not return rows"))?,
+            );
+        }
+        Ok(Self::from_core(Value::from_sequence(rows)))
+    }
+
+    fn arrow_batches_ipc(&self, field: Option<ClassInstance<'_, JsField>>) -> Result<Buffer> {
+        let field = field
+            .as_ref()
+            .map(|field| field.inner.clone())
+            .map_or_else(
+                || self.inner.inferred_struct_field().map_err(napi_error),
+                Ok,
+            )?;
+        let batch = yggdryl::arrow::batch_from_value(&field, &self.inner).map_err(napi_error)?;
+        arrow_batches_into_ipc(batch.schema(), [batch])
+    }
+}
+
+fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+    if bytes.is_empty() {
+        return Err(napi_error("Arrow IPC input is empty and has no schema"));
+    }
+    let mut reader =
+        StreamReader::try_new(Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+    let schema = reader.schema();
+    let batches = reader
+        .by_ref()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(napi_error)?;
+    Ok((schema, batches))
+}
+
+fn ensure_one_column(schema: &SchemaRef, label: &str) -> Result<()> {
+    if schema.fields().len() == 1 {
+        Ok(())
+    } else {
+        Err(napi_error(format!(
+            "{label} IPC must contain exactly one column, got {}",
+            schema.fields().len()
+        )))
+    }
+}
+
+fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
+    let schema = Arc::new(Schema::new([field
+        .clone()
+        .into_arrow_ref()
+        .map_err(napi_error)?]));
+    let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
+    let batch =
+        RecordBatch::try_new_with_options(schema, vec![array], &options).map_err(napi_error)?;
+    arrow_batches_into_ipc(batch.schema(), [batch])
+}
+
+fn arrow_batches_into_ipc(
+    schema: SchemaRef,
+    batches: impl IntoIterator<Item = RecordBatch>,
+) -> Result<Buffer> {
+    let mut writer = StreamWriter::try_new(Vec::new(), schema.as_ref()).map_err(napi_error)?;
+    for batch in batches {
+        writer.write(&batch).map_err(napi_error)?;
+    }
+    writer.finish().map_err(napi_error)?;
+    Ok(writer.into_inner().map_err(napi_error)?.into())
 }
 
 fn time_unit(value: &str) -> Result<TimeUnit> {
     TimeUnit::from_str(value).map_err(napi_error)
+}
+
+fn timezone_or_naive(value: Option<TimezoneInput<'_>>) -> Result<Timezone> {
+    value.map_or(Ok(Timezone::NAIVE), timezone_from_input)
 }
 
 fn exact_i64(value: &BigInt, name: &str) -> Result<i64> {
@@ -226,10 +897,15 @@ fn exact_i128(value: &BigInt, name: &str) -> Result<i128> {
 /// leaked it, so reaching the process environment is its own decision.
 fn loading_from(
     limits: yggdryl::text::Limits,
+    field: Option<&ClassInstance<'_, JsField>>,
     placeholders: Option<ClassInstance<'_, JsCodecValue>>,
     environment: bool,
 ) -> Result<yggdryl::text::Loading> {
     let loading = yggdryl::text::Loading::new().with_limits(limits);
+    let loading = match field {
+        Some(field) => loading.with_field(field.inner.clone()),
+        None => loading,
+    };
     if placeholders.is_none() && !environment {
         return Ok(loading);
     }
@@ -249,81 +925,157 @@ fn loading_from(
 #[napi(js_name = "jsonLoadsNative", skip_typescript)]
 pub fn json_loads_native(
     input: Either<Buffer, String>,
-    max_depth: Option<u32>,
-) -> Result<serde_json::Value> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let value = match &input {
-        Either::A(bytes) => text::from_slice_with_limits(bytes.as_ref(), Format::Json, limits),
-        Either::B(value) => text::from_str_with_limits(value, Format::Json, limits),
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let value = match (&input, field.as_ref()) {
+        (Either::A(bytes), Some(field)) => text::from_bytes_with_field_and_limits(
+            bytes.as_ref(),
+            Format::Json,
+            &field.inner,
+            limits,
+        ),
+        (Either::B(value), Some(field)) => {
+            text::from_utf8_with_field_and_limits(value, Format::Json, &field.inner, limits)
+        }
+        (Either::A(bytes), None) => {
+            text::from_bytes_with_limits(bytes.as_ref(), Format::Json, limits)
+        }
+        (Either::B(value), None) => text::from_utf8_with_limits(value, Format::Json, limits),
     }
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode one YAML value without generic format parsing or dispatch.
 #[napi(js_name = "yamlLoadsNative", skip_typescript)]
 pub fn yaml_loads_native(
     input: Either<Buffer, String>,
-    max_depth: Option<u32>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
     placeholders: Option<ClassInstance<'_, JsCodecValue>>,
     environment: Option<bool>,
-) -> Result<serde_json::Value> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
     let value = match &input {
-        Either::A(bytes) => text::from_slice_with(bytes.as_ref(), Format::Yaml, &loading),
-        Either::B(value) => text::from_str_with(value, Format::Yaml, &loading),
+        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Yaml, &loading),
+        Either::B(value) => text::from_utf8_with(value, Format::Yaml, &loading),
     }
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode one TOML value without generic format parsing or dispatch.
 #[napi(js_name = "tomlLoadsNative", skip_typescript)]
 pub fn toml_loads_native(
     input: Either<Buffer, String>,
-    max_depth: Option<u32>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
     placeholders: Option<ClassInstance<'_, JsCodecValue>>,
     environment: Option<bool>,
-) -> Result<serde_json::Value> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
     let value = match &input {
-        Either::A(bytes) => text::from_slice_with(bytes.as_ref(), Format::Toml, &loading),
-        Either::B(value) => text::from_str_with(value, Format::Toml, &loading),
+        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Toml, &loading),
+        Either::B(value) => text::from_utf8_with(value, Format::Toml, &loading),
     }
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode strict JSON Lines without generic format parsing or dispatch.
 #[napi(js_name = "jsonLinesLoadsNative", skip_typescript)]
 pub fn json_lines_loads_native(
     input: Either<Buffer, String>,
-    max_depth: Option<u32>,
-) -> Result<Vec<serde_json::Value>> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let values = match &input {
-        Either::A(bytes) => json::from_lines_slice_with_limits(bytes.as_ref(), limits),
-        Either::B(value) => text::from_str_all_with_limits(value, Format::JsonLines, limits),
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    let limits = checked_limits(limits)?;
+    let values = match (&input, field.as_ref()) {
+        (Either::A(bytes), Some(field)) => text::from_bytes_all_with_field_and_limits(
+            bytes.as_ref(),
+            Format::JsonLines,
+            &field.inner,
+            limits,
+        ),
+        (Either::B(value), Some(field)) => text::from_utf8_all_with_field_and_limits(
+            value,
+            Format::JsonLines,
+            &field.inner,
+            limits,
+        ),
+        (Either::A(bytes), None) => json::from_lines_bytes_with_limits(bytes.as_ref(), limits),
+        (Either::B(value), None) => {
+            text::from_utf8_all_with_limits(value, Format::JsonLines, limits)
+        }
     }
     .map_err(napi_error)?;
-    values_to_transport(&values, limits)
+    decoded_values_for_field(
+        values,
+        field.as_ref().map(|field| &field.inner),
+        limits,
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode every YAML document without generic format parsing or dispatch.
 #[napi(js_name = "yamlLoadsAllNative", skip_typescript)]
 pub fn yaml_loads_all_native(
     input: Either<Buffer, String>,
-    max_depth: Option<u32>,
-) -> Result<Vec<serde_json::Value>> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let values = match &input {
-        Either::A(bytes) => yaml::from_slice_all_with_limits(bytes.as_ref(), limits),
-        Either::B(value) => yaml::from_str_all_with_limits(value, limits),
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    let limits = checked_limits(limits)?;
+    let values = match (&input, field.as_ref()) {
+        (Either::A(bytes), Some(field)) => {
+            yaml::from_bytes_all_with_field_and_limits(bytes.as_ref(), &field.inner, limits)
+        }
+        (Either::B(value), Some(field)) => {
+            yaml::from_utf8_all_with_field_and_limits(value, &field.inner, limits)
+        }
+        (Either::A(bytes), None) => yaml::from_bytes_all_with_limits(bytes.as_ref(), limits),
+        (Either::B(value), None) => yaml::from_utf8_all_with_limits(value, limits),
     }
     .map_err(napi_error)?;
-    values_to_transport(&values, limits)
+    decoded_values_for_field(
+        values,
+        field.as_ref().map(|field| &field.inner),
+        limits,
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Encode one JavaScript value directly to JSON bytes.
@@ -332,9 +1084,11 @@ pub fn json_dumps_native(
     env: Env,
     value: Unknown<'_>,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
     let value = encode_js_value(
         env,
         value,
@@ -342,7 +1096,72 @@ pub fn json_dumps_native(
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    json::to_vec(&value).map(Buffer::from).map_err(napi_error)
+    json::into_bytes_with_formatting(&value, formatting)
+        .map(Buffer::from)
+        .map_err(napi_error)
+}
+
+fn exact_i256(value: &BigInt, name: &str) -> Result<I256> {
+    if value.words.len() > 4 && value.words[4..].iter().any(|word| *word != 0) {
+        return Err(napi_error(format!(
+            "{name} must fit in a signed 256-bit integer"
+        )));
+    }
+    let mut bytes = [0_u8; 32];
+    for (index, word) in value.words.iter().take(4).enumerate() {
+        bytes[index * 8..index * 8 + 8].copy_from_slice(&word.to_le_bytes());
+    }
+    if value.sign_bit {
+        let exceeds_minimum =
+            bytes[31] > 0x80 || (bytes[31] == 0x80 && bytes[..31].iter().any(|byte| *byte != 0));
+        if exceeds_minimum {
+            return Err(napi_error(format!(
+                "{name} must fit in a signed 256-bit integer"
+            )));
+        }
+        if bytes.iter().any(|byte| *byte != 0) {
+            for byte in &mut bytes {
+                *byte = !*byte;
+            }
+            for byte in &mut bytes {
+                let (next, carry) = byte.overflowing_add(1);
+                *byte = next;
+                if !carry {
+                    break;
+                }
+            }
+        }
+    } else if bytes[31] & 0x80 != 0 {
+        return Err(napi_error(format!(
+            "{name} must fit in a signed 256-bit integer"
+        )));
+    }
+    Ok(I256::from_le_bytes(bytes))
+}
+
+fn bigint_from_i256(value: I256) -> BigInt {
+    let sign_bit = value.is_negative();
+    let mut bytes = value.into_le_bytes();
+    if sign_bit {
+        for byte in &mut bytes {
+            *byte = !*byte;
+        }
+        for byte in &mut bytes {
+            let (next, carry) = byte.overflowing_add(1);
+            *byte = next;
+            if !carry {
+                break;
+            }
+        }
+    }
+    let mut words = bytes
+        .chunks_exact(8)
+        .map(|word| u64::from_le_bytes(word.try_into().unwrap_or([0; 8])))
+        .collect::<Vec<_>>();
+    while words.len() > 1 && words.last() == Some(&0) {
+        words.pop();
+    }
+    BigInt { sign_bit, words }
 }
 
 /// Encode one JavaScript value directly to YAML bytes.
@@ -351,9 +1170,11 @@ pub fn yaml_dumps_native(
     env: Env,
     value: Unknown<'_>,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
     let value = encode_js_value(
         env,
         value,
@@ -361,7 +1182,9 @@ pub fn yaml_dumps_native(
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    yaml::to_vec(&value).map(Buffer::from).map_err(napi_error)
+    yaml::into_bytes_with_formatting(&value, formatting)
+        .map(Buffer::from)
+        .map_err(napi_error)
 }
 
 /// Encode one JavaScript value directly to TOML bytes.
@@ -370,9 +1193,11 @@ pub fn toml_dumps_native(
     env: Env,
     value: Unknown<'_>,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
     let max_depth = checked_depth(max_depth)?;
     let value = encode_js_value(
         env,
@@ -383,7 +1208,9 @@ pub fn toml_dumps_native(
     )?;
     toml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
         .map_err(napi_error)?;
-    toml::to_vec(&value).map(Buffer::from).map_err(napi_error)
+    toml::into_bytes_with_formatting(&value, formatting)
+        .map(Buffer::from)
+        .map_err(napi_error)
 }
 
 /// Encode JavaScript values directly as JSON Lines.
@@ -392,9 +1219,11 @@ pub fn json_lines_dump_all_native(
     env: Env,
     values: Array<'_>,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
     let values = encode_js_values(
         env,
         &values,
@@ -402,7 +1231,7 @@ pub fn json_lines_dump_all_native(
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    json::to_vec_all(&values)
+    json::into_bytes_all_with_formatting(&values, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -413,9 +1242,11 @@ pub fn yaml_dump_all_native(
     env: Env,
     values: Array<'_>,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
     let values = encode_js_values(
         env,
         &values,
@@ -423,7 +1254,7 @@ pub fn yaml_dump_all_native(
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    yaml::to_vec_all(&values)
+    yaml::into_bytes_all_with_formatting(&values, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -433,79 +1264,140 @@ pub fn yaml_dump_all_native(
 /// No placeholder parameters: `{{ }}` substitution is a YAML and TOML
 /// feature, and the core refuses it for JSON by name.
 #[napi(js_name = "jsonLoadPathNative", skip_typescript)]
-pub fn json_load_path_native(path: String, max_depth: Option<u32>) -> Result<serde_json::Value> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let value = text::from_reader_with_limits(
-        open_path(&path, limits.max_input_bytes())?,
-        Format::Json,
-        limits,
-    )
+pub fn json_load_path_native(
+    path: String,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let reader = open_path(&path, limits.max_input_bytes())?;
+    let value = match field.as_ref() {
+        Some(field) => {
+            text::from_reader_with_field_and_limits(reader, Format::Json, &field.inner, limits)
+        }
+        None => text::from_reader_with_limits(reader, Format::Json, limits),
+    }
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode one YAML value from a path through the native reader boundary.
 #[napi(js_name = "yamlLoadPathNative", skip_typescript)]
 pub fn yaml_load_path_native(
     path: String,
-    max_depth: Option<u32>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
     placeholders: Option<ClassInstance<'_, JsCodecValue>>,
     environment: Option<bool>,
-) -> Result<serde_json::Value> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
     let value = text::from_reader_with(
         open_path(&path, limits.max_input_bytes())?,
         Format::Yaml,
         &loading,
     )
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode one TOML value from a path through the native reader boundary.
 #[napi(js_name = "tomlLoadPathNative", skip_typescript)]
 pub fn toml_load_path_native(
     path: String,
-    max_depth: Option<u32>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
     placeholders: Option<ClassInstance<'_, JsCodecValue>>,
     environment: Option<bool>,
-) -> Result<serde_json::Value> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let loading = loading_from(limits, placeholders, environment.unwrap_or(false))?;
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
     let value = text::from_reader_with(
         open_path(&path, limits.max_input_bytes())?,
         Format::Toml,
         &loading,
     )
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode strict JSON Lines from a path through the native reader boundary.
 #[napi(js_name = "jsonLinesLoadPathNative", skip_typescript)]
 pub fn json_lines_load_path_native(
     path: String,
-    max_depth: Option<u32>,
-) -> Result<Vec<serde_json::Value>> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let values =
-        json::from_lines_reader_with_limits(open_path(&path, limits.max_input_bytes())?, limits)
-            .map_err(napi_error)?;
-    values_to_transport(&values, limits)
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    let limits = checked_limits(limits)?;
+    let reader = open_path(&path, limits.max_input_bytes())?;
+    let values = match field.as_ref() {
+        Some(field) => text::from_reader_all_with_field_and_limits(
+            reader,
+            Format::JsonLines,
+            &field.inner,
+            limits,
+        ),
+        None => json::from_lines_reader_with_limits(reader, limits),
+    }
+    .map_err(napi_error)?;
+    decoded_values_for_field(
+        values,
+        field.as_ref().map(|field| &field.inner),
+        limits,
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Decode every YAML document from a path through the native reader boundary.
 #[napi(js_name = "yamlLoadAllPathNative", skip_typescript)]
 pub fn yaml_load_all_path_native(
     path: String,
-    max_depth: Option<u32>,
-) -> Result<Vec<serde_json::Value>> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
-    let values =
-        yaml::from_reader_all_with_limits(open_path(&path, limits.max_input_bytes())?, limits)
-            .map_err(napi_error)?;
-    values_to_transport(&values, limits)
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    let limits = checked_limits(limits)?;
+    let reader = open_path(&path, limits.max_input_bytes())?;
+    let values = match field.as_ref() {
+        Some(field) => yaml::from_reader_all_with_field_and_limits(reader, &field.inner, limits),
+        None => yaml::from_reader_all_with_limits(reader, limits),
+    }
+    .map_err(napi_error)?;
+    decoded_values_for_field(
+        values,
+        field.as_ref().map(|field| &field.inner),
+        limits,
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Encode one JavaScript value directly to a JSON file writer.
@@ -515,9 +1407,11 @@ pub fn json_dump_path_native(
     value: Unknown<'_>,
     path: String,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
     let value = encode_js_value(
         env,
         value,
@@ -526,7 +1420,7 @@ pub fn json_dump_path_native(
         &native_intrinsics,
     )?;
     let mut writer = create_path(&path)?;
-    json::to_writer(&mut writer, &value).map_err(napi_error)?;
+    json::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 
@@ -537,9 +1431,11 @@ pub fn yaml_dump_path_native(
     value: Unknown<'_>,
     path: String,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
     let value = encode_js_value(
         env,
         value,
@@ -548,7 +1444,7 @@ pub fn yaml_dump_path_native(
         &native_intrinsics,
     )?;
     let mut writer = create_path(&path)?;
-    yaml::to_writer(&mut writer, &value).map_err(napi_error)?;
+    yaml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 
@@ -559,9 +1455,11 @@ pub fn toml_dump_path_native(
     value: Unknown<'_>,
     path: String,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
     let max_depth = checked_depth(max_depth)?;
     let value = encode_js_value(
         env,
@@ -573,7 +1471,7 @@ pub fn toml_dump_path_native(
     toml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
         .map_err(napi_error)?;
     let mut writer = create_path(&path)?;
-    toml::to_writer(&mut writer, &value).map_err(napi_error)?;
+    toml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 
@@ -584,9 +1482,11 @@ pub fn json_lines_dump_path_native(
     values: Array<'_>,
     path: String,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
     let values = encode_js_values(
         env,
         &values,
@@ -595,7 +1495,7 @@ pub fn json_lines_dump_path_native(
         &native_intrinsics,
     )?;
     let mut writer = create_path(&path)?;
-    json::to_writer_all(&mut writer, &values).map_err(napi_error)?;
+    json::into_writer_all_with_formatting(&values, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 
@@ -606,9 +1506,11 @@ pub fn yaml_dump_all_path_native(
     values: Array<'_>,
     path: String,
     max_depth: Option<u32>,
+    indent: String,
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
     let values = encode_js_values(
         env,
         &values,
@@ -617,7 +1519,7 @@ pub fn yaml_dump_all_path_native(
         &native_intrinsics,
     )?;
     let mut writer = create_path(&path)?;
-    yaml::to_writer_all(&mut writer, &values).map_err(napi_error)?;
+    yaml::into_writer_all_with_formatting(&values, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 
@@ -633,15 +1535,26 @@ pub fn codec_infer_format(path: String) -> Result<String> {
 #[napi(js_name = "codecLoadsInferredNative", skip_typescript)]
 pub fn codec_loads_inferred_native(
     input: Either<Buffer, String>,
-    max_depth: Option<u32>,
-) -> Result<JsonValue> {
-    let limits = limits_with_depth(checked_depth(max_depth)?);
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    native_value: Option<bool>,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    let limits = checked_limits(limits)?;
     let (_, value) = match &input {
-        Either::A(bytes) => text::from_slice_inferred_with_limits(bytes.as_ref(), limits),
-        Either::B(value) => text::from_str_inferred_with_limits(value, limits),
+        Either::A(bytes) => text::from_bytes_inferred_with_limits(bytes.as_ref(), limits),
+        Either::B(value) => text::from_utf8_inferred_with_limits(value, limits),
     }
     .map_err(napi_error)?;
-    value_to_transport(&value, 0, limits.max_depth())
+    let value = match field.as_ref() {
+        Some(field) => field.inner.from_natural_value(value).map_err(napi_error)?,
+        None => value,
+    };
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_value.unwrap_or(false),
+    )
 }
 
 /// Parse a format alias and return its stable native spelling.
@@ -691,10 +1604,15 @@ fn encode_js_values<'env>(
     Ok(encoded_values)
 }
 
-fn values_to_transport(values: &[Value], limits: Limits) -> Result<Vec<serde_json::Value>> {
+fn decoded_values_for_field(
+    values: Vec<Value>,
+    field: Option<&CoreField>,
+    limits: Limits,
+    native_value: bool,
+) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
     values
-        .iter()
-        .map(|value| value_to_transport(value, 0, limits.max_depth()))
+        .into_iter()
+        .map(|value| decoded_value_for_field(value, field, limits.max_depth(), native_value))
         .collect()
 }
 
@@ -733,6 +1651,61 @@ fn limits_with_depth(max_depth: usize) -> Limits {
         defaults.max_nodes(),
         defaults.max_documents(),
     )
+}
+
+fn checked_limit(value: Option<f64>, name: &str, default: usize) -> Result<usize> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    let value = crate::exact_u64(value, name)?;
+    usize::try_from(value)
+        .map_err(|_| napi_error(format!("{name} {value} exceeds this platform's range")))
+}
+
+fn checked_limits(input: Option<CodecLimitsInput>) -> Result<Limits> {
+    let defaults = Limits::default();
+    let input = input.unwrap_or(CodecLimitsInput {
+        max_depth: None,
+        max_input_bytes: None,
+        max_nodes: None,
+        max_documents: None,
+    });
+    let max_depth = checked_limit(input.max_depth, "maxDepth", DEFAULT_JS_DEPTH)?;
+    if !(1..=MAX_JS_DEPTH).contains(&max_depth) {
+        return Err(napi_error(format!(
+            "maxDepth must be between 1 and {MAX_JS_DEPTH}"
+        )));
+    }
+    Ok(Limits::new(
+        max_depth,
+        checked_limit(
+            input.max_input_bytes,
+            "maxInputBytes",
+            defaults.max_input_bytes(),
+        )?,
+        checked_limit(input.max_nodes, "maxNodes", defaults.max_nodes())?,
+        checked_limit(
+            input.max_documents,
+            "maxDocuments",
+            defaults.max_documents(),
+        )?,
+    ))
+}
+
+fn checked_formatting(indent: &str) -> Result<Formatting> {
+    match indent {
+        "default" => Ok(Formatting::default()),
+        "none" => Ok(Formatting::compact()),
+        "tabs" => Ok(Formatting::default().with_indent(Indent::Tabs)),
+        _ => {
+            let width = indent
+                .strip_prefix("spaces:")
+                .ok_or_else(|| napi_error(format!("invalid native indent mode {indent:?}")))?
+                .parse::<u8>()
+                .map_err(|_| napi_error(format!("invalid native indent width {indent:?}")))?;
+            Ok(Formatting::default().with_indent(Indent::Spaces(width)))
+        }
+    }
 }
 
 struct JsEncoder<'env> {
@@ -900,7 +1873,7 @@ impl<'env> JsEncoder<'env> {
     fn encode_number(value: Unknown<'env>) -> Result<Value> {
         let value = value.coerce_to_number()?.get_double()?;
         if value == 0.0 && value.is_sign_negative() {
-            return Ok(Value::F64(Float::from_f64(value)));
+            return Ok(Value::F64(Float64::from_f64(value)));
         }
         if value.is_finite()
             && value.fract() == 0.0
@@ -908,7 +1881,7 @@ impl<'env> JsEncoder<'env> {
         {
             return Ok(Value::I64(value as i64));
         }
-        Ok(Value::F64(Float::from_f64(value)))
+        Ok(Value::F64(Float64::from_f64(value)))
     }
 
     /// Encode a `bigint` as the narrowest native integer that holds it exactly.
@@ -997,7 +1970,7 @@ impl<'env> JsEncoder<'env> {
         self.encode_properties(&object, depth)
     }
 
-    /// Encode a `Date` as the millisecond timestamp it already is.
+    /// Encode a `Date` as the UTC millisecond instant it already is.
     fn encode_date(&self, object: &Object<'env>) -> Result<Value> {
         let millis = self.date_get_time.apply(object, ())?;
         if !millis.is_finite() {
@@ -1006,11 +1979,7 @@ impl<'env> JsEncoder<'env> {
             ));
         }
         #[allow(clippy::cast_possible_truncation)]
-        Ok(Value::timestamp_in(
-            millis as i64,
-            TimeUnit::Millisecond,
-            None,
-        ))
+        Value::datetime64(millis as i64, TimeUnit::Millisecond, Timezone::UTC).map_err(napi_error)
     }
 
     fn encode_branded_object(
@@ -1246,9 +2215,9 @@ impl<'env> JsEncoder<'env> {
                 Some(value) => self.encode_at(value, depth + 1)?,
                 None => Value::Null,
             };
-            entries.push((Value::from(key), value));
+            entries.push((key, value));
         }
-        Value::from_mapping(entries).map_err(napi_error)
+        Value::from_record(entries).map_err(napi_error)
     }
 
     fn encode_required_property(
@@ -1358,8 +2327,6 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         )));
     }
     match value {
-        // A record crosses as the plain object its field names spell.
-        Value::Record(..) => value_to_transport(&value.record_to_mapping(), depth, max_depth),
         Value::Null => Ok(JsonValue::Null),
         Value::Bool(value) => Ok(JsonValue::Bool(*value)),
         Value::I8(value) => integer_transport(i128::from(*value)),
@@ -1372,6 +2339,7 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         Value::U64(value) => unsigned_transport(u128::from(*value)),
         Value::I128(value) => integer_transport(*value),
         Value::U128(value) => unsigned_transport(*value),
+        Value::F16(value) => float_transport(value.as_f64()),
         Value::F32(value) => float_transport(value.as_f64()),
         Value::F64(value) => float_transport(value.as_f64()),
         Value::String(value) => Ok(JsonValue::String(value.to_string())),
@@ -1389,65 +2357,286 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         // A count is carried as text because a nanosecond instant needs more
         // than the 53 bits a JSON number keeps exactly; the JavaScript side
         // reads it as a bigint.
-        Value::Decimal(unscaled, scale) => Ok(marker(
-            "decimal",
+        Value::D128(unscaled, scale) => Ok(marker(
+            "d128",
             [
                 ("value", JsonValue::String(unscaled.to_string())),
                 ("scale", JsonValue::Number(JsonNumber::from(*scale))),
             ],
         )),
-        Value::Date(days) => Ok(marker(
-            "date",
-            [("value", JsonValue::Number(JsonNumber::from(*days)))],
-        )),
-        Value::Time(count, unit) => Ok(marker(
-            "time",
+        Value::D256(unscaled, scale) => Ok(marker(
+            "d256",
             [
-                ("value", JsonValue::String(count.to_string())),
-                ("unit", JsonValue::String(unit.as_str().to_owned())),
+                ("value", JsonValue::String(unscaled.to_string())),
+                ("scale", JsonValue::Number(JsonNumber::from(*scale))),
             ],
         )),
-        Value::Timestamp(count, unit, zone) => Ok(marker(
-            "timestamp",
-            [
-                ("value", JsonValue::String(count.to_string())),
-                ("unit", JsonValue::String(unit.as_str().to_owned())),
-                ("zone", JsonValue::String(zone.as_str().to_owned())),
-                ("date", JsonValue::Null),
-            ],
+        Value::Date32(count, unit, zone) => Ok(temporal_transport(
+            "date32",
+            i64::from(*count),
+            *unit,
+            zone,
+            None,
         )),
-        Value::DateTime(count, unit) => {
-            // A Date is a naive instant counted in whole milliseconds and no
-            // wider than this range. A naive reading that is exactly one
-            // crosses as a Date; every other resolution crosses as itself,
-            // because rounding an instant to fit would change it.
-            let date = value
-                .temporal_count_at(TimeUnit::Millisecond)
-                .filter(|millis| millis.unsigned_abs() <= MAX_DATE_MILLISECONDS);
-            Ok(marker(
-                "timestamp",
-                [
-                    ("value", JsonValue::String(count.to_string())),
-                    ("unit", JsonValue::String(unit.as_str().to_owned())),
-                    ("zone", JsonValue::Null),
-                    (
-                        "date",
-                        date.map_or(JsonValue::Null, |millis| {
-                            JsonValue::Number(JsonNumber::from(millis))
-                        }),
-                    ),
-                ],
-            ))
+        Value::Date64(count, unit, zone) => {
+            Ok(temporal_transport("date64", *count, *unit, zone, None))
         }
-        Value::Duration(count, unit) => Ok(marker(
-            "duration",
-            [
-                ("value", JsonValue::String(count.to_string())),
-                ("unit", JsonValue::String(unit.as_str().to_owned())),
-            ],
+        Value::Time32(count, unit, zone) => Ok(temporal_transport(
+            "time32",
+            i64::from(*count),
+            *unit,
+            zone,
+            None,
         )),
+        Value::Time64(count, unit, zone) => {
+            Ok(temporal_transport("time64", *count, *unit, zone, None))
+        }
+        Value::DateTime64(count, unit, zone) => {
+            let date = zone
+                .is_utc()
+                .then(|| value.temporal_count_at(TimeUnit::Millisecond))
+                .flatten()
+                .filter(|millis| millis.unsigned_abs() <= MAX_DATE_MILLISECONDS);
+            Ok(temporal_transport("datetime64", *count, *unit, zone, date))
+        }
+        Value::Duration32(count, unit, zone) => Ok(temporal_transport(
+            "duration32",
+            i64::from(*count),
+            *unit,
+            zone,
+            None,
+        )),
+        Value::Duration64(count, unit, zone) => {
+            Ok(temporal_transport("duration64", *count, *unit, zone, None))
+        }
         Value::Mapping(entries) => mapping_transport(entries, depth, max_depth),
+        Value::Record(entries) => record_transport(entries, depth, max_depth),
     }
+}
+
+/// Project a typed core value into JavaScript while restoring struct names.
+///
+/// Core rows stay ordered `Value::Sequence` values. At the language boundary
+/// a declared Struct becomes the object JavaScript uses for named records;
+/// nested structs, lists, maps, unions, and dictionary values follow the same
+/// field recursively.
+fn struct_transport_with_field(
+    value: &Value,
+    fields: &CoreFields,
+    depth: usize,
+    max_depth: usize,
+) -> Result<JsonValue> {
+    let values = match value {
+        Value::Sequence(values) if values.len() == fields.len() => {
+            fields.iter().zip(values.iter()).collect::<Vec<_>>()
+        }
+        Value::Record(values) => fields
+            .iter()
+            .map(|field| {
+                values
+                    .get(field.name())
+                    .map(|value| (field, value))
+                    .ok_or_else(|| {
+                        napi_error(format!("typed record is missing field {:?}", field.name()))
+                    })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        _ => {
+            return Err(napi_error(format!(
+                "expected {} typed struct values, got {}",
+                fields.len(),
+                value.kind()
+            )));
+        }
+    };
+    let entries = values
+        .into_iter()
+        .map(|(field, value)| {
+            Ok((
+                field.name(),
+                value_to_transport_with_field(value, field, depth + 1, max_depth)?,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if entries
+        .iter()
+        .any(|(name, _)| matches!(*name, TRANSPORT_KEY | "__proto__"))
+    {
+        let pairs = entries
+            .into_iter()
+            .map(|(name, value)| JsonValue::Array(vec![JsonValue::String(name.to_owned()), value]))
+            .collect();
+        return Ok(marker("record", [("value", JsonValue::Array(pairs))]));
+    }
+    let mut object = JsonMap::with_capacity(entries.len());
+    for (name, value) in entries {
+        object.insert(name.to_owned(), value);
+    }
+    Ok(JsonValue::Object(object))
+}
+
+fn map_transport_with_field(
+    value: &Value,
+    map: &CoreMapType,
+    depth: usize,
+    max_depth: usize,
+) -> Result<JsonValue> {
+    let [key_field, value_field] = map.entries().fields() else {
+        return Err(napi_error("typed map entries need key and value fields"));
+    };
+    let entries = value
+        .as_mapping()
+        .ok_or_else(|| napi_error(format!("expected a typed mapping, got {}", value.kind())))?;
+    let pairs = entries
+        .iter()
+        .map(|(key, value)| {
+            Ok(JsonValue::Array(vec![
+                value_to_transport_with_field(key, key_field, depth + 1, max_depth)?,
+                value_to_transport_with_field(value, value_field, depth + 1, max_depth)?,
+            ]))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(marker("mapping", [("value", JsonValue::Array(pairs))]))
+}
+
+pub(crate) fn value_to_transport_with_field(
+    value: &Value,
+    field: &CoreField,
+    depth: usize,
+    max_depth: usize,
+) -> Result<JsonValue> {
+    if depth > max_depth {
+        return Err(napi_error(format!(
+            "decoded value exceeds maxDepth {max_depth}"
+        )));
+    }
+    if value.is_null() {
+        return value_to_transport(value, depth, max_depth);
+    }
+    match field.data_type() {
+        CoreDataType::Struct(fields) => {
+            struct_transport_with_field(value, fields, depth, max_depth)
+        }
+        CoreDataType::List(child)
+        | CoreDataType::ListView(child)
+        | CoreDataType::FixedSizeList(child, _)
+        | CoreDataType::LargeList(child)
+        | CoreDataType::LargeListView(child) => value
+            .as_sequence()
+            .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
+            .iter()
+            .map(|value| value_to_transport_with_field(value, child, depth + 1, max_depth))
+            .collect::<Result<Vec<_>>>()
+            .map(JsonValue::Array),
+        CoreDataType::Map(map) => map_transport_with_field(value, map, depth, max_depth),
+        CoreDataType::Union(fields, _) => {
+            let Some([type_id, payload]) = value.as_sequence() else {
+                return Err(napi_error(
+                    "typed union value must contain its type id and payload",
+                ));
+            };
+            let type_id = type_id
+                .as_i128()
+                .and_then(|value| i8::try_from(value).ok())
+                .ok_or_else(|| napi_error("typed union id must fit i8"))?;
+            let branch = fields
+                .iter()
+                .find_map(|(candidate, branch)| (candidate == type_id).then_some(branch))
+                .ok_or_else(|| napi_error("typed union id is not declared"))?;
+            value_to_transport_with_field(payload, branch, depth, max_depth)
+        }
+        CoreDataType::Dictionary(dictionary) => value_to_transport_with_field(
+            value,
+            &CoreField::new(
+                field.name(),
+                dictionary.value().clone(),
+                field.is_nullable(),
+            ),
+            depth,
+            max_depth,
+        ),
+        CoreDataType::RunEndEncoded(encoded) => {
+            value_to_transport_with_field(value, encoded.values(), depth, max_depth)
+        }
+        _ => value_to_transport(value, depth, max_depth),
+    }
+}
+
+/// Cross one decoded core value without lowering exact variants through JS.
+pub(crate) fn decoded_value_for_field(
+    value: Value,
+    field: Option<&CoreField>,
+    max_depth: usize,
+    native_value: bool,
+) -> Result<Either<JsCodecValue, JsonValue>> {
+    if native_value {
+        return Ok(Either::A(JsCodecValue::from_core(value)));
+    }
+    value_to_transport_for_field(&value, field, max_depth).map(Either::B)
+}
+
+pub(crate) fn value_to_transport_for_field(
+    value: &Value,
+    field: Option<&CoreField>,
+    max_depth: usize,
+) -> Result<JsonValue> {
+    field.map_or_else(
+        || value_to_transport(value, 0, max_depth),
+        |field| value_to_transport_with_field(value, field, 0, max_depth),
+    )
+}
+
+fn temporal_transport(
+    kind: &str,
+    count: i64,
+    unit: TimeUnit,
+    zone: &Timezone,
+    date: Option<i64>,
+) -> JsonValue {
+    marker(
+        kind,
+        [
+            ("value", JsonValue::String(count.to_string())),
+            ("unit", JsonValue::String(unit.as_str().to_owned())),
+            ("zone", JsonValue::String(zone.as_str().to_owned())),
+            (
+                "date",
+                date.map_or(JsonValue::Null, |millis| {
+                    JsonValue::Number(JsonNumber::from(millis))
+                }),
+            ),
+        ],
+    )
+}
+
+fn record_transport<K: AsRef<str> + Ord>(
+    entries: &std::collections::BTreeMap<K, Value>,
+    depth: usize,
+    max_depth: usize,
+) -> Result<JsonValue> {
+    let reserved = entries
+        .keys()
+        .any(|key| matches!(key.as_ref(), TRANSPORT_KEY | "__proto__"));
+    if reserved {
+        let pairs = entries
+            .iter()
+            .map(|(key, value)| {
+                Ok(JsonValue::Array(vec![
+                    JsonValue::String(key.as_ref().to_owned()),
+                    value_to_transport(value, depth + 1, max_depth)?,
+                ]))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        return Ok(marker("record", [("value", JsonValue::Array(pairs))]));
+    }
+    let mut object = JsonMap::with_capacity(entries.len());
+    for (key, value) in entries {
+        object.insert(
+            key.as_ref().to_owned(),
+            value_to_transport(value, depth + 1, max_depth)?,
+        );
+    }
+    Ok(JsonValue::Object(object))
 }
 
 fn integer_transport(value: i128) -> Result<JsonValue> {
@@ -1498,25 +2687,6 @@ fn mapping_transport(
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {
-    let all_strings = entries
-        .iter()
-        .all(|(key, _)| matches!(key, Value::String(_)));
-    let has_reserved_key = entries.iter().any(|(key, _)| {
-        matches!(key, Value::String(value) if value.as_str() == TRANSPORT_KEY || value.as_str() == "__proto__")
-    });
-    if all_strings && !has_reserved_key {
-        let mut object = JsonMap::with_capacity(entries.len());
-        for (key, value) in entries {
-            let Value::String(key) = key else {
-                return Err(napi_error("internal string-key mapping mismatch"));
-            };
-            object.insert(
-                key.to_string(),
-                value_to_transport(value, depth + 1, max_depth)?,
-            );
-        }
-        return Ok(JsonValue::Object(object));
-    }
     let pairs = entries
         .iter()
         .map(|(key, value)| {
@@ -1526,10 +2696,7 @@ fn mapping_transport(
             ]))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(marker(
-        if all_strings { "object" } else { "mapping" },
-        [("value", JsonValue::Array(pairs))],
-    ))
+    Ok(marker("mapping", [("value", JsonValue::Array(pairs))]))
 }
 
 fn marker<const N: usize>(kind: &str, fields: [(&str, JsonValue); N]) -> JsonValue {

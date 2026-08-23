@@ -358,7 +358,7 @@ impl BoundStatement {
         for projection in self.projections() {
             columns.push(projection.evaluate(&filtered)?);
         }
-        let schema = crate::arrow::schema_from_field(self.output())?;
+        let schema = crate::arrow::arrow_schema_from_field(self.output())?;
         RecordBatch::try_new(schema, columns).map_err(Error::Arrow)
     }
 
@@ -413,7 +413,7 @@ impl BoundStatement {
     ///
     /// Returns an error when the output schema cannot be materialized.
     pub fn project_reader(self, inner: BatchReader) -> Result<BatchReader> {
-        let schema = crate::arrow::schema_from_field(self.output())?;
+        let schema = crate::arrow::arrow_schema_from_field(self.output())?;
         Ok(Box::new(Projected {
             inner,
             statement: self,

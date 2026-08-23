@@ -26,7 +26,7 @@
 //! point.extend(10.0_f64.to_le_bytes());
 //! point.extend(20.0_f64.to_le_bytes());
 //!
-//! assert_eq!(wkb::to_wkt(&point)?, "POINT (10 20)");
+//! assert_eq!(wkb::into_wkt(&point)?, "POINT (10 20)");
 //! assert_eq!(wkb::geometry_type_ids(&point)?, [1]);
 //!
 //! let bounds = wkb::bounding_box(&point)?;
@@ -35,9 +35,24 @@
 //! # }
 //! ```
 
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
+
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Result};
+use crate::{DataType, Error, Float64, Result};
+
+type CoordIdentity = (Float64, Float64, Option<Float64>, Option<Float64>);
+type BoundingBoxIdentity = (
+    Float64,
+    Float64,
+    Float64,
+    Float64,
+    Option<Float64>,
+    Option<Float64>,
+    Option<Float64>,
+    Option<Float64>,
+);
 
 /// The EWKB flag naming an elevation on every coordinate.
 const EWKB_Z: u32 = 0x8000_0000;
@@ -57,7 +72,7 @@ const MEMBER_BYTES: usize = 5;
 /// of the geometry itself. Keeping it beside the coordinates is what lets
 /// `POINT Z EMPTY` stay distinguishable from `POINT EMPTY` once the
 /// coordinates are gone.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Dimensions {
     /// Plane coordinates only.
     Xy,
@@ -122,7 +137,7 @@ impl Dimensions {
 
 /// One position: an x and a y, plus the optional elevation and measure the
 /// geometry's dimensionality adds.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Coord {
     /// The easting, or longitude.
     pub x: f64,
@@ -134,6 +149,43 @@ pub struct Coord {
     pub m: Option<f64>,
 }
 
+impl Coord {
+    fn identity(&self) -> CoordIdentity {
+        (
+            Float64::from_f64(self.x),
+            Float64::from_f64(self.y),
+            self.z.map(Float64::from_f64),
+            self.m.map(Float64::from_f64),
+        )
+    }
+}
+
+impl PartialEq for Coord {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Coord {}
+
+impl PartialOrd for Coord {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Coord {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for Coord {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
 /// One decoded geometry: the seven simple-feature shapes, owned.
 ///
 /// The model is deliberately lightweight - vectors of [`Coord`] under each
@@ -141,7 +193,7 @@ pub struct Coord {
 /// geometry. An empty point is `None` rather than a NaN coordinate, so
 /// emptiness is a shape the type system shows instead of a value a caller
 /// has to remember to test for.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Geometry {
     /// A single position, or the empty point.
     Point {
@@ -256,9 +308,9 @@ impl Geometry {
     /// absent body. Each coordinate prints the shortest decimal that reads
     /// back as the same double, which is what Rust's float `Display`
     /// promises, so the text loses nothing.
-    pub fn to_wkt(&self) -> String {
+    pub fn into_wkt(self) -> String {
         let mut text = String::new();
-        write_geometry(&mut text, self);
+        write_geometry(&mut text, &self);
         text
     }
 
@@ -282,7 +334,7 @@ impl Geometry {
 /// positive infinity and `xmax` negative infinity - which [`Self::is_empty`]
 /// names, so a statistics writer can skip the box instead of storing it. The
 /// Z and M bounds are present exactly when some coordinate carried that axis.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BoundingBox {
     /// The smallest x of any position.
     pub xmin: f64,
@@ -307,6 +359,45 @@ impl BoundingBox {
     /// geometry - or one spelled entirely from NaN positions - produces.
     pub fn is_empty(&self) -> bool {
         self.xmin > self.xmax
+    }
+
+    fn identity(&self) -> BoundingBoxIdentity {
+        (
+            Float64::from_f64(self.xmin),
+            Float64::from_f64(self.xmax),
+            Float64::from_f64(self.ymin),
+            Float64::from_f64(self.ymax),
+            self.zmin.map(Float64::from_f64),
+            self.zmax.map(Float64::from_f64),
+            self.mmin.map(Float64::from_f64),
+            self.mmax.map(Float64::from_f64),
+        )
+    }
+}
+
+impl PartialEq for BoundingBox {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for BoundingBox {}
+
+impl PartialOrd for BoundingBox {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for BoundingBox {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for BoundingBox {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
     }
 }
 
@@ -359,12 +450,12 @@ pub fn geometry_type_ids(bytes: &[u8]) -> Result<Vec<u32>> {
 ///
 /// Returns the same malformed-buffer errors as [`Geometry::from_slice`],
 /// each naming its byte position.
-pub fn to_wkt(bytes: &[u8]) -> Result<String> {
-    Ok(Geometry::from_slice(bytes)?.to_wkt())
+pub fn into_wkt(bytes: &[u8]) -> Result<String> {
+    Ok(Geometry::from_slice(bytes)?.into_wkt())
 }
 
 /// The seven base shapes a type code can name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum Base {
     Point,
     LineString,

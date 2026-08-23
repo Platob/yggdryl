@@ -21,7 +21,7 @@ use super::sep::{LineSep, next_break};
 /// One decoder output chunk: large enough that a scan amortizes the refill,
 /// small enough that a handle addressing a resource larger than memory still
 /// costs a constant amount.
-const WINDOW: usize = 64 * 1024;
+const WINDOW: usize = crate::io::DEFAULT_STREAM_BATCH_SIZE;
 
 /// A bounded, reused buffer that records are borrowed out of.
 ///
@@ -87,7 +87,7 @@ impl<R: Read> Window<R> {
 
 /// One multi-line record, borrowed from the window.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Record<'window> {
+pub(crate) struct WindowRecord<'window> {
     /// The record's bytes: its lines and their interior terminators, with the
     /// final terminator excluded.
     ///
@@ -119,7 +119,7 @@ impl<R: Read> Window<R> {
         &mut self,
         linesep: Option<&LineSep>,
         opens: &mut dyn FnMut(&[u8]) -> bool,
-    ) -> Option<Result<Record<'_>>> {
+    ) -> Option<Result<WindowRecord<'_>>> {
         let offset = self.consumed;
         // Where the next line to examine begins, and where the record's
         // content ended - the two walk forward together.
@@ -178,7 +178,7 @@ impl<R: Read> Window<R> {
         let start = self.cursor;
         self.consumed += (scan - start) as u64;
         self.cursor = scan;
-        Some(Ok(Record {
+        Some(Ok(WindowRecord {
             bytes: strip_bom_at(&self.bytes[start..content_end], offset),
             offset,
             lines,

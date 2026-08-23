@@ -277,23 +277,23 @@ class TestRecords:
     ) -> None:
         handle = IOBase.from_arrow_fs(local, f"{root}/{name}")
         with handle:
-            handle.write_arrow_batch_reader(table())
+            handle.overwrite_arrow_table(table())
 
-        read = handle.read_arrow_batch_reader().read_all()
+        read = handle.read_arrow_reader().read_all()
         assert read.num_rows == 2
         assert read.column_names == ["id", "symbol"]
 
         # Appending is the third method, and it reads-adds-rewrites.
         with handle:
-            handle.append_arrow_batch_reader(table())
-        assert handle.read_arrow_batch_reader().read_all().num_rows == 4
+            handle.append_arrow_table(table())
+        assert handle.read_arrow_reader().read_all().num_rows == 4
 
     def test_yggdryl_writes_what_pyarrow_reads(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
         handle = IOBase.from_arrow_fs(local, f"{root}/written.parquet")
         with handle:
-            handle.write_arrow_batch_reader(table())
+            handle.overwrite_arrow_table(table())
 
         # The outside implementation reads the bytes back, byte for byte the
         # file Yggdryl published.
@@ -306,7 +306,7 @@ class TestRecords:
         pq.write_table(table(), f"{root}/foreign.parquet")
 
         handle = IOBase.from_arrow_fs(local, f"{root}/foreign.parquet")
-        assert handle.read_arrow_batch_reader().read_all().equals(table())
+        assert handle.read_arrow_reader().read_all().equals(table())
 
         # And the bytes the wrapper reads are the bytes on disk.
         assert handle.read_bytes() == pathlib.Path(root, "foreign.parquet").read_bytes()
@@ -321,11 +321,11 @@ class TestCustomFilesystems:
 
         handle = IOBase.from_arrow_fs(filesystem, "bucket/trades.parquet")
         with handle:
-            handle.write_arrow_batch_reader(table())
+            handle.overwrite_arrow_table(table())
 
         # The rows landed in the caller's own storage, not on any disk.
         assert "bucket/trades.parquet" in handler.files
-        assert handle.read_arrow_batch_reader().read_all().num_rows == 2
+        assert handle.read_arrow_reader().read_all().num_rows == 2
 
     def test_a_custom_filesystem_lists_its_own_prefixes(self) -> None:
         handler = MemoryHandler()
@@ -348,7 +348,7 @@ class TestCustomFilesystems:
 
         handle = IOBase.from_arrow_fs(subtree, "trades/part-0.parquet")
         with handle:
-            handle.write_arrow_batch_reader(table())
+            handle.overwrite_arrow_table(table())
 
         # Written through the prefix, and readable from the real path.
         assert (base / "trades" / "part-0.parquet").exists()
@@ -445,6 +445,35 @@ class TestCustomFilesystems:
 
         # With no text to carry, the class is the whole of what the caller has.
         assert "PermissionError" in str(failure.value)
+
+    def test_a_byte_stream_yields_one_failure_then_stays_fused(self) -> None:
+        class FailsAfterOneChunk(MemoryHandler):
+            def __init__(self) -> None:
+                super().__init__()
+                self.files["bucket/key.bin"] = b"abcdef"
+                self.reads = 0
+
+            def open_input_file(self, path: str) -> pa.NativeFile:
+                self.reads += 1
+                if self.reads > 1:
+                    raise PermissionError("later streamed read failed")
+                return super().open_input_file(path)
+
+        handler = FailsAfterOneChunk()
+        handle = IOBase.from_arrow_fs(
+            pafs.PyFileSystem(handler), "bucket/key.bin"
+        )
+        stream = handle.pstream_bytes(batch_size=3)
+
+        # Creating the iterator performs no ranged read.
+        assert handler.reads == 0
+        assert next(stream) == b"abc"
+        with pytest.raises(ValueError, match="later streamed read failed"):
+            next(stream)
+        with pytest.raises(StopIteration):
+            next(stream)
+        with pytest.raises(StopIteration):
+            next(stream)
 
 
 class TestTables:

@@ -426,21 +426,28 @@ pub(crate) fn literal_text(data_type: &DataType, value: &Value) -> Option<SmolSt
         Value::U32(held) => Some(SmolStr::new(held.to_string())),
         Value::U64(held) => Some(SmolStr::new(held.to_string())),
         Value::U128(held) => Some(SmolStr::new(held.to_string())),
+        Value::F16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
         Value::F32(held) => Some(SmolStr::new(float_text(f64::from(held.as_f32())))),
         Value::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Value::Decimal(unscaled, scale) => Some(decimal_text(*unscaled, *scale)),
+        Value::D128(..) | Value::D256(..) => value.as_decimal_utf8().map(SmolStr::new),
         Value::String(held) => Some(held.clone()),
-        Value::Bytes(held) => Some(SmolStr::new(hex_text(held))),
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
-        Value::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
-        Value::Date(days) => iso::format_date(*days),
-        Value::Time(count, unit) => iso::format_time(*count, *unit),
-        Value::Timestamp(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
-        Value::DateTime(count, unit) => iso::format_datetime(*count, *unit),
-        Value::Duration(count, unit) => iso::format_duration(*count, *unit),
+        Value::Bytes(held) | Value::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
+        Value::Date32(days, _, _) => iso::format_date(*days),
+        Value::Date64(count, _, _) => i32::try_from(count.div_euclid(86_400_000))
+            .ok()
+            .and_then(iso::format_date),
+        Value::Time32(count, unit, _) => iso::format_time(i64::from(*count), *unit),
+        Value::Time64(count, unit, _) => iso::format_time(*count, *unit),
+        Value::DateTime64(count, unit, zone) if zone.is_naive() => {
+            iso::format_datetime(*count, *unit)
+        }
+        Value::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
+        Value::Duration32(count, unit, _) => iso::format_duration(i64::from(*count), *unit),
+        Value::Duration64(count, unit, _) => iso::format_duration(*count, *unit),
         Value::Null => matches!(data_type, DataType::Null).then(|| SmolStr::new_static("null")),
-        Value::Sequence(_) | Value::Mapping(_) | Value::Record(..) => None,
+        Value::Sequence(_) | Value::Mapping(_) | Value::Record(_) => None,
     }
 }
 
@@ -453,8 +460,29 @@ fn write_constructed(
     // The element type is carried by the cast around the constructor, so a
     // list of nothing still knows what it is a list of.
     write!(formatter, "cast(")?;
-    write_constructor_body(formatter, value)?;
+    if let (Some(fields), Some(values)) = (data_type.as_fields(), value.as_sequence()) {
+        write_struct_constructor(formatter, fields, values)?;
+    } else {
+        write_constructor_body(formatter, value)?;
+    }
     write!(formatter, " as {data_type})")
+}
+
+fn write_struct_constructor(
+    formatter: &mut fmt::Formatter<'_>,
+    fields: &[crate::Field],
+    values: &[Value],
+) -> fmt::Result {
+    formatter.write_str("struct(")?;
+    for (index, (field, held)) in fields.iter().zip(values).enumerate() {
+        if index != 0 {
+            formatter.write_str(", ")?;
+        }
+        write_constructor_item(formatter, held)?;
+        formatter.write_str(" as ")?;
+        write_identifier(formatter, field.name())?;
+    }
+    formatter.write_char(')')
 }
 
 fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Value) -> fmt::Result {
@@ -480,24 +508,6 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Value) -> 
                 write_constructor_item(formatter, held)?;
             }
             formatter.write_char('}')
-        }
-        Value::Record(data_type, values) => {
-            let names: Vec<&str> = data_type
-                .as_fields()
-                .unwrap_or_default()
-                .iter()
-                .map(crate::Field::name)
-                .collect();
-            formatter.write_str("struct(")?;
-            for (index, held) in values.iter().enumerate() {
-                if index != 0 {
-                    formatter.write_str(", ")?;
-                }
-                write_constructor_item(formatter, held)?;
-                formatter.write_str(" as ")?;
-                write_identifier(formatter, names.get(index).copied().unwrap_or("_"))?;
-            }
-            formatter.write_char(')')
         }
         other => write_constructor_item(formatter, other),
     }
@@ -533,42 +543,6 @@ pub(crate) fn float_text(value: f64) -> String {
         };
     }
     format!("{value:?}")
-}
-
-/// The text of an exact decimal, at the scale it was stored with.
-pub(crate) fn decimal_text(unscaled: i128, scale: i8) -> SmolStr {
-    let mut text = String::new();
-    let negative = unscaled < 0;
-    let digits = unscaled.unsigned_abs().to_string();
-    if negative {
-        text.push('-');
-    }
-    match scale {
-        // A negative scale multiplies, so the zeros are real digits.
-        ..=-1 => {
-            text.push_str(&digits);
-            for _ in 0..scale.unsigned_abs() {
-                text.push('0');
-            }
-        }
-        0 => text.push_str(&digits),
-        _ => {
-            let places = usize::from(scale.unsigned_abs());
-            if digits.len() > places {
-                let split = digits.len() - places;
-                text.push_str(&digits[..split]);
-                text.push('.');
-                text.push_str(&digits[split..]);
-            } else {
-                text.push_str("0.");
-                for _ in 0..places - digits.len() {
-                    text.push('0');
-                }
-                text.push_str(&digits);
-            }
-        }
-    }
-    SmolStr::new(text)
 }
 
 /// Lowercase hex, which is how a binary literal is written and read.

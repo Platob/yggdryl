@@ -14,6 +14,7 @@
 //! fields by `field-id`, not by name or position.
 
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
@@ -139,7 +140,7 @@ impl fmt::Display for FileFormat {
 }
 
 /// One data file, its partition tuple, and the statistics its writer reported.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct DataFile {
     /// Zero for rows, one for position deletes, two for equality deletes.
     pub content: i32,
@@ -173,8 +174,80 @@ pub struct DataFile {
     pub first_row_id: Option<i64>,
 }
 
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct DataFileIdentity<'a> {
+    content: i32,
+    file_path: &'a SmolStr,
+    file_format: FileFormat,
+    partition: &'a [Value],
+    record_count: i64,
+    file_size_in_bytes: i64,
+    column_sizes: Vec<&'a (i32, i64)>,
+    value_counts: Vec<&'a (i32, i64)>,
+    null_value_counts: Vec<&'a (i32, i64)>,
+    nan_value_counts: Vec<&'a (i32, i64)>,
+    lower_bounds: Vec<&'a (i32, Vec<u8>)>,
+    upper_bounds: Vec<&'a (i32, Vec<u8>)>,
+    split_offsets: &'a [i64],
+    sort_order_id: Option<i32>,
+    first_row_id: Option<i64>,
+}
+
+impl DataFile {
+    /// Return a deterministic hash of this complete data-file description.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
+    fn identity(&self) -> DataFileIdentity<'_> {
+        DataFileIdentity {
+            content: self.content,
+            file_path: &self.file_path,
+            file_format: self.file_format,
+            partition: &self.partition,
+            record_count: self.record_count,
+            file_size_in_bytes: self.file_size_in_bytes,
+            column_sizes: crate::generic::sorted_pairs(&self.column_sizes),
+            value_counts: crate::generic::sorted_pairs(&self.value_counts),
+            null_value_counts: crate::generic::sorted_pairs(&self.null_value_counts),
+            nan_value_counts: crate::generic::sorted_pairs(&self.nan_value_counts),
+            lower_bounds: crate::generic::sorted_pairs(&self.lower_bounds),
+            upper_bounds: crate::generic::sorted_pairs(&self.upper_bounds),
+            split_offsets: &self.split_offsets,
+            sort_order_id: self.sort_order_id,
+            first_row_id: self.first_row_id,
+        }
+    }
+}
+
+impl PartialEq for DataFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for DataFile {}
+
+impl PartialOrd for DataFile {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DataFile {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for DataFile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
 /// One manifest row: a data file plus what the snapshot did to it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ManifestEntry {
     /// Whether the snapshot added, kept, or removed the file.
     pub status: EntryStatus,
@@ -189,6 +262,11 @@ pub struct ManifestEntry {
 }
 
 impl ManifestEntry {
+    /// Return a deterministic hash of this complete manifest entry.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Describe a newly written data file.
     pub const fn added(snapshot_id: i64, data_file: DataFile) -> Self {
         Self {
@@ -246,7 +324,7 @@ impl ManifestEntry {
 /// This is the level a planner prunes at first: a manifest whose summary for a
 /// partition column excludes a value cannot name a file that holds it, so the
 /// whole manifest is skipped without being read.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FieldSummary {
     /// Whether any file in the manifest has a null value for the field.
     pub contains_null: bool,
@@ -258,8 +336,15 @@ pub struct FieldSummary {
     pub upper_bound: Option<Vec<u8>>,
 }
 
+impl FieldSummary {
+    /// Return a deterministic hash of this complete field summary.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+}
+
 /// One row of a manifest list: a manifest and what it summarizes.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ManifestFile {
     /// The manifest's location, as a URI.
     pub manifest_path: SmolStr,
@@ -293,6 +378,13 @@ pub struct ManifestFile {
     pub first_row_id: Option<i64>,
 }
 
+impl ManifestFile {
+    /// Return a deterministic hash of this complete manifest-file description.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+}
+
 /// Read every entry of the manifest a handle holds.
 ///
 /// # Errors
@@ -318,7 +410,7 @@ pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpe
     let Some(encoded) = container.get("partition-spec") else {
         return Ok(PartitionSpec::unpartitioned());
     };
-    let mut spec = PartitionSpec::from_json(&crate::json::from_str(encoded)?)?;
+    let mut spec = PartitionSpec::from_json(&crate::json::from_utf8(encoded)?)?;
     if let Some(id) = container
         .get("partition-spec-id")
         .and_then(|id| id.parse::<i32>().ok())
@@ -354,9 +446,10 @@ pub fn write_manifest<H: IOBase + ?Sized>(
     }
 
     let schema_json = super::schema_to_json(schema)?;
-    let schema_text = String::from_utf8_lossy(&crate::json::to_vec(&schema_json)?).into_owned();
+    let schema_text = String::from_utf8_lossy(&crate::json::into_bytes(&schema_json)?).into_owned();
     let spec_text =
-        String::from_utf8_lossy(&crate::json::to_vec(&spec.to_v1_json()?)?).into_owned();
+        String::from_utf8_lossy(&crate::json::into_bytes(&spec.clone().into_v1_json()?)?)
+            .into_owned();
     let spec_id = spec.spec_id.to_string();
     let format_version = version.number().to_string();
     let metadata = [
@@ -803,10 +896,14 @@ fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
     let partition = file
         .get_key_str("partition")
         .map(|tuple| {
-            tuple
-                .mapping_iter()
-                .map(|(_, value)| value.clone())
-                .collect()
+            if let Some(record) = tuple.as_record() {
+                record.values().cloned().collect()
+            } else {
+                tuple
+                    .mapping_iter()
+                    .map(|(_, value)| value.clone())
+                    .collect()
+            }
         })
         .unwrap_or_default();
 
@@ -1200,7 +1297,7 @@ fn planning_plan(
             plans.clear();
         }
     }
-    let writer_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
+    let writer_json = crate::json::from_bytes_with_limits(schema_bytes, limits)?;
     let writer = crate::avro::Schema::from_json_with_limits(&writer_json, limits)?;
     let reader_json = planning_schema(&writer_json, with_stats);
     // Projection drops whole fields, and Avro lets a legal schema define a
@@ -1269,7 +1366,12 @@ fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
             }) else {
                 return whole();
             };
-            let Ok(rebuilt) = field.with_key("type", filtered) else {
+            let rebuilt = if field.as_record().is_some() {
+                field.with_field("type", filtered)
+            } else {
+                field.with_key("type", filtered)
+            };
+            let Ok(rebuilt) = rebuilt else {
                 return whole();
             };
             kept.push(rebuilt);
@@ -1277,9 +1379,13 @@ fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
             kept.push(field.clone());
         }
     }
-    writer_json
-        .with_key("fields", Value::from_sequence(kept))
-        .unwrap_or_else(|_| whole())
+    let fields = Value::from_sequence(kept);
+    if writer_json.as_record().is_some() {
+        writer_json.with_field("fields", fields)
+    } else {
+        writer_json.with_key("fields", fields)
+    }
+    .unwrap_or_else(|_| whole())
 }
 
 /// Rebuild a record schema JSON keeping only the fields `keep` accepts.
@@ -1291,5 +1397,11 @@ fn filter_record_fields(record: &Value, keep: &dyn Fn(&str) -> bool) -> Option<V
             kept.push(field.clone());
         }
     }
-    record.with_key("fields", Value::from_sequence(kept)).ok()
+    let fields = Value::from_sequence(kept);
+    if record.as_record().is_some() {
+        record.with_field("fields", fields)
+    } else {
+        record.with_key("fields", fields)
+    }
+    .ok()
 }

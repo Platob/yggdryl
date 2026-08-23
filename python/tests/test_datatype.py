@@ -19,8 +19,9 @@ def test_data_type_infers_native_string_and_arrow_values() -> None:
     assert DataType.from_value("int64") == expected
     assert DataType.from_value(pa.int64()) == expected
     assert DataType.from_arrow(pa.int64()) == expected
-    assert expected.to_arrow() == pa.int64()
     assert expected.into_arrow() == pa.int64()
+    for legacy in ("to_arrow", "to_scheme_compat", "to_json", "to_yaml", "to_toml", "to_dict"):
+        assert not hasattr(expected, legacy)
 
 
 def test_data_type_builds_and_casts_exact_arrow_scalars() -> None:
@@ -46,22 +47,22 @@ def test_data_type_arrow_scalar_handles_nested_dictionary_map_and_run_end() -> N
         pa.struct([pa.field("items", pa.list_(pa.int8()), nullable=False)])
     )
     nested_scalar = nested.arrow_scalar({"items": [1, 2]}, safe=False)
-    assert nested_scalar.type.equals(nested.to_arrow())
+    assert nested_scalar.type.equals(nested.into_arrow())
     assert nested_scalar.as_py() == {"items": [1, 2]}
 
     mapping = DataType.from_arrow(pa.map_(pa.string(), pa.int8()))
     map_scalar = mapping.arrow_scalar([("left", 1), ("right", 2)], safe=False)
-    assert map_scalar.type.equals(mapping.to_arrow())
+    assert map_scalar.type.equals(mapping.into_arrow())
     assert map_scalar.as_py() == [("left", 1), ("right", 2)]
 
     dictionary = DataType.from_arrow(pa.dictionary(pa.int8(), pa.string()))
     dictionary_scalar = dictionary.arrow_scalar("ready", safe=False)
-    assert dictionary_scalar.type.equals(dictionary.to_arrow())
+    assert dictionary_scalar.type.equals(dictionary.into_arrow())
     assert dictionary_scalar.as_py() == "ready"
 
     run_end = DataType.from_arrow(pa.run_end_encoded(pa.int16(), pa.int64()))
     run_end_scalar = run_end.arrow_scalar(42)
-    assert run_end_scalar.type.equals(run_end.to_arrow())
+    assert run_end_scalar.type.equals(run_end.into_arrow())
     assert run_end_scalar.as_py() == 42
 
 
@@ -133,12 +134,12 @@ def test_data_type_string_json_order_hash_and_pickle_protocols() -> None:
     value = DataType.from_arrow(pa.decimal128(18, 4))
 
     assert DataType.from_str(str(value)) == value
-    assert DataType.from_json(value.to_json()) == value
     assert DataType.from_json(value.into_json()) == value
     assert eval(repr(value), {"DataType": DataType}) == value
     assert copy.copy(value) == value
     assert pickle.loads(pickle.dumps(value)) == value
     assert hash(value) == hash(DataType(value))
+    assert value.stable_hash() == DataType(value).stable_hash()
     assert DataType("int32") < DataType("int64") or DataType("int64") < DataType("int32")
 
 
@@ -155,7 +156,7 @@ def test_data_type_is_a_read_only_nested_field_collection() -> None:
     assert [field.name for field in value] == ["symbol", "levels"]
     assert value[0].name == "symbol"
     assert value[-1].name == "levels"
-    assert value["levels"].data_type.to_arrow() == pa.list_(pa.float64())
+    assert value["levels"].data_type.into_arrow() == pa.list_(pa.float64())
     assert 0 in value
     assert "symbol" in value
     assert value["symbol"] in value
@@ -183,8 +184,8 @@ def test_data_type_from_fields_builds_exact_native_struct() -> None:
     assert value.kind == "struct"
     assert consumed == ["small", "wide"]
     assert tuple(value) == fields
-    arrow = value.to_arrow()
-    assert arrow.equals(pa.struct([field.to_arrow() for field in fields]))
+    arrow = value.into_arrow()
+    assert arrow.equals(pa.struct([field.into_arrow() for field in fields]))
     assert arrow.field(0).equals(
         pa.field(
             "small",
@@ -198,7 +199,7 @@ def test_data_type_from_fields_builds_exact_native_struct() -> None:
     empty = DataType.from_fields(iter(()))
     assert empty.id == "struct"
     assert len(empty) == 0
-    assert empty.to_arrow() == pa.struct([])
+    assert empty.into_arrow() == pa.struct([])
 
     with pytest.raises(TypeError, match="field at index 1"):
         DataType.from_fields([fields[0], object()])
@@ -225,7 +226,7 @@ def test_data_type_variant_assigns_dense_type_ids_in_member_order() -> None:
             yield member
 
     variant = DataType.variant(one_shot())
-    arrow = variant.to_arrow()
+    arrow = variant.into_arrow()
 
     assert str(inspect.signature(DataType.variant)) == "(fields=None)"
     assert consumed == ["count", "label", "missing"]
@@ -312,7 +313,7 @@ def test_data_type_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -
         ]
     )
 
-    projected = DataType.from_arrow(arrow_type).to_arrow()
+    projected = DataType.from_arrow(arrow_type).into_arrow()
     nested_map = projected.field("items").type.value_type.field("lookup").type
     assert nested_map.keys_sorted is True
     assert projected.field("codes").type.ordered is True

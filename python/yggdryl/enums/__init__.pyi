@@ -4,6 +4,7 @@ DATA_TYPE_IDS: tuple[str, ...]
 DATA_TYPE_KINDS: tuple[str, ...]
 TIME_UNITS: tuple[str, ...]
 UNION_MODES: tuple[str, ...]
+WRITE_MODES: tuple[str, ...]
 CODECS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
 COMPATIBILITY_SCHEMES: tuple[str, ...]
@@ -18,4 +19,5 @@ __all__ = [
     "LEVELS",
     "TIME_UNITS",
     "UNION_MODES",
+    "WRITE_MODES",
 ]

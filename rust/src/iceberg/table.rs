@@ -89,7 +89,7 @@ use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
-use crate::io::IOBase;
+use crate::io::{IOBase, IOMedia};
 use crate::{DataType, Error, Field, IOKind, Result, Value};
 
 /// The directory a table keeps its metadata documents and manifests in.
@@ -661,13 +661,38 @@ impl<H: IOBase> Table<H> {
         let settings = IcebergOptions::commit_settings(self.options.as_ref(), &self.metadata)?;
         let saved_metadata = self.metadata.clone();
         let saved_version = self.version;
+        let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
         let restore = |table: &mut Self, error: Error| {
             table.metadata = saved_metadata.clone();
             table.version = saved_version;
             Err(error)
         };
+        let reconcile_visible = |table: &mut Self, error: Error| {
+            // A backend may publish the metadata document and hint, then
+            // report the hint write as failed. Re-read through the same
+            // discovery path a new handle uses and adopt that visible version
+            // when it is sound. A failed reload must never mask `error`; the
+            // saved state is the only conservative in-memory answer when
+            // visibility itself is uncertain.
+            match find_metadata(&metadata_dir).and_then(|visible| {
+                visible
+                    .map(|(version, document)| {
+                        TableMetadata::from_json(&document).map(|metadata| (version, metadata))
+                    })
+                    .transpose()
+            }) {
+                Ok(Some((version, metadata))) => {
+                    table.metadata = metadata;
+                    table.version = version;
+                }
+                Ok(None) | Err(_) => {
+                    table.metadata = saved_metadata.clone();
+                    table.version = saved_version;
+                }
+            }
+            Err(error)
+        };
 
-        let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
         let mut beaten: u32 = 0;
         loop {
             match find_metadata(&metadata_dir) {
@@ -707,7 +732,7 @@ impl<H: IOBase> Table<H> {
             };
             self.metadata = updated;
             if let Err(error) = self.commit_metadata() {
-                return restore(self, error);
+                return reconcile_visible(self, error);
             }
             return Ok(());
         }
@@ -762,7 +787,7 @@ impl<H: IOBase> Table<H> {
 
     /// Read the rows matching `filters`, keeping the columns `field` names.
     ///
-    /// Each data file is read through [`IOBase::read_arrow_batch_reader`] with
+    /// Each data file is read through [`crate::io::IOMedia::read_arrow_reader`] with
     /// the scan root as its declared schema, so a projected scan skips the
     /// column chunks it does not want rather than reading and discarding them.
     /// What each file yields is then cast to the scan's own root, which is what
@@ -1021,7 +1046,7 @@ impl<H: IOBase> Table<H> {
         }
 
         let stored = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
-        let arrow_schema = crate::arrow::schema_from_field(&schema)?;
+        let arrow_schema = crate::arrow::arrow_schema_from_field(&schema)?;
         let merged = crate::io::merge::merged(
             stored,
             crate::arrow::batch_reader(arrow_schema, incoming),
@@ -1293,8 +1318,8 @@ impl<H: IOBase> Table<H> {
                 .push((self.metadata.last_updated_ms, SmolStr::new(previous)));
         }
 
-        let document = self.metadata.to_json()?;
-        let encoded = crate::json::to_vec(&document)?;
+        let document = self.metadata.clone().into_json()?;
+        let encoded = crate::json::into_bytes(&document)?;
         let name = self.metadata_file_name();
         let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
         handle.write_all_bytes(&encoded)?;
@@ -1565,10 +1590,10 @@ impl<H: IOBase> Table<H> {
         let options = handle
             .record_options()?
             .with_safe(false)
-            .with_schema(schema.clone());
+            .with_field(schema.clone());
         let mut file = if format == FileFormat::Parquet {
-            let arrow_schema = crate::arrow::schema_from_field(schema)?;
-            handle.write_arrow_batch_reader(
+            let arrow_schema = crate::arrow::arrow_schema_from_field(schema)?;
+            handle.overwrite_arrow_reader(
                 crate::arrow::batch_reader(arrow_schema, batches),
                 &options,
             )?;
@@ -1579,8 +1604,8 @@ impl<H: IOBase> Table<H> {
             // The batches are measured before they are consumed by the write,
             // because this format's file carries no footer to read them from.
             let file = super::statistics::data_file_from_batches(schema, &batches)?;
-            let arrow_schema = crate::arrow::schema_from_field(schema)?;
-            handle.write_arrow_batch_reader(
+            let arrow_schema = crate::arrow::arrow_schema_from_field(schema)?;
+            handle.overwrite_arrow_reader(
                 crate::arrow::batch_reader(arrow_schema, batches),
                 &options,
             )?;
@@ -1710,7 +1735,7 @@ impl<H: IOBase> Table<H> {
 /// A plain container handle addressing the table's folder answers the same
 /// contract - the three record methods, one commit per write - by probing the
 /// location for a table on every call. Holding the [`Table`] skips the probe:
-/// no metadata document is re-read, [`IOBase::read_arrow_field`] is
+/// no metadata document is re-read, [`crate::io::IOMedia::read_arrow_field`] is
 /// [`Table::schema`] with its field identifiers and protocol metadata rather
 /// than a shape lifted off decoded batches, and a
 /// [`filter_partitions`](IORecordOptions::filter_partitions) pair prunes data
@@ -1728,7 +1753,7 @@ impl<H: IOBase> Table<H> {
 impl<H: IOBase> IOBase for Table<H> {
     // `kind` is answered below: storage sees a folder, and this handle is
     // the table that folder holds.
-    crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
+    crate::delegate_iobase!(root: pread, pstream_bytes, pwrite, size, capacity, reserve,
         truncate, url, media_type, set_media_type, flush, parent, child_by_path,
         ls);
 
@@ -1784,7 +1809,7 @@ impl<H: IOBase> IOBase for Table<H> {
             // Nothing has ever been written, so there is nothing to replace.
             return Ok(());
         }
-        let schema = crate::arrow::schema_from_field(self.schema()?)?;
+        let schema = crate::arrow::arrow_schema_from_field(self.schema()?)?;
         self.overwrite(crate::arrow::batch_reader(schema, []))
     }
 
@@ -1813,6 +1838,47 @@ impl<H: IOBase> IOBase for Table<H> {
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.root.remove(recursive)
     }
+}
+
+impl<H: IOBase> crate::io::IOMedia for Table<H> {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self
+    }
+
+    /// Return the current snapshot's row count from table metadata.
+    ///
+    /// Tables written by this crate carry Iceberg's `total-records` summary,
+    /// so the ordinary path does not open a manifest or data file. Imported
+    /// snapshots that omit the optional summary fall back to manifest record
+    /// counts; rows are still never decoded.
+    fn row_size(&self) -> Result<u64> {
+        let Some(snapshot) = self.current_snapshot() else {
+            return Ok(0);
+        };
+        if let Some(total) = snapshot.summary_value("total-records") {
+            return total.parse::<u64>().map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected snapshot {} summary total-records to be a non-negative integer, got {total:?}",
+                    snapshot.snapshot_id
+                ))
+            });
+        }
+        u64::try_from(self.plan(&[])?.record_count()).map_err(|_| {
+            invalid(format_smolstr!(
+                "expected snapshot {} manifests to carry a non-negative record count",
+                snapshot.snapshot_id
+            ))
+        })
+    }
+
+    /// Return the current table schema's width from the parsed metadata.
+    fn column_size(&self) -> Result<usize> {
+        Ok(self.schema()?.fields().len())
+    }
 
     /// The encoding of this table's data files, from metadata alone.
     ///
@@ -1831,65 +1897,120 @@ impl<H: IOBase> IOBase for Table<H> {
     /// base implementation would build a reader and take the shape off its
     /// batches.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        if let Some(schema) = options.schema() {
-            return Ok(schema.clone());
+        if let Some(field) = options.field() {
+            return Ok(field.clone());
         }
         Ok(self.schema()?.clone().with_name(options.root_name()))
     }
 
     /// Scan the current snapshot, the options' filters answered by the plan.
-    fn read_arrow_batch_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
+    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
         let filters = options.filter_partitions();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        let reader = self.scan_where(&pairs, options.schema())?;
+        let reader = self.scan_where(&pairs, options.field())?;
         // The limit wraps last, as on every handle, so it counts result rows
         // and a satisfied scan stops decoding data files.
         options.limit_arrow_reader(crate::io::select_reader(reader, options)?)
     }
 
-    /// One commit: an overwrite without a match key, a merge with one, scoped
-    /// to the partitions the options' filters select.
-    ///
-    /// A limited write truncates data the caller offered, exactly as it does
-    /// on a leaf, and a limit combined with a non-empty match key is refused
-    /// naming both settings.
-    fn write_arrow_batch_reader(
+    /// One overwrite commit scoped to the selected partitions.
+    fn overwrite_arrow_reader(
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        let batches = options.limit_arrow_reader(batches)?;
-        let batches = crate::io::select_reader(batches, options)?;
+        options.require_write_mode(crate::WriteMode::Overwrite)?;
+        let commit_row_size = options.require_commit_row_size()?;
+        let stored = self.schema()?.clone();
+        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
         let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        self.merge_where(&pairs, batches, options.merge_by_names(), options.safe())
+        if commit_row_size.is_none() {
+            return self.merge_where(&pairs, batches, &[], options.safe());
+        }
+        let schema = batches.schema();
+        let mut commits = options.commit_arrow_readers(batches)?;
+        let Some(first) = commits.next() else {
+            return self.merge_where(
+                &pairs,
+                crate::arrow::batch_reader(schema, []),
+                &[],
+                options.safe(),
+            );
+        };
+        self.merge_where(&pairs, first?, &[], options.safe())?;
+        for commit in commits {
+            self.append(commit?)?;
+        }
+        Ok(())
     }
 
     /// One `append` snapshot, keeping every manifest the last one had.
     ///
     /// A limited write truncates data the caller offered here too: an append
     /// is a write.
-    fn append_arrow_batch_reader(
-        &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
-    ) -> Result<()> {
-        let batches = options.limit_arrow_reader(batches)?;
-        let batches = crate::io::select_reader(batches, options)?;
-        self.append(batches)
+    fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+        options.require_write_mode(crate::WriteMode::Append)?;
+        let commit_row_size = options.require_commit_row_size()?;
+        options.require_write_limits()?;
+        if options.write_limit_is_zero() {
+            return Ok(());
+        }
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        let stored = self.schema()?.clone();
+        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        if commit_row_size.is_none() {
+            return self.append(batches);
+        }
+        for commit in options.commit_arrow_readers(batches)? {
+            self.append(commit?)?;
+        }
+        Ok(())
+    }
+
+    /// One keyed merge commit scoped to the selected partitions.
+    fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+        options.require_write_mode(crate::WriteMode::Merge)?;
+        let commit_row_size = options.require_commit_row_size()?;
+        options.require_write_limits()?;
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        let stored = self.schema()?.clone();
+        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+            return Ok(());
+        };
+        let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        if commit_row_size.is_none() {
+            return self.merge_where(&pairs, batches, options.merge_by_names(), options.safe());
+        }
+        for commit in options.commit_arrow_readers(batches)? {
+            self.merge_where(&pairs, commit?, options.merge_by_names(), options.safe())?;
+        }
+        Ok(())
     }
 }
 
 /// What one [`Table::compact`] call did, in numbers a caller can assert on.
 ///
 /// A compaction with nothing to do reports zeros, because it commits nothing.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Compaction {
     /// How many live data files were read and replaced.
     pub files_before: usize,
@@ -1897,6 +2018,13 @@ pub struct Compaction {
     pub files_after: usize,
     /// The recorded size of the replaced files, in bytes.
     pub bytes_rewritten: i64,
+}
+
+impl Compaction {
+    /// Return a deterministic hash of this complete compaction report.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
 }
 
 /// What a beaten commit may do about the writer that got there first.
@@ -1915,7 +2043,7 @@ enum OnConflict {
 /// as the module's `iceberg` codec error carrying exactly this value's
 /// [`Display`](std::fmt::Display) - which names both versions, so a caller
 /// can see how far the table moved while this writer was being beaten.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct CommitConflict {
     /// The document version this writer expected to publish.
     pub expected_version: u32,
@@ -1923,6 +2051,13 @@ pub struct CommitConflict {
     pub beaten: u32,
     /// The newest version observed before giving up.
     pub last_seen_version: u32,
+}
+
+impl CommitConflict {
+    /// Return a deterministic hash of this complete conflict report.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
 }
 
 impl std::fmt::Display for CommitConflict {
@@ -2356,7 +2491,7 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
             if document.size() > 0 {
                 return Ok(Some((
                     version,
-                    crate::json::from_slice(&document.read_all_bytes()?)?,
+                    crate::json::from_bytes(&document.read_all_bytes()?)?,
                 )));
             }
         }
@@ -2394,7 +2529,7 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
     };
     Ok(Some((
         version,
-        crate::json::from_slice(&document.read_all_bytes()?)?,
+        crate::json::from_bytes(&document.read_all_bytes()?)?,
     )))
 }
 

@@ -14,13 +14,13 @@
 //!
 //! use arrow_array::{Int64Array, RecordBatch};
 //! use yggdryl::generic::{Holder, Media};
-//! use yggdryl::io::{Buffer, IOBase};
+//! use yggdryl::io::{Buffer, IOBase, IOMedia};
 //! use yggdryl::{DataType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
 //!     .required_field("row");
-//! let arrow_schema = schema.to_arrow_schema()?;
+//! let arrow_schema = schema.clone().into_arrow_schema()?;
 //! let batch = RecordBatch::try_new(
 //!     Arc::clone(&arrow_schema),
 //!     vec![Arc::new(Int64Array::from(vec![7]))],
@@ -28,10 +28,14 @@
 //!
 //! // The name decides the encoding; nothing else in the call changes.
 //! let handle = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
-//! let mut media = Media::open(Holder::buffer(handle))?.with_schema(schema.clone());
+//! let mut media = Media::open(Holder::buffer(handle))?.with_field(schema.clone());
 //!
-//! media.write_batch_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]))?;
-//! assert_eq!(media.read_batch_reader(None)?.count(), 1);
+//! let options = media.record_options()?;
+//! media.overwrite_arrow_reader(
+//!     yggdryl::arrow::batch_reader(arrow_schema, [batch]),
+//!     &options,
+//! )?;
+//! assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
 //!
 //! // It is also just bytes: an Arrow IPC stream starts with its continuation
 //! // marker.
@@ -132,75 +136,13 @@ impl Media {
 
     /// Return this media with an explicit canonical schema.
     #[must_use]
-    pub fn with_schema(self, schema: Field) -> Self {
+    pub fn with_field(self, field: Field) -> Self {
         match self {
-            Self::Ipc(ipc) => Self::Ipc(ipc.with_schema(schema)),
+            Self::Ipc(ipc) => Self::Ipc(ipc.with_field(field)),
             #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => Self::Parquet(parquet.with_schema(schema)),
-            Self::Avro(avro) => Self::Avro(avro.with_schema(schema)),
-            Self::Text(text) => Self::Text(text.with_schema(schema)),
-        }
-    }
-
-    /// Return the canonical non-null Struct root Field of this media.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read, decoding, or schema-projection failure.
-    pub fn schema(&mut self) -> Result<Field> {
-        match self {
-            Self::Ipc(ipc) => ipc.schema(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet.schema(),
-            Self::Avro(avro) => avro.schema(),
-            Self::Text(text) => Ok(text.schema().clone()),
-        }
-    }
-
-    /// Read the media, keeping only the columns `field` names.
-    ///
-    /// A `field` naming a subset of the stored columns is pushed into whichever
-    /// encoding is held, so choosing the encoding still changes nothing but the
-    /// construction.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read or decoding failure.
-    pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<crate::arrow::BatchReader> {
-        match self {
-            Self::Ipc(ipc) => ipc.read_batch_reader(field),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet.read_batch_reader(field),
-            Self::Avro(avro) => avro.read_batch_reader(field),
-            Self::Text(text) => {
-                let reader = crate::text::line::arrow::read_arrow_lines(text, text.options())?;
-                match field {
-                    // The projection has no encoded columns to skip, so the
-                    // narrowing is a cast onto the named root.
-                    Some(field) => Ok(crate::arrow::cast_reader(reader, field, false)?),
-                    None => Ok(reader),
-                }
-            }
-        }
-    }
-
-    /// Replace the media's contents with every batch `batches` yields.
-    ///
-    /// # Errors
-    ///
-    /// Returns a schema, encoding, or write failure.
-    pub fn write_batch_reader(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        match self {
-            Self::Ipc(ipc) => ipc.write_batch_reader(batches),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet.write_batch_reader(batches),
-            Self::Avro(avro) => avro.write_batch_reader(batches),
-            Self::Text(text) => {
-                let options = crate::text::TextOptions::with_lines(text.options().clone());
-                Ok(crate::text::line::arrow::write_arrow_lines(
-                    text, batches, &options,
-                )?)
-            }
+            Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
+            Self::Avro(avro) => Self::Avro(avro.with_field(field)),
+            Self::Text(text) => Self::Text(text.with_field(field)),
         }
     }
 
@@ -225,6 +167,138 @@ impl Media {
             Self::Text(text) => text,
         }
     }
+
+    /// Borrow the selected implementation through its media contract.
+    ///
+    /// This match is intentionally separate from [`Self::as_io`]. `IOBase`
+    /// has `IOMedia` as a supertrait, but dispatching through the exact media
+    /// trait object makes it explicit that a variant's optimized schema,
+    /// dimension, projection, and write overrides are retained.
+    fn as_media(&self) -> &dyn crate::io::IOMedia {
+        match self {
+            Self::Ipc(ipc) => ipc,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(parquet) => parquet,
+            Self::Avro(avro) => avro,
+            Self::Text(text) => text,
+        }
+    }
+
+    /// Mutably borrow the selected implementation through its media contract.
+    fn as_media_mut(&mut self) -> &mut dyn crate::io::IOMedia {
+        match self {
+            Self::Ipc(ipc) => ipc,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(parquet) => parquet,
+            Self::Avro(avro) => avro,
+            Self::Text(text) => text,
+        }
+    }
+}
+
+impl crate::io::IOMedia for Media {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self.as_io()
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self.as_io_mut()
+    }
+
+    fn row_size(&self) -> crate::Result<u64> {
+        crate::io::IOMedia::row_size(self.as_media())
+    }
+
+    fn column_size(&self) -> crate::Result<usize> {
+        crate::io::IOMedia::column_size(self.as_media())
+    }
+
+    fn record_options(&self) -> crate::Result<crate::generic::RecordOptions> {
+        crate::io::IOMedia::record_options(self.as_media())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_statistics(&self) -> crate::Result<crate::parquet::FileStatistics> {
+        crate::io::IOMedia::read_parquet_statistics(self.as_media())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_geospatial_statistics(
+        &self,
+        column: &str,
+    ) -> crate::Result<crate::parquet::GeospatialStatistics> {
+        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+    }
+
+    fn read_arrow_field(
+        &self,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<crate::Field> {
+        crate::io::IOMedia::read_arrow_field(self.as_media(), options)
+    }
+
+    fn read_arrow_reader(
+        &self,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<crate::arrow::BatchReader> {
+        crate::io::IOMedia::read_arrow_reader(self.as_media(), options)
+    }
+
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    fn overwrite_prepared_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    fn overwrite_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::overwrite_arrow_record_batch(self.as_media_mut(), batch, options)
+    }
+
+    fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    fn append_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::append_arrow_record_batch(self.as_media_mut(), batch, options)
+    }
+
+    fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    fn merge_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> crate::Result<()> {
+        crate::io::IOMedia::merge_arrow_record_batch(self.as_media_mut(), batch, options)
+    }
 }
 
 /// A `Media` is the bytes it encodes, so every byte operation reaches straight
@@ -232,6 +306,22 @@ impl Media {
 impl IOBase for Media {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
         self.as_io().pread(offset, buffer)
+    }
+
+    fn pstream_bytes(
+        &self,
+        position: u64,
+        batch_size: usize,
+    ) -> crate::Result<crate::io::ByteStream<'_>> {
+        self.as_io().pstream_bytes(position, batch_size)
+    }
+
+    fn read_all_bytes(&self) -> crate::Result<Vec<u8>> {
+        self.as_io().read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
+        self.as_io().read_range(offset, length)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {

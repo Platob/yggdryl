@@ -80,7 +80,7 @@ pub(crate) fn core_url_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUrl>
         return CoreUrl::from_uri(value.inner.clone()).map_err(value_error);
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
-        return CoreUrl::from_uri(value.inner.to_uri()).map_err(value_error);
+        return CoreUrl::from_uri(value.inner.clone().into_uri()).map_err(value_error);
     }
     if let Ok(value) = value.extract::<&str>() {
         return CoreUrl::from_str(value).map_err(value_error);
@@ -127,21 +127,41 @@ fn path_string_from_core(value: std::path::PathBuf) -> PyResult<String> {
     })
 }
 
-/// An immutable normalized URI with sequence access to its path segments.
+/// A normalized URI with sequence access to its path segments.
+///
+/// The Python view stays mutable until it is first hashed. Hashing locks that
+/// one wrapper so its canonical value remains stable as a mapping key.
 #[pyclass(name = "Uri", module = "yggdryl._native", skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyUri {
     pub(crate) inner: CoreUri,
+    hash_locked: bool,
+}
+
+impl PyUri {
+    fn from_core(inner: CoreUri) -> Self {
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "a hashed Uri is frozen; copy it before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[pymethods]
 impl PyUri {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_uri_from_value(value).map(|inner| Self { inner })
+        core_uri_from_value(value).map(Self::from_core)
     }
 
     #[staticmethod]
@@ -152,7 +172,7 @@ impl PyUri {
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreUri::from_str(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
@@ -160,19 +180,15 @@ impl PyUri {
     fn from_path(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         let value = path_string_from_value(value)?;
         CoreUri::from_path(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreUri::from_json(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
-    }
-
-    fn to_json(&self) -> PyResult<String> {
-        self.inner.to_json().map_err(value_error)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -180,26 +196,12 @@ impl PyUri {
         self.inner.clone().into_json().map_err(value_error)
     }
 
-    fn to_url(&self) -> PyResult<PyUrl> {
-        self.inner
-            .to_url()
-            .map(|inner| PyUrl { inner })
-            .map_err(value_error)
-    }
-
     #[allow(clippy::wrong_self_convention)]
     fn into_url(&self) -> PyResult<PyUrl> {
         self.inner
             .clone()
             .into_url()
-            .map(|inner| PyUrl { inner })
-            .map_err(value_error)
-    }
-
-    fn to_urn(&self) -> PyResult<PyUrn> {
-        self.inner
-            .to_urn()
-            .map(|inner| PyUrn { inner })
+            .map(PyUrl::from_core)
             .map_err(value_error)
     }
 
@@ -208,15 +210,8 @@ impl PyUri {
         self.inner
             .clone()
             .into_urn()
-            .map(|inner| PyUrn { inner })
+            .map(PyUrn::from_core)
             .map_err(value_error)
-    }
-
-    fn to_path(&self) -> PyResult<String> {
-        self.inner
-            .to_path()
-            .map_err(value_error)
-            .and_then(path_string_from_core)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -229,7 +224,7 @@ impl PyUri {
     }
 
     fn __fspath__(&self) -> PyResult<String> {
-        self.to_path()
+        self.into_path()
     }
 
     #[getter]
@@ -240,6 +235,31 @@ impl PyUri {
     #[getter]
     fn authority(&self) -> &str {
         self.inner.authority().as_str()
+    }
+
+    #[getter]
+    fn user(&self) -> Option<&str> {
+        self.inner.user()
+    }
+
+    #[getter]
+    fn password(&self) -> Option<&str> {
+        self.inner.password()
+    }
+
+    #[getter]
+    fn hostname(&self) -> Option<&str> {
+        self.inner.hostname()
+    }
+
+    #[getter]
+    fn bucket(&self) -> Option<&str> {
+        self.inner.bucket()
+    }
+
+    #[getter]
+    fn region(&self) -> Option<&str> {
+        self.inner.region()
     }
 
     #[getter]
@@ -283,29 +303,35 @@ impl PyUri {
     }
 
     fn set_file_name(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_file_name(value).map_err(value_error)
     }
 
     fn set_stem(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_stem(value).map_err(value_error)
     }
 
     fn set_extension(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_extension(value).map_err(value_error)
     }
 
     fn set_extensions(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_extensions(strings_from_iterable(values, "extensions")?)
             .map_err(value_error)
     }
 
-    fn remove_extension(&mut self) -> bool {
-        self.inner.remove_extension()
+    fn remove_extension(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_extension())
     }
 
-    fn clear_extensions(&mut self) -> bool {
-        self.inner.clear_extensions()
+    fn clear_extensions(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.clear_extensions())
     }
 
     #[getter]
@@ -319,14 +345,40 @@ impl PyUri {
     }
 
     fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_mime_type(core_mime_type_from_value(value)?)
             .map_err(value_error)
     }
 
     fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_media_type(core_media_type_from_value(value)?)
+            .map_err(value_error)
+    }
+
+    /// Return this URI with path components joined by the core path resolver.
+    ///
+    /// Scheme, authority, query, and fragment are preserved. Relative values
+    /// extend the path with `.` and `..` resolved; an absolute value replaces
+    /// the path. The source is never mutated, including after it is hash-locked.
+    #[pyo3(signature = (*others))]
+    fn joinpath(&self, others: &Bound<'_, PyTuple>) -> PyResult<Self> {
+        let mut joined = self.inner.clone();
+        for other in others {
+            joined = joined
+                .joinpath(&path_string_from_value(&other)?)
+                .map_err(value_error)?;
+        }
+        Ok(Self::from_core(joined))
+    }
+
+    /// `uri / "child"`, using the same core join as `joinpath`.
+    fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        self.inner
+            .joinpath(&path_string_from_value(other)?)
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
@@ -379,41 +431,64 @@ impl PyUri {
             .unbind())
     }
 
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
         let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
         Ok((callable, (self.inner.to_string(),)))
     }
 
     fn __copy__(&self) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 }
 
-/// An immutable URL view validated and normalized by the core URI model.
+/// A URL view validated and normalized by the core URI model.
+///
+/// The Python view stays mutable until it is first hashed. Hashing locks that
+/// one wrapper so its canonical value remains stable as a mapping key.
 #[pyclass(name = "Url", module = "yggdryl._native", skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyUrl {
     pub(crate) inner: CoreUrl,
+    hash_locked: bool,
 }
 
 impl PyUrl {
     pub(crate) fn from_core(inner: CoreUrl) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "a hashed Url is frozen; copy it before mutation",
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
 #[pymethods]
 impl PyUrl {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_url_from_value(value).map(|inner| Self { inner })
+        core_url_from_value(value).map(Self::from_core)
     }
 
     #[staticmethod]
@@ -424,7 +499,7 @@ impl PyUrl {
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreUrl::from_str(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
@@ -432,7 +507,7 @@ impl PyUrl {
     fn from_path(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         let value = path_string_from_value(value)?;
         CoreUrl::from_path(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
@@ -441,35 +516,20 @@ impl PyUrl {
         let inner = value.inner.clone();
         drop(value);
         CoreUrl::from_uri(inner)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreUrl::from_json(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
-    }
-
-    fn to_uri(&self) -> PyUri {
-        PyUri {
-            inner: self.inner.to_uri(),
-        }
     }
 
     #[allow(clippy::wrong_self_convention)]
     fn into_uri(&self) -> PyUri {
-        PyUri {
-            inner: self.inner.clone().into_uri(),
-        }
-    }
-
-    fn to_path(&self) -> PyResult<String> {
-        self.inner
-            .to_path()
-            .map_err(value_error)
-            .and_then(path_string_from_core)
+        PyUri::from_core(self.inner.clone().into_uri())
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -482,11 +542,7 @@ impl PyUrl {
     }
 
     fn __fspath__(&self) -> PyResult<String> {
-        self.to_path()
-    }
-
-    fn to_json(&self) -> PyResult<String> {
-        self.inner.to_json().map_err(value_error)
+        self.into_path()
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -502,6 +558,31 @@ impl PyUrl {
     #[getter]
     fn authority(&self) -> &str {
         self.inner.authority().as_str()
+    }
+
+    #[getter]
+    fn user(&self) -> Option<&str> {
+        self.inner.user()
+    }
+
+    #[getter]
+    fn password(&self) -> Option<&str> {
+        self.inner.password()
+    }
+
+    #[getter]
+    fn hostname(&self) -> Option<&str> {
+        self.inner.hostname()
+    }
+
+    #[getter]
+    fn bucket(&self) -> Option<&str> {
+        self.inner.bucket()
+    }
+
+    #[getter]
+    fn region(&self) -> Option<&str> {
+        self.inner.region()
     }
 
     #[getter]
@@ -545,29 +626,35 @@ impl PyUrl {
     }
 
     fn set_file_name(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_file_name(value).map_err(value_error)
     }
 
     fn set_stem(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_stem(value).map_err(value_error)
     }
 
     fn set_extension(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_extension(value).map_err(value_error)
     }
 
     fn set_extensions(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_extensions(strings_from_iterable(values, "extensions")?)
             .map_err(value_error)
     }
 
-    fn remove_extension(&mut self) -> bool {
-        self.inner.remove_extension()
+    fn remove_extension(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_extension())
     }
 
-    fn clear_extensions(&mut self) -> bool {
-        self.inner.clear_extensions()
+    fn clear_extensions(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.clear_extensions())
     }
 
     #[getter]
@@ -581,12 +668,14 @@ impl PyUrl {
     }
 
     fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_mime_type(core_mime_type_from_value(value)?)
             .map_err(value_error)
     }
 
     fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_media_type(core_media_type_from_value(value)?)
             .map_err(value_error)
@@ -792,7 +881,7 @@ impl PyUrl {
     }
 
     fn __iter__(&self) -> PyUriPathIterator {
-        let inner = self.inner.to_uri();
+        let inner = self.inner.clone().into_uri();
         PyUriPathIterator {
             remaining: inner.path().segment_len(),
             inner,
@@ -836,35 +925,64 @@ impl PyUrl {
             .unbind())
     }
 
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
         let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
         Ok((callable, (self.inner.to_string(),)))
     }
 
     fn __copy__(&self) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 }
 
-/// An immutable URN view with namespace-specific accessors.
+/// A URN view with namespace-specific accessors.
+///
+/// The Python view stays mutable until it is first hashed. Hashing locks that
+/// one wrapper so its canonical value remains stable as a mapping key.
 #[pyclass(name = "Urn", module = "yggdryl._native", skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyUrn {
     pub(crate) inner: CoreUrn,
+    hash_locked: bool,
+}
+
+impl PyUrn {
+    fn from_core(inner: CoreUrn) -> Self {
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "a hashed Urn is frozen; copy it before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[pymethods]
 impl PyUrn {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_urn_from_value(value).map(|inner| Self { inner })
+        core_urn_from_value(value).map(Self::from_core)
     }
 
     #[staticmethod]
@@ -875,7 +993,7 @@ impl PyUrn {
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreUrn::from_str(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
@@ -884,32 +1002,20 @@ impl PyUrn {
         let inner = value.inner.clone();
         drop(value);
         CoreUrn::from_uri(inner)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
     }
 
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreUrn::from_json(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_core)
             .map_err(value_error)
-    }
-
-    fn to_uri(&self) -> PyUri {
-        PyUri {
-            inner: self.inner.to_uri(),
-        }
     }
 
     #[allow(clippy::wrong_self_convention)]
     fn into_uri(&self) -> PyUri {
-        PyUri {
-            inner: self.inner.clone().into_uri(),
-        }
-    }
-
-    fn to_json(&self) -> PyResult<String> {
-        self.inner.to_json().map_err(value_error)
+        PyUri::from_core(self.inner.clone().into_uri())
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -958,29 +1064,35 @@ impl PyUrn {
     }
 
     fn set_file_name(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_file_name(value).map_err(value_error)
     }
 
     fn set_stem(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_stem(value).map_err(value_error)
     }
 
     fn set_extension(&mut self, value: &str) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_extension(value).map_err(value_error)
     }
 
     fn set_extensions(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_extensions(strings_from_iterable(values, "extensions")?)
             .map_err(value_error)
     }
 
-    fn remove_extension(&mut self) -> bool {
-        self.inner.remove_extension()
+    fn remove_extension(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_extension())
     }
 
-    fn clear_extensions(&mut self) -> bool {
-        self.inner.clear_extensions()
+    fn clear_extensions(&mut self) -> PyResult<bool> {
+        self.require_mutable()?;
+        Ok(self.inner.clear_extensions())
     }
 
     #[getter]
@@ -994,12 +1106,14 @@ impl PyUrn {
     }
 
     fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_mime_type(core_mime_type_from_value(value)?)
             .map_err(value_error)
     }
 
     fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_media_type(core_media_type_from_value(value)?)
             .map_err(value_error)
@@ -1030,7 +1144,7 @@ impl PyUrn {
     }
 
     fn __iter__(&self) -> PyUriPathIterator {
-        let inner = self.inner.to_uri();
+        let inner = self.inner.clone().into_uri();
         PyUriPathIterator {
             remaining: inner.path().segment_len(),
             inner,
@@ -1074,17 +1188,26 @@ impl PyUrn {
             .unbind())
     }
 
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
         let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
         Ok((callable, (self.inner.to_string(),)))
     }
 
     fn __copy__(&self) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
+        Self::from_core(self.inner.clone())
     }
 }
 
@@ -1098,6 +1221,10 @@ pub(crate) struct PyUriPathIterator {
 
 #[pymethods]
 impl PyUriPathIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }

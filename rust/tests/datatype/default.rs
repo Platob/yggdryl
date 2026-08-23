@@ -21,7 +21,8 @@ fn all_variants() -> Vec<DataType> {
         DataType::Date64,
         DataType::Time32(TimeUnit::Millisecond),
         DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration(TimeUnit::Second),
+        DataType::Duration32(TimeUnit::Second),
+        DataType::Duration64(TimeUnit::Second),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
@@ -204,7 +205,8 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
     for invalid in [
         DataType::Time32(TimeUnit::Nanosecond),
         DataType::Time64(TimeUnit::Millisecond),
-        DataType::Duration(TimeUnit::DayTime),
+        DataType::Duration32(TimeUnit::DayTime),
+        DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),
         DataType::FixedSizeBinary(-1),
         DataType::FixedSizeList(

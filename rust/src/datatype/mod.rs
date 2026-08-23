@@ -86,8 +86,10 @@ pub enum DataType {
     Time32(TimeUnit),
     /// 64-bit time of day; microseconds and nanoseconds are valid.
     Time64(TimeUnit),
-    /// Elapsed time.
-    Duration(TimeUnit),
+    /// 32-bit elapsed-time count.
+    Duration32(TimeUnit),
+    /// 64-bit elapsed-time count.
+    Duration64(TimeUnit),
     /// Calendar interval.
     Interval(TimeUnit),
     /// Variable-width binary data with 32-bit offsets.

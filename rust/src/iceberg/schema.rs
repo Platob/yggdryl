@@ -61,7 +61,7 @@ const DECLARED_TYPE: &str = "type";
 /// field is missing `id`, `name`, `required`, or `type`, or when a type has no
 /// core representation.
 pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field> {
-    if schema.as_mapping().is_none() {
+    if schema.as_record().is_none() && schema.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg schema object, got {}",
             schema.kind()
@@ -113,7 +113,7 @@ pub fn schema_to_json(root: &Field) -> Result<Value> {
                 root.iceberg().key(SCHEMA_ID)
             ))
         })?;
-        entries.push((Value::from("schema-id"), Value::from(id)));
+        entries.push((Value::from("schema-id"), json_integer(id)));
     }
     entries.push((
         Value::from("fields"),
@@ -134,7 +134,15 @@ pub fn schema_to_json(root: &Field) -> Result<Value> {
             Value::from_sequence(parsed),
         ));
     }
-    Value::from_mapping(entries)
+    Value::from_record(entries.into_iter().map(|(key, value)| {
+        (
+            SmolStr::new(
+                key.as_str()
+                    .expect("Iceberg schema object keys are always strings"),
+            ),
+            value,
+        )
+    }))
 }
 
 /// Number every field in a tree that does not already carry an identifier.
@@ -183,7 +191,7 @@ fn struct_field_from_json(name: &str, object: &Value, nullable: bool) -> Result<
 
 /// Build one column from an Iceberg field object.
 fn field_from_json(entry: &Value) -> Result<Field> {
-    if entry.as_mapping().is_none() {
+    if entry.as_record().is_none() && entry.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg field object, got {}",
             entry.kind()
@@ -227,7 +235,7 @@ fn field_from_json(entry: &Value) -> Result<Field> {
     // rather than as a second parallel value model.
     for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
         if let Some(default) = entry.get_key_str(property) {
-            let encoded = crate::json::to_vec(default)?;
+            let encoded = crate::json::into_bytes(default)?;
             let encoded = String::from_utf8(encoded).map_err(|error| {
                 invalid(format_smolstr!(
                     "expected UTF-8 in an Iceberg {property} on {name:?}, got {error}"
@@ -243,7 +251,7 @@ fn field_from_json(entry: &Value) -> Result<Field> {
 fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Result<Field> {
     if let Some(primitive) = type_json.as_str() {
         let parsed = PrimitiveType::from_str(primitive)?;
-        let data_type = parsed.to_data_type()?;
+        let data_type = parsed.into_data_type()?;
         let mut field = Field::new(name, data_type, nullable);
         // `uuid` and `fixed[16]` share one physical type, so the declared
         // spelling is kept where the writer will find it again.
@@ -253,7 +261,7 @@ fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Resul
         return Ok(field);
     }
 
-    if type_json.as_mapping().is_none() {
+    if type_json.as_record().is_none() && type_json.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg type name or object on {name:?}, got {}",
             type_json.kind()
@@ -320,7 +328,7 @@ fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
             ))
         })?;
         let mut object = vec![
-            (Value::from("id"), Value::from(i64::from(id))),
+            (Value::from("id"), json_integer(i64::from(id))),
             (Value::from("name"), Value::from(field.name())),
             (Value::from("required"), Value::from(!field.is_nullable())),
             (Value::from("type"), type_to_json(field)?),
@@ -330,10 +338,20 @@ fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
         }
         for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
             if let Some(encoded) = field.iceberg().get(property) {
-                object.push((Value::from(property), crate::json::from_str(encoded)?));
+                object.push((Value::from(property), crate::json::from_utf8(encoded)?));
             }
         }
-        entries.push(Value::from_mapping(object)?);
+        entries.push(Value::from_record(object.into_iter().map(
+            |(key, value)| {
+                (
+                    SmolStr::new(
+                        key.as_str()
+                            .expect("Iceberg field object keys are always strings"),
+                    ),
+                    value,
+                )
+            },
+        ))?);
     }
     Ok(entries)
 }
@@ -341,24 +359,29 @@ fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
 /// Render one field's datatype as an Iceberg type.
 fn type_to_json(field: &Field) -> Result<Value> {
     match field.data_type() {
-        DataType::Struct(_) => Value::from_mapping([
-            (Value::from("type"), Value::from("struct")),
-            (
-                Value::from("fields"),
-                Value::from_sequence(fields_to_json(field)?),
-            ),
+        DataType::Struct(_) => Value::from_record([
+            ("type", Value::from("struct")),
+            ("fields", Value::from_sequence(fields_to_json(field)?)),
         ]),
         DataType::List(item) | DataType::LargeList(item) | DataType::ListView(item) => {
             let mut object = vec![(Value::from("type"), Value::from("list"))];
             if let Some(id) = item.parquet_field_id()? {
-                object.push((Value::from("element-id"), Value::from(i64::from(id))));
+                object.push((Value::from("element-id"), json_integer(i64::from(id))));
             }
             object.push((Value::from("element"), type_to_json(item)?));
             object.push((
                 Value::from("element-required"),
                 Value::from(!item.is_nullable()),
             ));
-            Value::from_mapping(object)
+            Value::from_record(object.into_iter().map(|(key, value)| {
+                (
+                    SmolStr::new(
+                        key.as_str()
+                            .expect("Iceberg list object keys are always strings"),
+                    ),
+                    value,
+                )
+            }))
         }
         DataType::Map(map) => {
             let entries = map.entries();
@@ -376,18 +399,26 @@ fn type_to_json(field: &Field) -> Result<Value> {
             })?;
             let mut object = vec![(Value::from("type"), Value::from("map"))];
             if let Some(id) = key.parquet_field_id()? {
-                object.push((Value::from("key-id"), Value::from(i64::from(id))));
+                object.push((Value::from("key-id"), json_integer(i64::from(id))));
             }
             object.push((Value::from("key"), type_to_json(key)?));
             if let Some(id) = value.parquet_field_id()? {
-                object.push((Value::from("value-id"), Value::from(i64::from(id))));
+                object.push((Value::from("value-id"), json_integer(i64::from(id))));
             }
             object.push((Value::from("value"), type_to_json(value)?));
             object.push((
                 Value::from("value-required"),
                 Value::from(!value.is_nullable()),
             ));
-            Value::from_mapping(object)
+            Value::from_record(object.into_iter().map(|(key, value)| {
+                (
+                    SmolStr::new(
+                        key.as_str()
+                            .expect("Iceberg map object keys are always strings"),
+                    ),
+                    value,
+                )
+            }))
         }
         other => {
             let computed = PrimitiveType::from_data_type(other)?;
@@ -410,6 +441,11 @@ fn field_id(id: i64, name: &str) -> Result<i32> {
             "expected a field identifier that fits 32 bits on {name:?}, got {id}"
         ))
     })
+}
+
+/// Spell a JSON integer with the same signedness the natural parser infers.
+fn json_integer(value: i64) -> Value {
+    u64::try_from(value).map_or_else(|_| Value::from(value), Value::from)
 }
 
 /// Report a malformed Iceberg schema document.

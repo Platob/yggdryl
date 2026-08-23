@@ -11,6 +11,7 @@ fn round_trip(data_type: DataType, value: Value) -> Value {
 
 mod widths {
     use super::{DataType, Field, Value, round_trip, scalar_array};
+    use crate::I256;
 
     #[test]
     fn an_unsigned_integer_survives_its_whole_range() {
@@ -35,10 +36,22 @@ mod widths {
             // scale zero, carrying every digit.
             assert_eq!(
                 round_trip(column.clone(), Value::from(value)),
-                Value::Decimal(value, 0),
+                Value::d128(value, 0),
                 "i128 {value}"
             );
         }
+    }
+
+    #[test]
+    fn a_256_bit_decimal_survives_without_narrowing() {
+        let coefficient = "12345678901234567890123456789012345678901234567890"
+            .parse::<I256>()
+            .unwrap();
+        let value = Value::d256(coefficient, 7);
+        assert_eq!(
+            round_trip(DataType::decimal256(57, 7).unwrap(), value.clone()),
+            value
+        );
     }
 
     #[test]
@@ -78,6 +91,55 @@ mod widths {
     }
 }
 
+mod bulk {
+    use super::{DataType, Field, Value};
+
+    #[test]
+    fn one_native_sequence_builds_one_arrow_array() {
+        let field = DataType::Int64.nullable_field("id");
+        let values = Value::from_sequence([Value::I8(1), Value::Null, Value::U16(3)]);
+        let array = crate::arrow::array_from_value(&field, &values).unwrap();
+        assert_eq!(
+            crate::arrow::array_to_value(&field, array.as_ref()).unwrap(),
+            Value::from_sequence([Value::I64(1), Value::Null, Value::I64(3)])
+        );
+    }
+
+    #[test]
+    fn named_records_build_one_schema_ordered_record_batch() {
+        let root = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.nullable_field("venue"),
+        ])
+        .unwrap()
+        .required_field("row");
+        let rows = Value::from_sequence([
+            Value::from_record([("venue", Value::from("XNAS")), ("id", Value::I8(1))]).unwrap(),
+            Value::from_record([("id", Value::U16(2))]).unwrap(),
+        ]);
+
+        let batch = crate::arrow::batch_from_value(&root, &rows).unwrap();
+        assert_eq!(
+            crate::arrow::batch_to_value(&batch).unwrap(),
+            Value::from_sequence([
+                Value::from_sequence([Value::I64(1), Value::from("XNAS")]),
+                Value::from_sequence([Value::I64(2), Value::Null]),
+            ])
+        );
+    }
+
+    #[test]
+    fn bulk_builders_refuse_non_sequence_inputs() {
+        let field = Field::new("id", DataType::Int64, false);
+        assert!(crate::arrow::array_from_value(&field, &Value::I64(1)).is_err());
+
+        let root = DataType::from_fields([field])
+            .unwrap()
+            .required_field("row");
+        assert!(crate::arrow::batch_from_value(&root, &Value::I64(1)).is_err());
+    }
+}
+
 mod restating {
     use super::{DataType, Field, TimeUnit, Value, round_trip, scalar_array};
 
@@ -88,58 +150,87 @@ mod restating {
         // 10.50 at scale 2 is the coefficient 1050, whichever way it is spelled,
         // and it reads back as the decimal it is.
         assert_eq!(
-            round_trip(column.clone(), Value::decimal(1_050, 2)),
-            Value::Decimal(1_050, 2)
+            round_trip(column.clone(), Value::d128(1_050, 2)),
+            Value::d128(1_050, 2)
         );
         assert_eq!(
-            round_trip(column.clone(), Value::decimal(105, 1)),
-            Value::Decimal(1_050, 2)
+            round_trip(column.clone(), Value::d128(105, 1)),
+            Value::d128(1_050, 2)
         );
 
         // A coefficient that cannot be restated without losing a digit is
         // refused rather than rounded.
         let field = Field::new("price", column, true);
-        assert!(scalar_array(&field, &Value::decimal(1_055, 3)).is_err());
+        assert!(scalar_array(&field, &Value::d128(1_055, 3)).is_err());
     }
 
     #[test]
     fn a_temporal_is_written_at_the_unit_its_column_declares() {
         let micros = DataType::Timestamp(TimeUnit::Microsecond, None);
-        let at = Value::timestamp(1_700_000_000, TimeUnit::Second, None).unwrap();
+        let at =
+            Value::datetime64(1_700_000_000, TimeUnit::Second, crate::Timezone::NAIVE).unwrap();
 
         assert_eq!(
             round_trip(micros.clone(), at),
-            Value::DateTime(1_700_000_000_000_000, TimeUnit::Microsecond)
+            Value::datetime64(
+                1_700_000_000_000_000,
+                TimeUnit::Microsecond,
+                crate::Timezone::NAIVE,
+            )
+            .unwrap()
         );
         assert_eq!(
-            round_trip(DataType::Date32, Value::date(19_723)),
-            Value::Date(19_723)
+            round_trip(DataType::Date32, Value::date32(19_723)),
+            Value::date32(19_723)
         );
         // A Date64 spells its day in milliseconds; the day is what reads back.
-        assert_eq!(round_trip(DataType::Date64, Value::date(2)), Value::Date(2));
+        assert_eq!(
+            round_trip(DataType::Date64, Value::date32(2)),
+            Value::date64(172_800_000)
+        );
         assert_eq!(
             round_trip(
-                DataType::Duration(TimeUnit::Millisecond),
-                Value::duration(90, TimeUnit::Second)
+                DataType::Duration64(TimeUnit::Millisecond),
+                Value::duration64(90, TimeUnit::Second).unwrap()
             ),
-            Value::Duration(90_000, TimeUnit::Millisecond)
+            Value::duration64(90_000, TimeUnit::Millisecond).unwrap()
         );
         assert_eq!(
             round_trip(
                 DataType::time(TimeUnit::Microsecond).unwrap(),
-                Value::time(45_296, TimeUnit::Second)
+                Value::time32(45_296, TimeUnit::Second, crate::Timezone::NAIVE).unwrap()
             ),
-            Value::Time(45_296_000_000, TimeUnit::Microsecond)
+            Value::time64(
+                45_296_000_000,
+                TimeUnit::Microsecond,
+                crate::Timezone::NAIVE,
+            )
+            .unwrap()
         );
 
         // Coarsening that would drop a digit is refused, naming the kind.
         let seconds = Field::new("at", DataType::Timestamp(TimeUnit::Second, None), true);
         let error = scalar_array(
             &seconds,
-            &Value::timestamp(1_500, TimeUnit::Millisecond, None).unwrap(),
+            &Value::datetime64(1_500, TimeUnit::Millisecond, crate::Timezone::NAIVE).unwrap(),
         )
         .unwrap_err()
         .to_string();
         assert!(error.contains("datetime"), "{error}");
+    }
+
+    #[test]
+    fn duration32_checks_its_logical_width_on_both_arrow_directions() {
+        let field = Field::new("elapsed", DataType::Duration32(TimeUnit::Second), false);
+        let maximum = Value::duration32(i32::MAX, TimeUnit::Second).unwrap();
+        assert_eq!(
+            round_trip(field.data_type().clone(), maximum.clone()),
+            maximum
+        );
+
+        let too_wide = i64::from(i32::MAX) + 1;
+        assert!(scalar_array(&field, &Value::I64(too_wide)).is_err());
+        let foreign = arrow_array::DurationSecondArray::from(vec![too_wide]);
+        assert!(crate::arrow::scalar_value(&field, &foreign).is_err());
     }
 }

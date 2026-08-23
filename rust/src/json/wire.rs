@@ -1,27 +1,22 @@
-//! Borrowed JSON serialization over the shared structured-text value.
-
 use base64::Engine as _;
-use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
+use serde::ser::{Error as _, SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
-use crate::text::wire::JSON_MARKER;
-use crate::{TimeUnit, Timezone, Value};
+use crate::{I256, TimeUnit, Timezone, Value};
 
-const WIRE_VERSION: u64 = 1;
-
+/// A natural JSON view of [`Value`].
+///
+/// JSON has no private type envelopes. Types outside its grammar use their
+/// interoperable scalar spelling; a [`crate::Field`] restores exact types on
+/// schema-directed reads.
 pub(super) struct JsonRef<'a>(pub(super) &'a Value);
 
 impl Serialize for JsonRef<'_> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match self.0 {
-            // A record is its named mapping on any schemaless wire.
-            Value::Record(..) => {
-                let lowered = self.0.record_to_mapping();
-                JsonRef(&lowered).serialize(serializer)
-            }
             Value::Null => serializer.serialize_none(),
             Value::Bool(value) => serializer.serialize_bool(*value),
             Value::I8(value) => serializer.serialize_i8(*value),
@@ -32,52 +27,69 @@ impl Serialize for JsonRef<'_> {
             Value::U16(value) => serializer.serialize_u16(*value),
             Value::U32(value) => serializer.serialize_u32(*value),
             Value::U64(value) => serializer.serialize_u64(*value),
-            Value::I128(value) => JsonEnvelopeRef::I128(*value).serialize(serializer),
-            Value::U128(value) => JsonEnvelopeRef::U128(*value).serialize(serializer),
-            Value::F32(value) if value.as_f32().is_finite() => {
-                serializer.serialize_f32(value.as_f32())
-            }
-            Value::F32(value) => JsonEnvelopeRef::Float(value.as_f64()).serialize(serializer),
-            Value::F64(value) if value.as_f64().is_finite() => {
-                serializer.serialize_f64(value.as_f64())
-            }
-            Value::F64(value) => JsonEnvelopeRef::Float(value.as_f64()).serialize(serializer),
-            Value::Decimal(unscaled, scale) => {
-                JsonEnvelopeRef::Decimal(*unscaled, *scale).serialize(serializer)
+            Value::I128(value) => serializer.serialize_i128(*value),
+            Value::U128(value) => serializer.serialize_u128(*value),
+            Value::F16(value) => serialize_float(serializer, value.as_f64()),
+            Value::F32(value) => serialize_float(serializer, value.as_f64()),
+            Value::F64(value) => serialize_float(serializer, value.as_f64()),
+            Value::D128(unscaled, scale) => serializer.serialize_str(
+                &crate::generic::decimal::decimal_text(I256::from_i128(*unscaled), *scale),
+            ),
+            Value::D256(unscaled, scale) => {
+                serializer.serialize_str(&crate::generic::decimal::decimal_text(*unscaled, *scale))
             }
             Value::String(value) => serializer.serialize_str(value),
-            Value::Bytes(value) => JsonEnvelopeRef::Bytes(value).serialize(serializer),
-            Value::Geospatial(value) => JsonEnvelopeRef::Geospatial(value).serialize(serializer),
-            // A temporal is its classic ISO string, the spelling every other
-            // JSON reader already reads; a reading with no classic spelling
-            // keeps the enveloped structural one.
-            Value::Date(days) => match crate::generic::iso::format_date(*days) {
-                Some(spelled) => serializer.serialize_str(&spelled),
-                None => JsonEnvelopeRef::Date(*days).serialize(serializer),
-            },
-            Value::Time(count, unit) => match crate::generic::iso::format_time(*count, *unit) {
-                Some(spelled) => serializer.serialize_str(&spelled),
-                None => JsonEnvelopeRef::Time(*count, *unit).serialize(serializer),
-            },
-            Value::Timestamp(count, unit, zone) => {
-                match crate::generic::iso::format_timestamp(*count, *unit, zone) {
-                    Some(spelled) => serializer.serialize_str(&spelled),
-                    None => {
-                        JsonEnvelopeRef::Timestamp(*count, *unit, Some(zone)).serialize(serializer)
+            Value::Bytes(value) | Value::Geospatial(value) => {
+                serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(value))
+            }
+            Value::Date32(count, unit, zone) => {
+                if !zone.is_naive() {
+                    return Err(S::Error::custom("Date32 cannot carry a timezone"));
+                }
+                if *unit == TimeUnit::Day && zone.is_naive() {
+                    if let Some(text) = crate::generic::iso::format_date(*count) {
+                        return serializer.serialize_str(&text);
                     }
                 }
+                serializer.serialize_i32(*count)
             }
-            Value::DateTime(count, unit) => {
-                match crate::generic::iso::format_datetime(*count, *unit) {
-                    Some(spelled) => serializer.serialize_str(&spelled),
-                    None => JsonEnvelopeRef::Timestamp(*count, *unit, None).serialize(serializer),
+            Value::Date64(count, unit, zone) => {
+                if !zone.is_naive() {
+                    return Err(S::Error::custom("Date64 cannot carry a timezone"));
+                }
+                const DAY_MILLISECONDS: i64 = 86_400_000;
+                if *unit == TimeUnit::Millisecond && zone.is_naive() {
+                    let days = count.div_euclid(DAY_MILLISECONDS);
+                    if count.rem_euclid(DAY_MILLISECONDS) == 0 {
+                        if let Ok(days) = i32::try_from(days) {
+                            if let Some(text) = crate::generic::iso::format_date(days) {
+                                return serializer.serialize_str(&text);
+                            }
+                        }
+                    }
+                }
+                serializer.serialize_i64(*count)
+            }
+            Value::Time32(count, unit, zone) => {
+                serialize_time(serializer, i64::from(*count), *unit, zone)
+            }
+            Value::Time64(count, unit, zone) => serialize_time(serializer, *count, *unit, zone),
+            Value::DateTime64(count, unit, zone) => {
+                let text = if zone.is_naive() {
+                    crate::generic::iso::format_datetime(*count, *unit)
+                } else {
+                    crate::generic::iso::format_timestamp(*count, *unit, zone)
+                };
+                match text {
+                    Some(text) => serializer.serialize_str(&text),
+                    None => serializer.serialize_i64(*count),
                 }
             }
-            Value::Duration(count, unit) => {
-                match crate::generic::iso::format_duration(*count, *unit) {
-                    Some(spelled) => serializer.serialize_str(&spelled),
-                    None => JsonEnvelopeRef::Duration(*count, *unit).serialize(serializer),
-                }
+            Value::Duration32(count, unit, zone) => {
+                serialize_duration(serializer, i64::from(*count), *unit, zone)
+            }
+            Value::Duration64(count, unit, zone) => {
+                serialize_duration(serializer, *count, *unit, zone)
             }
             Value::Sequence(values) => {
                 let mut sequence = serializer.serialize_seq(Some(values.len()))?;
@@ -86,149 +98,66 @@ impl Serialize for JsonRef<'_> {
                 }
                 sequence.end()
             }
-            Value::Mapping(entries) if is_plain_json_mapping(entries) => {
+            Value::Record(entries) => {
                 let mut mapping = serializer.serialize_map(Some(entries.len()))?;
-                for (key, value) in entries.iter() {
-                    let Value::String(key) = key else {
-                        unreachable!("plain mappings contain string keys");
-                    };
-                    mapping.serialize_entry(key.as_str(), &JsonRef(value))?;
+                for (name, value) in entries.iter() {
+                    mapping.serialize_entry(name, &JsonRef(value))?;
                 }
                 mapping.end()
             }
-            Value::Mapping(entries) => JsonEnvelopeRef::Mapping(entries).serialize(serializer),
-        }
-    }
-}
-
-fn is_plain_json_mapping(entries: &[(Value, Value)]) -> bool {
-    entries
-        .iter()
-        .all(|(key, _)| matches!(key, Value::String(_)))
-        && !(entries.len() == 1 && entries[0].0.as_str() == Some(JSON_MARKER))
-}
-
-enum JsonEnvelopeRef<'a> {
-    Bytes(&'a [u8]),
-    Geospatial(&'a [u8]),
-    I128(i128),
-    U128(u128),
-    Float(f64),
-    Decimal(i128, i8),
-    Date(i32),
-    Time(i64, TimeUnit),
-    Timestamp(i64, TimeUnit, Option<&'a Timezone>),
-    Duration(i64, TimeUnit),
-    Mapping(&'a [(Value, Value)]),
-}
-
-impl Serialize for JsonEnvelopeRef<'_> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut outer = serializer.serialize_map(Some(1))?;
-        outer.serialize_entry(JSON_MARKER, &JsonEnvelopeBody(self))?;
-        outer.end()
-    }
-}
-
-struct JsonEnvelopeBody<'a>(&'a JsonEnvelopeRef<'a>);
-
-impl Serialize for JsonEnvelopeBody<'_> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // Every envelope body is exactly the version, the kind, and the payload.
-        let mut mapping = serializer.serialize_map(Some(3))?;
-        mapping.serialize_entry("version", &WIRE_VERSION)?;
-        let kind = match self.0 {
-            JsonEnvelopeRef::Bytes(_) => "bytes",
-            JsonEnvelopeRef::Geospatial(_) => "geospatial",
-            JsonEnvelopeRef::I128(_) => "i128",
-            JsonEnvelopeRef::U128(_) => "u128",
-            JsonEnvelopeRef::Float(_) => "float",
-            JsonEnvelopeRef::Decimal(..) => "decimal",
-            JsonEnvelopeRef::Date(_) => "date",
-            JsonEnvelopeRef::Time(..) => "time",
-            JsonEnvelopeRef::Timestamp(..) => "timestamp",
-            JsonEnvelopeRef::Duration(..) => "duration",
-            JsonEnvelopeRef::Mapping(_) => "mapping",
-        };
-        mapping.serialize_entry("type", kind)?;
-        match self.0 {
-            // WKB is bytes on the wire, so a geometry's payload travels the
-            // way the bytes envelope's does.
-            JsonEnvelopeRef::Bytes(value) | JsonEnvelopeRef::Geospatial(value) => mapping
-                .serialize_entry(
-                    "value",
-                    &base64::engine::general_purpose::STANDARD.encode(value),
-                )?,
-            JsonEnvelopeRef::I128(value) => {
-                mapping.serialize_entry("value", &value.to_string())?;
-            }
-            JsonEnvelopeRef::U128(value) => {
-                mapping.serialize_entry("value", &value.to_string())?;
-            }
-            JsonEnvelopeRef::Float(value) => {
-                let value = if value.is_nan() {
-                    "nan"
-                } else if value.is_sign_positive() {
-                    "infinity"
-                } else {
-                    "-infinity"
-                };
-                mapping.serialize_entry("value", value)?;
-            }
-            // A coefficient travels as text for the same reason `i128` does:
-            // it is wider than the number every JSON reader agrees on.
-            JsonEnvelopeRef::Decimal(unscaled, scale) => {
-                mapping.serialize_entry("value", &(unscaled.to_string(), scale))?;
-            }
-            JsonEnvelopeRef::Date(days) => mapping.serialize_entry("value", days)?,
-            JsonEnvelopeRef::Time(count, unit) | JsonEnvelopeRef::Duration(count, unit) => {
-                mapping.serialize_entry("value", &(unit.as_str(), count))?;
-            }
-            JsonEnvelopeRef::Timestamp(count, unit, Some(zone)) => {
-                mapping.serialize_entry("value", &(unit.as_str(), count, zone.as_str()))?;
-            }
-            JsonEnvelopeRef::Timestamp(count, unit, None) => {
-                mapping.serialize_entry("value", &(unit.as_str(), count))?;
-            }
-            JsonEnvelopeRef::Mapping(entries) => {
-                mapping.serialize_entry("value", &EntriesRef(entries))?;
+            Value::Mapping(entries) => {
+                let mut mapping = serializer.serialize_map(Some(entries.len()))?;
+                for (key, value) in entries.iter() {
+                    let Some(key) = key.as_str() else {
+                        return Err(S::Error::custom(
+                            "JSON object keys must be strings; use a record or string-key mapping",
+                        ));
+                    };
+                    mapping.serialize_entry(key, &JsonRef(value))?;
+                }
+                mapping.end()
             }
         }
-        mapping.end()
     }
 }
 
-struct EntriesRef<'a>(&'a [(Value, Value)]);
+fn serialize_float<S: Serializer>(serializer: S, value: f64) -> Result<S::Ok, S::Error> {
+    if value.is_finite() {
+        serializer.serialize_f64(value)
+    } else {
+        Err(S::Error::custom("JSON cannot represent a non-finite float"))
+    }
+}
 
-impl Serialize for EntriesRef<'_> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
-        for entry in self.0 {
-            sequence.serialize_element(&PairRef(entry))?;
+fn serialize_time<S: Serializer>(
+    serializer: S,
+    count: i64,
+    unit: TimeUnit,
+    zone: &Timezone,
+) -> Result<S::Ok, S::Error> {
+    if !zone.is_naive() {
+        return Err(S::Error::custom(
+            "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
+        ));
+    }
+    let Some(text) = crate::generic::iso::format_time(count, unit) else {
+        return serializer.serialize_i64(count);
+    };
+    serializer.serialize_str(&text)
+}
+
+fn serialize_duration<S: Serializer>(
+    serializer: S,
+    count: i64,
+    unit: TimeUnit,
+    zone: &Timezone,
+) -> Result<S::Ok, S::Error> {
+    if zone.is_naive() {
+        if let Some(text) = crate::generic::iso::format_duration(count, unit) {
+            return serializer.serialize_str(&text);
         }
-        sequence.end()
+    } else {
+        return Err(S::Error::custom("duration cannot carry a timezone"));
     }
-}
-
-struct PairRef<'a>(&'a (Value, Value));
-
-impl Serialize for PairRef<'_> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut pair = serializer.serialize_tuple(2)?;
-        pair.serialize_element(&JsonRef(&self.0.0))?;
-        pair.serialize_element(&JsonRef(&self.0.1))?;
-        pair.end()
-    }
+    serializer.serialize_i64(count)
 }

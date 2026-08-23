@@ -43,6 +43,7 @@
 //! # }
 //! ```
 
+use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -67,8 +68,8 @@ use crate::{AnyType, DataType, Error, FieldType, Result, Value};
 /// `TypedValue<K>` is the narrowed one. The marker adds no storage: a narrowed
 /// pairing is the same two words a dynamic one is.
 ///
-/// `DataType` is an unordered vocabulary, so a pairing over one answers
-/// equality and hashing but not ordering.
+/// Pairings order first by datatype and then by value, matching their exact
+/// equality and hashing identity.
 pub struct TypedValue<K: FieldType = AnyType> {
     data_type: DataType,
     value: Value,
@@ -121,6 +122,11 @@ impl<K: FieldType> TypedValue<K> {
     /// datatype beside it.
     pub const fn is_null(&self) -> bool {
         self.value.is_null()
+    }
+
+    /// Return a deterministic hash of the datatype/value pair.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
     }
 
     /// Consume this pairing and return both halves.
@@ -213,7 +219,7 @@ impl<K: FieldType> TypedValue<K> {
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let typed = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?;
-    /// let array = typed.to_arrow_array()?;
+    /// let array = typed.into_arrow_array()?;
     /// assert_eq!(array.len(), 1);
     /// assert_eq!(array.data_type(), &arrow_schema::DataType::Int64);
     /// # Ok(())
@@ -225,7 +231,7 @@ impl<K: FieldType> TypedValue<K> {
     /// Returns an error when the physical Arrow layout cannot represent the
     /// value, or when the value is a null the datatype's canonical default
     /// does not spell.
-    pub fn to_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
+    pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef> {
         let field = crate::Field::new("value", self.data_type.clone(), false);
         match crate::arrow::validate_scalar_value(&field, self.value.clone()) {
             Ok(value) => crate::arrow::value::array_from_values(&field, &[&value]),
@@ -286,7 +292,7 @@ impl TypedValue {
     /// use yggdryl::{DataType, TypedValue, Value};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let array = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?.to_arrow_array()?;
+    /// let array = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?.into_arrow_array()?;
     /// let typed = TypedValue::from_arrow_array(DataType::Int64, array.as_ref())?;
     /// assert_eq!(typed.value(), &Value::I64(7));
     /// # Ok(())
@@ -351,6 +357,20 @@ impl<K: FieldType> PartialEq for TypedValue<K> {
 }
 
 impl<K: FieldType> Eq for TypedValue<K> {}
+
+impl<K: FieldType> PartialOrd for TypedValue<K> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<K: FieldType> Ord for TypedValue<K> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.data_type
+            .cmp(&other.data_type)
+            .then_with(|| self.value.cmp(&other.value))
+    }
+}
 
 impl<K: FieldType> Hash for TypedValue<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -452,7 +472,8 @@ typed_value_alias!(Date32Value, temporal::Date32, "date32");
 typed_value_alias!(Date64Value, temporal::Date64, "date64");
 typed_value_alias!(Time32Value, temporal::Time32, "time32");
 typed_value_alias!(Time64Value, temporal::Time64, "time64");
-typed_value_alias!(DurationValue, temporal::Duration, "duration");
+typed_value_alias!(Duration32Value, temporal::Duration32, "duration32");
+typed_value_alias!(Duration64Value, temporal::Duration64, "duration64");
 typed_value_alias!(IntervalValue, temporal::Interval, "interval");
 typed_value_alias!(BinaryValue, binary::Binary, "binary");
 typed_value_alias!(

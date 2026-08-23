@@ -189,7 +189,16 @@ assert_eq!(
 
 `Zstd<H>` is an [`IOBase`](io.md) over another `IOBase`. Reads decompress and writes compress, so anything that takes a handle - a media reader, another coding - sees the decoded bytes while the wrapped handle keeps the Zstandard form. `size` follows the same rule: it is the decoded length, not the frame length.
 
-A coding is not seekable, so the decoded value is materialized once on first use and the pending write is published on `flush` or `close`, not on every `pwrite`. That is what makes positional reads and writes work at all over a compressed payload.
+A coding is not seekable, so writes and opened sessions materialize the decoded
+value and publish pending changes on `flush` or `close`, not on every `pwrite`.
+
+Sequential reads use [`IOBase::pstream_bytes`](io.md#streamed-bytes): Zstandard
+is decoded directly from the wrapped handle into bounded arrays, without
+opening the handle or retaining earlier decoded pages. A non-zero start decodes
+and discards the prefix because a frame has no decoded seek. A surrounding
+`Buffered` cache stays empty on this path. The
+[stream benchmark](io.md#measured-streamed-byte-behavior) records first-chunk,
+full-drain, and whole-value costs beside gzip and zlib.
 
 ```rust
 use yggdryl::io::{Buffer, IOBase};

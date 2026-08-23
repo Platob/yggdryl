@@ -11,7 +11,7 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 use yggdryl::arrowfs::File as ArrowFile;
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::IOBase;
+use yggdryl::io::{IOBase, IOMedia};
 
 use super::{ROWS, batch, buffer, memory, store, wide};
 
@@ -38,9 +38,9 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
                 let options = handle
                     .record_options()
                     .expect("an implemented encoding")
-                    .with_schema(field.clone());
+                    .with_field(field.clone());
                 handle
-                    .write_arrow_batch_reader(
+                    .overwrite_arrow_reader(
                         yggdryl::arrow::batch_reader(source.schema(), [black_box(source.clone())]),
                         &options,
                     )
@@ -55,9 +55,9 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
                 let options = handle
                     .record_options()
                     .expect("an implemented encoding")
-                    .with_schema(field.clone());
+                    .with_field(field.clone());
                 handle
-                    .write_arrow_batch_reader(
+                    .overwrite_arrow_reader(
                         yggdryl::arrow::batch_reader(source.schema(), [black_box(source.clone())]),
                         &options,
                     )
@@ -72,7 +72,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
             let options = handle.record_options().expect("an implemented encoding");
             bencher.iter(|| {
                 black_box(&handle)
-                    .read_arrow_batch_reader(&options)
+                    .read_arrow_reader(&options)
                     .expect("the fixture must read")
                     .map(|batch| batch.expect("a decodable batch").num_rows())
                     .sum::<usize>()
@@ -84,9 +84,9 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
             let options = handle
                 .record_options()
                 .expect("an implemented encoding")
-                .with_schema(field.clone());
+                .with_field(field.clone());
             handle
-                .write_arrow_batch_reader(
+                .overwrite_arrow_reader(
                     yggdryl::arrow::batch_reader(source.schema(), [source.clone()]),
                     &options,
                 )
@@ -94,7 +94,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
             let options = handle.record_options().expect("an implemented encoding");
             bencher.iter(|| {
                 black_box(&handle)
-                    .read_arrow_batch_reader(&options)
+                    .read_arrow_reader(&options)
                     .expect("the fixture must read")
                     .map(|batch| batch.expect("a decodable batch").num_rows())
                     .sum::<usize>()

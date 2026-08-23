@@ -1,7 +1,7 @@
 //! Adversarial physical-materialization budget tests.
 
 use arrow_array::Array;
-use yggdryl::arrow::{scalar_array, scalar_value, schema_from_field};
+use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{DataType, Field, UnionMode, Value};
 
 fn round_trip(field: &Field, value: &Value) -> Value {
@@ -184,7 +184,8 @@ fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
             DataType::from_fields([Field::new("value", data_type, false)]).unwrap(),
             false,
         );
-        let schema = schema_from_field(&root)
+        let schema = root
+            .into_arrow_schema()
             .unwrap_or_else(|error| panic!("empty wrapper {index} failed: {error}"));
         let array = arrow_array::RecordBatch::new_empty(schema);
         assert_eq!(array.num_rows(), 0);

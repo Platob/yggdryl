@@ -48,7 +48,7 @@ use crate::io::IOBase;
 /// `1001`). It comes from two places that must agree: the footer a write
 /// recorded, exposed on [`super::ColumnStatistics::geospatial`], and a fresh
 /// scan of the stored WKB through [`read_geospatial_statistics`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GeospatialStatistics {
     /// The box bounding every position, absent when no position bounded one.
     pub bounding_box: Option<wkb::BoundingBox>,

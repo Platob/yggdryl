@@ -1,5 +1,15 @@
-use yggdryl::field::{self, FieldType, Int32Field, TimestampField, TypedField, TypedFieldRef};
+use yggdryl::field::{
+    self, FieldType, Int32Field, StructField, TimestampField, TypedField, TypedFieldRef,
+};
 use yggdryl::{DataType, Field, TimeUnit, Timezone};
+
+fn stable_hash<T: std::hash::Hash>(value: &T) -> u64 {
+    use std::hash::Hasher;
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
 
 pub(crate) fn assert_typed_marker<K: FieldType>(data_type: DataType) {
     let field = Field::new("value", data_type.clone(), false);
@@ -50,6 +60,34 @@ fn typed_fields_are_zero_overhead_checked_and_lossless() {
     );
 }
 
+#[test]
+fn borrowed_typed_fields_inherit_value_traits_from_the_field() {
+    let first = Field::new("a", DataType::Int32, false);
+    let equal = first.clone();
+    let later = Field::new("b", DataType::Int32, false);
+    let first = first.try_as_typed::<integer_marker::Int32>().unwrap();
+    let equal = equal.try_as_typed::<integer_marker::Int32>().unwrap();
+    let later = later.try_as_typed::<integer_marker::Int32>().unwrap();
+
+    assert_eq!(first, equal);
+    assert!(first < later);
+    assert_eq!(stable_hash(&first), stable_hash(&equal));
+}
+
+#[test]
+fn struct_fields_have_the_return_typed_conversion_name() {
+    let root = StructField::try_new(
+        "row",
+        DataType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        false,
+    )
+    .unwrap()
+    .into_struct_field();
+
+    assert_eq!(root.name(), "row");
+    assert!(matches!(root.data_type(), DataType::Struct(_)));
+}
+
 mod integer_marker {
     pub use yggdryl::field::integer::Int32;
 }
@@ -79,7 +117,9 @@ fn typed_datatype_replacement_is_transactional_and_same_variant_only() {
 
 #[test]
 fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
-    let int64_json = Field::new("id", DataType::Int64, false).to_json().unwrap();
+    let int64_json = Field::new("id", DataType::Int64, false)
+        .into_json()
+        .unwrap();
     assert!(serde_json::from_str::<Int32Field>(&int64_json).is_err());
 
     let invalid_decimal = r#"{"name":"amount","data_type":{"decimal128":{"precision":0,"scale":0}},"nullable":false,"metadata":{}}"#;

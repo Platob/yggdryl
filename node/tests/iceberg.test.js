@@ -63,7 +63,7 @@ test('creating a table numbers a plain schema itself, partitioning included', (t
 
   // The numbered table is a working table.
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
-  assert.equal(table.scan().toTable().numRows, 2)
+  assert.equal(table.scan().intoTable().numRows, 2)
 })
 
 test('a table is a folder, and a new one has no current snapshot', (t) => {
@@ -92,7 +92,7 @@ test('a table is a folder, and a new one has no current snapshot', (t) => {
   assert.equal(table.currentSnapshot, null)
   assert.equal(table.snapshots.length, 0)
   assert.equal(table.manifests().length, 0)
-  assert.equal(table.scan().toTable().numRows, 0)
+  assert.equal(table.scan().intoTable().numRows, 0)
 })
 
 test('an append commits a snapshot, one data file per partition', (t) => {
@@ -105,16 +105,31 @@ test('an append commits a snapshot, one data file per partition', (t) => {
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
 
   const snapshot = table.currentSnapshot
+  assert.ok(snapshot instanceof iceberg.Snapshot)
   assert.equal(snapshot.operation, 'append')
   assert.equal(typeof snapshot.snapshotId, 'bigint')
   assert.equal(snapshot.summary['added-records'], '3')
+  const snapshotClone = snapshot.clone()
+  assert.notEqual(snapshotClone, snapshot)
+  assert.ok(snapshotClone.equals(snapshot))
+  assert.equal(snapshotClone.compare(snapshot), 0)
+  assert.equal(snapshotClone.stableHash(), snapshot.stableHash())
+  assert.equal(typeof snapshot.stableHash(), 'bigint')
   assert.equal(table.snapshots.length, 1)
 
   const [manifest] = table.manifests()
+  assert.ok(manifest instanceof iceberg.ManifestFile)
   assert.equal(manifest.content, 'data')
   assert.equal(manifest.addedFilesCount, 2)
   assert.equal(manifest.addedRowsCount, 3)
   assert.equal(manifest.addedSnapshotId, snapshot.snapshotId)
+  assert.ok(Array.isArray(manifest.partitions))
+  const manifestClone = manifest.clone()
+  assert.notEqual(manifestClone, manifest)
+  assert.ok(manifestClone.equals(manifest))
+  assert.equal(manifestClone.compare(manifest), 0)
+  assert.equal(manifestClone.stableHash(), manifest.stableHash())
+  assert.equal(typeof manifest.stableHash(), 'bigint')
 
   const files = table.dataFiles().sort((left, right) =>
     left.filePath.localeCompare(right.filePath),
@@ -130,6 +145,12 @@ test('an append commits a snapshot, one data file per partition', (t) => {
   assert.equal(files[0].recordCount + files[1].recordCount, 3)
   assert.ok(files[0].valueCounts.some((entry) => entry.fieldId === 1))
   assert.ok(files[0].toString().includes('venue=XNAS'))
+  const clonedFile = files[0].clone()
+  assert.notEqual(clonedFile, files[0])
+  assert.ok(clonedFile.equals(files[0]))
+  assert.equal(clonedFile.compare(files[0]), 0)
+  assert.equal(clonedFile.stableHash(), files[0].stableHash())
+  assert.notEqual(files[0].compare(files[1]), 0)
 
   // The Hive layout is a real one: a directory per partition value.
   const data = new IOBase(path.join(root, 'trades', 'data'))
@@ -138,7 +159,7 @@ test('an append commits a snapshot, one data file per partition', (t) => {
     ['venue=XNAS', 'venue=XNYS'],
   )
 
-  assert.equal(table.scan().toTable().numRows, 3)
+  assert.equal(table.scan().intoTable().numRows, 3)
 })
 
 test('a scan pushes columns down and casts what each file gives back', (t) => {
@@ -150,7 +171,7 @@ test('a scan pushes columns down and casts what each file gives back', (t) => {
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
 
   const wanted = fields.struct('row', [declared.dataType.at(0)], { nullable: false })
-  const scanned = table.scan(wanted).toTable()
+  const scanned = table.scan(wanted).intoTable()
   assert.equal(scanned.numCols, 1)
   assert.equal(scanned.numRows, 2)
   assert.deepEqual(scanned.getChild('id').toArray(), BigInt64Array.from([1n, 2n]))
@@ -166,11 +187,12 @@ test('an overwrite keeps the previous snapshot readable', (t) => {
 
   table.overwrite(rows([3n], ['XNAS']))
   assert.equal(table.currentSnapshot.operation, 'overwrite')
-  assert.equal(table.scan().toTable().numRows, 1)
+  assert.equal(table.scan().intoTable().numRows, 1)
 
   // Nothing was mutated in place: the snapshot before it is still recorded.
   assert.equal(table.snapshots.length, 2)
   assert.ok(table.snapshots.some((snapshot) => snapshot.snapshotId === first))
+  assert.notEqual(table.snapshots[0].compare(table.snapshots[1]), 0)
 })
 
 test('a schema evolves, and files written before a column read null for it', (t) => {
@@ -190,7 +212,7 @@ test('a schema evolves, and files written before a column read null for it', (t)
   assert.equal(table.evolveSchema(evolved), 1)
   assert.equal(table.schema.dataType.length, 3)
 
-  const scanned = table.scan().toTable()
+  const scanned = table.scan().intoTable()
   assert.equal(scanned.numRows, 1)
   assert.equal(scanned.getChild('price').get(0), null)
 })
@@ -207,7 +229,7 @@ test('a table is found again with no catalog in between', (t) => {
   const reopened = iceberg.Table.open(location)
   assert.equal(reopened.tableUuid, uuid)
   assert.equal(reopened.version, created.version)
-  assert.equal(reopened.scan().toTable().numRows, 2)
+  assert.equal(reopened.scan().intoTable().numRows, 2)
 
   // Opening what is there and creating what is not is one call.
   const either = iceberg.Table.openOrCreate(location, schema())
@@ -222,11 +244,41 @@ test('a transform that cannot place a row is refused by name', (t) => {
   const declared = schema()
   const spec = iceberg.PartitionSpec.identity(declared, ['venue'], 1)
   assert.equal(spec.specId, 1)
-  assert.deepEqual(spec.fields, [
-    { sourceId: 2, fieldId: 1000, name: 'venue', transform: 'identity' },
-  ])
+  assert.equal(spec.fields.length, 1)
+  const [partitionField] = spec.fields
+  assert.ok(partitionField instanceof iceberg.PartitionField)
+  assert.equal(partitionField.sourceId, 2)
+  assert.equal(partitionField.fieldId, 1000)
+  assert.equal(partitionField.name, 'venue')
+  assert.equal(partitionField.transform, 'identity')
+  const partitionFieldClone = partitionField.clone()
+  assert.notEqual(partitionFieldClone, partitionField)
+  assert.ok(partitionFieldClone.equals(partitionField))
+  assert.equal(partitionFieldClone.compare(partitionField), 0)
+  assert.equal(partitionFieldClone.stableHash(), partitionField.stableHash())
+  assert.equal(typeof partitionField.stableHash(), 'bigint')
+  const [idField] = iceberg.PartitionSpec.identity(declared, ['id'], 1).fields
+  assert.notEqual(partitionField.compare(idField), 0)
   assert.ok(!spec.isUnpartitioned())
-  assert.ok(iceberg.PartitionSpec.unpartitioned().isUnpartitioned())
+  const clonedSpec = spec.clone()
+  assert.notEqual(clonedSpec, spec)
+  assert.ok(clonedSpec.equals(spec))
+  assert.equal(clonedSpec.compare(spec), 0)
+  assert.equal(clonedSpec.stableHash(), spec.stableHash())
+  const document = {
+    'spec-id': 1,
+    fields: [
+      { name: 'venue', transform: 'identity', 'source-id': 2, 'field-id': 1000 },
+    ],
+  }
+  assert.deepEqual(spec.intoJSON(), document)
+  assert.ok(iceberg.PartitionSpec.fromJSON(document).equals(spec))
+  assert.deepEqual(JSON.parse(JSON.stringify(spec)), document)
+  assert.equal(iceberg.PartitionSpec._fromValueNative, undefined)
+  assert.equal(spec._intoValueNative, undefined)
+  const unpartitioned = iceberg.PartitionSpec.unpartitioned()
+  assert.ok(unpartitioned.isUnpartitioned())
+  assert.notEqual(spec.compare(unpartitioned), 0)
 
   assert.throws(
     () => iceberg.PartitionSpec.identity(declared, ['nowhere'], 1),
@@ -246,7 +298,7 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   assert.ok(catalog.tables.has('nyc.taxis'))
   assert.equal(table.schema.name, 'row')
   assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
-  assert.equal(table.scan().toTable().numRows, 2)
+  assert.equal(table.scan().intoTable().numRows, 2)
 
   // The dotted name is the folder nyc/taxis, one level per dot.
   const handle = new IOBase(path.join(root, 'nyc', 'taxis'))
@@ -256,8 +308,8 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
 
   // A second append accumulates rather than replacing.
   const again = catalog.append('nyc.taxis', rows([3n], ['XASE']))
-  assert.equal(again.scan().toTable().numRows, 3)
-  assert.equal(catalog.table('nyc.taxis').scan().toTable().numRows, 3)
+  assert.equal(again.scan().intoTable().numRows, 3)
+  assert.equal(catalog.table('nyc.taxis').scan().intoTable().numRows, 3)
 
   // A schema is a Field, a string expression, or an array of child Fields.
   const rides = catalog.tables.create('nyc.rides', [
@@ -279,7 +331,7 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
 
   // An overwrite through the catalog keeps the previous snapshot readable.
   const replaced = catalog.overwrite('nyc.taxis', rows([9n], ['XNAS']))
-  assert.equal(replaced.scan().toTable().numRows, 1)
+  assert.equal(replaced.scan().intoTable().numRows, 1)
   assert.equal(replaced.snapshots.length, 3)
 })
 
@@ -291,17 +343,17 @@ test('scanAt reads a retained snapshot after an overwrite', (t) => {
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   const first = table.currentSnapshot.snapshotId
   table.overwrite(rows([3n], ['XASE']))
-  assert.equal(table.scan().toTable().numRows, 1)
+  assert.equal(table.scan().intoTable().numRows, 1)
 
   // The overwritten snapshot is still a complete table.
-  const past = table.scanAt(first).toTable()
+  const past = table.scanAt(first).intoTable()
   assert.equal(past.numRows, 2)
   assert.deepEqual(past.getChild('id').toArray(), BigInt64Array.from([1n, 2n]))
 
   // Filters are the pairs childrenWhere takes, and a schema keeps the
   // columns it names, exactly as on scan.
   const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
-  const filtered = table.scanAt(first, { venue: 'XNAS' }, wanted).toTable()
+  const filtered = table.scanAt(first, { venue: 'XNAS' }, wanted).intoTable()
   assert.equal(filtered.numCols, 1)
   assert.equal(filtered.numRows, 1)
   assert.deepEqual(filtered.getChild('id').toArray(), BigInt64Array.from([1n]))
@@ -354,7 +406,7 @@ test('a schema evolves through one recorded chain, committed once', (t) => {
 
   // The rows written under the old schema are preserved and read as the new
   // shape: the promoted column widens, the added column reads null.
-  const scanned = table.scan().toTable()
+  const scanned = table.scan().intoTable()
   assert.equal(scanned.numRows, 1)
   assert.deepEqual(scanned.getChild('id').toArray(), BigInt64Array.from([1n]))
   assert.equal(scanned.getChild('price').get(0), null)
@@ -412,9 +464,10 @@ test('compact merges undersized files and reports what it rewrote', (t) => {
   assert.equal(table.targetFileSize, 512 * 1024 * 1024)
 
   const sizes = table.dataFiles().map((file) => file.fileSizeInBytes)
-  assert.equal(table.inspectFiles().toTable().numRows, 2)
+  assert.equal(table.inspectFiles().intoTable().numRows, 2)
 
   const compaction = table.compact()
+  assert.ok(compaction instanceof iceberg.Compaction)
   assert.equal(compaction.filesBefore, 2)
   assert.equal(compaction.filesAfter, 1)
   assert.equal(
@@ -422,25 +475,36 @@ test('compact merges undersized files and reports what it rewrote', (t) => {
     sizes.reduce((total, size) => total + size, 0),
   )
   assert.equal(table.currentSnapshot.operation, 'replace')
-  assert.equal(table.inspectFiles().toTable().numRows, 1)
-  assert.equal(table.scan().toTable().numRows, 3)
+  assert.equal(table.inspectFiles().intoTable().numRows, 1)
+  assert.equal(table.scan().intoTable().numRows, 3)
+  const compactionClone = compaction.clone()
+  assert.notEqual(compactionClone, compaction)
+  assert.ok(compactionClone.equals(compaction))
+  assert.equal(compactionClone.compare(compaction), 0)
+  assert.equal(compactionClone.stableHash(), compaction.stableHash())
+  assert.equal(typeof compaction.stableHash(), 'bigint')
 
   // The pre-compaction snapshot is retained and reads exactly as it did.
-  assert.equal(table.scanAt(before).toTable().numRows, 3)
+  assert.equal(table.scanAt(before).intoTable().numRows, 3)
 
   // A table with nothing to compact commits nothing and reports zeros.
   const version = table.version
-  assert.deepEqual(table.compact(), { filesBefore: 0, filesAfter: 0, bytesRewritten: 0 })
+  const noop = table.compact()
+  assert.ok(noop instanceof iceberg.Compaction)
+  assert.equal(noop.filesBefore, 0)
+  assert.equal(noop.filesAfter, 0)
+  assert.equal(noop.bytesRewritten, 0)
+  assert.notEqual(compaction.compare(noop), 0)
   assert.equal(table.version, version)
 
   // The inspection tables carry the history under PyIceberg's column names.
-  const history = table.inspectHistory().toTable()
+  const history = table.inspectHistory().intoTable()
   assert.equal(history.numRows, 3)
   assert.deepEqual(
     history.schema.fields.map((field) => field.name),
     ['made_current_at', 'snapshot_id', 'parent_id', 'is_current_ancestor'],
   )
-  const snapshots = table.inspectSnapshots().toTable()
+  const snapshots = table.inspectSnapshots().intoTable()
   assert.equal(snapshots.numRows, 3)
   assert.equal(snapshots.getChild('operation').get(2), 'replace')
 })
@@ -530,7 +594,7 @@ test('a namespace is a resource whose collections carry the verbs', (t) => {
   // Writing rows through the view replaces the table's rows, creating a
   // table the namespace never had from the rows' own schema.
   analytics.tables.overwrite('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
-  assert.equal(analytics.tables.get('quotes').scan().toTable().numRows, 2)
+  assert.equal(analytics.tables.get('quotes').scan().intoTable().numRows, 2)
   assert.deepEqual(analytics.tables.names().sort(), ['quotes', 'trades'])
   assert.deepEqual(catalog.namespaces.names(), ['analytics'])
 })
@@ -572,6 +636,15 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(given.readParallelMinFileSize, 1024)
   assert.equal(given.compactAfterCommits, 7)
   assert.equal(given.dataFormat, 'AVRO')
+  const cloned = given.clone()
+  assert.notEqual(cloned, given)
+  assert.ok(cloned.equals(given))
+  assert.equal(cloned.compare(given), 0)
+  assert.equal(cloned.stableHash(), given.stableHash())
+  cloned.commitRetries = 10
+  assert.ok(!cloned.equals(given))
+  assert.notEqual(cloned.compare(given), 0)
+  assert.equal(given.commitRetries, 9)
 
   // Every field is a setter too, and one the object never named still answers
   // its default rather than whatever a neighbouring field was set to.
@@ -645,7 +718,7 @@ test('a per-call data format writes AVRO files beside the PARQUET ones', (t) => 
 
   // A scan decodes each file as the format its manifest entry records, so a
   // table of two formats still reads as one shape.
-  const scanned = table.scan().toTable()
+  const scanned = table.scan().intoTable()
   assert.equal(scanned.numRows, 3)
   assert.deepEqual(
     [...scanned.getChild('id')].sort((left, right) => Number(left - right)),
@@ -702,7 +775,7 @@ test('every write that takes a per-call data format actually writes it', (t) => 
   merged.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   merged.merge(rows([2n, 3n], ['XLON', 'XASE']), ['id'], true, avro())
   assert.deepEqual(formats(merged), ['AVRO'])
-  assert.equal(merged.scan().toTable().numRows, 3)
+  assert.equal(merged.scan().intoTable().numRows, 3)
 
   const mergedWhere = iceberg.Table.create(path.join(root, 'mw'), schema(), ['venue'])
   mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
@@ -756,8 +829,8 @@ test('the filtered reads take the per-call options the plain scan does', (t) => 
   // accepting one; the rows it returns are what says it arrived intact.
   const before = table.options().readParallelism
   const options = new iceberg.IcebergOptions({ readParallelism: before + 1 })
-  assert.equal(table.scanWhere({ venue: 'XNAS' }, null, options).toTable().numRows, 1)
-  assert.equal(table.scanRef('release', null, null, options).toTable().numRows, 2)
+  assert.equal(table.scanWhere({ venue: 'XNAS' }, null, options).intoTable().numRows, 1)
+  assert.equal(table.scanRef('release', null, null, options).intoTable().numRows, 2)
   // Configuring one call configures only that call.
   assert.equal(table.options().readParallelism, before)
 })
@@ -778,17 +851,26 @@ test('a tag and a branch name a snapshot, and removing one reports what it held'
 
   // A ref reads as an ordinary scan of the snapshot it points at, filters and
   // projection included.
-  assert.equal(table.scanRef('audit').toTable().numRows, 2)
-  assert.equal(table.scanRef('audit', { venue: 'XNAS' }).toTable().numRows, 1)
+  assert.equal(table.scanRef('audit').intoTable().numRows, 2)
+  assert.equal(table.scanRef('audit', { venue: 'XNAS' }).intoTable().numRows, 1)
 
   const removed = table.removeRef('nightly')
+  assert.ok(removed instanceof iceberg.SnapshotRef)
   assert.equal(removed.snapshotId, first)
   assert.equal(removed.kind, 'tag')
+  const removedClone = removed.clone()
+  assert.notEqual(removedClone, removed)
+  assert.ok(removedClone.equals(removed))
+  assert.equal(removedClone.compare(removed), 0)
+  assert.equal(removedClone.stableHash(), removed.stableHash())
+  assert.equal(typeof removed.stableHash(), 'bigint')
 
   // Dropping a ref that was never there is a typo far more often than it is a
   // no-op, so it is refused naming the refs the table does have.
   assert.throws(() => table.removeRef('nightly'), /got "nightly"; it has \[main, audit\]/)
   assert.equal(table.snapshotByRef('audit').snapshotId, first)
+  const branch = table.removeRef('audit')
+  assert.notEqual(removed.compare(branch), 0)
   assert.notEqual(first, second)
 })
 
@@ -803,10 +885,10 @@ test('fastForward moves a branch onto a descendant and refuses to walk back', (t
   const second = table.currentSnapshot.snapshotId
 
   table.createBranch('audit', first)
-  assert.equal(table.scanRef('audit').toTable().numRows, 1)
+  assert.equal(table.scanRef('audit').intoTable().numRows, 1)
   table.fastForward('audit', second)
   assert.equal(table.snapshotByRef('audit').snapshotId, second)
-  assert.equal(table.scanRef('audit').toTable().numRows, 2)
+  assert.equal(table.scanRef('audit').intoTable().numRows, 2)
 
   // Walking a branch backwards would drop the commits between, which is the
   // one thing a fast-forward is defined not to do.
@@ -832,6 +914,13 @@ test('a plan counts what a scan would read without reading any of it', (t) => {
   assert.equal(everything.manifestsRead, 2)
   assert.equal(everything.manifestsSkipped, 0)
 
+  const copy = everything.clone()
+  assert.notEqual(copy, everything)
+  assert.ok(copy.equals(everything))
+  assert.equal(copy.compare(everything), 0)
+  assert.equal(copy.stableHash(), everything.stableHash())
+  assert.equal(typeof everything.stableHash(), 'bigint')
+
   // Pruning is a number rather than a promise: one manifest was ruled out
   // whole by the manifest list's summaries, one file inside the other by its
   // partition tuple, and the rows left agree with what a scan yields.
@@ -840,7 +929,21 @@ test('a plan counts what a scan would read without reading any of it', (t) => {
   assert.equal(matching.filesSkipped, 1)
   assert.equal(matching.manifestsRead, 1)
   assert.equal(matching.manifestsSkipped, 1)
-  assert.equal(matching.recordCount, table.scanWhere({ venue: 'XNAS' }).toTable().numRows)
+  assert.equal(matching.recordCount, table.scanWhere({ venue: 'XNAS' }).intoTable().numRows)
+  assert.ok(!everything.equals(matching))
+  assert.ok(everything.compare(matching) > 0)
+
+  // ScanPlan is deliberately the bounded public report, not an exposed task
+  // list. An equivalent plan over different physical paths therefore has the
+  // same value identity even though its hidden scan tasks cannot be equal.
+  const mirror = iceberg.Table.create(path.join(root, 'mirror'), schema(), ['venue'])
+  mirror.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
+  mirror.append(rows([4n], ['XASE']))
+  assert.notEqual(table.dataFiles()[0].filePath, mirror.dataFiles()[0].filePath)
+  const mirrorReport = mirror.plan()
+  assert.ok(everything.equals(mirrorReport))
+  assert.equal(everything.compare(mirrorReport), 0)
+  assert.equal(everything.stableHash(), mirrorReport.stableHash())
 
   // Time travel plans over the snapshot's own manifest list, so a filtered
   // read of history skips what a filtered read of the present skips.
@@ -868,11 +971,13 @@ test('manifestsAt answers for a retained snapshot what manifests answers for now
   const first = table.currentSnapshot.snapshotId
   table.append(rows([2n], ['XNYS']))
 
-  assert.equal(table.manifests().length, 2)
+  const current = table.manifests()
+  assert.equal(current.length, 2)
   const past = table.manifestsAt(first)
   assert.equal(past.length, 1)
   assert.equal(past[0].addedSnapshotId, first)
   assert.equal(past[0].addedRowsCount, 1)
+  assert.notEqual(current[1].compare(past[0]), 0)
 
   // An id the table does not retain is refused naming the ids it does.
   assert.throws(() => table.manifestsAt(7), new RegExp(`got 7; the table retains \\[.*${first}`))
@@ -885,23 +990,23 @@ test('scanWhere reads only the partition it names and projects as scan does', (t
   const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
 
-  const matched = table.scanWhere({ venue: 'XNAS' }).toTable()
+  const matched = table.scanWhere({ venue: 'XNAS' }).intoTable()
   assert.equal(matched.numRows, 2)
   assert.deepEqual([...matched.getChild('venue')], ['XNAS', 'XNAS'])
 
   // The projection sits after the filters, and keeps the columns it names.
-  const projected = table.scanWhere({ venue: 'XNAS' }, 'row: struct<id int64> not null').toTable()
+  const projected = table.scanWhere({ venue: 'XNAS' }, 'row: struct<id int64> not null').intoTable()
   assert.equal(projected.numCols, 1)
   assert.deepEqual([...projected.getChild('id')], [1n, 3n])
 
   // Filters also spell as the `{column, value}` entries a manifest reports.
   assert.equal(
-    table.scanWhere([{ column: 'venue', value: 'XNYS' }]).toTable().numRows,
+    table.scanWhere([{ column: 'venue', value: 'XNYS' }]).intoTable().numRows,
     1,
   )
 
   // A value nothing was ever written under is no rows, with the shape intact.
-  const none = table.scanWhere({ venue: 'XLON' }).toTable()
+  const none = table.scanWhere({ venue: 'XLON' }).intoTable()
   assert.equal(none.numRows, 0)
   assert.equal(none.numCols, 2)
 })
@@ -931,11 +1036,11 @@ test('overwriteWhere replaces one partition and carries the others as they were'
     kept,
   )
   assert.deepEqual(
-    [...table.scan().toTable().getChild('id')].sort((left, right) => Number(left - right)),
+    [...table.scan().intoTable().getChild('id')].sort((left, right) => Number(left - right)),
     [2n, 9n],
   )
   // Only the current pointer moved: the snapshot before it is still whole.
-  assert.equal(table.scanAt(first).toTable().numRows, 3)
+  assert.equal(table.scanAt(first).intoTable().numRows, 3)
 })
 
 test('merge updates the rows whose key is stored and appends the rest', (t) => {
@@ -946,7 +1051,7 @@ test('merge updates the rows whose key is stored and appends the rest', (t) => {
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   table.merge(rows([2n, 3n], ['XASE', 'XLON']), ['id'])
 
-  const scanned = table.scan().toTable()
+  const scanned = table.scan().intoTable()
   const venues = new Map(
     [...scanned.getChild('id')].map((id, index) => [id, scanned.getChild('venue').get(index)]),
   )
@@ -958,8 +1063,8 @@ test('merge updates the rows whose key is stored and appends the rest', (t) => {
   // Nothing identifies a row when no column is named, so an empty match key is
   // an overwrite rather than an append that can never find anything.
   table.merge(rows([7n], ['XPAR']), [])
-  assert.equal(table.scan().toTable().numRows, 1)
-  assert.deepEqual([...table.scan().toTable().getChild('venue')], ['XPAR'])
+  assert.equal(table.scan().intoTable().numRows, 1)
+  assert.deepEqual([...table.scan().intoTable().getChild('venue')], ['XPAR'])
 })
 
 test('mergeWhere narrows a merge to the files its filters admit', (t) => {
@@ -983,8 +1088,8 @@ test('mergeWhere narrows a merge to the files its filters admit', (t) => {
       .map((file) => file.filePath),
     kept,
   )
-  assert.equal(table.scanWhere({ venue: 'XNAS' }).toTable().numRows, 3)
-  assert.equal(table.scan().toTable().numRows, 4)
+  assert.equal(table.scanWhere({ venue: 'XNAS' }).intoTable().numRows, 3)
+  assert.equal(table.scan().intoTable().numRows, 4)
 })
 
 test('expireSnapshots drops nothing when the cutoff is older than every snapshot', (t) => {
@@ -1010,7 +1115,7 @@ test('expireSnapshots drops nothing when the cutoff is older than every snapshot
   assert.ok(table.version > version)
   // Expiry drops history, never rows: what the current snapshot holds is what
   // it held before the ancestors went away.
-  assert.equal(table.scan().toTable().numRows, 2)
+  assert.equal(table.scan().intoTable().numRows, 2)
 })
 
 test('the collection views do no I/O until a question is asked of them', (t) => {
@@ -1044,7 +1149,7 @@ test('the collection views do no I/O until a question is asked of them', (t) => 
   assert.throws(() => orders.get('ledger'), /expected a table at "sales\.ledger", got nothing/)
 
   // One spelling chains from the catalog to the rows.
-  assert.equal(catalog.namespaces.get('sales').tables.get('orders').scan().toTable().numRows, 1)
+  assert.equal(catalog.namespaces.get('sales').tables.get('orders').scan().intoTable().numRows, 1)
   // A namespace is a folder that is not a table, so a table answers false here
   // rather than being reported as a namespace nobody can open.
   assert.equal(catalog.namespaces.get('sales').namespaces.has('orders'), false)
@@ -1080,7 +1185,7 @@ test('the tables view creates on first write and takes the same per-call options
     new iceberg.IcebergOptions({ dataFormat: 'avro' }),
   )
   assert.deepEqual(replaced.dataFiles().map((file) => file.fileFormat), ['AVRO'])
-  assert.equal(replaced.scan().toTable().numRows, 1)
+  assert.equal(replaced.scan().intoTable().numRows, 1)
   assert.deepEqual(tables.names(), ['orders', 'quotes'])
   assert.equal(tables.size(), 2)
 })

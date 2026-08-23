@@ -69,7 +69,7 @@ rust/                    The core crate
   benchmarks/            Criterion targets, categorized like the source
 python/                  The Python extension
   src/                   PyO3 views over the matching core domains
-  yggdryl/               The Python package, including records and annotations
+  yggdryl/               The Python package, including field classes and annotations
 node/                    The JavaScript extension
   src/                   Node-API views over the matching core domains
   *.js                   The loader and its convenience protocols
@@ -110,22 +110,23 @@ report their byte position and parsing context.
 
 ## Records over a handle
 
-The record surface is exactly three methods, and streaming is the only shape
-they have: `IOBase::read_arrow_batch_reader` returns an `arrow::BatchReader`,
-`IOBase::write_arrow_batch_reader` replaces or merges by a match key, and
-`IOBase::append_arrow_batch_reader` adds after what is there. The encoding comes
-from the handle's media type rather than an argument, a declared schema selects
-and casts in one pass, and a handle addressing a folder reads and writes across
-the partitions beneath it.
+The record surface is one streaming read and three explicit write intents:
+`IOMedia::read_arrow_reader` returns an `arrow::BatchReader`, while
+`IOMedia::overwrite_arrow_reader`, `IOMedia::append_arrow_reader`, and
+`IOMedia::merge_arrow_reader` consume one. The encoding comes from the handle's
+media type rather than an argument, `options.field` selects and casts in one
+pass, and a handle addressing a folder reads and writes across the partitions
+beneath it. The canonical signatures and intent rules live on the
+[I/O page](docs/io.md#canonical-record-write-signatures).
 
 ```rust
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::{Buffer, IOMedia};
 use yggdryl::MimeType;
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 // A resource that does not exist yet holds no batches rather than failing.
 let empty = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-assert_eq!(empty.read_arrow_batch_reader(&empty.record_options()?)?.count(), 0);
+assert_eq!(empty.read_arrow_reader(&empty.record_options()?)?.count(), 0);
 # Ok(())
 # }
 ```
@@ -181,9 +182,9 @@ let value = Value::from_mapping([
     (Value::from("id"), Value::from(42_i64)),
     (Value::from("active"), Value::from(true)),
 ])?;
-let bytes = text::to_vec(&value, Format::Json)?;
+let bytes = text::into_bytes(&value, Format::Json)?;
 
-assert_eq!(text::from_slice(&bytes, Format::Json)?, value);
+assert_eq!(text::from_bytes(&bytes, Format::Json)?, value);
 # Ok(())
 # }
 ```
@@ -206,19 +207,21 @@ explicit byte, depth, node, and document limits. See the
 - `Metadata` is a public immutable shared snapshot. Cache-aware mutation stays on
   `Field`; bulk replacement or overlay validates once and publishes one
   deterministic copy-on-write map.
-- Borrowed `to_arrow*` methods reuse cached projections. Consuming `into_arrow*`
-  methods move uniquely owned state when possible.
+- Consuming `into_arrow*` methods reuse cached projections and move uniquely
+  owned state when possible; clone explicitly when the source must be retained.
 - Arrow imports and projections preserve every Arrow 59.2 schema datatype, nested
   shared Field reference, dictionary ID and order flag, and temporal or interval
   unit category.
 
 Python adds native comparison, hashing, pickle and JSON support, child-sequence
-and metadata-mapping protocols, inferred string and PyArrow conversion, cached
-dataclass schemas through `yggdryl.records`, precise `Annotated` Arrow and Field
-overrides, and byte-first `yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml`
-modules. JavaScript provides the equivalent value protocols plus Buffer-first
-codecs and safe, explicit class registries. The URI family wrappers expose the
-same canonical components and resource-path views in both languages.
+and metadata-mapping protocols, inferred string and PyArrow conversion, and
+cached native fields for ordinary dataclasses through `@scalar` and the static
+`Class.field()` accessor; `field(value, name=None)` remains a pure builder. It
+also provides precise `Annotated` Arrow and Field overrides and byte-first
+`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` modules. JavaScript provides
+the equivalent value protocols plus Buffer-first codecs and safe, explicit
+class registries. The URI family wrappers expose the same canonical components
+and resource-path views in both languages.
 
 ## Build and test
 

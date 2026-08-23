@@ -35,7 +35,7 @@ pub fn placeholder_benchmarks(criterion: &mut Criterion) {
         for (state, loading) in [("off", &off), ("on", &on)] {
             group.bench_function(format!("{label}/{state}"), |bencher| {
                 bencher.iter(|| {
-                    black_box(text::from_str_with(&document, Format::Yaml, loading).unwrap())
+                    black_box(text::from_utf8_with(&document, Format::Yaml, loading).unwrap())
                 });
             });
         }

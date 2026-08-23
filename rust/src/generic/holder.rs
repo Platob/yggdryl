@@ -64,6 +64,14 @@ pub enum Holder {
     /// wrapped this way reads and writes Arrow batches as lines by default.
     /// Boxed for the same reason [`Self::Buffered`] is.
     Text(Box<crate::text::Text<Self>>),
+    /// Any of the others, retained behind its inferred record encoding.
+    ///
+    /// The box breaks the recursive shape: a [`Media`](crate::generic::Media)
+    /// owns a `Holder` as its byte handle, while this variant lets a binding
+    /// keep that media wrapper (and its opened-session metadata cache) without
+    /// changing from the one `Holder` surface.
+    #[cfg(feature = "arrow")]
+    Media(Box<crate::generic::Media>),
 }
 
 impl Holder {
@@ -94,21 +102,16 @@ impl Holder {
 
     /// Hold the local resource a path names.
     ///
-    /// An existing directory becomes [`Self::Folder`]; anything else,
-    /// including a path that does not exist yet, becomes a mapped file. A
-    /// caller that knows which it wants should say so explicitly.
+    /// The returned [`Self::Path`] resolves only when an operation needs to
+    /// know what is there. A caller that already knows the role can select
+    /// [`Self::folder`] or [`Self::file`] explicitly.
     ///
     /// # Errors
     ///
     /// Returns an error only when the path cannot be expressed as a canonical
     /// `file:` URL.
     pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let path = path.as_ref();
-        if path.is_dir() {
-            Self::folder(path)
-        } else {
-            Self::file(path)
-        }
+        Ok(Self::Path(crate::local::Path::new(path)?))
     }
 
     /// Hold this resource behind a page cache.
@@ -124,6 +127,93 @@ impl Holder {
             other => other,
         };
         Self::Buffered(Box::new(Buffered::new(held, options)))
+    }
+
+    /// Retain the record implementation inferred from this handle's media type.
+    ///
+    /// The conversion is lazy: it only adds the stateful wrapper and reads no
+    /// bytes. IPC, Parquet (when enabled), and Avro are held through
+    /// [`Self::Media`]; plain text uses the existing [`Self::Text`] wrapper.
+    /// An already promoted or text-wrapped holder is returned unchanged. A
+    /// page cache remains the outermost wrapper, so promotion followed by
+    /// repeated buffering cannot stack caches.
+    ///
+    /// A directory, JSON document, or any other ordinary byte representation
+    /// is deliberately returned unchanged. This is a best-fitting view, not a
+    /// request that the handle must be tabular, so unsupported media is never
+    /// an error.
+    #[must_use]
+    pub fn into_media(self) -> Self {
+        #[cfg(not(feature = "arrow"))]
+        {
+            self
+        }
+
+        #[cfg(feature = "arrow")]
+        {
+            if self.has_media_surface() {
+                return self;
+            }
+
+            let base = self.media_type().base().clone();
+            let supported = base == crate::MimeType::ARROW_STREAM
+                || base == crate::MimeType::ARROW_FILE
+                || base == crate::MimeType::AVRO
+                || base == crate::MimeType::PLAIN_TEXT
+                || cfg!(feature = "parquet") && base == crate::MimeType::PARQUET;
+            if !supported {
+                return self;
+            }
+
+            // Keep an existing page cache outside the media wrapper. Besides
+            // preserving the cache's one-layer invariant, this lets its
+            // IOMedia delegation reach the retained encoding override.
+            if let Self::Buffered(buffered) = self {
+                let options = *buffered.options();
+                let held = buffered.into_handle().into_media();
+                return Self::Buffered(Box::new(Buffered::new(held, options)));
+            }
+
+            if base == crate::MimeType::PLAIN_TEXT {
+                return Self::Text(Box::new(crate::text::Text::new(self)));
+            }
+            if base == crate::MimeType::ARROW_STREAM || base == crate::MimeType::ARROW_FILE {
+                return Self::Media(Box::new(crate::generic::Media::ipc(self)));
+            }
+            #[cfg(feature = "parquet")]
+            if base == crate::MimeType::PARQUET {
+                return Self::Media(Box::new(crate::generic::Media::parquet(self)));
+            }
+            debug_assert_eq!(base, crate::MimeType::AVRO);
+            Self::Media(Box::new(crate::generic::Media::avro(self)))
+        }
+    }
+
+    /// Materialize this holder and retain any record metadata the inferred
+    /// media implementation can cache.
+    ///
+    /// This inherent method intentionally shadows [`IOBase::open`] for a
+    /// concrete `Holder`. Stateful media wrappers call `open` through their
+    /// generic `H: IOBase`, so their inner holder reaches the trait method and
+    /// cannot recursively promote itself into the same encoding.
+    ///
+    /// # Errors
+    ///
+    /// Returns the selected handle or media implementation's open failure.
+    pub fn open(&mut self) -> Result<()> {
+        let held = std::mem::replace(self, Self::Buffer(Buffer::new()));
+        *self = held.into_media();
+        IOBase::open(self)
+    }
+
+    /// Return whether this holder already retains a media implementation.
+    #[cfg(feature = "arrow")]
+    fn has_media_surface(&self) -> bool {
+        match self {
+            Self::Media(_) | Self::Text(_) => true,
+            Self::Buffered(buffered) => buffered.handle().has_media_surface(),
+            _ => false,
+        }
     }
 
     /// Hold this resource behind the text-line surface.
@@ -185,6 +275,8 @@ impl Holder {
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
+            #[cfg(feature = "arrow")]
+            Self::Media(inner) => inner.as_ref(),
         }
     }
 
@@ -200,13 +292,177 @@ impl Holder {
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),
+            #[cfg(feature = "arrow")]
+            Self::Media(inner) => inner.as_mut(),
         }
+    }
+
+    /// Borrow the held implementation through its media contract.
+    #[cfg(feature = "arrow")]
+    fn as_media(&self) -> &dyn crate::io::IOMedia {
+        match self {
+            Self::Buffer(inner) => inner,
+            Self::Folder(inner) => inner,
+            Self::Path(inner) => inner,
+            Self::File(inner) => inner,
+            Self::ArrowFolder(inner) => inner,
+            Self::ArrowPath(inner) => inner,
+            Self::ArrowFile(inner) => inner,
+            Self::Buffered(inner) => inner.as_ref(),
+            Self::Text(inner) => inner.as_ref(),
+            #[cfg(feature = "arrow")]
+            Self::Media(inner) => inner.as_ref(),
+        }
+    }
+
+    /// Mutably borrow the held implementation through its media contract.
+    #[cfg(feature = "arrow")]
+    fn as_media_mut(&mut self) -> &mut dyn crate::io::IOMedia {
+        match self {
+            Self::Buffer(inner) => inner,
+            Self::Folder(inner) => inner,
+            Self::Path(inner) => inner,
+            Self::File(inner) => inner,
+            Self::ArrowFolder(inner) => inner,
+            Self::ArrowPath(inner) => inner,
+            Self::ArrowFile(inner) => inner,
+            Self::Buffered(inner) => inner.as_mut(),
+            Self::Text(inner) => inner.as_mut(),
+            #[cfg(feature = "arrow")]
+            Self::Media(inner) => inner.as_mut(),
+        }
+    }
+}
+
+impl crate::io::IOMedia for Holder {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self.as_io()
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self.as_io_mut()
+    }
+
+    #[cfg(feature = "arrow")]
+    fn row_size(&self) -> Result<u64> {
+        crate::io::IOMedia::row_size(self.as_media())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn column_size(&self) -> Result<usize> {
+        crate::io::IOMedia::column_size(self.as_media())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+        crate::io::IOMedia::record_options(self.as_media())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+        crate::io::IOMedia::read_parquet_statistics(self.as_media())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_geospatial_statistics(
+        &self,
+        column: &str,
+    ) -> Result<crate::parquet::GeospatialStatistics> {
+        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
+        crate::io::IOMedia::read_arrow_field(self.as_media(), options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_reader(
+        &self,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        crate::io::IOMedia::read_arrow_reader(self.as_media(), options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_prepared_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::overwrite_arrow_record_batch(self.as_media_mut(), batch, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::append_arrow_record_batch(self.as_media_mut(), batch, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_record_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        crate::io::IOMedia::merge_arrow_record_batch(self.as_media_mut(), batch, options)
     }
 }
 
 impl IOBase for Holder {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_io().pread(offset, buffer)
+    }
+
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::io::ByteStream<'_>> {
+        self.as_io().pstream_bytes(position, batch_size)
+    }
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.as_io().read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.as_io().read_range(offset, length)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
@@ -288,13 +544,6 @@ impl IOBase for Holder {
     fn is_tabular(&self) -> bool {
         self.as_io().is_tabular()
     }
-
-    /// Forwarded rather than defaulted, so a [`Self::Text`] holder answers
-    /// with its own extractor instead of the media type's default.
-    #[cfg(feature = "arrow")]
-    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
-        self.as_io().record_options()
-    }
 }
 
 impl From<Buffer> for Holder {
@@ -342,5 +591,12 @@ impl From<Buffered<Holder>> for Holder {
 impl From<crate::text::Text<Holder>> for Holder {
     fn from(value: crate::text::Text<Self>) -> Self {
         Self::Text(Box::new(value))
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl From<crate::generic::Media> for Holder {
+    fn from(value: crate::generic::Media) -> Self {
+        Self::Media(Box::new(value))
     }
 }

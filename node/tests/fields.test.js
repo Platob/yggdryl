@@ -100,6 +100,7 @@ test('Variant assigns deterministic dense Union IDs through one native builder',
 })
 
 test('typed field factories cover every native datatype variant', () => {
+  assert.equal(fields.duration, undefined)
   const item = fields.int8('item', { nullable: false })
   const entries = fields.struct(
     'entries',
@@ -132,7 +133,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['date64', fields.date64('value')],
     ['time32', fields.time32('value', 'ms')],
     ['time64', fields.time64('value', 'ns')],
-    ['duration', fields.duration('value', 'us')],
+    ['duration32', fields.duration32('value', 'ms')],
+    ['duration64', fields.duration64('value', 'us')],
     ['interval', fields.interval('value', 'month_day_nano')],
     ['binary', fields.binary('value')],
     ['fixed_size_binary', fields.fixedSizeBinary('value', 16)],
@@ -163,7 +165,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 44)
+  assert.equal(byId.size, 45)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -274,7 +276,8 @@ test('defaulted temporal and decimal overloads share exact option handling', () 
   for (const [factory, explicit] of [
     [fields.time32, 'millisecond'],
     [fields.time64, 'microsecond'],
-    [fields.duration, 'microsecond'],
+    [fields.duration32, 'millisecond'],
+    [fields.duration64, 'microsecond'],
     [fields.interval, 'month_day_nano'],
   ]) {
     const shorthand = factory('value', options)

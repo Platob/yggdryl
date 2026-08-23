@@ -19,7 +19,7 @@ const ROWS: usize = 10_000;
 pub(crate) fn resolution_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("codec/avro_resolution");
 
-    let writer_json = json::from_str(
+    let writer_json = json::from_utf8(
         r#"{"type":"record","name":"trade","fields":[
             {"name":"id","type":"long"},
             {"name":"symbol","type":"string"},
@@ -77,6 +77,9 @@ pub(crate) fn resolution_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("fingerprint", |bencher| {
         bencher.iter(|| black_box(&writer).fingerprint());
+    });
+    group.bench_function("stable_hash_schema", |bencher| {
+        bencher.iter(|| black_box(&writer).stable_hash());
     });
 
     group.throughput(Throughput::Elements(ROWS as u64));

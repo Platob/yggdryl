@@ -20,15 +20,6 @@ impl DataType {
         serde_json::from_str(input).map_err(Error::from)
     }
 
-    /// Serializes this value to deterministic structural JSON.
-    ///
-    /// The representation is a tagged object such as
-    /// `{"type":"decimal128","precision":38,"scale":6}`. Invalid
-    /// caller-built enum states are rejected before any output is emitted.
-    pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(self).map_err(Error::from)
-    }
-
     /// Consumes this value and serializes it to deterministic structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
@@ -64,7 +55,10 @@ enum DataTypeRef<'a> {
     Time64 {
         unit: TimeUnit,
     },
-    Duration {
+    Duration32 {
+        unit: TimeUnit,
+    },
+    Duration64 {
         unit: TimeUnit,
     },
     Interval {
@@ -188,7 +182,8 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Date64 => Self::Date64 {},
             D::Time32(unit) => Self::Time32 { unit: *unit },
             D::Time64(unit) => Self::Time64 { unit: *unit },
-            D::Duration(unit) => Self::Duration { unit: *unit },
+            D::Duration32(unit) => Self::Duration32 { unit: *unit },
+            D::Duration64(unit) => Self::Duration64 { unit: *unit },
             D::Interval(unit) => Self::Interval { unit: *unit },
             D::Binary => Self::Binary {},
             D::FixedSizeBinary(width) => Self::FixedSizeBinary { width: *width },
@@ -283,7 +278,10 @@ enum DataTypeValue {
     Time64 {
         unit: TimeUnit,
     },
-    Duration {
+    Duration32 {
+        unit: TimeUnit,
+    },
+    Duration64 {
         unit: TimeUnit,
     },
     Interval {
@@ -391,7 +389,8 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Date64 {} => Self::Date64,
             DataTypeValue::Time32 { unit } => Self::time32(unit)?,
             DataTypeValue::Time64 { unit } => Self::time64(unit)?,
-            DataTypeValue::Duration { unit } => Self::Duration(unit),
+            DataTypeValue::Duration32 { unit } => Self::duration32(unit)?,
+            DataTypeValue::Duration64 { unit } => Self::duration64(unit)?,
             DataTypeValue::Interval { unit } => Self::Interval(unit),
             DataTypeValue::Binary {} => Self::Binary,
             DataTypeValue::FixedSizeBinary { width } => Self::fixed_size_binary(width)?,
@@ -459,7 +458,7 @@ impl<'de> Deserialize<'de> for DataType {
 // Every serialized form of a schema goes through here. JSON, YAML, and TOML
 // are three writers over one model rather than three hand-written serializers,
 // which is what makes them agree by construction instead of by three sets of
-// tests. The shape is exactly what `to_json` has always emitted - the same
+// tests. The shape is exactly what `into_json` has always emitted - the same
 // keys, the same order, the same conditional omissions - so re-expressing the
 // JSON path over this conversion changes no byte a caller could observe.
 // ---------------------------------------------------------------------------
@@ -485,20 +484,20 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
-    /// let value = row.to_value();
+    /// let value = row.clone().into_value();
     ///
-    /// assert_eq!(value.get_key_str("type").and_then(Value::as_str), Some("struct"));
+    /// assert_eq!(value.get_key_str("type").and_then(Value::as_utf8), Some("struct"));
     /// assert_eq!(DataType::from_value(value)?, row);
     /// # Ok(())
     /// # }
     /// ```
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub fn to_value(&self) -> Value {
+    pub fn into_value(self) -> Value {
         use DataType as D;
         let mut entries: Vec<(Value, Value)> = Vec::with_capacity(4);
         let mut tag = |name: &str| entries.push((key(TYPE_KEY), Value::String(SmolStr::new(name))));
-        match self {
+        match &self {
             D::Null => tag("null"),
             D::Boolean => tag("boolean"),
             D::Int8 => tag("int8"),
@@ -540,8 +539,12 @@ impl DataType {
                 tag("time64");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Duration(unit) => {
-                tag("duration");
+            D::Duration32(unit) => {
+                tag("duration32");
+                entries.push((key("unit"), unit_value(*unit)));
+            }
+            D::Duration64(unit) => {
+                tag("duration64");
                 entries.push((key("unit"), unit_value(*unit)));
             }
             D::Interval(unit) => {
@@ -554,30 +557,35 @@ impl DataType {
             }
             D::List(field) => {
                 tag("list");
-                entries.push((key("field"), field.to_value()));
+                entries.push((key("field"), field.as_ref().clone().into_value()));
             }
             D::ListView(field) => {
                 tag("list_view");
-                entries.push((key("field"), field.to_value()));
+                entries.push((key("field"), field.as_ref().clone().into_value()));
             }
             D::FixedSizeList(field, length) => {
                 tag("fixed_size_list");
-                entries.push((key("field"), field.to_value()));
+                entries.push((key("field"), field.as_ref().clone().into_value()));
                 entries.push((key("length"), Value::I32(*length)));
             }
             D::LargeList(field) => {
                 tag("large_list");
-                entries.push((key("field"), field.to_value()));
+                entries.push((key("field"), field.as_ref().clone().into_value()));
             }
             D::LargeListView(field) => {
                 tag("large_list_view");
-                entries.push((key("field"), field.to_value()));
+                entries.push((key("field"), field.as_ref().clone().into_value()));
             }
             D::Struct(fields) => {
                 tag("struct");
                 entries.push((
                     key("fields"),
-                    Value::from_sequence(fields.as_fields().iter().map(Field::to_value)),
+                    Value::from_sequence(
+                        fields
+                            .as_fields()
+                            .iter()
+                            .map(|field| field.clone().into_value()),
+                    ),
                 ));
             }
             D::Union(fields, mode) => {
@@ -600,8 +608,8 @@ impl DataType {
             }
             D::Dictionary(dictionary) => {
                 tag("dictionary");
-                entries.push((key("key"), dictionary.key.to_value()));
-                entries.push((key("value"), dictionary.value.to_value()));
+                entries.push((key("key"), dictionary.key.clone().into_value()));
+                entries.push((key("value"), dictionary.value.clone().into_value()));
             }
             D::Decimal32 { precision, scale } => {
                 decimal(&mut entries, "decimal32", *precision, *scale)
@@ -617,13 +625,13 @@ impl DataType {
             }
             D::Map(map) => {
                 tag("map");
-                entries.push((key("entries"), map.entries.to_value()));
+                entries.push((key("entries"), map.entries.clone().into_value()));
                 entries.push((key("keys_sorted"), Value::Bool(map.keys_sorted)));
             }
             D::RunEndEncoded(encoded) => {
                 tag("run_end_encoded");
-                entries.push((key("run_ends"), encoded.run_ends.to_value()));
-                entries.push((key("values"), encoded.values.to_value()));
+                entries.push((key("run_ends"), encoded.run_ends.clone().into_value()));
+                entries.push((key("values"), encoded.values.clone().into_value()));
             }
             D::Variant => tag("variant"),
             D::Geometry(geospatial) => {
@@ -657,7 +665,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let list = DataType::list(DataType::Utf8.nullable_field("item"));
-    /// assert_eq!(DataType::from_value(list.to_value())?, list);
+    /// assert_eq!(DataType::from_value(list.clone().into_value())?, list);
     /// # Ok(())
     /// # }
     /// ```
@@ -670,25 +678,19 @@ impl DataType {
     /// datatype does not validate.
     #[allow(clippy::too_many_lines)]
     pub fn from_value(value: Value) -> Result<Self> {
-        let entries = value.as_mapping().ok_or_else(|| {
-            invalid(
+        if value.as_mapping().is_none() && value.as_record().is_none() {
+            return Err(invalid(
                 "$",
                 "a datatype mapping",
                 format_smolstr!("{}", value.kind()),
-            )
-        })?;
-        let tag = entries
-            .iter()
-            .find(|(name, _)| name.as_str() == Some(TYPE_KEY))
-            .and_then(|(_, held)| held.as_str())
+            ));
+        }
+        let tag = value
+            .get_key_str(TYPE_KEY)
+            .and_then(Value::as_str)
             .ok_or_else(|| invalid("$.type", "a datatype name", "nothing"))?
             .to_owned();
-        let at = |name: &str| -> Option<&Value> {
-            entries
-                .iter()
-                .find(|(held, _)| held.as_str() == Some(name))
-                .map(|(_, held)| held)
-        };
+        let at = |name: &str| -> Option<&Value> { value.get_key_str(name) };
         let unit = |name: &str| -> Result<TimeUnit> {
             let text = at(name)
                 .and_then(Value::as_str)
@@ -755,7 +757,8 @@ impl DataType {
             }
             "time32" => Self::time32(unit("unit")?)?,
             "time64" => Self::time64(unit("unit")?)?,
-            "duration" => Self::Duration(unit("unit")?),
+            "duration32" => Self::duration32(unit("unit")?)?,
+            "duration64" => Self::duration64(unit("unit")?)?,
             "interval" => Self::Interval(unit("unit")?),
             "fixed_size_binary" => Self::fixed_size_binary(width("width")?)?,
             "list" => Self::list(child("field")?),
@@ -873,7 +876,7 @@ impl DataType {
 
 impl From<&DataType> for Value {
     fn from(value: &DataType) -> Self {
-        value.to_value()
+        value.clone().into_value()
     }
 }
 
@@ -889,7 +892,7 @@ impl TryFrom<Value> for DataType {
 fn union_member(type_id: i8, field: &Field) -> Value {
     Value::from_mapping([
         (key("type_id"), Value::I8(type_id)),
-        (key("field"), field.to_value()),
+        (key("field"), field.clone().into_value()),
     ])
     .unwrap_or(Value::Null)
 }
@@ -913,6 +916,7 @@ pub(crate) fn key(name: &str) -> Value {
 /// both, so the two stay interchangeable on the read side.
 fn unit_value(unit: TimeUnit) -> Value {
     Value::String(SmolStr::new(match unit {
+        TimeUnit::Day => "day",
         TimeUnit::Second => "second",
         TimeUnit::Millisecond => "millisecond",
         TimeUnit::Microsecond => "microsecond",
@@ -978,81 +982,40 @@ pub(crate) fn invalid(
 // ---------------------------------------------------------------------------
 // The three formats, all over the one `Value` conversion.
 //
-// `to_json` keeps the Serde path because `DataType` is `Serialize`/`Deserialize`
+// `into_json` keeps the Serde path because `DataType` is `Serialize`/`Deserialize`
 // for the serde ecosystem - it is nested inside other derived structures
 // across the tree, and AGENTS.md requires those traits on a native value. The
 // two are not a second structural model: the parity test in
 // `tests/field/serde.rs` dumps every shape through both routes and compares the
 // bytes, so the Serde impl cannot drift from the `Value` mapping without
-// failing a test. Every *other* format goes through `to_value` alone.
+// failing a test. Every *other* format goes through `into_value` alone.
 // ---------------------------------------------------------------------------
 
 impl DataType {
     /// Serialize this value as deterministic structural JSON, laid out as asked.
     ///
-    /// The companion of [`Self::to_json`]; see
-    /// [`json::to_vec_with_formatting`](crate::json::to_vec_with_formatting)
+    /// The companion of [`Self::into_json`]; see
+    /// [`json::into_bytes_with_formatting`](crate::json::into_bytes_with_formatting)
     /// for what each [`Indent`](crate::text::Indent) means.
     ///
     /// # Errors
     ///
     /// Returns the encoder's failure.
-    pub fn to_json_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::json::to_vec_with_formatting(
-            &self.to_value(),
+    pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        text_of(crate::json::into_bytes_with_formatting(
+            &self.into_value(),
             formatting,
         )?)
     }
 
-    /// Consume and serialize as structural JSON, laid out as asked.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        self.to_json_with_formatting(formatting)
-    }
-
-    /// Deserialize and validate from structural YAML.
-    ///
-    /// The same structure [`Self::from_json`] reads, in YAML's syntax - so a
-    /// configuration document can carry a declared schema inline beside the
-    /// rest of its settings, with no JSON-string-inside-YAML awkwardness.
+    /// Deserialize and validate the same structure as [`Self::from_json`].
     ///
     /// # Errors
     ///
     /// Returns the parser's failure, or the structural refusal naming the path
     /// and the expectation.
     pub fn from_yaml(value: &str) -> Result<Self> {
-        Self::from_value(crate::yaml::from_str(value)?)
-    }
-
-    /// Serialize as YAML: block style, one key per line, one indent per level.
-    ///
-    /// Key order is the same as the JSON emit, so the two are comparable side
-    /// by side, and an unset optional attribute is omitted rather than emitted
-    /// as null.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_yaml(&self) -> Result<String> {
-        self.to_yaml_with_formatting(crate::text::Formatting::default())
-    }
-
-    /// Serialize as YAML, laid out as asked.
-    ///
-    /// Block style at the requested width; flow style only if a caller
-    /// explicitly asks for [`Indent::None`](crate::text::Indent::None).
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_yaml_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::yaml::to_vec_with_formatting(
-            &self.to_value(),
-            formatting,
-        )?)
+        Self::from_value(crate::yaml::from_utf8(value)?)
     }
 
     /// Consume and serialize as YAML.
@@ -1061,7 +1024,7 @@ impl DataType {
     ///
     /// Returns the encoder's failure.
     pub fn into_yaml(self) -> Result<String> {
-        self.to_yaml()
+        self.into_yaml_with_formatting(crate::text::Formatting::default())
     }
 
     /// Consume and serialize as YAML, laid out as asked.
@@ -1070,7 +1033,10 @@ impl DataType {
     ///
     /// Returns the encoder's failure.
     pub fn into_yaml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        self.to_yaml_with_formatting(formatting)
+        text_of(crate::yaml::into_bytes_with_formatting(
+            &self.into_value(),
+            formatting,
+        )?)
     }
 
     /// Deserialize and validate from structural TOML.
@@ -1080,32 +1046,7 @@ impl DataType {
     /// Returns the parser's failure, or the structural refusal naming the path
     /// and the expectation.
     pub fn from_toml(value: &str) -> Result<Self> {
-        Self::from_value(crate::toml::from_str(value)?)
-    }
-
-    /// Serialize as TOML.
-    ///
-    /// TOML has no null, and this model never needs one: an unset optional
-    /// attribute is *omitted* rather than faked, so nothing is lost on the way
-    /// out and `from_toml` reads the same value back.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_toml(&self) -> Result<String> {
-        self.to_toml_with_formatting(crate::text::Formatting::default())
-    }
-
-    /// Serialize as TOML, laid out as asked.
-    ///
-    /// # Errors
-    ///
-    /// Returns the encoder's failure.
-    pub fn to_toml_with_formatting(&self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::toml::to_vec_with_formatting(
-            &self.to_value(),
-            formatting,
-        )?)
+        Self::from_value(crate::toml::from_utf8(value)?)
     }
 
     /// Consume and serialize as TOML.
@@ -1114,7 +1055,7 @@ impl DataType {
     ///
     /// Returns the encoder's failure.
     pub fn into_toml(self) -> Result<String> {
-        self.to_toml()
+        self.into_toml_with_formatting(crate::text::Formatting::default())
     }
 
     /// Consume and serialize as TOML, laid out as asked.
@@ -1123,7 +1064,10 @@ impl DataType {
     ///
     /// Returns the encoder's failure.
     pub fn into_toml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        self.to_toml_with_formatting(formatting)
+        text_of(crate::toml::into_bytes_with_formatting(
+            &self.into_value(),
+            formatting,
+        )?)
     }
 }
 

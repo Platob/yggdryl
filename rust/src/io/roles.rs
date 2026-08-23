@@ -336,37 +336,30 @@ pub trait IOPath: IOBase {
         }
     }
 
-    /// The media type of the location: its container type, or its name's.
+    /// The media type of the location, including an explicit declaration.
     fn path_media_type(&self) -> MediaType {
-        if self.path_url().is_glob() || self.is_folder() {
-            return DIRECTORY_MEDIA_TYPE.clone();
-        }
-        self.path_url().media_type()
+        self.media_type().clone()
     }
 
     /// Whether the location is one whole byte value.
     ///
-    /// A location's *handle* reports `inode/file` or `inode/directory` as its
-    /// media type - a borrowed answer cannot be derived per call - so the shape
-    /// questions read the location's name instead, which is what actually says
-    /// what would be there. The role settles container-or-not once, through
-    /// [`Self::path_kind`], and reads the name only after: one look at the file
-    /// system, no resolution, and nothing opened.
+    /// The handle owns filename inference and any explicit media declaration,
+    /// so the shape is derived from that one canonical answer. A directory is
+    /// neither an atomic byte value nor a tabular value of its own.
     fn path_is_atomic(&self) -> bool {
-        if self.path_kind().is_container() {
-            return false;
-        }
-        !self.path_url().media_type().is_tabular()
+        let media_type = self.media_type();
+        media_type.base() != &MimeType::DIRECTORY && !media_type.is_tabular()
     }
 
     /// Whether the location holds rows and columns.
     ///
-    /// The same one look as [`Self::path_is_atomic`]: a container reads as the
-    /// table beneath it, and anything else is answered by its name.
+    /// A container reads as the table beneath it; a leaf is answered by the
+    /// handle's inferred or explicitly declared representation.
     fn path_is_tabular(&self) -> bool {
-        if self.path_kind().is_container() {
+        let media_type = self.media_type();
+        if media_type.base() == &MimeType::DIRECTORY {
             return crate::io::container_is_tabular(self);
         }
-        self.path_url().media_type().is_tabular()
+        media_type.is_tabular()
     }
 }

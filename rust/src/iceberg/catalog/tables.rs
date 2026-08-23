@@ -7,7 +7,7 @@ use super::super::{
 };
 use super::catalogs::{Catalog, level_names};
 use super::{Names, Occupant, classify, invalid, resolve};
-use crate::arrow::{BatchReader, record_schema_from_arrow};
+use crate::arrow::{BatchReader, field_from_arrow_schema};
 use crate::generic::Holder;
 use crate::io::IOBase;
 use crate::{Field, Result};
@@ -151,7 +151,7 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
             Occupant::Table(table) => Ok(*table),
             Occupant::Nothing(folder) => Self::create_at(
                 folder,
-                record_schema_from_arrow(ROOT_NAME, &batches.schema())?,
+                field_from_arrow_schema(ROOT_NAME, &batches.schema())?,
             ),
             Occupant::Namespace(_) => Err(invalid(format_smolstr!(
                 "expected a table at {dotted:?}, got a namespace"

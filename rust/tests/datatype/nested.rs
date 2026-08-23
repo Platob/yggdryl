@@ -19,9 +19,12 @@ fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
         variant.to_string(),
         r#"union(dense,0=field("number",int64,nullable=false,metadata={}),1=field("text",utf8,nullable=true,metadata={"source":"variant"}))"#
     );
-    assert_eq!(variant.to_json().unwrap(), union.to_json().unwrap());
     assert_eq!(
-        DataType::from_arrow(&variant.to_arrow().unwrap()).unwrap(),
+        variant.clone().into_json().unwrap(),
+        union.into_json().unwrap()
+    );
+    assert_eq!(
+        DataType::from_arrow(&variant.clone().into_arrow().unwrap()).unwrap(),
         variant
     );
 }
@@ -74,11 +77,11 @@ fn deeply_nested_variants_round_trip_without_a_second_logical_type() {
     value.validate().unwrap();
     assert_eq!(DataType::from_str(&value.to_string()).unwrap(), value);
     assert_eq!(
-        DataType::from_json(&value.to_json().unwrap()).unwrap(),
+        DataType::from_json(&value.clone().into_json().unwrap()).unwrap(),
         value
     );
     assert_eq!(
-        DataType::from_arrow(&value.to_arrow().unwrap()).unwrap(),
+        DataType::from_arrow(&value.clone().into_arrow().unwrap()).unwrap(),
         value
     );
 }

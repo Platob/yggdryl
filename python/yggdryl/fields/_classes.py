@@ -1,4 +1,4 @@
-"""Dataclass-compatible records backed by cached Yggdryl schema values."""
+"""Dataclass classes projected onto cached native :class:`yggdryl.Field` values."""
 
 from __future__ import annotations
 
@@ -8,12 +8,15 @@ import ast
 import dataclasses as dc
 import datetime as dt
 import enum
+import importlib
 import inspect
+import itertools
 import operator
 import os
 import pathlib
 import re
 import sys
+import textwrap
 import threading
 import types
 import typing
@@ -22,12 +25,8 @@ import weakref
 from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, TypeVar, get_args, get_origin
 
-from .._codec import (
-    CodecFormat as _CodecFormat,
-    Destination as CodecDestination,
-    Source as CodecSource,
-)
-from .._native import DataType, Field as SchemaField
+from .._native import DataType, Field, Field as NativeField
+from .nested import StructField
 
 _typing_extensions: types.ModuleType | None
 try:
@@ -36,6 +35,14 @@ except ImportError:  # pragma: no cover - dependency is installed on Python 3.10
     _typing_extensions = None
 else:
     _typing_extensions = _typing_extensions_module
+
+_annotationlib: types.ModuleType | None
+try:
+    _annotationlib_module = importlib.import_module("annotationlib")
+except ImportError:  # pragma: no cover - Python before 3.14
+    _annotationlib = None
+else:
+    _annotationlib = _annotationlib_module
 
 if sys.version_info >= (3, 11):
     from typing import dataclass_transform as _dataclass_transform
@@ -46,6 +53,7 @@ _T = TypeVar("_T")
 _ErrorPolicy = Literal["raise", "default"]
 _NONE_TYPE = type(None)
 _MISSING_KEY = object()
+_MISSING_FIELD_DESCRIPTOR = object()
 _UNION_ORIGINS = (typing.Union, types.UnionType)
 _SELF_HINTS = tuple(
     value
@@ -75,7 +83,7 @@ _TRUE_STRINGS = frozenset(("true", "1", "yes", "on"))
 _FALSE_STRINGS = frozenset(("false", "0", "no", "off"))
 _INTEGER = re.compile(r"[+-]?[0-9]+\Z")
 _SCHEMA_LOCK = threading.RLock()
-_SCOPE_TOKEN_NAME = "__yggdryl_record_invocation_token__"
+_SCOPE_TOKEN_NAME = "__yggdryl_field_invocation_token__"
 
 
 class _ScopeToken:
@@ -106,13 +114,10 @@ class _PhysicalUnionValue:
 
 class _Schema(typing.NamedTuple):
     owner_id: int
-    root: SchemaField
-    fields: tuple[SchemaField, ...]
-    arrow_field: Any
-    arrow_schema: Any
-    arrow_transport_schema: Any
+    root: NativeField
+    fields: tuple[NativeField, ...]
     value_fields: tuple[dc.Field[Any], ...]
-    field_lookup: Mapping[str, SchemaField]
+    field_lookup: Mapping[str, NativeField]
     hints: Mapping[str, Any]
     nested_hints: dict[type[Any], Mapping[str, Any]]
     constructor_fields: tuple[dc.Field[Any], ...]
@@ -122,9 +127,29 @@ class _Schema(typing.NamedTuple):
 _PENDING_SCHEMAS: weakref.WeakKeyDictionary[type[Any], object] = (
     weakref.WeakKeyDictionary()
 )
+_BUILDING_SCHEMAS: set[int] = set()
 _MODULE_SCOPE_TOKENS: weakref.WeakKeyDictionary[
     types.ModuleType, _ScopeToken
 ] = weakref.WeakKeyDictionary()
+
+
+def _unevaluated_annotations(value: type[Any]) -> dict[str, Any]:
+    """Read annotations without executing deferred forward references."""
+
+    annotations = value.__dict__.get("__annotations__")
+    if isinstance(annotations, dict):
+        return dict(annotations)
+    if _annotationlib is None:
+        return {}
+    try:
+        return dict(
+            _annotationlib.get_annotations(
+                value,
+                format=_annotationlib.Format.STRING,
+            )
+        )
+    except (TypeError, ValueError):
+        return {}
 
 
 def _capture_context() -> tuple[dict[str, Any], _ScopeToken]:
@@ -238,9 +263,7 @@ def _annotation_dependencies(annotation: Any) -> tuple[Any, ...]:
         dependencies.append(getattr(alias, "__value__", Any))
     if isinstance(annotation, type):
         for base in reversed(annotation.__mro__):
-            dependencies.extend(
-                getattr(base, "__annotations__", {}).values()
-            )
+            dependencies.extend(_unevaluated_annotations(base).values())
     return tuple(dependencies)
 
 
@@ -252,7 +275,7 @@ def _relevant_namespace(
     pending = [
         annotation
         for base in reversed(cls.__mro__)
-        for annotation in getattr(base, "__annotations__", {}).values()
+        for annotation in _unevaluated_annotations(base).values()
     ]
     relevant: dict[str, Any] = {}
     seen_objects: set[int] = set()
@@ -307,8 +330,7 @@ def _resolved_hints(cls: type[Any], localns: Mapping[str, Any] | None = None) ->
         raise TypeError(
             f"cannot resolve annotations for {cls.__module__}.{cls.__qualname__}: {error}"
         ) from error
-    bindings = _inherited_bindings(cls, {})
-    return {name: _bind_hint(hint, bindings) for name, hint in resolved.items()}
+    return _bind_declared_hints(cls, resolved, {})
 
 
 def _bind_hint(hint: Any, bindings: Mapping[object, object]) -> Any:
@@ -325,6 +347,36 @@ def _inherited_bindings(
     from ._hints import _inherited_typevar_bindings
 
     return _inherited_typevar_bindings(cls, initial)
+
+
+def _binding_contexts(
+    cls: type[Any], initial: Mapping[object, object]
+) -> dict[type[Any], dict[object, object]]:
+    from ._hints import _typevar_bindings_by_class
+
+    return _typevar_bindings_by_class(cls, initial)
+
+
+def _annotation_owner(cls: type[Any], name: str) -> type[Any]:
+    for candidate in cls.__mro__:
+        if name in _unevaluated_annotations(candidate):
+            return candidate
+    return cls
+
+
+def _bind_declared_hints(
+    cls: type[Any],
+    hints: Mapping[str, Any],
+    initial: Mapping[object, object],
+) -> dict[str, Any]:
+    contexts = _binding_contexts(cls, initial)
+    return {
+        name: _bind_hint(
+            hint,
+            contexts.get(_annotation_owner(cls, name), initial),
+        )
+        for name, hint in hints.items()
+    }
 
 
 def _classes_in_hint(hint: Any) -> tuple[type[Any], ...]:
@@ -393,6 +445,155 @@ def _field_metadata(field: dc.Field[Any]) -> dict[str, str] | None:
     return metadata or None
 
 
+def _clone_native_field(field: NativeField, name: str | None = None) -> NativeField:
+    """Clone every native Field property without projecting through Arrow."""
+
+    cloned = NativeField(
+        field.name if name is None else name,
+        field.data_type,
+        nullable=field.nullable,
+        metadata=dict(field.metadata.items()) or None,
+    )
+    if field.dictionary_id is not None and field.dictionary_is_ordered is not None:
+        cloned.set_dictionary_options(
+            field.dictionary_id,
+            field.dictionary_is_ordered,
+        )
+    return cloned
+
+
+def _same_hint(left: object, right: object) -> bool:
+    if left is right:
+        return True
+    try:
+        return bool(left == right)
+    except (TypeError, ValueError):
+        return False
+
+
+def _inherited_native_field(
+    cls: type[Any],
+    name: str,
+    hint: object,
+    direct_names: cabc.Set[str] | None = None,
+) -> NativeField | None:
+    """Reuse an exact, unmodified inherited child from its native base root."""
+
+    if direct_names is None:
+        direct_names = _unevaluated_annotations(cls).keys()
+    if name in direct_names:
+        return None
+    for base in cls.__mro__[1:]:
+        if base is object or not dc.is_dataclass(base):
+            continue
+        if name not in {field.name for field in dc.fields(base)}:
+            continue
+        schema = _ensure_schema(base)
+        inherited = schema.field_lookup.get(name)
+        if inherited is None:
+            return None
+        # A generic specialization changes the resolved annotation and must
+        # be inferred under the subclass's TypeVar bindings. An unchanged
+        # hint means the base's physical Field is strictly more authoritative
+        # than Python's coarse int/str/container annotation.
+        if not _same_hint(schema.hints.get(name), hint):
+            return None
+        return _clone_native_field(inherited)
+    return None
+
+
+_DOC_SECTION = re.compile(
+    r"^[ \t]*(?:Attributes|Args|Arguments|Parameters)[ \t]*:[ \t]*$"
+)
+_DOC_ENTRY = re.compile(
+    r"^[ \t]+(?P<name>\*{0,2}\w+)[ \t]*(?:\([^)]*\))?[ \t]*:[ \t]*(?P<text>.*)$"
+)
+_DOC_SPHINX = re.compile(
+    r"^[ \t]*:(?:param|parameter|arg|ivar|var|attribute)[ \t]+"
+    r"(?:[\w\[\], .]+[ \t]+)?(?P<name>\w+)[ \t]*:[ \t]*(?P<text>.*)$"
+)
+
+
+def _fold_doc(text: str) -> str:
+    return " ".join(inspect.cleandoc(text).split())
+
+
+def _docstring_summary(cls: type[Any]) -> str:
+    doc = cls.__dict__.get("__doc__")
+    if not isinstance(doc, str) or not doc.strip():
+        return ""
+    paragraph: list[str] = []
+    for line in doc.strip().splitlines():
+        if not line.strip():
+            break
+        paragraph.append(line.strip())
+    return " ".join(paragraph)
+
+
+def _parse_member_docs(doc: str) -> dict[str, str]:
+    described: dict[str, str] = {}
+    lines = doc.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        sphinx = _DOC_SPHINX.match(line)
+        if sphinx:
+            described[sphinx["name"]] = sphinx["text"].strip()
+            continue
+        if not _DOC_SECTION.match(line):
+            continue
+        current: str | None = None
+        while index < len(lines):
+            candidate = lines[index]
+            if candidate.strip() and not candidate[:1].isspace():
+                break
+            entry = _DOC_ENTRY.match(candidate)
+            if entry:
+                current = entry["name"].lstrip("*")
+                described[current] = entry["text"].strip()
+            elif current and candidate.strip():
+                described[current] = (
+                    f"{described[current]} {candidate.strip()}".strip()
+                )
+            elif not candidate.strip():
+                current = None
+            index += 1
+    return {name: _fold_doc(text) for name, text in described.items() if text}
+
+
+def _attribute_docs(cls: type[Any]) -> dict[str, str]:
+    if not _unevaluated_annotations(cls):
+        return {}
+    try:
+        parsed = ast.parse(textwrap.dedent(inspect.getsource(cls))).body[0]
+    except (OSError, TypeError, SyntaxError, IndentationError, IndexError):
+        return {}
+    if not isinstance(parsed, ast.ClassDef) or parsed.name != cls.__name__:
+        return {}
+    described: dict[str, str] = {}
+    for member, following in itertools.pairwise(parsed.body):
+        if not isinstance(member, ast.AnnAssign) or not isinstance(member.target, ast.Name):
+            continue
+        if (
+            isinstance(following, ast.Expr)
+            and isinstance(following.value, ast.Constant)
+            and isinstance(following.value.value, str)
+        ):
+            described[member.target.id] = _fold_doc(following.value.value)
+    return described
+
+
+def _member_docs(cls: type[Any]) -> dict[str, str]:
+    described: dict[str, str] = {}
+    for base in reversed(cls.__mro__):
+        doc = base.__dict__.get("__doc__")
+        if isinstance(doc, str):
+            described.update(_parse_member_docs(doc))
+        described.update(_attribute_docs(base))
+    return described
+
+
 def _value_fields(cls: type[Any]) -> tuple[dc.Field[Any], ...]:
     cached = getattr(cls, "__yggdryl_value_fields__", None)
     if (
@@ -423,16 +624,12 @@ def _build_schema(
     resolved_cache: Mapping[type[Any], Mapping[str, Any]] | None = None,
 ) -> _Schema:
     if not dc.is_dataclass(cls):
-        raise TypeError(f"{cls!r} is not a dataclass or Yggdryl record")
+        raise TypeError(f"{cls!r} is not a dataclass")
 
     if resolved_hints is None:
         hints = _resolved_hints(cls, localns)
     else:
-        bindings = _inherited_bindings(cls, {})
-        hints = {
-            name: _bind_hint(hint, bindings)
-            for name, hint in resolved_hints.items()
-        }
+        hints = _bind_declared_hints(cls, resolved_hints, {})
     from ._hints import _field_from_pyhint, _reject_non_materialized_options
 
     value_fields = _value_fields(cls)
@@ -448,56 +645,65 @@ def _build_schema(
         hints if resolved_hints is not None else None,
         resolved_cache,
     )
-    children = tuple(
-        _field_from_pyhint(
+    described = _member_docs(cls)
+    direct_names = _unevaluated_annotations(cls).keys()
+    built_children: list[NativeField] = []
+    for field in value_fields:
+        hint = hints.get(field.name, field.type)
+        child = _inherited_native_field(
+            cls,
             field.name,
-            hints.get(field.name, field.type),
-            metadata=_field_metadata(field),
-            localns=inference_localns,
-            resolved_cache=nested_hints,
+            hint,
+            direct_names,
         )
-        for field in value_fields
-    )
+        if child is None:
+            child = _field_from_pyhint(
+                field.name,
+                hint,
+                metadata=_field_metadata(field),
+                localns=inference_localns,
+                resolved_cache=nested_hints,
+            )
+        description = described.get(field.name)
+        if description and "description" not in child.metadata:
+            child.metadata["description"] = description
+        built_children.append(child)
+    children = tuple(built_children)
 
-    # Assemble the Struct directly from native children. Arrow projections are
-    # derivative immutable caches and are built exactly once per class.
-    import pyarrow as pa  # type: ignore[import-untyped]
-
+    # Assemble the Struct directly from native children. Arrow remains an
+    # explicit projection of this Field and is not constructed as part of
+    # ordinary annotation inference.
     data_type = DataType.from_fields(children)
-    kind = "record" if cls.__dict__.get("__yggdryl_record__", False) else "dataclass"
-    root = SchemaField(
+    kind = (
+        "field"
+        if cls.__dict__.get("__yggdryl_field_class__", False)
+        else "dataclass"
+    )
+    root_metadata = {
+        "python.module": cls.__module__,
+        "python.class": cls.__name__,
+        "python.qualname": cls.__qualname__,
+        "python.kind": kind,
+    }
+    description = _docstring_summary(cls)
+    if description:
+        root_metadata["description"] = description
+    root = NativeField(
         cls.__name__,
         data_type,
         nullable=False,
-        metadata={
-            "python.module": cls.__module__,
-            "python.class": cls.__name__,
-            "python.qualname": cls.__qualname__,
-            "python.kind": kind,
-        },
+        metadata=root_metadata,
     )
     # Cached schema projections are read-only values. Freezing prevents a
     # child singleton from diverging from the already assembled root Struct.
     for child in children:
         child._freeze()
     root._freeze()
-    arrow_field = root.to_arrow()
-    # The root projection already contains the exact child Fields. Reusing its
-    # StructType avoids N additional native-to-C-Schema projections per class.
-    arrow_schema = pa.schema(arrow_field.type, metadata=arrow_field.metadata)
-    transport = root._record_root_to_arrow_transport_schema()
-    # PyArrow's generic Schema C bridge can omit datatype-only flags such as
-    # Map.keys_sorted. Keep the exact already-repaired public fields and take
-    # only the core Arrow module's centrally generated transport metadata.
-    arrow_transport_schema = arrow_schema.with_metadata(transport.metadata)
     constructor_fields = _constructor_fields(cls, value_fields)
     return _Schema(
         id(cls),
         root,
         children,
-        arrow_field,
-        arrow_schema,
-        arrow_transport_schema,
         value_fields,
         types.MappingProxyType({field.name: field for field in children}),
         types.MappingProxyType(hints),
@@ -513,36 +719,82 @@ def _ensure_schema(
     resolved_hints: Mapping[str, Any] | None = None,
     resolved_cache: Mapping[type[Any], Mapping[str, Any]] | None = None,
 ) -> _Schema:
-    direct = getattr(cls, "__yggdryl_schema__", None)
+    direct = getattr(cls, "__yggdryl_class_schema__", None)
     if isinstance(direct, _Schema) and direct.owner_id == id(cls):
         return direct
     with _SCHEMA_LOCK:
-        direct = getattr(cls, "__yggdryl_schema__", None)
+        direct = getattr(cls, "__yggdryl_class_schema__", None)
         if isinstance(direct, _Schema) and direct.owner_id == id(cls):
             return direct
-        namespace = localns if localns is not None else _pending_namespace(cls)
-        schema = _build_schema(cls, namespace, resolved_hints, resolved_cache)
-        _PENDING_SCHEMAS.pop(cls, None)
-        pending = _pending_namespace(cls)
-        if pending is not None:
-            delattr(cls, "__yggdryl_pending_namespace__")
-        setattr(cls, "__yggdryl_schema__", schema)
-        # These names intentionally expose the exact cached native singletons.
-        setattr(cls, "__yggdryl_field__", schema.root)
-        setattr(cls, "__yggdryl_fields__", schema.fields)
-        return schema
+        marker = id(cls)
+        if marker in _BUILDING_SCHEMAS:
+            raise TypeError(
+                "recursive Python annotation for "
+                f"{cls.__module__}.{cls.__qualname__}"
+            )
+        _BUILDING_SCHEMAS.add(marker)
+        try:
+            namespace = localns if localns is not None else _pending_namespace(cls)
+            schema = _build_schema(cls, namespace, resolved_hints, resolved_cache)
+            _PENDING_SCHEMAS.pop(cls, None)
+            pending = _pending_namespace(cls)
+            if pending is not None:
+                delattr(cls, "__yggdryl_pending_namespace__")
+            setattr(cls, "__yggdryl_class_schema__", schema)
+            return schema
+        finally:
+            _BUILDING_SCHEMAS.remove(marker)
+
+
+def _decorated_field_owner(cls: type[Any]) -> type[Any] | None:
+    """Return the nearest class that directly owns the field decoration."""
+
+    for candidate in cls.__mro__:
+        if candidate.__dict__.get("__yggdryl_field_class__", False):
+            return candidate
+    return None
+
+
+def _field_accessor(owner: type[Any]) -> Callable[[], StructField]:
+    """Build the cached static accessor owned by one decorated dataclass."""
+
+    def field() -> StructField:
+        return typing.cast(StructField, _ensure_schema(owner).root)
+
+    field.__name__ = "field"
+    field.__qualname__ = f"{owner.__qualname__}.field"
+    setattr(field, "__yggdryl_field_accessor__", True)
+    return field
+
+
+def _install_field_staticmethod(cls: type[Any]) -> None:
+    """Install the owner-capturing schema accessor on a decorated dataclass."""
+
+    setattr(cls, "field", staticmethod(_field_accessor(cls)))
+
+
+def _resolved_field_descriptor(cls: type[Any]) -> object:
+    """Return the first ``field`` descriptor in one class's MRO."""
+
+    for candidate in cls.__mro__:
+        if "field" in candidate.__dict__:
+            return typing.cast(object, candidate.__dict__["field"])
+    return _MISSING_FIELD_DESCRIPTOR
+
+
+def _is_installed_field_descriptor(value: object) -> bool:
+    """Report whether ``value`` is a static accessor installed by ``@scalar``."""
+
+    return isinstance(value, staticmethod) and bool(
+        getattr(value.__func__, "__yggdryl_field_accessor__", False)
+    )
 
 
 def _adopt_materialized_schema(
     cls: type[Any],
-    root: SchemaField,
-    fields: tuple[SchemaField, ...],
+    root: NativeField,
+    fields: tuple[NativeField, ...],
     hints: Mapping[str, Any],
-    arrow_field: Any,
-    arrow_schema: Any,
-    *,
-    transport_root: SchemaField | None = None,
-    transport_metadata: Mapping[bytes, bytes] | None = None,
 ) -> _Schema:
     """Publish an exact foreign schema without re-inferring its physical types."""
 
@@ -551,7 +803,7 @@ def _adopt_materialized_schema(
     native_names = tuple(field.name for field in fields)
     if value_names != native_names:
         raise TypeError(
-            "materialized record fields do not match dataclass fields: "
+            "materialized field children do not match dataclass fields: "
             f"{native_names!r} != {value_names!r}"
         )
 
@@ -566,21 +818,12 @@ def _adopt_materialized_schema(
 
     for field in fields:
         field._freeze()
-    transport = (transport_root or root)._record_root_to_arrow_transport_schema()
-    combined_transport_metadata = dict(transport.metadata or ())
-    combined_transport_metadata.update(transport_metadata or ())
-    arrow_transport_schema = arrow_schema.with_metadata(
-        combined_transport_metadata or None
-    )
     root._freeze()
     constructor_fields = _constructor_fields(cls, value_fields)
     schema = _Schema(
         id(cls),
         root,
         fields,
-        arrow_field,
-        arrow_schema,
-        arrow_transport_schema,
         value_fields,
         types.MappingProxyType({field.name: field for field in fields}),
         types.MappingProxyType(dict(hints)),
@@ -588,336 +831,95 @@ def _adopt_materialized_schema(
         constructor_fields,
         frozenset(field.name for field in constructor_fields),
     )
-    setattr(cls, "__yggdryl_schema__", schema)
-    setattr(cls, "__yggdryl_field__", root)
-    setattr(cls, "__yggdryl_fields__", fields)
+    setattr(cls, "__yggdryl_class_schema__", schema)
+    setattr(cls, "__yggdryl_field_class__", True)
+    _install_field_staticmethod(cls)
     return schema
 
 
-def _record_type(value: object) -> type[Any]:
+def _dataclass_type(value: object) -> type[Any]:
     cls = value if isinstance(value, type) else type(value)
     if not dc.is_dataclass(cls):
-        raise TypeError(f"{cls!r} is not a dataclass or Yggdryl record")
+        raise TypeError(f"{cls!r} is not a dataclass")
     return cls
 
 
-def schema_field(value: object) -> SchemaField:
-    """Return the cached native Struct field for a dataclass or record."""
-
-    return _ensure_schema(_record_type(value)).root
+def _renamed_native_field(field: NativeField, name: str) -> NativeField:
+    return _clone_native_field(field, name)
 
 
-def schema_fields(value: object) -> tuple[SchemaField, ...]:
-    """Return the cached native child fields for a dataclass or record."""
+def field(value: object, name: str | None = None) -> Field:
+    """Return the native field named by a Field, Arrow shape, or dataclass."""
 
-    return _ensure_schema(_record_type(value)).fields
+    if name is not None and not isinstance(name, str):
+        raise TypeError("name must be str or None")
+    if isinstance(value, NativeField):
+        if name is None or name == value.name:
+            return value
+        return _renamed_native_field(value, name)
+    cls = value if isinstance(value, type) else type(value)
+    if dc.is_dataclass(cls):
+        owner = _decorated_field_owner(cls)
+        root = _ensure_schema(owner or cls).root
+        if name is None or name == root.name:
+            return root
+        renamed = _renamed_native_field(root, name)
+        renamed._freeze()
+        return renamed
 
+    import pyarrow as pa  # type: ignore[import-untyped]
 
-class Record:
-    """Optional typed base for records that want statically visible methods.
-
-    The base has no instance state and is not itself a dataclass. Plain classes
-    can continue to use :func:`record` without inheriting it.
-    """
-
-    __slots__ = ()
-
-    def to_dict(self, *, safe: bool = True, drop_nulls: bool = False) -> dict[str, Any]:
-        return to_dict(self, safe=safe, drop_nulls=drop_nulls)
-
-    @classmethod
-    def from_dict(
-        cls: type[_T],
-        values: Mapping[str, Any],
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-    ) -> _T:
-        return from_dict(cls, values, safe=safe, errors=errors)
-
-    @classmethod
-    def from_dicts(
-        cls: type[_T],
-        values: cabc.Iterable[Mapping[str, Any]],
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-    ) -> typing.Iterator[_T]:
-        return _method_from_dicts(cls, values, safe=safe, errors=errors)
-
-    @classmethod
-    def from_arrow_field(
-        cls,
-        value: object,
-        *,
-        class_name: str | None = None,
-        module: str | None = None,
-    ) -> type[Record]:
-        return _method_record_from_arrow_field(
-            cls,
-            value,
-            class_name=class_name,
-            module=module,
+    if isinstance(value, pa.Schema):
+        return NativeField.from_arrow_schema(
+            value, "row" if name is None else name
         )
-
-    @classmethod
-    def from_arrow_schema(
-        cls,
-        value: object,
-        *,
-        class_name: str | None = None,
-        module: str | None = None,
-    ) -> type[Record]:
-        return _method_record_from_arrow_schema(
-            cls,
-            value,
-            class_name=class_name,
-            module=module,
+    if isinstance(value, pa.Field):
+        imported = NativeField.from_arrow(value)
+        if name is None or name == imported.name:
+            return imported
+        return _renamed_native_field(imported, name)
+    if isinstance(value, pa.DataType):
+        # Dictionary ordering and nested datatype flags live on an Arrow
+        # Field at the native boundary. A synthetic field retains them while
+        # still giving a bare datatype the caller-selected name.
+        return NativeField.from_arrow(
+            pa.field("value" if name is None else name, value)
         )
+    raise TypeError(
+        f"{value!r} does not name a field: expected Field, Arrow shape, or dataclass"
+    )
 
-    @classmethod
-    def from_arrow_record_batch(
-        cls: type[_T],
-        batch: object,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        validate_schema: bool = True,
-    ) -> typing.Iterator[_T]:
-        return _method_from_arrow_record_batch(
-            cls,
-            batch,
-            safe=safe,
-            errors=errors,
-            validate_schema=validate_schema,
-        )
 
-    @classmethod
-    def from_arrow_record_batch_reader(
-        cls: type[_T],
-        reader: object,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        validate_schema: bool = True,
-    ) -> typing.Iterator[_T]:
-        return _method_from_arrow_record_batch_reader(
-            cls,
-            reader,
-            safe=safe,
-            errors=errors,
-            validate_schema=validate_schema,
-        )
+def _dataclass_from_field(
+    value: NativeField,
+    *,
+    name: str | None = None,
+    module: str | None = None,
+) -> type[Any]:
+    from ._arrow import dataclass_from_field
 
-    @classmethod
-    def from_arrow_table(
-        cls: type[_T],
-        table: object,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        validate_schema: bool = True,
-    ) -> typing.Iterator[_T]:
-        return _method_from_arrow_table(
-            cls,
-            table,
-            safe=safe,
-            errors=errors,
-            validate_schema=validate_schema,
-        )
+    return dataclass_from_field(value, name=name, module=module)
 
-    @classmethod
-    def from_arrow(
-        cls: type[_T],
-        source: object,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        validate_schema: bool = True,
-    ) -> typing.Iterator[_T]:
-        return _method_from_arrow(
-            cls,
-            source,
-            safe=safe,
-            errors=errors,
-            validate_schema=validate_schema,
-        )
 
-    @classmethod
-    def from_json(
-        cls: type[_T],
-        source: CodecSource,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        ) -> _T:
-        return _method_from_json(
-            cls,
-            source,
-            safe=safe,
-            errors=errors,
-            )
+def _dataclass_field_names(cls: type[Any]) -> tuple[str, ...]:
+    fields = getattr(cls, "__dataclass_fields__", None)
+    return tuple(fields) if fields else ()
 
-    @classmethod
-    def from_yaml(
-        cls: type[_T],
-        source: CodecSource,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        ) -> _T:
-        return _method_from_yaml(
-            cls,
-            source,
-            safe=safe,
-            errors=errors,
-            )
 
-    @classmethod
-    def from_toml(
-        cls: type[_T],
-        source: CodecSource,
-        *,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        ) -> _T:
-        return _method_from_toml(
-            cls,
-            source,
-            safe=safe,
-            errors=errors,
-            )
+def _mapping_from_key_pairs(value: object, names: tuple[str, ...]) -> object:
+    """Recover a dataclass-shaped mapping that a mapping key encoded as pairs."""
 
-    @classmethod
-    def from_(
-        cls: type[_T],
-        source: CodecSource,
-        *,
-        format: _CodecFormat | None = None,
-        safe: bool = True,
-        errors: _ErrorPolicy = "raise",
-        ) -> _T:
-        return _method_from(
-            cls,
-            source,
-            format=format,
-            safe=safe,
-            errors=errors,
-            )
-
-    def into_json(
-        self,
-        destination: CodecDestination | None = None,
-        *,
-        safe: bool = True,
-    ) -> bytes | None:
-        return _method_into_json(
-            self,
-            destination,
-            safe=safe,
-        )
-
-    def into_yaml(
-        self,
-        destination: CodecDestination | None = None,
-        *,
-        safe: bool = True,
-    ) -> bytes | None:
-        return _method_into_yaml(
-            self,
-            destination,
-            safe=safe,
-        )
-
-    def into_toml(
-        self,
-        destination: CodecDestination | None = None,
-        *,
-        safe: bool = True,
-    ) -> bytes | None:
-        return _method_into_toml(
-            self,
-            destination,
-            safe=safe,
-        )
-
-    def into_(
-        self,
-        destination: CodecDestination | None = None,
-        *,
-        format: _CodecFormat | None = None,
-        safe: bool = True,
-    ) -> bytes | None:
-        return _method_into(
-            self,
-            destination,
-            format=format,
-            safe=safe,
-        )
-
-    @classmethod
-    def into_arrow_field(cls) -> Any:
-        return _method_into_arrow_field(cls)
-
-    @classmethod
-    def into_arrow_schema(cls) -> Any:
-        return _method_into_arrow_schema(cls)
-
-    @classmethod
-    def into_arrow_record_batch(
-        cls,
-        values: cabc.Iterable[Any],
-        *,
-        safe: bool = True,
-    ) -> Any:
-        return _method_into_arrow_record_batch(cls, values, safe=safe)
-
-    @classmethod
-    def into_arrow_record_batches(
-        cls,
-        values: cabc.Iterable[Any],
-        *,
-        batch_size: int = 65_536,
-        safe: bool = True,
-    ) -> typing.Iterator[Any]:
-        return _method_into_arrow_record_batches(
-            cls,
-            values,
-            batch_size=batch_size,
-            safe=safe,
-        )
-
-    @classmethod
-    def into_arrow_table(
-        cls,
-        values: cabc.Iterable[Any],
-        *,
-        safe: bool = True,
-    ) -> Any:
-        return _method_into_arrow_table(cls, values, safe=safe)
-
-    @classmethod
-    def into_arrow_record_batch_reader(
-        cls,
-        values: cabc.Iterable[Any],
-        *,
-        batch_size: int = 65_536,
-        safe: bool = True,
-    ) -> Any:
-        return _method_into_arrow_record_batch_reader(
-            cls,
-            values,
-            batch_size=batch_size,
-            safe=safe,
-        )
-
-    @classmethod
-    def schema_field(cls) -> SchemaField:
-        return schema_field(cls)
-
-    @classmethod
-    def schema_fields(cls) -> tuple[SchemaField, ...]:
-        return schema_fields(cls)
+    if not names or not isinstance(value, tuple) or not value:
+        return value
+    entries: dict[str, object] = {}
+    for item in value:
+        if not isinstance(item, tuple) or len(item) != 2:
+            return value
+        name, item_value = item
+        if not isinstance(name, str) or name not in names or name in entries:
+            return value
+        entries[name] = item_value
+    return entries
 
 
 def _check_options(safe: bool, errors: str) -> None:
@@ -940,7 +942,7 @@ _LIST_DATA_TYPE_KINDS = frozenset(
 )
 
 
-def _physical_data_type(field: SchemaField) -> DataType:
+def _physical_data_type(field: NativeField) -> DataType:
     data_type = field.data_type
     while True:
         if data_type.id == "dictionary":
@@ -954,7 +956,7 @@ def _physical_data_type(field: SchemaField) -> DataType:
 
 def _validate_physical_list_length(
     value: cabc.Sized,
-    field: SchemaField | None,
+    field: NativeField | None,
     *,
     path: str,
 ) -> None:
@@ -1019,7 +1021,7 @@ def _timedelta_nanoseconds(value: dt.timedelta, path: str) -> int:
 
 def _validate_physical_temporal(
     value: dt.datetime | dt.time | dt.timedelta,
-    field: SchemaField | None,
+    field: NativeField | None,
     *,
     path: str,
 ) -> None:
@@ -1056,7 +1058,7 @@ def _validate_physical_temporal(
                 f"{data_type.id}[{unit}]"
             )
         nanoseconds = value.microsecond * 1_000
-    elif data_type.id == "duration" and isinstance(value, dt.timedelta):
+    elif data_type.id in ("duration32", "duration64") and isinstance(value, dt.timedelta):
         nanoseconds = _timedelta_nanoseconds(value, path)
     else:
         return
@@ -1072,11 +1074,11 @@ def _validate_physical_temporal(
 
 
 def _physical_named_child(
-    field: SchemaField | None,
+    field: NativeField | None,
     name: str,
     *,
     path: str,
-) -> SchemaField | None:
+) -> NativeField | None:
     if field is None:
         return None
     data_type = _physical_data_type(field)
@@ -1094,7 +1096,7 @@ def _physical_named_child(
 
 
 def _validate_physical_struct_names(
-    field: SchemaField | None,
+    field: NativeField | None,
     names: cabc.Iterable[str],
     *,
     path: str,
@@ -1117,7 +1119,7 @@ def _validate_physical_struct_names(
 
 
 def _validate_physical_tuple_arity(
-    field: SchemaField | None,
+    field: NativeField | None,
     arity: int,
     *,
     path: str,
@@ -1133,11 +1135,11 @@ def _validate_physical_tuple_arity(
 
 
 def _physical_positional_child(
-    field: SchemaField | None,
+    field: NativeField | None,
     index: int,
     *,
     path: str,
-) -> SchemaField | None:
+) -> NativeField | None:
     if field is None:
         return None
     data_type = _physical_data_type(field)
@@ -1150,10 +1152,10 @@ def _physical_positional_child(
 
 
 def _physical_list_child(
-    field: SchemaField | None,
+    field: NativeField | None,
     *,
     path: str,
-) -> SchemaField | None:
+) -> NativeField | None:
     if field is None:
         return None
     data_type = _physical_data_type(field)
@@ -1170,10 +1172,10 @@ def _physical_list_child(
 
 
 def _physical_map_children(
-    field: SchemaField | None,
+    field: NativeField | None,
     *,
     path: str,
-) -> tuple[SchemaField | None, SchemaField | None]:
+) -> tuple[NativeField | None, NativeField | None]:
     if field is None:
         return None, None
     data_type = _physical_data_type(field)
@@ -1187,8 +1189,8 @@ def _physical_map_children(
 
 
 def _physical_union_children(
-    field: SchemaField | None,
-) -> tuple[SchemaField, ...]:
+    field: NativeField | None,
+) -> tuple[NativeField, ...]:
     if field is None:
         return ()
     data_type = _physical_data_type(field)
@@ -1196,11 +1198,11 @@ def _physical_union_children(
 
 
 def _physical_union_child_for_hint(
-    field: SchemaField | None,
+    field: NativeField | None,
     union_hint: Any,
     selected_hint: Any,
     conversion_owner: type[Any],
-) -> SchemaField | None:
+) -> NativeField | None:
     physical_children = _physical_union_children(field)
     children = iter(physical_children)
     for alternative in get_args(union_hint):
@@ -1228,7 +1230,7 @@ def _hint_value_members(hint: Any, owner: type[Any]) -> tuple[Any, ...]:
 
 
 def _physical_union_hint_groups(
-    fields: tuple[SchemaField, ...], owner: type[Any]
+    fields: tuple[NativeField, ...], owner: type[Any]
 ) -> tuple[tuple[Any, ...], tuple[tuple[int, ...], ...], tuple[Any, ...]]:
     """Mirror Python Union flattening while retaining each physical child."""
 
@@ -1266,11 +1268,11 @@ def _convert_physical_union_value(
     owner: type[Any],
     path: str,
     errors: str,
-    schema_field: SchemaField | None,
+    physical_field: NativeField | None,
 ) -> tuple[Any, Any]:
     """Convert an Arrow default through its selected physical Union child."""
 
-    physical_children = _physical_union_children(schema_field)
+    physical_children = _physical_union_children(physical_field)
     if not physical_children:
         raise TypeError(f"{path}: physical Union default has no Union schema")
     if value.field_index < 0 or value.field_index >= len(physical_children):
@@ -1312,7 +1314,7 @@ def _convert_physical_union_value(
         owner,
         path,
         errors,
-        schema_field=selected_field,
+        physical_field=selected_field,
     )
     return converted, selected_hint
 
@@ -1329,7 +1331,7 @@ def _is_none_branch(hint: Any, conversion_owner: type[Any] | None) -> bool:
 
 def _accept_schema_null(
     value: object,
-    field: SchemaField | None,
+    field: NativeField | None,
     path: str,
 ) -> bool:
     if value is not None or field is None:
@@ -1431,7 +1433,7 @@ def _convert_literal(
     owner: type[Any],
     path: str,
     errors: str,
-    schema_field: SchemaField | None,
+    physical_field: NativeField | None,
 ) -> Any:
     for literal in get_args(hint):
         if literal is None and value is None:
@@ -1443,7 +1445,7 @@ def _convert_literal(
                 owner,
                 path,
                 errors,
-                schema_field=schema_field,
+                physical_field=physical_field,
             )
         except (TypeError, ValueError):
             continue
@@ -1458,16 +1460,16 @@ def _convert_union_branch(
     owner: type[Any],
     path: str,
     errors: str,
-    schema_field: SchemaField | None = None,
+    physical_field: NativeField | None = None,
 ) -> tuple[Any, Any]:
     if isinstance(value, _PhysicalUnionValue):
         return _convert_physical_union_value(
-            value, hint, owner, path, errors, schema_field
+            value, hint, owner, path, errors, physical_field
         )
     alternatives = get_args(hint)
-    if _accept_schema_null(value, schema_field, path):
+    if _accept_schema_null(value, physical_field, path):
         return None, _NONE_TYPE
-    if value is None and schema_field is None and any(
+    if value is None and physical_field is None and any(
         _is_none_branch(alternative, owner) for alternative in alternatives
     ):
         return None, _NONE_TYPE
@@ -1488,7 +1490,7 @@ def _convert_union_branch(
                 pass
         return 2
 
-    physical_children = _physical_union_children(schema_field)
+    physical_children = _physical_union_children(physical_field)
     physical_value_children = tuple(
         child for child in physical_children if child.data_type.id != "null"
     )
@@ -1496,13 +1498,13 @@ def _convert_union_branch(
         not _is_none_branch(alternative, owner) for alternative in alternatives
     )
     if (
-        schema_field is not None
+        physical_field is not None
         and non_none_count > 1
-        and _physical_data_type(schema_field).id != "union"
+        and _physical_data_type(physical_field).id != "union"
     ):
         raise TypeError(
             f"{path}: logical union has {non_none_count} non-None branches but "
-            f"physical arrow_type {_physical_data_type(schema_field)} is not a union"
+            f"physical arrow_type {_physical_data_type(physical_field)} is not a union"
         )
     if physical_children and len(physical_value_children) != non_none_count:
         raise TypeError(
@@ -1536,10 +1538,10 @@ def _convert_union_branch(
                     owner,
                     path,
                     errors,
-                    schema_field=(
+                    physical_field=(
                         branch_field
                         if physical_children
-                        else schema_field
+                        else physical_field
                     ),
                 ),
                 alternative,
@@ -1570,7 +1572,7 @@ def _convert_union(
     owner: type[Any],
     path: str,
     errors: str,
-    schema_field: SchemaField | None,
+    physical_field: NativeField | None,
 ) -> Any:
     return _convert_union_branch(
         value,
@@ -1578,7 +1580,7 @@ def _convert_union(
         owner,
         path,
         errors,
-        schema_field=schema_field,
+        physical_field=physical_field,
     )[0]
 
 
@@ -1625,7 +1627,7 @@ def _is_typed_dict_class(value: object) -> bool:
         isinstance(value, type)
         and hasattr(value, "__required_keys__")
         and hasattr(value, "__optional_keys__")
-        and isinstance(getattr(value, "__annotations__", None), dict)
+        and bool(_unevaluated_annotations(value))
     )
 
 
@@ -1636,7 +1638,7 @@ def _convert_typed_dict(
     path: str,
     errors: str,
     bindings: Mapping[object, object] | None = None,
-    schema_field: SchemaField | None = None,
+    physical_field: NativeField | None = None,
 ) -> dict[str, Any]:
     if not isinstance(value, cabc.Mapping):
         raise _error(path, hint, value)
@@ -1647,7 +1649,7 @@ def _convert_typed_dict(
             for name, annotation in annotations.items()
         }
     _validate_physical_struct_names(
-        schema_field, annotations, path=path
+        physical_field, annotations, path=path
     )
     unknown = set(value).difference(annotations)
     if unknown:
@@ -1669,8 +1671,8 @@ def _convert_typed_dict(
             owner,
             child_path,
             errors,
-            schema_field=_physical_named_child(
-                schema_field, name, path=child_path
+            physical_field=_physical_named_child(
+                physical_field, name, path=child_path
             ),
         )
     return output
@@ -1683,7 +1685,7 @@ def _convert_named_tuple(
     path: str,
     errors: str,
     bindings: Mapping[object, object] | None = None,
-    schema_field: SchemaField | None = None,
+    physical_field: NativeField | None = None,
 ) -> Any:
     annotations = _nested_annotations(hint, owner, path)
     if bindings:
@@ -1692,7 +1694,7 @@ def _convert_named_tuple(
             for name, annotation in annotations.items()
         }
     names = tuple(annotations)
-    _validate_physical_struct_names(schema_field, names, path=path)
+    _validate_physical_struct_names(physical_field, names, path=path)
     value = _mapping_from_key_pairs(value, names)
     if isinstance(value, cabc.Mapping):
         unknown = set(value).difference(names)
@@ -1711,8 +1713,8 @@ def _convert_named_tuple(
                 owner,
                 f"{path}.{name}",
                 errors,
-                schema_field=_physical_named_child(
-                    schema_field, name, path=f"{path}.{name}"
+                physical_field=_physical_named_child(
+                    physical_field, name, path=f"{path}.{name}"
                 ),
             )
             for name in names
@@ -1725,8 +1727,8 @@ def _convert_named_tuple(
                 owner,
                 f"{path}[{index}]",
                 errors,
-                schema_field=_physical_positional_child(
-                    schema_field, index, path=f"{path}[{index}]"
+                physical_field=_physical_positional_child(
+                    physical_field, index, path=f"{path}[{index}]"
                 ),
             )
             for index, (name, item) in enumerate(zip(names, value))
@@ -1743,7 +1745,7 @@ def _convert_collection(
     owner: type[Any],
     path: str,
     errors: str,
-    schema_field: SchemaField | None,
+    physical_field: NativeField | None,
 ) -> Any:
     if (
         isinstance(value, (str, bytes, bytearray, memoryview, cabc.Mapping))
@@ -1752,7 +1754,7 @@ def _convert_collection(
         raise _error(path, hint, value)
     arguments = get_args(hint)
     item_hint = arguments[0] if arguments else Any
-    item_field = _physical_list_child(schema_field, path=path)
+    item_field = _physical_list_child(physical_field, path=path)
     converted = (
         _convert(
             item,
@@ -1760,7 +1762,7 @@ def _convert_collection(
             owner,
             f"{path}[{index}]",
             errors,
-            schema_field=item_field,
+            physical_field=item_field,
         )
         for index, item in enumerate(value)
     )
@@ -1775,7 +1777,7 @@ def _convert_collection(
         result = collections.deque(converted, maxlen=maxlen)
     else:
         result = list(converted)
-    _validate_physical_list_length(result, schema_field, path=path)
+    _validate_physical_list_length(result, physical_field, path=path)
     return result
 
 
@@ -1786,7 +1788,7 @@ def _convert_mapping(
     owner: type[Any],
     path: str,
     errors: str,
-    schema_field: SchemaField | None,
+    physical_field: NativeField | None,
 ) -> Any:
     if not isinstance(value, cabc.Mapping):
         raise _error(path, hint, value)
@@ -1796,7 +1798,7 @@ def _convert_mapping(
         value_hint = int
     else:
         key_hint, value_hint = arguments[:2] if len(arguments) >= 2 else (Any, Any)
-    key_field, value_field = _physical_map_children(schema_field, path=path)
+    key_field, value_field = _physical_map_children(physical_field, path=path)
     def converted_pairs() -> typing.Iterator[tuple[Any, Any]]:
         seen: dict[Any, tuple[int, object]] = {}
         for index, (key, item) in enumerate(value.items()):
@@ -1806,7 +1808,7 @@ def _convert_mapping(
                 owner,
                 f"{path}.keys[{index}]",
                 errors,
-                schema_field=key_field,
+                physical_field=key_field,
             )
             converted_value = _convert(
                 item,
@@ -1814,7 +1816,7 @@ def _convert_mapping(
                 owner,
                 f"{path}[{key!r}]",
                 errors,
-                schema_field=value_field,
+                physical_field=value_field,
             )
             try:
                 previous = seen.get(converted_key, _MISSING_KEY)
@@ -1860,13 +1862,13 @@ def _convert(
     path: str,
     errors: str,
     *,
-    schema_field: SchemaField | None = None,
+    physical_field: NativeField | None = None,
 ) -> Any:
     if isinstance(value, _PhysicalUnionValue):
         return _convert_physical_union_value(
-            value, hint, owner, path, errors, schema_field
+            value, hint, owner, path, errors, physical_field
         )[0]
-    if _accept_schema_null(value, schema_field, path):
+    if _accept_schema_null(value, physical_field, path):
         return None
     hint = _unwrap_hint(hint, owner)
     origin = get_origin(hint)
@@ -1879,11 +1881,11 @@ def _convert(
         raise _error(path, hint, value)
     if origin in _UNION_ORIGINS:
         return _convert_union(
-            value, hint, owner, path, errors, schema_field
+            value, hint, owner, path, errors, physical_field
         )
     if origin is typing.Literal:
         return _convert_literal(
-            value, hint, owner, path, errors, schema_field
+            value, hint, owner, path, errors, physical_field
         )
     if isinstance(hint, str) or isinstance(hint, typing.ForwardRef):
         raise TypeError(f"{path}: unresolved annotation {hint!r}")
@@ -1939,7 +1941,7 @@ def _convert(
         else:
             raise _error(path, dt.datetime, value)
         _validate_physical_temporal(
-            converted_datetime, schema_field, path=path
+            converted_datetime, physical_field, path=path
         )
         return converted_datetime
     if hint is dt.date:
@@ -1961,7 +1963,7 @@ def _convert(
                 raise _error(path, dt.time, value, "ISO-8601 value required") from error
         else:
             raise _error(path, dt.time, value)
-        _validate_physical_temporal(converted_time, schema_field, path=path)
+        _validate_physical_temporal(converted_time, physical_field, path=path)
         return converted_time
     if hint is dt.timedelta:
         if isinstance(value, dt.timedelta):
@@ -1973,7 +1975,7 @@ def _convert(
                 raise _error(path, dt.timedelta, value, "finite in-range seconds required") from error
         else:
             raise _error(path, dt.timedelta, value)
-        _validate_physical_temporal(converted_delta, schema_field, path=path)
+        _validate_physical_temporal(converted_delta, physical_field, path=path)
         return converted_delta
 
     if isinstance(hint, type) and issubclass(hint, enum.Enum):
@@ -1990,15 +1992,15 @@ def _convert(
         raise _error(path, hint, value)
 
     if isinstance(hint, type) and dc.is_dataclass(hint):
-        value = _mapping_from_key_pairs(value, _record_field_names(hint))
+        value = _mapping_from_key_pairs(value, _dataclass_field_names(hint))
         if isinstance(value, hint):
             owner_schema = _ensure_schema(owner)
-            _, _, _, projected = _project_record_values(
+            _, _, _, projected = _project_dataclass_values(
                 value,
                 safe=True,
                 resolved_cache=owner_schema.nested_hints,
                 conversion_owner=owner,
-                physical_root=schema_field,
+                physical_root=physical_field,
             )
             for _ in projected:
                 pass
@@ -2014,26 +2016,25 @@ def _convert(
                 resolved_hints=owner_schema.nested_hints.get(hint),
                 resolved_cache=owner_schema.nested_hints,
                 conversion_owner=owner,
-                physical_root=schema_field,
+                physical_root=physical_field,
             )
         raise _error(path, hint, value)
     if isinstance(origin, type) and dc.is_dataclass(origin):
-        value = _mapping_from_key_pairs(value, _record_field_names(origin))
+        value = _mapping_from_key_pairs(value, _dataclass_field_names(origin))
         direct = dict(zip(getattr(origin, "__parameters__", ()), get_args(hint)))
-        bindings = _inherited_bindings(origin, direct)
         if isinstance(value, origin):
             # An instance already owns its dataclass state. Reconstructing it
-            # here would rerun __init__/__post_init__ during safe to_dict and
+            # here would rerun __init__/__post_init__ during safe into_dict and
             # could also recompute init=False fields. Export validates its
             # fields in place with the bindings carried by ``hint``.
             owner_schema = _ensure_schema(owner)
-            _, _, _, projected = _project_record_values(
+            _, _, _, projected = _project_dataclass_values(
                 value,
                 safe=True,
                 resolved_cache=owner_schema.nested_hints,
                 conversion_owner=owner,
-                bindings=bindings,
-                physical_root=schema_field,
+                bindings=direct,
+                physical_root=physical_field,
             )
             for _ in projected:
                 pass
@@ -2046,11 +2047,11 @@ def _convert(
                 safe=True,
                 errors=errors,
                 path=path,
-                bindings=bindings,
+                bindings=direct,
                 resolved_hints=owner_schema.nested_hints.get(origin),
                 resolved_cache=owner_schema.nested_hints,
                 conversion_owner=owner,
-                physical_root=schema_field,
+                physical_root=physical_field,
             )
         raise _error(path, hint, value)
     if _is_typed_dict_class(hint):
@@ -2061,7 +2062,7 @@ def _convert(
             path,
             errors,
             _inherited_bindings(hint, {}),
-            schema_field,
+            physical_field,
         )
     if _is_typed_dict_class(origin):
         direct = dict(zip(getattr(origin, "__parameters__", ()), get_args(hint)))
@@ -2072,7 +2073,7 @@ def _convert(
             path,
             errors,
             _inherited_bindings(origin, direct),
-            schema_field,
+            physical_field,
         )
     if isinstance(hint, type) and issubclass(hint, tuple) and hasattr(hint, "_fields"):
         return _convert_named_tuple(
@@ -2082,7 +2083,7 @@ def _convert(
             path,
             errors,
             _inherited_bindings(hint, {}),
-            schema_field,
+            physical_field,
         )
     if isinstance(origin, type) and issubclass(origin, tuple) and hasattr(origin, "_fields"):
         direct = dict(zip(getattr(origin, "__parameters__", ()), get_args(hint)))
@@ -2093,7 +2094,7 @@ def _convert(
             path,
             errors,
             _inherited_bindings(origin, direct),
-            schema_field,
+            physical_field,
         )
 
     if origin is tuple or hint is tuple:
@@ -2105,7 +2106,7 @@ def _convert(
         items = list(value)
         arguments = get_args(hint)
         if not arguments:
-            item_field = _physical_list_child(schema_field, path=path)
+            item_field = _physical_list_child(physical_field, path=path)
             converted_tuple = tuple(
                 _convert(
                     item,
@@ -2113,12 +2114,12 @@ def _convert(
                     owner,
                     f"{path}[{index}]",
                     errors,
-                    schema_field=item_field,
+                    physical_field=item_field,
                 )
                 for index, item in enumerate(items)
             )
             _validate_physical_list_length(
-                converted_tuple, schema_field, path=path
+                converted_tuple, physical_field, path=path
             )
             return converted_tuple
         if len(arguments) == 2 and arguments[1] is Ellipsis:
@@ -2129,18 +2130,18 @@ def _convert(
                     owner,
                     f"{path}[{index}]",
                     errors,
-                    schema_field=_physical_list_child(schema_field, path=path),
+                    physical_field=_physical_list_child(physical_field, path=path),
                 )
                 for index, item in enumerate(items)
             )
             _validate_physical_list_length(
-                converted_tuple, schema_field, path=path
+                converted_tuple, physical_field, path=path
             )
             return converted_tuple
         if len(items) != len(arguments):
             raise _error(path, hint, value, f"expected {len(arguments)} items")
         _validate_physical_tuple_arity(
-            schema_field, len(arguments), path=path
+            physical_field, len(arguments), path=path
         )
         return tuple(
             _convert(
@@ -2149,8 +2150,8 @@ def _convert(
                 owner,
                 f"{path}[{index}]",
                 errors,
-                schema_field=_physical_positional_child(
-                    schema_field, index, path=f"{path}[{index}]"
+                physical_field=_physical_positional_child(
+                    physical_field, index, path=f"{path}[{index}]"
                 ),
             )
             for index, (item, item_hint) in enumerate(zip(items, arguments))
@@ -2182,7 +2183,7 @@ def _convert(
             owner,
             path,
             errors,
-            schema_field,
+            physical_field,
         )
 
     mapping_origins = (
@@ -2196,13 +2197,13 @@ def _convert(
     )
     if hint in mapping_origins:
         return _convert_mapping(
-            value, hint, hint, owner, path, errors, schema_field
+            value, hint, hint, owner, path, errors, physical_field
         )
     if origin in mapping_origins or (
         isinstance(origin, type) and issubclass(origin, cabc.Mapping)
     ):
         return _convert_mapping(
-            value, hint, origin, owner, path, errors, schema_field
+            value, hint, origin, owner, path, errors, physical_field
         )
 
     if origin is cabc.ItemsView:
@@ -2220,8 +2221,8 @@ def _convert(
                     owner,
                     f"{path}[{index}][0]",
                     errors,
-                    schema_field=_physical_positional_child(
-                        _physical_list_child(schema_field, path=path),
+                    physical_field=_physical_positional_child(
+                        _physical_list_child(physical_field, path=path),
                         0,
                         path=f"{path}[{index}][0]",
                     ),
@@ -2232,8 +2233,8 @@ def _convert(
                     owner,
                     f"{path}[{index}][1]",
                     errors,
-                    schema_field=_physical_positional_child(
-                        _physical_list_child(schema_field, path=path),
+                    physical_field=_physical_positional_child(
+                        _physical_list_child(physical_field, path=path),
                         1,
                         path=f"{path}[{index}][1]",
                     ),
@@ -2313,13 +2314,13 @@ def _from_dict(
     resolved_hints: Mapping[str, Any] | None = None,
     resolved_cache: Mapping[type[Any], Mapping[str, Any]] | None = None,
     conversion_owner: type[Any] | None = None,
-    physical_root: SchemaField | None = None,
+    physical_root: NativeField | None = None,
 ) -> _T:
     _check_options(safe, errors)
     if not isinstance(values, cabc.Mapping):
         raise TypeError(f"{path}: expected a mapping, got {type(values).__name__}")
     if not dc.is_dataclass(cls):
-        raise TypeError(f"{cls!r} is not a dataclass or Yggdryl record")
+        raise TypeError(f"{cls!r} is not a dataclass")
     if not safe:
         return cls(**values)
 
@@ -2346,6 +2347,10 @@ def _from_dict(
             matched=any(key in schema.constructor_names for key in values),
         )
 
+    initial_bindings: Mapping[object, object] = bindings or {}
+    binding_contexts = (
+        _binding_contexts(cls, initial_bindings) if bindings else None
+    )
     converted: dict[str, Any] = {}
     for field in schema.constructor_fields:
         field_path = f"{path}.{field.name}"
@@ -2357,8 +2362,14 @@ def _from_dict(
                 continue
             raise TypeError(f"{field_path}: missing required value")
         hint = schema.hints.get(field.name, field.type)
-        if bindings:
-            hint = _bind_hint(hint, bindings)
+        if binding_contexts is not None:
+            hint = _bind_hint(
+                hint,
+                binding_contexts.get(
+                    _annotation_owner(cls, field.name),
+                    initial_bindings,
+                ),
+            )
         if field.name not in schema.field_lookup:
             physical_field = None
         elif physical_root is None:
@@ -2376,7 +2387,7 @@ def _from_dict(
                 conversion_owner or cls,
                 field_path,
                 errors,
-                schema_field=physical_field,
+                physical_field=physical_field,
             )
         except _UnknownFieldError:
             raise
@@ -2410,7 +2421,7 @@ def _from_dict(
             conversion_owner or cls,
             value_path,
             errors,
-            schema_field=physical_field,
+            physical_field=physical_field,
         )
     return instance
 
@@ -2422,7 +2433,7 @@ def from_dict(
     safe: bool = True,
     errors: _ErrorPolicy = "raise",
 ) -> _T:
-    """Construct a dataclass or record from a mapping.
+    """Construct a dataclass from a mapping.
 
     ``safe=True`` recursively validates and losslessly casts annotated values.
     With ``errors='default'``, a missing or invalid known field is omitted only
@@ -2430,7 +2441,7 @@ def from_dict(
     """
 
     if not isinstance(cls, type):
-        raise TypeError(f"{cls!r} is not a dataclass or Yggdryl record type")
+        raise TypeError(f"{cls!r} is not a dataclass type")
     return _from_dict(cls, values, safe=safe, errors=errors, path=cls.__name__)
 
 
@@ -2439,9 +2450,9 @@ def _export(
     resolved_cache: Mapping[type[Any], Mapping[str, Any]],
     conversion_owner: type[Any],
     hint: Any = Any,
-    schema_field: SchemaField | None = None,
+    physical_field: NativeField | None = None,
 ) -> Any:
-    if _accept_schema_null(value, schema_field, "to_dict"):
+    if _accept_schema_null(value, physical_field, "into_dict"):
         return None
     hint = _unwrap_hint(hint, conversion_owner)
     origin = get_origin(hint)
@@ -2451,12 +2462,12 @@ def _export(
             value,
             hint,
             conversion_owner,
-            "to_dict",
+            "into_dict",
             "raise",
-            schema_field=schema_field,
+            physical_field=physical_field,
         )
-        schema_field = _physical_union_child_for_hint(
-            schema_field, union_hint, hint, conversion_owner
+        physical_field = _physical_union_child_for_hint(
+            physical_field, union_hint, hint, conversion_owner
         )
         hint = _unwrap_hint(hint, conversion_owner)
         origin = get_origin(hint)
@@ -2464,19 +2475,18 @@ def _export(
     if dc.is_dataclass(value) and not isinstance(value, type):
         declared = origin if isinstance(origin, type) and dc.is_dataclass(origin) else None
         if declared is not None:
-            direct = dict(
+            bindings = dict(
                 zip(getattr(declared, "__parameters__", ()), get_args(hint))
             )
-            bindings = _inherited_bindings(declared, direct)
         else:
-            bindings = _inherited_bindings(type(value), {})
+            bindings = {}
         return _to_dict(
             value,
             safe=True,
             resolved_cache=resolved_cache,
             conversion_owner=conversion_owner,
             bindings=bindings,
-            physical_root=schema_field,
+            physical_root=physical_field,
         )
 
     arguments = get_args(hint)
@@ -2508,13 +2518,13 @@ def _export(
                     conversion_owner,
                     annotations.get(key, item_hint),
                     _physical_named_child(
-                        schema_field, str(key), path=f"to_dict.{key}"
+                        physical_field, str(key), path=f"into_dict.{key}"
                     ),
                 )
                 for key, item in value.items()
             }
         key_field, item_field = _physical_map_children(
-            schema_field, path="to_dict"
+            physical_field, path="into_dict"
         )
         return {
             _export(
@@ -2534,7 +2544,7 @@ def _export(
         }
     if isinstance(value, list):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(schema_field, path="to_dict")
+        item_field = _physical_list_child(physical_field, path="into_dict")
         return [
             _export(
                 item,
@@ -2547,7 +2557,7 @@ def _export(
         ]
     if isinstance(value, tuple):
         item_hints: tuple[Any, ...]
-        repeated_item_field: SchemaField | None = None
+        repeated_item_field: NativeField | None = None
         structured = origin or hint
         annotations = (
             resolved_cache.get(structured)
@@ -2566,10 +2576,10 @@ def _export(
         elif len(arguments) == 2 and arguments[1] is Ellipsis:
             item_hints = (arguments[0],) * len(value)
             repeated_item_field = _physical_list_child(
-                schema_field, path="to_dict"
+                physical_field, path="into_dict"
             )
-        elif not arguments and schema_field is not None:
-            data_type = _physical_data_type(schema_field)
+        elif not arguments and physical_field is not None:
+            data_type = _physical_data_type(physical_field)
             if data_type.id in _LIST_DATA_TYPE_KINDS:
                 item_hints = (Any,) * len(value)
                 repeated_item_field = data_type[0]
@@ -2587,7 +2597,7 @@ def _export(
                     repeated_item_field
                     if repeated_item_field is not None
                     else _physical_positional_child(
-                        schema_field, index, path=f"to_dict[{index}]"
+                        physical_field, index, path=f"into_dict[{index}]"
                     )
                 ),
             )
@@ -2598,7 +2608,7 @@ def _export(
         return converted
     if isinstance(value, set):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(schema_field, path="to_dict")
+        item_field = _physical_list_child(physical_field, path="into_dict")
         return {
             _export(
                 item,
@@ -2611,7 +2621,7 @@ def _export(
         }
     if isinstance(value, frozenset):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(schema_field, path="to_dict")
+        item_field = _physical_list_child(physical_field, path="into_dict")
         return frozenset(
             _export(
                 item,
@@ -2624,7 +2634,7 @@ def _export(
         )
     if isinstance(value, collections.deque):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(schema_field, path="to_dict")
+        item_field = _physical_list_child(physical_field, path="into_dict")
         return collections.deque(
             (
                 _export(
@@ -2648,12 +2658,12 @@ def _to_dict(
     resolved_cache: Mapping[type[Any], Mapping[str, Any]] | None,
     conversion_owner: type[Any] | None,
     bindings: Mapping[object, object] | None = None,
-    physical_root: SchemaField | None = None,
+    physical_root: NativeField | None = None,
     drop_nulls: bool = False,
 ) -> dict[str, Any]:
     if type(drop_nulls) is not bool:
         raise TypeError(f"drop_nulls must be bool, got {type(drop_nulls).__name__}")
-    _, context_cache, owner, projected = _project_record_values(
+    _, context_cache, owner, projected = _project_dataclass_values(
         value,
         safe=safe,
         resolved_cache=resolved_cache,
@@ -2679,27 +2689,27 @@ def _to_dict(
     }
 
 
-def _project_record_values(
+def _project_dataclass_values(
     value: object,
     *,
     safe: bool,
     resolved_cache: Mapping[type[Any], Mapping[str, Any]] | None,
     conversion_owner: type[Any] | None,
     bindings: Mapping[object, object] | None = None,
-    physical_root: SchemaField | None = None,
+    physical_root: NativeField | None = None,
 ) -> tuple[
     type[Any],
     Mapping[type[Any], Mapping[str, Any]],
     type[Any],
-    typing.Iterator[tuple[str, Any, Any, SchemaField | None]],
+    typing.Iterator[tuple[str, Any, Any, NativeField | None]],
 ]:
-    """Share the one record validation/casting projection across exports."""
+    """Share one dataclass validation/casting projection across exports."""
 
     if type(safe) is not bool:
         raise TypeError("safe must be bool")
     if isinstance(value, type):
-        raise TypeError("to_dict expects a dataclass or Yggdryl record instance")
-    cls = _record_type(value)
+        raise TypeError("into_dict expects a dataclass instance")
+    cls = _dataclass_type(value)
     if not safe:
         fields = _value_fields(cls)
         projected = (
@@ -2720,13 +2730,23 @@ def _project_record_values(
         )
     owner = conversion_owner or cls
     context_cache = resolved_cache or schema.nested_hints
+    initial_bindings: Mapping[object, object] = bindings or {}
+    binding_contexts = (
+        _binding_contexts(cls, initial_bindings) if bindings else None
+    )
 
-    def project() -> typing.Iterator[tuple[str, Any, Any, SchemaField | None]]:
+    def project() -> typing.Iterator[tuple[str, Any, Any, NativeField | None]]:
         for field in schema.value_fields:
             path = f"{cls.__name__}.{field.name}"
             hint = schema.hints.get(field.name, field.type)
-            if bindings:
-                hint = _bind_hint(hint, bindings)
+            if binding_contexts is not None:
+                hint = _bind_hint(
+                    hint,
+                    binding_contexts.get(
+                        _annotation_owner(cls, field.name),
+                        initial_bindings,
+                    ),
+                )
             raw = getattr(value, field.name)
             if field.name not in schema.field_lookup:
                 physical_field = None
@@ -2747,7 +2767,7 @@ def _project_record_values(
                     owner,
                     path,
                     "raise",
-                    schema_field=physical_field,
+                    physical_field=physical_field,
                 )
                 if converted is not None:
                     physical_field = _physical_union_child_for_hint(
@@ -2760,7 +2780,7 @@ def _project_record_values(
                     owner,
                     path,
                     "raise",
-                    schema_field=physical_field,
+                    physical_field=physical_field,
                 )
                 export_hint = hint
             yield field.name, converted, export_hint, physical_field
@@ -2768,13 +2788,13 @@ def _project_record_values(
     return cls, context_cache, owner, project()
 
 
-def to_dict(
+def into_dict(
     value: _T, *, safe: bool = True, drop_nulls: bool = False
 ) -> dict[str, Any]:
-    """Return dataclass fields as a dictionary, recursively lowering records.
+    """Return dataclass fields as a dictionary, recursively lowering classes.
 
     ``drop_nulls`` omits every top-level key whose exported value is ``None``.
-    Nested records keep their own nulls, because dropping them there would
+    Nested dataclasses keep their own nulls, because dropping them there would
     change the shape a schema declares rather than trimming an optional key.
     """
 
@@ -2787,644 +2807,6 @@ def to_dict(
     )
 
 
-def _method_to_dict(
-    self: Any, *, safe: bool = True, drop_nulls: bool = False
-) -> dict[str, Any]:
-    return to_dict(self, safe=safe, drop_nulls=drop_nulls)
-
-
-def _method_from_dict(
-    cls: type[_T],
-    values: Mapping[str, Any],
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-) -> _T:
-    return from_dict(cls, values, safe=safe, errors=errors)
-
-
-def _method_from_dicts(
-    cls: type[_T],
-    values: cabc.Iterable[Mapping[str, Any]],
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-) -> typing.Iterator[_T]:
-    if not isinstance(cls, type) or not dc.is_dataclass(cls):
-        raise TypeError(f"{cls!r} is not a dataclass or Yggdryl record type")
-    _check_options(safe, errors)
-    iterator = iter(values)
-
-    def converted() -> typing.Iterator[_T]:
-        for index, value in enumerate(iterator):
-            yield _from_dict(
-                cls,
-                value,
-                safe=safe,
-                errors=errors,
-                path=f"{cls.__name__}[{index}]",
-            )
-
-    return converted()
-
-
-def _method_record_from_arrow_field(
-    cls: type[Any],
-    value: object,
-    *,
-    class_name: str | None = None,
-    module: str | None = None,
-) -> type[Record]:
-    from ._arrow import record_from_arrow_field
-
-    return record_from_arrow_field(
-        cls,
-        value,
-        class_name=class_name,
-        module=module,
-    )
-
-
-def _method_record_from_arrow_schema(
-    cls: type[Any],
-    value: object,
-    *,
-    class_name: str | None = None,
-    module: str | None = None,
-) -> type[Record]:
-    from ._arrow import record_from_arrow_schema
-
-    return record_from_arrow_schema(
-        cls,
-        value,
-        class_name=class_name,
-        module=module,
-    )
-
-
-def _method_from_arrow_record_batch(
-    cls: type[_T],
-    batch: object,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-    validate_schema: bool = True,
-) -> typing.Iterator[_T]:
-    from ._arrow import records_from_arrow_record_batch
-
-    return records_from_arrow_record_batch(
-        cls,
-        batch,
-        safe=safe,
-        errors=errors,
-        validate_schema=validate_schema,
-    )
-
-
-def _method_from_arrow_record_batch_reader(
-    cls: type[_T],
-    reader: object,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-    validate_schema: bool = True,
-) -> typing.Iterator[_T]:
-    from ._arrow import records_from_arrow_record_batch_reader
-
-    return records_from_arrow_record_batch_reader(
-        cls,
-        reader,
-        safe=safe,
-        errors=errors,
-        validate_schema=validate_schema,
-    )
-
-
-def _method_from_arrow_table(
-    cls: type[_T],
-    table: object,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-    validate_schema: bool = True,
-) -> typing.Iterator[_T]:
-    from ._arrow import records_from_arrow_table
-
-    return records_from_arrow_table(
-        cls,
-        table,
-        safe=safe,
-        errors=errors,
-        validate_schema=validate_schema,
-    )
-
-
-def _method_from_arrow(
-    cls: type[_T],
-    source: object,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-    validate_schema: bool = True,
-) -> typing.Iterator[_T]:
-    from ._arrow import records_from_arrow
-
-    return records_from_arrow(
-        cls,
-        source,
-        safe=safe,
-        errors=errors,
-        validate_schema=validate_schema,
-    )
-
-
-def _method_from_json(
-    cls: type[_T],
-    source: CodecSource,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-) -> _T:
-    from ..json import loads
-
-    return loads(
-        source,
-        cls=cls,
-        safe=safe,
-        errors=errors,
-    )
-
-
-def _method_from_yaml(
-    cls: type[_T],
-    source: CodecSource,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-) -> _T:
-    from ..yaml import loads
-
-    return loads(
-        source,
-        cls=cls,
-        safe=safe,
-        errors=errors,
-    )
-
-
-def _method_from_toml(
-    cls: type[_T],
-    source: CodecSource,
-    *,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-) -> _T:
-    from ..toml import loads
-
-    return loads(
-        source,
-        cls=cls,
-        safe=safe,
-        errors=errors,
-    )
-
-
-def _method_from(
-    cls: type[_T],
-    source: CodecSource,
-    *,
-    format: _CodecFormat | None = None,
-    safe: bool = True,
-    errors: _ErrorPolicy = "raise",
-) -> _T:
-    from .._codec import (
-        _decode_inferred,
-        _source_needs_content_inference,
-        prepare_source,
-    )
-
-    if format is None and _source_needs_content_inference(source):
-        return typing.cast(
-            _T,
-            _decode_inferred(
-                source,
-                cls=cls,
-                safe=safe,
-                errors=errors,
-                    ),
-        )
-
-    selected, prepared_source = prepare_source(source, format)
-    if selected == "json":
-        return _method_from_json(
-            cls,
-            prepared_source,
-            safe=safe,
-            errors=errors,
-            )
-    if selected == "json_lines":
-        from .._codec import loads_all
-
-        decoded = loads_all(
-            prepared_source,
-            format=selected,
-            cls=cls,
-            safe=safe,
-            errors=errors,
-            )
-        try:
-            value = next(decoded)
-        except StopIteration as error:
-            raise ValueError("expected one JSON Lines record, found none") from error
-        try:
-            next(decoded)
-        except StopIteration:
-            return value
-        raise ValueError("expected one JSON Lines record, found more than one")
-    if selected == "toml":
-        return _method_from_toml(
-            cls,
-            prepared_source,
-            safe=safe,
-            errors=errors,
-            )
-    return _method_from_yaml(
-        cls,
-        prepared_source,
-        safe=safe,
-        errors=errors,
-    )
-
-
-def _method_into_format(
-    value: object,
-    destination: CodecDestination | None,
-    *,
-    format: str,
-    safe: bool,
-) -> bytes | None:
-    from .._codec import dump, dumps
-
-    _record_type(value)
-    exported = _codec_export_record(value, safe=safe)
-    if destination is None:
-        return dumps(exported, format=format)
-    dump(exported, destination, format=format)
-    return None
-
-
-def _record_field_names(cls: type[Any]) -> tuple[str, ...]:
-    """Return the declared field names of a dataclass, in declaration order."""
-
-    fields = getattr(cls, "__dataclass_fields__", None)
-    return tuple(fields) if fields else ()
-
-
-def _mapping_from_key_pairs(value: object, names: tuple[str, ...]) -> object:
-    """Read back the tuple of pairs a mapping becomes when used as a key.
-
-    JSON and YAML have no unhashable keys, so a record used as a dictionary key
-    decodes as a tuple of its entries rather than as a mapping. Reading that
-    shape here is what keeps such a key usable now that no tag names its class;
-    anything that is not exactly a run of `(name, value)` pairs for this target
-    is left alone so the ordinary error still reports the real value.
-    """
-
-    if not names or not isinstance(value, tuple) or not value:
-        return value
-    entries: dict[str, object] = {}
-    for item in value:
-        if not isinstance(item, tuple) or len(item) != 2:
-            return value
-        name, item_value = item
-        if not isinstance(name, str) or name not in names or name in entries:
-            return value
-        entries[name] = item_value
-    return entries
-
-
-def _codec_export_record(
-    value: object,
-    *,
-    safe: bool,
-    _active: set[int] | None = None,
-) -> dict[str, Any]:
-    """Validate a dataclass graph without invoking its constructors."""
-
-    active = set() if _active is None else _active
-    marker = id(value)
-    if marker in active:
-        raise ValueError("cyclic record values cannot be serialized")
-    active.add(marker)
-    try:
-        _, _, _, projected = _project_record_values(
-            value,
-            safe=safe,
-            resolved_cache=None,
-            conversion_owner=None,
-        )
-        return {
-            name: _codec_export_value(converted, safe=safe, _active=active)
-            for name, converted, _, _ in projected
-        }
-    finally:
-        active.remove(marker)
-
-
-def _codec_export_value(
-    value: Any,
-    *,
-    safe: bool,
-    _active: set[int],
-) -> Any:
-    if dc.is_dataclass(value) and not isinstance(value, type):
-        return _codec_export_record(value, safe=safe, _active=_active)
-    if not isinstance(
-        value,
-        (cabc.Mapping, list, tuple, set, frozenset, collections.deque),
-    ):
-        return value
-    marker = id(value)
-    if marker in _active:
-        raise ValueError("cyclic collection values cannot be serialized")
-    _active.add(marker)
-    try:
-        return _codec_export_collection(value, safe=safe, _active=_active)
-    finally:
-        _active.remove(marker)
-
-
-def _codec_export_collection(
-    value: Any,
-    *,
-    safe: bool,
-    _active: set[int],
-) -> Any:
-    # Every collection exports as the shape it already is. A subclass, a
-    # default factory, and a deque bound are dropped here rather than named in
-    # the document, because a name a document carries is not a type.
-    if isinstance(value, cabc.Mapping):
-        return {
-            key: _codec_export_value(item, safe=safe, _active=_active)
-            for key, item in value.items()
-        }
-    if isinstance(value, tuple) and hasattr(value, "_fields"):
-        return {
-            name: _codec_export_value(
-                getattr(value, name), safe=safe, _active=_active
-            )
-            for name in value._fields
-        }
-    if isinstance(value, (list, tuple, set, frozenset, collections.deque)):
-        return [
-            _codec_export_value(item, safe=safe, _active=_active)
-            for item in value
-        ]
-    return value
-
-
-def _method_into_json(
-    self: object,
-    destination: CodecDestination | None = None,
-    *,
-    safe: bool = True,
-) -> bytes | None:
-    return _method_into_format(
-        self,
-        destination,
-        format="json",
-        safe=safe,
-    )
-
-
-def _method_into_yaml(
-    self: object,
-    destination: CodecDestination | None = None,
-    *,
-    safe: bool = True,
-) -> bytes | None:
-    return _method_into_format(
-        self,
-        destination,
-        format="yaml",
-        safe=safe,
-    )
-
-
-def _method_into_toml(
-    self: object,
-    destination: CodecDestination | None = None,
-    *,
-    safe: bool = True,
-) -> bytes | None:
-    return _method_into_format(
-        self,
-        destination,
-        format="toml",
-        safe=safe,
-    )
-
-
-def _method_into(
-    self: object,
-    destination: CodecDestination | None = None,
-    *,
-    format: _CodecFormat | None = None,
-    safe: bool = True,
-) -> bytes | None:
-    from .._codec import infer_destination_format
-
-    if destination is None and format is None:
-        selected = "json"
-    else:
-        selected = infer_destination_format(
-            typing.cast(CodecDestination, destination), format
-        )
-    return _method_into_format(
-        self,
-        destination,
-        format=selected,
-        safe=safe,
-    )
-
-
-def _method_into_arrow_field(cls: type[Any]) -> Any:
-    return _ensure_schema(cls).arrow_field
-
-
-def _method_into_arrow_schema(cls: type[Any]) -> Any:
-    return _ensure_schema(cls).arrow_schema
-
-
-def _method_into_arrow_record_batch(
-    cls: type[Any],
-    values: cabc.Iterable[Any],
-    *,
-    safe: bool = True,
-) -> Any:
-    from ._arrow import records_into_arrow_record_batch
-
-    return records_into_arrow_record_batch(cls, values, safe=safe)
-
-
-def _method_into_arrow_record_batches(
-    cls: type[Any],
-    values: cabc.Iterable[Any],
-    *,
-    batch_size: int = 65_536,
-    safe: bool = True,
-) -> typing.Iterator[Any]:
-    from ._arrow import records_into_arrow_record_batches
-
-    return records_into_arrow_record_batches(
-        cls,
-        values,
-        batch_size=batch_size,
-        safe=safe,
-    )
-
-
-def _method_into_arrow_table(
-    cls: type[Any],
-    values: cabc.Iterable[Any],
-    *,
-    safe: bool = True,
-) -> Any:
-    from ._arrow import records_into_arrow_table
-
-    return records_into_arrow_table(cls, values, safe=safe)
-
-
-def _method_into_arrow_record_batch_reader(
-    cls: type[Any],
-    values: cabc.Iterable[Any],
-    *,
-    batch_size: int = 65_536,
-    safe: bool = True,
-) -> Any:
-    from ._arrow import records_into_arrow_record_batch_reader
-
-    return records_into_arrow_record_batch_reader(
-        cls,
-        values,
-        batch_size=batch_size,
-        safe=safe,
-    )
-
-
-def _method_schema_field(cls: type[Any]) -> SchemaField:
-    return schema_field(cls)
-
-
-def _method_schema_fields(cls: type[Any]) -> tuple[SchemaField, ...]:
-    return schema_fields(cls)
-
-
-def _install_methods(
-    cls: type[_T],
-    localns: Mapping[str, Any] | None,
-    scope_token: _ScopeToken,
-) -> type[_T]:
-    existing = cls.__dict__.get("__yggdryl_schema__")
-    if (
-        isinstance(existing, _Schema)
-        and existing.owner_id == id(cls)
-        and existing.root.metadata.get("python.kind") != "record"
-    ):
-        for name in ("__yggdryl_schema__", "__yggdryl_field__", "__yggdryl_fields__"):
-            if name in cls.__dict__:
-                delattr(cls, name)
-    setattr(cls, "__yggdryl_record__", True)
-    if "to_dict" not in cls.__dict__:
-        setattr(cls, "to_dict", _method_to_dict)
-    if "from_dict" not in cls.__dict__:
-        setattr(cls, "from_dict", classmethod(_method_from_dict))
-    if "from_dicts" not in cls.__dict__:
-        setattr(cls, "from_dicts", classmethod(_method_from_dicts))
-    if "from_arrow_field" not in cls.__dict__:
-        setattr(
-            cls,
-            "from_arrow_field",
-            classmethod(_method_record_from_arrow_field),
-        )
-    if "from_arrow_schema" not in cls.__dict__:
-        setattr(
-            cls,
-            "from_arrow_schema",
-            classmethod(_method_record_from_arrow_schema),
-        )
-    if "from_arrow_record_batch" not in cls.__dict__:
-        setattr(
-            cls,
-            "from_arrow_record_batch",
-            classmethod(_method_from_arrow_record_batch),
-        )
-    if "from_arrow_record_batch_reader" not in cls.__dict__:
-        setattr(
-            cls,
-            "from_arrow_record_batch_reader",
-            classmethod(_method_from_arrow_record_batch_reader),
-        )
-    if "from_arrow_table" not in cls.__dict__:
-        setattr(
-            cls,
-            "from_arrow_table",
-            classmethod(_method_from_arrow_table),
-        )
-    if "from_arrow" not in cls.__dict__:
-        setattr(cls, "from_arrow", classmethod(_method_from_arrow))
-    if "from_json" not in cls.__dict__:
-        setattr(cls, "from_json", classmethod(_method_from_json))
-    if "from_yaml" not in cls.__dict__:
-        setattr(cls, "from_yaml", classmethod(_method_from_yaml))
-    if "from_toml" not in cls.__dict__:
-        setattr(cls, "from_toml", classmethod(_method_from_toml))
-    if "from_" not in cls.__dict__:
-        setattr(cls, "from_", classmethod(_method_from))
-    if "into_json" not in cls.__dict__:
-        setattr(cls, "into_json", _method_into_json)
-    if "into_yaml" not in cls.__dict__:
-        setattr(cls, "into_yaml", _method_into_yaml)
-    if "into_toml" not in cls.__dict__:
-        setattr(cls, "into_toml", _method_into_toml)
-    if "into_" not in cls.__dict__:
-        setattr(cls, "into_", _method_into)
-    if "into_arrow_field" not in cls.__dict__:
-        setattr(cls, "into_arrow_field", classmethod(_method_into_arrow_field))
-    if "into_arrow_schema" not in cls.__dict__:
-        setattr(cls, "into_arrow_schema", classmethod(_method_into_arrow_schema))
-    if "into_arrow_record_batch" not in cls.__dict__:
-        setattr(
-            cls,
-            "into_arrow_record_batch",
-            classmethod(_method_into_arrow_record_batch),
-        )
-    if "into_arrow_record_batches" not in cls.__dict__:
-        setattr(
-            cls,
-            "into_arrow_record_batches",
-            classmethod(_method_into_arrow_record_batches),
-        )
-    if "into_arrow_table" not in cls.__dict__:
-        setattr(
-            cls,
-            "into_arrow_table",
-            classmethod(_method_into_arrow_table),
-        )
-    if "into_arrow_record_batch_reader" not in cls.__dict__:
-        setattr(
-            cls,
-            "into_arrow_record_batch_reader",
-            classmethod(_method_into_arrow_record_batch_reader),
-        )
-    if "schema_field" not in cls.__dict__:
-        setattr(cls, "schema_field", classmethod(_method_schema_field))
-    if "schema_fields" not in cls.__dict__:
-        setattr(cls, "schema_fields", classmethod(_method_schema_fields))
-    _register_schema(cls, localns, scope_token)
-    return cls
-
-
 def _scope_base(cls: type[Any]) -> tuple[str, str]:
     scope, _, _ = cls.__qualname__.rpartition(".")
     return cls.__module__, scope
@@ -3434,27 +2816,22 @@ def _scope_key(cls: type[Any]) -> tuple[str, str, object | None]:
     return (*_scope_base(cls), getattr(cls, "__yggdryl_scope_token__", None))
 
 
-def _register_schema(
+def _register_field_class(
     cls: type[Any],
     localns: Mapping[str, Any] | None,
     token: _ScopeToken,
 ) -> None:
     namespace = dict(localns or ())
     setattr(cls, "__yggdryl_scope_token__", token)
-    try:
-        _ensure_schema(cls, namespace)
-    except _UnresolvedAnnotation:
-        with _SCHEMA_LOCK:
-            # The namespace is class-owned, so self/sibling/GenericAlias
-            # cycles remain collectable. The global weak map owns only the
-            # scope token needed to enumerate live pending records.
-            relevant = _relevant_namespace(cls, namespace)
-            setattr(cls, "__yggdryl_pending_namespace__", (id(cls), relevant))
-            _PENDING_SCHEMAS[cls] = token
+    with _SCHEMA_LOCK:
+        # Keep only annotation-reachable bindings, never the decorator frame.
+        relevant = _relevant_namespace(cls, namespace)
+        setattr(cls, "__yggdryl_pending_namespace__", (id(cls), relevant))
+        _PENDING_SCHEMAS[cls] = token
 
     # A later sibling may satisfy a name captured by an earlier decorator.
-    # Retry only classes from the same lexical scope and suppress only names
-    # that remain genuinely unresolved.
+    # Update only classes from the same lexical scope; actual schema building
+    # stays lazy until their cached ``field`` staticmethod is called.
     scope = _scope_key(cls)
     with _SCHEMA_LOCK:
         pending = tuple(_PENDING_SCHEMAS.items())
@@ -3472,26 +2849,109 @@ def _register_schema(
             candidate_namespace.update(
                 _relevant_namespace(candidate, merged_namespace)
             )
-            try:
-                _ensure_schema(candidate, candidate_namespace)
-            except _UnresolvedAnnotation:
-                continue
+
+
+def _hide_private_annotations(
+    cls: type[Any], annotations: Mapping[str, Any] | None = None
+) -> None:
+    annotations = dict(
+        _unevaluated_annotations(cls) if annotations is None else annotations
+    )
+    if not annotations:
+        return
+    mangled = f"_{cls.__name__.lstrip('_')}__"
+    for name in tuple(annotations):
+        if name.startswith("__") or name.startswith(mangled):
+            del annotations[name]
+            # An unannotated dataclasses.Field is itself an error. Other
+            # private defaults remain ordinary class attributes.
+            if isinstance(cls.__dict__.get(name), dc.Field):
+                delattr(cls, name)
+    # Python 3.14 defers annotations behind ``__annotate_func__``. Publishing
+    # the non-evaluating string view keeps dataclasses from executing a later
+    # sibling reference during decoration and leaves get_type_hints to resolve
+    # it lazily when ``field`` is first requested.
+    setattr(cls, "__annotations__", annotations)
+
+
+def _decorate_field_class(
+    candidate: type[_T],
+    options: Mapping[str, Any],
+    localns: Mapping[str, Any],
+    token: _ScopeToken,
+) -> type[_T]:
+    annotations = _unevaluated_annotations(candidate)
+    inherited_fields = getattr(candidate, "__dataclass_fields__", {})
+    resolved_accessor = _resolved_field_descriptor(candidate)
+    if (
+        "field" in candidate.__dict__
+        or "field" in annotations
+        or "field" in inherited_fields
+        or (
+            resolved_accessor is not _MISSING_FIELD_DESCRIPTOR
+            and not _is_installed_field_descriptor(resolved_accessor)
+        )
+    ):
+        raise TypeError(
+            f"{candidate.__module__}.{candidate.__qualname__} reserves "
+            "field for its cached native Field staticmethod"
+        )
+    original_doc = candidate.__doc__
+    _hide_private_annotations(candidate, annotations)
+    decorated = dc.dataclass(candidate, **options)
+    # ``dataclasses`` synthesizes a signature-shaped class docstring when the
+    # source class had none. Restore the source value so schema descriptions
+    # are documentation, never generated constructor text.
+    decorated.__doc__ = original_doc
+    setattr(decorated, "__yggdryl_field_class__", True)
+    _install_field_staticmethod(decorated)
+    _register_field_class(decorated, localns, token)
+    return decorated
+
+
+@typing.overload
+def scalar(cls: type[_T], /, **options: Any) -> type[_T]: ...
+
+
+@typing.overload
+def scalar(
+    cls: None = None, /, **options: Any
+) -> Callable[[type[_T]], type[_T]]: ...
 
 
 @_dataclass_transform(field_specifiers=(dc.field, dc.Field))
-def record(cls: type[_T] | None = None, /, **options: Any) -> type[_T] | Callable[[type[_T]], type[_T]]:
-    """Decorate a class as a stdlib dataclass with cached Yggdryl schema values."""
+def scalar(
+    cls: type[_T] | None = None, /, **options: Any
+) -> type[_T] | Callable[[type[_T]], type[_T]]:
+    """Wrap a class as a dataclass with a cached native ``field`` accessor."""
 
     def decorate(candidate: type[_T]) -> type[_T]:
         localns, token = _capture_context()
-        decorated = dc.dataclass(candidate, **options)
-        return _install_methods(decorated, localns, token)
+        return _decorate_field_class(candidate, options, localns, token)
 
     if cls is None:
         return decorate
     localns, token = _capture_context()
-    decorated = dc.dataclass(cls, **options)
-    return _install_methods(decorated, localns, token)
+    return _decorate_field_class(cls, options, localns, token)
 
 
-__all__ = ["Record", "from_dict", "record", "schema_field", "schema_fields", "to_dict"]
+def iter_records(reader: Any, cls: type[Any] | None = None) -> typing.Iterator[Any]:
+    """Yield mappings or dataclass instances from an Arrow batch reader.
+
+    Only the current batch is lowered to Python mappings. Dataclass conversion
+    uses the same recursive native-field-aware conversion as ``from_dict``;
+    this is a row adapter, never a second schema implementation.
+    """
+
+    if cls is not None and (not isinstance(cls, type) or not dc.is_dataclass(cls)):
+        raise TypeError(f"{cls!r} is not a dataclass type")
+
+    def rows() -> typing.Iterator[Any]:
+        for batch in reader:
+            for values in batch.to_pylist():
+                yield values if cls is None else from_dict(cls, values)
+
+    return rows()
+
+
+__all__ = ["field", "scalar"]

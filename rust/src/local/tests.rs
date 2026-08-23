@@ -349,9 +349,10 @@ mod hierarchy {
 
 /// One generic location resolves to the implementation it turns out to need.
 mod generic_path {
+    use crate::generic::Holder;
     use crate::io::IOBase;
     use crate::local::{Folder, Path};
-    use crate::{IOKind, MimeType};
+    use crate::{IOKind, MediaType, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
@@ -387,6 +388,19 @@ mod generic_path {
     }
 
     #[test]
+    fn holder_local_retains_the_unresolved_path_role() {
+        let path = root("holder-local");
+        std::fs::create_dir_all(&path).unwrap();
+        let existing = Holder::local(&path).unwrap();
+        let missing = Holder::local(path.join("absent.arrows")).unwrap();
+
+        assert!(matches!(&existing, Holder::Path(_)));
+        assert!(matches!(&missing, Holder::Path(_)));
+        assert_eq!(missing.media_type().base(), &MimeType::ARROW_STREAM);
+        Folder::new(&path).unwrap().remove(true).unwrap();
+    }
+
+    #[test]
     fn a_write_decides_an_undecided_location() {
         let path = root("write");
         std::fs::create_dir_all(&path).unwrap();
@@ -405,6 +419,34 @@ mod generic_path {
             .expect("a local container")
             .remove(true)
             .expect("a removable tree");
+    }
+
+    #[test]
+    fn a_generic_leaf_keeps_media_inference_and_declared_overrides() {
+        let path = root("media-type");
+        let mut leaf = Path::new(path.with_extension("arrows")).unwrap();
+
+        assert_eq!(leaf.media_type().base(), &MimeType::ARROW_STREAM);
+        leaf.set_media_type(MediaType::from(MimeType::CSV));
+        assert_eq!(leaf.media_type().base(), &MimeType::CSV);
+        assert!(leaf.is_tabular());
+        assert!(!leaf.is_atomic());
+        assert_eq!(leaf.as_file().unwrap().media_type().base(), &MimeType::CSV);
+    }
+
+    #[test]
+    fn clearing_a_generic_leaf_discards_its_retained_mapping() {
+        let path = root("clear-retained");
+        std::fs::create_dir_all(&path).unwrap();
+        let file = path.join("staged.bin");
+        let mut leaf = Path::new(&file).unwrap();
+
+        leaf.pwrite(0, b"must-not-return").unwrap();
+        leaf.clear().unwrap();
+        leaf.close().unwrap();
+
+        assert_eq!(std::fs::read(&file).unwrap(), b"");
+        Folder::new(&path).unwrap().remove(true).unwrap();
     }
 
     #[test]
@@ -443,8 +485,17 @@ mod generic_path {
 
         // Children resolve as further generic locations.
         let child = directory.child_by_path("a.bin").unwrap();
+        assert!(matches!(&child, Holder::Path(_)));
         assert_eq!(child.read_all_bytes().unwrap(), b"a");
-        assert_eq!(child.parent().unwrap().kind(), IOKind::Directory);
+        let parent = child.parent().unwrap();
+        assert!(matches!(&parent, Holder::Path(_)));
+        assert_eq!(parent.kind(), IOKind::Directory);
+
+        let message = leaf
+            .child_by_path("deeper")
+            .expect_err("a file cannot resolve a child")
+            .to_string();
+        assert!(message.contains("expected a container"), "{message}");
 
         Folder::new(&path)
             .expect("a local container")

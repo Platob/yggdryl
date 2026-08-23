@@ -305,18 +305,19 @@ test('records round trip through the wrapper, in both encodings', (t) => {
 
   for (const name of ['trades.arrows', 'trades.parquet']) {
     const handle = IOBase.fromArrowFs(local(), path.join(root, 'lake', name))
-    handle.writeArrowBatchReader(trades())
+    handle.overwriteArrowTable(trades())
     handle.flush()
 
     // What the wrapper published is a file any other reader can open, so the
     // local backend reads the same rows off the same bytes.
     const outside = new IOBase(path.join(root, 'lake', name))
     assert.deepEqual(outside.readBytes(), handle.readBytes())
-    assert.equal(outside.readArrowBatchReader().toTable().numRows, 2)
+    assert.equal(outside.readArrowReader().intoTable().numRows, 2)
+    outside.close()
 
     const table = IOBase.fromArrowFs(local(), path.join(root, 'lake', name))
-      .readArrowBatchReader()
-      .toTable()
+      .readArrowReader()
+      .intoTable()
     assert.equal(table.numRows, 2)
     assert.deepEqual(
       table.schema.fields.map((field) => field.name),
@@ -324,13 +325,13 @@ test('records round trip through the wrapper, in both encodings', (t) => {
     )
     assert.deepEqual([...table.getChild('symbol')], ['AAPL', 'MSFT'])
 
-    // Appending is the third record method, and it reads-adds-rewrites.
-    handle.appendArrowBatchReader(trades())
+    // Appending keeps its explicit intent and reads-adds-rewrites.
+    handle.appendArrowTable(trades())
     handle.flush()
     assert.equal(
       IOBase.fromArrowFs(local(), path.join(root, 'lake', name))
-        .readArrowBatchReader()
-        .toTable().numRows,
+        .readArrowReader()
+        .intoTable().numRows,
       4,
     )
   }
@@ -340,14 +341,14 @@ test('records round trip over storage that is only a Map', () => {
   const handler = memory()
   const handle = IOBase.fromArrowFs(handler, 'bucket/trades.arrows')
 
-  handle.writeArrowBatchReader(trades())
+  handle.overwriteArrowTable(trades())
   handle.flush()
 
   // Every byte of that table went through the caller's own handler.
   assert.ok(handler.files.has('bucket/trades.arrows'))
   assert.equal(handle.readArrowField().dataType.length, 2)
   assert.equal(
-    IOBase.fromArrowFs(handler, 'bucket/trades.arrows').readArrowBatchReader().toTable().numRows,
+    IOBase.fromArrowFs(handler, 'bucket/trades.arrows').readArrowReader().intoTable().numRows,
     2,
   )
 
@@ -406,7 +407,7 @@ test('an Iceberg table lives on a file system a caller wrote', () => {
   const table = iceberg.Table.create(warehouse, schema)
   table.append(trades())
 
-  const rows = table.scan().toTable()
+  const rows = table.scan().intoTable()
   assert.equal(rows.numRows, 2)
   assert.deepEqual(
     rows.schema.fields.map((field) => field.name),

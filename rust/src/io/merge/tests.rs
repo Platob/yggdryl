@@ -1,12 +1,13 @@
-//! A write whose options name a match key updates and appends by key.
+//! An explicit merge updates and appends by key.
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
-use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
+use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
+use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::BatchReader;
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::{Buffer, IOBase};
+use crate::io::{Buffer, IOBase, IOMedia};
 use crate::{DataType, Field, Url};
 
 /// Two columns: one key and one payload, so an update is visible.
@@ -21,7 +22,7 @@ fn schema() -> Field {
 
 fn rows(ids: Vec<i64>, symbols: Vec<Option<&str>>) -> RecordBatch {
     RecordBatch::try_new(
-        crate::arrow::schema_from_field(&schema()).unwrap(),
+        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
         vec![
             Arc::new(Int64Array::from(ids)),
             Arc::new(StringArray::from(symbols)),
@@ -31,7 +32,53 @@ fn rows(ids: Vec<i64>, symbols: Vec<Option<&str>>) -> RecordBatch {
 }
 
 fn reader(batches: Vec<RecordBatch>) -> BatchReader {
-    crate::arrow::batch_reader(crate::arrow::schema_from_field(&schema()).unwrap(), batches)
+    crate::arrow::batch_reader(
+        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        batches,
+    )
+}
+
+/// Produce payload batches only when the preceding one has been released.
+///
+/// This turns incoming-stream retention into a deterministic error instead of
+/// relying on an allocator or a process-wide memory watermark.
+struct ReleaseCheckedReader {
+    schema: SchemaRef,
+    next: i64,
+    previous: Option<Weak<dyn Array>>,
+}
+
+impl Iterator for ReleaseCheckedReader {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self
+            .previous
+            .as_ref()
+            .is_some_and(|array| array.strong_count() != 0)
+        {
+            return Some(Err(ArrowError::ComputeError(
+                "the preceding incoming payload batch was retained".to_owned(),
+            )));
+        }
+        if self.next == 2 {
+            return None;
+        }
+        let id: ArrayRef = Arc::new(Int64Array::from(vec![self.next]));
+        self.previous = Some(Arc::downgrade(&id));
+        let symbol: ArrayRef = Arc::new(StringArray::from(vec![format!("symbol-{}", self.next)]));
+        self.next += 1;
+        Some(RecordBatch::try_new(
+            Arc::clone(&self.schema),
+            vec![id, symbol],
+        ))
+    }
+}
+
+impl arrow_array::RecordBatchReader for ReleaseCheckedReader {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
 }
 
 fn handle(name: &str) -> Buffer {
@@ -47,7 +94,7 @@ fn merging(handle: &Buffer) -> RecordOptions {
     handle
         .record_options()
         .unwrap()
-        .with_schema(schema())
+        .with_field(schema())
         .with_merge_by_names(["id"])
 }
 
@@ -56,7 +103,7 @@ fn stored(handle: &impl IOBase, options: &RecordOptions) -> Vec<(i64, Option<Str
     let mut plain = options.clone();
     plain.set_merge_by_names(Vec::new());
     let mut found = Vec::new();
-    for batch in handle.read_arrow_batch_reader(&plain).unwrap() {
+    for batch in handle.read_arrow_reader(&plain).unwrap() {
         let batch = batch.unwrap();
         let ids = batch
             .column(0)
@@ -83,14 +130,14 @@ fn a_matching_key_updates_the_row_it_names() {
     let mut handle = handle("update.arrows");
     let options = merging(&handle);
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
             &options,
         )
         .unwrap();
 
     handle
-        .write_arrow_batch_reader(reader(vec![rows(vec![2], vec![Some("MSFT.O")])]), &options)
+        .merge_arrow_reader(reader(vec![rows(vec![2], vec![Some("MSFT.O")])]), &options)
         .unwrap();
 
     // The row keeps its position; only its payload changed.
@@ -105,11 +152,11 @@ fn a_key_that_matches_nothing_is_appended() {
     let mut handle = handle("append-key.arrows");
     let options = merging(&handle);
     handle
-        .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
         .unwrap();
 
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![1, 3], vec![Some("AAPL.O"), Some("NVDA")])]),
             &options,
         )
@@ -128,7 +175,7 @@ fn a_key_stored_twice_has_every_occurrence_updated() {
     // Two batches, both carrying key 1, because a match key is a rule and not
     // a constraint the stored side was ever checked against.
     handle
-        .write_arrow_batch_reader(
+        .overwrite_arrow_reader(
             reader(vec![
                 rows(vec![1], vec![Some("AAPL")]),
                 rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")]),
@@ -138,7 +185,7 @@ fn a_key_stored_twice_has_every_occurrence_updated() {
         .unwrap();
 
     handle
-        .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL.O")])]), &options)
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL.O")])]), &options)
         .unwrap();
 
     assert_eq!(
@@ -156,13 +203,13 @@ fn a_key_arriving_twice_lets_the_last_arrival_win() {
     let mut handle = handle("duplicate-incoming.arrows");
     let options = merging(&handle);
     handle
-        .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
         .unwrap();
 
     // Key 1 already exists and is updated twice; key 9 is new and must not be
     // appended twice, so its second arrival replaces the row the first claimed.
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(
                 vec![1, 9, 1, 9],
                 vec![Some("a"), Some("b"), Some("c"), Some("d")],
@@ -178,6 +225,21 @@ fn a_key_arriving_twice_lets_the_last_arrival_win() {
 }
 
 #[test]
+fn incoming_payload_batches_are_released_before_the_next_is_pulled() {
+    let arrow = crate::arrow::arrow_schema_from_field(&schema()).unwrap();
+    let stored = crate::arrow::batch_reader(Arc::clone(&arrow), []);
+    let incoming: BatchReader = Box::new(ReleaseCheckedReader {
+        schema: arrow,
+        next: 0,
+        previous: None,
+    });
+
+    let merged = super::merged(stored, incoming, &schema(), &["id".to_owned()], true).unwrap();
+    let rows: usize = merged.map(|batch| batch.unwrap().num_rows()).sum();
+    assert_eq!(rows, 2);
+}
+
+#[test]
 fn an_empty_target_appends_every_row() {
     let mut handle = handle("empty-target.arrows");
     let options = merging(&handle);
@@ -185,7 +247,7 @@ fn an_empty_target_appends_every_row() {
     // Nothing is stored yet, so the merge has nothing to match and the whole
     // incoming side lands as it stands.
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![5, 6], vec![None, Some("MSFT")])]),
             &options,
         )
@@ -205,7 +267,7 @@ fn a_null_key_matches_another_null_key() {
     ])
     .unwrap()
     .required_field("row");
-    let arrow = crate::arrow::schema_from_field(&field).unwrap();
+    let arrow = crate::arrow::arrow_schema_from_field(&field).unwrap();
     let batch = |ids: Vec<Option<i64>>, symbols: Vec<Option<&str>>| {
         RecordBatch::try_new(
             Arc::clone(&arrow),
@@ -221,16 +283,16 @@ fn a_null_key_matches_another_null_key() {
     let options = handle
         .record_options()
         .unwrap()
-        .with_schema(field)
+        .with_field(field)
         .with_merge_by_names(["id"]);
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             crate::arrow::batch_reader(Arc::clone(&arrow), [batch(vec![None], vec![Some("AAPL")])]),
             &options,
         )
         .unwrap();
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             crate::arrow::batch_reader(Arc::clone(&arrow), [batch(vec![None], vec![Some("MSFT")])]),
             &options,
         )
@@ -239,7 +301,7 @@ fn a_null_key_matches_another_null_key() {
     // Arrow's row encoding gives absence one exact spelling, so two null keys
     // are the same key rather than two rows that merely both lack a value.
     let total: usize = handle
-        .read_arrow_batch_reader(&options.with_merge_by_names(Vec::<String>::new()))
+        .read_arrow_reader(&options.with_merge_by_names(Vec::<String>::new()))
         .unwrap()
         .map(|batch| batch.unwrap().num_rows())
         .sum();
@@ -255,7 +317,7 @@ fn a_composite_key_matches_on_every_column() {
     ])
     .unwrap()
     .required_field("row");
-    let arrow = crate::arrow::schema_from_field(&field).unwrap();
+    let arrow = crate::arrow::arrow_schema_from_field(&field).unwrap();
     let batch = |venues: Vec<&str>, ids: Vec<i64>, symbols: Vec<&str>| {
         RecordBatch::try_new(
             Arc::clone(&arrow),
@@ -272,10 +334,10 @@ fn a_composite_key_matches_on_every_column() {
     let options = handle
         .record_options()
         .unwrap()
-        .with_schema(field)
+        .with_field(field)
         .with_merge_by_names(["venue", "id"]);
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             crate::arrow::batch_reader(
                 Arc::clone(&arrow),
                 [batch(vec!["XNAS", "XNYS"], vec![1, 1], vec!["a", "b"])],
@@ -285,7 +347,7 @@ fn a_composite_key_matches_on_every_column() {
         .unwrap();
     // The same id at a different venue is a different row.
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             crate::arrow::batch_reader(
                 Arc::clone(&arrow),
                 [batch(vec!["XNYS"], vec![1], vec!["b2"])],
@@ -295,7 +357,7 @@ fn a_composite_key_matches_on_every_column() {
         .unwrap();
 
     let read: Vec<RecordBatch> = handle
-        .read_arrow_batch_reader(&options.clone().with_merge_by_names(Vec::<String>::new()))
+        .read_arrow_reader(&options.clone().with_merge_by_names(Vec::<String>::new()))
         .unwrap()
         .map(std::result::Result::unwrap)
         .collect();
@@ -315,7 +377,7 @@ fn an_incoming_schema_that_disagrees_is_cast_to_the_target_first() {
     let mut handle = handle("disagree.arrows");
     let options = merging(&handle);
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
             &options,
         )
@@ -332,7 +394,7 @@ fn an_incoming_schema_that_disagrees_is_cast_to_the_target_first() {
     .unwrap()
     .required_field("row");
     let incoming = RecordBatch::try_new(
-        crate::arrow::schema_from_field(&loose).unwrap(),
+        crate::arrow::arrow_schema_from_field(&loose).unwrap(),
         vec![
             Arc::new(StringArray::from(vec!["MSFT.O"])),
             Arc::new(StringArray::from(vec!["2"])),
@@ -342,7 +404,7 @@ fn an_incoming_schema_that_disagrees_is_cast_to_the_target_first() {
     .unwrap();
 
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             crate::arrow::batch_reader(incoming.schema(), [incoming]),
             &options,
         )
@@ -360,11 +422,11 @@ fn a_match_key_naming_an_unknown_column_is_refused_by_name() {
     let options = handle
         .record_options()
         .unwrap()
-        .with_schema(schema())
+        .with_field(schema())
         .with_merge_by_names(["nowhere"]);
 
     let message = handle
-        .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
         .unwrap_err()
         .to_string();
     assert!(message.contains("nowhere"), "{message}");
@@ -377,13 +439,13 @@ fn merging_works_the_same_way_on_parquet() {
     let mut handle = handle("merge.parquet");
     let options = merging(&handle);
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
             &options,
         )
         .unwrap();
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![2, 3], vec![Some("MSFT.O"), Some("NVDA")])]),
             &options,
         )
@@ -402,9 +464,9 @@ fn merging_works_the_same_way_on_parquet() {
 #[test]
 fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
     let mut handle = handle("orders.arrows");
-    let options = handle.record_options().unwrap().with_schema(schema());
+    let options = handle.record_options().unwrap().with_field(schema());
     handle
-        .write_arrow_batch_reader(
+        .overwrite_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
             &options,
         )
@@ -414,7 +476,7 @@ fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
     // way every cast matches, ASCII case-insensitively.
     let selecting = options.clone().with_select_by_names(["SYMBOL"]);
     let mut symbols = Vec::new();
-    for batch in handle.read_arrow_batch_reader(&selecting).unwrap() {
+    for batch in handle.read_arrow_reader(&selecting).unwrap() {
         let batch = batch.unwrap();
         assert_eq!(batch.num_columns(), 1);
         let column = batch
@@ -432,7 +494,7 @@ fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
     // reversed, which a plain read never does.
     let reversed = options.with_select_by_names(["symbol", "id"]);
     let first = handle
-        .read_arrow_batch_reader(&reversed)
+        .read_arrow_reader(&reversed)
         .unwrap()
         .next()
         .unwrap()
@@ -456,7 +518,7 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
         .unwrap()
         .with_select_by_names(["id"]);
     handle
-        .write_arrow_batch_reader(
+        .overwrite_arrow_reader(
             reader(vec![rows(vec![7, 8], vec![Some("AAPL"), Some("MSFT")])]),
             &narrowing,
         )
@@ -464,7 +526,7 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
 
     let plain = handle.record_options().unwrap();
     let batch = handle
-        .read_arrow_batch_reader(&plain)
+        .read_arrow_reader(&plain)
         .unwrap()
         .next()
         .unwrap()
@@ -475,7 +537,7 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
     // A name the rows do not have is an error naming what is there.
     let missing = plain.with_select_by_names(["absent"]);
     let error = handle
-        .read_arrow_batch_reader(&missing)
+        .read_arrow_reader(&missing)
         .err()
         .expect("a missing selected column is an error")
         .to_string();
@@ -484,22 +546,32 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
 }
 
 #[test]
-fn an_append_whose_options_name_a_match_key_updates_rather_than_duplicates() {
+fn append_refuses_a_match_key_and_merge_uses_it_explicitly() {
     let mut handle = handle("append-merge.arrows");
     let options = merging(&handle);
     handle
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
             &options,
         )
         .unwrap();
 
-    // The key says which row an incoming row *is*. Appending without consulting
-    // it stored id 2 twice, so the resource contradicted the option it was
-    // handed - and the folder path had always merged, which made one option
-    // mean two things depending on what the handle addressed.
+    // Intent comes from the method, never from an option. Append therefore
+    // refuses a merge key before touching the resource.
+    let before = handle.as_slice().to_vec();
+    let error = handle
+        .append_arrow_reader(
+            reader(vec![rows(vec![2, 3], vec![Some("MSFT.O"), Some("NVDA")])]),
+            &options,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("write mode append"), "{error}");
+    assert!(error.contains("merge_by_names"), "{error}");
+    assert_eq!(handle.as_slice(), before.as_slice());
+
     handle
-        .append_arrow_batch_reader(
+        .merge_arrow_reader(
             reader(vec![rows(vec![2, 3], vec![Some("MSFT.O"), Some("NVDA")])]),
             &options,
         )
@@ -520,13 +592,13 @@ fn an_append_naming_no_match_key_still_appends_every_row() {
     let mut handle = handle("append-plain.arrows");
     let options = merging(&handle).with_merge_by_names(Vec::<String>::new());
     handle
-        .write_arrow_batch_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .overwrite_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
         .unwrap();
 
     // Without a key nothing identifies a row, so a repeat is a second row -
     // the behaviour the merge branch must not have taken over.
     handle
-        .append_arrow_batch_reader(
+        .append_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
             &options,
         )

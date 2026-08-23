@@ -23,7 +23,7 @@
 //! the writer/reader schema resolution matrix compiled once per pair - so
 //! extra writer fields are skipped without being decoded and missing reader
 //! fields fill from defaults. [`Schema::fingerprint`] names a schema for
-//! caches and for the single-object framing in [`to_single_object_vec`].
+//! caches and for the single-object framing in [`into_single_object_vec`].
 
 #[cfg(feature = "arrow")]
 mod arrow;
@@ -36,18 +36,20 @@ pub(crate) mod schema;
 mod single;
 
 #[cfg(feature = "arrow")]
+pub(crate) use batch::row_size;
+#[cfg(feature = "arrow")]
 pub use batch::{
-    Avro, AvroOptions, DEFAULT_ROOT_NAME, read_batch_reader, read_field, write_batch_reader,
+    Avro, AvroOptions, DEFAULT_ROOT_NAME, overwrite_batch_reader, read_batch_reader, read_field,
 };
 pub use container::{
-    Block, Blocks, Container, read_blocks, read_blocks_with_limits, read_container,
-    read_container_resolved, read_container_resolved_with_limits, read_container_with_limits,
-    write_container,
+    Block, Blocks, Container, read_blocks, read_blocks_owned, read_blocks_owned_with_limits,
+    read_blocks_with_limits, read_container, read_container_resolved,
+    read_container_resolved_with_limits, read_container_with_limits, write_container,
 };
 pub use resolve::Resolution;
 pub use schema::{MAX_SCHEMA_DEPTH, Schema};
 pub use single::{
-    from_single_object_slice, from_single_object_slice_with_limits, to_single_object_vec,
+    from_single_object_slice, from_single_object_slice_with_limits, into_single_object_vec,
 };
 
 #[cfg(test)]

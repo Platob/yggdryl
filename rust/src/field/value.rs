@@ -13,7 +13,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::value_is_logically_null;
-use crate::{DataType, Error, Field, Fields, Result, TimeUnit, Value};
+use crate::{DataType, Error, Field, Fields, Result, TimeUnit, Timezone, Value};
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -48,10 +48,15 @@ impl ValidationFailure {
 /// Validate one row value against a struct root field.
 pub(crate) fn validate_row(root: &Field, value: &Value) -> Result<()> {
     let expected = root.field_len();
+    if let Some(record) = value.as_record() {
+        validate_record_fields(root.fields(), record, 0)
+            .map_err(|failure| validation_error(root.name(), failure))?;
+        return Ok(());
+    }
     let values = value.as_sequence().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(root.name()),
         reason: format_smolstr!(
-            "expected an ordered sequence of {expected} column values, got {}",
+            "expected a record or {expected} ordered values, got {}",
             value.kind()
         ),
     })?;
@@ -97,6 +102,10 @@ pub(crate) fn validate_data_type_value_for(data_type: &DataType, value: &Value) 
 
 /// Rewrite one row value into the exact representation a root field declares.
 pub(crate) fn canonicalize_row(root: &Field, value: Value) -> Result<Value> {
+    if let Some(record) = value.as_record() {
+        let values = record_values(root.fields(), record)?;
+        return canonicalize_row(root, Value::from_sequence(values));
+    }
     let Some(values) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::from(root_path(root.name())),
@@ -156,22 +165,147 @@ fn restated(data_type: &DataType, value: &Value) -> Option<i128> {
         {
             value.decimal_unscaled_at(*scale)
         }
-        D::Timestamp(unit, _) | D::Duration(unit) | D::Time32(unit) | D::Time64(unit)
-            if value.is_temporal() =>
+        D::Timestamp(unit, zone)
+            if temporal_matches(value, TemporalFamily::DateTime, zone.as_ref()) =>
         {
             value.temporal_count_at(*unit).map(i128::from)
         }
-        D::Date32 => value.as_date().map(i128::from),
-        D::Date64 => value
-            .as_date()
-            .and_then(|days| i128::from(days).checked_mul(86_400_000)),
+        D::Duration32(unit) | D::Duration64(unit)
+            if temporal_matches(value, TemporalFamily::Duration, None) =>
+        {
+            value.temporal_count_at(*unit).map(i128::from)
+        }
+        D::Time32(unit) | D::Time64(unit)
+            if temporal_matches(value, TemporalFamily::Time, None) =>
+        {
+            value.temporal_count_at(*unit).map(i128::from)
+        }
+        D::Date32 if temporal_matches(value, TemporalFamily::Date, None) => {
+            value.temporal_count_at(TimeUnit::Day).map(i128::from)
+        }
+        D::Date64 if temporal_matches(value, TemporalFamily::Date, None) => value
+            .temporal_count_at(TimeUnit::Millisecond)
+            .map(i128::from),
         _ => None,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TemporalFamily {
+    Date,
+    Time,
+    DateTime,
+    Duration,
+}
+
+/// Check the logical temporal family and the zone a datatype can preserve.
+fn temporal_matches(
+    value: &Value,
+    family: TemporalFamily,
+    expected_zone: Option<&Timezone>,
+) -> bool {
+    let matched = match family {
+        TemporalFamily::Date => matches!(value, Value::Date32(..) | Value::Date64(..)),
+        TemporalFamily::Time => matches!(value, Value::Time32(..) | Value::Time64(..)),
+        TemporalFamily::DateTime => matches!(value, Value::DateTime64(..)),
+        TemporalFamily::Duration => {
+            matches!(value, Value::Duration32(..) | Value::Duration64(..))
+        }
+    };
+    if !matched {
+        return false;
+    }
+    let Some(zone) = value.temporal_timezone() else {
+        return false;
+    };
+    match (family, expected_zone) {
+        (TemporalFamily::DateTime, Some(expected)) => zone == expected,
+        (TemporalFamily::DateTime, None) => zone.is_naive(),
+        _ => zone.is_naive(),
     }
 }
 
 #[allow(clippy::too_many_lines)]
 fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(Value, bool)> {
     use DataType as D;
+    match data_type {
+        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
+            let coefficient = if value.is_decimal() {
+                value.decimal_unscaled_at(*scale)
+            } else {
+                value.as_i128()
+            }
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!("expected a d128 representable at scale {scale}"),
+            })?;
+            let canonical = Value::d128(coefficient, *scale);
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Decimal256 { scale, .. } => {
+            let coefficient = if value.is_decimal() {
+                value.decimal256_unscaled_at(*scale)
+            } else {
+                value.as_i128().map(crate::I256::from_i128)
+            }
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!("expected a d256 representable at scale {scale}"),
+            })?;
+            let canonical = Value::d256(coefficient, *scale);
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Date32 => {
+            let count = temporal_or_integer(value, TimeUnit::Day, TemporalFamily::Date, None)?;
+            let canonical = Value::date32(
+                i32::try_from(count)
+                    .map_err(|_| canonical_error("date32 count does not fit signed 32 bits"))?,
+            );
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Date64 => {
+            let count =
+                temporal_or_integer(value, TimeUnit::Millisecond, TemporalFamily::Date, None)?;
+            let canonical = Value::date64(count);
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Time32(unit) => {
+            let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
+            let canonical = Value::time32(
+                i32::try_from(count)
+                    .map_err(|_| canonical_error("time32 count does not fit signed 32 bits"))?,
+                *unit,
+                Timezone::NAIVE,
+            )?;
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Time64(unit) => {
+            let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
+            let canonical = Value::time64(count, *unit, Timezone::NAIVE)?;
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Timestamp(unit, zone) => {
+            let count = temporal_or_integer(value, *unit, TemporalFamily::DateTime, zone.as_ref())?;
+            let canonical =
+                Value::datetime64(count, *unit, zone.clone().unwrap_or(Timezone::NAIVE))?;
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Duration32(unit) => {
+            let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
+            let canonical = Value::duration32(
+                i32::try_from(count)
+                    .map_err(|_| canonical_error("duration32 count does not fit signed 32 bits"))?,
+                *unit,
+            )?;
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        D::Duration64(unit) => {
+            let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
+            let canonical = Value::duration64(count, *unit)?;
+            return Ok((canonical.clone(), value != &canonical));
+        }
+        _ => {}
+    }
     if let Some(physical) = restated(data_type, value) {
         // A restatement always rewrote something, so it is always a change.
         let (canonical, _) = canonicalize_data_type_value(data_type, &Value::I128(physical))?;
@@ -179,21 +313,14 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
     }
     match data_type {
         D::Null | D::Boolean => Ok((value.clone(), false)),
-        D::Int8
-        | D::Int16
-        | D::Int32
-        | D::Int64
-        | D::Timestamp(..)
-        | D::Date32
-        | D::Date64
-        | D::Time32(_)
-        | D::Time64(_)
-        | D::Duration(_)
-        | D::Interval(TimeUnit::YearMonth) => canonical_signed(value),
-        D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(value),
+        D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(data_type, value),
+        // Interval tuples use the core's signed 64-bit component spelling;
+        // they are not one of the physical integer widths selected above.
+        D::Interval(TimeUnit::YearMonth) => canonical_signed(&D::Int64, value),
+        D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(data_type, value),
         D::Float16 => canonical_float(value, FloatWidth::Float16),
         D::Float32 => canonical_float(value, FloatWidth::Float32),
-        D::Float64 => Ok((value.clone(), false)),
+        D::Float64 => canonical_float(value, FloatWidth::Float64),
         D::Interval(TimeUnit::DayTime) => canonical_integer_sequence(value, 2),
         D::Interval(TimeUnit::MonthDayNano) => canonical_integer_sequence(value, 3),
         D::Interval(_) => Ok((value.clone(), false)),
@@ -203,8 +330,7 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         | D::BinaryView
         | D::Utf8
         | D::LargeUtf8
-        | D::Utf8View
-        | D::Decimal256 { .. } => Ok((value.clone(), false)),
+        | D::Utf8View => Ok((value.clone(), false)),
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -215,12 +341,17 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         D::Struct(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
         D::Dictionary(dictionary) => canonicalize_data_type_value(dictionary.value(), value),
-        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } => {
-            let Some(integer) = value.as_i128() else {
-                return canonicalization_failure(data_type);
-            };
-            Ok((Value::I128(integer), !matches!(value, Value::I128(_))))
-        }
+        D::Decimal32 { .. }
+        | D::Decimal64 { .. }
+        | D::Decimal128 { .. }
+        | D::Decimal256 { .. }
+        | D::Timestamp(..)
+        | D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::Duration32(_)
+        | D::Duration64(_) => unreachable!("typed scalars returned above"),
         D::Map(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
         // A variant value is any value: the tree describes itself.
@@ -235,8 +366,8 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
     }
 }
 
-fn canonical_signed(value: &Value) -> Result<(Value, bool)> {
-    let Some(integer) = value.as_i128().and_then(|value| i64::try_from(value).ok()) else {
+fn canonical_signed(data_type: &DataType, value: &Value) -> Result<(Value, bool)> {
+    let Some(integer) = value.as_i128() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             // Naming the kind is what tells a caller that the temporal they
@@ -247,28 +378,57 @@ fn canonical_signed(value: &Value) -> Result<(Value, bool)> {
             ),
         });
     };
-    Ok((
-        Value::I64(integer),
-        !matches!(value, Value::I64(current) if *current == integer),
-    ))
+    let canonical = match data_type {
+        DataType::Int8 => Value::I8(i8::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::Int16 => Value::I16(i16::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::Int32 => Value::I32(i32::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::Int64 | DataType::Interval(TimeUnit::YearMonth) => {
+            Value::I64(i64::try_from(integer).map_err(canonical_integer_error)?)
+        }
+        _ => unreachable!("signed canonicalization requires a signed datatype"),
+    };
+    let changed = match &canonical {
+        Value::I8(expected) => !matches!(value, Value::I8(current) if current == expected),
+        Value::I16(expected) => !matches!(value, Value::I16(current) if current == expected),
+        Value::I32(expected) => !matches!(value, Value::I32(current) if current == expected),
+        Value::I64(expected) => !matches!(value, Value::I64(current) if current == expected),
+        _ => unreachable!("signed canonical value has a signed kind"),
+    };
+    Ok((canonical, changed))
 }
 
-fn canonical_unsigned(value: &Value) -> Result<(Value, bool)> {
-    let Some(integer) = value.as_u128().and_then(|value| u64::try_from(value).ok()) else {
+fn canonical_unsigned(data_type: &DataType, value: &Value) -> Result<(Value, bool)> {
+    let Some(integer) = value.as_u128() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated unsigned value could not be canonicalized"),
         });
     };
-    Ok((
-        Value::U64(integer),
-        !matches!(value, Value::U64(current) if *current == integer),
-    ))
+    let canonical = match data_type {
+        DataType::UInt8 => Value::U8(u8::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt16 => Value::U16(u16::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt32 => Value::U32(u32::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt64 => Value::U64(u64::try_from(integer).map_err(canonical_integer_error)?),
+        _ => unreachable!("unsigned canonicalization requires an unsigned datatype"),
+    };
+    let changed = match &canonical {
+        Value::U8(expected) => !matches!(value, Value::U8(current) if current == expected),
+        Value::U16(expected) => !matches!(value, Value::U16(current) if current == expected),
+        Value::U32(expected) => !matches!(value, Value::U32(current) if current == expected),
+        Value::U64(expected) => !matches!(value, Value::U64(current) if current == expected),
+        _ => unreachable!("unsigned canonical value has an unsigned kind"),
+    };
+    Ok((canonical, changed))
+}
+
+fn canonical_integer_error(_error: impl std::fmt::Display) -> Error {
+    canonical_error("integer does not fit declared width")
 }
 
 enum FloatWidth {
     Float16,
     Float32,
+    Float64,
 }
 
 fn canonical_float(value: &Value, width: FloatWidth) -> Result<(Value, bool)> {
@@ -278,16 +438,42 @@ fn canonical_float(value: &Value, width: FloatWidth) -> Result<(Value, bool)> {
             reason: SmolStr::new_static("validated float value could not be canonicalized"),
         });
     };
-    let narrowed = match width {
-        FloatWidth::Float16 => f64::from(half::f16::from_f64(number)),
-        FloatWidth::Float32 => f64::from(number as f32),
+    let canonical = match width {
+        FloatWidth::Float16 => Value::from(half::f16::from_f64(number)),
+        FloatWidth::Float32 => Value::from(number as f32),
+        FloatWidth::Float64 => Value::from(number),
     };
-    let canonical = Value::from(narrowed);
-    let changed = !matches!(
-        (value, &canonical),
-        (Value::F64(current), Value::F64(canonical)) if current == canonical
-    );
+    let changed = value != &canonical;
     Ok((canonical, changed))
+}
+
+fn temporal_or_integer(
+    value: &Value,
+    unit: TimeUnit,
+    family: TemporalFamily,
+    zone: Option<&Timezone>,
+) -> Result<i64> {
+    if value.is_temporal() {
+        if !temporal_matches(value, family, zone) {
+            return Err(canonical_error(
+                "temporal family or timezone does not match the declared datatype",
+            ));
+        }
+        return value.temporal_count_at(unit).ok_or_else(|| {
+            canonical_error("temporal count cannot be represented in the declared unit")
+        });
+    }
+    value
+        .as_i128()
+        .and_then(|value| i64::try_from(value).ok())
+        .ok_or_else(|| canonical_error("expected a signed 64-bit temporal count"))
+}
+
+fn canonical_error(reason: &'static str) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: reason.into(),
+    }
 }
 
 fn canonical_integer_sequence(value: &Value, length: usize) -> Result<(Value, bool)> {
@@ -303,7 +489,7 @@ fn canonical_integer_sequence(value: &Value, length: usize) -> Result<(Value, bo
             reason: SmolStr::new_static("validated integer tuple changed length"),
         });
     }
-    canonical_sequence(value, canonical_signed)
+    canonical_sequence(value, |value| canonical_signed(&DataType::Int64, value))
 }
 
 fn canonical_sequence(
@@ -327,19 +513,10 @@ fn canonical_sequence(
 }
 
 fn canonical_struct(fields: &Fields, value: &Value) -> Result<(Value, bool)> {
-    // A struct value reads back from Arrow as its typed record; both
-    // spellings carry one value per field, so a record canonicalizes as the
-    // plain sequence it wraps - the same two spellings the materializer and
-    // the default planner already recognize.
-    if let Some((_, values)) = value.as_record() {
-        if values.len() != fields.len() {
-            return canonicalization_failure(&DataType::Struct(fields.clone()));
-        }
-        let canonical = canonicalize_slice(values, |index, value| {
-            canonicalize_field_value(&fields[index], value)
-        })?
-        .unwrap_or_else(|| values.to_vec());
-        return Ok((Value::from_sequence(canonical), true));
+    if let Some(record) = value.as_record() {
+        let values = record_values(fields, record)?;
+        let sequence = Value::from_sequence(values);
+        return canonical_struct(fields, &sequence).map(|(value, _)| (value, true));
     }
     let Some(values) = value.as_sequence() else {
         return canonicalization_failure(&DataType::Struct(fields.clone()));
@@ -597,12 +774,18 @@ fn validate_data_type_value(
         D::UInt32 => validate_unsigned(value, u128::from(u32::MAX), "uint32"),
         D::UInt64 => validate_unsigned(value, u128::from(u64::MAX), "uint64"),
         D::Float16 | D::Float32 | D::Float64 => {
-            require(matches!(value, Value::F64(_)), data_type.name(), value)
+            require(value.as_f64().is_some(), data_type.name(), value)
         }
-        D::Timestamp(..) | D::Duration(_) => validate_signed(
+        D::Timestamp(..) | D::Duration64(_) => validate_signed(
             value,
             i128::from(i64::MIN),
             i128::from(i64::MAX),
+            data_type.name(),
+        ),
+        D::Duration32(_) => validate_signed(
+            value,
+            i128::from(i32::MIN),
+            i128::from(i32::MAX),
             data_type.name(),
         ),
         D::Date32 => validate_signed(
@@ -656,7 +839,7 @@ fn validate_data_type_value(
         D::Decimal32 { precision, .. } => validate_decimal(value, *precision, 32),
         D::Decimal64 { precision, .. } => validate_decimal(value, *precision, 64),
         D::Decimal128 { precision, .. } => validate_decimal(value, *precision, 128),
-        D::Decimal256 { precision, .. } => validate_decimal256(value, *precision),
+        D::Decimal256 { precision, scale } => validate_decimal256(value, *precision, *scale),
         D::Map(map) => validate_map(map, value, depth + 1),
         D::RunEndEncoded(encoded) => {
             validate_field_value_at_depth(encoded.values(), value, depth + 1)
@@ -789,6 +972,9 @@ fn validate_struct(
     value: &Value,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
+    if let Some(record) = value.as_record() {
+        return validate_record_fields(fields, record, depth);
+    }
     let values = value
         .as_sequence()
         .ok_or_else(|| expected("struct sequence", value))?;
@@ -803,6 +989,56 @@ fn validate_struct(
         .iter()
         .zip(values)
         .try_for_each(|(field, value)| validate_field_value_at_depth(field, value, depth))
+}
+
+fn validate_record_fields(
+    fields: &[Field],
+    record: &std::collections::BTreeMap<SmolStr, Value>,
+    depth: usize,
+) -> std::result::Result<(), ValidationFailure> {
+    if let Some(name) = record
+        .keys()
+        .find(|name| !fields.iter().any(|field| field.name() == name.as_str()))
+    {
+        return Err(ValidationFailure::new(format_smolstr!(
+            "record contains unknown field {name:?}"
+        )));
+    }
+    for field in fields.iter() {
+        if let Some(value) = record.get(field.name()) {
+            validate_field_value_at_depth(field, value, depth)?;
+        } else {
+            let default = field
+                .default_value()
+                .map_err(|error| ValidationFailure::new(error.to_string()))?;
+            validate_field_value_at_depth(field, &default, depth)?;
+        }
+    }
+    Ok(())
+}
+
+fn record_values(
+    fields: &[Field],
+    record: &std::collections::BTreeMap<SmolStr, Value>,
+) -> Result<Vec<Value>> {
+    if let Some(name) = record
+        .keys()
+        .find(|name| !fields.iter().any(|field| field.name() == name.as_str()))
+    {
+        return Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: format_smolstr!("record contains unknown field {name:?}"),
+        });
+    }
+    fields
+        .iter()
+        .map(|field| {
+            record
+                .get(field.name())
+                .cloned()
+                .map_or_else(|| field.default_value(), Ok)
+        })
+        .collect()
 }
 
 fn validate_union(
@@ -853,22 +1089,20 @@ fn validate_decimal(
     Ok(())
 }
 
-fn validate_decimal256(value: &Value, precision: u8) -> std::result::Result<(), ValidationFailure> {
-    let Some(encoded) = value.as_str() else {
-        return Err(expected("canonical decimal256 coefficient string", value));
+fn validate_decimal256(
+    value: &Value,
+    precision: u8,
+    scale: i8,
+) -> std::result::Result<(), ValidationFailure> {
+    let Some(coefficient) = (if value.is_decimal() {
+        value.decimal256_unscaled_at(scale)
+    } else {
+        value.as_i128().map(crate::I256::from_i128)
+    }) else {
+        return Err(expected("d256", value));
     };
-    let (negative, digits) = encoded
-        .strip_prefix('-')
-        .map_or((false, encoded), |digits| (true, digits));
-    if digits.is_empty()
-        || !digits.bytes().all(|byte| byte.is_ascii_digit())
-        || (digits.len() > 1 && digits.starts_with('0'))
-        || (negative && digits == "0")
-    {
-        return Err(ValidationFailure::new(
-            "decimal256 coefficient must be canonical signed base-10 text",
-        ));
-    }
+    let encoded = coefficient.to_string();
+    let digits = encoded.trim_start_matches('-');
     if digits.len() > usize::from(precision) {
         return Err(ValidationFailure::new(format_smolstr!(
             "decimal256 value exceeds precision {precision}"
@@ -944,4 +1178,129 @@ fn decimal_digits(value: u128) -> usize {
         remaining /= 10;
     }
     digits
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn root(fields: impl IntoIterator<Item = Field>) -> Field {
+        DataType::from_fields(fields).unwrap().required_field("row")
+    }
+
+    #[test]
+    fn a_record_maps_names_to_schema_order_and_fills_field_defaults() {
+        let schema = root([
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.nullable_field("venue"),
+        ]);
+        let record = Value::from_record([("id", Value::I8(7))]).unwrap();
+
+        schema.validate_value(&record).unwrap();
+        assert_eq!(
+            schema.canonicalize_value(record).unwrap(),
+            Value::from_sequence([Value::I64(7), Value::Null])
+        );
+    }
+
+    #[test]
+    fn a_record_refuses_unknown_names() {
+        let schema = root([DataType::Int64.required_field("id")]);
+        let record =
+            Value::from_record([("id", Value::I64(7)), ("unknown", Value::I64(1))]).unwrap();
+
+        let validation = schema.validate_value(&record).unwrap_err().to_string();
+        let canonical = schema.canonicalize_value(record).unwrap_err().to_string();
+        assert!(validation.contains("unknown field"), "{validation}");
+        assert!(canonical.contains("unknown field"), "{canonical}");
+    }
+
+    #[test]
+    fn integer_canonicalization_preserves_every_declared_width() {
+        let schema = root([
+            DataType::Int8.required_field("i8"),
+            DataType::Int16.required_field("i16"),
+            DataType::Int32.required_field("i32"),
+            DataType::Int64.required_field("i64"),
+            DataType::UInt8.required_field("u8"),
+            DataType::UInt16.required_field("u16"),
+            DataType::UInt32.required_field("u32"),
+            DataType::UInt64.required_field("u64"),
+        ]);
+        let natural = Value::from_sequence([
+            Value::I64(-1),
+            Value::U64(2),
+            Value::I64(-3),
+            Value::I8(-4),
+            Value::U64(1),
+            Value::U64(2),
+            Value::U64(3),
+            Value::U8(4),
+        ]);
+        let canonical = schema.canonicalize_value(natural).unwrap();
+        let values = canonical.as_sequence().unwrap();
+        assert!(matches!(values[0], Value::I8(-1)));
+        assert!(matches!(values[1], Value::I16(2)));
+        assert!(matches!(values[2], Value::I32(-3)));
+        assert!(matches!(values[3], Value::I64(-4)));
+        assert!(matches!(values[4], Value::U8(1)));
+        assert!(matches!(values[5], Value::U16(2)));
+        assert!(matches!(values[6], Value::U32(3)));
+        assert!(matches!(values[7], Value::U64(4)));
+    }
+
+    #[test]
+    fn year_month_interval_keeps_its_signed_64_bit_component_spelling() {
+        let schema = root([DataType::Interval(TimeUnit::YearMonth).required_field("months")]);
+
+        assert_eq!(
+            schema
+                .canonicalize_value(Value::from_sequence([Value::I8(18)]))
+                .unwrap(),
+            Value::from_sequence([Value::I64(18)])
+        );
+    }
+
+    #[test]
+    fn temporal_casts_preserve_family_and_timezone() {
+        let schema = root([
+            DataType::Timestamp(TimeUnit::Millisecond, Some(Timezone::UTC)).required_field("at"),
+            DataType::Time32(TimeUnit::Second).required_field("clock"),
+            DataType::Duration32(TimeUnit::Millisecond).required_field("elapsed"),
+        ]);
+        let valid = Value::from_sequence([
+            Value::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+            Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Value::duration64(3, TimeUnit::Second).unwrap(),
+        ]);
+        assert_eq!(
+            schema.canonicalize_value(valid).unwrap(),
+            Value::from_sequence([
+                Value::datetime64(1_000, TimeUnit::Millisecond, Timezone::UTC).unwrap(),
+                Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Value::duration32(3_000, TimeUnit::Millisecond).unwrap(),
+            ])
+        );
+
+        for invalid in [
+            Value::from_sequence([
+                Value::datetime64(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Value::duration32(3, TimeUnit::Millisecond).unwrap(),
+            ]),
+            Value::from_sequence([
+                Value::duration64(1, TimeUnit::Second).unwrap(),
+                Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Value::duration32(3, TimeUnit::Millisecond).unwrap(),
+            ]),
+            Value::from_sequence([
+                Value::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+                Value::Time32(2, TimeUnit::Second, Timezone::UTC),
+                Value::duration32(3, TimeUnit::Millisecond).unwrap(),
+            ]),
+        ] {
+            assert!(schema.validate_value(&invalid).is_err());
+            assert!(schema.canonicalize_value(invalid).is_err());
+        }
+    }
 }

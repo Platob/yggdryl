@@ -1,4 +1,4 @@
-//! Lossless borrowed and consuming Arrow datatype interoperability.
+//! Lossless Arrow datatype interoperability.
 
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ use crate::{Error, Field, Result};
 use super::floating::validate_decimal;
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::scalar::{invalid, validate_non_negative};
-use super::temporal::{validate_time32_unit, validate_time64_unit};
+use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use super::{DataType, Fields, UnionFields, UnionMode};
 
 impl DataType {
@@ -27,13 +27,6 @@ impl DataType {
     /// # Errors
     ///
     /// Returns an error unless this is a bounded Struct datatype.
-    // Mirrors the gating on `Field::to_arrow_schema`, which this delegates to:
-    // the Arrow array runtime that owns the schema result is optional.
-    #[cfg(feature = "arrow")]
-    pub fn to_arrow_schema(&self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
-        crate::Field::new("row", self.clone(), false).to_arrow_schema()
-    }
-
     /// Consumes this Struct datatype and projects it as an Arrow schema.
     ///
     /// # Errors
@@ -98,7 +91,7 @@ impl DataType {
             A::Date64 => Self::Date64,
             A::Time32(unit) => Self::time32((*unit).into())?,
             A::Time64(unit) => Self::time64((*unit).into())?,
-            A::Duration(unit) => Self::Duration((*unit).into()),
+            A::Duration(unit) => Self::duration64((*unit).into())?,
             A::Interval(unit) => Self::Interval((*unit).into()),
             A::Binary => Self::Binary,
             A::FixedSizeBinary(width) => Self::fixed_size_binary(*width)?,
@@ -186,7 +179,7 @@ impl DataType {
             A::Date64 => Self::Date64,
             A::Time32(unit) => Self::time32(unit.into())?,
             A::Time64(unit) => Self::time64(unit.into())?,
-            A::Duration(unit) => Self::Duration(unit.into()),
+            A::Duration(unit) => Self::duration64(unit.into())?,
             A::Interval(unit) => Self::Interval(unit.into()),
             A::Binary => Self::Binary,
             A::FixedSizeBinary(width) => Self::fixed_size_binary(width)?,
@@ -255,23 +248,14 @@ impl DataType {
         })
     }
 
-    /// Returns an owned Arrow datatype while borrowing this value.
-    ///
-    /// Nested fields reuse cached Arrow `Arc`s. The outer Arrow enum is newly
-    /// constructed because Arrow and Yggdryl intentionally have distinct public
-    /// value models.
-    pub fn to_arrow(&self) -> Result<ArrowDataType> {
-        self.try_into()
-    }
-
     /// Projects this datatype to an owned Arrow C Data Interface schema.
     ///
-    /// This uses the same validated Arrow projection as [`Self::to_arrow`]
+    /// This uses the same validated Arrow projection as [`Self::into_arrow`]
     /// and preserves datatype flags recursively, including sorted map keys.
     /// Arrow 59's generic Field-to-C-schema conversion overwrites those flags
     /// when adding field flags, so Yggdryl owns the corrected recursive path.
-    pub fn to_arrow_ffi(&self) -> Result<FFI_ArrowSchema> {
-        native_data_type_to_ffi(self)
+    pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema> {
+        native_data_type_to_ffi(&self)
     }
 
     /// Consumes this value and returns its Arrow representation.
@@ -370,7 +354,14 @@ impl TryFrom<&DataType> for ArrowDataType {
                 validate_time64_unit(*unit)?;
                 Self::Time64(unit.into_arrow_time()?)
             }
-            R::Duration(unit) => Self::Duration(unit.into_arrow_time()?),
+            R::Duration32(unit) => {
+                validate_duration_unit("Duration32", *unit)?;
+                Self::Duration(unit.into_arrow_time()?)
+            }
+            R::Duration64(unit) => {
+                validate_duration_unit("Duration64", *unit)?;
+                Self::Duration(unit.into_arrow_time()?)
+            }
             R::Interval(unit) => Self::Interval(unit.into_arrow_interval()?),
             R::Binary => Self::Binary,
             R::FixedSizeBinary(width) => {
@@ -382,21 +373,23 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
-            R::List(field) => Self::List(field.to_arrow_ref()?),
-            R::ListView(field) => Self::ListView(field.to_arrow_ref()?),
+            R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
+            R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
             R::FixedSizeList(field, length) => {
                 validate_non_negative("FixedSizeList", "length", *length)?;
-                Self::FixedSizeList(field.to_arrow_ref()?, *length)
+                Self::FixedSizeList(field.as_ref().clone().into_arrow_ref()?, *length)
             }
-            R::LargeList(field) => Self::LargeList(field.to_arrow_ref()?),
-            R::LargeListView(field) => Self::LargeListView(field.to_arrow_ref()?),
-            R::Struct(fields) => Self::Struct(to_arrow_fields(fields)?),
+            R::LargeList(field) => Self::LargeList(field.as_ref().clone().into_arrow_ref()?),
+            R::LargeListView(field) => {
+                Self::LargeListView(field.as_ref().clone().into_arrow_ref()?)
+            }
+            R::Struct(fields) => Self::Struct(into_arrow_fields(fields)?),
             R::Union(fields, mode) => {
                 let mut type_ids = Vec::with_capacity(fields.len());
                 let mut arrow_fields = Vec::with_capacity(fields.len());
                 for (type_id, field) in fields.iter() {
                     type_ids.push(type_id);
-                    arrow_fields.push(field.to_arrow_ref()?);
+                    arrow_fields.push(field.clone().into_arrow_ref()?);
                 }
                 Self::Union(
                     ArrowUnionFields::try_new(type_ids, arrow_fields)?,
@@ -428,13 +421,13 @@ impl TryFrom<&DataType> for ArrowDataType {
             }
             R::Map(map) => {
                 validate_map_entries(&map.entries)?;
-                Self::Map(map.entries.to_arrow_ref()?, map.keys_sorted)
+                Self::Map(map.entries.clone().into_arrow_ref()?, map.keys_sorted)
             }
             R::RunEndEncoded(encoded) => {
                 validate_run_ends(&encoded.run_ends)?;
                 Self::RunEndEncoded(
-                    encoded.run_ends.to_arrow_ref()?,
-                    encoded.values.to_arrow_ref()?,
+                    encoded.run_ends.clone().into_arrow_ref()?,
+                    encoded.values.clone().into_arrow_ref()?,
                 )
             }
             // The Arrow storage of the three extension-typed variants. The
@@ -486,7 +479,14 @@ impl TryFrom<DataType> for ArrowDataType {
                 validate_time64_unit(unit)?;
                 Self::Time64(unit.into_arrow_time()?)
             }
-            R::Duration(unit) => Self::Duration(unit.into_arrow_time()?),
+            R::Duration32(unit) => {
+                validate_duration_unit("Duration32", unit)?;
+                Self::Duration(unit.into_arrow_time()?)
+            }
+            R::Duration64(unit) => {
+                validate_duration_unit("Duration64", unit)?;
+                Self::Duration(unit.into_arrow_time()?)
+            }
             R::Interval(unit) => Self::Interval(unit.into_arrow_interval()?),
             R::Binary => Self::Binary,
             R::FixedSizeBinary(width) => {
@@ -535,8 +535,8 @@ impl TryFrom<DataType> for ArrowDataType {
                     )
                 }
                 Err(dictionary) => Self::Dictionary(
-                    Box::new(dictionary.key.to_arrow()?),
-                    Box::new(dictionary.value.to_arrow()?),
+                    Box::new(dictionary.key.clone().into_arrow()?),
+                    Box::new(dictionary.value.clone().into_arrow()?),
                 ),
             },
             R::Decimal32 { precision, scale } => {
@@ -562,7 +562,7 @@ impl TryFrom<DataType> for ArrowDataType {
                 }
                 Err(map) => {
                     validate_map_entries(&map.entries)?;
-                    Self::Map(map.entries.to_arrow_ref()?, map.keys_sorted)
+                    Self::Map(map.entries.clone().into_arrow_ref()?, map.keys_sorted)
                 }
             },
             R::RunEndEncoded(encoded) => match Arc::try_unwrap(encoded) {
@@ -574,8 +574,8 @@ impl TryFrom<DataType> for ArrowDataType {
                     )
                 }
                 Err(encoded) => Self::RunEndEncoded(
-                    encoded.run_ends.to_arrow_ref()?,
-                    encoded.values.to_arrow_ref()?,
+                    encoded.run_ends.clone().into_arrow_ref()?,
+                    encoded.values.clone().into_arrow_ref()?,
                 ),
             },
             // The Arrow storage of the three extension-typed variants. The
@@ -609,10 +609,11 @@ impl TryFrom<ArrowDataType> for DataType {
     }
 }
 
-fn to_arrow_fields(fields: &Fields) -> Result<ArrowFields> {
+fn into_arrow_fields(fields: &Fields) -> Result<ArrowFields> {
     fields
         .iter()
-        .map(Field::to_arrow_ref)
+        .cloned()
+        .map(Field::into_arrow_ref)
         .collect::<Result<Vec<ArrowFieldRef>>>()
         .map(Into::into)
 }
@@ -620,7 +621,7 @@ fn to_arrow_fields(fields: &Fields) -> Result<ArrowFields> {
 fn into_arrow_field(field: Arc<Field>) -> Result<ArrowFieldRef> {
     match Arc::try_unwrap(field) {
         Ok(field) => field.into_arrow_ref(),
-        Err(field) => field.to_arrow_ref(),
+        Err(field) => field.as_ref().clone().into_arrow_ref(),
     }
 }
 
@@ -703,13 +704,13 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
     let (format, children, dictionary, flags) = match data_type {
         DataType::List(field) => (
             "+l".to_owned(),
-            vec![field.to_arrow_ffi()?],
+            vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
         DataType::ListView(field) => (
             "+vl".to_owned(),
-            vec![field.to_arrow_ffi()?],
+            vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
@@ -717,20 +718,20 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
             validate_non_negative("FixedSizeList", "length", *length)?;
             (
                 format!("+w:{length}"),
-                vec![field.to_arrow_ffi()?],
+                vec![field.as_ref().clone().into_arrow_ffi()?],
                 None,
                 Flags::empty(),
             )
         }
         DataType::LargeList(field) => (
             "+L".to_owned(),
-            vec![field.to_arrow_ffi()?],
+            vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
         DataType::LargeListView(field) => (
             "+vL".to_owned(),
-            vec![field.to_arrow_ffi()?],
+            vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
@@ -738,7 +739,8 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
             "+s".to_owned(),
             fields
                 .iter()
-                .map(Field::to_arrow_ffi)
+                .cloned()
+                .map(Field::into_arrow_ffi)
                 .collect::<Result<Vec<_>>>()?,
             None,
             Flags::empty(),
@@ -756,17 +758,17 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
                     format.push(',');
                 }
                 push_i8_decimal(&mut format, type_id);
-                children.push(field.to_arrow_ffi()?);
+                children.push(field.clone().into_arrow_ffi()?);
             }
             (format, children, None, Flags::empty())
         }
         DataType::Dictionary(dictionary) => {
             validate_dictionary_key(&dictionary.key)?;
-            let key = dictionary.key.to_arrow_ffi()?;
+            let key = dictionary.key.clone().into_arrow_ffi()?;
             (
                 key.format().to_owned(),
                 Vec::new(),
-                Some(dictionary.value.to_arrow_ffi()?),
+                Some(dictionary.value.clone().into_arrow_ffi()?),
                 Flags::empty(),
             )
         }
@@ -774,7 +776,7 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
             validate_map_entries(&map.entries)?;
             (
                 "+m".to_owned(),
-                vec![map.entries.to_arrow_ffi()?],
+                vec![map.entries.clone().into_arrow_ffi()?],
                 None,
                 if map.keys_sorted {
                     Flags::MAP_KEYS_SORTED
@@ -788,8 +790,8 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
             (
                 "+r".to_owned(),
                 vec![
-                    encoded.run_ends.to_arrow_ffi()?,
-                    encoded.values.to_arrow_ffi()?,
+                    encoded.run_ends.clone().into_arrow_ffi()?,
+                    encoded.values.clone().into_arrow_ffi()?,
                 ],
                 None,
                 Flags::empty(),
@@ -797,10 +799,10 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
         }
         // The extension identity of the three extension-typed variants is
         // metadata, and a C schema is a field, so the storage projection
-        // carries the two `ARROW:extension:*` entries here. `Field::to_arrow_ffi`
+        // carries the two `ARROW:extension:*` entries here. `Field::into_arrow_ffi`
         // merges the same entries with the field's own metadata.
         DataType::Variant | DataType::Geometry(_) | DataType::Geography(_) => {
-            let arrow = data_type.to_arrow()?;
+            let arrow = data_type.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
             let Some((name, metadata)) = super::arrow_extension_parts(data_type) else {
                 return Err(invalid(
@@ -819,7 +821,7 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
                 .map_err(Error::from);
         }
         _ => {
-            let arrow = data_type.to_arrow()?;
+            let arrow = data_type.clone().into_arrow()?;
             return FFI_ArrowSchema::try_from(&arrow).map_err(Error::from);
         }
     };

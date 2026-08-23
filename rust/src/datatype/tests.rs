@@ -1,13 +1,43 @@
 //! Focused regression tests for the datatype implementation modules.
 use std::collections::{BTreeSet, HashSet};
+use std::hash::Hash;
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use super::{
-    DataType, DictionaryType, Fields, RunEndEncodedType, TimeUnit, UnionFields, UnionMode,
+    DataType, DictionaryType, Fields, MapType, RunEndEncodedType, TimeUnit, UnionFields, UnionMode,
 };
 use crate::{Error, Field};
+
+#[test]
+fn nested_helper_values_have_total_order_and_hash() {
+    fn assert_traits<T: Clone + Eq + Ord + Hash>() {}
+    assert_traits::<MapType>();
+    assert_traits::<RunEndEncodedType>();
+
+    let first = DataType::map_of(DataType::Utf8, DataType::Int32, false).unwrap();
+    let later = DataType::map_of(DataType::Utf8, DataType::Int32, true).unwrap();
+    let (DataType::Map(first), DataType::Map(later)) = (first, later) else {
+        unreachable!()
+    };
+    assert!(first < later);
+
+    let first = DataType::run_end_encoded(
+        Field::new("run_ends", DataType::Int32, false),
+        Field::new("values", DataType::Int32, true),
+    )
+    .unwrap();
+    let later = DataType::run_end_encoded(
+        Field::new("run_ends", DataType::Int32, false),
+        Field::new("values", DataType::Int64, true),
+    )
+    .unwrap();
+    let (DataType::RunEndEncoded(first), DataType::RunEndEncoded(later)) = (first, later) else {
+        unreachable!()
+    };
+    assert!(first < later);
+}
 
 #[test]
 fn canonical_display_json_and_arrow_are_lossless() {
@@ -32,7 +62,7 @@ fn canonical_display_json_and_arrow_are_lossless() {
 
     let canonical = value.to_string();
     assert_eq!(DataType::from_str(&canonical).unwrap(), value);
-    let json = value.to_json().unwrap();
+    let json = value.clone().into_json().unwrap();
     let structural: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert!(structural.is_object());
     assert_eq!(structural["type"], "list");
@@ -43,7 +73,7 @@ fn canonical_display_json_and_arrow_are_lossless() {
         value
     );
 
-    let arrow = value.to_arrow().unwrap();
+    let arrow = value.clone().into_arrow().unwrap();
     assert_eq!(DataType::from_arrow(&arrow).unwrap(), value);
     assert_eq!(
         DataType::try_from(value.clone().into_arrow().unwrap()).unwrap(),
@@ -53,9 +83,9 @@ fn canonical_display_json_and_arrow_are_lossless() {
 
 #[test]
 fn structural_json_rejects_malformed_and_duplicate_values() {
-    assert_eq!(DataType::Int64.to_json().unwrap(), r#"{"type":"int64"}"#);
+    assert_eq!(DataType::Int64.into_json().unwrap(), r#"{"type":"int64"}"#);
     assert_eq!(
-        DataType::decimal128(38, 6).unwrap().to_json().unwrap(),
+        DataType::decimal128(38, 6).unwrap().into_json().unwrap(),
         r#"{"type":"decimal128","precision":38,"scale":6}"#
     );
 
@@ -210,7 +240,7 @@ fn structural_serialization_rejects_public_enum_invalid_states() {
             serde_json::to_string(&value).is_err(),
             "serialized {value:?}"
         );
-        assert!(value.to_json().is_err(), "serialized {value:?}");
+        assert!(value.clone().into_json().is_err(), "serialized {value:?}");
     }
 }
 
@@ -330,7 +360,7 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::Date64,
         DataType::time32(TimeUnit::Millisecond).unwrap(),
         DataType::time64(TimeUnit::Microsecond).unwrap(),
-        DataType::Duration(TimeUnit::Nanosecond),
+        DataType::Duration64(TimeUnit::Nanosecond),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
@@ -394,15 +424,27 @@ fn arrow_import_preserves_nested_field_projection_arcs() {
 
     let borrowed = DataType::from_arrow(&arrow).unwrap();
     let borrowed_outer = borrowed.get_field(0).unwrap();
-    assert!(Arc::ptr_eq(&borrowed_outer.to_arrow_ref().unwrap(), &outer));
+    assert!(Arc::ptr_eq(
+        &borrowed_outer.clone().into_arrow_ref().unwrap(),
+        &outer
+    ));
     let borrowed_inner = borrowed_outer.data_type().get_field(0).unwrap();
-    assert!(Arc::ptr_eq(&borrowed_inner.to_arrow_ref().unwrap(), &inner));
+    assert!(Arc::ptr_eq(
+        &borrowed_inner.clone().into_arrow_ref().unwrap(),
+        &inner
+    ));
 
     let owned = DataType::try_from(arrow).unwrap();
     let owned_outer = owned.get_field(0).unwrap();
-    assert!(Arc::ptr_eq(&owned_outer.to_arrow_ref().unwrap(), &outer));
+    assert!(Arc::ptr_eq(
+        &owned_outer.clone().into_arrow_ref().unwrap(),
+        &outer
+    ));
     let owned_inner = owned_outer.data_type().get_field(0).unwrap();
-    assert!(Arc::ptr_eq(&owned_inner.to_arrow_ref().unwrap(), &inner));
+    assert!(Arc::ptr_eq(
+        &owned_inner.clone().into_arrow_ref().unwrap(),
+        &inner
+    ));
 }
 
 #[test]
@@ -420,7 +462,7 @@ fn long_timezones_share_heap_storage_across_arrow_conversions() {
     };
     assert_eq!(borrowed_timezone.as_str().as_ptr(), expected);
 
-    let borrowed_arrow = borrowed.to_arrow().unwrap();
+    let borrowed_arrow = borrowed.into_arrow().unwrap();
     let ArrowDataType::Timestamp(_, Some(borrowed_arrow_timezone)) = borrowed_arrow else {
         panic!("timestamp projection changed variant");
     };
@@ -600,10 +642,10 @@ mod semi_structured_and_geospatial {
             DataType::geography(Some("EPSG:4326"), Some(EdgeAlgorithm::Karney)).unwrap(),
             DataType::geography(None, None).unwrap(),
         ] {
-            let json = data_type.to_json().unwrap();
+            let json = data_type.clone().into_json().unwrap();
             assert_eq!(DataType::from_json(&json).unwrap(), data_type, "{json}");
 
-            let value = data_type.to_value();
+            let value = data_type.clone().into_value();
             assert_eq!(DataType::from_value(value).unwrap(), data_type);
         }
     }
@@ -647,7 +689,7 @@ mod semi_structured_and_geospatial {
         assert!(matches!(default, Value::Geospatial(_)), "{default:?}");
         let bytes = default.as_wkb().expect("a WKB payload");
         assert_eq!(
-            crate::generic::wkb::to_wkt(bytes).unwrap(),
+            crate::generic::wkb::into_wkt(bytes).unwrap(),
             "POINT EMPTY",
             "the default is POINT EMPTY"
         );
@@ -714,12 +756,16 @@ mod semi_structured_and_geospatial {
         .required_field("row");
 
         // Iceberg v3 owns all three, parameters included: pass unchanged.
-        let iceberg = schema.to_scheme_compat(&Scheme::ICEBERG).unwrap();
+        let iceberg = schema.clone().into_scheme_compat(&Scheme::ICEBERG).unwrap();
         assert_eq!(iceberg, schema);
 
         // The engines without the types refuse by name, with a path.
         for scheme in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
-            let error = schema.to_scheme_compat(&scheme).unwrap_err().to_string();
+            let error = schema
+                .clone()
+                .into_scheme_compat(&scheme)
+                .unwrap_err()
+                .to_string();
             assert!(
                 error.contains("payload") || error.contains("variant"),
                 "{error}"

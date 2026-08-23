@@ -45,7 +45,7 @@ fn marked_taxi_schema() -> Field {
 
 /// Build one batch of taxis against [`taxi_schema`].
 fn taxis(ids: &[i64], venues: &[Option<&str>]) -> RecordBatch {
-    let schema = taxi_schema().to_arrow_schema().unwrap();
+    let schema = taxi_schema().into_arrow_schema().unwrap();
     RecordBatch::try_new(
         schema,
         vec![
@@ -305,7 +305,7 @@ fn append_takes_the_partition_marks_that_survived_the_arrow_round_trip() {
 
     // The marks ride the Arrow fields' metadata, so a reader built from a
     // marked schema still says which columns the layout spells out.
-    let arrow_schema = marked_taxi_schema().to_arrow_schema().unwrap();
+    let arrow_schema = marked_taxi_schema().into_arrow_schema().unwrap();
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![
@@ -724,12 +724,15 @@ fn two_creators_of_one_table_converge_or_one_gets_the_typed_conflict() {
         if let Err(error) = outcome {
             // Storage has no compare-and-swap and the local backend has no
             // atomic publish, so the loser either classifies after the winner
-            // finished - the typed conflict - or reads the winner's document
-            // *mid-write*, which surfaces as the codec's own failure. Both are
-            // the race being reported; what the contract forbids is silence
-            // and corruption, and the reopen below is the corruption check.
+            // finished - the typed conflict - or collides with the winner's
+            // in-flight document. Unix can expose that as a partial codec
+            // read, while Windows can refuse the losing resize because the
+            // winner still owns a mapped section. Both are the race being
+            // reported; what the contract forbids is silence and corruption,
+            // and the reopen below is the corruption check.
             assert!(
-                error.is_conflict() || matches!(error, crate::Error::Codec { .. }),
+                error.is_conflict()
+                    || matches!(error, crate::Error::Codec { .. } | crate::Error::Io(_)),
                 "{error}"
             );
         }

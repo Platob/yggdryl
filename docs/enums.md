@@ -85,7 +85,7 @@ The predicates over the id itself are Rust-only.
 ```rust
 use yggdryl::{DataTypeId, DataTypeKind};
 
-assert_eq!(DataTypeId::ALL.len(), 44);
+assert_eq!(DataTypeId::ALL.len(), 45);
 assert_eq!(DataTypeKind::ALL.len(), 16);
 
 assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
@@ -333,7 +333,10 @@ the outermost and the first that a reader must remove.
 A ZIP archive is rejected because it is a container, not a transparent coding: `is_archive` and
 `is_encoding` are different questions, and only the second admits a payload that can be unwrapped
 back to the base. Mutation is atomic - a rejected `set_encodings` or `push_encoding` leaves the
-value exactly as it was.
+value exactly as it was. Python keeps a `MediaType` editable until its first built-in hash, then
+locks that wrapper so a dictionary key cannot change equality; copying or unpickling creates an
+independent unlocked wrapper. The explicit `stable_hash()` only computes the current deterministic
+identity and never locks it.
 
 ## Directories and files
 
@@ -346,6 +349,8 @@ assert_eq!(MimeType::DIRECTORY.as_str(), "inode/directory");
 assert_eq!(MimeType::FILE.as_str(), "inode/file");
 assert!(MimeType::DIRECTORY.is_directory());
 assert!(MimeType::FILE.is_filesystem() && !MimeType::FILE.is_directory());
+assert!(!MimeType::DIRECTORY.is_io());
+assert!(MimeType::FILE.is_io() && MimeType::CSV.is_io());
 assert_eq!(MimeType::DIRECTORY.extension(), None);
 
 let directory = std::env::temp_dir();
@@ -359,6 +364,11 @@ assert_eq!(MimeType::from_local_path(directory.join("payload")), MimeType::FILE)
 reports that type instead. The pair exists so a handle can answer "container or leaf" with the same
 vocabulary it uses for everything else - which is what [`local::Path`](local.md) reads before
 deciding whether to become a `Folder` or a `File`.
+
+`is_io` is derived from that same distinction. Every known or custom content MIME value, including
+`inode/file`, can describe an I/O value; only `inode/directory` describes a container instead.
+`MediaType::is_io` delegates to its unencoded base because transparent content codings do not turn a
+leaf into a directory.
 
 ## Content inference from bytes
 
@@ -393,7 +403,7 @@ because the coding is still a fact.
 ## Schemes
 
 `Scheme` is Rust-only; the bindings take the compatibility targets as strings through
-`to_scheme_compat`.
+`into_scheme_compat`.
 
 ```rust
 use yggdryl::Scheme;
@@ -418,7 +428,7 @@ The scheme does double duty: it names a protocol for [`Uri`](uri.md), and it nam
 properties on a [`Field`](field.md), which is why `arrow`, `iceberg`, `fix`, and `dtype` sit in the
 same list as `https` and `s3`. `default_port` returns `None` for metadata namespaces and for
 object-storage protocols with no fixed listening port. Only the five compatibility targets are
-accepted by `to_scheme_compat`, and `iceberg` is both: it namespaces
+accepted by `into_scheme_compat`, and `iceberg` is both: it namespaces
 [table-format](iceberg.md) metadata and names the schema subset that format can express.
 
 ## Content codings
@@ -508,6 +518,27 @@ Storage cannot tell one folder from another, so each role is answered by the val
 framing: [`iceberg::Catalog::kind`](iceberg.md), `iceberg::Namespace::kind`, and - because a table
 *is* a handle - `IOBase::kind` on [`iceberg::Table`](iceberg.md). A plain folder handle over the
 same location still answers `Directory`, and still reads as the table beneath it.
+
+## Record write intent
+
+`WriteMode` is the required Rust vocabulary used by generic record-write entry points. It chooses
+the operation; a schema, row limit, commit cadence, or merge key can refine that operation but can
+never choose it implicitly.
+
+```rust
+use yggdryl::WriteMode;
+
+assert_eq!(WriteMode::from_str("OVERWRITE")?, WriteMode::Overwrite);
+assert_eq!(WriteMode::Append.as_str(), "append");
+assert_eq!(WriteMode::Merge.to_string(), "merge");
+assert_eq!(
+    WriteMode::ALL.map(WriteMode::as_str),
+    ["overwrite", "append", "merge"],
+);
+```
+
+Only those three names are accepted. There is no `write`, `upsert`, default mode, or compatibility
+alias: intent must remain visible at every generic call site.
 
 ## Time units and union modes
 
@@ -629,9 +660,11 @@ call, so it can never drift from the Rust constants it mirrors.
     ```rust
     use yggdryl::{Codec, DataTypeId, IOKind, TimeUnit, UnionMode};
 
-    // Every core enum publishes its variants in canonical order.
-    assert_eq!(DataTypeId::ALL.len(), 41);
+    // Every core enum publishes its variants in canonical order. Check
+    // representatives rather than pinning an extensible vocabulary's length.
     assert!(DataTypeId::ALL.contains(&DataTypeId::Int64));
+    assert!(DataTypeId::ALL.contains(&DataTypeId::Struct));
+    assert!(DataTypeId::ALL.contains(&DataTypeId::Geography));
     assert_eq!(UnionMode::ALL.map(UnionMode::as_str), ["sparse", "dense"]);
     assert!(TimeUnit::ALL.contains(&TimeUnit::Microsecond));
     assert!(Codec::ALL.contains(&Codec::Gzip));
@@ -741,11 +774,11 @@ instant.
     assert.equal(sydney.getTimezoneOffset(1_720_000_000), -600)
     ```
 
-A zone is *not* how naive is spelled. A timestamp with no zone at all is
-`DataType::Timestamp(unit, None)`, exactly as Arrow spells it, and giving `Timezone` a `Naive`
-variant would have created two ways to say one thing. At the value level the split is just as
-sharp: `Value::Timestamp` always has its zone, and the naive wall-clock reading is its own kind,
-`Value::DateTime`.
+A datatype retains Arrow's optional timezone spelling:
+`DataType::Timestamp(unit, None)` is a naive column. A concrete temporal value
+is never ambiguous: `Value::DateTime64(count, unit, timezone)` always carries
+a zone, using `Timezone::NAIVE` for a wall-clock reading and a named zone for
+an instant.
 
 The registry carries the rules **in force today**, which is what a schema, a partition value, or a
 freshly written batch needs. It is deliberately not a history: applying today's rule to a 1975

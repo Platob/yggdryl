@@ -113,7 +113,9 @@ pub type Time32Field = TypedField<temporal::Time32>;
 /// A Time64-typed field.
 pub type Time64Field = TypedField<temporal::Time64>;
 /// A duration-typed field.
-pub type DurationField = TypedField<temporal::Duration>;
+pub type Duration32Field = TypedField<temporal::Duration32>;
+/// A Duration64-typed field.
+pub type Duration64Field = TypedField<temporal::Duration64>;
 /// An interval-typed field.
 pub type IntervalField = TypedField<temporal::Interval>;
 /// A variable binary-typed field.
@@ -521,8 +523,21 @@ impl Field {
     ///
     /// Returns an error when a value cannot be represented by its field.
     pub fn canonicalize_value(&self, value: Value) -> Result<Value> {
-        self.require_struct()?;
+        self.validate_value(&value)?;
         value::canonicalize_row(self, value)
+    }
+
+    /// Recover this field's exact value from a natural text value.
+    ///
+    /// Text formats keep interoperable scalars on the wire; this restores
+    /// decimals, binary data, temporal widths, and nested field order.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first value whose natural representation cannot satisfy
+    /// this field.
+    pub fn from_natural_value(&self, value: Value) -> Result<Value> {
+        crate::text::typed::with_field(value, self)
     }
 
     /// Validates that this field is a struct, without a nullability opinion.
@@ -2251,9 +2266,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
-        assert_eq!(Field::from_json(&field.to_json().unwrap()).unwrap(), field);
-        let arrow = field.to_arrow_ref().unwrap();
-        assert!(Arc::ptr_eq(&arrow, &field.to_arrow_ref().unwrap()));
+        assert_eq!(
+            Field::from_json(&field.clone().into_json().unwrap()).unwrap(),
+            field
+        );
+        let arrow = field.clone().into_arrow_ref().unwrap();
+        assert_eq!(arrow, field.clone().into_arrow_ref().unwrap());
         assert_eq!(Field::from_arrow(arrow.as_ref()).unwrap(), field);
     }
 
@@ -2297,27 +2315,38 @@ mod tests {
             "source".to_owned(),
             "ipc".to_owned(),
         )]));
-        let mut field = Field::from_arrow(&arrow).unwrap();
+        let field = Field::from_arrow(&arrow).unwrap();
         assert_eq!(Field::from_str(&arrow.to_string()).unwrap(), field);
         assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
         assert_eq!(field.dictionary_id(), Some(42));
         assert_eq!(field.dictionary_is_ordered(), Some(true));
 
-        let cached = field.to_arrow_ref().unwrap();
+        let cached = Arc::new(field.clone().into_arrow().unwrap());
+        let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+        assert!(Arc::ptr_eq(
+            &cached,
+            &field.clone().into_arrow_ref().unwrap()
+        ));
         field.set_dictionary_options(42, true).unwrap();
-        assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+        assert!(Arc::ptr_eq(
+            &cached,
+            &field.clone().into_arrow_ref().unwrap()
+        ));
         field.set_dictionary_options(7, false).unwrap();
-        assert!(!Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+        assert!(!Arc::ptr_eq(
+            &cached,
+            &field.clone().into_arrow_ref().unwrap()
+        ));
         field.set_dictionary_options(42, true).unwrap();
 
         field.set_name("renamed");
-        let rebuilt = field.to_arrow().unwrap();
+        let rebuilt = field.into_arrow().unwrap();
         assert_eq!(rebuilt.dict_id(), Some(42));
         assert_eq!(rebuilt.dict_is_ordered(), Some(true));
 
         let shared = Arc::new(arrow);
         let imported = Field::from_arrow_ref(Arc::clone(&shared)).unwrap();
-        assert!(Arc::ptr_eq(&shared, &imported.to_arrow_ref().unwrap()));
+        assert!(Arc::ptr_eq(&shared, &imported.into_arrow_ref().unwrap()));
     }
 
     #[test]
@@ -2357,9 +2386,13 @@ mod tests {
             field.metadata_iter().collect::<Vec<_>>(),
             vec![("a", "first"), ("z", "last")]
         );
-        let cached = field.to_arrow_ref().unwrap();
+        let cached = Arc::new(field.clone().into_arrow().unwrap());
+        let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
         field.insert_metadata("a", "first").unwrap();
-        assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+        assert!(Arc::ptr_eq(
+            &cached,
+            &field.clone().into_arrow_ref().unwrap()
+        ));
         assert!(field.update_metadata([("", "bad")]).is_err());
         assert_eq!(field.metadata_len(), 2);
     }
@@ -2377,7 +2410,7 @@ mod tests {
         hashed.insert(second.clone());
         assert!(hashed.contains(&second));
         let before = second.stable_hash();
-        second.to_arrow_ref().unwrap();
+        second.clone().into_arrow_ref().unwrap();
         assert_eq!(before, second.stable_hash());
     }
 }

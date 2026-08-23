@@ -1,15 +1,99 @@
 //! Parquet round trips, field-id preservation, and footer statistics.
 
-use std::sync::Arc;
+use std::hash::Hash;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
-use arrow_array::{Int64Array, RecordBatch, StringArray};
+use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_schema::ArrowError;
 use parquet::basic::Compression;
 
 use super::{Parquet, ParquetOptions};
-use crate::arrow::schema_from_field;
-use crate::generic::IORecordOptions;
-use crate::io::{Buffer, IOBase};
-use crate::{DataType, Field, Url};
+use crate::arrow::arrow_schema_from_field;
+use crate::generic::{IORecordOptions, RecordOptions};
+use crate::io::{Buffer, IOBase, IOMedia};
+use crate::{DataType, Field, MediaType, Url};
+
+#[test]
+fn statistics_snapshots_have_total_value_traits() {
+    fn assert_traits<T: Clone + Eq + Hash + Ord>() {}
+    assert_traits::<super::GeospatialStatistics>();
+    assert_traits::<super::ColumnStatistics>();
+    assert_traits::<super::RowGroupStatistics>();
+    assert_traits::<super::FileStatistics>();
+    assert_traits::<ParquetOptions>();
+
+    let mut gzip = ParquetOptions::new();
+    gzip.set_compression_name("gzip(2)").unwrap();
+    let mut other_level = ParquetOptions::new();
+    other_level.set_compression_name("gzip(3)").unwrap();
+    assert_ne!(gzip, other_level);
+    assert!(gzip < other_level);
+}
+
+/// Two independent handles over one in-memory byte value, used to exercise
+/// opened-session freshness without involving filesystem mappings.
+#[derive(Clone, Debug)]
+struct Shared {
+    handle: Arc<Mutex<Buffer>>,
+    media_type: MediaType,
+}
+
+impl Shared {
+    fn new(handle: Buffer) -> Self {
+        let media_type = handle.media_type().clone();
+        Self {
+            handle: Arc::new(Mutex::new(handle)),
+            media_type,
+        }
+    }
+}
+
+impl crate::io::IOMedia for Shared {
+    crate::impl_default_iomedia!();
+}
+
+impl IOBase for Shared {
+    fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+        self.handle.lock().unwrap().pread(offset, buffer)
+    }
+
+    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+        self.handle.lock().unwrap().pwrite(offset, bytes)
+    }
+
+    fn size(&self) -> u64 {
+        self.handle.lock().unwrap().size()
+    }
+
+    fn capacity(&self) -> u64 {
+        self.handle.lock().unwrap().capacity()
+    }
+
+    fn reserve(&mut self, capacity: u64) -> crate::Result<()> {
+        self.handle.lock().unwrap().reserve(capacity)
+    }
+
+    fn truncate(&mut self, size: u64) -> crate::Result<()> {
+        self.handle.lock().unwrap().truncate(size)
+    }
+
+    fn url(&self) -> Option<&Url> {
+        None
+    }
+
+    fn media_type(&self) -> &MediaType {
+        &self.media_type
+    }
+
+    fn set_media_type(&mut self, media_type: MediaType) {
+        self.handle
+            .lock()
+            .unwrap()
+            .set_media_type(media_type.clone());
+        self.media_type = media_type;
+    }
+}
 
 /// A root carrying explicit Iceberg-style field identifiers.
 fn root() -> Field {
@@ -26,7 +110,7 @@ fn root() -> Field {
 }
 
 fn batch(field: &Field, ids: Vec<i64>, symbols: Vec<Option<&str>>) -> RecordBatch {
-    let schema = schema_from_field(field).unwrap();
+    let schema = arrow_schema_from_field(field).unwrap();
     RecordBatch::try_new(
         schema,
         vec![
@@ -43,7 +127,28 @@ where
     I: IntoIterator<Item = RecordBatch>,
     I::IntoIter: Send + 'static,
 {
-    crate::arrow::batch_reader(schema_from_field(field).unwrap(), batches)
+    crate::arrow::batch_reader(arrow_schema_from_field(field).unwrap(), batches)
+}
+
+/// A one-batch reader that reports whether a write pulled its input.
+fn counted_reader(field: &Field, pulls: Arc<AtomicUsize>) -> crate::arrow::BatchReader {
+    let batch = batch(field, vec![1], vec![Some("AAPL")]);
+    let batches = std::iter::once(batch).inspect(move |_| {
+        pulls.fetch_add(1, Ordering::Relaxed);
+    });
+    reader(field, batches)
+}
+
+fn reader_then_error(field: &Field, first: RecordBatch) -> crate::arrow::BatchReader {
+    Box::new(RecordBatchIterator::new(
+        [
+            Ok(first),
+            Err(ArrowError::ComputeError(
+                "later Parquet source failure".into(),
+            )),
+        ],
+        arrow_schema_from_field(field).unwrap(),
+    ))
 }
 
 /// A handle whose media type comes from the name, so codings are declared.
@@ -64,13 +169,14 @@ fn batches_round_trip_through_storage() {
         vec![1, 2, 3],
         vec![Some("AAPL"), None, Some("MSFT")],
     );
+    let options = media.record_options().unwrap();
 
     media
-        .write_batch_reader(reader(&field, [expected.clone()]))
+        .overwrite_arrow_reader(reader(&field, [expected.clone()]), &options)
         .unwrap();
 
     let actual = media
-        .read_batch_reader(None)
+        .read_arrow_reader(&options)
         .unwrap()
         .map(std::result::Result::unwrap)
         .collect::<Vec<_>>();
@@ -80,16 +186,301 @@ fn batches_round_trip_through_storage() {
 }
 
 #[test]
+fn dimensions_describe_all_batches_and_ignore_read_options() {
+    let field = root();
+    let mut media = Parquet::new(handle("dimensions.parquet"));
+    let options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(
+            reader(
+                &field,
+                [
+                    batch(&field, vec![1, 2], vec![Some("AAPL"), None]),
+                    batch(
+                        &field,
+                        vec![3, 4, 5],
+                        vec![Some("MSFT"), Some("NVDA"), None],
+                    ),
+                ],
+            ),
+            &options,
+        )
+        .unwrap();
+    media.options_mut().set_max_row_size(Some(1));
+    media.options_mut().set_select_by_names(vec!["id".into()]);
+    media
+        .options_mut()
+        .set_filter_partitions(vec![("id".into(), "999".into())]);
+
+    assert_eq!(media.row_size().unwrap(), 5);
+    assert_eq!(media.column_size().unwrap(), 2);
+}
+
+#[test]
+fn an_empty_open_parquet_file_has_explicit_lifecycle_and_dimensions() {
+    let field = root();
+    let mut media = Parquet::new(handle("empty-open.parquet")).with_field(field.clone());
+
+    media.open().unwrap();
+    assert!(media.opened());
+    assert_eq!(media.row_size().unwrap(), 0);
+    assert_eq!(media.column_size().unwrap(), field.field_len());
+
+    let options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(
+            reader(
+                &field,
+                [batch(&field, vec![1, 2], vec![Some("AAPL"), None])],
+            ),
+            &options,
+        )
+        .unwrap();
+    assert!(media.opened());
+    assert_eq!(media.row_size().unwrap(), 2);
+
+    media.clear().unwrap();
+    assert!(media.opened());
+    assert_eq!(media.row_size().unwrap(), 0);
+    assert_eq!(media.column_size().unwrap(), field.field_len());
+
+    let narrowed = DataType::from_fields([DataType::Int64.required_field("id")])
+        .unwrap()
+        .required_field("row");
+    media.options_mut().set_field(narrowed);
+    assert_eq!(
+        media.column_size().unwrap(),
+        1,
+        "an option mutation invalidates the opened width cache"
+    );
+
+    media.remove(false).unwrap();
+    assert!(!media.opened(), "removal ends the opened session");
+}
+
+#[test]
+fn an_open_parquet_cache_is_stable_until_close_then_reads_fresh() {
+    let field = root();
+    let encoded = |ids: Vec<i64>| {
+        let symbols = vec![None; ids.len()];
+        let mut media = Parquet::new(handle("shared.parquet"));
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(reader(&field, [batch(&field, ids, symbols)]), &options)
+            .unwrap();
+        media.into_handle()
+    };
+    let first = encoded(vec![1]);
+    let replacement = encoded(vec![1, 2, 3, 4]);
+    let shared = Shared::new(first);
+    let mut external = shared.clone();
+    let mut media = Parquet::new(shared);
+
+    media.open().unwrap();
+    assert_eq!(media.row_size().unwrap(), 1);
+    external.write_all_bytes(replacement.as_slice()).unwrap();
+    assert_eq!(media.row_size().unwrap(), 1, "the open footer is stable");
+
+    media.close().unwrap();
+    assert!(!media.opened());
+    assert_eq!(media.row_size().unwrap(), 4, "closed reads are fresh");
+}
+
+#[test]
+fn the_wrapper_owns_parquet_options_over_an_unnamed_buffer() {
+    let field = root();
+    let media = Parquet::new(Buffer::new()).with_field(field.clone());
+    let options = media.record_options().unwrap();
+
+    assert!(matches!(options, RecordOptions::Parquet(_)));
+    assert_eq!(options.field(), Some(&field));
+}
+
+#[test]
+fn mismatched_options_are_rejected_before_any_write_pulls_input() {
+    let field = root();
+    for operation in ["overwrite", "append", "merge"] {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut media = Parquet::new(Buffer::new()).with_field(field.clone());
+        let mut options = RecordOptions::Ipc(crate::ipc::IpcOptions::new());
+        if operation == "merge" {
+            options.set_merge_by_names(vec!["id".into()]);
+        }
+        let result = match operation {
+            "overwrite" => crate::io::IOMedia::overwrite_arrow_reader(
+                &mut media,
+                counted_reader(&field, Arc::clone(&pulls)),
+                &options,
+            ),
+            "append" => crate::io::IOMedia::append_arrow_reader(
+                &mut media,
+                counted_reader(&field, Arc::clone(&pulls)),
+                &options,
+            ),
+            "merge" => crate::io::IOMedia::merge_arrow_reader(
+                &mut media,
+                counted_reader(&field, Arc::clone(&pulls)),
+                &options,
+            ),
+            _ => unreachable!(),
+        };
+
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("Parquet"), "{operation}: {message}");
+        assert_eq!(pulls.load(Ordering::Relaxed), 0, "{operation}");
+        assert!(media.handle().is_empty(), "{operation}");
+    }
+}
+
+#[test]
+fn an_open_footer_tracks_selection_and_completion_on_overwrite() {
+    let field = root();
+    let mut media = Parquet::new(Buffer::new());
+    let initial_options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(
+            reader(&field, [batch(&field, vec![1], vec![Some("AAPL")])]),
+            &initial_options,
+        )
+        .unwrap();
+    media.open().unwrap();
+
+    let options = media.record_options().unwrap().with_select_by_names(["id"]);
+    crate::io::IOMedia::overwrite_arrow_reader(
+        &mut media,
+        reader(
+            &field,
+            [batch(&field, vec![2, 3], vec![Some("MSFT"), Some("NVDA")])],
+        ),
+        &options,
+    )
+    .unwrap();
+
+    assert!(media.opened());
+    assert_eq!(media.read_arrow_schema().unwrap().fields().len(), 2);
+    assert_eq!(media.read_statistics().unwrap().num_rows, 2);
+    let read_options = media.record_options().unwrap();
+    let written = media
+        .read_arrow_reader(&read_options)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(written.num_columns(), 2);
+    assert_eq!(written.column(1).null_count(), written.num_rows());
+}
+
+#[test]
+fn an_open_footer_is_refreshed_by_every_successful_write_mode() {
+    let field = root();
+    let mut media = Parquet::new(Buffer::new()).with_field(field.clone());
+    let options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(
+            reader(
+                &field,
+                [batch(&field, vec![1, 2], vec![Some("AAPL"), Some("MSFT")])],
+            ),
+            &options,
+        )
+        .unwrap();
+    assert!(!media.opened(), "a closed write must not start a cache");
+
+    media.open().unwrap();
+    assert!(media.opened());
+    assert_eq!(media.read_statistics().unwrap().num_rows, 2);
+    media.options_mut().set_commit_row_size(Some(1));
+
+    let overwrite_options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(
+            reader(&field, [batch(&field, vec![3], vec![Some("NVDA")])]),
+            &overwrite_options,
+        )
+        .unwrap();
+    assert!(media.opened());
+    assert_eq!(media.read_statistics().unwrap().num_rows, 1);
+
+    let append_options = media.record_options().unwrap();
+    media
+        .append_arrow_reader(
+            reader(&field, [batch(&field, vec![4, 5], vec![Some("AMD"), None])]),
+            &append_options,
+        )
+        .unwrap();
+    assert!(media.opened());
+    assert_eq!(media.read_statistics().unwrap().num_rows, 3);
+
+    media.options_mut().set_merge_by_names(vec!["id".into()]);
+    let merge_options = media.record_options().unwrap();
+    media
+        .merge_arrow_reader(
+            reader(
+                &field,
+                [batch(&field, vec![4, 6], vec![Some("INTC"), Some("ARM")])],
+            ),
+            &merge_options,
+        )
+        .unwrap();
+    assert!(media.opened());
+    assert_eq!(media.read_statistics().unwrap().num_rows, 4);
+
+    media.close().unwrap();
+    assert!(!media.opened());
+    assert_eq!(media.read_statistics().unwrap().num_rows, 4);
+}
+
+#[test]
+fn a_partial_commit_refreshes_the_open_parquet_footer() {
+    let field = root();
+    let mut media = Parquet::new(Buffer::new()).with_field(field.clone());
+    let options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(
+            reader(
+                &field,
+                [batch(&field, vec![1, 2], vec![Some("AAPL"), Some("MSFT")])],
+            ),
+            &options,
+        )
+        .unwrap();
+    media.open().unwrap();
+    media.options_mut().set_commit_row_size(Some(1));
+
+    let options = media.record_options().unwrap();
+    let message = media
+        .overwrite_arrow_reader(
+            reader_then_error(&field, batch(&field, vec![7], vec![Some("NVDA")])),
+            &options,
+        )
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        message.contains("later Parquet source failure"),
+        "{message}"
+    );
+    assert!(media.opened());
+    assert_eq!(media.read_statistics().unwrap().num_rows, 1);
+    assert_eq!(media.row_size().unwrap(), 1);
+    assert_eq!(media.read_arrow_schema().unwrap().fields().len(), 2);
+}
+
+#[test]
 fn field_identifiers_survive_the_round_trip() {
     let field = root();
     let mut media = Parquet::new(handle("ids.parquet"));
+    let options = media.record_options().unwrap();
     media
-        .write_batch_reader(reader(&field, [batch(&field, vec![1], vec![Some("AAPL")])]))
+        .overwrite_arrow_reader(
+            reader(&field, [batch(&field, vec![1], vec![Some("AAPL")])]),
+            &options,
+        )
         .unwrap();
 
     // Ids are what an Iceberg reader resolves columns by, so they must not be
     // positional after a round trip.
-    let schema = media.read_schema().unwrap();
+    let schema = media.read_arrow_schema().unwrap();
     assert_eq!(
         schema.field(0).metadata().get("PARQUET:field_id"),
         Some(&"1".to_owned())
@@ -99,7 +490,7 @@ fn field_identifiers_survive_the_round_trip() {
         Some(&"2".to_owned())
     );
 
-    let recovered = media.read_field().unwrap();
+    let recovered = media.read_arrow_field(&options).unwrap();
     let fields = recovered.data_type().as_fields().unwrap();
     assert_eq!(fields[0].parquet_field_id().unwrap(), Some(1));
     assert_eq!(fields[1].parquet_field_id().unwrap(), Some(2));
@@ -109,19 +500,22 @@ fn field_identifiers_survive_the_round_trip() {
 fn an_empty_write_still_publishes_a_readable_file() {
     let field = root();
     let mut media = Parquet::new(handle("empty.parquet"));
+    let options = media.record_options().unwrap();
 
-    media.write_batch_reader(reader(&field, [])).unwrap();
+    media
+        .overwrite_arrow_reader(reader(&field, []), &options)
+        .unwrap();
 
     assert!(!media.handle().is_empty());
     assert!(
         media
-            .read_batch_reader(None)
+            .read_arrow_reader(&options)
             .unwrap()
             .map(std::result::Result::unwrap)
             .collect::<Vec<_>>()
             .is_empty()
     );
-    assert_eq!(media.read_schema().unwrap().fields().len(), 2);
+    assert_eq!(media.read_arrow_schema().unwrap().fields().len(), 2);
     assert_eq!(media.read_statistics().unwrap().num_rows, 0);
 }
 
@@ -131,8 +525,9 @@ fn a_coded_location_is_rejected_with_the_reason() {
 
     for name in ["trades.parquet.gz", "trades.parquet.zst"] {
         let mut media = Parquet::new(handle(name));
+        let options = media.record_options().unwrap();
         let message = media
-            .write_batch_reader(reader(&field, []))
+            .overwrite_arrow_reader(reader(&field, []), &options)
             .unwrap_err()
             .to_string();
         assert!(message.contains("compresses"), "{name}: {message}");
@@ -152,16 +547,17 @@ fn a_mismatched_batch_reports_which_index_disagreed() {
         .unwrap()
         .required_field("row");
     let mut media = Parquet::new(handle("mismatch.parquet"));
+    let options = media.record_options().unwrap();
 
     let good = batch(&field, vec![1], vec![Some("AAPL")]);
     let bad = RecordBatch::try_new(
-        other.to_arrow_schema().unwrap(),
+        other.into_arrow_schema().unwrap(),
         vec![Arc::new(StringArray::from(vec!["x"]))],
     )
     .unwrap();
 
     let message = media
-        .write_batch_reader(reader(&field, [good, bad]))
+        .overwrite_arrow_reader(reader(&field, [good, bad]), &options)
         .unwrap_err()
         .to_string();
     assert!(message.contains("index 1"), "{message}");
@@ -189,12 +585,13 @@ fn every_compression_round_trips_and_changes_the_bytes() {
                 .with_compression(compression)
                 .with_batch_size(source.num_rows()),
         );
+        let options = media.record_options().unwrap();
         media
-            .write_batch_reader(reader(&field, [source.clone()]))
+            .overwrite_arrow_reader(reader(&field, [source.clone()]), &options)
             .unwrap_or_else(|error| panic!("{name}: {error}"));
 
         let actual = media
-            .read_batch_reader(None)
+            .read_arrow_reader(&options)
             .unwrap()
             .map(std::result::Result::unwrap)
             .collect::<Vec<_>>();
@@ -224,8 +621,9 @@ fn footer_statistics_expose_row_groups_bounds_and_split_offsets() {
             .with_max_row_group_size(512)
             .with_key_value("iceberg.schema-id", "7"),
     );
+    let options = media.record_options().unwrap();
     media
-        .write_batch_reader(reader(&field, [batch(&field, ids, symbols)]))
+        .overwrite_arrow_reader(reader(&field, [batch(&field, ids, symbols)]), &options)
         .unwrap();
 
     let statistics = media.read_statistics().unwrap();
@@ -268,18 +666,48 @@ fn footer_statistics_expose_row_groups_bounds_and_split_offsets() {
 }
 
 #[test]
+fn generic_statistics_redirect_validates_the_handle_encoding() {
+    let field = root();
+    let mut parquet = handle("redirect.parquet");
+    let options = parquet.record_options().unwrap().with_field(field.clone());
+    parquet
+        .overwrite_arrow_reader(
+            reader(&field, [batch(&field, vec![1], vec![Some("AAPL")])]),
+            &options,
+        )
+        .unwrap();
+
+    assert_eq!(parquet.read_parquet_statistics().unwrap().num_rows, 1);
+
+    let ipc = handle("redirect.arrows");
+    let error = ipc.read_parquet_statistics().unwrap_err();
+    assert!(matches!(error, crate::Error::InvalidRecord { .. }));
+    let message = error.to_string();
+    assert!(message.contains("expected Parquet media"), "{message}");
+    assert!(
+        message.contains("application/vnd.apache.arrow.stream"),
+        "{message}"
+    );
+
+    let error = ipc.read_parquet_geospatial_statistics("shape").unwrap_err();
+    assert!(matches!(error, crate::Error::InvalidRecord { .. }));
+    assert!(error.to_string().contains("expected Parquet media"));
+}
+
+#[test]
 fn a_bounded_batch_size_splits_the_read() {
     let field = root();
     let mut media = Parquet::new(handle("batched.parquet"))
         .with_options(ParquetOptions::new().with_batch_size(256));
     let ids: Vec<i64> = (0..1_000).collect();
     let symbols: Vec<Option<&str>> = ids.iter().map(|_| Some("AAPL")).collect();
+    let options = media.record_options().unwrap();
     media
-        .write_batch_reader(reader(&field, [batch(&field, ids, symbols)]))
+        .overwrite_arrow_reader(reader(&field, [batch(&field, ids, symbols)]), &options)
         .unwrap();
 
     let batches = media
-        .read_batch_reader(None)
+        .read_arrow_reader(&options)
         .unwrap()
         .map(std::result::Result::unwrap)
         .collect::<Vec<_>>();
@@ -300,7 +728,9 @@ mod pushdown {
     };
 
     use super::{Parquet, handle};
-    use crate::arrow::schema_from_field;
+    use crate::arrow::arrow_schema_from_field;
+    use crate::generic::IORecordOptions;
+    use crate::io::IOMedia;
     use crate::{DataType, Field};
 
     /// Four columns, so a two-column read is a genuine subset.
@@ -330,7 +760,7 @@ mod pushdown {
         let rows = 4_096;
         let ids: Vec<i64> = (0..rows).collect();
         let batch = RecordBatch::try_new(
-            schema_from_field(&wide()).unwrap(),
+            arrow_schema_from_field(&wide()).unwrap(),
             vec![
                 Arc::new(Int64Array::from(ids.clone())),
                 Arc::new(StringArray::from(
@@ -350,8 +780,12 @@ mod pushdown {
         .unwrap();
 
         let mut media = Parquet::new(handle("pushdown.parquet"));
+        let options = media.record_options().unwrap();
         media
-            .write_batch_reader(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
             .unwrap();
         media
     }
@@ -374,12 +808,14 @@ mod pushdown {
     #[test]
     fn a_subset_schema_is_pushed_into_the_file_rather_than_applied_after_it() {
         let media = stored();
+        let options = media.record_options().unwrap();
 
         // The file stores four columns; nothing about it changed.
-        assert_eq!(media.read_schema().unwrap().fields().len(), 4);
-        assert_eq!(media.read_field().unwrap().field_len(), 4);
+        assert_eq!(media.read_arrow_schema().unwrap().fields().len(), 4);
+        assert_eq!(media.read_arrow_field(&options).unwrap().field_len(), 4);
 
-        let reader = media.read_batch_reader(Some(&narrow())).unwrap();
+        let options = options.with_field(narrow());
+        let reader = media.read_arrow_reader(&options).unwrap();
         // The projection is known before a single batch is decoded.
         assert_eq!(reader.schema().fields().len(), 2);
         assert_eq!(reader.schema().field(0).name(), "id");
@@ -399,9 +835,14 @@ mod pushdown {
     #[test]
     fn the_projected_read_materializes_less_than_the_whole_file() {
         let media = stored();
+        let options = media.record_options().unwrap();
 
-        let whole = materialized(media.read_batch_reader(None).unwrap());
-        let subset = materialized(media.read_batch_reader(Some(&narrow())).unwrap());
+        let whole = materialized(media.read_arrow_reader(&options).unwrap());
+        let subset = materialized(
+            media
+                .read_arrow_reader(&options.with_field(narrow()))
+                .unwrap(),
+        );
 
         // The two string columns are the bulk of this file, and a pushed-down
         // read never builds them.
@@ -409,20 +850,40 @@ mod pushdown {
     }
 
     #[test]
-    fn a_column_the_file_does_not_store_leaves_the_read_whole() {
+    fn a_column_the_file_does_not_store_is_completed_after_pushdown() {
         let media = stored();
+        let options = media.record_options().unwrap();
 
-        // A mask can only drop columns, so a schema asking for one that is not
-        // there reads everything and leaves the gap to a later cast.
+        // A mask can only drop columns, so the encoding reads what is present
+        // and the canonical declared-Field cast supplies the absent column.
         let invented = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.required_field("nowhere"),
+            DataType::Utf8.nullable_field("nowhere"),
         ])
         .unwrap()
         .required_field("row");
 
-        let reader = media.read_batch_reader(Some(&invented)).unwrap();
-        assert_eq!(reader.schema().fields().len(), 4);
+        let batches = media
+            .read_arrow_reader(&options.with_field(invented))
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect::<Vec<_>>();
+        assert!(!batches.is_empty());
+        for batch in &batches {
+            assert_eq!(batch.num_columns(), 2);
+            assert_eq!(batch.schema().field(1).name(), "nowhere");
+        }
+        assert_eq!(
+            batches.iter().map(RecordBatch::num_rows).sum::<usize>(),
+            4_096
+        );
+        assert_eq!(
+            batches
+                .iter()
+                .map(|batch| batch.column(1).null_count())
+                .sum::<usize>(),
+            4_096
+        );
     }
 }
 
@@ -434,12 +895,12 @@ mod limits {
 
     use super::{Parquet, ParquetOptions, batch, handle, reader, root};
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOBase};
+    use crate::io::{Buffer, IOBase, IOMedia};
 
     /// The total rows a handle yields under `options`.
     fn rows<H: IOBase + ?Sized>(handle: &H, options: &RecordOptions) -> usize {
         handle
-            .read_arrow_batch_reader(options)
+            .read_arrow_reader(options)
             .unwrap()
             .map(|batch| batch.unwrap().num_rows())
             .sum()
@@ -449,9 +910,9 @@ mod limits {
     fn a_zero_limit_reads_the_declared_schema_and_no_batches() {
         let field = root();
         let mut handle = handle("limited.parquet");
-        let options = handle.record_options().unwrap().with_schema(field.clone());
+        let options = handle.record_options().unwrap().with_field(field.clone());
         handle
-            .write_arrow_batch_reader(
+            .overwrite_arrow_reader(
                 reader(
                     &field,
                     [batch(&field, vec![1, 2], vec![Some("AAPL"), None])],
@@ -461,13 +922,13 @@ mod limits {
             .unwrap();
 
         let mut limited = handle
-            .read_arrow_batch_reader(&options.with_max_row_size(0))
+            .read_arrow_reader(&options.with_max_row_size(0))
             .unwrap();
         // The schema is asserted, not only the emptiness: `Some(0)` is a
         // valid ask that still says what the rows would have been.
         assert_eq!(
             limited.schema(),
-            crate::arrow::schema_from_field(&field).unwrap()
+            crate::arrow::arrow_schema_from_field(&field).unwrap()
         );
         assert!(limited.next().is_none());
     }
@@ -476,10 +937,10 @@ mod limits {
     fn a_limited_write_truncates_what_the_caller_offered() {
         let field = root();
         let mut handle = handle("truncated.parquet");
-        let options = handle.record_options().unwrap().with_schema(field.clone());
+        let options = handle.record_options().unwrap().with_field(field.clone());
 
         handle
-            .write_arrow_batch_reader(
+            .overwrite_arrow_reader(
                 reader(
                     &field,
                     [batch(&field, vec![1, 2], vec![Some("AAPL"), None])],
@@ -491,7 +952,7 @@ mod limits {
 
         // An append is a write, so the same bound truncates it the same way.
         handle
-            .append_arrow_batch_reader(
+            .append_arrow_reader(
                 reader(&field, [batch(&field, vec![3, 4], vec![None, None])]),
                 &options.clone().with_max_row_size(1),
             )
@@ -528,6 +989,10 @@ mod limits {
         }
     }
 
+    impl crate::io::IOMedia for Counting {
+        crate::impl_default_iomedia!();
+    }
+
     impl IOBase for Counting {
         crate::delegate_iobase!(handle: pwrite, size, capacity, reserve,
             truncate, url, media_type, set_media_type, flush, parent, child_by_path,
@@ -552,20 +1017,36 @@ mod limits {
                 .with_compression(Compression::UNCOMPRESSED)
                 .with_max_row_group_size(512),
         );
+        let options = media.record_options().unwrap();
         media
-            .write_batch_reader(reader(
-                &field,
-                [batch(
+            .overwrite_arrow_reader(
+                reader(
                     &field,
-                    (0..total as i64).collect(),
-                    vec![None; total],
-                )],
-            ))
+                    [batch(
+                        &field,
+                        (0..total as i64).collect(),
+                        vec![None; total],
+                    )],
+                ),
+                &options,
+            )
             .unwrap();
         assert_eq!(media.read_statistics().unwrap().row_groups.len(), 32);
 
         let counting = Counting::new(media.into_handle());
         let options = counting.record_options().unwrap();
+
+        // The logical dimension is a two-range footer read: neither column
+        // pages nor row arrays are fetched.
+        let (dimension_reads, dimension_bytes) = counting.cost(|| {
+            assert_eq!(counting.row_size().unwrap(), total as u64);
+        });
+        assert_eq!(dimension_reads, 2, "tail and footer metadata");
+        assert!(
+            dimension_bytes < counting.size() as usize,
+            "{dimension_bytes} footer bytes vs {} file bytes",
+            counting.size()
+        );
 
         // The full drain fetches the complete value: one whole-value read.
         let (full_reads, full_bytes) = counting.cost(|| {
@@ -598,7 +1079,7 @@ mod geospatial {
     use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType};
 
     use super::{Parquet, handle};
-    use crate::io::{Buffer, IOBase};
+    use crate::io::{Buffer, IOBase, IOMedia};
 
     /// One little-endian ISO WKB point.
     fn wkb_point(x: f64, y: f64) -> Vec<u8> {
@@ -645,8 +1126,9 @@ mod geospatial {
             vec![RecordBatch::try_new(Arc::clone(&schema), columns).unwrap()]
         };
         let mut media = Parquet::new(handle(name));
+        let options = media.record_options().unwrap();
         media
-            .write_batch_reader(crate::arrow::batch_reader(schema, batches))
+            .overwrite_arrow_reader(crate::arrow::batch_reader(schema, batches), &options)
             .unwrap();
         media
     }
@@ -858,7 +1340,7 @@ mod geospatial {
         );
 
         // The storage struct itself round-trips as a plain struct.
-        let schema = media.read_schema().unwrap();
+        let schema = media.read_arrow_schema().unwrap();
         let field = schema.field_with_name("payload").unwrap();
         assert_eq!(
             field.metadata().get("ARROW:extension:name"),
@@ -890,7 +1372,7 @@ mod geospatial {
         // Our writer embeds the Arrow schema, so the extension identity comes
         // back; a foreign file without that embedding surfaces plain Binary,
         // which is the named read-side limit in the module docs.
-        let schema = media.read_schema().unwrap();
+        let schema = media.read_arrow_schema().unwrap();
         let field = schema.field_with_name("shape").unwrap();
         assert_eq!(field.data_type(), &ArrowDataType::Binary);
         assert_eq!(
@@ -926,7 +1408,7 @@ mod geospatial {
             ],
         );
 
-        let scanned = media.read_geospatial_statistics("shape").unwrap();
+        let scanned = media.read_parquet_geospatial_statistics("shape").unwrap();
         let bounds = scanned.bounding_box.unwrap();
         assert_eq!(
             (bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax),
@@ -954,7 +1436,7 @@ mod geospatial {
         );
 
         let message = media
-            .read_geospatial_statistics("id")
+            .read_parquet_geospatial_statistics("id")
             .unwrap_err()
             .to_string();
         assert!(message.contains("expected WKB binary storage"), "{message}");
@@ -962,7 +1444,7 @@ mod geospatial {
         assert!(message.contains("$.id"), "{message}");
 
         let message = media
-            .read_geospatial_statistics("absent")
+            .read_parquet_geospatial_statistics("absent")
             .unwrap_err()
             .to_string();
         assert!(
@@ -981,18 +1463,18 @@ mod geospatial {
             Some(r#"{"edges": "diagonal"}"#),
         )]));
         let mut media = Parquet::new(handle("bad-edges.parquet"));
+        let options = media.record_options().unwrap();
         let message = media
-            .write_batch_reader(crate::arrow::batch_reader(schema, []))
+            .overwrite_arrow_reader(crate::arrow::batch_reader(schema, []), &options)
             .unwrap_err()
             .to_string();
-        assert!(
-            message.contains("expected a GeoArrow JSON metadata document"),
-            "{message}"
-        );
-        // The shared parser names the vocabulary inside the refusal.
+        // The native Field import owns extension metadata validation, so its
+        // typed metadata error crosses the record surface without an Arrow- or
+        // Parquet-specific envelope.
+        assert!(message.contains("ARROW:extension:metadata"), "{message}");
+        assert!(message.contains("edge algorithm"), "{message}");
         assert!(message.contains("expected one of"), "{message}");
         assert!(message.contains("\"diagonal\""), "{message}");
-        assert!(message.contains("$.shape"), "{message}");
         // Nothing was published.
         assert!(media.handle().is_empty());
     }
@@ -1014,11 +1496,12 @@ mod geospatial {
         ])
         .unwrap()
         .required_field("row");
-        let schema = root.to_arrow_schema().unwrap();
+        let schema = root.clone().into_arrow_schema().unwrap();
 
         let mut media = Parquet::new(handle("field-declared.parquet"));
+        let options = media.record_options().unwrap();
         media
-            .write_batch_reader(crate::arrow::batch_reader(schema, []))
+            .overwrite_arrow_reader(crate::arrow::batch_reader(schema, []), &options)
             .unwrap();
 
         assert_eq!(
@@ -1050,9 +1533,11 @@ mod geospatial {
 
         // And the identity survives the read: the reimported root speaks the
         // datatypes the declaration did, extension transport keys stripped.
-        let read =
-            crate::arrow::record_schema_from_arrow("row", media.read_schema().unwrap().as_ref())
-                .unwrap();
+        let read = crate::arrow::field_from_arrow_schema(
+            "row",
+            media.read_arrow_schema().unwrap().as_ref(),
+        )
+        .unwrap();
         assert_eq!(read, root);
     }
 }

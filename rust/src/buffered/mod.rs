@@ -87,11 +87,9 @@
 //!
 //! # Over a compressed handle
 //!
-//! A content coding is not seekable, so [`Coded`](crate::io::Coded) answers a
-//! positional read by decoding the value, and *which* decode it pays depends
-//! on whether the handle is open. A handle nobody opened decodes the whole
-//! payload for every `pread`, because nothing may be cached as a side effect
-//! of an ordinary read. Wrapping it turns that into one decode per page miss:
+//! A content coding is not seekable. A closed [`Coded`](crate::io::Coded)
+//! positional read decodes through the requested range and retains nothing;
+//! wrapping it retains the decoded pages, so hits require no second decode:
 //!
 //! ```
 //! use yggdryl::buffered::BufferedOptions;
@@ -114,13 +112,11 @@
 //! # }
 //! ```
 //!
-//! The order matters: `Buffered<Coded<_>>` caches the decoded bytes, which is
-//! what the reads want. `Coded<Buffered<_>>` would cache the *compressed*
-//! bytes and still decode on every read, which buys nothing. And a caller who
-//! knows they hold a compressed value should still
-//! [`open`](IOBase::open) it - that materializes the decoded value once and
-//! `close` releases it, which is cheaper again. The page cache is what makes
-//! an *unopened* coded handle behave; `docs/buffered.md` measures all three.
+//! The order matters: `Buffered<Coded<_>>` caches decoded bytes;
+//! `Coded<Buffered<_>>` caches encoded transport. For a full scan use
+//! [`IOBase::pstream_bytes`], which keeps one decoder and bypasses pages. For
+//! repeated random access, [`open`](IOBase::open) materializes once and
+//! [`close`](IOBase::close) releases it.
 //!
 //! # Wrapping is idempotent
 //!
@@ -379,6 +375,51 @@ fn slot(value: u64) -> usize {
     usize::try_from(value).unwrap_or(usize::MAX)
 }
 
+impl<H: IOBase> crate::io::IOMedia for Buffered<H> {
+    crate::impl_default_iomedia!();
+
+    #[cfg(feature = "arrow")]
+    fn row_size(&self) -> Result<u64> {
+        crate::io::IOMedia::row_size(&self.handle)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn column_size(&self) -> Result<usize> {
+        crate::io::IOMedia::column_size(&self.handle)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+        crate::io::IOMedia::record_options(&self.handle)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
+        crate::io::IOMedia::read_arrow_field(&self.handle, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_reader(
+        &self,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        crate::io::IOMedia::read_arrow_reader(&self.handle, options)
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+        crate::io::IOMedia::read_parquet_statistics(&self.handle)
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_geospatial_statistics(
+        &self,
+        column: &str,
+    ) -> Result<crate::parquet::GeospatialStatistics> {
+        crate::io::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
+    }
+}
+
 impl<H: IOBase> IOBase for Buffered<H> {
     // Everything the cache does not change is the wrapped handle's answer,
     // expanded from the one delegation macro. What the list leaves out is
@@ -386,7 +427,7 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // resize that invalidates, the open/close pair that holds the cache, and
     // the `clear`/`remove` pair - a cache that outlived either would answer a
     // later read with bytes that are gone.
-    crate::delegate_iobase!(handle: size, capacity, reserve, url, media_type,
+    crate::delegate_iobase!(handle: pstream_bytes, size, capacity, reserve, url, media_type,
         set_media_type, flush, parent, child_by_path, ls, kind, is_atomic,
         is_tabular);
 
@@ -416,7 +457,7 @@ impl<H: IOBase> IOBase for Buffered<H> {
         let landed = &bytes[..written.min(bytes.len())];
         // What the value now holds, derived rather than re-asked: `pwrite`
         // grows the value exactly when the write reaches past the end, and on
-        // a compressed handle asking would decode the whole payload again.
+        // a compressed handle asking would scan the decoded stream again.
         let current = previous.max(offset.saturating_add(landed.len() as u64));
         table.apply_write(offset, landed, previous, current, &self.options);
         table.set_size(current);
@@ -467,9 +508,10 @@ impl<H: IOBase> IOBase for Buffered<H> {
     /// for a view: a `Buffered<Coded<_>>` reports the decoded media type while
     /// its location still holds the compressed bytes, so the default reads a
     /// gzip header as text. Deferring keeps whatever the wrapped handle
-    /// decided - [`Coded`](crate::io::Coded) snapshots the value it presents, a
-    /// storage handle reopens its location - and a cache that changes what a
-    /// read returns is not a cache.
+    /// decided - [`Coded`](crate::io::Coded) reopens the encoded location under
+    /// one owning decoder (or snapshots only an unlocated source), while a
+    /// storage handle reopens directly. A cache that changes what a read
+    /// returns is not a cache.
     #[cfg(feature = "arrow")]
     fn read_arrow_lines(
         &self,

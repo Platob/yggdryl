@@ -5,8 +5,18 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
+const zlib = require('node:zlib')
 
-const { IOBase, Url } = require('yggdryl')
+const arrow = require('apache-arrow')
+
+const {
+  BatchReader,
+  ByteIterator,
+  Field,
+  IOBase,
+  IOCursor,
+  Url,
+} = require('yggdryl')
 
 // A small Hive-partitioned lake with one private staging area, so listing,
 // globbing, and partition selection all have something real to answer about.
@@ -30,6 +40,36 @@ function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-io-'))
 }
 
+function memoryArrowFs() {
+  const files = new Map()
+  return {
+    files,
+    typeName: 'memory',
+    fileInfo(name) {
+      const bytes = files.get(name)
+      return bytes === undefined
+        ? { path: name, kind: 'unknown' }
+        : { path: name, kind: 'file', size: BigInt(bytes.length) }
+    },
+    list() {
+      return []
+    },
+    readRange(name, offset, length) {
+      const bytes = files.get(name)
+      if (bytes === undefined) return Buffer.alloc(0)
+      const start = Number(offset)
+      return bytes.subarray(start, start + length)
+    },
+    writeFull(name, bytes) {
+      files.set(name, Buffer.from(bytes))
+    },
+    createDir() {},
+    deleteFile(name) {
+      files.delete(name)
+    },
+  }
+}
+
 function names(handles) {
   return handles.map((handle) => handle.name).sort()
 }
@@ -49,7 +89,7 @@ test('a handle reports what is there and is inferred from every spelling', (t) =
   assert.equal(IOBase.from(Url.fromPath(root)).toString(), handle.toString())
   assert.equal(new IOBase(handle).toString(), handle.toString())
   assert.equal(handle.url.toString(), Url.fromPath(root).toString())
-  assert.equal(handle.toPath(), Url.fromPath(root).toPath())
+  assert.equal(handle.intoPath(), Url.fromPath(root).intoPath())
 })
 
 test('a missing location is empty rather than an error', (t) => {
@@ -61,6 +101,57 @@ test('a missing location is empty rather than an error', (t) => {
   // Reads skip, so probing a location needs no existence check first.
   assert.equal(absent.readBytes().length, 0)
   assert.equal(absent.size, 0)
+})
+
+test('buffered adds one reconfigurable native cache without changing identity', () => {
+  const bytes = Buffer.from(
+    Array.from({ length: 200_000 }, (_, index) => index & 0xff),
+  )
+  const handle = IOBase.fromBytes(bytes)
+
+  assert.strictEqual(
+    handle.buffered({ pageSize: 1_000, maxBytes: 1, ttlMs: 10_000 }),
+    handle,
+  )
+  assert.deepEqual(handle.pread(63_900, 300), bytes.subarray(63_900, 64_200))
+  assert.deepEqual(handle.pread(63_900, 300), bytes.subarray(63_900, 64_200))
+
+  // A second call replaces the options on the same cache layer, and writes
+  // still invalidate the touched pages before the next read.
+  assert.strictEqual(handle.buffered({ pageSize: 128, ttlMs: 0 }), handle)
+  handle.pwrite(64_000, Buffer.from('native-cache'))
+  assert.equal(handle.pread(64_000, 12).toString(), 'native-cache')
+  assert.equal(handle.size, bytes.length)
+
+  assert.throws(() => handle.buffered({ pageSize: -1 }), /pageSize/)
+  assert.equal(handle.pread(64_000, 12).toString(), 'native-cache')
+})
+
+test('open promotes record handles and retains media metadata until close', () => {
+  const filesystem = memoryArrowFs()
+  const rows = (withQuantity) => new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+    venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
+    ...(withQuantity
+      ? { quantity: arrow.vectorFromArray([10, 20], new arrow.Int32()) }
+      : {}),
+  })
+  const handle = IOBase.fromArrowFs(filesystem, 'cache.arrows')
+  handle.mediaType = 'application/vnd.apache.arrow.stream'
+  handle.overwriteArrowTable(rows(false))
+
+  handle.open()
+  assert.equal(handle.opened(), true)
+  assert.equal(handle.columnSize, 2)
+  const replacement = IOBase.fromBytes()
+  replacement.mediaType = 'application/vnd.apache.arrow.stream'
+  replacement.overwriteArrowTable(rows(true))
+  filesystem.files.set('cache.arrows', replacement.readBytes())
+  assert.equal(handle.columnSize, 2)
+
+  handle.close()
+  assert.equal(handle.closed(), true)
+  assert.equal(handle.columnSize, 3)
 })
 
 test('a handle says whether it holds bytes or rows', (t) => {
@@ -80,6 +171,123 @@ test('a handle says whether it holds bytes or rows', (t) => {
   const handle = new IOBase(root)
   assert.ok(!handle.isAtomic())
   assert.ok(handle.isTabular())
+})
+
+test('structured values use the inferred format, field, and content coding', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = path.join(root, 'trade.json.gz')
+  const handle = new IOBase(file)
+  const expected = { quantity: 2, symbol: 'AAPL' }
+
+  handle.writeValue(expected)
+
+  assert.equal(
+    zlib.gunzipSync(fs.readFileSync(file)).toString(),
+    '{"quantity":2,"symbol":"AAPL"}',
+  )
+  assert.deepEqual(handle.readValue(), expected)
+  assert.deepEqual(
+    handle.readValue(
+      'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null',
+    ),
+    expected,
+  )
+  class Trade {
+    static get intoStructField() {
+      return new Field(
+        'trade',
+        'struct<quantity: int32 not null, symbol: utf8 not null>',
+        false,
+      )
+    }
+  }
+  assert.deepEqual(handle.readValue(Trade), expected)
+  assert.deepEqual(handle.readValue(new Trade()), expected)
+
+  const invalid = new IOBase(path.join(root, 'invalid.json'))
+  invalid.writeText('{"quantity":"many","symbol":"AAPL"}')
+  assert.throws(
+    () => invalid.readValue(
+      'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null',
+    ),
+    /quantity/,
+  )
+})
+
+test('I/O capability and logical dimensions come from core media metadata', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const rows = (ids, venues) => new arrow.Table({
+    id: arrow.vectorFromArray(ids, new arrow.Int64()),
+    venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+  })
+  const wider = (ids) => new arrow.Table({
+    id: arrow.vectorFromArray(ids, new arrow.Int64()),
+    venue: arrow.vectorFromArray(ids.map(() => 'XNAS'), new arrow.Utf8()),
+    quantity: arrow.vectorFromArray(ids.map(() => 10), new arrow.Int32()),
+  })
+
+  const folder = new IOBase(path.join(root, 'empty'))
+  folder.mkdir()
+  assert.equal(IOBase.fromBytes().kind, 'memory')
+  assert.equal(folder.kind, 'directory')
+  assert.equal(new IOBase(path.join(root, 'missing')).kind, 'unknown')
+  assert.equal(folder.isIo(), false)
+  assert.equal(new IOBase(path.join(root, 'notes.txt')).isIo(), true)
+
+  const handle = new IOBase(path.join(root, 'dimensions.arrows'))
+  const first = rows([1n, 2n], ['XNAS', 'XNYS'])
+  const second = rows([3n, 4n], ['XLON', 'XPAR'])
+  handle.overwriteArrowReader(BatchReader.from([first.batches[0], second.batches[0]]))
+  assert.equal(handle.kind, 'file')
+  assert.equal(handle.isIo(), true)
+  assert.equal(handle.rowSize, 4)
+  assert.equal(handle.columnSize, 2)
+  assert.ok(Number.isSafeInteger(handle.rowSize))
+
+  // A narrowed and limited read never changes whole-media dimensions.
+  const narrowed = handle
+    .recordOptions()
+    .withSelectByNames(['id'])
+    .withMaxRowSize(1)
+  const selected = handle.readArrowReader(narrowed).intoTable()
+  assert.equal(selected.numRows, 1)
+  assert.equal(selected.numCols, 1)
+  assert.equal(handle.rowSize, 4)
+  assert.equal(handle.columnSize, 2)
+
+  // Open state keeps successful metadata answers stable across an external
+  // replacement; close releases that cache and the next access computes
+  // fresh. Windows cannot resize a file while another handle owns a mapped
+  // section, so that backend-level scenario is covered by the Rust media
+  // tests there rather than pretending the OS permits it.
+  if (process.platform !== 'win32') {
+    handle.open()
+    assert.equal(handle.rowSize, 4)
+    assert.equal(handle.columnSize, 2)
+    new IOBase(path.join(root, 'dimensions.arrows')).overwriteArrowTable(wider([9n]))
+    assert.equal(handle.rowSize, 4)
+    assert.equal(handle.columnSize, 2)
+    handle.close()
+    assert.equal(handle.rowSize, 1)
+    assert.equal(handle.columnSize, 3)
+  }
+
+  // A publication through this handle invalidates and repopulates its cache.
+  handle.open()
+  handle.overwriteArrowTable(rows([10n, 11n], ['XNAS', 'XNYS']))
+  assert.equal(handle.rowSize, 2)
+  assert.equal(handle.columnSize, 2)
+  handle.close()
+
+  // An empty typed value reports zero rows without losing its schema.
+  const empty = new IOBase(path.join(root, 'empty.arrows'))
+  empty.overwriteArrowTable(rows([], []))
+  empty.open()
+  assert.equal(empty.rowSize, 0)
+  assert.equal(empty.columnSize, 2)
+  empty.close()
 })
 
 test('children are resolved the way path segments are', (t) => {
@@ -173,6 +381,56 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   assert.throws(() => handle.truncate(Number.NaN), /size/)
 })
 
+test('positioned byte streams are lazy bounded iterators', () => {
+  const payload = Buffer.alloc(64 * 1024 + 1, 0x61)
+  const defaults = IOBase.fromBytes(payload).pstreamBytes()
+
+  assert.ok(defaults instanceof ByteIterator)
+  assert.equal(defaults[Symbol.iterator](), defaults)
+  assert.deepEqual(
+    [...defaults].map((chunk) => chunk.length),
+    [64 * 1024, 1],
+  )
+  assert.deepEqual(defaults.next(), { value: undefined, done: true })
+
+  const handle = IOBase.fromBytes(Buffer.from('abcdefgh'))
+  assert.deepEqual(
+    [...handle.pstreamBytes(2, 3)].map((chunk) => chunk.toString()),
+    ['cde', 'fgh'],
+  )
+  assert.deepEqual([...handle.pstreamBytes(99, 3)], [])
+
+  // The iterator retains the native handle even when no JavaScript variable
+  // names the origin anymore.
+  const detached = (() => IOBase.fromBytes(Buffer.from('kept')).pstreamBytes(1, 2))()
+  assert.equal(Buffer.concat([...detached]).toString(), 'ept')
+
+  assert.throws(() => handle.pstreamBytes(0, 0), /greater than zero/)
+  assert.throws(() => handle.pstreamBytes(-1), /position must be a non-negative whole number/)
+  assert.throws(() => handle.pstreamBytes(0, 1.5), /batchSize/)
+})
+
+test('a byte stream throws once and then stays fused', () => {
+  const refusing = {
+    typeName: 'refusing',
+    fileInfo(location) {
+      return { path: location, kind: 'file', size: 4n }
+    },
+    list() {
+      return []
+    },
+    readRange() {
+      throw new Error('the byte source refused the request')
+    },
+    writeFull() {},
+    createDir() {},
+    deleteFile() {},
+  }
+  const stream = IOBase.fromArrowFs(refusing, 'bucket/key.bin').pstreamBytes(0, 4)
+  assert.throws(() => stream.next(), /byte source refused/)
+  assert.deepEqual(stream.next(), { value: undefined, done: true })
+})
+
 test('mkdir and touch bring a location into being', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -211,7 +469,7 @@ test('a memory handle needs no location', () => {
   assert.equal(handle.size, 4)
   // A buffer still has an identity, but not one the file system knows.
   assert.equal(handle.url.scheme, 'mem')
-  assert.throws(() => handle.toPath(), /only a file URI/)
+  assert.throws(() => handle.intoPath(), /only a file URI/)
   assert.throws(() => handle.mkdir(), /only a file URI/)
   assert.equal(IOBase.fromBytes().size, 0)
 })
@@ -308,7 +566,7 @@ test('readArrowLines projects matched records into typed batches', (t) => {
     '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S* \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]'
   const table = new IOBase(target)
     .readArrowLines(pattern, { customFields: { venue: 'XNAS' } })
-    .toTable()
+    .intoTable()
   assert.equal(table.numRows, 3)
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
@@ -346,15 +604,15 @@ test('readArrowLines projects matched records into typed batches', (t) => {
   const zlib = require('node:zlib')
   const coded = path.join(root, 'app2.log.gz')
   fs.writeFileSync(coded, zlib.gzipSync('2024-02-01 10:00:00 [ii] [a] fine\n'))
-  assert.equal(new IOBase(coded).readArrowLines(pattern).toTable().numRows, 1)
+  assert.equal(new IOBase(coded).readArrowLines(pattern).intoTable().numRows, 1)
 
   // Absence reads as zero rows with the schema still answered.
   const empty = new IOBase(path.join(root, 'missing.log')).readArrowLines(pattern)
-  assert.equal(empty.toTable().numRows, 0)
+  assert.equal(empty.intoTable().numRows, 0)
 
   // An in-memory handle parses exactly as a file does.
   const memory = IOBase.fromBytes(Buffer.from('2024-02-01 12:00:00 [ww] [m] held\n'))
-  assert.equal(memory.readArrowLines(pattern).toTable().numRows, 1)
+  assert.equal(memory.readArrowLines(pattern).intoTable().numRows, 1)
 
   // Inputs that would silently misparse are refused instead.
   assert.throws(() => new IOBase(target).readArrowLines(pattern, { customFields: 'venue' }), TypeError)
@@ -363,7 +621,7 @@ test('readArrowLines projects matched records into typed batches', (t) => {
 })
 
 test('named captures type themselves and declarations override', (t) => {
-  const { schemaFromPattern } = require('yggdryl')
+  const { fieldFromPattern } = require('yggdryl')
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-typedlines-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const target = path.join(root, 'typed.log')
@@ -373,14 +631,14 @@ test('named captures type themselves and declarations override', (t) => {
 
   // The standalone builder answers the emitted root without a reader:
   // `threadId` typed off its own `\d+` sub-pattern, `qty` by declaration.
-  const schema = schemaFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
+  const schema = fieldFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
   assert.equal(schema.name, 'row')
   assert.equal(String(schema.dataType.get('threadId').dataType), 'int64')
   assert.equal(String(schema.dataType.get('qty').dataType), 'decimal128(9,2)')
 
   const table = new IOBase(target)
     .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
-    .toTable()
+    .intoTable()
   assert.deepEqual([...table.getChild('threadId')], [42n])
   assert.deepEqual([...table.getChild('logLevel')], ['info'])
 })
@@ -420,7 +678,7 @@ test('writeLines and appendLines stream and round-trip', (t) => {
 })
 
 test('a reader is fully described by a configuration document', (t) => {
-  const { schemaFromPattern, yaml } = require('yggdryl')
+  const { fieldFromPattern, yaml } = require('yggdryl')
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-lineconfig-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const target = path.join(root, 'app.log')
@@ -443,11 +701,11 @@ test('a reader is fully described by a configuration document', (t) => {
   )
 
   // The schema answers from the document alone, with no resource in sight.
-  const schema = schemaFromPattern(options)
+  const schema = fieldFromPattern(options)
   assert.equal(schema.name, 'row')
   assert.equal(String(schema.dataType.get('source').dataType), 'utf8')
 
-  const table = new IOBase(target).readArrowLines(options).toTable()
+  const table = new IOBase(target).readArrowLines(options).intoTable()
   assert.equal(table.numRows, 2)
   assert.deepEqual([...table.getChild('level')], ['ERROR', 'INFO'])
   assert.deepEqual([...table.getChild('source')], ['gateway', 'gateway'])
@@ -465,7 +723,7 @@ test('log mode needs no expression, and both batch bounds apply', (t) => {
   const handle = new IOBase(target)
 
   // The fixed token columns come from the closed table, not from captures.
-  const table = handle.readArrowLines({ logs: true }).toTable()
+  const table = handle.readArrowLines({ logs: true }).intoTable()
   assert.equal(table.numRows, 50)
   assert.deepEqual([...table.getChild('level')].slice(0, 2), ['INFO', 'INFO'])
 
@@ -509,6 +767,41 @@ test('a cursor shares the handle and owns its position', () => {
   const ahead = handle.cursor(7)
   assert.equal(ahead.read(5).toString(), 'price')
   assert.equal(cursor.tell(), 13)
+})
+
+test('cursor byte streams advance only as chunks are yielded', () => {
+  const handle = IOBase.fromBytes(Buffer.from('abcdefgh'))
+  const cursor = handle.cursor(1)
+  assert.ok(cursor instanceof IOCursor)
+
+  let stream = cursor.streamBytes(3)
+  assert.ok(stream instanceof ByteIterator)
+  assert.deepEqual(stream.next(), { value: Buffer.from('bcd'), done: false })
+  assert.equal(cursor.tell(), 4)
+
+  // The dynamic binding samples the shared cursor when each chunk is pulled;
+  // moving it between pulls is the equivalent of ending one Rust borrow and
+  // starting the next one.
+  cursor.seek(6)
+  assert.deepEqual(stream.next(), { value: Buffer.from('gh'), done: false })
+  assert.equal(cursor.tell(), 8)
+
+  // Dropping a partially consumed iterator neither reads ahead nor rewinds.
+  cursor.seek(4)
+  stream = null
+  assert.equal(cursor.tell(), 4)
+  assert.deepEqual(
+    [...cursor.streamBytes(2)].map((chunk) => chunk.toString()),
+    ['ef', 'gh'],
+  )
+  assert.equal(cursor.tell(), 8)
+
+  // Both the cursor and backing handle are retained by the iterator.
+  const detached = (() =>
+    IOBase.fromBytes(Buffer.from('cursor')).cursor(1).streamBytes(2))()
+  assert.equal(Buffer.concat([...detached]).toString(), 'ursor')
+
+  assert.throws(() => cursor.streamBytes(0), /greater than zero/)
 })
 
 test('a handle reports the content coding its own name declares', (t) => {

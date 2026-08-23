@@ -1,25 +1,23 @@
-//! The record surface: `PyArrow` readers in, `PyArrow` readers out.
+//! The typed Python record adapters into the Rust streaming surface.
 //!
-//! Columnar data crosses this boundary through the Arrow C Stream interface and
-//! nothing else. A Python caller hands in anything that exports a stream - a
-//! `pyarrow.RecordBatchReader`, a `Table`, a `RecordBatch`, any object
-//! implementing `__arrow_c_stream__` - and gets a `pyarrow.RecordBatchReader`
-//! back, so the batches themselves are never copied and never rebuilt: the two
-//! runtimes point at the same buffers.
+//! Each public media method accepts exactly the representation named by the
+//! method: an Arrow C Stream reader, a `pyarrow.Table`, one
+//! `pyarrow.RecordBatch`, or row records. They all become the same core
+//! [`BatchReader`](yggdryl::arrow::BatchReader), while reads return a
+//! `pyarrow.RecordBatchReader`. The Arrow paths therefore share buffers across
+//! the boundary instead of copying or rebuilding batches.
 //!
 //! [`PyRecordOptions`] is the settings value every record call takes. It is the
 //! core [`RecordOptions`] and not a Python model of one, so the encoding a
 //! handle uses is still derived from its media type rather than guessed here.
 //!
-//! # Inferring the reader
+//! # Internal widening
 //!
-//! [`batch_reader_from_any`] is the wide end of the same funnel. Python is a
-//! dynamic language, so a caller holds whatever their last library handed them:
-//! a `Dataset`, a generator of tables, a list of dictionaries, a
-//! `pandas.DataFrame`. Each of those is turned into one
-//! [`BatchReader`](yggdryl::arrow::BatchReader) here and then handed to exactly
-//! the same three core methods, so the widening is inference and never a second
-//! implementation of a write.
+//! [`batch_reader_from_any`] remains an internal conversion funnel for
+//! non-media utilities that intentionally accept several Python shapes. The
+//! media API does not call it: broad inference belongs to the generic mode
+//! dispatcher, while the intent-specific entry points stay statically and
+//! dynamically honest about their input shape.
 //!
 //! Nothing that could stream is collected: a generator is pulled one item at a
 //! time and each item is drained before the next is asked for, so a sequence of
@@ -42,15 +40,18 @@ use arrow_array::RecordBatch;
 use arrow_array::ffi_stream::ArrowArrayStreamReader;
 use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
 use arrow_schema::{Schema as ArrowSchema, SchemaRef};
+use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyImportError, PyStopIteration, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyMapping, PyString, PyType};
+use pyo3::types::{
+    PyBool, PyByteArray, PyBytes, PyDict, PyList, PyMapping, PyMemoryView, PyString, PyType,
+};
 
 use yggdryl::arrow::BatchReader;
 use yggdryl::generic::{IORecordOptions, RecordOptions};
 use yggdryl::{ArrowCast, Field as CoreField, Level};
 
-use crate::field::{PyField, core_field_from_value};
+use crate::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
 use crate::media::{PyMimeType, core_media_type_from_value};
 use crate::value_error;
 
@@ -68,8 +69,8 @@ pub(crate) fn core_root_field_from_value(
         return core_field_from_value(value);
     }
     if is_pyarrow_schema(value) {
-        let schema = ArrowSchema::from_pyarrow_bound(value)?;
-        return yggdryl::arrow::record_schema_from_arrow(root_name, &schema).map_err(value_error);
+        let schema = core_schema_from_pyarrow(value)?;
+        return CoreField::from_arrow_schema(root_name, &schema).map_err(value_error);
     }
     core_field_from_value(value)
 }
@@ -133,12 +134,67 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
     ))
 }
 
-/// The rows one batch holds when a caller streaming plain records set no bound.
+/// Read an Arrow stream while refusing shapes with their own typed adapter.
 ///
-/// This is the same default the records layer builds batches at, so rows
-/// arriving as dictionaries and rows arriving as record instances are grouped
-/// the same way.
-const DEFAULT_ROWS_PER_BATCH: usize = 65_536;
+/// A foreign object implementing the Arrow C stream protocol is a reader at
+/// this boundary. A `pyarrow.Table` and `pyarrow.RecordBatch` are refused even
+/// though Arrow can export them as streams: their dedicated methods redirect
+/// through the core's held-table or held-batch path instead.
+pub(crate) fn batch_reader_from_arrow_reader(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
+    let pyarrow = value.py().import("pyarrow")?;
+    let table = pyarrow.getattr("Table")?;
+    let batch = pyarrow.getattr("RecordBatch")?;
+    if value.is_instance(&table)?
+        || value.is_instance(&batch)?
+        || Frames::Pandas.holds(value)
+        || Frames::Polars.holds(value)
+    {
+        return Err(PyTypeError::new_err(format!(
+            "expected a pyarrow.RecordBatchReader or Arrow C stream reader, got {}",
+            type_name(value)
+        )));
+    }
+    let reader = pyarrow.getattr("RecordBatchReader")?;
+    if value.is_instance(&reader)?
+        || value.hasattr("__arrow_c_stream__")?
+        || value.hasattr("_export_to_c")?
+    {
+        return batch_reader_from_value(value);
+    }
+    Err(PyTypeError::new_err(format!(
+        "expected a pyarrow.RecordBatchReader or Arrow C stream reader, got {}",
+        type_name(value)
+    )))
+}
+
+/// Read exactly one `pyarrow.Table` as a zero-copy Arrow stream.
+pub(crate) fn batch_reader_from_arrow_table(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
+    let table = value.py().import("pyarrow")?.getattr("Table")?;
+    if !value.is_instance(&table)? {
+        return Err(PyTypeError::new_err(format!(
+            "expected a pyarrow.Table, got {}",
+            type_name(value)
+        )));
+    }
+    batch_reader_from_value(value)
+}
+
+/// Import exactly one `pyarrow.RecordBatch` for the core's held-batch path.
+pub(crate) fn record_batch_from_value(value: &Bound<'_, PyAny>) -> PyResult<RecordBatch> {
+    let batch = value.py().import("pyarrow")?.getattr("RecordBatch")?;
+    if !value.is_instance(&batch)? {
+        return Err(PyTypeError::new_err(format!(
+            "expected a pyarrow.RecordBatch, got {}",
+            type_name(value)
+        )));
+    }
+    RecordBatch::from_pyarrow_bound(value)
+}
+
+/// The rows one batch holds when a caller streaming plain rows sets no bound.
+///
+/// Mappings and schema-shaped sequences use the same bounded grouping.
+const DEFAULT_ROWS_PER_BATCH: usize = yggdryl::generic::DEFAULT_RECORD_BATCH_SIZE;
 
 /// A `DataFrame` library this boundary converts to and from.
 ///
@@ -313,6 +369,54 @@ pub(crate) fn batch_reader_from_any(
     chained_reader(&items, options, None)
 }
 
+/// Build one streamed reader from Python row records.
+///
+/// A decorated dataclass instance supplies its class's cached
+/// `field()` when no field was declared explicitly. Empty input
+/// cannot infer a shape, so it is accepted only when `options.field` already
+/// names one.
+pub(crate) fn batch_reader_from_records(
+    value: &Bound<'_, PyAny>,
+    options: &mut RecordOptions,
+) -> PyResult<BatchReader> {
+    if value.cast::<PyMapping>().is_ok() && value.hasattr("keys")? {
+        return Err(PyTypeError::new_err(
+            "expected an iterable of records, got one mapping; wrap it in a list",
+        ));
+    }
+    let items = value.try_iter().map_err(|_| {
+        PyTypeError::new_err(format!(
+            "expected an iterable of mapping, sequence, or dataclass records, got {}",
+            type_name(value)
+        ))
+    })?;
+    let Some(first) = next_item(&items)? else {
+        let field = options.field().ok_or_else(|| {
+            PyValueError::new_err("empty records cannot infer a field; declare options.field")
+        })?;
+        let schema = field.clone().into_arrow_schema().map_err(value_error)?;
+        return Ok(yggdryl::arrow::batch_reader(schema, []));
+    };
+    if options.field().is_none() && is_dataclass_instance(&first)? {
+        let field = core_root_field_from_value(&first, options.root_name())?;
+        options.set_field(field);
+    }
+    row_reader(&items, &first, options)
+}
+
+/// Report whether `value` is a dataclass instance rather than its class.
+fn is_dataclass_instance(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    if value.is_instance_of::<PyType>() {
+        return Ok(false);
+    }
+    value
+        .py()
+        .import("dataclasses")?
+        .getattr("is_dataclass")?
+        .call1((value,))?
+        .extract::<bool>()
+}
+
 /// Read a batch reader out of a value that is already columnar, if it is one.
 ///
 /// `None` means the value names rows some other way, which is what leaves the
@@ -381,9 +485,8 @@ fn chained_reader(
             None => return row_reader(items, &first, options),
         },
     };
-    let root =
-        yggdryl::arrow::record_schema_from_arrow(options.root_name(), reader.schema().as_ref())
-            .map_err(value_error)?;
+    let root = CoreField::from_arrow_schema(options.root_name(), reader.schema().as_ref())
+        .map_err(value_error)?;
     Ok(Box::new(Chained {
         items: items.clone().unbind(),
         schema: reader.schema(),
@@ -541,9 +644,11 @@ fn row_reader(
     options: &RecordOptions,
 ) -> PyResult<BatchReader> {
     let py = items.py();
-    let declared = match options.schema() {
-        Some(schema) => Some(
-            yggdryl::arrow::schema_from_field(schema)
+    let declared = match options.field() {
+        Some(field) => Some(
+            field
+                .clone()
+                .into_arrow_schema()
                 .map_err(value_error)?
                 .as_ref()
                 .clone()
@@ -565,6 +670,13 @@ fn row_reader(
             .batch_size()
             .unwrap_or(DEFAULT_ROWS_PER_BATCH)
             .max(1),
+        // Conversion must stop at each exact publication boundary. A fixed
+        // `min(batch_size, commit_row_size)` is not enough when the two do not
+        // divide: for batch 1,024 and commit 1,500 the second conversion must
+        // stop after 476 rows, publish, and only then inspect row 1,501.
+        commit_row_size: options.commit_row_size().filter(|rows| *rows != 0),
+        commit_progress: 0,
+        remaining: options.max_row_size(),
         pending: Some(first.clone().unbind()),
         drained: false,
     };
@@ -622,6 +734,12 @@ struct Rows {
     schema: SchemaRef,
     /// The most rows one batch holds.
     per_batch: usize,
+    /// The exact publication cadence rows must not be converted across.
+    commit_row_size: Option<usize>,
+    /// Rows converted since the last exact publication boundary.
+    commit_progress: usize,
+    /// Rows the global positive write limit still admits.
+    remaining: Option<u64>,
     /// The row pulled to decide this was a stream of rows at all.
     pending: Option<Py<PyAny>>,
     /// Whether the iterator has already reported exhaustion.
@@ -638,6 +756,10 @@ impl Rows {
     /// Returns whatever the iterator raised, or a `TypeError` naming a row
     /// shape that cannot become one.
     fn fill(&mut self) -> PyResult<Option<RecordBatch>> {
+        if self.remaining == Some(0) {
+            self.drained = true;
+            return Ok(None);
+        }
         Python::attach(|py| {
             // The iterator is held owned for the length of the chunk: binding
             // it in place would borrow the reader that the row conversion below
@@ -645,11 +767,17 @@ impl Rows {
             let items = self.items.clone_ref(py).into_bound(py);
             let from_pylist = self.from_pylist.clone_ref(py).into_bound(py);
             let chunk = PyList::empty(py);
+            let mut target = self.commit_row_size.map_or(self.per_batch, |commit| {
+                self.per_batch.min(commit - self.commit_progress)
+            });
+            if let Some(remaining) = self.remaining {
+                target = target.min(usize::try_from(remaining).unwrap_or(usize::MAX));
+            }
             if let Some(pending) = self.pending.take() {
                 let row = pending.into_bound(py);
                 chunk.append(self.mapping(py, &row)?)?;
             }
-            while chunk.len() < self.per_batch && !self.drained {
+            while chunk.len() < target && !self.drained {
                 match next_item(&items)? {
                     Some(row) => chunk.append(self.mapping(py, &row)?)?,
                     None => self.drained = true,
@@ -673,6 +801,12 @@ impl Rows {
             if self.columns.is_none() {
                 self.columns = Some(built.getattr("schema")?.unbind());
             }
+            if let Some(commit) = self.commit_row_size {
+                self.commit_progress = (self.commit_progress + batch.num_rows()) % commit;
+            }
+            if let Some(remaining) = self.remaining.as_mut() {
+                *remaining = remaining.saturating_sub(batch.num_rows() as u64);
+            }
             Ok(Some(batch))
         })
     }
@@ -680,7 +814,7 @@ impl Rows {
     /// Return the row as the mapping `from_pylist` reads.
     ///
     /// A mapping is already one. A sequence is one only once something names
-    /// its columns, and the only thing that can is a declared schema, so a
+    /// its columns, and the only thing that can is a declared field, so a
     /// positional row without one is refused rather than guessed at.
     ///
     /// # Errors
@@ -693,6 +827,12 @@ impl Rows {
     ) -> PyResult<Bound<'py, PyAny>> {
         if row.cast::<PyMapping>().is_ok() && row.hasattr("keys")? {
             return Ok(row.clone());
+        }
+        if is_dataclass_instance(row)? {
+            return py
+                .import("yggdryl.fields._classes")?
+                .getattr("into_dict")?
+                .call1((row,));
         }
         if row.cast::<PyString>().is_ok() {
             return Err(PyTypeError::new_err(
@@ -729,7 +869,7 @@ impl Rows {
     ///
     /// # Errors
     ///
-    /// Returns a `TypeError` when no schema was declared, because nothing else
+    /// Returns a `TypeError` when no field was declared, because nothing else
     /// in a bare sequence of values says which column each one is.
     fn column_names(&mut self, py: Python<'_>) -> PyResult<Py<PyList>> {
         if let Some(names) = self.names.as_ref() {
@@ -737,7 +877,7 @@ impl Rows {
         }
         let columns = self.columns.as_ref().ok_or_else(|| {
             PyTypeError::new_err(
-                "expected a row as a mapping, got a sequence of values and no schema on the \
+                "expected a row as a mapping, got a sequence of values and no field on the \
                  options naming the columns they fill",
             )
         })?;
@@ -776,9 +916,9 @@ impl arrow_array::RecordBatchReader for Rows {
 
 /// Read a core batch reader out of one library's frames and nothing else.
 ///
-/// The named entry points are strict on purpose: `write_pandas` handed a
-/// `polars` frame is a mistake worth naming, and the generic `write_arrow`
-/// already accepts both.
+/// The named entry points are strict on purpose: `overwrite_pandas` handed a
+/// `polars` frame is a mistake worth naming. Each held shape has one explicit
+/// adapter before it reaches the native reader primitive.
 ///
 /// # Errors
 ///
@@ -910,56 +1050,6 @@ pub(crate) fn combined<'py>(
     batch_reader_to_pyarrow(py, reader)
 }
 
-/// Report that a setting belongs to an encoding these options are not.
-fn not_parquet(options: &RecordOptions, setting: &str) -> PyErr {
-    PyValueError::new_err(format!(
-        "expected Parquet options to {setting}, got {} options",
-        options.mime_type()
-    ))
-}
-
-/// Name a page compression the way the Parquet parser accepts it.
-///
-/// The codec's own `Display` prints the level as its internal type, which its
-/// own `FromStr` then refuses, so the accepted spelling is written here rather
-/// than recovered from that text.
-fn compression_name(compression: parquet::basic::Compression) -> String {
-    use parquet::basic::Compression as C;
-
-    match compression {
-        C::UNCOMPRESSED => "uncompressed".to_owned(),
-        C::SNAPPY => "snappy".to_owned(),
-        C::GZIP(level) => format!("gzip({})", level.compression_level()),
-        C::LZO => "lzo".to_owned(),
-        C::BROTLI(level) => format!("brotli({})", level.compression_level()),
-        C::LZ4 => "lz4".to_owned(),
-        C::ZSTD(level) => format!("zstd({})", level.compression_level()),
-        C::LZ4_RAW => "lz4_raw".to_owned(),
-    }
-}
-
-/// The record-option fields every record method also accepts as keywords,
-/// in the order they are applied.
-///
-/// `root_name` is applied before `schema` because coercing a schema names an
-/// unnamed root with the options' root name, so a call passing both means the
-/// schema under that name whichever order the keywords were typed in.
-const RECORD_KWARGS: [&str; 13] = [
-    "root_name",
-    "schema",
-    "safe",
-    "batch_size",
-    "max_row_size",
-    "max_byte_size",
-    "level",
-    "merge_by_names",
-    "select_by_names",
-    "filter_partitions",
-    "compression",
-    "max_row_group_size",
-    "key_value_metadata",
-];
-
 /// Read `(key, value)` string pairs out of a mapping or an iterable of pairs.
 ///
 /// These are the two shapes `IOBase.children_where` already accepts for the
@@ -977,113 +1067,6 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
     Ok(pairs)
 }
 
-/// Set one record option field from the Python value a keyword carries.
-///
-/// This is the same coercion the [`PyRecordOptions`] setter of that name
-/// performs, shared so a keyword and an attribute assignment cannot drift.
-fn set_record_option(
-    options: &mut RecordOptions,
-    key: &str,
-    value: &Bound<'_, PyAny>,
-) -> PyResult<()> {
-    match key {
-        "root_name" => {
-            *options = options.clone().with_root_name(value.extract::<&str>()?);
-        }
-        "schema" => {
-            let field = core_root_field_from_value(value, options.root_name())?;
-            options.set_schema(field);
-        }
-        "safe" => options.set_safe(value.extract::<bool>()?),
-        "batch_size" => set_batch_size_option(options, value.extract::<Option<usize>>()?)?,
-        "max_row_size" => options.set_max_row_size(value.extract::<Option<u64>>()?),
-        "max_byte_size" => options.set_max_byte_size(value.extract::<Option<u64>>()?),
-        "level" => options.set_level(Level::new(value.extract::<u8>()?)),
-        "merge_by_names" => {
-            options.set_merge_by_names(crate::media::strings_from_iterable(
-                value,
-                "merge_by_names",
-            )?);
-        }
-        "select_by_names" => {
-            options.set_select_by_names(crate::media::strings_from_iterable(
-                value,
-                "select_by_names",
-            )?);
-        }
-        "filter_partitions" => {
-            options.set_filter_partitions(string_pairs_from_value(value)?);
-        }
-        "compression" => set_compression_option(options, value.extract::<&str>()?)?,
-        "max_row_group_size" => {
-            set_max_row_group_size_option(options, value.extract::<usize>()?)?;
-        }
-        "key_value_metadata" => set_key_value_metadata_option(options, value)?,
-        _ => unreachable!("apply_record_kwargs checks the key first"),
-    }
-    Ok(())
-}
-
-/// Apply the record-option keywords one method call carried, in field order.
-///
-/// This is the one resolver every record method routes `(options, kwargs)`
-/// through: the base options - resolved from the `options` argument or from
-/// the handle's media type - are updated field by field, so an explicit
-/// keyword always wins over the same field of a passed options object, and
-/// the caller's own options value is never touched.
-///
-/// # Errors
-///
-/// Raises a `TypeError` naming the argument for a keyword that is not a
-/// record option field, exactly as a plain Python signature would.
-pub(crate) fn apply_record_kwargs(
-    method: &str,
-    options: &mut RecordOptions,
-    kwargs: Option<&Bound<'_, PyDict>>,
-) -> PyResult<()> {
-    let Some(kwargs) = kwargs else {
-        return Ok(());
-    };
-    for (key, _) in kwargs.iter() {
-        let key = key.extract::<String>()?;
-        if !RECORD_KWARGS.contains(&key.as_str()) {
-            return Err(PyTypeError::new_err(format!(
-                "{method}() got an unexpected keyword argument {key:?}"
-            )));
-        }
-    }
-    for key in RECORD_KWARGS {
-        if let Some(value) = kwargs.get_item(key)? {
-            set_record_option(options, key, &value)?;
-        }
-    }
-    Ok(())
-}
-
-/// Set the Parquet page compression, or say these are not Parquet options.
-fn set_compression_option(options: &mut RecordOptions, compression: &str) -> PyResult<()> {
-    let RecordOptions::Parquet(parquet) = options else {
-        return Err(not_parquet(options, "set a page compression"));
-    };
-    // The target field names the type, so the parquet crate's own parser is
-    // what accepts `uncompressed`, `snappy`, `zstd(3)`, and the rest.
-    parquet.compression = compression.parse().map_err(value_error)?;
-    Ok(())
-}
-
-/// Set the Parquet row-group bound, or say these are not Parquet options.
-fn set_max_row_group_size_option(options: &mut RecordOptions, rows: usize) -> PyResult<()> {
-    match options {
-        RecordOptions::Parquet(parquet) => {
-            parquet.max_row_group_size = rows;
-            Ok(())
-        }
-        RecordOptions::Ipc(_) | RecordOptions::Avro(_) | RecordOptions::Text(_) => {
-            Err(not_parquet(options, "set a row-group size"))
-        }
-    }
-}
-
 /// Set the row-per-batch bound, refusing a bound of nothing.
 ///
 /// A batch of zero rows is not a small batch: the readers chunk by this number,
@@ -1099,17 +1082,35 @@ fn set_batch_size_option(options: &mut RecordOptions, batch_size: Option<usize>)
     Ok(())
 }
 
-/// Set the Parquet footer metadata, or say these are not Parquet options.
-fn set_key_value_metadata_option(
-    options: &mut RecordOptions,
-    metadata: &Bound<'_, PyAny>,
-) -> PyResult<()> {
-    let pairs = string_pairs_from_value(metadata)?;
-    let RecordOptions::Parquet(parquet) = options else {
-        return Err(not_parquet(options, "set footer metadata"));
-    };
-    parquet.key_value_metadata = pairs;
-    Ok(())
+/// Copy one Python byte-buffer value without accepting an integer sequence as
+/// an accidental synchronization marker.
+fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    if let Ok(value) = value.cast::<PyBytes>() {
+        return Ok(value.as_bytes().to_vec());
+    }
+    if let Ok(value) = value.cast::<PyByteArray>() {
+        return Ok(value.to_vec());
+    }
+    if value.cast::<PyMemoryView>().is_ok() {
+        return Ok(value
+            .call_method0("tobytes")?
+            .cast_into::<PyBytes>()?
+            .as_bytes()
+            .to_vec());
+    }
+    Err(PyTypeError::new_err(
+        "sync_marker must be bytes, bytearray, memoryview, or None",
+    ))
+}
+
+/// Read one required key from private RecordOptions pickle state.
+fn required_record_pickle_item<'py>(
+    state: &Bound<'py, PyDict>,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    state
+        .get_item(name)?
+        .ok_or_else(|| PyValueError::new_err(format!("native pickle state is missing {name:?}")))
 }
 
 /// The settings one record read or write takes.
@@ -1118,14 +1119,68 @@ fn set_key_value_metadata_option(
     module = "yggdryl._native",
     skip_from_py_object
 )]
-#[derive(Clone)]
 pub(crate) struct PyRecordOptions {
     pub(crate) inner: RecordOptions,
+    hash_locked: bool,
+}
+
+impl Clone for PyRecordOptions {
+    fn clone(&self) -> Self {
+        Self::from_core(self.inner.clone())
+    }
 }
 
 impl PyRecordOptions {
     pub(crate) fn from_core(inner: RecordOptions) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "hashed RecordOptions are frozen; copy them before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let state = PyDict::new(py);
+        state.set_item("media_type", self.inner.mime_type().as_str())?;
+        state.set_item(
+            "field",
+            self.inner.field().cloned().map(PyField::from_inner),
+        )?;
+        state.set_item("root_name", self.inner.root_name())?;
+        state.set_item("safe", self.inner.safe())?;
+        state.set_item("batch_size", self.inner.batch_size())?;
+        state.set_item("commit_row_size", self.inner.commit_row_size())?;
+        state.set_item("max_row_size", self.inner.max_row_size())?;
+        state.set_item("max_byte_size", self.inner.max_byte_size())?;
+        state.set_item("level", self.inner.level().get())?;
+        state.set_item("merge_by_names", self.inner.merge_by_names().to_vec())?;
+        state.set_item("select_by_names", self.inner.select_by_names().to_vec())?;
+        state.set_item("filter_partitions", self.inner.filter_partitions().to_vec())?;
+        if let Some(block_codec) = self.inner.avro_block_codec() {
+            state.set_item("block_codec", block_codec)?;
+        }
+        if let Some(marker) = self.inner.avro_sync_marker() {
+            state.set_item("sync_marker", PyBytes::new(py, marker))?;
+        }
+        if let Some(compression) = self.inner.parquet_compression_name() {
+            state.set_item("compression", compression)?;
+        }
+        if let Some(rows) = self.inner.parquet_max_row_group_size() {
+            state.set_item("max_row_group_size", rows)?;
+        }
+        if let Some(metadata) = self.inner.parquet_key_value_metadata() {
+            state.set_item("key_value_metadata", metadata.to_vec())?;
+        }
+        Ok(state)
     }
 }
 
@@ -1156,22 +1211,71 @@ impl PyRecordOptions {
         Self::new(media_type)
     }
 
+    /// Rebuild the complete configuration without carrying a transient hash lock.
+    #[staticmethod]
+    fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let media_type = required_record_pickle_item(state, "media_type")?;
+        let mut options = Self::new(&media_type)?;
+
+        let field = required_record_pickle_item(state, "field")?;
+        if !field.is_none() {
+            options.set_field(&field)?;
+        }
+        let root_name = required_record_pickle_item(state, "root_name")?.extract::<String>()?;
+        options.set_root_name(&root_name)?;
+        options.set_safe(required_record_pickle_item(state, "safe")?.extract()?)?;
+        options.set_batch_size(required_record_pickle_item(state, "batch_size")?.extract()?)?;
+        let commit_row_size =
+            required_record_pickle_item(state, "commit_row_size")?.extract::<Option<usize>>()?;
+        options.inner.set_commit_row_size(commit_row_size);
+        options.set_max_row_size(required_record_pickle_item(state, "max_row_size")?.extract()?)?;
+        options
+            .set_max_byte_size(required_record_pickle_item(state, "max_byte_size")?.extract()?)?;
+        options.set_level(required_record_pickle_item(state, "level")?.extract()?)?;
+        options
+            .set_merge_by_names(required_record_pickle_item(state, "merge_by_names")?.extract()?)?;
+        options.set_select_by_names(
+            required_record_pickle_item(state, "select_by_names")?.extract()?,
+        )?;
+        options.set_filter_partitions(
+            required_record_pickle_item(state, "filter_partitions")?.extract()?,
+        )?;
+
+        if let Some(value) = state.get_item("block_codec")? {
+            options.set_block_codec(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("sync_marker")? {
+            options.set_sync_marker(Some(&value))?;
+        }
+        if let Some(value) = state.get_item("compression")? {
+            options.set_compression(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("max_row_group_size")? {
+            options.set_max_row_group_size(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("key_value_metadata")? {
+            options.set_key_value_metadata(&value)?;
+        }
+        Ok(options)
+    }
+
     /// The MIME type of the encoding these options describe.
     #[getter]
     fn mime_type(&self) -> PyMimeType {
         PyMimeType::from_core(self.inner.mime_type())
     }
 
-    /// The declared canonical schema, when one was declared.
+    /// The declared canonical root Field, when one was declared.
     #[getter]
-    fn schema(&self) -> Option<PyField> {
-        self.inner.schema().cloned().map(PyField::from_inner)
+    fn field(&self) -> Option<PyField> {
+        self.inner.field().cloned().map(PyField::from_inner)
     }
 
     #[setter]
-    fn set_schema(&mut self, schema: &Bound<'_, PyAny>) -> PyResult<()> {
-        let field = core_root_field_from_value(schema, self.inner.root_name())?;
-        self.inner.set_schema(field);
+    fn set_field(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let field = core_root_field_from_value(value, self.inner.root_name())?;
+        self.inner.set_field(field);
         Ok(())
     }
 
@@ -1182,11 +1286,13 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_root_name(&mut self, root_name: &str) {
+    fn set_root_name(&mut self, root_name: &str) -> PyResult<()> {
+        self.require_mutable()?;
         // The trait's setter names a `SmolStr`, which is the core's string type
         // and not a dependency of this crate; its builder takes anything that
         // converts into one, so the builder is the route from a Python string.
         self.inner = self.inner.clone().with_root_name(root_name);
+        Ok(())
     }
 
     /// Whether a cast may null a value it cannot convert.
@@ -1196,8 +1302,10 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_safe(&mut self, safe: bool) {
+    fn set_safe(&mut self, safe: bool) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_safe(safe);
+        Ok(())
     }
 
     /// The row-per-batch bound, when one is set.
@@ -1208,7 +1316,36 @@ impl PyRecordOptions {
 
     #[setter]
     fn set_batch_size(&mut self, batch_size: Option<usize>) -> PyResult<()> {
+        self.require_mutable()?;
         set_batch_size_option(&mut self.inner, batch_size)
+    }
+
+    /// The streamed-write publication cadence, in rows.
+    ///
+    /// `None` publishes once after the source ends. A positive value publishes
+    /// each complete group of that many incoming rows and the final remainder.
+    /// Zero is retained so a write can reject it before inspecting a one-shot
+    /// Python input.
+    #[getter]
+    fn commit_row_size(&self) -> Option<usize> {
+        self.inner.commit_row_size()
+    }
+
+    #[setter]
+    fn set_commit_row_size(&mut self, commit_row_size: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let commit_row_size = commit_row_size
+            .map(|value| {
+                if value.is_instance_of::<PyBool>() {
+                    return Err(PyTypeError::new_err(
+                        "commit_row_size must be an integer or None, not bool",
+                    ));
+                }
+                value.extract::<usize>()
+            })
+            .transpose()?;
+        self.inner.set_commit_row_size(commit_row_size);
+        Ok(())
     }
 
     /// The bound on how many result rows flow in total, when one is set.
@@ -1222,8 +1359,10 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_max_row_size(max_row_size);
+        Ok(())
     }
 
     /// The bound on the result rows' Arrow in-memory bytes, when one is set.
@@ -1236,8 +1375,10 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_max_byte_size(max_byte_size);
+        Ok(())
     }
 
     /// The compression level applied to a content coding, on the 0-to-9 scale.
@@ -1247,8 +1388,10 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_level(&mut self, level: u8) {
+    fn set_level(&mut self, level: u8) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_level(Level::new(level));
+        Ok(())
     }
 
     /// The column names a write matches rows on; empty means overwrite.
@@ -1258,8 +1401,10 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
+    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_merge_by_names(merge_by_names);
+        Ok(())
     }
 
     /// The column names a read or write is narrowed to; empty selects all.
@@ -1269,8 +1414,10 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
+    fn set_select_by_names(&mut self, select_by_names: Vec<String>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_select_by_names(select_by_names);
+        Ok(())
     }
 
     /// The partition equalities a read is pruned and filtered by; empty
@@ -1281,8 +1428,41 @@ impl PyRecordOptions {
     }
 
     #[setter]
-    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
+    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_filter_partitions(filter_partitions);
+        Ok(())
+    }
+
+    /// The Avro block codec name, or `None` for another encoding.
+    #[getter]
+    fn block_codec(&self) -> Option<&str> {
+        self.inner.avro_block_codec()
+    }
+
+    #[setter]
+    fn set_block_codec(&mut self, block_codec: &str) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_avro_block_codec(block_codec)
+            .map_err(value_error)
+    }
+
+    /// The fixed sixteen-byte Avro synchronization marker, when one is set.
+    #[getter]
+    fn sync_marker<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .avro_sync_marker()
+            .map(|marker| PyBytes::new(py, marker))
+    }
+
+    #[setter]
+    fn set_sync_marker(&mut self, marker: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let marker = marker.map(bytes_from_value).transpose()?;
+        self.inner
+            .set_avro_sync_marker(marker.as_deref())
+            .map_err(value_error)
     }
 
     /// The page compression applied inside a Parquet file, if this is one.
@@ -1292,40 +1472,40 @@ impl PyRecordOptions {
     /// handle instead.
     #[getter]
     fn compression(&self) -> Option<String> {
-        match &self.inner {
-            RecordOptions::Parquet(options) => Some(compression_name(options.compression)),
-            RecordOptions::Ipc(_) | RecordOptions::Avro(_) | RecordOptions::Text(_) => None,
-        }
+        self.inner.parquet_compression_name()
     }
 
     #[setter]
     fn set_compression(&mut self, compression: &str) -> PyResult<()> {
-        set_compression_option(&mut self.inner, compression)
+        self.require_mutable()?;
+        self.inner
+            .set_parquet_compression_name(compression)
+            .map_err(value_error)
     }
 
     /// The maximum rows per row group, for the encodings that have them.
     #[getter]
     fn max_row_group_size(&self) -> Option<usize> {
-        match &self.inner {
-            RecordOptions::Parquet(options) => Some(options.max_row_group_size),
-            RecordOptions::Ipc(_) | RecordOptions::Avro(_) | RecordOptions::Text(_) => None,
-        }
+        self.inner.parquet_max_row_group_size()
     }
 
     #[setter]
     fn set_max_row_group_size(&mut self, rows: usize) -> PyResult<()> {
-        set_max_row_group_size_option(&mut self.inner, rows)
+        self.require_mutable()?;
+        self.inner
+            .set_parquet_max_row_group_size(rows)
+            .map_err(value_error)
     }
 
     /// The file-level metadata written into a footer, for the encodings that
     /// have one.
     #[getter]
     fn key_value_metadata<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let RecordOptions::Parquet(options) = &self.inner else {
+        let Some(metadata) = self.inner.parquet_key_value_metadata() else {
             return Ok(None);
         };
         let pairs = PyDict::new(py);
-        for (key, value) in &options.key_value_metadata {
+        for (key, value) in metadata {
             pairs.set_item(key, value)?;
         }
         Ok(Some(pairs))
@@ -1333,16 +1513,46 @@ impl PyRecordOptions {
 
     #[setter]
     fn set_key_value_metadata(&mut self, metadata: &Bound<'_, PyAny>) -> PyResult<()> {
-        set_key_value_metadata_option(&mut self.inner, metadata)
+        self.require_mutable()?;
+        self.inner
+            .set_parquet_key_value_metadata(string_pairs_from_value(metadata)?)
+            .map_err(value_error)
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "RecordOptions({:?}, root_name={:?}, safe={})",
-            self.inner.mime_type().as_str(),
-            self.inner.root_name(),
-            if self.inner.safe() { "True" } else { "False" },
-        )
+    /// Return the deterministic hash of the complete native configuration.
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let state = self.pickle_state(py)?;
+        Ok(format!(
+            "RecordOptions._from_pickle({})",
+            state.repr()?.to_str()?
+        ))
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (self.pickle_state(py)?.into_any().unbind(),),
+        ))
     }
 
     fn __copy__(&self) -> Self {

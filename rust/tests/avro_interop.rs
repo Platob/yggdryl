@@ -21,7 +21,7 @@ fn exchange_dir() -> std::path::PathBuf {
 
 /// The writer schema both sides agree on, logical types included.
 fn schema() -> Value {
-    yggdryl::json::from_str(
+    yggdryl::json::from_utf8(
         r#"{"type": "record", "name": "trade", "fields": [
             {"name": "symbol", "type": "string"},
             {"name": "quantity", "type": "long"},
@@ -53,12 +53,12 @@ fn expected_rows() -> Vec<Value> {
             (Value::from("symbol"), Value::from(symbol)),
             (Value::from("quantity"), Value::from(quantity)),
             (Value::from("price"), price),
-            (Value::from("day"), Value::Date(day)),
+            (Value::from("day"), Value::date32(day)),
             (
                 Value::from("at"),
-                Value::Timestamp(at, TimeUnit::Microsecond, Timezone::UTC),
+                Value::datetime64(at, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
             ),
-            (Value::from("cost"), Value::Decimal(cost, 2)),
+            (Value::from("cost"), Value::d128(cost, 2)),
             (
                 Value::from("tags"),
                 Value::from_sequence(tags.iter().map(|tag| Value::from(*tag))),

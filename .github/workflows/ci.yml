@@ -92,9 +92,10 @@ jobs:
       - name: Static typing
         run: >-
           python -m mypy --strict
+          --config-file python/pyproject.toml
           python/yggdryl
           python/tests/typing_bindings.py
-          python/tests/typing_records.py
+          python/tests/typing_fields.py
 
   spark-interop:
     # The Iceberg exchange with Apache Spark, the format's reference

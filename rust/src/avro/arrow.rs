@@ -208,22 +208,19 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Valu
         if field.is_nullable() && declared.as_str() != Some("null") {
             declared = Value::from_sequence([Value::from("null"), declared]);
         }
-        let mut pairs = vec![
-            (Value::from("name"), Value::from(field.name())),
-            (Value::from("type"), declared),
-        ];
+        let mut pairs = vec![("name", Value::from(field.name())), ("type", declared)];
         if field.is_nullable() {
-            pairs.push((Value::from("default"), Value::Null));
+            pairs.push(("default", Value::Null));
         }
         if let Ok(Some(id)) = field.parquet_field_id() {
-            pairs.push((Value::from("field-id"), Value::from(i64::from(id))));
+            pairs.push(("field-id", Value::from(i64::from(id))));
         }
-        entries.push(Value::from_mapping(pairs)?);
+        entries.push(Value::from_record(pairs)?);
     }
-    Value::from_mapping([
-        (Value::from("type"), Value::from("record")),
-        (Value::from("name"), Value::from(name)),
-        (Value::from("fields"), Value::from_sequence(entries)),
+    Value::from_record([
+        ("type", Value::from("record")),
+        ("name", Value::from(name)),
+        ("fields", Value::from_sequence(entries)),
     ])
 }
 
@@ -231,9 +228,9 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Valu
 fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Value> {
     let plain = |kind: &'static str| Ok(Value::from(kind));
     let logical = |kind: &'static str, annotation: &'static str| {
-        Value::from_mapping([
-            (Value::from("type"), Value::from(kind)),
-            (Value::from("logicalType"), Value::from(annotation)),
+        Value::from_record([
+            ("type", Value::from(kind)),
+            ("logicalType", Value::from(annotation)),
         ])
     };
     match data_type {
@@ -264,30 +261,30 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Va
         }
         DataType::Interval(TimeUnit::MonthDayNano) => {
             *counter += 1;
-            Value::from_mapping([
-                (Value::from("type"), Value::from("fixed")),
-                (Value::from("name"), Value::from(unique_name(name, counter))),
-                (Value::from("size"), Value::from(12_i64)),
-                (Value::from("logicalType"), Value::from("duration")),
+            Value::from_record([
+                ("type", Value::from("fixed")),
+                ("name", Value::from(unique_name(name, counter))),
+                ("size", Value::from(12_i64)),
+                ("logicalType", Value::from("duration")),
             ])
         }
         DataType::FixedSizeBinary(size) => {
             *counter += 1;
-            Value::from_mapping([
-                (Value::from("type"), Value::from("fixed")),
-                (Value::from("name"), Value::from(unique_name(name, counter))),
-                (Value::from("size"), Value::from(i64::from(*size))),
+            Value::from_record([
+                ("type", Value::from("fixed")),
+                ("name", Value::from(unique_name(name, counter))),
+                ("size", Value::from(i64::from(*size))),
             ])
         }
         DataType::Decimal128 { precision, scale } => {
             if *scale < 0 {
                 return Err(unspellable(data_type));
             }
-            Value::from_mapping([
-                (Value::from("type"), Value::from("bytes")),
-                (Value::from("logicalType"), Value::from("decimal")),
-                (Value::from("precision"), Value::from(i64::from(*precision))),
-                (Value::from("scale"), Value::from(i64::from(*scale))),
+            Value::from_record([
+                ("type", Value::from("bytes")),
+                ("logicalType", Value::from("decimal")),
+                ("precision", Value::from(i64::from(*precision))),
+                ("scale", Value::from(i64::from(*scale))),
             ])
         }
         DataType::Struct(_) => {
@@ -303,10 +300,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Va
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Value::from_sequence([Value::from("null"), items]);
             }
-            Value::from_mapping([
-                (Value::from("type"), Value::from("array")),
-                (Value::from("items"), items),
-            ])
+            Value::from_record([("type", Value::from("array")), ("items", items)])
         }
         DataType::Map(map) => {
             let entries = map.entries().fields();
@@ -322,10 +316,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Va
             if value.is_nullable() && values.as_str() != Some("null") {
                 values = Value::from_sequence([Value::from("null"), values]);
             }
-            Value::from_mapping([
-                (Value::from("type"), Value::from("map")),
-                (Value::from("values"), values),
-            ])
+            Value::from_record([("type", Value::from("map")), ("values", values)])
         }
         other => Err(unspellable(other)),
     }

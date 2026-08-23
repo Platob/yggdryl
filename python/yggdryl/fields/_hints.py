@@ -88,7 +88,7 @@ def _datatype_from_pyhint(
     ]
     | None = None,
 ) -> DataType:
-    """Internal namespace-aware variant used by the records schema cache."""
+    """Internal namespace-aware variant used by the field-class cache."""
 
     return _Inference(localns, resolved_cache).datatype(
         hint,
@@ -128,7 +128,7 @@ def _field_from_pyhint(
     ]
     | None = None,
 ) -> Field:
-    """Internal namespace-aware variant used by the records schema cache."""
+    """Internal namespace-aware variant used by the field-class cache."""
 
     if not isinstance(name, str):
         raise TypeError("field name must be str")
@@ -139,6 +139,25 @@ def _field_from_pyhint(
         path=name or "field",
         depth=0,
     )
+
+
+def _authoritative_field_class_root(
+    cls: type[Any],
+) -> Field | None:
+    """Return the nearest schema explicitly created by the field-class API."""
+
+    if not dataclasses.is_dataclass(cls):
+        return None
+    # Imported lazily because the class-schema builder calls back into this
+    # annotation module.
+    from ._classes import _decorated_field_owner, _ensure_schema
+
+    owner = _decorated_field_owner(cls)
+    if owner is None:
+        return None
+    # `_ensure_schema` owns recursion detection and the thread-safe first
+    # publication of the private cache.
+    return _ensure_schema(owner).root
 
 
 class _Inference:
@@ -164,7 +183,7 @@ class _Inference:
             keys = ", ".join(sorted(field_keys))
             raise TypeError(
                 f"Annotated option(s) {keys} at {path} apply to a Field; "
-                "use Field.from_pyhint or a record annotation"
+                "use Field.from_pyhint or a field-class annotation"
             )
         options = _annotation_options(annotation_extras, path)
         if options.arrow_type is not _MISSING:
@@ -174,6 +193,12 @@ class _Inference:
             return hint
         if isinstance(hint, Field):
             return hint.data_type
+        if isinstance(hint, type):
+            declared = _authoritative_field_class_root(hint)
+            if declared is not None:
+                # A field class owns the exact native graph it was generated
+                # from. Do not widen its deliberately coarse Python hints.
+                return declared.data_type
         if hint is None or hint is _NONE_TYPE:
             return _native_datatype("null")
         if hint is Any or hint is object or hint in _no_value_hints():
@@ -303,6 +328,17 @@ class _Inference:
                     path=path,
                     depth=depth + 1,
                 )
+                data_type = imported.data_type
+                explicit_extension = any(
+                    key.startswith(_EXTENSION_METADATA_PREFIX)
+                    for key in imported.metadata
+                )
+            elif isinstance(base, type) and (
+                declared := _authoritative_field_class_root(base)
+            ) is not None:
+                # Only an internally marked field class is authoritative;
+                # arbitrary class attributes remain unrelated user state.
+                imported = declared
                 data_type = imported.data_type
                 explicit_extension = any(
                     key.startswith(_EXTENSION_METADATA_PREFIX)
@@ -494,7 +530,7 @@ class _Inference:
         if issubclass(hint, datetime_module.time):
             return _native_datatype("time64(microsecond)")
         if issubclass(hint, datetime_module.timedelta):
-            return _native_datatype("duration(microsecond)")
+            return _native_datatype("duration64(microsecond)")
         if issubclass(hint, decimal.Decimal):
             return _native_datatype("decimal128(38,18)")
         if issubclass(hint, uuid.UUID):
@@ -620,14 +656,19 @@ class _Inference:
             )
         self._active_classes.add(marker)
         try:
-            resolved_bindings = _inherited_typevar_bindings(cls, bindings)
+            binding_contexts = _typevar_bindings_by_class(cls, bindings)
             self_hints = [getattr(typing, "Self", None)]
             if _typing_extensions is not None:
                 self_hints.append(getattr(_typing_extensions, "Self", None))
-            for self_hint in self_hints:
-                if self_hint is not None:
-                    resolved_bindings[self_hint] = cls
-            bindings = resolved_bindings
+
+            def bindings_for(name: str) -> dict[object, object]:
+                owner = _annotation_owner(cls, name)
+                selected = dict(binding_contexts.get(owner, bindings))
+                for self_hint in self_hints:
+                    if self_hint is not None:
+                        selected[self_hint] = cls
+                return selected
+
             cached_annotations = (
                 self._resolved_cache.get(cls)
                 if self._resolved_cache is not None
@@ -643,6 +684,8 @@ class _Inference:
                 annotations = dict(cached_annotations)
             fields: list[Field] = []
             if dataclasses.is_dataclass(cls):
+                from ._classes import _inherited_native_field
+
                 dataclass_fields = dataclasses.fields(cls)
                 materialized = {field.name for field in dataclass_fields}
                 for name, annotation in annotations.items():
@@ -652,12 +695,23 @@ class _Inference:
                         )
                 for dataclass_field in dataclass_fields:
                     child_hint = annotations.get(dataclass_field.name, dataclass_field.type)
-                    child_hint = _bind_typevars(child_hint, bindings)
+                    child_hint = _bind_typevars(
+                        child_hint,
+                        bindings_for(dataclass_field.name),
+                    )
                     child_metadata = {
                         key: value
                         for key, value in dataclass_field.metadata.items()
                         if isinstance(key, str) and isinstance(value, str)
                     }
+                    inherited = _inherited_native_field(
+                        cls,
+                        dataclass_field.name,
+                        child_hint,
+                    )
+                    if inherited is not None:
+                        fields.append(inherited)
+                        continue
                     fields.append(
                         self.field(
                             dataclass_field.name,
@@ -677,7 +731,9 @@ class _Inference:
                             annotations[name], f"{path}.{name}"
                         )
                         continue
-                    child_hint = _bind_typevars(annotations[name], bindings)
+                    child_hint = _bind_typevars(
+                        annotations[name], bindings_for(name)
+                    )
                     fields.append(
                         self.field(
                             name,
@@ -1060,7 +1116,7 @@ def _reject_non_materialized_options(hint: object, path: str) -> None:
                 rendered = ", ".join(sorted(keys))
                 raise TypeError(
                     f"Annotated option(s) {rendered} at {current_path} "
-                    "require a materialized record Field; InitVar and "
+                    "require a materialized dataclass Field; InitVar and "
                     "ClassVar values are not schema fields"
                 )
 
@@ -1163,7 +1219,7 @@ def _datatype_from_override(value: object, path: str) -> DataType:
     if _is_pyarrow_extension_type(pa, value):
         raise TypeError(
             f"arrow_type ExtensionType at {path} carries Field metadata; use "
-            "Field.from_pyhint or a record annotation to preserve its identity"
+            "Field.from_pyhint or a field-class annotation to preserve its identity"
         )
     return DataType.from_arrow(value)
 
@@ -1295,8 +1351,8 @@ def _class_identity_metadata(hint: object) -> dict[str, str]:
             target = typing.get_origin(hint) or hint
             if not isinstance(target, type) or target.__module__ == "builtins":
                 return {}
-            if target.__dict__.get("__yggdryl_record__", False):
-                kind = "record"
+            if target.__dict__.get("__yggdryl_field_class__", False):
+                kind = "field"
             elif dataclasses.is_dataclass(target):
                 kind = "dataclass"
             elif _is_typed_dict(target):
@@ -1417,6 +1473,60 @@ def _inherited_typevar_bindings(
     return resolved
 
 
+def _direct_annotation_names(cls: type[Any]) -> tuple[str, ...]:
+    annotations = cls.__dict__.get("__annotations__")
+    if isinstance(annotations, dict):
+        return tuple(annotations)
+    if sys.version_info < (3, 14):
+        return ()
+    try:
+        annotationlib = importlib.import_module("annotationlib")
+        resolved = annotationlib.get_annotations(
+            cls,
+            format=annotationlib.Format.STRING,
+        )
+        if isinstance(resolved, cabc.Mapping):
+            return tuple(key for key in resolved if isinstance(key, str))
+        return ()
+    except (TypeError, ValueError):
+        return ()
+
+
+def _annotation_owner(cls: type[Any], name: str) -> type[Any]:
+    for candidate in cls.__mro__:
+        if name in _direct_annotation_names(candidate):
+            return candidate
+    return cls
+
+
+def _typevar_bindings_by_class(
+    cls: type[Any], initial: cabc.Mapping[object, object]
+) -> dict[type[Any], dict[object, object]]:
+    """Resolve TypeVars in the namespace of every declaring base class."""
+
+    resolved: dict[type[Any], dict[object, object]] = {}
+
+    def visit(current: type[Any], current_bindings: cabc.Mapping[object, object]) -> None:
+        # The first path follows Python's base/MRO order. A repeated diamond
+        # must not overwrite the declaration context selected by that order.
+        if current in resolved:
+            return
+        resolved[current] = dict(current_bindings)
+        for base_hint in current.__dict__.get("__orig_bases__", ()):
+            origin = typing.get_origin(base_hint) or base_hint
+            if not isinstance(origin, type):
+                continue
+            arguments = tuple(
+                _bind_typevars(argument, current_bindings)
+                for argument in typing.get_args(base_hint)
+            )
+            parameters = getattr(origin, "__parameters__", ())
+            visit(origin, dict(zip(parameters, arguments)))
+
+    visit(cls, initial)
+    return resolved
+
+
 def _expanded_type_alias(hint: object) -> object:
     origin = typing.get_origin(hint)
     alias = origin if type(origin).__name__ == "TypeAliasType" else hint
@@ -1464,7 +1574,7 @@ def _numpy_datatype(hint: type[Any]) -> DataType | None:
         "bytes_": "binary",
         "void": "binary",
         "datetime64": "timestamp(nanosecond)",
-        "timedelta64": "duration(nanosecond)",
+        "timedelta64": "duration64(nanosecond)",
     }
     if name == "complex64":
         return _complex_datatype("float32")
@@ -1713,7 +1823,7 @@ _DIRECT_CLASS_TYPES: dict[type[Any], str] = {
     datetime_module.datetime: "timestamp(microsecond,\"UTC\")",
     datetime_module.date: "date32",
     datetime_module.time: "time64(microsecond)",
-    datetime_module.timedelta: "duration(microsecond)",
+    datetime_module.timedelta: "duration64(microsecond)",
     decimal.Decimal: "decimal128(38,18)",
     uuid.UUID: "utf8",
     pathlib.Path: "utf8",

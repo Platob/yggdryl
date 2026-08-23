@@ -1,9 +1,9 @@
 //! [`TextOptions`], the record-options face of the text-line surface.
 //!
 //! This is what makes `Text` a *real* media: the same three record methods
-//! every encoding answers - [`read_arrow_batch_reader`](crate::io::IOBase::read_arrow_batch_reader),
-//! [`write_arrow_batch_reader`](crate::io::IOBase::write_arrow_batch_reader),
-//! [`append_arrow_batch_reader`](crate::io::IOBase::append_arrow_batch_reader) -
+//! every encoding answers - [`read_arrow_reader`](crate::io::IOMedia::read_arrow_reader),
+//! [`overwrite_arrow_reader`](crate::io::IOMedia::overwrite_arrow_reader),
+//! [`append_arrow_reader`](crate::io::IOMedia::append_arrow_reader) -
 //! reach the line projection when the options say text, exactly as they reach
 //! the IPC decoder when the options say IPC. The extractor itself stays
 //! [`TextLineOptions`]; this type adds the shared record settings every
@@ -25,7 +25,7 @@ use super::options::TextLineOptions;
 ///
 /// ```
 /// use yggdryl::generic::RecordOptions;
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::io::{Buffer, IOBase, IOMedia};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut handle = Buffer::new()
@@ -36,19 +36,19 @@ use super::options::TextLineOptions;
 /// let options = handle.record_options()?;
 /// assert!(matches!(options, RecordOptions::Text(_)));
 /// let rows: usize = handle
-///     .read_arrow_batch_reader(&options)?
+///     .read_arrow_reader(&options)?
 ///     .map(|batch| batch.map(|batch| batch.num_rows()))
 ///     .sum::<Result<_, _>>()?;
 /// assert_eq!(rows, 2);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextOptions {
     /// The extractor the lines are parsed under.
     pub lines: TextLineOptions,
     /// Declared canonical schema the projected rows are cast onto.
-    pub schema: Option<Field>,
+    pub field: Option<Field>,
     /// Root Field name used for an inferred schema.
     pub root_name: SmolStr,
     /// Whether a cast may null a value it cannot convert.
@@ -68,6 +68,8 @@ pub struct TextOptions {
     pub max_row_size: Option<u64>,
     /// Bound on the result rows' Arrow in-memory bytes; `None` is unlimited.
     pub max_byte_size: Option<u64>,
+    /// Rows published per streamed-write commit; `None` publishes once.
+    pub commit_row_size: Option<usize>,
 }
 
 impl TextOptions {
@@ -82,7 +84,7 @@ impl TextOptions {
     pub fn with_lines(lines: TextLineOptions) -> Self {
         Self {
             lines,
-            schema: None,
+            field: None,
             root_name: SmolStr::new_static(super::options::ROOT_NAME),
             safe: false,
             level: Level::DEFAULT,
@@ -91,6 +93,7 @@ impl TextOptions {
             filter_partitions: Vec::new(),
             max_row_size: None,
             max_byte_size: None,
+            commit_row_size: None,
         }
     }
 
@@ -99,15 +102,25 @@ impl TextOptions {
     pub const fn lines(&self) -> &TextLineOptions {
         &self.lines
     }
+
+    /// Return a deterministic hash of the complete record configuration.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
 }
 
 impl IORecordOptions for TextOptions {
-    fn schema(&self) -> Option<&Field> {
-        self.schema.as_ref()
+    fn field(&self) -> Option<&Field> {
+        self.field.as_ref()
     }
 
-    fn set_schema(&mut self, schema: Field) {
-        self.schema = Some(schema);
+    fn set_field(&mut self, field: Field) {
+        self.field = Some(field);
+    }
+
+    fn take_field(&mut self) -> Option<Field> {
+        self.field.take()
     }
 
     fn root_name(&self) -> &str {
@@ -149,6 +162,14 @@ impl IORecordOptions for TextOptions {
 
     fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
         self.max_byte_size = max_byte_size;
+    }
+
+    fn commit_row_size(&self) -> Option<usize> {
+        self.commit_row_size
+    }
+
+    fn set_commit_row_size(&mut self, commit_row_size: Option<usize>) {
+        self.commit_row_size = commit_row_size;
     }
 
     fn level(&self) -> Level {

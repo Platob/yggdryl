@@ -14,6 +14,8 @@ use crate::{Error, Result};
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TimeUnit {
+    /// Whole calendar days, used by `Date32` values.
+    Day,
     /// Whole seconds.
     Second,
     /// Thousandths of a second.
@@ -33,7 +35,8 @@ pub enum TimeUnit {
 impl TimeUnit {
     /// Every unit in canonical order: the temporal resolutions from coarsest
     /// to finest, then the interval layouts.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
+        Self::Day,
         Self::Second,
         Self::Millisecond,
         Self::Microsecond,
@@ -92,6 +95,14 @@ impl TimeUnit {
     pub const fn is_temporal(self) -> bool {
         matches!(
             self,
+            Self::Day | Self::Second | Self::Millisecond | Self::Microsecond | Self::Nanosecond
+        )
+    }
+
+    /// Return whether this unit projects to Arrow's scalar `TimeUnit`.
+    pub const fn is_arrow_time(self) -> bool {
+        matches!(
+            self,
             Self::Second | Self::Millisecond | Self::Microsecond | Self::Nanosecond
         )
     }
@@ -104,6 +115,7 @@ impl TimeUnit {
     /// Return the canonical spelling without allocating.
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Day => "d",
             Self::Second => "s",
             Self::Millisecond => "ms",
             Self::Microsecond => "us",
@@ -122,7 +134,9 @@ impl FromStr for TimeUnit {
         let original = value;
         let value = original.trim();
         let start = original.len() - original.trim_start().len();
-        let parsed = if matches_alias(value, &["s", "sec", "secs", "second", "seconds"]) {
+        let parsed = if matches_alias(value, &["d", "day", "days"]) {
+            Some(Self::Day)
+        } else if matches_alias(value, &["s", "sec", "secs", "second", "seconds"]) {
             Some(Self::Second)
         } else if matches_alias(
             value,
@@ -147,8 +161,6 @@ impl FromStr for TimeUnit {
             value,
             &[
                 "daytime",
-                "day",
-                "days",
                 "daytotime",
                 "daystotime",
                 "daytosecond",
@@ -259,6 +271,10 @@ impl TryFrom<TimeUnit> for arrow_schema::TimeUnit {
 
     fn try_from(value: TimeUnit) -> Result<Self> {
         match value {
+            TimeUnit::Day => Err(Error::InvalidDataType {
+                kind: "TimeUnit",
+                reason: "a date unit cannot project to arrow_schema::TimeUnit".into(),
+            }),
             TimeUnit::Second => Ok(Self::Second),
             TimeUnit::Millisecond => Ok(Self::Millisecond),
             TimeUnit::Microsecond => Ok(Self::Microsecond),
@@ -281,7 +297,8 @@ impl TryFrom<TimeUnit> for arrow_schema::IntervalUnit {
             TimeUnit::YearMonth => Ok(Self::YearMonth),
             TimeUnit::DayTime => Ok(Self::DayTime),
             TimeUnit::MonthDayNano => Ok(Self::MonthDayNano),
-            TimeUnit::Second
+            TimeUnit::Day
+            | TimeUnit::Second
             | TimeUnit::Millisecond
             | TimeUnit::Microsecond
             | TimeUnit::Nanosecond => Err(Error::InvalidDataType {

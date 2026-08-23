@@ -4,8 +4,33 @@ import {
   MimeType,
   ProtocolMetadata,
   Url,
+  fields,
+  intoField,
   type MetadataEntry,
 } from '..'
+
+class TypedRow {
+  static get intoStructField(): Field {
+    return fields.struct('TypedRow', [fields.int64('id')], { nullable: false })
+  }
+}
+const classField: Field = intoField(TypedRow)
+const instanceField: Field = intoField(new TypedRow())
+
+class GetterRow {
+  static get intoStructField(): Field {
+    return fields.struct('GetterRow', [fields.int64('id')], { nullable: false })
+  }
+}
+const getterField: Field = intoField(GetterRow, 'row')
+
+class MethodRow {
+  static intoStructField(): Field {
+    return fields.struct('MethodRow', [], { nullable: false })
+  }
+}
+// @ts-expect-error class metadata is a Field-valued getter, not a method
+intoField(MethodRow)
 
 const metadata: MetadataEntry[] = [{ key: 'source', value: 'book' }]
 const field = new Field('id', 'bigint', false, metadata)

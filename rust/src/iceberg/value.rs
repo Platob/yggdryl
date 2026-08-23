@@ -42,7 +42,7 @@ pub(super) const NULL_TEXT: &str = crate::io::partition::NULL_PARTITION;
 /// contains one, because a partition value is a scalar.
 pub(super) fn scalar_text(value: &Value) -> SmolStr {
     crate::io::partition::partition_text(value).unwrap_or_else(|_| {
-        crate::json::to_vec(value)
+        crate::json::into_bytes(value)
             .ok()
             .and_then(|encoded| String::from_utf8(encoded).ok())
             .map_or_else(|| SmolStr::new_static(NULL_TEXT), SmolStr::new)
@@ -118,15 +118,17 @@ pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Valu
     match data_type {
         DataType::Boolean => bytes.first().map(|byte| Value::Bool(*byte != 0)),
         DataType::Int32 => Some(Value::I32(int32(bytes))),
-        DataType::Date32 => Some(Value::Date(int32(bytes))),
+        DataType::Date32 => Some(Value::date32(int32(bytes))),
         DataType::Int64 => Some(Value::I64(int64(bytes))),
-        DataType::Time64(unit) => Some(Value::Time(int64(bytes), *unit)),
+        DataType::Time64(unit) => Value::time64(int64(bytes), *unit, crate::Timezone::NAIVE).ok(),
         DataType::Timestamp(unit, Some(zone)) => {
-            Some(Value::Timestamp(int64(bytes), *unit, zone.clone()))
+            Value::datetime64(int64(bytes), *unit, zone.clone()).ok()
         }
-        DataType::Timestamp(unit, None) => Some(Value::DateTime(int64(bytes), *unit)),
+        DataType::Timestamp(unit, None) => {
+            Value::datetime64(int64(bytes), *unit, crate::Timezone::NAIVE).ok()
+        }
         DataType::Float32 => Some(Value::F32(crate::Float32::from_f32(float32(bytes)))),
-        DataType::Float64 => Some(Value::F64(crate::Float::from_f64(float64(bytes)))),
+        DataType::Float64 => Some(Value::F64(crate::Float64::from_f64(float64(bytes)))),
         DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
             std::str::from_utf8(bytes).ok().map(Value::from)
         }
@@ -144,10 +146,13 @@ pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Valu
 /// counts its unit since the epoch, so all three are one integer to an encoder.
 fn count(value: &Value) -> Option<i64> {
     match value {
-        Value::Date(days) => Some(i64::from(*days)),
-        Value::Time(count, _) | Value::Timestamp(count, _, _) | Value::Duration(count, _) => {
-            Some(*count)
-        }
+        Value::Date32(count, _, _)
+        | Value::Time32(count, _, _)
+        | Value::Duration32(count, _, _) => Some(i64::from(*count)),
+        Value::Date64(count, _, _)
+        | Value::Time64(count, _, _)
+        | Value::DateTime64(count, _, _)
+        | Value::Duration64(count, _, _) => Some(*count),
         other => other.as_i64(),
     }
 }

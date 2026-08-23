@@ -19,6 +19,7 @@ use arrow_array::{
 use arrow_buffer::BooleanBuffer;
 use arrow_ord::cmp;
 use criterion::{Criterion, criterion_group, criterion_main};
+use yggdryl::expression::Statement;
 use yggdryl::expression::{Bound, Bounds};
 use yggdryl::{DataType, Expression, Field, Value};
 
@@ -100,7 +101,7 @@ fn batch() -> RecordBatch {
     let venues: StringArray = (0..ROWS)
         .map(|row| Some(if row % 2 == 0 { "XNAS" } else { "XLON" }))
         .collect();
-    let arrow_schema = yggdryl::arrow::schema_from_field(&schema()).unwrap();
+    let arrow_schema = schema().into_arrow_schema().unwrap();
     RecordBatch::try_new(
         arrow_schema,
         vec![
@@ -165,6 +166,19 @@ fn bind_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&parsed).to_string());
         });
     }
+    group.finish();
+
+    let expression: Expression = "ccy = 'EUR' and size > 500".parse().unwrap();
+    let statement: Statement = "select ccy, price where ccy = 'EUR' order by price desc limit 10"
+        .parse()
+        .unwrap();
+    let mut group = criterion.benchmark_group("expression_identity");
+    group.bench_function("stable_hash_expression", |bencher| {
+        bencher.iter(|| black_box(&expression).stable_hash());
+    });
+    group.bench_function("stable_hash_statement", |bencher| {
+        bencher.iter(|| black_box(&statement).stable_hash());
+    });
     group.finish();
 }
 
@@ -288,7 +302,7 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
         .map(|row| {
             Value::from_sequence([
                 Value::from(CURRENCIES[row % CURRENCIES.len()]),
-                Value::Decimal(i128::try_from(row % 20_000).unwrap_or_default(), 2),
+                Value::d128(i128::try_from(row % 20_000).unwrap_or_default(), 2),
                 if row % 16 == 0 {
                     Value::Null
                 } else {
@@ -331,8 +345,8 @@ fn prune_benchmarks(criterion: &mut Criterion) {
         )
         .with_column(
             "price",
-            Some(Value::Decimal(0, 2)),
-            Some(Value::Decimal(1_999_900, 2)),
+            Some(Value::d128(0, 2)),
+            Some(Value::d128(1_999_900, 2)),
             Some(0),
         )
         .with_column(

@@ -58,6 +58,10 @@ impl Counting {
     }
 }
 
+impl crate::io::IOMedia for Counting {
+    crate::impl_default_iomedia!();
+}
+
 impl IOBase for Counting {
     crate::delegate_iobase!(handle: capacity, reserve, truncate, url,
         media_type, set_media_type, flush, parent, child_by_path, ls, kind);
@@ -486,6 +490,9 @@ fn an_exactly_two_page_value_is_all_pins() {
 
 #[test]
 fn a_budget_below_two_pages_is_clamped() {
+    fn assert_traits<T: Copy + Eq + std::hash::Hash + Ord>() {}
+    assert_traits::<BufferedOptions>();
+
     let options = BufferedOptions::default()
         .with_page_size(PAGE)
         .with_max_bytes(1);
@@ -691,4 +698,23 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     );
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn positional_byte_streams_bypass_the_page_cache() {
+    let payload = (0..200_000_u32)
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    let expected = payload[17..].to_vec();
+    let buffered = Buffered::new(Buffer::from_bytes(payload), BufferedOptions::default());
+
+    assert_eq!(buffered.cached_pages(), 0);
+    let streamed = buffered
+        .pstream_bytes(17, 4096)
+        .unwrap()
+        .collect::<crate::Result<Vec<_>>>()
+        .unwrap()
+        .concat();
+    assert_eq!(streamed, expected);
+    assert_eq!(buffered.cached_pages(), 0);
 }

@@ -38,13 +38,15 @@ declarations are checked against the tests that use them.
 | --- | --- |
 | `DataType` | [datatype](../datatype.md) |
 | `Field`, `fields` | [field](../field.md) |
+| `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
-| `schemaFromPattern` | [io](../io.md) |
+| `fieldFromPattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
 | `codec`, `json`, `toml`, `yaml`, `Value` | [text](../text.md) and the format pages |
+| `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
 
 Each coding namespace carries the whole-buffer pair - `loads` and `dumps`, plus `loadsRaw` and
@@ -80,7 +82,7 @@ Every constructor accepts the obvious JavaScript spelling of its argument and co
 Rust. Prefer the generic `from` entry points: they dispatch on what they were handed.
 
 ```javascript
-const { DataType, Field, MediaType, MimeType, Url } = require('yggdryl')
+const { DataType, Field, MediaType, MimeType, Uri, Url } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 // A datatype expression is a datatype.
@@ -93,10 +95,49 @@ assert.equal(String(MediaType.from('application/json')), 'application/json')
 
 // A path is a location.
 assert.equal(String(Url.fromPath('C:/tmp/a.json')), 'file:///C:/tmp/a.json')
+assert.equal(
+  String(Uri.fromString('s3://warehouse/db').joinPath('trades', 'data.parquet')),
+  's3://warehouse/db/trades/data.parquet',
+)
 ```
 
 There is no JavaScript-side parser: `DataType.from` and its siblings call the matching native
-constructor.
+constructor. JavaScript has no object `/` operator protocol, so generic URI path
+composition uses variadic `Uri.joinPath`; every component is normalized by the
+same core `joinpath` implementation as Rust's and Python's `/` idiom.
+
+## One native field from a class or value
+
+JavaScript follows the [canonical field-conversion contract](../field.md#converting-to-one-native-field)
+with `intoField(value, name?)` and the class-level `intoStructField` spelling. The canonical class
+form is an actual static getter; `intoField` validates its native non-null Struct result and memoizes
+that result per class. A static method or stored static Field is rejected rather than treated as a
+compatibility form. The class never needs or exposes a static `FIELD` property.
+
+```javascript
+const assert = require('node:assert/strict')
+const { fields, intoField } = require('yggdryl')
+
+let builds = 0
+class Quote {
+  static get intoStructField() {
+    builds += 1
+    return fields.struct('Quote', [fields.int64('id')], { nullable: false })
+  }
+}
+
+const root = intoField(Quote)
+assert.strictEqual(intoField(new Quote()), root)
+assert.equal(builds, 1)
+
+const renamed = intoField(Quote, 'quote')
+assert.equal(renamed.name, 'quote')
+assert.equal(root.name, 'Quote')
+```
+
+The converter also accepts a native `Field` or field expression. Invalid roots are rejected before
+they cross into a table operation: `intoStructField` must resolve to a native Struct field whose
+root is non-null.
 
 ## Values cross as their natural shape
 
@@ -105,10 +146,10 @@ to that. No class name travels beside the data, so a shape the core does not hav
 shape it was lowered to.
 
 ```javascript
-const { json } = require('yggdryl')
+const { yaml } = require('yggdryl')
 const assert = require('node:assert/strict')
 
-const decoded = json.loads(json.dumps({
+const decoded = yaml.loads(yaml.dumps({
   venues: new Set(['XPAR', 'XNAS']),
   book: new Map([[1, 'bid']]),
   source: new URL('https://example.com/feed'),
@@ -135,8 +176,8 @@ assert.equal(decoded.id, 2n ** 100n)
 | every other typed array | sequence | `Array` |
 | `Array`, `Set` | sequence | `Array` |
 | `Map` | mapping | `Map` when some key is not text, plain object when every key is |
-| plain object, class instance | mapping | plain object |
-| `Date` | timestamp, milliseconds, no zone | `Date` |
+| plain object, class instance | sorted `Record` | plain object |
+| `Date` | `DateTime64(ms, UTC)` | `Date` |
 | `URL` | its `href` string | `string` |
 | `RegExp` | its literal string, flags included | `string` |
 | `DataType`, `Field`, `Uri`, `Url`, `Urn` | its canonical string | `string` |
@@ -148,7 +189,7 @@ plain object, and `undefined` comes back `null`. Reconstructing any of them take
 own code and needs no cooperation from the codec:
 
 ```javascript
-const { json } = require('yggdryl')
+const { yaml } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 class Order {
@@ -157,7 +198,7 @@ class Order {
   }
 }
 
-const decoded = json.loads(json.dumps({ order: new Order(7), venues: new Set(['XPAR']) }))
+const decoded = yaml.loads(yaml.dumps({ order: new Order(7), venues: new Set(['XPAR']) }))
 assert.deepEqual(decoded, { order: { id: 7 }, venues: ['XPAR'] })
 
 const order = Object.assign(new Order(0), decoded.order)
@@ -171,50 +212,102 @@ native integer and is refused rather than rounded, and reading back a `Date`, a 
 `Map` never depends on a method the caller can replace: the encoder reads those off the intrinsic
 prototypes.
 
-## Temporal and exact-decimal values
+## Width-specific values
 
-`Value` is the JavaScript spelling of what JavaScript has no type for: an exact decimal, a date, a
-time of day, a duration, and a timestamp at a resolution or in a zone a `Date` cannot hold. A
-`Date` is exactly a naive count of whole milliseconds, so `fromJs` reads one as that reading and
-`asJs` hands one back. On the schemaless wires a temporal travels as its classic ISO string - the
-fraction printed at the unit's full width, so the digits *are* the unit - and `loads` hands back
-that string; a record class or a schema is what recovers the typed reading.
+`Value` exposes the native vocabulary directly: `f16`/`f32`/`f64`,
+`d128`/`d256`, `date32`/`date64`, `time32`/`time64`, `datetime64`, and
+`duration32`/`duration64`. Every temporal carries a unit and a non-null zone;
+`NAIVE` is the explicit zone-free marker. Schemaless text writes natural ISO
+strings, while `loads(..., { field })` restores the declared exact value.
+
+The factories share one `(count, unit, timezone)` order. `date32` defaults its
+unit to `d`, `date64` to `ms`, and every omitted timezone becomes `NAIVE`.
+Time-of-day and duration values accept only `NAIVE`; `datetime64` also accepts
+a timezone name or native `Timezone`. The Rust core validates the unit allowed
+by each physical width.
 
 ```javascript
-const { Value, json } = require('yggdryl')
+const { Timezone, Value, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
-const at = new Date('2026-08-15T12:30:00.000Z')
-assert.ok(Value.fromJs(at).equals(Value.timestamp(1786797000000n, 'ms')))
-assert.ok(Value.fromJs(at).asJs() instanceof Date)
+const price = Value.d256(-(2n ** 200n), 7)
+assert.equal(price.kind, 'd256')
+assert.equal(price.scale, 7)
+assert.ok(Value.d128(150n, 2).equals(Value.d128(15n, 1)))
 
-// The wire spells the instant classically; the zone name rides in brackets.
-const micros = Value.timestamp(1700000000123456n, 'us', 'UTC')
-assert.equal(
-  json.loads(json.dumps({ at: micros })).at,
-  '2023-11-14T22:13:20.123456Z',
+const at = Value.datetime64(1700000000123456n, 'us', 'UTC')
+assert.equal(json.loads(json.dumps(at)), '2023-11-14T22:13:20.123456Z')
+assert.equal(Value.datetime64(0n, 'ms').zone, 'NAIVE')
+assert.equal(Value.time64(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
+assert.ok(
+  Value.fromJs(new Date('2026-08-15T12:30:00.000Z'))
+    .equals(Value.datetime64(1786797000000n, 'ms', 'UTC')),
 )
 ```
 
-`Value.timestamp(count, unit, zone?)`, `Value.date(days)`, `Value.time(count, unit)`,
-`Value.duration(count, unit)`, and `Value.decimal(unscaled, scale)` build one; `kind`, `count`,
-`unit`, `zone`, `unscaled`, and `scale` read one back. A date counts days since the epoch and has
-no unit; a decimal is `unscaled` times ten to the minus `scale`, which is the only representation
-that round-trips, because `0.1` has no finite binary expansion.
+`kind`, `count`, `unit`, `zone`, `unscaled`, and `scale` expose the matching
+payload. `asBytes`/`asUtf8` borrow scalar content; `asJsonBytes` and
+`asJsonUtf8` use the core natural JSON writer.
+
+## Native value protocols and checked arithmetic
+
+Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
+when the Rust core has a complete value identity. This includes `Value`,
+`Expression`, `Statement`, `avro.Schema`, `iceberg.PartitionSpec`,
+`iceberg.DataFile`, and `iceberg.ScanPlan`; other domain wrappers expose the
+same methods wherever their core identity is complete. `compare` uses the
+core's total order, and equal values always return the same deterministic
+`stableHash()` `bigint`. JavaScript has no object hash protocol, so
+`stableHash()` is explicit and `===` remains reference identity. Operational
+readers, iterators, and handles do not invent a value identity from hidden
+state.
+
+`Value` equality, order, and hashing normalize equivalent decimal and temporal
+resolutions. Avro schema identity retains logical types, defaults, aliases, and
+extension attributes; `fingerprint()` alone follows Parsing Canonical Form.
+`iceberg.IcebergOptions` has the same four methods over its current explicit
+configuration, so a detached clone stops comparing equal after either copy is
+mutated.
+
+JavaScript cannot overload arithmetic operators, so `Value` exposes the
+checked core operations as `add`, `subtract`, `multiply`, `divide`,
+`remainder`, `negate`, and `absolute`. Each binary method accepts either a
+native `Value` or a JavaScript value inferred once through `Value.fromJs`, and
+returns a native `Value`. Numeric operations preserve widths and promote only
+as the core defines; exact decimal division uses the smallest terminating
+scale. Supported datetime/duration pairs use the same checked path. Text and
+containers are never silently concatenated or coerced.
+
+`Expression` exposes `add`, `subtract`, `multiply`, `divide`, `remainder`, and
+`negate` as lazy tree builders. An `Expression` operand stays native, a string
+is parsed as expression text, and any other JavaScript value is inferred once
+as a literal.
 
 ```javascript
-const { Value } = require('yggdryl')
 const assert = require('node:assert/strict')
+const { Expression, Value } = require('yggdryl')
 
-const price = Value.decimal(-1050n, 2) // -10.50
-assert.equal(price.unscaled, -1050n)
-assert.equal(price.scale, 2)
+const half = Value.d128(1n, 0).divide(Value.d128(2n, 0))
+assert.ok(half.equals(Value.d128(5n, 1)))
+assert.equal(half.clone().compare(half), 0)
+assert.equal(typeof half.stableHash(), 'bigint')
 
-// Equality is what a value names, not how it was written.
-assert.ok(price.equals(Value.decimal(-105n, 1)))
-assert.ok(Value.duration(1n, 's').equals(Value.duration(1000n, 'ms')))
-assert.equal(Value.date(19723).unit, null)
+const size = Expression.column('size').add(1)
+assert.equal(size.toString(), 'size + 1')
+assert.ok(size.clone().equals(size))
+
+assert.throws(
+  () => Value.fromJs(1).divide(0),
+  (error) => error instanceof RangeError &&
+    error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO',
+)
 ```
+
+Invalid operand kinds throw `TypeError` with
+`ERR_YGGDRYL_INVALID_ARITHMETIC`. Overflow, division by zero, and non-terminating
+exact decimal division throw `RangeError` with distinct
+`ERR_YGGDRYL_ARITHMETIC_OVERFLOW`, `ERR_YGGDRYL_DIVISION_BY_ZERO`, and
+`ERR_YGGDRYL_INEXACT_ARITHMETIC` codes.
 
 ## fromJs and asJs
 
@@ -232,9 +325,17 @@ assert.equal(Value.fromJs(new Map([['id', 1]])).kind, 'mapping')
 
 const value = { id: 1, tags: new Set(['a']) }
 assert.deepEqual(json.loads(json.dumps(value)), Value.fromJs(value).asJs())
+
+const tree = Value.fromJs({ legs: [{ id: 1 }] })
+assert.equal(tree.get('legs').at(0).get('id').asJs(), 1)
+assert.equal(tree.set('venue', 'XNAS').get('venue').asUtf8(), 'XNAS')
 ```
 
-Both accept the same `{ maxDepth }` the codec functions do, in the inclusive range 1 to 48.
+`length`, iteration, `at`, `get`, `has`, and `path` return exact native child
+values; `set` and `remove` return a rebuilt value without mutating the source.
+`fromJs` and `asJs` accept nullable `{ maxDepth }` for language traversal in
+the inclusive range 1 to 48. Input-byte, node, and document limits apply to
+codec loads, where a text parser actually runs.
 
 ## Field metadata is a Map
 
@@ -326,10 +427,11 @@ assert.equal(String(scalar), '0')
 `defaultJSValue`, `defaultJSHint`, and `defaultArrowScalar` are schema-directed projections of the
 native default planner; the JavaScript layer caches identity but never decides what a default is.
 
-## Records cross as one batch per stream
+## Records: explicit intent and representation
 
-`BatchReader` is the one record shape: a read returns one and a write consumes one, exactly as
-[`IOBase`](../io.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
+`BatchReader` is the primitive record shape: `readArrowReader` returns one and each
+`overwriteArrowReader`/`appendArrowReader`/`mergeArrowReader` call consumes one, exactly as
+[`IOMedia`](../io.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
 another reader, an Apache Arrow JS `Table` or `RecordBatch`, an array of batches, or Arrow IPC bytes -
 and iterating one yields Arrow JS record batches.
 
@@ -345,11 +447,14 @@ const table = new arrow.Table({
 // An in-memory handle says what it holds; a named one reads it off its name.
 const handle = IOBase.fromBytes()
 handle.mediaType = MimeType.ARROW_STREAM
-handle.writeArrowBatchReader(BatchReader.from(table))
+handle.overwriteArrowReader(BatchReader.from(table))
 
-const reader = handle.readArrowBatchReader()
+const reader = handle.readArrowReader()
 assert.equal(reader.field.name, 'row')
 assert.equal([...reader].reduce((rows, batch) => rows + batch.numRows, 0), 2)
+assert.equal(handle.isIo(), true)
+assert.equal(handle.rowSize, 2)
+assert.equal(handle.columnSize, 1)
 
 // A stream is read once, and says so rather than reading as empty.
 assert.ok(reader.consumed)
@@ -357,104 +462,188 @@ assert.ok(reader.consumed)
 
 Each batch crosses as its own self-contained Arrow IPC stream, so its schema travels with it and
 Arrow JS needs no separate handshake. That per-batch header is what a copied boundary costs, and it
-is stated here rather than hidden. `toIpc` drains the reader into one stream and `toTable` into one
+is stated here rather than hidden. `intoIpc` drains the reader into one stream and `intoTable` into one
 Arrow JS table, for the cases where a caller does want everything at once.
+
+`isIo()` asks the core whether the handle exposes either its byte or record surface; a container
+holding neither returns false. `rowSize` and `columnSize` describe the whole logical media, not the
+last projection, filter, or row limit used to read it. They are lazy metadata getters: formats with
+a cheap row count answer without decoding rows, successful values are cached while `open()` holds
+the media metadata, a write through the handle invalidates them, and `close()` makes the next access
+compute fresh. JavaScript stores no parallel schema or count. Counts beyond the exact integer range
+saturate at `Number.MAX_SAFE_INTEGER`.
 
 The encoding is never named by a call: `recordOptions()` derives it from the handle's media type, and
 `RecordOptions` carries the shared settings plus the Parquet-only ones, which read as `null` on an
 encoding that has none.
 
+`RecordOptions` exposes `equals`, `compare`, `stableHash`, and `clone` by
+delegating to the complete core value. Identity includes the encoding variant,
+every shared setting, and every Avro, Parquet, IPC, or Text-specific setting.
+For Text, declared regex source and extractor settings participate; compiled
+regex caches and derived fields do not. A clone is detached, so changing it
+does not mutate or re-hash the source options. JavaScript `===` remains object
+identity and `stableHash()` is the explicit deterministic `bigint`.
+
 ```javascript
 const assert = require('node:assert/strict')
-const { RecordOptions } = require('yggdryl')
+const { Field, RecordOptions, fields } = require('yggdryl')
 
 const parquet = RecordOptions.from('trades.parquet')
 assert.equal(String(parquet.mimeType), 'application/vnd.apache.parquet')
 assert.equal(parquet.compression, 'zstd(1)')
 assert.equal(parquet.withCompression('snappy').compression, 'snappy')
 
+const clone = parquet.clone()
+assert.ok(clone.equals(parquet))
+assert.equal(clone.compare(parquet), 0)
+assert.equal(clone.stableHash(), parquet.stableHash())
+clone.compression = 'snappy'
+assert.ok(!clone.equals(parquet))
+
+const root = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+const declared = parquet.withField(root)
+assert.ok(declared.field.equals(root))
+assert.equal('schema' in declared, false)
+
 // A setting one encoding has is absent on the others rather than invented.
 const stream = RecordOptions.from('trades.arrows')
 assert.equal(stream.compression, null)
 assert.equal(stream.maxRowGroupSize, null)
+assert.equal(stream.commitRowSize, null)
+assert.equal(stream.withCommitRowSize(10_000).commitRowSize, 10_000)
 ```
 
-## Anything in, a reader out
+### Pick the shape you have and the intent you mean
 
-`readArrow`, `writeArrow`, and `appendArrow` are the same three calls with the argument widened to
-whatever your last library handed you. Each one becomes the single native reader and is passed to the
-same native method, so widening the argument never adds a second way to write.
+The explicit method name carries both facts:
+
+| Input | Overwrite | Append | Key-matched merge |
+| --- | --- | --- | --- |
+| native `BatchReader` | `overwriteArrowReader` | `appendArrowReader` | `mergeArrowReader` |
+| Arrow JS `Table` | `overwriteArrowTable` | `appendArrowTable` | `mergeArrowTable` |
+| Arrow JS `RecordBatch` | `overwriteArrowRecordBatch` | `appendArrowRecordBatch` | `mergeArrowRecordBatch` |
+| plain objects or field-class instances | `overwriteRecords` | `appendRecords` | `mergeRecords` |
+
+When mode comes from configuration, each shape also has one dispatcher. The
+canonical order is input, required mode, then the one optional settings value:
+
+```text
+writeArrowReader(reader, mode, options?)
+writeArrowTable(table, mode, options?)
+writeArrowRecordBatch(batch, mode, options?)
+writeRecords(records, mode, options?)
+```
+
+`mode` is `'overwrite'`, `'append'`, or `'merge'`. It is validated before a
+one-shot reader, Arrow exporter, synchronous iterator, or asynchronous iterator
+is touched. The dispatcher does not guess either fact: the method still names
+the representation and the argument explicitly names intent.
+
+The reader method accepts only a native `BatchReader`; use `BatchReader.from(value)` when you want
+to explicitly convert Arrow IPC bytes or another supported Arrow representation. Table and batch
+methods validate their named shape, infer a native `Field`, and redirect to the matching reader
+primitive. Arrow JS has no C Data consumer, so those two adapters copy one IPC stream at the
+boundary. That is the only materialization they add.
 
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { IOBase, MimeType } = require('yggdryl')
+const { BatchReader, IOBase, MimeType } = require('yggdryl')
 
-const table = new arrow.Table({
+const first = new arrow.Table({
   id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+  venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
+})
+const later = new arrow.Table({
+  id: arrow.vectorFromArray([2n, 4n], new arrow.Int64()),
+  venue: arrow.vectorFromArray(['XPAR', 'XTKS'], new arrow.Utf8()),
+})
+const extra = new arrow.Table({
+  id: arrow.vectorFromArray([3n], new arrow.Int64()),
+  venue: arrow.vectorFromArray(['XLON'], new arrow.Utf8()),
 })
 
-function handle() {
-  const stream = IOBase.fromBytes()
-  stream.mediaType = MimeType.ARROW_STREAM
-  return stream
-}
+const handle = IOBase.fromBytes()
+handle.mediaType = MimeType.ARROW_STREAM
+handle.overwriteArrowTable(first)
+handle.appendArrowReader(BatchReader.from(extra))
 
-// A table, a reader, named columns, and plain records all write.
-for (const rows of [
-  table,
-  arrow.RecordBatchReader.from(arrow.tableToIPC(table)),
-  { id: [1n, 2n] },
-  [{ id: 1n }, { id: 2n }],
-]) {
-  const target = handle()
-  target.writeArrow(rows)
-  assert.equal(target.readArrow().toTable().numRows, 2)
-}
+const merging = handle.recordOptions().withMergeByNames(['id'])
+handle.mergeArrowTable(later, merging)
+assert.equal(handle.readArrowReader().intoTable().numRows, 4)
+
+// A configured mode reaches the same native dispatcher.
+handle.writeArrowTable(extra, 'append')
 ```
 
-| You are holding | What happens |
-| --- | --- |
-| a native `BatchReader` or Arrow IPC bytes | used as it stands |
-| an Arrow JS `Table`, `RecordBatch`, or `RecordBatchReader` | its batches, encoded as one stream |
-| an Arrow JS `Vector` | the one column a declared schema names, and refused when none does |
-| an object of named columns | `tableFromArrays` |
-| an object of scalar values | one row |
-| an array or iterable of any of those | concatenated into one stream |
-| an array of plain records | `tableFromJSON`, inferred from all of them at once |
+Intent is authoritative. `mergeByNames` supplies keys only: overwrite and append reject it, while
+merge requires it to be non-empty. This validation happens before a one-shot reader is consumed,
+before a table or batch is IPC-encoded, and before a record iterable is pulled.
 
-Arrow JS has no C Data consumer, so this boundary encodes one Arrow IPC stream in both directions -
-the batches were going to be materialized either way, which is why an array and a generator cost the
-same here and why the Python side can stream where this one cannot.
+### Records and field classes
 
-An **async** source is the one shape that changes the call's shape: its rows do not exist until they
-are awaited, so `writeArrow` returns a promise for it and nothing for every synchronous source. An
-Arrow JS reader implements both iteration protocols and is treated as the synchronous one.
+Plain objects infer one struct field through Arrow JS. A class instance whose constructor exposes a
+static `intoStructField` getter uses that native field; the accessor result is validated and cached
+once per class. Static methods and stored static Fields are rejected. An explicit `options.field`
+always wins.
+Records are pulled in bounded chunks of `options.batchSize` rows, or 1,024 rows when it is unset.
+When `commitRowSize` is set, chunks also end exactly at the next publication boundary and at a
+global `maxRowSize` boundary. The first chunk fixes the Arrow JS physical schema and later chunks
+use those same column types.
 
 ```javascript
-const assert = require('node:assert/strict')
-const arrow = require('apache-arrow')
-const { IOBase, MimeType } = require('yggdryl')
+const { Field, IOBase, MimeType, fields } = require('yggdryl')
 
-async function main() {
-  const table = new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) })
-  async function* pages() {
-    yield table
-    yield table
+class Trade {
+  constructor(row) {
+    Object.assign(this, row)
   }
 
-  const handle = IOBase.fromBytes()
-  handle.mediaType = MimeType.ARROW_STREAM
-  await handle.writeArrow(pages())
-
-  assert.equal(handle.readArrow().toTable().numRows, 2)
+  static get intoStructField() {
+    return fields.struct(
+      'trade',
+      [Field.from('id: int64'), Field.from('venue: utf8')],
+      { nullable: false },
+    )
+  }
 }
 
-main()
+const handle = IOBase.fromBytes()
+handle.mediaType = MimeType.ARROW_STREAM
+handle.overwriteRecords(new Trade({ id: 1n, venue: 'XNAS' }))
+handle.appendRecords([new Trade({ id: 2n, venue: 'XNYS' })])
+const typed = [...handle.readRecords(Trade)]
 ```
 
-`apache-arrow` is loaded only when a value actually has to be materialized, and a build without it
-reports that package by name rather than failing somewhere inside a conversion.
+For a synchronous iterable, the native `BatchReader` pulls one copied IPC chunk only when the Rust
+write asks for it, so the whole source is never held. With no `commitRowSize`, one logical write
+publishes once at end of input. A synchronous Rust write cannot await an async JavaScript iterator,
+so an unbounded async write spools the same bounded copied IPC chunks to one private temporary file,
+replays that file through one native reader, and removes it on success or failure. This bounds RAM
+without claiming zero-copy.
+
+With a positive `commitRowSize`, an async record write does not spool. It alternates one awaited IPC
+chunk with one synchronous push into an opaque Rust session. The session owns the global row/byte
+limits, fixed leaf/folder/table target, and incomplete cadence; overwrite publishes its first
+cadence as overwrite and later cadences as append, while append and merge retain their intent. A
+failure after a complete cadence leaves that prefix visible and drops only the incomplete one. A
+non-dividing pair such as `batchSize = 1024` and `commitRowSize = 1500` pulls 1024 then 476 records,
+so record 1501 is never converted before the 1500-row prefix is published.
+
+`maxRowSize = 0` or `maxByteSize = 0` is a deterministic synchronous exception: append is a no-op,
+overwrite publishes an explicitly declared empty `options.field`, and merge with a limit is
+rejected. None of these paths inspects the ignored source. Otherwise async record calls return
+`Promise<void>`; synchronous record input and all Arrow methods return `void`.
+
+An empty record iterable carries no inferable columns and therefore requires `options.field`.
+
+The former `readArrowBatchReader`, `readArrow`, `writeArrowBatchReader`,
+`appendArrowBatchReader`, `writeArrow`, and `appendArrow` spellings were removed
+without aliases. The old mode-less `writeRecords(records)` call was also
+removed; `writeRecords(records, mode, options?)` is the new configurable
+surface. Use `readArrowReader`, the explicit matrix, or the required-mode
+dispatchers above.
 
 ## Iceberg is a namespace
 
@@ -484,16 +673,25 @@ table.append(
 
 assert.equal(table.currentSnapshot.operation, 'append')
 assert.equal(table.dataFiles().length, 2)
-assert.equal(table.scan().toTable().numRows, 2)
+assert.equal(table.scan().intoTable().numRows, 2)
 
 fs.rmSync(path.dirname(root), { recursive: true, force: true })
 ```
 
-`iceberg.Table`, `iceberg.Catalog`, `iceberg.PartitionSpec`, and `iceberg.DataFile` are the
-classes; `iceberg.assignFieldIds`, `iceberg.canPromote`, `iceberg.schemaFromJson`, and
-`iceberg.schemaToJson` are the functions. A snapshot and a manifest arrive as plain objects,
-because they are records of what happened rather than values with behaviour, and a 64-bit
-identifier crosses as a `bigint` so a snapshot id past 2^53 is exact.
+`iceberg.Table`, `iceberg.Catalog`, `iceberg.IcebergOptions`,
+`iceberg.PartitionSpec`, `iceberg.PartitionField`, `iceberg.Snapshot`,
+`iceberg.SnapshotRef`, `iceberg.ManifestFile`, `iceberg.DataFile`,
+`iceberg.ScanPlan`, and `iceberg.Compaction` are the
+classes; `iceberg.assignFieldIds`, `iceberg.canPromote`,
+`iceberg.schemaFromJson`, and `iceberg.schemaToJson` are the functions.
+These immutable result values expose `equals`, `compare`, `stableHash`, and
+`clone` over their complete Rust-core identity. Snapshot v3 lineage and
+manifest partition summaries stay in that identity rather than being dropped
+at the boundary. `ScanPlan` is a bounded immutable report whose complete
+identity, in comparison order, is `(recordCount, filesPlanned, filesSkipped,
+manifestsRead, manifestsSkipped)`; physical scan tasks and paths are not part
+of that public report. A 64-bit identifier crosses as a `bigint` so a snapshot
+id past 2^53 is exact.
 
 ## An Iceberg table end to end
 
@@ -525,21 +723,21 @@ const table = catalog.append('nyc.trades', rows([1n, 2n], ['XNAS', 'XNYS']))
 const past = table.currentSnapshot.snapshotId
 table.append(rows([3n], ['XASE']))
 assert.deepEqual(catalog.namespace('nyc').tables.names(), ['trades'])
-assert.equal(table.scan().toTable().numRows, 3)
+assert.equal(table.scan().intoTable().numRows, 3)
 
 // A column change is a chain recorded on the update, committed once.
 table.updateSchema().addColumn('', 'price: float64').commit()
-assert.equal(table.scan().toTable().getChild('price').get(0), null)
+assert.equal(table.scan().intoTable().getChild('price').get(0), null)
 
 // Undersized files rewrite as one replace commit that reports itself.
 const compaction = table.compact()
 assert.equal(compaction.filesBefore, 2)
 assert.equal(compaction.filesAfter, 1)
-assert.equal(table.scan().toTable().numRows, 3)
+assert.equal(table.scan().intoTable().numRows, 3)
 
 // And nothing rewrote history: the first snapshot reads as it was written.
 assert.deepEqual(
-  table.scanAt(past).toTable().getChild('id').toArray(),
+  table.scanAt(past).intoTable().getChild('id').toArray(),
   BigInt64Array.from([1n, 2n]),
 )
 

@@ -173,6 +173,15 @@ impl MediaType {
         &self.base
     }
 
+    /// Return whether the base MIME type can describe an I/O value.
+    ///
+    /// Transparent encodings do not change whether the represented value is
+    /// a leaf or a directory, so this is exactly [`MimeType::is_io`] on the
+    /// unencoded base.
+    pub const fn is_io(&self) -> bool {
+        self.base.is_io()
+    }
+
     /// Borrow the ordered encoding MIME values.
     pub fn encodings(&self) -> &[MimeType] {
         self.encodings.as_deref().map_or(&[], Vec::as_slice)

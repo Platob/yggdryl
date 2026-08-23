@@ -126,12 +126,12 @@ fn datatype_parser_reuses_unified_temporal_and_interval_aliases() {
             DataType::Time64(TimeUnit::Microsecond),
         ),
         (
-            "duration(MILLIS)",
-            DataType::Duration(TimeUnit::Millisecond),
+            "duration32(MILLIS)",
+            DataType::Duration32(TimeUnit::Millisecond),
         ),
         (
-            "duration(micro seconds)",
-            DataType::Duration(TimeUnit::Microsecond),
+            "duration64(micro seconds)",
+            DataType::Duration64(TimeUnit::Microsecond),
         ),
         (
             "interval(YearMonth)",
@@ -159,7 +159,9 @@ fn datatype_parser_rejects_time_unit_category_mismatches() {
         "timestamp(year_month)",
         "time32(day_time)",
         "time64(month_day_nano)",
-        "duration(year_month)",
+        "duration32(year_month)",
+        "duration64(year_month)",
+        "duration(ns)",
         "interval(ns)",
         "interval(fortnight)",
         "interval fortnight",
@@ -233,6 +235,16 @@ fn parser_rejects_unbalanced_trailing_and_duplicate_input() {
     ] {
         assert!(DataType::from_str(malformed).is_err(), "{malformed}");
     }
+}
+
+#[test]
+fn parser_rejects_the_removed_record_alias() {
+    for source in ["record<id:int64>", "record(id bigint)", "record"] {
+        assert!(DataType::from_str(source).is_err(), "{source}");
+    }
+
+    assert!(DataType::from_str("struct<id:int64>").is_ok());
+    assert!(DataType::from_str("row(id bigint)").is_ok());
 }
 
 #[test]

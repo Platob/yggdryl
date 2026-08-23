@@ -20,6 +20,86 @@ fn validated_components_are_concrete_canonical_values() {
 }
 
 #[test]
+fn authority_credentials_split_only_the_first_user_information_colon() {
+    let authority = Authority::from_str("user:pass:word@example.test:8443").unwrap();
+    assert_eq!(authority.user(), Some("user"));
+    assert_eq!(authority.password(), Some("pass:word"));
+    assert_eq!(authority.host(), "example.test");
+    assert_eq!(authority.as_str(), "user:pass:word@example.test:8443");
+
+    let url = Url::from_str("https://user:pass:word@[2001:db8::1]:8443/data").unwrap();
+    assert_eq!(url.user(), Some("user"));
+    assert_eq!(url.password(), Some("pass:word"));
+    assert_eq!(url.hostname(), Some("2001:db8::1"));
+    assert_eq!(
+        url.to_string(),
+        "https://user:pass:word@[2001:db8::1]:8443/data"
+    );
+
+    let no_password = Authority::from_str("user@example.test").unwrap();
+    assert_eq!(no_password.user(), Some("user"));
+    assert_eq!(no_password.password(), None);
+    assert_eq!(Authority::from_str("example.test").unwrap().user(), None);
+    assert_eq!(
+        Authority::from_str("user:@example.test")
+            .unwrap()
+            .password(),
+        Some("")
+    );
+}
+
+#[test]
+fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
+    let bucket = Uri::from_str("s3://market-data/year=2026/part.parquet").unwrap();
+    assert_eq!(bucket.hostname(), None);
+    assert_eq!(bucket.bucket(), Some("market-data"));
+    assert_eq!(bucket.region(), None);
+
+    let endpoint =
+        Uri::from_str("s3://s3.eu-west-3.amazonaws.com/market-data/year=2026/part.parquet")
+            .unwrap();
+    assert_eq!(endpoint.hostname(), Some("s3.eu-west-3.amazonaws.com"));
+    assert_eq!(endpoint.bucket(), Some("market-data"));
+    assert_eq!(endpoint.region(), Some("eu-west-3"));
+
+    let virtual_host =
+        Url::from_str("s3://market-data.s3.dualstack.ap-south-1.amazonaws.com/key").unwrap();
+    assert_eq!(
+        virtual_host.hostname(),
+        Some("market-data.s3.dualstack.ap-south-1.amazonaws.com")
+    );
+    assert_eq!(virtual_host.bucket(), Some("market-data"));
+    assert_eq!(virtual_host.region(), Some("ap-south-1"));
+
+    let legacy = Uri::from_str("s3://s3-us-gov-west-1.amazonaws.com/archive/key").unwrap();
+    assert_eq!(legacy.bucket(), Some("archive"));
+    assert_eq!(legacy.region(), Some("us-gov-west-1"));
+
+    let china = Uri::from_str("s3://s3.cn-north-1.amazonaws.com.cn/archive/key").unwrap();
+    assert_eq!(china.hostname(), Some("s3.cn-north-1.amazonaws.com.cn"));
+    assert_eq!(china.region(), Some("cn-north-1"));
+
+    let compatible = Uri::from_str("s3://objects.example.io/archive/key").unwrap();
+    assert_eq!(compatible.hostname(), Some("objects.example.io"));
+    assert_eq!(compatible.bucket(), Some("archive"));
+    assert_eq!(compatible.region(), None);
+
+    let path_form = Uri::from_str("s3:s3.us-east-2.amazonaws.com/archive/key").unwrap();
+    assert_eq!(path_form.hostname(), Some("s3.us-east-2.amazonaws.com"));
+    assert_eq!(path_form.bucket(), Some("archive"));
+    assert_eq!(path_form.region(), Some("us-east-2"));
+
+    let uppercase = Uri::from_str("s3://S3.US-WEST-1.AMAZONAWS.COM/archive/key").unwrap();
+    assert_eq!(uppercase.hostname(), Some("S3.US-WEST-1.AMAZONAWS.COM"));
+    assert_eq!(uppercase.region(), Some("US-WEST-1"));
+
+    let https = Uri::from_str("https://user:secret@example.com/data").unwrap();
+    assert_eq!(https.hostname(), Some("example.com"));
+    assert_eq!(https.bucket(), None);
+    assert_eq!(https.region(), None);
+}
+
+#[test]
 fn uri_parsing_exposes_non_nullable_core_components() {
     let uri = Uri::from_str("HTTPS://example.test/archive/report.tar.gz?q=1#summary").unwrap();
 
@@ -121,7 +201,7 @@ fn slash_paths_and_backslash_relative_paths_receive_file_scheme() {
 fn file_identifiers_round_trip_through_utf8_platform_paths() {
     let source = PathBuf::from(r"C:\Users\Ada Lovelace\café.arrow");
     let uri = Uri::from_path(&source).unwrap();
-    let path = uri.to_path().unwrap();
+    let path = uri.clone().into_path().unwrap();
     assert_eq!(
         path.to_string_lossy().replace('\\', "/"),
         "C:/Users/Ada Lovelace/café.arrow"
@@ -135,8 +215,8 @@ fn file_identifiers_round_trip_through_utf8_platform_paths() {
     assert_eq!(Uri::try_from(path.as_path()).unwrap(), uri);
     assert_eq!(Uri::try_from(&path).unwrap(), uri);
 
-    let url = uri.to_url().unwrap();
-    assert_eq!(url.to_path().unwrap(), path);
+    let url = uri.into_url().unwrap();
+    assert_eq!(url.clone().into_path().unwrap(), path);
     assert_eq!(PathBuf::try_from(&url).unwrap(), path);
     assert_eq!(Url::try_from(path.clone()).unwrap(), url);
     assert_eq!(Url::try_from(path.as_path()).unwrap(), url);
@@ -145,13 +225,16 @@ fn file_identifiers_round_trip_through_utf8_platform_paths() {
 
     let unc = Uri::from_path(r"\\server\share\prices 2026\ticks.csv").unwrap();
     assert_eq!(
-        unc.to_path().unwrap().to_string_lossy().replace('\\', "/"),
+        unc.into_path()
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/"),
         "//server/share/prices 2026/ticks.csv"
     );
     assert_eq!(
         Uri::from_str("file://server")
             .unwrap()
-            .to_path()
+            .into_path()
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/"),
@@ -159,13 +242,13 @@ fn file_identifiers_round_trip_through_utf8_platform_paths() {
     );
     let relative = Uri::from_path(Path::new("relative/folder/data.arrow")).unwrap();
     assert_eq!(
-        relative.to_path().unwrap(),
+        relative.into_path().unwrap(),
         PathBuf::from("relative/folder/data.arrow")
     );
     let posix = Uri::from_path(Path::new("/var/lib/café.arrow")).unwrap();
     assert_eq!(
         posix
-            .to_path()
+            .into_path()
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/"),
@@ -200,7 +283,7 @@ fn encoded_unc_authorities_round_trip_through_all_path_conversions() {
 
     for (text, expected_path) in cases {
         let uri = Uri::from_str(text).unwrap();
-        let path = uri.to_path().unwrap();
+        let path = uri.clone().into_path().unwrap();
         assert_eq!(path.to_string_lossy().replace('\\', "/"), expected_path);
         assert_eq!(uri.clone().into_path().unwrap(), path);
         assert_eq!(PathBuf::try_from(&uri).unwrap(), path);
@@ -211,8 +294,8 @@ fn encoded_unc_authorities_round_trip_through_all_path_conversions() {
         assert_eq!(Uri::try_from(&path).unwrap(), uri);
         assert_eq!(Uri::try_from(path.clone()).unwrap(), uri);
 
-        let url = uri.to_url().unwrap();
-        assert_eq!(url.to_path().unwrap(), path);
+        let url = uri.into_url().unwrap();
+        assert_eq!(url.clone().into_path().unwrap(), path);
         assert_eq!(url.clone().into_path().unwrap(), path);
         assert_eq!(PathBuf::try_from(&url).unwrap(), path);
         assert_eq!(PathBuf::try_from(url.clone()).unwrap(), path);
@@ -242,7 +325,7 @@ fn encoded_drive_colons_cannot_change_file_path_structure() {
         ("file:%43:/secret.arrow", 0),
     ] {
         let uri = Uri::from_str(text).unwrap();
-        let error = uri.to_path().unwrap_err();
+        let error = uri.clone().into_path().unwrap_err();
         assert!(
             matches!(
                 error,
@@ -258,8 +341,8 @@ fn encoded_drive_colons_cannot_change_file_path_structure() {
         assert!(PathBuf::try_from(&uri).is_err());
         assert!(PathBuf::try_from(uri.clone()).is_err());
 
-        if let Ok(url) = uri.to_url() {
-            assert!(url.to_path().is_err());
+        if let Ok(url) = uri.into_url() {
+            assert!(url.clone().into_path().is_err());
             assert!(url.clone().into_path().is_err());
             assert!(PathBuf::try_from(&url).is_err());
             assert!(PathBuf::try_from(url).is_err());
@@ -268,7 +351,7 @@ fn encoded_drive_colons_cannot_change_file_path_structure() {
 
     let canonical = Uri::from_str("file:///C:/secret.arrow").unwrap();
     assert_eq!(
-        Uri::from_path(canonical.to_path().unwrap()).unwrap(),
+        Uri::from_path(canonical.clone().into_path().unwrap()).unwrap(),
         canonical
     );
 }
@@ -286,7 +369,7 @@ fn escaped_ascii_authority_syntax_cannot_change_unc_structure() {
         let uri = Uri::from_str(text).unwrap();
         assert!(
             matches!(
-                uri.to_path(),
+                uri.into_path(),
                 Err(yggdryl::Error::Parse {
                     target: "file URI authority",
                     ..
@@ -304,7 +387,7 @@ fn escaped_ascii_authority_syntax_cannot_change_unc_structure() {
     ] {
         let uri = Uri::from_str(text).unwrap();
         assert_eq!(
-            Uri::from_path(uri.to_path().unwrap()).unwrap(),
+            Uri::from_path(uri.clone().into_path().unwrap()).unwrap(),
             uri,
             "{text}"
         );
@@ -316,30 +399,30 @@ fn file_path_projection_rejects_ambiguous_or_non_utf8_escapes() {
     assert!(
         Uri::from_str("https://example.test/file.arrow")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
     assert!(
         Uri::from_str("file:///tmp/a%2Fb.arrow")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
     assert!(
         Uri::from_str("file:///tmp/a%5Cb.arrow")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
     assert!(
         Uri::from_str("file:///tmp/%FF.arrow")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
     let invalid_utf8 = Uri::from_str("file:///tmp/%41%FF.arrow")
         .unwrap()
-        .to_path()
+        .into_path()
         .unwrap_err();
     assert!(matches!(
         invalid_utf8,
@@ -352,7 +435,7 @@ fn file_path_projection_rejects_ambiguous_or_non_utf8_escapes() {
     assert!(
         Uri::from_str("file:///tmp/%00.arrow")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
     for text in [
@@ -361,23 +444,26 @@ fn file_path_projection_rejects_ambiguous_or_non_utf8_escapes() {
         "file:///tmp/%C2%85/x.arrow",
         "file://server%01/share/x.arrow",
     ] {
-        assert!(Uri::from_str(text).unwrap().to_path().is_err(), "{text}");
+        assert!(Uri::from_str(text).unwrap().into_path().is_err(), "{text}");
     }
     let tab = Uri::from_str("file:///tmp/a%09b.arrow").unwrap();
-    assert_eq!(Uri::from_path(tab.to_path().unwrap()).unwrap(), tab);
+    assert_eq!(
+        Uri::from_path(tab.clone().into_path().unwrap()).unwrap(),
+        tab
+    );
     assert!(
         Uri::from_str("file:///tmp/data.arrow?download=true")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
     assert!(
         Uri::from_str("file:///tmp/data.arrow#rows")
             .unwrap()
-            .to_path()
+            .into_path()
             .is_err()
     );
-    assert!(Uri::from_str("file:").unwrap().to_path().is_err());
+    assert!(Uri::from_str("file:").unwrap().into_path().is_err());
 }
 
 #[test]
@@ -593,7 +679,7 @@ fn url_conversion_validates_hierarchical_network_urls() {
     assert_eq!(url.authority().as_str(), "example.test");
     assert_eq!(url.path_segments().collect::<Vec<_>>(), ["a", "data.json"]);
     assert_eq!(url.extension(), Some("json"));
-    assert_eq!(url.to_uri(), uri);
+    assert_eq!(url.clone().into_uri(), uri);
     assert_eq!(url.clone().into_uri(), uri);
     assert_eq!(Url::try_from(&uri).unwrap(), url);
     assert_eq!(Uri::from(&url), uri);
@@ -613,9 +699,9 @@ fn urn_conversion_preserves_namespace_and_namespace_specific_string() {
     assert_eq!(urn.namespace(), "isbn");
     assert_eq!(urn.namespace_specific(), "9780131103627");
     assert_eq!(urn.fragment(), Some("edition-2"));
-    assert_eq!(urn.to_uri(), uri);
     assert_eq!(urn.clone().into_uri(), uri);
-    assert_eq!(uri.to_urn().unwrap(), urn);
+    assert_eq!(urn.clone().into_uri(), uri);
+    assert_eq!(uri.clone().into_urn().unwrap(), urn);
     assert_eq!(uri.clone().into_urn().unwrap(), urn);
     assert_eq!(Urn::try_from(&uri).unwrap(), urn);
     assert_eq!(Uri::from(&urn), uri);
@@ -696,16 +782,25 @@ fn structural_json_and_native_value_traits_round_trip() {
     assert!(!value["scheme"].is_null());
     assert!(!value["authority"].is_null());
     assert!(!value["path"].is_null());
-    assert_eq!(Uri::from_json(&uri.to_json().unwrap()).unwrap(), uri);
+    assert_eq!(
+        Uri::from_json(&uri.clone().into_json().unwrap()).unwrap(),
+        uri
+    );
     assert_eq!(
         Uri::from_json(&uri.clone().into_json().unwrap()).unwrap(),
         uri
     );
 
     let url = Url::from_uri(uri.clone()).unwrap();
-    assert_eq!(Url::from_json(&url.to_json().unwrap()).unwrap(), url);
+    assert_eq!(
+        Url::from_json(&url.clone().into_json().unwrap()).unwrap(),
+        url
+    );
     let urn = Urn::from_str("urn:uuid:123e4567-e89b-12d3-a456-426614174000").unwrap();
-    assert_eq!(Urn::from_json(&urn.to_json().unwrap()).unwrap(), urn);
+    assert_eq!(
+        Urn::from_json(&urn.clone().into_json().unwrap()).unwrap(),
+        urn
+    );
 
     let ordered = BTreeSet::from([uri.clone()]);
     let hashed = HashSet::from([uri.clone()]);
@@ -750,7 +845,7 @@ fn structural_json_and_native_value_traits_round_trip() {
     .unwrap();
     assert_eq!(drive_authority.to_string(), "file:///C:/data.arrow");
     assert_eq!(
-        Uri::from_json(&drive_authority.to_json().unwrap()).unwrap(),
+        Uri::from_json(&drive_authority.clone().into_json().unwrap()).unwrap(),
         drive_authority
     );
 }
@@ -841,6 +936,27 @@ fn joinpath_composes_like_a_shell_cd() {
 
     // An absolute join replaces the path outright.
     assert_eq!(base.joinpath("/root").unwrap().as_str(), "/root");
+}
+
+#[test]
+fn division_is_the_fallible_native_path_join_operator() {
+    let path = UriPath::from_str("/warehouse").unwrap();
+    assert_eq!(
+        (&path / "table/../data").unwrap().as_str(),
+        "/warehouse/data"
+    );
+
+    let uri = Uri::from_str("s3://bucket/warehouse").unwrap();
+    assert_eq!(
+        (&uri / "table").unwrap().to_string(),
+        "s3://bucket/warehouse/table"
+    );
+
+    let url = Url::from_str("https://example.test/warehouse").unwrap();
+    assert_eq!(
+        (url / "table").unwrap().to_string(),
+        "https://example.test/warehouse/table"
+    );
 }
 
 #[test]

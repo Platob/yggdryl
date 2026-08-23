@@ -334,8 +334,11 @@ not have written.
 
 ## Records
 
-The record surface is the same three methods every handle answers, inherited rather than
-reimplemented, so the encoding still comes from the media type and never from an argument.
+The record surface is the same read plus three explicit write intents every
+handle answers, inherited rather than reimplemented, so the encoding still
+comes from the media type and never from an argument. Their
+[canonical signatures and intent rules](io.md#canonical-record-write-signatures)
+apply unchanged to an Arrow filesystem handle.
 
 === "Rust"
 
@@ -345,7 +348,7 @@ reimplemented, so the encoding still comes from the media type and never from an
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::arrowfs::{File, MemoryFileSystem};
     use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::IOBase;
+    use yggdryl::io::{IOBase, IOMedia};
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([
@@ -355,7 +358,7 @@ reimplemented, so the encoding still comes from the media type and never from an
     .required_field("row");
 
     let batch = RecordBatch::try_new(
-        yggdryl::arrow::schema_from_field(&schema)?,
+        schema.clone().into_arrow_schema()?,
         vec![
             Arc::new(Int64Array::from(vec![1, 2])),
             Arc::new(StringArray::from(vec![Some("AAPL"), None])),
@@ -364,16 +367,16 @@ reimplemented, so the encoding still comes from the media type and never from an
 
     let filesystem = Arc::new(MemoryFileSystem::new());
     let mut handle = File::from_location(filesystem, "bucket/trades.parquet")?;
-    let options = handle.record_options()?.with_schema(schema.clone());
+    let options = handle.record_options()?.with_field(schema.clone());
 
-    handle.write_arrow_batch_reader(
+    handle.overwrite_arrow_reader(
         yggdryl::arrow::batch_reader(batch.schema(), [batch]),
         &options,
     )?;
     handle.close()?;
 
     let rows: usize = handle
-        .read_arrow_batch_reader(&options)?
+        .read_arrow_reader(&options)?
         .map(|batch| batch.unwrap().num_rows())
         .sum();
     assert_eq!(rows, 2);
@@ -394,9 +397,9 @@ reimplemented, so the encoding still comes from the media type and never from an
 
     handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.parquet").as_posix())
     with handle:
-        handle.write_arrow_batch_reader(table)
+        handle.overwrite_arrow_table(table)
 
-    assert handle.read_arrow_batch_reader().read_all().num_rows == 2
+    assert handle.read_arrow_reader().read_all().num_rows == 2
 
     # What landed is an ordinary Parquet file, so PyArrow reads it back.
     assert pq.read_table(root / "trades.parquet").equals(table)
@@ -430,10 +433,10 @@ reimplemented, so the encoding still comes from the media type and never from an
     })
 
     const handle = IOBase.fromArrowFs(handler, 'bucket/trades.arrows')
-    handle.writeArrowBatchReader(BatchReader.from(table))
+    handle.overwriteArrowReader(BatchReader.from(table))
     handle.close()
 
-    assert.equal(handle.readArrowBatchReader().toTable().numRows, 2)
+    assert.equal(handle.readArrowReader().intoTable().numRows, 2)
     // The encoding came from the name, never from an argument.
     assert.equal(String(handle.mediaType), 'application/vnd.apache.arrow.stream')
     ```
@@ -486,13 +489,13 @@ needs nothing from the table format:
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrowfs::{Folder, MemoryFileSystem};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::io::IOBase;
+    use yggdryl::io::{IOBase, IOMedia};
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
     let batch = RecordBatch::try_new(
-        yggdryl::arrow::schema_from_field(&schema)?,
+        schema.clone().into_arrow_schema()?,
         vec![Arc::new(Int64Array::from(vec![1, 2]))],
     )?;
 
@@ -509,7 +512,7 @@ needs nothing from the table format:
 
     let options = table.record_options()?;
     let rows: usize = table
-        .read_arrow_batch_reader(&options)?
+        .read_arrow_reader(&options)?
         .map(|batch| batch.unwrap().num_rows())
         .sum();
     assert_eq!(rows, 2);

@@ -33,7 +33,9 @@ use super::typing::{
     decimal_parts, is_binary, is_text, step_field, temporal_parts, unwrap_dictionary,
 };
 use super::{Comparison, Function, Operator, Safety, Segment};
-use crate::{DataType, Error, Field, Float, Float32, Result, TimeUnit, Value};
+use crate::{
+    DataType, Error, Field, Float16, Float32, Float64, I256, Result, TimeUnit, Timezone, Value,
+};
 
 /// One row's worth of context: its column values and its holder.
 ///
@@ -66,8 +68,9 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// Returns an error when a strict cast refuses a value, when a column is
-    /// asked for and no row was supplied, or when a holder attribute fails.
+    /// Returns an error when a strict cast or checked arithmetic refuses a
+    /// value, when a column is asked for and no row was supplied, or when a
+    /// holder attribute fails.
     #[allow(clippy::too_many_lines)]
     pub(crate) fn eval(&self, row: &Row<'_>) -> Result<Value> {
         match &self.kind {
@@ -207,7 +210,7 @@ impl Node {
             ),
             Kind::Negate(inner) => {
                 let held = inner.eval(row)?;
-                Ok(super::negate_value(&held).unwrap_or(Value::Null))
+                held.checked_neg()
             }
             Kind::Function(function, arguments) => {
                 let mut values = Vec::with_capacity(arguments.len());
@@ -246,7 +249,7 @@ impl Node {
                 for child in children {
                     values.push(child.eval(row)?);
                 }
-                Value::record(self.field.data_type().clone(), values)
+                Ok(Value::from_sequence(values))
             }
             Kind::List(items) => {
                 let mut values = Vec::with_capacity(items.len());
@@ -310,20 +313,8 @@ fn apply_step(field: &Field, value: &Value, segment: &Segment) -> Value {
     }
 }
 
-/// Read one struct child, whichever way the row spells a struct.
+/// Read one struct child from its mapping or schema-ordered sequence spelling.
 fn struct_child(field: &Field, value: &Value, name: &str) -> Value {
-    if let Value::Record(data_type, values) = value {
-        return data_type
-            .as_fields()
-            .and_then(|fields| {
-                fields
-                    .iter()
-                    .position(|child| child.name().eq_ignore_ascii_case(name))
-            })
-            .and_then(|index| values.get(index))
-            .cloned()
-            .unwrap_or(Value::Null);
-    }
     if let Some(entries) = value.as_mapping() {
         return entries
             .iter()
@@ -420,89 +411,14 @@ fn arithmetic(
     if left.is_null() || right.is_null() {
         return Ok(Value::Null);
     }
-    let data_type = unwrap_dictionary(data_type);
-    if let Some((_, scale)) = decimal_parts(data_type) {
-        let left_unscaled = unscaled_at(left, scale);
-        let right_unscaled = unscaled_at(right, scale);
-        let (Some(left_unscaled), Some(right_unscaled)) = (left_unscaled, right_unscaled) else {
-            return Ok(Value::Null);
-        };
-        // Multiplication is the one operation whose operands are at a
-        // different scale from the result, so it divides the extra places
-        // back out exactly.
-        let held = match operator {
-            Operator::Add => left_unscaled.checked_add(right_unscaled),
-            Operator::Sub => left_unscaled.checked_sub(right_unscaled),
-            Operator::Mul => left_unscaled
-                .checked_mul(right_unscaled)
-                .and_then(|held| rescale(held, scale)),
-            Operator::Div => (right_unscaled != 0)
-                .then(|| {
-                    left_unscaled
-                        .checked_mul(pow10(scale)?)?
-                        .checked_div(right_unscaled)
-                })
-                .flatten(),
-            Operator::Rem => (right_unscaled != 0).then(|| left_unscaled % right_unscaled),
-        };
-        return Ok(held.map_or(Value::Null, |held| Value::Decimal(held, scale)));
-    }
-    if matches!(
-        data_type,
-        DataType::Float16 | DataType::Float32 | DataType::Float64
-    ) {
-        let (Some(left), Some(right)) = (left.as_f64(), right.as_f64()) else {
-            return Ok(Value::Null);
-        };
-        let held = match operator {
-            Operator::Add => left + right,
-            Operator::Sub => left - right,
-            Operator::Mul => left * right,
-            Operator::Div => left / right,
-            Operator::Rem => left % right,
-        };
-        return Ok(if matches!(data_type, DataType::Float32) {
-            Value::F32(Float32::from_f32(held as f32))
-        } else {
-            Value::F64(Float::from_f64(held))
-        });
-    }
-    if let Some((family, unit)) = temporal_parts(data_type) {
-        let (Some(left), Some(right)) = (
-            temporal_at(left, family, unit),
-            temporal_at(right, family, unit),
-        ) else {
-            return Ok(Value::Null);
-        };
-        let held = match operator {
-            Operator::Add => left.checked_add(right),
-            Operator::Sub => left.checked_sub(right),
-            _ => None,
-        };
-        let Some(held) = held else {
-            return Ok(Value::Null);
-        };
-        return Ok(match family {
-            0 => Value::Date(i32::try_from(held).unwrap_or_default()),
-            1 => Value::Time(held, unit),
-            2 => match data_type {
-                DataType::Timestamp(_, Some(zone)) => Value::Timestamp(held, unit, zone.clone()),
-                _ => Value::DateTime(held, unit),
-            },
-            _ => Value::Duration(held, unit),
-        });
-    }
-    let (Some(left), Some(right)) = (left.as_i128(), right.as_i128()) else {
-        return Ok(Value::Null);
+    let operation = match operator {
+        Operator::Add => crate::generic::Arithmetic::Add,
+        Operator::Sub => crate::generic::Arithmetic::Sub,
+        Operator::Mul => crate::generic::Arithmetic::Mul,
+        Operator::Div => crate::generic::Arithmetic::Div,
+        Operator::Rem => crate::generic::Arithmetic::Rem,
     };
-    let held = match operator {
-        Operator::Add => left.checked_add(right),
-        Operator::Sub => left.checked_sub(right),
-        Operator::Mul => left.checked_mul(right),
-        Operator::Div => left.checked_div(right),
-        Operator::Rem => left.checked_rem(right),
-    };
-    Ok(held.map_or(Value::Null, |held| narrow(data_type, held)))
+    left.checked_arithmetic_as(right, operation, unwrap_dictionary(data_type))
 }
 
 /// This value's unscaled coefficient at `scale`, whatever kind of number it is.
@@ -535,24 +451,85 @@ pub(crate) fn unscaled_at(value: &Value, scale: i8) -> Option<i128> {
 /// A date carries no unit of its own, so [`Value::temporal_count_at`] declines
 /// it; here the family says it is a day count and the answer is the day.
 pub(crate) fn temporal_at(value: &Value, family: u8, unit: TimeUnit) -> Option<i64> {
-    if family == 0 {
-        return match value {
-            Value::Date(days) => Some(i64::from(*days)),
-            other => other.as_i64(),
-        };
-    }
+    let _ = family;
     value.temporal_count_at(unit).or_else(|| value.as_i64())
+}
+
+/// Put a temporal count back into the exact width, unit, and zone its type declares.
+fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Value> {
+    match data_type {
+        DataType::Date32 => Value::date32_in(
+            i32::try_from(count).map_err(|_| missing("a date32 count"))?,
+            unit,
+            Timezone::NAIVE,
+        ),
+        DataType::Date64 => Value::date64_in(count, unit, Timezone::NAIVE),
+        DataType::Time32(expected) => {
+            if *expected != unit {
+                return Err(missing("a time32 count in its declared unit"));
+            }
+            Value::time32(
+                i32::try_from(count).map_err(|_| missing("a time32 count"))?,
+                unit,
+                Timezone::NAIVE,
+            )
+        }
+        DataType::Time64(expected) => {
+            if *expected != unit {
+                return Err(missing("a time64 count in its declared unit"));
+            }
+            Value::time64(count, unit, Timezone::NAIVE)
+        }
+        DataType::Timestamp(expected, zone) => {
+            if *expected != unit {
+                return Err(missing("a datetime64 count in its declared unit"));
+            }
+            Value::datetime64(count, unit, zone.clone().unwrap_or(Timezone::NAIVE))
+        }
+        DataType::Duration32(expected) => {
+            if *expected != unit {
+                return Err(missing("a duration32 count in its declared unit"));
+            }
+            Value::duration32(
+                i32::try_from(count).map_err(|_| missing("a duration32 count"))?,
+                unit,
+            )
+        }
+        DataType::Duration64(expected) => {
+            if *expected != unit {
+                return Err(missing("a duration64 count in its declared unit"));
+            }
+            Value::duration64(count, unit)
+        }
+        _ => Err(missing("a temporal datatype")),
+    }
+}
+
+fn parsed_time(count: i64, unit: TimeUnit) -> Result<Value> {
+    match unit {
+        TimeUnit::Second | TimeUnit::Millisecond => Value::time32(
+            i32::try_from(count).map_err(|_| missing("a time32 count"))?,
+            unit,
+            Timezone::NAIVE,
+        ),
+        TimeUnit::Microsecond | TimeUnit::Nanosecond => Value::time64(count, unit, Timezone::NAIVE),
+        _ => Err(missing("a fixed-length time unit")),
+    }
+}
+
+fn parsed_duration(count: i64, unit: TimeUnit) -> Result<Value> {
+    match unit {
+        TimeUnit::Second | TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond => {
+            Value::duration64(count, unit)
+        }
+        _ => Err(missing("a fixed-length duration unit")),
+    }
 }
 
 /// Ten to a non-negative power, as the multiplier a rescale needs.
 fn pow10(scale: i8) -> Option<i128> {
     let places = u32::try_from(scale.max(0)).ok()?;
     10_i128.checked_pow(places)
-}
-
-/// Divide out the extra places a decimal multiplication produced.
-fn rescale(unscaled: i128, scale: i8) -> Option<i128> {
-    Some(unscaled / pow10(scale)?)
 }
 
 /// Put a whole number back into the width its datatype declares.
@@ -772,9 +749,16 @@ fn calendar_part(value: &Value, function: Function) -> Value {
     use crate::generic::iso;
 
     let text = match value {
-        Value::Date(days) => iso::format_date(*days),
-        Value::DateTime(count, unit) => iso::format_datetime(*count, *unit),
-        Value::Timestamp(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
+        Value::Date32(days, _, _) => iso::format_date(*days),
+        Value::Date64(count, unit, _) => value
+            .temporal_count_at(TimeUnit::Day)
+            .and_then(|days| i32::try_from(days).ok())
+            .and_then(iso::format_date)
+            .or_else(|| iso::format_datetime(*count, *unit)),
+        Value::DateTime64(count, unit, zone) if zone.is_naive() => {
+            iso::format_datetime(*count, *unit)
+        }
+        Value::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
         _ => None,
     };
     let Some(text) = text else {
@@ -836,17 +820,8 @@ fn truncate(value: &Value, unit: &Value, data_type: &DataType) -> Result<Value> 
         // A date already counts in days, so it truncates to itself.
         let step = if family == 0 { 1 } else { seconds * per_second };
         let floored = count.div_euclid(step) * step;
-        return Ok(match family {
-            0 => Value::Date(i32::try_from(floored).unwrap_or_default()),
-            1 => Value::Time(floored, held_unit),
-            2 => match unwrap_dictionary(data_type) {
-                DataType::Timestamp(_, Some(zone)) => {
-                    Value::Timestamp(floored, held_unit, zone.clone())
-                }
-                _ => Value::DateTime(floored, held_unit),
-            },
-            _ => Value::Duration(floored, held_unit),
-        });
+        return temporal_value(unwrap_dictionary(data_type), floored, held_unit)
+            .or(Ok(Value::Null));
     }
     let Some(width) = unit.as_i64() else {
         return Err(missing("a whole multiple to truncate a number to"));
@@ -899,21 +874,25 @@ pub(crate) fn convert(target: &DataType, value: &Value, safety: Safety) -> Resul
         if digits(unscaled) > u32::from(precision) {
             return refuse("a number within the declared precision");
         }
-        return Ok(Value::Decimal(unscaled, scale));
+        return Ok(match target {
+            DataType::Decimal256 { .. } => Value::d256(I256::from_i128(unscaled), scale),
+            _ => Value::d128(unscaled, scale),
+        });
     }
     if let Some((family, unit)) = temporal_parts(target) {
         if let Some(text) = value.as_str() {
             let parsed = match family {
-                0 => iso::parse_date(text).map(Value::Date),
-                1 => iso::parse_time(text).map(|(count, unit)| Value::Time(count, unit)),
+                0 => iso::parse_date(text).map(Value::date32),
+                1 => iso::parse_time(text).and_then(|(count, unit)| parsed_time(count, unit)),
                 2 => match target {
                     DataType::Timestamp(_, Some(_)) => iso::parse_timestamp(text)
-                        .map(|(count, unit, zone)| Value::Timestamp(count, unit, zone)),
-                    _ => {
-                        iso::parse_datetime(text).map(|(count, unit)| Value::DateTime(count, unit))
-                    }
+                        .and_then(|(count, unit, zone)| Value::datetime64(count, unit, zone)),
+                    _ => iso::parse_datetime(text)
+                        .and_then(|(count, unit)| Value::datetime64(count, unit, Timezone::NAIVE)),
                 },
-                _ => iso::parse_duration(text).map(|(count, unit)| Value::Duration(count, unit)),
+                _ => {
+                    iso::parse_duration(text).and_then(|(count, unit)| parsed_duration(count, unit))
+                }
             };
             return match parsed {
                 Ok(parsed) => convert(target, &parsed, safety),
@@ -923,18 +902,8 @@ pub(crate) fn convert(target: &DataType, value: &Value, safety: Safety) -> Resul
         let Some(count) = temporal_at(value, family, unit) else {
             return refuse("a temporal of the same family");
         };
-        return Ok(match family {
-            0 => match i32::try_from(count) {
-                Ok(days) => Value::Date(days),
-                Err(_) => return refuse("a date within 32 bits"),
-            },
-            1 => Value::Time(count, unit),
-            2 => match target {
-                DataType::Timestamp(_, Some(zone)) => Value::Timestamp(count, unit, zone.clone()),
-                _ => Value::DateTime(count, unit),
-            },
-            _ => Value::Duration(count, unit),
-        });
+        return temporal_value(target, count, unit)
+            .or_else(|_| refuse("a temporal within the declared width and unit"));
     }
     match target {
         DataType::Boolean => match value {
@@ -944,12 +913,16 @@ pub(crate) fn convert(target: &DataType, value: &Value, safety: Safety) -> Resul
                 None => refuse("a boolean"),
             },
         },
+        DataType::Float16 => match value.as_f64() {
+            Some(held) => Ok(Value::F16(Float16::from_f16(half::f16::from_f64(held)))),
+            None => refuse("a number"),
+        },
         DataType::Float32 => match value.as_f64() {
             Some(held) => Ok(Value::F32(Float32::from_f32(held as f32))),
             None => refuse("a number"),
         },
-        DataType::Float16 | DataType::Float64 => match value.as_f64() {
-            Some(held) => Ok(Value::F64(Float::from_f64(held))),
+        DataType::Float64 => match value.as_f64() {
+            Some(held) => Ok(Value::F64(Float64::from_f64(held))),
             None => refuse("a number"),
         },
         DataType::Int8

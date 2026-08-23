@@ -1,21 +1,8 @@
 //! One enum over every structured text format, chosen at runtime.
 
 use super::Text;
-use crate::io::{Buffer, IOBase};
 use crate::text::{Format, Json, TextCodec};
-use crate::{MimeType, Url, Value};
-
-fn handle(name: &str) -> Buffer {
-    Buffer::new().with_media_type(
-        Url::from_str(&format!("file:///{name}"))
-            .unwrap()
-            .media_type(),
-    )
-}
-
-fn value() -> Value {
-    Json.loads(r#"{"symbol":"AAPL"}"#).unwrap()
-}
+use crate::{MimeType, Url};
 
 #[test]
 fn a_name_picks_the_format() {
@@ -60,34 +47,17 @@ fn the_enum_and_the_format_types_agree() {
 }
 
 #[test]
-fn an_inferred_round_trip_applies_the_format_and_the_coding() {
-    let expected = value();
-
-    for name in ["quote.json", "quote.json.gz", "quote.yaml", "quote.toml"] {
-        let mut target = handle(name);
-        Text::dump_inferred(&mut target, &expected)
-            .unwrap_or_else(|error| panic!("{name}: {error}"));
-        let actual = Text::load_inferred(&target).unwrap_or_else(|error| panic!("{name}: {error}"));
-        assert_eq!(actual, expected, "{name}");
-    }
-
-    // The compressed handle really is compressed.
-    let mut coded = handle("quote.json.gz");
-    Text::dump_inferred(&mut coded, &expected).unwrap();
-    assert_eq!(coded.read_range(0, 2).unwrap(), [0x1F, 0x8B]);
-}
-
-#[test]
 fn the_enum_answers_the_same_calls_as_a_named_format() {
-    let expected = value();
+    let expected = Json.from_utf8(r#"{"symbol":"AAPL"}"#).unwrap();
     let text = Text::Json;
 
     assert_eq!(
-        text.loads(&text.dumps(&expected).unwrap()).unwrap(),
+        text.from_utf8(&text.into_utf8(&expected).unwrap()).unwrap(),
         expected
     );
     assert_eq!(
-        text.load_slice(&text.dump_vec(&expected).unwrap()).unwrap(),
+        text.from_bytes(&text.into_bytes(&expected).unwrap())
+            .unwrap(),
         expected
     );
     assert!(!text.is_multi_document());

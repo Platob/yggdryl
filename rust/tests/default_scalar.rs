@@ -20,7 +20,8 @@ fn representative_types() -> Vec<DataType> {
         DataType::Date64,
         DataType::Time32(TimeUnit::Second),
         DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration(TimeUnit::Millisecond),
+        DataType::Duration32(TimeUnit::Millisecond),
+        DataType::Duration64(TimeUnit::Millisecond),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
@@ -96,7 +97,7 @@ fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
             typed.value()
         );
         let reprojected = typed
-            .to_arrow_array()
+            .into_arrow_array()
             .unwrap_or_else(|error| panic!("{} reprojection failed: {error}", data_type.kind()));
         assert_eq!(reprojected.as_ref(), array.as_ref());
     }
@@ -173,7 +174,7 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
         // ...and the typed pairing projects the same null-only default out
         // through its synthetic non-nullable Field.
         let typed = TypedValue::from_parts(data_type, expected).unwrap();
-        assert_eq!(typed.to_arrow_array().unwrap().as_ref(), array.as_ref());
+        assert_eq!(typed.into_arrow_array().unwrap().as_ref(), array.as_ref());
     }
 
     let union = DataType::union(

@@ -51,7 +51,6 @@
 
 use std::sync::Arc;
 
-use crate::IOKind;
 use crate::generic::Holder;
 
 mod file;
@@ -68,19 +67,12 @@ pub use system::{
 
 /// Hold the resource `url` names on `filesystem`.
 ///
-/// An existing directory becomes [`Holder::ArrowFolder`]; anything else,
-/// including a location that does not exist yet, becomes an
-/// [`Holder::ArrowFile`] leaf - the mirror of [`Holder::local`], so a caller
-/// that knows which role it wants says so by constructing it explicitly.
+/// The returned [`Holder::ArrowPath`] performs no filesystem call during
+/// construction and resolves only when an operation needs the resource's
+/// role. A caller that knows the role can construct [`Folder`] or [`File`]
+/// explicitly.
 pub fn located(filesystem: Arc<dyn ArrowFileSystem>, url: crate::Url) -> Holder {
-    let folder = Folder::new(filesystem.clone(), url);
-    if matches!(
-        filesystem.file_info(folder.location()),
-        Ok(info) if info.kind == IOKind::Directory
-    ) {
-        return Holder::ArrowFolder(folder);
-    }
-    Holder::ArrowFile(File::new(filesystem, folder.url().clone()))
+    Holder::ArrowPath(Path::new(filesystem, url))
 }
 
 #[cfg(test)]

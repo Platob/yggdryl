@@ -37,6 +37,20 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
 }
 
 #[test]
+fn io_identity_is_derived_from_the_unencoded_mime_value() {
+    let custom = MimeType::from_str("application/vnd.example.rows").unwrap();
+    for mime in [MimeType::FILE, MimeType::CSV, custom] {
+        assert!(mime.is_io(), "{mime} should describe an I/O value");
+        assert!(MediaType::new(mime).is_io());
+    }
+
+    assert!(!MimeType::DIRECTORY.is_io());
+    assert!(MimeType::DIRECTORY.is_directory());
+    let encoded_directory = MediaType::from_parts(MimeType::DIRECTORY, [MimeType::GZIP]).unwrap();
+    assert!(!encoded_directory.is_io());
+}
+
+#[test]
 fn mime_parser_rejects_invalid_restricted_names_with_byte_positions() {
     let long = format!("application/{}", "a".repeat(128));
     for (source, position) in [

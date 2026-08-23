@@ -33,6 +33,36 @@ pub enum Error {
         /// A concise validation failure.
         reason: SmolStr,
     },
+    /// Numeric operands do not define the requested checked operation.
+    InvalidArithmetic {
+        /// The operator name, such as `addition` or `negation`.
+        operation: &'static str,
+        /// The left or unary operand kind.
+        left: &'static str,
+        /// The right operand kind for a binary operation.
+        right: Option<&'static str>,
+        /// Why otherwise numeric operands could not be combined.
+        reason: SmolStr,
+    },
+    /// A checked arithmetic result does not fit its promoted native kind.
+    ArithmeticOverflow {
+        /// The operator name.
+        operation: &'static str,
+        /// The promoted result kind.
+        kind: &'static str,
+    },
+    /// Division or remainder was requested with a numeric zero divisor.
+    DivisionByZero {
+        /// `division` or `remainder`.
+        operation: &'static str,
+    },
+    /// Exact decimal division cannot represent the quotient at its result scale.
+    InexactArithmetic {
+        /// The operator name.
+        operation: &'static str,
+        /// The promoted result kind.
+        kind: &'static str,
+    },
     /// A textual schema expression could not be parsed completely.
     Parse {
         /// The value being parsed, such as `datatype` or `field`.
@@ -100,6 +130,27 @@ impl fmt::Display for Error {
             Self::InvalidRecord { path, reason } => {
                 write!(formatter, "invalid record value at {path}: {reason}")
             }
+            Self::InvalidArithmetic {
+                operation,
+                left,
+                right,
+                reason,
+            } => match right {
+                Some(right) => write!(
+                    formatter,
+                    "invalid {operation} for {left} and {right}: {reason}"
+                ),
+                None => write!(formatter, "invalid {operation} for {left}: {reason}"),
+            },
+            Self::ArithmeticOverflow { operation, kind } => {
+                write!(formatter, "{operation} overflows {kind}")
+            }
+            Self::DivisionByZero { operation } => {
+                write!(formatter, "{operation} by zero")
+            }
+            Self::InexactArithmetic { operation, kind } => {
+                write!(formatter, "{operation} has no exact {kind} result")
+            }
             Self::Parse {
                 target,
                 position,
@@ -160,6 +211,12 @@ impl From<serde_json::Error> for Error {
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::Io(value)
+    }
+}
+
+impl From<std::convert::Infallible> for Error {
+    fn from(value: std::convert::Infallible) -> Self {
+        match value {}
     }
 }
 
@@ -225,6 +282,12 @@ impl Error {
             Self::Io(error) => error.kind() == std::io::ErrorKind::AlreadyExists,
             _ => false,
         }
+    }
+
+    /// Return whether checked division or remainder received a zero divisor.
+    #[must_use]
+    pub const fn is_division_by_zero(&self) -> bool {
+        matches!(self, Self::DivisionByZero { .. })
     }
 }
 
