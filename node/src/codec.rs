@@ -1155,7 +1155,7 @@ fn bigint_from_i256(value: I256) -> BigInt {
         }
     }
     let mut words = bytes
-        .chunks_exact(8)
+        .chunks(8)
         .map(|word| u64::from_le_bytes(word.try_into().unwrap_or([0; 8])))
         .collect::<Vec<_>>();
     while words.len() > 1 && words.last() == Some(&0) {

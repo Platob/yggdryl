@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import NamedTuple
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -316,7 +317,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
 @pytest.mark.parametrize(
     ("scalar", "kind"),
     [
-        (pa.scalar(1.5, type=pa.float16()), "f16"),
+        (pa.scalar(np.float16(1.5), type=pa.float16()), "f16"),
         (pa.scalar(1.5, type=pa.float32()), "f32"),
         (pa.scalar(1.5, type=pa.float64()), "f64"),
         (pa.scalar(dt.date(2026, 8, 23), type=pa.date32()), "date32"),
