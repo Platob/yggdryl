@@ -1,11 +1,11 @@
 //! Rows are schema-ordered sequences; structured-text objects are records.
 
-use yggdryl::{DataType, Expression, Value};
+use yggdryl::{DataType, Expression, Scalar};
 
-fn trade(id: i64, venue: Option<&str>) -> Value {
-    Value::from_sequence([
-        Value::I64(id),
-        venue.map_or(Value::Null, |venue| Value::String(venue.into())),
+fn trade(id: i64, venue: Option<&str>) -> Scalar {
+    Scalar::from_sequence([
+        Scalar::I64(id),
+        venue.map_or(Scalar::Null, |venue| Scalar::String(venue.into())),
     ])
 }
 
@@ -15,11 +15,11 @@ fn rows_are_sequences_and_objects_are_records() {
     assert_eq!(row.kind(), "sequence");
     assert_eq!(
         row.as_sequence(),
-        Some([Value::I64(7), Value::from("XNAS")].as_slice())
+        Some([Scalar::I64(7), Scalar::from("XNAS")].as_slice())
     );
 
     let object =
-        Value::from_record([("id", Value::I64(7)), ("venue", Value::from("XNAS"))]).unwrap();
+        Scalar::from_record([("id", Scalar::I64(7)), ("venue", Scalar::from("XNAS"))]).unwrap();
     let json = String::from_utf8(yggdryl::json::into_bytes(&object).unwrap()).unwrap();
     assert_eq!(json, "{\"id\":7,\"venue\":\"XNAS\"}");
     assert_eq!(yggdryl::json::from_utf8(&json).unwrap(), object);
@@ -28,7 +28,7 @@ fn rows_are_sequences_and_objects_are_records() {
 #[test]
 fn the_removed_typed_row_wire_has_no_compatibility_alias() {
     let removed = r#"{"type":"record","value":["struct<id: int64>",[1]]}"#;
-    assert!(serde_json::from_str::<Value>(removed).is_err());
+    assert!(serde_json::from_str::<Scalar>(removed).is_err());
 }
 
 #[test]
@@ -41,8 +41,8 @@ fn struct_expressions_evaluate_to_schema_ordered_sequences() {
         .unwrap()
         .bind(&schema)
         .unwrap();
-    let source = Value::from_sequence([Value::I64(0)]);
-    let expected = Value::from_sequence([Value::I64(1), Value::from("XNAS")]);
+    let source = Scalar::from_sequence([Scalar::I64(0)]);
+    let expected = Scalar::from_sequence([Scalar::I64(1), Scalar::from("XNAS")]);
     assert_eq!(bound.eval(&source).unwrap(), expected);
 
     let printed = bound.expression().to_string();
@@ -60,7 +60,7 @@ mod arrow_bridge {
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::{DataType, Value, arrow};
+    use yggdryl::{DataType, Scalar, arrow};
 
     fn batch() -> RecordBatch {
         let schema = DataType::from_fields([
@@ -88,9 +88,9 @@ mod arrow_bridge {
         assert_eq!(rows.len(), 2);
         assert_eq!(
             rows[0].as_sequence(),
-            Some([Value::I64(1), Value::from("XNAS")].as_slice())
+            Some([Scalar::I64(1), Scalar::from("XNAS")].as_slice())
         );
-        assert_eq!(rows[1].as_sequence().unwrap()[1], Value::Null);
+        assert_eq!(rows[1].as_sequence().unwrap()[1], Scalar::Null);
 
         let json = String::from_utf8(yggdryl::json::into_bytes(&value).unwrap()).unwrap();
         assert_eq!(json, "[[1,\"XNAS\"],[2,null]]");
@@ -101,6 +101,6 @@ mod arrow_bridge {
         let field = DataType::Int64.nullable_field("id");
         let array = Int64Array::from(vec![Some(5_i64), None]);
         let value = arrow::array_to_value(&field, &array).unwrap();
-        assert_eq!(value, Value::from_sequence([Value::I64(5), Value::Null]));
+        assert_eq!(value, Scalar::from_sequence([Scalar::I64(5), Scalar::Null]));
     }
 }

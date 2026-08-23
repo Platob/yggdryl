@@ -21,10 +21,10 @@ use yggdryl::iceberg::{
     Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, assign_field_ids, can_promote,
     last_field_id, schema_from_json, schema_to_json,
 };
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Value as CoreValue};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
 
 use crate::arrow::JsBatchReader;
-use crate::codec::JsCodecValue;
+use crate::codec::JsScalar;
 use crate::datatype::{JsDataType, data_type_from_input};
 use crate::field::{JsField, MetadataEntry};
 use crate::io::{JsIOBase, LocationInput, folder_from_input};
@@ -952,13 +952,13 @@ impl JsScanPlan {
         }
     }
 
-    fn identity_value(&self) -> CoreValue {
-        CoreValue::from_sequence([
-            CoreValue::from(self.record_count),
-            CoreValue::from(u64::try_from(self.files_planned).unwrap_or(u64::MAX)),
-            CoreValue::from(u64::try_from(self.files_skipped).unwrap_or(u64::MAX)),
-            CoreValue::from(u64::try_from(self.manifests_read).unwrap_or(u64::MAX)),
-            CoreValue::from(u64::try_from(self.manifests_skipped).unwrap_or(u64::MAX)),
+    fn identity_value(&self) -> CoreScalar {
+        CoreScalar::from_sequence([
+            CoreScalar::from(self.record_count),
+            CoreScalar::from(u64::try_from(self.files_planned).unwrap_or(u64::MAX)),
+            CoreScalar::from(u64::try_from(self.files_skipped).unwrap_or(u64::MAX)),
+            CoreScalar::from(u64::try_from(self.manifests_read).unwrap_or(u64::MAX)),
+            CoreScalar::from(u64::try_from(self.manifests_skipped).unwrap_or(u64::MAX)),
         ])
     }
 }
@@ -1032,7 +1032,7 @@ impl JsScanPlan {
 /// One live data file of the current snapshot, with the spec that placed it.
 ///
 /// This is a class rather than a plain object because a partition value crosses
-/// as the native [`Value`](crate::codec::JsCodecValue) the manifest recorded.
+/// as the native [`Scalar`](crate::codec::JsScalar) the manifest recorded.
 /// Rendering it as text here would have to spell a null `null`, which is exactly
 /// what makes a directory name unable to answer the question.
 #[napi(js_name = "DataFile")]
@@ -1069,11 +1069,11 @@ impl JsDataFile {
 
     /// The partition tuple the manifest records, in spec order.
     #[napi(getter)]
-    pub fn partition(&self) -> Vec<JsCodecValue> {
+    pub fn partition(&self) -> Vec<JsScalar> {
         self.file
             .partition
             .iter()
-            .map(|value| JsCodecValue::from_core(value.clone()))
+            .map(|value| JsScalar::from_core(value.clone()))
             .collect()
     }
 
@@ -1226,8 +1226,8 @@ impl JsPartitionSpec {
 #[napi]
 impl JsPartitionSpec {
     /// Parse one already-inferred native JSON value through the core codec.
-    #[napi(factory, js_name = "_fromValueNative", skip_typescript)]
-    pub fn from_value_native(value: &JsCodecValue) -> Result<Self> {
+    #[napi(factory, js_name = "_fromScalarNative", skip_typescript)]
+    pub fn from_scalar_native(value: &JsScalar) -> Result<Self> {
         CorePartitionSpec::from_json(&value.inner)
             .map(Self::from_core)
             .map_err(napi_error)
@@ -1275,13 +1275,13 @@ impl JsPartitionSpec {
         self.inner.is_unpartitioned()
     }
 
-    /// Project the core's v2 document through the shared native Value.
-    #[napi(js_name = "_intoValueNative", skip_typescript)]
-    pub fn into_value_native(&self) -> Result<JsCodecValue> {
+    /// Project the core's v2 document through the shared native Scalar.
+    #[napi(js_name = "_intoScalarNative", skip_typescript)]
+    pub fn into_scalar_native(&self) -> Result<JsScalar> {
         self.inner
             .clone()
             .into_json()
-            .map(JsCodecValue::from_core)
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
@@ -2837,7 +2837,7 @@ pub fn iceberg_assign_field_ids(schema: &JsField, start: Option<i32>) -> Result<
 
 /// Read an Iceberg schema document as a root Field.
 #[napi(js_name = "icebergSchemaFromJsonNative", skip_typescript)]
-pub fn iceberg_schema_from_json(name: String, document: &JsCodecValue) -> Result<JsField> {
+pub fn iceberg_schema_from_json(name: String, document: &JsScalar) -> Result<JsField> {
     schema_from_json(&name, &document.inner)
         .map(JsField::from_core)
         .map_err(napi_error)
@@ -2845,9 +2845,9 @@ pub fn iceberg_schema_from_json(name: String, document: &JsCodecValue) -> Result
 
 /// Write a root Field as an Iceberg schema document.
 #[napi(js_name = "icebergSchemaToJsonNative", skip_typescript)]
-pub fn iceberg_schema_to_json(schema: &JsField) -> Result<JsCodecValue> {
+pub fn iceberg_schema_to_json(schema: &JsField) -> Result<JsScalar> {
     schema_to_json(&schema.inner)
-        .map(JsCodecValue::from_core)
+        .map(JsScalar::from_core)
         .map_err(napi_error)
 }
 

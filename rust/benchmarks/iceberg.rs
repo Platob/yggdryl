@@ -24,7 +24,7 @@ use yggdryl::iceberg::{
 use yggdryl::io::partition::partition_text;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::local::Folder;
-use yggdryl::{DataType, Field, MediaType, MimeType, Value};
+use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 /// Distinct venue values the planning tables partition on.
 const VENUES: usize = 8;
@@ -256,7 +256,7 @@ fn manifest_entries(count: usize) -> Vec<ManifestEntry> {
                         "file:///bench/table/data/venue={name}/part-{index:05}.parquet"
                     )
                     .into(),
-                    partition: vec![Value::from(name.as_str())],
+                    partition: vec![Scalar::from(name.as_str())],
                     record_count: 100,
                     file_size_in_bytes: 4_096,
                     column_sizes: vec![(1, 800), (2, 1_600)],
@@ -343,8 +343,8 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
 /// The single-value renderer every partition directory name goes through.
 fn partition_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("partition");
-    let date = Value::date32(19_723);
-    let text = Value::from("XNAS");
+    let date = Scalar::date32(19_723);
+    let text = Scalar::from("XNAS");
 
     // Proven once outside the timers: both values render, and the date renders
     // as calendar text rather than its day count.

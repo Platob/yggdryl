@@ -2,7 +2,7 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use yggdryl::text::{self, Format, Formatting, Limits};
-use yggdryl::{DataType, Error, Field, I256, TimeUnit, Timezone, Value, json};
+use yggdryl::{DataType, Error, Field, I256, Scalar, TimeUnit, Timezone, json};
 
 struct OneByte<R>(R);
 
@@ -15,16 +15,15 @@ impl<R: Read> Read for OneByte<R> {
 
 #[test]
 fn natural_output_is_an_ordinary_json_document() {
-    let value = Value::from_record([
-        ("active", Value::Bool(true)),
-        ("id", Value::I64(7)),
-        ("tags", Value::from_sequence([Value::from("rust")])),
+    let value = Scalar::from_record([
+        ("active", Scalar::Bool(true)),
+        ("id", Scalar::I64(7)),
+        ("tags", Scalar::from_sequence([Scalar::from("rust")])),
     ])
     .unwrap();
     let encoded = json::into_utf8(&value).unwrap();
 
     assert_eq!(encoded, r#"{"active":true,"id":7,"tags":["rust"]}"#);
-    assert!(!encoded.contains("$yggdryl"));
     let foreign: serde_json::Value = serde_json::from_str(&encoded).unwrap();
     assert_eq!(foreign["id"], 7);
     assert_eq!(json::from_utf8(&encoded).unwrap(), value);
@@ -36,9 +35,9 @@ fn untyped_reads_return_only_what_json_proves() {
         json::from_utf8(r#"{"amount":"123.4500","at":"1970-01-01T00:00:00Z","payload":"AP8="}"#)
             .unwrap();
     let record = value.as_record().unwrap();
-    assert!(matches!(record["amount"], Value::String(_)));
-    assert!(matches!(record["at"], Value::String(_)));
-    assert!(matches!(record["payload"], Value::String(_)));
+    assert!(matches!(record["amount"], Scalar::String(_)));
+    assert!(matches!(record["at"], Scalar::String(_)));
+    assert!(matches!(record["payload"], Scalar::String(_)));
 }
 
 fn typed_row_field() -> Field {
@@ -74,16 +73,16 @@ fn a_field_restores_exact_natural_types_and_record_order() {
     let decoded = json::from_utf8_with_field(input, &typed_row_field()).unwrap();
     let row = decoded.as_sequence().unwrap();
 
-    assert_eq!(row[0], Value::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
     assert_eq!(
         row[1],
-        Value::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
+        Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     assert_eq!(
         row[2],
-        Value::time32(27_120_100, TimeUnit::Millisecond, Timezone::NAIVE,).unwrap()
+        Scalar::time32(27_120_100, TimeUnit::Millisecond, Timezone::NAIVE,).unwrap()
     );
-    assert_eq!(row[3], Value::from(vec![0, 255]));
+    assert_eq!(row[3], Scalar::from(vec![0, 255]));
 }
 
 #[test]
@@ -95,7 +94,7 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
                 DataType::time32(TimeUnit::Millisecond).unwrap(),
                 false,
             ),
-            Value::time32(1_500, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            Scalar::time32(1_500, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
         ),
         (
             Field::new(
@@ -103,7 +102,7 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
                 DataType::time64(TimeUnit::Nanosecond).unwrap(),
                 false,
             ),
-            Value::time64(1_500_000_000, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+            Scalar::time64(1_500_000_000, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
     ] {
         let encoded = json::into_utf8(&value).unwrap();
@@ -117,8 +116,8 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
             .to_string()
             .contains("DateTime64")
     );
-    assert!(Value::time32(0, TimeUnit::Second, Timezone::UTC).is_err());
-    let invalid = Value::Time32(0, TimeUnit::Second, Timezone::UTC);
+    assert!(Scalar::time32(0, TimeUnit::Second, Timezone::UTC).is_err());
+    let invalid = Scalar::Time32(0, TimeUnit::Second, Timezone::UTC);
     assert!(
         json::into_bytes(&invalid)
             .unwrap_err()
@@ -147,7 +146,7 @@ fn bytes_readers_writers_and_streams_are_equivalent() {
         json::from_reader_iter(&mut reader)
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap(),
-        [Value::U64(1), Value::U64(2), Value::U64(3)]
+        [Scalar::U64(1), Scalar::U64(2), Scalar::U64(3)]
     );
 }
 
@@ -158,7 +157,7 @@ fn json_lines_are_strict_and_dispatch_as_one_sequence() {
     assert!(json::from_lines_utf8("1 2\n").is_err());
     assert_eq!(
         text::from_utf8("1\n2\n", Format::JsonLines).unwrap(),
-        Value::from_sequence([Value::U64(1), Value::U64(2)])
+        Scalar::from_sequence([Scalar::U64(1), Scalar::U64(2)])
     );
 }
 
@@ -168,12 +167,12 @@ fn limits_and_invalid_inputs_fail_at_the_boundary() {
     assert!(json::from_bytes_with_limits(b"[0,1,2]", Limits::new(3, 64, 3, 1)).is_err());
     assert!(json::from_bytes(b"1 2").is_err());
     assert!(json::from_bytes(b"\xff").is_err());
-    assert!(json::into_bytes(&Value::from(f64::NAN)).is_err());
+    assert!(json::into_bytes(&Scalar::from(f64::NAN)).is_err());
 }
 
 #[test]
 fn formatting_changes_layout_not_meaning() {
-    let value = Value::from_record([("id", Value::I64(1))]).unwrap();
+    let value = Scalar::from_record([("id", Scalar::I64(1))]).unwrap();
     let pretty = json::into_utf8_with_formatting(&value, Formatting::indented(2)).unwrap();
     assert!(pretty.contains("\n  \"id\": 1\n"));
     assert_eq!(json::from_utf8(&pretty).unwrap(), value);

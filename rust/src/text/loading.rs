@@ -16,18 +16,18 @@ use crate::text::{Limits, Placeholders};
 ///
 /// ```
 /// use yggdryl::text::{Format, Loading, Placeholders};
-/// use yggdryl::Value;
+/// use yggdryl::Scalar;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// // Placeholders left off: the document is parsed and nothing is walked.
 /// let plain = yggdryl::text::from_utf8_with("a: \"{{ X }}\"\n", Format::Yaml, &Loading::new())?;
-/// assert_eq!(plain.get_key_str("a").and_then(Value::as_utf8), Some("{{ X }}"));
+/// assert_eq!(plain.get_key_str("a").and_then(Scalar::as_utf8), Some("{{ X }}"));
 ///
 /// // Turned on, and resolving entirely from the supplied mapping.
 /// let loading = Loading::new()
-///     .with_placeholders(Placeholders::new().with_variable("X", Value::from("resolved")));
+///     .with_placeholders(Placeholders::new().with_variable("X", Scalar::from("resolved")));
 /// let filled = yggdryl::text::from_utf8_with("a: \"{{ X }}\"\n", Format::Yaml, &loading)?;
-/// assert_eq!(filled.get_key_str("a").and_then(Value::as_utf8), Some("resolved"));
+/// assert_eq!(filled.get_key_str("a").and_then(Scalar::as_utf8), Some("resolved"));
 /// # Ok(())
 /// # }
 /// ```
@@ -104,7 +104,7 @@ mod tests {
 
     use super::Loading;
     use crate::text::{Format, Placeholders};
-    use crate::{DataType, Field, Value};
+    use crate::{DataType, Field, Scalar};
 
     fn amount_field() -> Field {
         Field::new(
@@ -119,7 +119,7 @@ mod tests {
         let loading = Loading::new().with_field(amount_field());
         let value =
             crate::text::from_utf8_with("\"12.50\"", Format::Json, &loading).expect("typed JSON");
-        assert_eq!(value, Value::d128(1_250, 2));
+        assert_eq!(value, Scalar::d128(1_250, 2));
         assert_eq!(loading.field().map(Field::name), Some("amount"));
 
         let (_, inferred_utf8) =
@@ -135,11 +135,11 @@ mod tests {
     #[test]
     fn placeholders_are_resolved_before_field_interpretation() {
         let loading = Loading::new()
-            .with_placeholders(Placeholders::new().with_variable("AMOUNT", Value::from("12.50")))
+            .with_placeholders(Placeholders::new().with_variable("AMOUNT", Scalar::from("12.50")))
             .with_field(amount_field());
         let value = crate::text::from_utf8_with("\"{{ AMOUNT }}\"\n", Format::Yaml, &loading)
             .expect("filled typed YAML");
-        assert_eq!(value, Value::d128(1_250, 2));
+        assert_eq!(value, Scalar::d128(1_250, 2));
     }
 
     #[test]
@@ -149,11 +149,11 @@ mod tests {
         assert_traits::<Loading>();
 
         let first = Placeholders::new()
-            .with_variable("A", Value::I8(1))
-            .with_variable("B", Value::I8(2));
+            .with_variable("A", Scalar::I8(1))
+            .with_variable("B", Scalar::I8(2));
         let equal = Placeholders::new()
-            .with_variable("B", Value::I8(2))
-            .with_variable("A", Value::I8(1));
+            .with_variable("B", Scalar::I8(2))
+            .with_variable("A", Scalar::I8(1));
         assert_eq!(first, equal);
         assert_eq!(crate::stable_hash_of(&first), crate::stable_hash_of(&equal));
 

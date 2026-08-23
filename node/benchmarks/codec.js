@@ -7,7 +7,7 @@ const { performance } = require('node:perf_hooks')
 const { Readable, Writable } = require('node:stream')
 const { pathToFileURL } = require('node:url')
 const arrow = require('apache-arrow')
-const { Field, Value, avro, codec, json, toml, yaml } = require('yggdryl')
+const { Field, Scalar, avro, codec, json, toml, yaml } = require('yggdryl')
 
 const value = {
   trades: Array.from({ length: 1_000 }, (_, index) => ({
@@ -26,12 +26,12 @@ const exotic = {
 // The temporal and decimal boundary is its own cost: each value crosses as
 // parts rather than as one number, and a Date is rebuilt on the way back.
 const temporal = {
-  at: Value.datetime64(1700000000000000n, 'us', 'UTC'),
+  at: Scalar.datetime64(1700000000000000n, 'us', 'UTC'),
   date: new Date('2026-08-15T12:30:00.000Z'),
-  on: Value.date32(19723),
-  price: Value.d256(-(2n ** 160n), 2),
-  sinceMidnight: Value.time64(45296000000n, 'us'),
-  took: Value.duration32(90, 's'),
+  on: Scalar.date32(19723),
+  price: Scalar.d256(-(2n ** 160n), 2),
+  sinceMidnight: Scalar.time64(45296000000n, 'us'),
+  took: Scalar.duration32(90, 's'),
 }
 let deep = { leaf: true }
 for (let depth = 0; depth < 24; depth += 1) deep = { nested: deep }
@@ -61,7 +61,7 @@ const avroReader = new avro.Schema(avroReaderDocument)
 const avroRows = value.trades.map((row, index) => ({
   ...row,
   // Every value stays physically double; an integral JavaScript number is
-  // deliberately inferred as an integer by the shared Value pivot.
+  // deliberately inferred as an integer by the shared Scalar pivot.
   price: index + 0.5,
 }))
 const avroContainer = avro.dumps(avroRows, avroSchema, { source: 'benchmark' })
@@ -116,7 +116,7 @@ async function main() {
       // Keep these group spellings stable so before/after runs remain comparable.
       measure(`${name}/slice`, encoded.length, 100, () => format.loads(encoded))
       measure(`${name}/exact_value`, encoded.length, 100, () =>
-        format.loads(encoded, { value: true }),
+        format.loads(encoded, { scalar: true }),
       )
       measure(`${name}/string`, encoded.length, 100, () => format.loads(text))
       measure(`${name}/offset_view`, encoded.length, 100, () => format.loads(view))
@@ -163,25 +163,25 @@ async function main() {
     // The pivot is the conversion every load and dump crosses, measured on its
     // own against the same payload so a codec number can be read against it.
     const pivotBytes = json.dumps(value).length
-    measure('pivot/from_js', pivotBytes, 100, () => Value.fromJs(value))
-    const pivot = Value.fromJs(value)
+    measure('pivot/from_js', pivotBytes, 100, () => Scalar.fromJs(value))
+    const pivot = Scalar.fromJs(value)
     measure('pivot/as_js', pivotBytes, 100, () => pivot.asJs())
     measure('pivot/equals_native', pivotBytes, 1_000, () => pivot.equals(pivot))
     measure('pivot/compare_native', pivotBytes, 1_000, () => pivot.compare(pivot))
     measure('pivot/stable_hash', pivotBytes, 1_000, () => pivot.stableHash())
     measure('pivot/clone_native', pivotBytes, 1_000, () => pivot.clone())
-    const traversed = Value.fromJs({ trades: value.trades })
+    const traversed = Scalar.fromJs({ trades: value.trades })
     measure('pivot/native_path', 1, 10_000, () => traversed.path('trades.500.price'))
     measure('pivot/native_get', 1, 10_000, () => traversed.get('trades').at(500))
     measure('pivot/persistent_set', 1, 2_000, () => traversed.set('version', 1))
-    const scalarValue = Value.fromJs(42)
-    const arrayValue = Value.fromJs([1, null])
-    const rowValue = Value.fromJs([{ id: 1, symbol: 'AAPL' }])
+    const scalarValue = Scalar.fromJs(42)
+    const arrayValue = Scalar.fromJs([1, null])
+    const rowValue = Scalar.fromJs([{ id: 1, symbol: 'AAPL' }])
     measure('pivot/infer_scalar_field', 1, 1_000, () => scalarValue.intoField())
     measure('pivot/infer_array_field', 2, 1_000, () => arrayValue.intoArrayField())
     measure('pivot/infer_struct_field', 2, 1_000, () => rowValue.intoStructField())
-    const arithmeticLeft = Value.d128(123456n, 2)
-    const arithmeticRight = Value.d128(25n, 2)
+    const arithmeticLeft = Scalar.d128(123456n, 2)
+    const arithmeticRight = Scalar.d128(25n, 2)
     measure('pivot/add_native', 1, 10_000, () => arithmeticLeft.add(arithmeticRight))
     measure('pivot/add_inferred_js', 1, 10_000, () => scalarValue.add(1))
     measure('pivot/subtract_native', 1, 10_000, () =>
@@ -207,9 +207,9 @@ async function main() {
     )
 
     const arrowVector = arrow.vectorFromArray(Int32Array.from({ length: 1_000 }, (_, i) => i))
-    const arrowValues = Value.fromArrowArray(arrowVector)
+    const arrowValues = Scalar.fromArrowArray(arrowVector)
     measure('arrow/from_array_ipc', arrowVector.length * 4, 50, () =>
-      Value.fromArrowArray(arrowVector),
+      Scalar.fromArrowArray(arrowVector),
     )
     measure('arrow/into_array_ipc', arrowVector.length * 4, 50, () =>
       arrowValues.intoArrowArray(),

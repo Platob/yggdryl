@@ -65,7 +65,7 @@ const structuredValue = {
   quantity: 2,
   symbol: 'AAPL',
 }
-structured.writeValue(structuredValue)
+structured.writeScalar(structuredValue)
 
 benchmark('io/handle_from_path', () => new IOBase(root))
 benchmark('io/handle_from_url', () => IOBase.from(url))
@@ -82,9 +82,9 @@ benchmark('io/buffered_idempotent_redirect', () => cachedMemory.buffered({
   maxBytes: 64 * 1_024,
 }))
 benchmark('io/memory_pwrite', () => memory.pwrite(0, payload))
-benchmark('io/read_value', () => structured.readValue())
-benchmark('io/read_exact_value', () => structured.readValue({ value: true }))
-benchmark('io/write_value', () => structured.writeValue(structuredValue))
+benchmark('io/read_value', () => structured.readScalar())
+benchmark('io/read_exact_value', () => structured.readScalar({ scalar: true }))
+benchmark('io/write_value', () => structured.writeScalar(structuredValue))
 benchmark('io/kind', () => dimensions.kind)
 benchmark('io/is_io', () => dimensions.isIo())
 benchmark('io/row_size_open_cached', () => dimensions.rowSize)

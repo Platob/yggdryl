@@ -198,7 +198,7 @@ exact constructors stay available for when the physical width is part of the con
 call, the parameters are validated once at construction - a precision of zero, a positive scale
 larger than the precision, a nanosecond `time32`, or a negative fixed width never becomes a value.
 
-Units are parsed from the shared [`TimeUnit`](enums.md) vocabulary, so `s`, `sec`, `MILLIS`, `µs`,
+Units are parsed from the shared [`TimeUnit`](generic.md) vocabulary, so `s`, `sec`, `MILLIS`, `µs`,
 and `nano seconds` all work, and the calendar interval layouts - which are not time-of-day
 resolutions - are rejected here rather than silently accepted. JavaScript has no
 `DataType.decimal`; decimals arrive through the `fields` factories.
@@ -517,7 +517,7 @@ A variant is a self-describing tree: each value declares its own types, which is
 takes no parameters - shredding is a physical layout, not part of the logical type - and why the
 grammar's bare `variant` parses to it while `variant(...)` stays the
 [dense-union sugar](#unions-and-the-dense-union-sugar) above. A variant *value* is the one
-[`Value`](generic.md) model; its Parquet binary encoding lands with the Iceberg v3 layer, so paths
+[`Scalar`](generic.md) model; its Parquet binary encoding lands with the Iceberg v3 layer, so paths
 that would need it today refuse by name.
 
 The geospatial pair shares one parameter value: a coordinate reference system, and - only on a
@@ -527,7 +527,7 @@ display emits a parameter exactly when it differs from that default, so every sp
 through `from_str`. An empty CRS is refused - the absent spelling is `None`, which fills the
 default - and a geometry given an edge algorithm is refused by name: straight planar lines need
 none. The algorithm vocabulary is the five canonical lowercase names of
-[`EdgeAlgorithm`](enums.md#edge-algorithms) - `spherical`, `vincenty`, `thomas`, `andoyer`,
+[`EdgeAlgorithm`](generic.md#shared-vocabulary) - `spherical`, `vincenty`, `thomas`, `andoyer`,
 `karney` - parsed case-insensitively; the Python and JavaScript `algorithm` arguments accept those
 strings.
 
@@ -538,7 +538,7 @@ GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm.
 ride the `ARROW:extension:name` / `ARROW:extension:metadata` field-metadata keys. GeoArrow's own
 documentation says the specification is not finalized, so the `geoarrow.wkb` mapping is a
 community choice that may be revisited when it stabilizes. The geospatial *values* travel as
-Well-Known Binary through [`Value::Geospatial`](generic.md#the-wkb-reader), read back for display
+Well-Known Binary through [`Scalar::Geospatial`](generic.md#the-wkb-reader), read back for display
 and bounds by the one WKB reader documented there.
 
 ## Identity and family
@@ -599,7 +599,7 @@ and bounds by the one WKB reader documented there.
 parameter-free, so they compare and hash without touching nested state, which is what makes them the
 cheap way to branch. Dispatch on the kind when the behavior is uniform across a family, on the id
 when it is not; `name()` is the Rust spelling of `id().as_str()`. The two vocabularies and the
-predicates over them are documented in [shared enums](enums.md). Python and JavaScript have no
+predicates over them are documented in [shared enums](generic.md). Python and JavaScript have no
 separate class for either: both arrive as the canonical lowercase strings.
 
 ## Arrow projection
@@ -673,7 +673,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Value};
+    use yggdryl::{DataType, Field, Scalar};
 
     let value = DataType::from_fields([
         Field::new("id", DataType::Int32, false),
@@ -683,10 +683,10 @@ before materializing foreign state. Whole schemas cross the same boundary throug
     // One positional slot per child, each honoring its own nullability.
     assert_eq!(
         value.default_value()?.as_sequence().unwrap(),
-        &[Value::I64(0), Value::Null]
+        &[Scalar::I64(0), Scalar::Null]
     );
     assert!(value.is_default_value(&value.default_value()?)?);
-    assert_eq!(DataType::Utf8.default_value()?, Value::String("".into()));
+    assert_eq!(DataType::Utf8.default_value()?, Scalar::String("".into()));
 
     // A default is bounded: a layout too large to materialize is an error, not a null.
     assert!(DataType::FixedSizeBinary(64 * 1024 * 1024 + 1).default_value().is_err());
@@ -729,7 +729,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
 
 Every one of the 44 variants has a canonical default, and it is computed from the schema rather than
 looked up per language: the core produces one value and each binding projects it. Rust yields a
-[`Value`](generic.md); Python yields a generated field dataclass or a Python scalar from `default_pyvalue`
+[`Scalar`](generic.md); Python yields a generated field dataclass or a Python scalar from `default_pyvalue`
 and a `pyarrow.Scalar` from `default_arrow_scalar`; JavaScript yields a plain array, `Buffer`,
 `Map`, or `{ typeId, value }`. Mutable containers are freshly allocated on every call, so a default
 is never shared state.
@@ -745,7 +745,7 @@ A bare `DataType` has no nullability, so its default is the non-null one. Ask a
 ## Serializing a schema
 
 `DataType` reads and writes the three structured-text formats through **one** structural model. There
-is exactly one `DataType` ⇄ `Value` mapping - `into_value`/`from_value` in Rust, `into_dict`/`from_dict` in
+is exactly one `DataType` ⇄ `Scalar` mapping - `into_value`/`from_value` in Rust, `into_dict`/`from_dict` in
 Python - and JSON, YAML, and TOML are three writers over it, so the three agree by construction
 rather than by three sets of tests. That is also what makes a schema *embeddable*: a configuration
 document can carry a declared schema inline beside the rest of its settings, with no
@@ -763,7 +763,7 @@ Each format takes the shared [`Formatting`](text.md#formatting) option; Python s
 
     ```rust
     use yggdryl::DataType;
-    use yggdryl::generic::Value;
+    use yggdryl::generic::Scalar;
 
     let data_type = DataType::decimal128(9, 2)?;
 
@@ -774,7 +774,7 @@ Each format takes the shared [`Formatting`](text.md#formatting) option; Python s
     assert_eq!(DataType::from_toml(&data_type.clone().into_toml()?)?, data_type);
 
     let shape = data_type.into_value();
-    assert_eq!(shape.get_key_str("type").and_then(Value::as_utf8), Some("decimal128"));
+    assert_eq!(shape.get_key_str("type").and_then(Scalar::as_utf8), Some("decimal128"));
     ```
 
 === "Python"

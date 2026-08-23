@@ -1103,7 +1103,7 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     ))
 }
 
-/// Read one required key from private RecordOptions pickle state.
+/// Read one required key from private `RecordOptions` pickle state.
 fn required_record_pickle_item<'py>(
     state: &Bound<'py, PyDict>,
     name: &str,

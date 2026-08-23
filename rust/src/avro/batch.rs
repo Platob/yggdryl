@@ -10,7 +10,7 @@
 //! above them.
 //!
 //! Decoding is columnar: one builder per leaf, appended per record, with no
-//! intermediate [`Value`](crate::Value) tree. A pushed-down projection turns
+//! intermediate [`Scalar`](crate::Scalar) tree. A pushed-down projection turns
 //! every unselected top-level column into a skip - length-prefixed values jump
 //! by their prefix, size-carrying blocks jump whole - so a projection saves
 //! decode, allocation, *and* the bytes of the skipped fields; what it cannot

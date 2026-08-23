@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { AvroSchema, Value, avro } = require('yggdryl')
+const { AvroSchema, Scalar, avro } = require('yggdryl')
 
 const SCHEMA = {
   type: 'record',
@@ -15,9 +15,9 @@ const SCHEMA = {
   ],
 }
 
-test('AvroSchema accepts natural values, native Values, JSON text, and bytes', () => {
+test('AvroSchema accepts natural values, native Scalars, JSON text, and bytes', () => {
   const natural = new AvroSchema(SCHEMA)
-  const native = AvroSchema.from(Value.fromJs(SCHEMA))
+  const native = AvroSchema.from(Scalar.fromJs(SCHEMA))
   const text = new avro.Schema('"long"')
   const bytes = AvroSchema.from(Buffer.from('"long"'))
 
@@ -231,10 +231,10 @@ test('single-object framing uses and verifies the schema fingerprint', () => {
     scale: 2,
   }
   const exact = avro.loadsSingle(
-    avro.dumpsSingle(Value.d128(18750n, 2), decimalSchema),
+    avro.dumpsSingle(Scalar.d128(18750n, 2), decimalSchema),
     decimalSchema,
   )
-  assert.ok(exact instanceof Value)
+  assert.ok(exact instanceof Scalar)
   assert.equal(exact.kind, 'd128')
   assert.equal(exact.unscaled, 18750n)
   assert.equal(exact.scale, 2)

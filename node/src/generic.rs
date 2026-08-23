@@ -10,7 +10,7 @@ use napi_derive::napi;
 use yggdryl::generic::{
     DEFAULT_RECORD_BATCH_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
-use yggdryl::{Level, WriteMode};
+use yggdryl::{IOMode, Level};
 
 use crate::exact_u8;
 use crate::field::{JsField, MetadataEntry};
@@ -99,7 +99,7 @@ impl JsRecordOptions {
     /// one-shot reader, iterable, or async iterable.
     #[napi(js_name = "_requireWritePreflightNative", skip_typescript)]
     pub fn require_write_preflight(&self, intent: String) -> Result<u32> {
-        let mode = WriteMode::from_str(&intent).map_err(napi_error)?;
+        let mode = IOMode::from_str(&intent).map_err(napi_error)?;
         self.inner.require_write_mode(mode).map_err(napi_error)?;
         self.inner.require_commit_row_size().map_err(napi_error)?;
         self.inner.require_write_limits().map_err(napi_error)?;

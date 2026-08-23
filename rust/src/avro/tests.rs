@@ -1,10 +1,10 @@
 //! Unit tests for the Avro codec module.
 
 use crate::io::{Buffer, IOBase};
-use crate::{MediaType, MimeType, Value};
+use crate::{MediaType, MimeType, Scalar};
 
 /// A record schema exercising every branch the manifests use.
-fn manifest_shaped_schema() -> Value {
+fn manifest_shaped_schema() -> Scalar {
     crate::json::from_utf8(
         r#"{"type":"record","name":"row","fields":[
             {"name":"code","type":"int","field-id":1},
@@ -63,7 +63,7 @@ fn handmade_container_with_header(entries: &[(&str, &[u8])], blocks: &[(i64, Vec
 mod containers {
     use super::{buffer, manifest_shaped_schema};
     use crate::io::IOBase;
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     #[test]
     fn a_container_round_trips_every_encoded_branch() {
@@ -115,7 +115,7 @@ mod containers {
             container.rows[1]
                 .get_key_str("nested")
                 .and_then(|nested| nested.get_key_str("flag"))
-                .and_then(Value::as_bool),
+                .and_then(Scalar::as_bool),
             Some(false)
         );
     }
@@ -214,7 +214,7 @@ mod containers {
     #[test]
     fn a_row_budget_is_applied_after_the_mandatory_header() {
         let schema = crate::json::from_utf8(r#""long""#).unwrap();
-        let rows = [Value::I64(1), Value::I64(2)];
+        let rows = [Scalar::I64(1), Scalar::I64(2)];
         let mut handle = buffer();
         avro::write_container(&mut handle, &schema, &[], &rows).unwrap();
 
@@ -289,7 +289,7 @@ mod schemas {
         let integer = Schema::from_str(r#"{"type":"int"}"#).unwrap();
 
         // Parsing Canonical Form intentionally erases logical annotations,
-        // while Schema identity cannot: these decode to different Values.
+        // while Schema identity cannot: these decode to different Scalars.
         assert_eq!(
             date.clone().into_canonical_form(),
             integer.clone().into_canonical_form()
@@ -303,12 +303,12 @@ mod schemas {
         assert_eq!(date, reordered);
         assert_eq!(date.stable_hash(), reordered.stable_hash());
 
-        let native_mapping = crate::Value::from_mapping([
+        let native_mapping = crate::Scalar::from_mapping([
             (
-                crate::Value::from("logicalType"),
-                crate::Value::from("date"),
+                crate::Scalar::from("logicalType"),
+                crate::Scalar::from("date"),
             ),
-            (crate::Value::from("type"), crate::Value::from("int")),
+            (crate::Scalar::from("type"), crate::Scalar::from("int")),
         ])
         .unwrap();
         let native = Schema::from_json(&native_mapping).unwrap();
@@ -320,22 +320,22 @@ mod schemas {
                 .unwrap();
         assert_eq!(native, reparsed);
 
-        let nested_mapping = crate::Value::from_mapping([
-            (crate::Value::from("type"), crate::Value::from("record")),
-            (crate::Value::from("name"), crate::Value::from("row")),
+        let nested_mapping = crate::Scalar::from_mapping([
+            (crate::Scalar::from("type"), crate::Scalar::from("record")),
+            (crate::Scalar::from("name"), crate::Scalar::from("row")),
             (
-                crate::Value::from("fields"),
-                crate::Value::from_sequence([crate::Value::from_mapping([
-                    (crate::Value::from("name"), crate::Value::from("items")),
+                crate::Scalar::from("fields"),
+                crate::Scalar::from_sequence([crate::Scalar::from_mapping([
+                    (crate::Scalar::from("name"), crate::Scalar::from("items")),
                     (
-                        crate::Value::from("type"),
-                        crate::Value::from_mapping([
-                            (crate::Value::from("type"), crate::Value::from("array")),
+                        crate::Scalar::from("type"),
+                        crate::Scalar::from_mapping([
+                            (crate::Scalar::from("type"), crate::Scalar::from("array")),
                             (
-                                crate::Value::from("items"),
-                                crate::Value::from_mapping([(
-                                    crate::Value::from("type"),
-                                    crate::Value::from("int"),
+                                crate::Scalar::from("items"),
+                                crate::Scalar::from_mapping([(
+                                    crate::Scalar::from("type"),
+                                    crate::Scalar::from("int"),
                                 )])
                                 .unwrap(),
                             ),
@@ -374,12 +374,12 @@ mod schemas {
                 ("source".into(), "test".into()),
                 ("zone".into(), "UTC".into()),
             ],
-            rows: vec![crate::Value::I16(7)],
+            rows: vec![crate::Scalar::I16(7)],
         };
         let mut equal = container.clone();
         equal.metadata.reverse();
         let mut later = container.clone();
-        later.rows.push(crate::Value::I16(8));
+        later.rows.push(crate::Scalar::I16(8));
         assert_eq!(container, equal);
         assert_eq!(container.stable_hash(), equal.stable_hash());
         assert!(container < later);
@@ -458,7 +458,7 @@ mod schemas {
         let container = crate::avro::read_container(&handle).unwrap();
         let tail = container.rows[0]
             .path("next.next.value")
-            .and_then(crate::Value::as_i64);
+            .and_then(crate::Scalar::as_i64);
         assert_eq!(tail, Some(3));
     }
 
@@ -526,16 +526,16 @@ mod schemas {
 mod logical {
     use std::sync::Arc;
 
-    use crate::enums::TimeUnit;
-    use crate::{Timezone, Value, avro};
+    use crate::generic::TimeUnit;
+    use crate::{Scalar, Timezone, avro};
 
     /// Round-trip one value through a single-field record container.
-    fn round_trip(field_type: &str, value: Value) -> Value {
+    fn round_trip(field_type: &str, value: Scalar) -> Scalar {
         let schema = crate::json::from_utf8(&format!(
             r#"{{"type":"record","name":"row","fields":[{{"name":"v","type":{field_type}}}]}}"#
         ))
         .unwrap();
-        let row = Value::from_mapping([(Value::from("v"), value)]).unwrap();
+        let row = Scalar::from_mapping([(Scalar::from("v"), value)]).unwrap();
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[], &[row]).unwrap();
         let container = avro::read_container(&handle).unwrap();
@@ -548,21 +548,21 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"int","logicalType":"date"}"#,
-                Value::date32(19_782)
+                Scalar::date32(19_782)
             ),
-            Value::date32(19_782)
+            Scalar::date32(19_782)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"int","logicalType":"date"}"#,
-                Value::date32(-3_652)
+                Scalar::date32(-3_652)
             ),
-            Value::date32(-3_652)
+            Scalar::date32(-3_652)
         );
         // A bare integer still encodes; it decodes as the calendar value.
         assert_eq!(
-            round_trip(r#"{"type":"int","logicalType":"date"}"#, Value::I64(3)),
-            Value::date32(3)
+            round_trip(r#"{"type":"int","logicalType":"date"}"#, Scalar::I64(3)),
+            Scalar::date32(3)
         );
     }
 
@@ -571,16 +571,16 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"int","logicalType":"time-millis"}"#,
-                Value::Time32(86_399_999, TimeUnit::Millisecond, Timezone::NAIVE)
+                Scalar::Time32(86_399_999, TimeUnit::Millisecond, Timezone::NAIVE)
             ),
-            Value::Time32(86_399_999, TimeUnit::Millisecond, Timezone::NAIVE)
+            Scalar::Time32(86_399_999, TimeUnit::Millisecond, Timezone::NAIVE)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"time-micros"}"#,
-                Value::Time32(1_000, TimeUnit::Millisecond, Timezone::NAIVE)
+                Scalar::Time32(1_000, TimeUnit::Millisecond, Timezone::NAIVE)
             ),
-            Value::Time64(1_000_000, TimeUnit::Microsecond, Timezone::NAIVE),
+            Scalar::Time64(1_000_000, TimeUnit::Microsecond, Timezone::NAIVE),
             "a coarser unit converts losslessly"
         );
     }
@@ -590,23 +590,23 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"timestamp-micros"}"#,
-                Value::DateTime64(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
+                Scalar::DateTime64(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
             ),
-            Value::DateTime64(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
+            Scalar::DateTime64(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"timestamp-nanos"}"#,
-                Value::I64(123)
+                Scalar::I64(123)
             ),
-            Value::DateTime64(123, TimeUnit::Nanosecond, Timezone::UTC)
+            Scalar::DateTime64(123, TimeUnit::Nanosecond, Timezone::UTC)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"local-timestamp-millis"}"#,
-                Value::DateTime64(555, TimeUnit::Millisecond, Timezone::NAIVE)
+                Scalar::DateTime64(555, TimeUnit::Millisecond, Timezone::NAIVE)
             ),
-            Value::DateTime64(555, TimeUnit::Millisecond, Timezone::NAIVE)
+            Scalar::DateTime64(555, TimeUnit::Millisecond, Timezone::NAIVE)
         );
     }
 
@@ -618,9 +618,9 @@ mod logical {
             ]}"#,
         )
         .unwrap();
-        let row = Value::from_mapping([(
-            Value::from("v"),
-            Value::Time64(1, TimeUnit::Nanosecond, Timezone::NAIVE),
+        let row = Scalar::from_mapping([(
+            Scalar::from("v"),
+            Scalar::Time64(1, TimeUnit::Nanosecond, Timezone::NAIVE),
         )])
         .unwrap();
         let mut handle = super::buffer();
@@ -639,7 +639,7 @@ mod logical {
             1_234_567_890_123_456_789_012_345_678,
         ] {
             for sign in [1, -1] {
-                let value = Value::d128(unscaled * sign, 2);
+                let value = Scalar::d128(unscaled * sign, 2);
                 assert_eq!(
                     round_trip(
                         r#"{"type":"bytes","logicalType":"decimal","precision":38,"scale":2}"#,
@@ -650,7 +650,7 @@ mod logical {
             }
         }
         // Over fixed, sign-extended to the declared width.
-        let value = Value::d128(-12_345, 2);
+        let value = Scalar::d128(-12_345, 2);
         assert_eq!(
             round_trip(
                 r#"{"type":"fixed","name":"amount","size":16,"logicalType":"decimal","precision":20,"scale":2}"#,
@@ -668,7 +668,7 @@ mod logical {
             ]}"#,
         )
         .unwrap();
-        let row = Value::from_mapping([(Value::from("v"), Value::d128(123_456, 0))]).unwrap();
+        let row = Scalar::from_mapping([(Scalar::from("v"), Scalar::d128(123_456, 0))]).unwrap();
         let mut handle = super::buffer();
         let message = avro::write_container(&mut handle, &schema, &[], &[row])
             .unwrap_err()
@@ -681,14 +681,14 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"string","logicalType":"uuid"}"#,
-                Value::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+                Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
             ),
-            Value::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+            Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
         );
         // The fixed form accepts the canonical text and stores the bytes.
         let decoded = round_trip(
             r#"{"type":"fixed","name":"id","size":16,"logicalType":"uuid"}"#,
-            Value::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
+            Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
         );
         assert_eq!(decoded.as_bytes().map(<[u8]>::len), Some(16), "{decoded:?}");
         assert_eq!(decoded.as_bytes().map(|bytes| bytes[0]), Some(0xF8));
@@ -700,7 +700,7 @@ mod logical {
         for part in [1_u32, 2, 3] {
             duration.extend_from_slice(&part.to_le_bytes());
         }
-        let value = Value::Bytes(Arc::from(duration.as_slice()));
+        let value = Scalar::Bytes(Arc::from(duration.as_slice()));
         assert_eq!(
             round_trip(
                 r#"{"type":"fixed","name":"span","size":12,"logicalType":"duration"}"#,
@@ -715,30 +715,30 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"nobody-knows-this"}"#,
-                Value::I64(9)
+                Scalar::I64(9)
             ),
-            Value::I64(9)
+            Scalar::I64(9)
         );
         // Invalid decimal attributes degrade too, per the specification.
         assert_eq!(
             round_trip(
                 r#"{"type":"bytes","logicalType":"decimal","precision":2,"scale":9}"#,
-                Value::Bytes(Arc::from(&[1_u8, 2][..]))
+                Scalar::Bytes(Arc::from(&[1_u8, 2][..]))
             ),
-            Value::Bytes(Arc::from(&[1_u8, 2][..]))
+            Scalar::Bytes(Arc::from(&[1_u8, 2][..]))
         );
     }
 }
 
 mod resolution {
     use crate::avro::{Resolution, Schema};
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     /// Write rows with the writer schema, read them back with the reader.
-    fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Value> {
+    fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Scalar> {
         let writer_json = crate::json::from_utf8(writer).unwrap();
         let mut handle = super::buffer();
-        let rows: Vec<Value> = rows
+        let rows: Vec<Scalar> = rows
             .iter()
             .map(|row| crate::json::from_utf8(row).unwrap())
             .collect();
@@ -756,22 +756,22 @@ mod resolution {
     #[test]
     fn every_legal_promotion_widens_in_place() {
         let cases = [
-            ("\"int\"", "\"long\"", r#"{"v":7}"#, Value::I64(7)),
-            ("\"int\"", "\"float\"", r#"{"v":7}"#, Value::from(7_f32)),
-            ("\"int\"", "\"double\"", r#"{"v":7}"#, Value::from(7_f64)),
-            ("\"long\"", "\"float\"", r#"{"v":7}"#, Value::from(7_f32)),
-            ("\"long\"", "\"double\"", r#"{"v":7}"#, Value::from(7_f64)),
+            ("\"int\"", "\"long\"", r#"{"v":7}"#, Scalar::I64(7)),
+            ("\"int\"", "\"float\"", r#"{"v":7}"#, Scalar::from(7_f32)),
+            ("\"int\"", "\"double\"", r#"{"v":7}"#, Scalar::from(7_f64)),
+            ("\"long\"", "\"float\"", r#"{"v":7}"#, Scalar::from(7_f32)),
+            ("\"long\"", "\"double\"", r#"{"v":7}"#, Scalar::from(7_f64)),
             (
                 "\"float\"",
                 "\"double\"",
                 r#"{"v":1.5}"#,
-                Value::from(1.5_f64),
+                Scalar::from(1.5_f64),
             ),
             (
                 "\"string\"",
                 "\"bytes\"",
                 r#"{"v":"hi"}"#,
-                Value::from(b"hi".as_slice()),
+                Scalar::from(b"hi".as_slice()),
             ),
         ];
         for (from, to, row, expected) in cases {
@@ -792,7 +792,10 @@ mod resolution {
             &record(r#"{"name":"v","type":"string"}"#),
             &[r#"{"v":"ok"}"#],
         );
-        assert_eq!(rows[0].get_key_str("v").and_then(Value::as_str), Some("ok"));
+        assert_eq!(
+            rows[0].get_key_str("v").and_then(Scalar::as_str),
+            Some("ok")
+        );
     }
 
     #[test]
@@ -820,7 +823,7 @@ mod resolution {
         );
         assert_eq!(rows[0].len(), 1);
         assert_eq!(
-            rows[0].get_key_str("b").and_then(Value::as_str),
+            rows[0].get_key_str("b").and_then(Scalar::as_str),
             Some("kept")
         );
     }
@@ -838,12 +841,12 @@ mod resolution {
             &[r#"{"a":5}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("note").and_then(Value::as_str),
+            rows[0].get_key_str("note").and_then(Scalar::as_str),
             Some("none")
         );
         assert!(rows[0].get_key_str("maybe").unwrap().is_null());
         assert_eq!(
-            rows[0].get_key_str("raw").and_then(Value::as_bytes),
+            rows[0].get_key_str("raw").and_then(Scalar::as_bytes),
             Some(&[0xFF_u8, 0x00][..])
         );
     }
@@ -872,7 +875,7 @@ mod resolution {
             &[r#"{"qty":31}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("quantity").and_then(Value::as_i64),
+            rows[0].get_key_str("quantity").and_then(Scalar::as_i64),
             Some(31)
         );
     }
@@ -886,7 +889,7 @@ mod resolution {
         );
         let keys = rows[0].keys();
         assert_eq!(keys, ["a", "b"], "records are name-sorted values");
-        assert_eq!(rows[0].get_key_str("a").and_then(Value::as_i64), Some(1));
+        assert_eq!(rows[0].get_key_str("a").and_then(Scalar::as_i64), Some(1));
     }
 
     #[test]
@@ -901,11 +904,11 @@ mod resolution {
             &[r#"{"v":"SELL"}"#, r#"{"v":"HOLD"}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("v").and_then(Value::as_str),
+            rows[0].get_key_str("v").and_then(Scalar::as_str),
             Some("SELL")
         );
         assert_eq!(
-            rows[1].get_key_str("v").and_then(Value::as_str),
+            rows[1].get_key_str("v").and_then(Scalar::as_str),
             Some("OTHER"),
             "an unknown writer symbol falls back to the reader default"
         );
@@ -921,7 +924,7 @@ mod resolution {
             &record(r#"{"name":"v","type":"long"}"#),
             &[r#"{"v":9}"#],
         );
-        assert_eq!(rows[0].get_key_str("v").and_then(Value::as_i64), Some(9));
+        assert_eq!(rows[0].get_key_str("v").and_then(Scalar::as_i64), Some(9));
 
         let writer_json = crate::json::from_utf8(&writer).unwrap();
         let mut handle = super::buffer();
@@ -946,7 +949,7 @@ mod resolution {
             &record(r#"{"name":"v","type":["null","long"]}"#),
             &[r#"{"v":4}"#],
         );
-        assert_eq!(rows[0].get_key_str("v").and_then(Value::as_i64), Some(4));
+        assert_eq!(rows[0].get_key_str("v").and_then(Scalar::as_i64), Some(4));
     }
 
     #[test]
@@ -957,12 +960,12 @@ mod resolution {
             &[r#"{"v":"text"}"#, r#"{"v":null}"#, r#"{"v":7}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("v").and_then(Value::as_str),
+            rows[0].get_key_str("v").and_then(Scalar::as_str),
             Some("text")
         );
         assert!(rows[1].get_key_str("v").unwrap().is_null());
         assert_eq!(
-            rows[2].get_key_str("v").and_then(Value::as_f64),
+            rows[2].get_key_str("v").and_then(Scalar::as_f64),
             Some(7.0),
             "the long branch promotes into the reader's double branch"
         );
@@ -984,7 +987,7 @@ mod resolution {
             reader,
             &[r#"{"value":1,"label":"a","next":{"value":2,"label":"b","next":null}}"#],
         );
-        assert_eq!(rows[0].path("next.value").and_then(Value::as_i64), Some(2));
+        assert_eq!(rows[0].path("next.value").and_then(Scalar::as_i64), Some(2));
         assert!(rows[0].path("next.label").is_none(), "projected away");
     }
 
@@ -1029,8 +1032,8 @@ mod resolution {
             ]}
         ]}"#;
         let rows = resolved(writer, reader, &[r#"{"f1":{"x":7},"f2":{"x":"hi"}}"#]);
-        assert_eq!(rows[0].path("f1.x").and_then(Value::as_i64), Some(7));
-        assert_eq!(rows[0].path("f2.x").and_then(Value::as_str), Some("hi"));
+        assert_eq!(rows[0].path("f1.x").and_then(Scalar::as_i64), Some(7));
+        assert_eq!(rows[0].path("f2.x").and_then(Scalar::as_str), Some("hi"));
     }
 
     #[test]
@@ -1051,7 +1054,7 @@ mod resolution {
             &[r#"{"v":3}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("via").and_then(Value::as_str),
+            rows[0].get_key_str("via").and_then(Scalar::as_str),
             Some("exact")
         );
     }
@@ -1063,7 +1066,7 @@ mod resolution {
             &record(r#"{"name":"b","aliases":["a"],"type":"long"}"#),
             &[r#"{"a":1,"b":2}"#],
         );
-        assert_eq!(rows[0].get_key_str("b").and_then(Value::as_i64), Some(2));
+        assert_eq!(rows[0].get_key_str("b").and_then(Scalar::as_i64), Some(2));
     }
 
     #[test]
@@ -1105,7 +1108,7 @@ mod resolution {
 }
 
 mod streaming {
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     #[test]
     fn blocks_stream_and_skipping_costs_nothing() {
@@ -1136,7 +1139,7 @@ mod streaming {
         assert_eq!(first.count(), 1);
         // The first block is skipped: never decompressed, never decoded.
         let second = blocks.next_block().unwrap().unwrap();
-        assert_eq!(second.rows().unwrap(), [Value::I64(9)]);
+        assert_eq!(second.rows().unwrap(), [Scalar::I64(9)]);
         assert!(blocks.next_block().unwrap().is_none());
     }
 
@@ -1189,7 +1192,7 @@ mod streaming {
         assert_eq!(first.count(), 1);
         // The first payload may be discarded without ever decoding it.
         let second = blocks.next_block().unwrap().unwrap();
-        assert_eq!(second.rows().unwrap(), [Value::I64(9)]);
+        assert_eq!(second.rows().unwrap(), [Scalar::I64(9)]);
         assert!(blocks.next_block().unwrap().is_none());
 
         let source = super::handmade_container("\"long\"", "null", &[]);
@@ -1214,7 +1217,7 @@ mod streaming {
 
 mod single_object {
     use crate::avro::Schema;
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     #[test]
     fn a_datum_round_trips_through_the_single_object_framing() {
@@ -1225,9 +1228,9 @@ mod single_object {
             ]}"#,
         )
         .unwrap();
-        let value = Value::from_record([
-            ("symbol", Value::from("AAPL")),
-            ("qty", Value::from(100_i64)),
+        let value = Scalar::from_record([
+            ("symbol", Scalar::from("AAPL")),
+            ("qty", Scalar::from(100_i64)),
         ])
         .unwrap();
         let framed = avro::into_single_object_vec(&schema, &value).unwrap();
@@ -1242,7 +1245,7 @@ mod single_object {
     fn a_wrong_fingerprint_is_refused_naming_both() {
         let schema = Schema::from_str("\"long\"").unwrap();
         let other = Schema::from_str("\"string\"").unwrap();
-        let framed = avro::into_single_object_vec(&schema, &Value::I64(1)).unwrap();
+        let framed = avro::into_single_object_vec(&schema, &Scalar::I64(1)).unwrap();
         let message = avro::from_single_object_slice(&framed, &other)
             .unwrap_err()
             .to_string();
@@ -1252,7 +1255,7 @@ mod single_object {
     #[test]
     fn bytes_after_the_datum_are_refused() {
         let schema = Schema::from_str("\"long\"").unwrap();
-        let mut framed = avro::into_single_object_vec(&schema, &Value::I64(1)).unwrap();
+        let mut framed = avro::into_single_object_vec(&schema, &Scalar::I64(1)).unwrap();
         framed.push(0x00);
         let message = avro::from_single_object_slice(&framed, &schema)
             .unwrap_err()
@@ -1263,7 +1266,7 @@ mod single_object {
 
 #[cfg(feature = "parquet")]
 mod snappy {
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     /// Encode one long, snappy-compress it, and append the big-endian CRC-32.
     fn snappy_block(value: i64) -> Vec<u8> {
@@ -1289,7 +1292,7 @@ mod snappy {
     fn snappy_blocks_decode_and_verify_their_crc() {
         let handle = super::handmade_container("\"long\"", "snappy", &[(1, snappy_block(42))]);
         let container = avro::read_container(&handle).unwrap();
-        assert_eq!(container.rows, [Value::I64(42)]);
+        assert_eq!(container.rows, [Scalar::I64(42)]);
     }
 
     #[test]
@@ -2109,7 +2112,7 @@ mod records {
         let schema = Field::new(
             "row",
             DataType::from_fields([
-                DataType::Interval(crate::enums::TimeUnit::MonthDayNano).required_field("span")
+                DataType::Interval(crate::generic::TimeUnit::MonthDayNano).required_field("span")
             ])
             .unwrap(),
             false,
@@ -2162,7 +2165,7 @@ mod records {
             DataType::from_fields([
                 DataType::Date32.required_field("day"),
                 DataType::Timestamp(
-                    crate::enums::TimeUnit::Microsecond,
+                    crate::generic::TimeUnit::Microsecond,
                     Some(crate::Timezone::UTC),
                 )
                 .nullable_field("at"),
@@ -2201,15 +2204,15 @@ mod records {
         )
         .unwrap();
 
-        // The container is readable at the Value level with typed temporals.
+        // The container is readable at the Scalar level with typed temporals.
         let container = avro::read_container(&handle).unwrap();
         assert_eq!(
             container.rows[0].get_key_str("day"),
-            Some(&crate::Value::date32(19_782))
+            Some(&crate::Scalar::date32(19_782))
         );
         assert_eq!(
             container.rows[1].get_key_str("cost"),
-            Some(&crate::Value::d128(-99, 2))
+            Some(&crate::Scalar::d128(-99, 2))
         );
 
         // And columnar reads reproduce the arrays exactly.
@@ -2224,11 +2227,11 @@ mod records {
 }
 
 mod matrix {
-    use crate::enums::TimeUnit;
-    use crate::{Value, avro};
+    use crate::generic::TimeUnit;
+    use crate::{Scalar, avro};
 
     /// Round-trip rows through a container and hand them back.
-    fn round_trip(schema: &str, rows: &[Value]) -> Vec<Value> {
+    fn round_trip(schema: &str, rows: &[Scalar]) -> Vec<Scalar> {
         let schema = crate::json::from_utf8(schema).unwrap();
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[], rows).unwrap();
@@ -2240,16 +2243,16 @@ mod matrix {
         let schema = r#"{"type":"record","name":"row","fields":[
             {"name":"counts","type":{"type":"map","values":"long"}}
         ]}"#;
-        let full = Value::from_record([(
+        let full = Scalar::from_record([(
             "counts",
-            Value::from_mapping([
-                (Value::from("a"), Value::from(1_i64)),
-                (Value::from("b"), Value::from(-2_i64)),
+            Scalar::from_mapping([
+                (Scalar::from("a"), Scalar::from(1_i64)),
+                (Scalar::from("b"), Scalar::from(-2_i64)),
             ])
             .unwrap(),
         )])
         .unwrap();
-        let empty = Value::from_record([("counts", Value::from_mapping([]).unwrap())]).unwrap();
+        let empty = Scalar::from_record([("counts", Scalar::from_mapping([]).unwrap())]).unwrap();
         let rows = round_trip(schema, &[full.clone(), empty.clone()]);
         assert_eq!(rows, [full, empty]);
     }
@@ -2283,7 +2286,7 @@ mod matrix {
         assert_eq!(
             rows[0]
                 .path("outer.0.by_name.legs.1.flag")
-                .and_then(Value::as_bool),
+                .and_then(Scalar::as_bool),
             Some(false)
         );
     }
@@ -2307,14 +2310,14 @@ mod matrix {
             {"name":"ms","type":{"type":"int","logicalType":"time-millis"}},
             {"name":"us","type":{"type":"long","logicalType":"time-micros"}}
         ]}"#;
-        let row = Value::from_record([
+        let row = Scalar::from_record([
             (
                 "ms",
-                Value::Time32(0, TimeUnit::Millisecond, crate::Timezone::NAIVE),
+                Scalar::Time32(0, TimeUnit::Millisecond, crate::Timezone::NAIVE),
             ),
             (
                 "us",
-                Value::Time64(
+                Scalar::Time64(
                     86_399_999_999,
                     TimeUnit::Microsecond,
                     crate::Timezone::NAIVE,
@@ -2331,7 +2334,7 @@ mod matrix {
         let schema = r#"{"type":"record","name":"row","fields":[
             {"name":"day","type":{"type":"int","logicalType":"date"}}
         ]}"#;
-        let row = Value::from_record([("day", Value::date32(19_782))]).unwrap();
+        let row = Scalar::from_record([("day", Scalar::date32(19_782))]).unwrap();
         assert_eq!(round_trip(schema, std::slice::from_ref(&row))[0], row);
     }
 
@@ -2348,7 +2351,7 @@ mod matrix {
 
 mod snapshots {
     use crate::io::IOBase;
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     /// The byte snapshot of one fixed schema and data pair.
     ///
@@ -2401,7 +2404,7 @@ mod snapshots {
     #[test]
     fn a_single_object_datum_encodes_to_exactly_these_bytes() {
         let schema = avro::Schema::from_str("\"long\"").unwrap();
-        let framed = avro::into_single_object_vec(&schema, &Value::I64(3)).unwrap();
+        let framed = avro::into_single_object_vec(&schema, &Scalar::I64(3)).unwrap();
         let hex: String = framed.iter().map(|byte| format!("{byte:02x}")).collect();
         // C3 01, the little-endian Rabin fingerprint of "long" (the value
         // fastavro computes for the same schema), then zig-zag 3.

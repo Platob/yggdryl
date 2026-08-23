@@ -36,7 +36,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::GeospatialType;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::datatype::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
-use crate::enums::EdgeAlgorithm;
+use crate::generic::EdgeAlgorithm;
 use crate::generic::wkb;
 use crate::io::IOBase;
 

@@ -90,7 +90,7 @@ use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::{IOBase, IOMedia};
-use crate::{DataType, Error, Field, IOKind, Result, Value};
+use crate::{DataType, Error, Field, IOKind, Result, Scalar};
 
 /// The directory a table keeps its metadata documents and manifests in.
 const METADATA_DIR: &str = "metadata";
@@ -1092,7 +1092,7 @@ impl<H: IOBase> Table<H> {
         let plan = self.plan(&[])?;
 
         // Group the live files by (spec, partition tuple), in plan order.
-        let mut groups: Vec<(i32, Vec<Value>, Vec<ScanTask>)> = Vec::new();
+        let mut groups: Vec<(i32, Vec<Scalar>, Vec<ScanTask>)> = Vec::new();
         for task in plan.tasks {
             match groups.iter_mut().find(|(spec_id, partition, _)| {
                 *spec_id == task.spec.spec_id && *partition == task.entry.data_file.partition
@@ -1563,7 +1563,7 @@ impl<H: IOBase> Table<H> {
         &self,
         write: &FileWrite<'_>,
         index: usize,
-        values: &[Value],
+        values: &[Scalar],
         batches: Vec<RecordBatch>,
     ) -> Result<DataFile> {
         let FileWrite {
@@ -1922,7 +1922,7 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        options.require_write_mode(crate::WriteMode::Overwrite)?;
+        options.require_write_mode(crate::IOMode::Overwrite)?;
         let commit_row_size = options.require_commit_row_size()?;
         let stored = self.schema()?.clone();
         let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
@@ -1956,7 +1956,7 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
     /// A limited write truncates data the caller offered here too: an append
     /// is a write.
     fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
-        options.require_write_mode(crate::WriteMode::Append)?;
+        options.require_write_mode(crate::IOMode::Append)?;
         let commit_row_size = options.require_commit_row_size()?;
         options.require_write_limits()?;
         if options.write_limit_is_zero() {
@@ -1981,7 +1981,7 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
 
     /// One keyed merge commit scoped to the selected partitions.
     fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
-        options.require_write_mode(crate::WriteMode::Merge)?;
+        options.require_write_mode(crate::IOMode::Merge)?;
         let commit_row_size = options.require_commit_row_size()?;
         options.require_write_limits()?;
         let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
@@ -2176,7 +2176,7 @@ fn summaries(
             let Some(summary) = summaries.get_mut(index) else {
                 continue;
             };
-            if matches!(value, Value::Null) {
+            if matches!(value, Scalar::Null) {
                 summary.contains_null = true;
                 continue;
             }
@@ -2361,8 +2361,8 @@ fn grouped_batches(
     spec: &PartitionSpec,
     sources: &[SmolStr],
     partition: &Field,
-) -> Result<Vec<(Vec<Value>, Vec<RecordBatch>)>> {
-    let mut groups: Vec<(Vec<Value>, Vec<RecordBatch>)> = Vec::new();
+) -> Result<Vec<(Vec<Scalar>, Vec<RecordBatch>)>> {
+    let mut groups: Vec<(Vec<Scalar>, Vec<RecordBatch>)> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
 
     for batch in batches {
@@ -2453,7 +2453,7 @@ fn tuple_at(
     sources: &[SmolStr],
     partition: &Field,
     row: u32,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Scalar>> {
     let mut values = Vec::with_capacity(sources.len());
     for (source, field) in sources.iter().zip(partition.fields()) {
         let column = batch.column_by_name(source).ok_or_else(|| {
@@ -2474,7 +2474,7 @@ fn tuple_at(
 ///
 /// A folder that holds none is `None` rather than an error, because that is the
 /// question "is this a table" and the answer "no" is not a failure.
-fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Value)>> {
+fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Scalar)>> {
     // A folder that is not a table has no metadata directory at all, and the
     // laziness contract makes that a handle that simply is not a container.
     if !metadata_dir.is_container() {

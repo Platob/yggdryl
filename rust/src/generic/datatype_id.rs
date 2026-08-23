@@ -5,7 +5,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::enums::DataTypeKind;
+use crate::generic::DataTypeKind;
 use crate::{Error, Result};
 
 /// A parameter-free discriminant naming exactly one [`crate::DataType`] variant.

@@ -5,7 +5,7 @@ use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::Value;
+use crate::generic::Scalar;
 use crate::{Error, Field, Result};
 
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
@@ -130,7 +130,7 @@ enum DataTypeRef<'a> {
     },
     Geography {
         crs: &'a str,
-        algorithm: crate::enums::EdgeAlgorithm,
+        algorithm: crate::generic::EdgeAlgorithm,
     },
 }
 
@@ -354,7 +354,7 @@ enum DataTypeValue {
     Geography {
         crs: SmolStr,
         #[serde(default)]
-        algorithm: Option<crate::enums::EdgeAlgorithm>,
+        algorithm: Option<crate::generic::EdgeAlgorithm>,
     },
 }
 
@@ -453,7 +453,7 @@ impl<'de> Deserialize<'de> for DataType {
 }
 
 // ---------------------------------------------------------------------------
-// The one structural mapping between a `DataType` and the shared `Value`.
+// The one structural mapping between a `DataType` and the shared `Scalar`.
 //
 // Every serialized form of a schema goes through here. JSON, YAML, and TOML
 // are three writers over one model rather than three hand-written serializers,
@@ -467,7 +467,7 @@ impl<'de> Deserialize<'de> for DataType {
 const TYPE_KEY: &str = "type";
 
 impl DataType {
-    /// Project this datatype onto the shared structural [`Value`].
+    /// Project this datatype onto the shared structural [`Scalar`].
     ///
     /// A tagged mapping - `{"type": "decimal128", "precision": 9, "scale": 2}` -
     /// whose keys are emitted in a fixed order so two equal datatypes produce
@@ -480,23 +480,24 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::generic::Value;
+    /// use yggdryl::generic::Scalar;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
     /// let value = row.clone().into_value();
     ///
-    /// assert_eq!(value.get_key_str("type").and_then(Value::as_utf8), Some("struct"));
+    /// assert_eq!(value.get_key_str("type").and_then(Scalar::as_utf8), Some("struct"));
     /// assert_eq!(DataType::from_value(value)?, row);
     /// # Ok(())
     /// # }
     /// ```
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub fn into_value(self) -> Value {
+    pub fn into_value(self) -> Scalar {
         use DataType as D;
-        let mut entries: Vec<(Value, Value)> = Vec::with_capacity(4);
-        let mut tag = |name: &str| entries.push((key(TYPE_KEY), Value::String(SmolStr::new(name))));
+        let mut entries: Vec<(Scalar, Scalar)> = Vec::with_capacity(4);
+        let mut tag =
+            |name: &str| entries.push((key(TYPE_KEY), Scalar::String(SmolStr::new(name))));
         match &self {
             D::Null => tag("null"),
             D::Boolean => tag("boolean"),
@@ -527,7 +528,7 @@ impl DataType {
                 if let Some(timezone) = timezone {
                     entries.push((
                         key("timezone"),
-                        Value::String(SmolStr::new(timezone.as_str())),
+                        Scalar::String(SmolStr::new(timezone.as_str())),
                     ));
                 }
             }
@@ -553,7 +554,7 @@ impl DataType {
             }
             D::FixedSizeBinary(width) => {
                 tag("fixed_size_binary");
-                entries.push((key("width"), Value::I32(*width)));
+                entries.push((key("width"), Scalar::I32(*width)));
             }
             D::List(field) => {
                 tag("list");
@@ -566,7 +567,7 @@ impl DataType {
             D::FixedSizeList(field, length) => {
                 tag("fixed_size_list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
-                entries.push((key("length"), Value::I32(*length)));
+                entries.push((key("length"), Scalar::I32(*length)));
             }
             D::LargeList(field) => {
                 tag("large_list");
@@ -580,7 +581,7 @@ impl DataType {
                 tag("struct");
                 entries.push((
                     key("fields"),
-                    Value::from_sequence(
+                    Scalar::from_sequence(
                         fields
                             .as_fields()
                             .iter()
@@ -592,14 +593,14 @@ impl DataType {
                 tag("union");
                 entries.push((
                     key("mode"),
-                    Value::String(SmolStr::new(match mode {
+                    Scalar::String(SmolStr::new(match mode {
                         UnionMode::Sparse => "sparse",
                         UnionMode::Dense => "dense",
                     })),
                 ));
                 entries.push((
                     key("fields"),
-                    Value::from_sequence(
+                    Scalar::from_sequence(
                         fields
                             .iter()
                             .map(|(type_id, field)| union_member(type_id, field)),
@@ -626,7 +627,7 @@ impl DataType {
             D::Map(map) => {
                 tag("map");
                 entries.push((key("entries"), map.entries.clone().into_value()));
-                entries.push((key("keys_sorted"), Value::Bool(map.keys_sorted)));
+                entries.push((key("keys_sorted"), Scalar::Bool(map.keys_sorted)));
             }
             D::RunEndEncoded(encoded) => {
                 tag("run_end_encoded");
@@ -636,24 +637,24 @@ impl DataType {
             D::Variant => tag("variant"),
             D::Geometry(geospatial) => {
                 tag("geometry");
-                entries.push((key("crs"), Value::String(SmolStr::new(geospatial.crs()))));
+                entries.push((key("crs"), Scalar::String(SmolStr::new(geospatial.crs()))));
             }
             D::Geography(geospatial) => {
                 tag("geography");
-                entries.push((key("crs"), Value::String(SmolStr::new(geospatial.crs()))));
+                entries.push((key("crs"), Scalar::String(SmolStr::new(geospatial.crs()))));
                 entries.push((
                     key("algorithm"),
-                    Value::String(SmolStr::new(
+                    Scalar::String(SmolStr::new(
                         geospatial.algorithm().unwrap_or_default().as_str(),
                     )),
                 ));
             }
         }
         // The keys are distinct literals, so the mapping cannot be rejected.
-        Value::from_mapping(entries).unwrap_or(Value::Null)
+        Scalar::from_mapping(entries).unwrap_or(Scalar::Null)
     }
 
-    /// Read a datatype back from the shared structural [`Value`].
+    /// Read a datatype back from the shared structural [`Scalar`].
     ///
     /// Fallible and validating: a malformed or incomplete mapping is refused
     /// with the same typed error the JSON path raises, and every constructed
@@ -677,7 +678,7 @@ impl DataType {
     /// required parameter is missing or wrongly typed, or the resulting
     /// datatype does not validate.
     #[allow(clippy::too_many_lines)]
-    pub fn from_value(value: Value) -> Result<Self> {
+    pub fn from_value(value: Scalar) -> Result<Self> {
         if value.as_mapping().is_none() && value.as_record().is_none() {
             return Err(invalid(
                 "$",
@@ -687,13 +688,13 @@ impl DataType {
         }
         let tag = value
             .get_key_str(TYPE_KEY)
-            .and_then(Value::as_str)
+            .and_then(Scalar::as_str)
             .ok_or_else(|| invalid("$.type", "a datatype name", "nothing"))?
             .to_owned();
-        let at = |name: &str| -> Option<&Value> { value.get_key_str(name) };
+        let at = |name: &str| -> Option<&Scalar> { value.get_key_str(name) };
         let unit = |name: &str| -> Result<TimeUnit> {
             let text = at(name)
-                .and_then(Value::as_str)
+                .and_then(Scalar::as_str)
                 .ok_or_else(|| invalid(&format!("$.{name}"), "a time unit", "nothing"))?;
             text.parse()
         };
@@ -744,7 +745,7 @@ impl DataType {
             "large_utf8" => Self::LargeUtf8,
             "utf8_view" => Self::Utf8View,
             "timestamp" => {
-                let timezone = match at("timezone").filter(|held| !matches!(held, Value::Null)) {
+                let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {
                         let text = held.as_str().ok_or_else(|| {
                             invalid("$.timezone", "a time zone name", "a non-string value")
@@ -768,7 +769,7 @@ impl DataType {
             "large_list_view" => Self::large_list_view(child("field")?),
             "struct" => {
                 let fields = at("fields")
-                    .and_then(Value::as_sequence)
+                    .and_then(Scalar::as_sequence)
                     .ok_or_else(|| invalid("$.fields", "a sequence of fields", "nothing"))?;
                 let mut children = Vec::with_capacity(fields.len());
                 for held in fields {
@@ -777,7 +778,7 @@ impl DataType {
                 Self::from_fields(children)?
             }
             "union" => {
-                let mode = match at("mode").and_then(Value::as_str) {
+                let mode = match at("mode").and_then(Scalar::as_str) {
                     Some("sparse") => UnionMode::Sparse,
                     Some("dense") => UnionMode::Dense,
                     other => {
@@ -789,7 +790,7 @@ impl DataType {
                     }
                 };
                 let members = at("fields")
-                    .and_then(Value::as_sequence)
+                    .and_then(Scalar::as_sequence)
                     .ok_or_else(|| invalid("$.fields", "a sequence of union members", "nothing"))?;
                 let mut variants = Vec::with_capacity(members.len());
                 for held in members {
@@ -827,12 +828,12 @@ impl DataType {
             }
             "map" => {
                 let keys_sorted = match at("keys_sorted") {
-                    Some(Value::Bool(held)) => *held,
+                    Some(Scalar::Bool(held)) => *held,
                     other => {
                         return Err(invalid(
                             "$.keys_sorted",
                             "a boolean",
-                            other.map_or("nothing", Value::kind),
+                            other.map_or("nothing", Scalar::kind),
                         ));
                     }
                 };
@@ -841,12 +842,12 @@ impl DataType {
             "run_end_encoded" => Self::run_end_encoded(child("run_ends")?, child("values")?)?,
             "variant" => Self::Variant,
             "geometry" => {
-                let crs = at("crs").and_then(Value::as_str);
+                let crs = at("crs").and_then(Scalar::as_str);
                 Self::geometry(crs)?
             }
             "geography" => {
-                let crs = at("crs").and_then(Value::as_str);
-                let algorithm = match at("algorithm").filter(|held| !matches!(held, Value::Null)) {
+                let crs = at("crs").and_then(Scalar::as_str);
+                let algorithm = match at("algorithm").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {
                         let text = held.as_str().ok_or_else(|| {
                             invalid(
@@ -874,39 +875,39 @@ impl DataType {
     }
 }
 
-impl From<&DataType> for Value {
+impl From<&DataType> for Scalar {
     fn from(value: &DataType) -> Self {
         value.clone().into_value()
     }
 }
 
-impl TryFrom<Value> for DataType {
+impl TryFrom<Scalar> for DataType {
     type Error = Error;
 
-    fn try_from(value: Value) -> Result<Self> {
+    fn try_from(value: Scalar) -> Result<Self> {
         Self::from_value(value)
     }
 }
 
 /// One union member as the `{type_id, field}` pair the JSON shape uses.
-fn union_member(type_id: i8, field: &Field) -> Value {
-    Value::from_mapping([
-        (key("type_id"), Value::I8(type_id)),
+fn union_member(type_id: i8, field: &Field) -> Scalar {
+    Scalar::from_mapping([
+        (key("type_id"), Scalar::I8(type_id)),
         (key("field"), field.clone().into_value()),
     ])
-    .unwrap_or(Value::Null)
+    .unwrap_or(Scalar::Null)
 }
 
 /// Append the decimal tag and its two parameters, in emission order.
-fn decimal(entries: &mut Vec<(Value, Value)>, name: &str, precision: u8, scale: i8) {
-    entries.push((key(TYPE_KEY), Value::String(SmolStr::new(name))));
-    entries.push((key("precision"), Value::U8(precision)));
-    entries.push((key("scale"), Value::I8(scale)));
+fn decimal(entries: &mut Vec<(Scalar, Scalar)>, name: &str, precision: u8, scale: i8) {
+    entries.push((key(TYPE_KEY), Scalar::String(SmolStr::new(name))));
+    entries.push((key("precision"), Scalar::U8(precision)));
+    entries.push((key("scale"), Scalar::I8(scale)));
 }
 
 /// A mapping key, which is always a plain string in a schema document.
-pub(crate) fn key(name: &str) -> Value {
-    Value::String(SmolStr::new(name))
+pub(crate) fn key(name: &str) -> Scalar {
+    Scalar::String(SmolStr::new(name))
 }
 
 /// A time unit as its snake_case full name, exactly as the JSON path emits it.
@@ -914,8 +915,8 @@ pub(crate) fn key(name: &str) -> Value {
 /// Not [`TimeUnit::as_str`], which answers the canonical *short* spelling
 /// (`us`): the serialized vocabulary is the full name, and `from_str` accepts
 /// both, so the two stay interchangeable on the read side.
-fn unit_value(unit: TimeUnit) -> Value {
-    Value::String(SmolStr::new(match unit {
+fn unit_value(unit: TimeUnit) -> Scalar {
+    Scalar::String(SmolStr::new(match unit {
         TimeUnit::Day => "day",
         TimeUnit::Second => "second",
         TimeUnit::Millisecond => "millisecond",
@@ -928,22 +929,22 @@ fn unit_value(unit: TimeUnit) -> Value {
 }
 
 /// Read an integer parameter, accepting every width the model may carry it in.
-pub(crate) fn integer(held: Option<&Value>, name: &str) -> Result<i32> {
+pub(crate) fn integer(held: Option<&Scalar>, name: &str) -> Result<i32> {
     let held = held.ok_or_else(|| invalid(&format!("$.{name}"), "an integer", "nothing"))?;
     let value = match held {
-        Value::I8(value) => i64::from(*value),
-        Value::I16(value) => i64::from(*value),
-        Value::I32(value) => i64::from(*value),
-        Value::I64(value) => *value,
-        Value::U8(value) => i64::from(*value),
-        Value::U16(value) => i64::from(*value),
-        Value::U32(value) => i64::from(*value),
-        Value::U64(value) => i64::try_from(*value)
+        Scalar::I8(value) => i64::from(*value),
+        Scalar::I16(value) => i64::from(*value),
+        Scalar::I32(value) => i64::from(*value),
+        Scalar::I64(value) => *value,
+        Scalar::U8(value) => i64::from(*value),
+        Scalar::U16(value) => i64::from(*value),
+        Scalar::U32(value) => i64::from(*value),
+        Scalar::U64(value) => i64::try_from(*value)
             .map_err(|_| invalid(&format!("$.{name}"), "an integer", "an out-of-range value"))?,
         // A structured-text document may carry a wide integer as text; the
         // JSON path already accepts the decimal-string spelling for the same
         // reason, so the two stay interchangeable.
-        Value::String(text) => text.parse::<i64>().map_err(|_| {
+        Scalar::String(text) => text.parse::<i64>().map_err(|_| {
             invalid(
                 &format!("$.{name}"),
                 "an integer",
@@ -980,14 +981,14 @@ pub(crate) fn invalid(
 }
 
 // ---------------------------------------------------------------------------
-// The three formats, all over the one `Value` conversion.
+// The three formats, all over the one `Scalar` conversion.
 //
 // `into_json` keeps the Serde path because `DataType` is `Serialize`/`Deserialize`
 // for the serde ecosystem - it is nested inside other derived structures
 // across the tree, and AGENTS.md requires those traits on a native value. The
 // two are not a second structural model: the parity test in
 // `tests/field/serde.rs` dumps every shape through both routes and compares the
-// bytes, so the Serde impl cannot drift from the `Value` mapping without
+// bytes, so the Serde impl cannot drift from the `Scalar` mapping without
 // failing a test. Every *other* format goes through `into_value` alone.
 // ---------------------------------------------------------------------------
 

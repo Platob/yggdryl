@@ -156,7 +156,7 @@ Metadata belongs to the field, and it behaves like the mapping type of each lang
 | gzip, zlib, zstd | [gzip](gzip.md), [zlib](zlib.md), [zstd](zstd.md) |
 | Batches on disk | [ipc](ipc.md), [parquet](parquet.md), [iceberg](iceberg.md) |
 | Naming a resource | [uri](uri.md) |
-| Values and text formats | [text](text.md), [json](json.md), [yaml](yaml.md), [toml](toml.md) |
+| Scalars and text formats | [text](text.md), [json](json.md), [yaml](yaml.md), [toml](toml.md) |
 | Language boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Repository checks

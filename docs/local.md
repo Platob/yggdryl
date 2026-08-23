@@ -61,7 +61,7 @@ every [`IOBase`](io.md) call through it.
 Each role also implements the matching trait from [`yggdryl::io`](io.md) - `IOFolder`, `IOFile`,
 `IOPath` - which pre-implements everything that follows from the role: a container refuses byte
 writes, a leaf lists nothing and resolves no children, a location reports its
-[`IOKind`](enums.md) by testing the path. A backend supplies each role's few required members -
+[`IOKind`](generic.md) by testing the path. A backend supplies each role's few required members -
 four for a container, two for a leaf, three for a location - and inherits the rest.
 
 ## Laziness

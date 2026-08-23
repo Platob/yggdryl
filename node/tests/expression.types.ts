@@ -6,7 +6,7 @@ import {
   Field,
   IOBase,
   Statement,
-  Value,
+  Scalar,
   iceberg,
   type Table,
 } from '..'
@@ -21,7 +21,7 @@ const filter: Expression = new Expression("ccy = 'EUR' and price > 100")
 const parsed: Expression = Expression.parse("ccy = 'EUR'")
 const restored: Expression = Expression.fromJson(filter.intoJson())
 const named: Expression = Expression.column('ccy')
-const constant: Expression = Expression.literal(Value.fromJs('EUR'))
+const constant: Expression = Expression.literal(Scalar.fromJs('EUR'))
 const held: Expression = Expression.attribute('partition', 'year')
 const stat: Expression = Expression.attribute('size')
 const late: Expression = Expression.parameter('floor')
@@ -47,7 +47,7 @@ const either: Expression = named.or("size > 1")
 const negated: Expression = named.not()
 const sumExpression: Expression = Expression.column('price').add('1')
 const inferredSumExpression: Expression = Expression.column('price').add(1)
-const nativeSumExpression: Expression = Expression.column('price').add(Value.fromJs(1))
+const nativeSumExpression: Expression = Expression.column('price').add(Scalar.fromJs(1))
 const differenceExpression: Expression = Expression.column('price').subtract('1')
 const productExpression: Expression = Expression.column('price').multiply('2')
 const quotientExpression: Expression = Expression.column('price').divide('2')
@@ -62,8 +62,8 @@ const boundField: Field = bound.field
 const isPredicate: boolean = bound.isPredicate
 const boundColumns: Array<string> = bound.columns
 const readsRows: boolean = bound.readsRows
-const answered: Value = bound.eval(Value.fromJs(['EUR']))
-const kept: boolean = bound.matches(Value.fromJs(['EUR']))
+const answered: Scalar = bound.eval(Scalar.fromJs(['EUR']))
+const kept: boolean = bound.matches(Scalar.fromJs(['EUR']))
 const boundText: string = bound.toString()
 
 const statement: Statement = new Statement("select ccy where ccy = 'EUR' limit 10")

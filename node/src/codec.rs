@@ -19,7 +19,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
-use yggdryl::text::{Format, Formatting, Indent, Limits, Value};
+use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Field as CoreField, Fields as CoreFields, Float16,
     Float32, Float64, I256, MapType as CoreMapType, TimeUnit, Timezone, json, text, toml, yaml,
@@ -78,7 +78,7 @@ pub struct CodecLimitsInput {
 
 /// One native codec value: the pivot every JavaScript value crosses.
 ///
-/// A `Value` is what the core actually stores, so it is also the honest answer
+/// A `Scalar` is what the core actually stores, so it is also the honest answer
 /// to "what did my JavaScript become". `fromJs` builds one from any JavaScript
 /// value and `asJs` reads it back; a load and a dump are those two conversions
 /// with bytes on the far side, and they run the same code.
@@ -86,41 +86,41 @@ pub struct CodecLimitsInput {
 /// It is also the JavaScript spelling of the values JavaScript has none of: an
 /// exact decimal, a date, a time of day, a duration, and any timestamp whose
 /// resolution or zone a `Date` cannot hold.
-#[napi(js_name = "Value")]
+#[napi(js_name = "Scalar")]
 #[derive(Clone)]
-pub struct JsCodecValue {
-    pub(crate) inner: Value,
+pub struct JsScalar {
+    pub(crate) inner: Scalar,
 }
 
 /// An owning iterator over one native value's direct children.
 ///
-/// The iterator snapshots cheap `Value` clones. Nested containers retain their
+/// The iterator snapshots cheap `Scalar` clones. Nested containers retain their
 /// shared native storage, so an exact temporal or decimal never crosses the
 /// lossy JavaScript projection merely because its parent is iterated.
-#[napi(iterator, js_name = "ValueIterator")]
-pub struct JsCodecValueIterator {
-    inner: std::vec::IntoIter<Value>,
+#[napi(iterator, js_name = "ScalarIterator")]
+pub struct JsScalarIterator {
+    inner: std::vec::IntoIter<Scalar>,
 }
 
-impl Generator for JsCodecValueIterator {
-    type Yield = JsCodecValue;
+impl Generator for JsScalarIterator {
+    type Yield = JsScalar;
     type Next = ();
     type Return = ();
 
     fn next(&mut self, _value: Option<Self::Next>) -> Option<Self::Yield> {
-        self.inner.next().map(JsCodecValue::from_core)
+        self.inner.next().map(JsScalar::from_core)
     }
 }
 
-impl JsCodecValue {
+impl JsScalar {
     /// Wrap one native value for JavaScript.
-    pub(crate) const fn from_core(inner: Value) -> Self {
+    pub(crate) const fn from_core(inner: Scalar) -> Self {
         Self { inner }
     }
 }
 
 #[napi]
-impl JsCodecValue {
+impl JsScalar {
     /// Convert one JavaScript value into the native value it becomes.
     #[napi(factory, js_name = "_fromJsNative", skip_typescript)]
     pub fn from_js_native(
@@ -150,7 +150,7 @@ impl JsCodecValue {
     #[napi(factory)]
     pub fn f16(value: f64) -> Self {
         Self {
-            inner: Value::F16(Float16::from_f16(half::f16::from_f64(value))),
+            inner: Scalar::F16(Float16::from_f16(half::f16::from_f64(value))),
         }
     }
 
@@ -159,7 +159,7 @@ impl JsCodecValue {
     pub fn f32(value: f64) -> Self {
         Self {
             #[allow(clippy::cast_possible_truncation)]
-            inner: Value::F32(Float32::from_f32(value as f32)),
+            inner: Scalar::F32(Float32::from_f32(value as f32)),
         }
     }
 
@@ -167,7 +167,7 @@ impl JsCodecValue {
     #[napi(factory)]
     pub fn f64(value: f64) -> Self {
         Self {
-            inner: Value::F64(Float64::from_f64(value)),
+            inner: Scalar::F64(Float64::from_f64(value)),
         }
     }
 
@@ -176,7 +176,7 @@ impl JsCodecValue {
     pub fn d128(unscaled: BigInt, scale: f64) -> Result<Self> {
         let scale = crate::exact_i8(scale, "scale")?;
         Ok(Self {
-            inner: Value::d128(exact_i128(&unscaled, "unscaled")?, scale),
+            inner: Scalar::d128(exact_i128(&unscaled, "unscaled")?, scale),
         })
     }
 
@@ -184,7 +184,7 @@ impl JsCodecValue {
     #[napi(factory)]
     pub fn d256(unscaled: BigInt, scale: f64) -> Result<Self> {
         Ok(Self {
-            inner: Value::d256(
+            inner: Scalar::d256(
                 exact_i256(&unscaled, "unscaled")?,
                 crate::exact_i8(scale, "scale")?,
             ),
@@ -199,7 +199,7 @@ impl JsCodecValue {
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Value::date32_in(
+            inner: Scalar::date32_in(
                 crate::exact_i32(count, "count")?,
                 time_unit(unit.as_deref().unwrap_or("d"))?,
                 timezone_or_naive(timezone)?,
@@ -216,7 +216,7 @@ impl JsCodecValue {
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Value::date64_in(
+            inner: Scalar::date64_in(
                 exact_i64(&count, "count")?,
                 time_unit(unit.as_deref().unwrap_or("ms"))?,
                 timezone_or_naive(timezone)?,
@@ -229,7 +229,7 @@ impl JsCodecValue {
     #[napi(factory)]
     pub fn time32(count: f64, unit: String, timezone: Option<TimezoneInput<'_>>) -> Result<Self> {
         Ok(Self {
-            inner: Value::time32(
+            inner: Scalar::time32(
                 crate::exact_i32(count, "count")?,
                 time_unit(&unit)?,
                 timezone_or_naive(timezone)?,
@@ -246,7 +246,7 @@ impl JsCodecValue {
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Value::time64(
+            inner: Scalar::time64(
                 exact_i64(&count, "count")?,
                 time_unit(&unit)?,
                 timezone_or_naive(timezone)?,
@@ -263,7 +263,7 @@ impl JsCodecValue {
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Value::datetime64(
+            inner: Scalar::datetime64(
                 exact_i64(&count, "count")?,
                 time_unit(&unit)?,
                 timezone_or_naive(timezone)?,
@@ -280,7 +280,7 @@ impl JsCodecValue {
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Value::duration32_in(
+            inner: Scalar::duration32_in(
                 crate::exact_i32(count, "count")?,
                 time_unit(&unit)?,
                 timezone_or_naive(timezone)?,
@@ -297,7 +297,7 @@ impl JsCodecValue {
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Value::duration64_in(
+            inner: Scalar::duration64_in(
                 exact_i64(&count, "count")?,
                 time_unit(&unit)?,
                 timezone_or_naive(timezone)?,
@@ -328,7 +328,7 @@ impl JsCodecValue {
 
     /// Look up one non-negative sequence index without projecting its value.
     #[napi]
-    pub fn at(&self, index: f64) -> Result<Option<JsCodecValue>> {
+    pub fn at(&self, index: f64) -> Result<Option<JsScalar>> {
         let index = crate::exact_u64(index, "index")?;
         let index = usize::try_from(index)
             .map_err(|_| napi_error(format!("index {index} exceeds this platform's range")))?;
@@ -337,7 +337,7 @@ impl JsCodecValue {
 
     /// Look up a dotted mapping/record key and sequence-index path.
     #[napi]
-    pub fn path(&self, path: String) -> Option<JsCodecValue> {
+    pub fn path(&self, path: String) -> Option<JsScalar> {
         self.inner.path(&path).cloned().map(Self::from_core)
     }
 
@@ -346,21 +346,21 @@ impl JsCodecValue {
     /// Sequences yield values, mappings yield keys, and records yield values
     /// in deterministic field-name order.
     #[napi(js_name = "_iterNative", skip_typescript)]
-    pub fn iter_native(&self) -> JsCodecValueIterator {
-        JsCodecValueIterator {
+    pub fn iter_native(&self) -> JsScalarIterator {
+        JsScalarIterator {
             inner: self.inner.iter().cloned().collect::<Vec<_>>().into_iter(),
         }
     }
 
     /// Look up a mapping key or record name without a JavaScript projection.
     #[napi(js_name = "_getNative", skip_typescript)]
-    pub fn get_native(&self, key: &JsCodecValue) -> Option<JsCodecValue> {
+    pub fn get_native(&self, key: &JsScalar) -> Option<JsScalar> {
         let value = match &self.inner {
-            Value::Record(_) => key
+            Scalar::Record(_) => key
                 .inner
                 .as_str()
                 .and_then(|name| self.inner.get_key_str(name)),
-            Value::Mapping(_) => self.inner.get_key(&key.inner),
+            Scalar::Mapping(_) => self.inner.get_key(&key.inner),
             _ => None,
         };
         value.cloned().map(Self::from_core)
@@ -368,10 +368,10 @@ impl JsCodecValue {
 
     /// Return this mapping or record with one persistent replacement.
     #[napi(js_name = "_setNative", skip_typescript)]
-    pub fn set_native(&self, key: &JsCodecValue, value: &JsCodecValue) -> Result<Self> {
+    pub fn set_native(&self, key: &JsScalar, value: &JsScalar) -> Result<Self> {
         let rebuilt = match &self.inner {
-            Value::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
-            Value::Record(_) => {
+            Scalar::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
+            Scalar::Record(_) => {
                 let name = key
                     .inner
                     .as_str()
@@ -390,14 +390,14 @@ impl JsCodecValue {
 
     /// Return this mapping or record without one string key.
     #[napi(js_name = "_removeNative", skip_typescript)]
-    pub fn remove_native(&self, key: &JsCodecValue) -> Result<Self> {
+    pub fn remove_native(&self, key: &JsScalar) -> Result<Self> {
         let name = key
             .inner
             .as_str()
             .ok_or_else(|| napi_error("remove requires a string key"))?;
         let rebuilt = match &self.inner {
-            Value::Mapping(_) => self.inner.without_key(name),
-            Value::Record(_) => self.inner.without_field(name),
+            Scalar::Mapping(_) => self.inner.without_key(name),
+            Scalar::Record(_) => self.inner.without_field(name),
             _ => {
                 return Err(napi_error(format!(
                     "expected a mapping or record to remove a value from, got {}",
@@ -519,7 +519,7 @@ impl JsCodecValue {
     /// Numeric widths compare by value, as equality does: `i8(1)` and
     /// `u64(1)` compare equal, and exact decimals are normalized first.
     #[napi]
-    pub fn compare(&self, other: &JsCodecValue) -> i32 {
+    pub fn compare(&self, other: &JsScalar) -> i32 {
         crate::ordering_value(self.inner.cmp(&other.inner))
     }
 
@@ -531,7 +531,7 @@ impl JsCodecValue {
 
     /// Add two already-inferred native numeric values.
     #[napi(js_name = "_addNative", skip_typescript)]
-    pub fn add_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+    pub fn add_native(&self, env: Env, other: &JsScalar) -> Result<Self> {
         self.inner
             .checked_add(&other.inner)
             .map(Self::from_core)
@@ -540,7 +540,7 @@ impl JsCodecValue {
 
     /// Subtract two already-inferred native numeric values.
     #[napi(js_name = "_subtractNative", skip_typescript)]
-    pub fn subtract_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+    pub fn subtract_native(&self, env: Env, other: &JsScalar) -> Result<Self> {
         self.inner
             .checked_sub(&other.inner)
             .map(Self::from_core)
@@ -549,7 +549,7 @@ impl JsCodecValue {
 
     /// Multiply two already-inferred native numeric values.
     #[napi(js_name = "_multiplyNative", skip_typescript)]
-    pub fn multiply_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+    pub fn multiply_native(&self, env: Env, other: &JsScalar) -> Result<Self> {
         self.inner
             .checked_mul(&other.inner)
             .map(Self::from_core)
@@ -558,7 +558,7 @@ impl JsCodecValue {
 
     /// Divide two already-inferred native numeric values.
     #[napi(js_name = "_divideNative", skip_typescript)]
-    pub fn divide_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+    pub fn divide_native(&self, env: Env, other: &JsScalar) -> Result<Self> {
         self.inner
             .checked_div(&other.inner)
             .map(Self::from_core)
@@ -567,7 +567,7 @@ impl JsCodecValue {
 
     /// Take the remainder of two already-inferred native numeric values.
     #[napi(js_name = "_remainderNative", skip_typescript)]
-    pub fn remainder_native(&self, env: Env, other: &JsCodecValue) -> Result<Self> {
+    pub fn remainder_native(&self, env: Env, other: &JsScalar) -> Result<Self> {
         self.inner
             .checked_rem(&other.inner)
             .map(Self::from_core)
@@ -631,7 +631,7 @@ impl JsCodecValue {
     /// spellings of one exact decimal, because the core compares what a value
     /// names rather than how it was written.
     #[napi]
-    pub fn equals(&self, other: &JsCodecValue) -> bool {
+    pub fn equals(&self, other: &JsScalar) -> bool {
         self.inner == other.inner
     }
 
@@ -700,7 +700,7 @@ impl JsCodecValue {
                 napi_error("native Arrow array decode did not return a sequence")
             })?);
         }
-        Ok(Self::from_core(Value::from_sequence(values)))
+        Ok(Self::from_core(Scalar::from_sequence(values)))
     }
 
     /// Decode Arrow JS record batches from standard IPC.
@@ -771,7 +771,7 @@ impl JsCodecValue {
     }
 }
 
-impl JsCodecValue {
+impl JsScalar {
     fn from_arrow_batches_ipc(
         bytes: &[u8],
         field: Option<ClassInstance<'_, JsField>>,
@@ -796,7 +796,7 @@ impl JsCodecValue {
                     .ok_or_else(|| napi_error("native Arrow batch decode did not return rows"))?,
             );
         }
-        Ok(Self::from_core(Value::from_sequence(rows)))
+        Ok(Self::from_core(Scalar::from_sequence(rows)))
     }
 
     fn arrow_batches_ipc(&self, field: Option<ClassInstance<'_, JsField>>) -> Result<Buffer> {
@@ -898,7 +898,7 @@ fn exact_i128(value: &BigInt, name: &str) -> Result<i128> {
 fn loading_from(
     limits: yggdryl::text::Limits,
     field: Option<&ClassInstance<'_, JsField>>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
     environment: bool,
 ) -> Result<yggdryl::text::Loading> {
     let loading = yggdryl::text::Loading::new().with_limits(limits);
@@ -927,8 +927,8 @@ pub fn json_loads_native(
     input: Either<Buffer, String>,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let value = match (&input, field.as_ref()) {
         (Either::A(bytes), Some(field)) => text::from_bytes_with_field_and_limits(
@@ -950,7 +950,7 @@ pub fn json_loads_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -960,10 +960,10 @@ pub fn yaml_loads_native(
     input: Either<Buffer, String>,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
     environment: Option<bool>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let loading = loading_from(
         limits,
@@ -980,7 +980,7 @@ pub fn yaml_loads_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -990,10 +990,10 @@ pub fn toml_loads_native(
     input: Either<Buffer, String>,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
     environment: Option<bool>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let loading = loading_from(
         limits,
@@ -1010,7 +1010,7 @@ pub fn toml_loads_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1020,8 +1020,8 @@ pub fn json_lines_loads_native(
     input: Either<Buffer, String>,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    native_scalar: Option<bool>,
+) -> Result<Vec<Either<JsScalar, JsonValue>>> {
     let limits = checked_limits(limits)?;
     let values = match (&input, field.as_ref()) {
         (Either::A(bytes), Some(field)) => text::from_bytes_all_with_field_and_limits(
@@ -1046,7 +1046,7 @@ pub fn json_lines_loads_native(
         values,
         field.as_ref().map(|field| &field.inner),
         limits,
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1056,8 +1056,8 @@ pub fn yaml_loads_all_native(
     input: Either<Buffer, String>,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    native_scalar: Option<bool>,
+) -> Result<Vec<Either<JsScalar, JsonValue>>> {
     let limits = checked_limits(limits)?;
     let values = match (&input, field.as_ref()) {
         (Either::A(bytes), Some(field)) => {
@@ -1074,7 +1074,7 @@ pub fn yaml_loads_all_native(
         values,
         field.as_ref().map(|field| &field.inner),
         limits,
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1268,8 +1268,8 @@ pub fn json_load_path_native(
     path: String,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let reader = open_path(&path, limits.max_input_bytes())?;
     let value = match field.as_ref() {
@@ -1283,7 +1283,7 @@ pub fn json_load_path_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1293,10 +1293,10 @@ pub fn yaml_load_path_native(
     path: String,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
     environment: Option<bool>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let loading = loading_from(
         limits,
@@ -1314,7 +1314,7 @@ pub fn yaml_load_path_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1324,10 +1324,10 @@ pub fn toml_load_path_native(
     path: String,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    placeholders: Option<ClassInstance<'_, JsCodecValue>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
     environment: Option<bool>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let loading = loading_from(
         limits,
@@ -1345,7 +1345,7 @@ pub fn toml_load_path_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1355,8 +1355,8 @@ pub fn json_lines_load_path_native(
     path: String,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    native_scalar: Option<bool>,
+) -> Result<Vec<Either<JsScalar, JsonValue>>> {
     let limits = checked_limits(limits)?;
     let reader = open_path(&path, limits.max_input_bytes())?;
     let values = match field.as_ref() {
@@ -1373,7 +1373,7 @@ pub fn json_lines_load_path_native(
         values,
         field.as_ref().map(|field| &field.inner),
         limits,
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1383,8 +1383,8 @@ pub fn yaml_load_all_path_native(
     path: String,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    native_scalar: Option<bool>,
+) -> Result<Vec<Either<JsScalar, JsonValue>>> {
     let limits = checked_limits(limits)?;
     let reader = open_path(&path, limits.max_input_bytes())?;
     let values = match field.as_ref() {
@@ -1396,7 +1396,7 @@ pub fn yaml_load_all_path_native(
         values,
         field.as_ref().map(|field| &field.inner),
         limits,
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1537,8 +1537,8 @@ pub fn codec_loads_inferred_native(
     input: Either<Buffer, String>,
     limits: Option<CodecLimitsInput>,
     field: Option<ClassInstance<'_, JsField>>,
-    native_value: Option<bool>,
-) -> Result<Either<JsCodecValue, JsonValue>> {
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
     let limits = checked_limits(limits)?;
     let (_, value) = match &input {
         Either::A(bytes) => text::from_bytes_inferred_with_limits(bytes.as_ref(), limits),
@@ -1553,7 +1553,7 @@ pub fn codec_loads_inferred_native(
         value,
         field.as_ref().map(|field| &field.inner),
         limits.max_depth(),
-        native_value.unwrap_or(false),
+        native_scalar.unwrap_or(false),
     )
 }
 
@@ -1573,7 +1573,7 @@ fn encode_js_value<'env>(
     max_depth: usize,
     native_wrapper_prototypes: &Array<'env>,
     native_intrinsics: &Array<'env>,
-) -> Result<Value> {
+) -> Result<Scalar> {
     JsEncoder::new(env, max_depth, native_wrapper_prototypes, native_intrinsics)
         .map_err(|error| napi_error(format!("codec encoder initialization failed: {error}")))?
         .encode(value)
@@ -1586,7 +1586,7 @@ fn encode_js_values<'env>(
     max_depth: usize,
     native_wrapper_prototypes: &Array<'env>,
     native_intrinsics: &Array<'env>,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Scalar>> {
     if values.len() > MAX_JS_DOCUMENTS {
         return Err(napi_error(format!(
             "codec collection exceeds the {MAX_JS_DOCUMENTS}-document limit"
@@ -1605,14 +1605,14 @@ fn encode_js_values<'env>(
 }
 
 fn decoded_values_for_field(
-    values: Vec<Value>,
+    values: Vec<Scalar>,
     field: Option<&CoreField>,
     limits: Limits,
-    native_value: bool,
-) -> Result<Vec<Either<JsCodecValue, JsonValue>>> {
+    native_scalar: bool,
+) -> Result<Vec<Either<JsScalar, JsonValue>>> {
     values
         .into_iter()
-        .map(|value| decoded_value_for_field(value, field, limits.max_depth(), native_value))
+        .map(|value| decoded_value_for_field(value, field, limits.max_depth(), native_scalar))
         .collect()
 }
 
@@ -1832,11 +1832,11 @@ impl<'env> JsEncoder<'env> {
         })
     }
 
-    fn encode(&mut self, value: Unknown<'env>) -> Result<Value> {
+    fn encode(&mut self, value: Unknown<'env>) -> Result<Scalar> {
         self.encode_at(value, 0)
     }
 
-    fn encode_at(&mut self, value: Unknown<'env>, depth: usize) -> Result<Value> {
+    fn encode_at(&mut self, value: Unknown<'env>, depth: usize) -> Result<Scalar> {
         if depth > self.max_depth {
             return Err(napi_error(format!(
                 "JavaScript value exceeds maxDepth {}",
@@ -1847,14 +1847,14 @@ impl<'env> JsEncoder<'env> {
             // Nothing and no value are one absence on the wire, so `undefined`
             // reads back as `null`. Keeping them apart needed a tag, and a tag
             // that only says "this was undefined" is not worth a vocabulary.
-            ValueType::Undefined | ValueType::Null => Ok(Value::Null),
-            ValueType::Boolean => value.coerce_to_bool().map(Value::Bool),
+            ValueType::Undefined | ValueType::Null => Ok(Scalar::Null),
+            ValueType::Boolean => value.coerce_to_bool().map(Scalar::Bool),
             ValueType::Number => Self::encode_number(value),
             ValueType::String => value
                 .coerce_to_string()?
                 .into_utf8()?
                 .into_owned()
-                .map(Value::from),
+                .map(Scalar::from),
             ValueType::BigInt => Self::encode_bigint(value),
             ValueType::Object => self.encode_object(value, depth),
             ValueType::Function => Err(napi_error(
@@ -1870,18 +1870,18 @@ impl<'env> JsEncoder<'env> {
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn encode_number(value: Unknown<'env>) -> Result<Value> {
+    fn encode_number(value: Unknown<'env>) -> Result<Scalar> {
         let value = value.coerce_to_number()?.get_double()?;
         if value == 0.0 && value.is_sign_negative() {
-            return Ok(Value::F64(Float64::from_f64(value)));
+            return Ok(Scalar::F64(Float64::from_f64(value)));
         }
         if value.is_finite()
             && value.fract() == 0.0
             && (-JS_SAFE_INTEGER_F64..=JS_SAFE_INTEGER_F64).contains(&value)
         {
-            return Ok(Value::I64(value as i64));
+            return Ok(Scalar::I64(value as i64));
         }
-        Ok(Value::F64(Float64::from_f64(value)))
+        Ok(Scalar::F64(Float64::from_f64(value)))
     }
 
     /// Encode a `bigint` as the narrowest native integer that holds it exactly.
@@ -1890,19 +1890,19 @@ impl<'env> JsEncoder<'env> {
     /// rather than in a wrapper naming its JavaScript type. Beyond 128 bits the
     /// core has no exact storage for one, and refusing there keeps a rounded or
     /// re-spelled number from being written as though it were the original.
-    fn encode_bigint(value: Unknown<'env>) -> Result<Value> {
+    fn encode_bigint(value: Unknown<'env>) -> Result<Scalar> {
         let digits = value.coerce_to_string()?.into_utf8()?.into_owned()?;
         if let Ok(value) = digits.parse::<i64>() {
-            return Ok(Value::I64(value));
+            return Ok(Scalar::I64(value));
         }
         if let Ok(value) = digits.parse::<u64>() {
-            return Ok(Value::U64(value));
+            return Ok(Scalar::U64(value));
         }
         if let Ok(value) = digits.parse::<i128>() {
-            return Ok(Value::I128(value));
+            return Ok(Scalar::I128(value));
         }
         if let Ok(value) = digits.parse::<u128>() {
-            return Ok(Value::U128(value));
+            return Ok(Scalar::U128(value));
         }
         Err(napi_error(format!(
             "bigint {} exceeds the exact 128-bit integer range this codec stores",
@@ -1910,7 +1910,7 @@ impl<'env> JsEncoder<'env> {
         )))
     }
 
-    fn encode_object(&mut self, value: Unknown<'env>, depth: usize) -> Result<Value> {
+    fn encode_object(&mut self, value: Unknown<'env>, depth: usize) -> Result<Scalar> {
         let object = value.coerce_to_object()?;
         let has: Function<'_, Object<'env>, bool> = required_property(&self.active, "has")?;
         if has.apply(self.active, object)? {
@@ -1924,11 +1924,11 @@ impl<'env> JsEncoder<'env> {
         result
     }
 
-    fn encode_object_inner(&mut self, value: Unknown<'env>, depth: usize) -> Result<Value> {
+    fn encode_object_inner(&mut self, value: Unknown<'env>, depth: usize) -> Result<Scalar> {
         let object = value.coerce_to_object()?;
         if self.buffer_is_buffer.call(object)? {
             let bytes: Buffer = self.extract_object(&object)?;
-            return Ok(Value::from(bytes.as_ref().to_vec()));
+            return Ok(Scalar::from(bytes.as_ref().to_vec()));
         }
         if value.is_arraybuffer()? {
             if !self.has_exact_prototype(&object, self.array_buffer_prototype)? {
@@ -1937,7 +1937,7 @@ impl<'env> JsEncoder<'env> {
                 ));
             }
             let bytes: ArrayBuffer<'_> = self.extract_object(&object)?;
-            return Ok(Value::from(bytes.to_vec()));
+            return Ok(Scalar::from(bytes.to_vec()));
         }
         if value.is_typedarray()? {
             return self.encode_typed_array(value, depth);
@@ -1971,7 +1971,7 @@ impl<'env> JsEncoder<'env> {
     }
 
     /// Encode a `Date` as the UTC millisecond instant it already is.
-    fn encode_date(&self, object: &Object<'env>) -> Result<Value> {
+    fn encode_date(&self, object: &Object<'env>) -> Result<Scalar> {
         let millis = self.date_get_time.apply(object, ())?;
         if !millis.is_finite() {
             return Err(napi_error(
@@ -1979,7 +1979,7 @@ impl<'env> JsEncoder<'env> {
             ));
         }
         #[allow(clippy::cast_possible_truncation)]
-        Value::datetime64(millis as i64, TimeUnit::Millisecond, Timezone::UTC).map_err(napi_error)
+        Scalar::datetime64(millis as i64, TimeUnit::Millisecond, Timezone::UTC).map_err(napi_error)
     }
 
     fn encode_branded_object(
@@ -1987,7 +1987,7 @@ impl<'env> JsEncoder<'env> {
         value: Unknown<'env>,
         object: &Object<'env>,
         depth: usize,
-    ) -> Result<Option<Value>> {
+    ) -> Result<Option<Scalar>> {
         if value.instanceof(self.map_constructor)? {
             if !self.has_exact_prototype(object, self.map_prototype)? {
                 return Err(napi_error(
@@ -2029,7 +2029,7 @@ impl<'env> JsEncoder<'env> {
                 ));
             }
             // A URL is its href, which is what every other runtime stores too.
-            return Ok(Some(Value::from(self.url_to_string.apply(object, ())?)));
+            return Ok(Some(Scalar::from(self.url_to_string.apply(object, ())?)));
         }
         if value.instanceof(self.regexp_constructor)? {
             if !self.has_exact_prototype(object, self.regexp_prototype)? {
@@ -2041,7 +2041,7 @@ impl<'env> JsEncoder<'env> {
             // string, so no second field is needed to keep the flags.
             let source = self.regexp_source_getter.call(*object)?;
             let flags = self.regexp_flags_getter.call(*object)?;
-            return Ok(Some(Value::from(format!("/{source}/{flags}"))));
+            return Ok(Some(Scalar::from(format!("/{source}/{flags}"))));
         }
         if self
             .regexp_is_regexp
@@ -2074,29 +2074,29 @@ impl<'env> JsEncoder<'env> {
             };
         }
 
-        // A Value is already a native value, so it crosses as itself. Every
+        // A Scalar is already a native value, so it crosses as itself. Every
         // other wrapper crosses as the canonical text it round-trips through,
         // because that is the one spelling every runtime can read back.
-        native_wrapper!(JsCodecValue, "Value", 0, Clone::clone);
-        native_wrapper!(JsDataType, "DataType", 1, |inner| Value::from(
+        native_wrapper!(JsScalar, "Scalar", 0, Clone::clone);
+        native_wrapper!(JsDataType, "DataType", 1, |inner| Scalar::from(
             ToString::to_string(inner)
         ));
-        native_wrapper!(JsField, "Field", 2, |inner| Value::from(
+        native_wrapper!(JsField, "Field", 2, |inner| Scalar::from(
             ToString::to_string(inner)
         ));
-        native_wrapper!(JsUri, "Uri", 3, |inner| Value::from(ToString::to_string(
+        native_wrapper!(JsUri, "Uri", 3, |inner| Scalar::from(ToString::to_string(
             inner
         )));
-        native_wrapper!(JsUrl, "Url", 4, |inner| Value::from(ToString::to_string(
+        native_wrapper!(JsUrl, "Url", 4, |inner| Scalar::from(ToString::to_string(
             inner
         )));
-        native_wrapper!(JsUrn, "Urn", 5, |inner| Value::from(ToString::to_string(
+        native_wrapper!(JsUrn, "Urn", 5, |inner| Scalar::from(ToString::to_string(
             inner
         )));
         Ok(None)
     }
 
-    fn encode_typed_array(&mut self, value: Unknown<'env>, depth: usize) -> Result<Value> {
+    fn encode_typed_array(&mut self, value: Unknown<'env>, depth: usize) -> Result<Scalar> {
         let object = value.coerce_to_object()?;
         let typed: TypedArray<'_> = self.extract_object(&object)?;
         let (constructor_name, prototype_index) = match typed.typed_array_type {
@@ -2124,11 +2124,11 @@ impl<'env> JsEncoder<'env> {
         // the numbers it holds, which is the shape its elements already have.
         if constructor_name == "Uint8Array" {
             let bytes: Uint8Array = self.extract_object(&object)?;
-            return Ok(Value::from(bytes.as_ref().to_vec()));
+            return Ok(Scalar::from(bytes.as_ref().to_vec()));
         }
         if constructor_name == "Uint8ClampedArray" {
             let bytes: Uint8ClampedArray = self.extract_object(&object)?;
-            return Ok(Value::from(bytes.as_ref().to_vec()));
+            return Ok(Scalar::from(bytes.as_ref().to_vec()));
         }
         let length = object.get::<u32>("length")?.unwrap_or(0);
         let mut values = Vec::with_capacity(length as usize);
@@ -2140,20 +2140,20 @@ impl<'env> JsEncoder<'env> {
                 })?;
             values.push(self.encode_at(item, depth + 1)?);
         }
-        Ok(Value::from_sequence(values))
+        Ok(Scalar::from_sequence(values))
     }
 
-    fn encode_array(&mut self, value: Unknown<'env>, depth: usize) -> Result<Value> {
+    fn encode_array(&mut self, value: Unknown<'env>, depth: usize) -> Result<Scalar> {
         let object = value.coerce_to_object()?;
         let length = object.get::<u32>("length")?.unwrap_or(0);
         let mut values = Vec::with_capacity(length as usize);
         for index in 0..length {
             match object.get::<Unknown<'_>>(&index.to_string())? {
                 Some(item) => values.push(self.encode_at(item, depth + 1)?),
-                None => values.push(Value::Null),
+                None => values.push(Scalar::Null),
             }
         }
-        Ok(Value::from_sequence(values))
+        Ok(Scalar::from_sequence(values))
     }
 
     /// Encode a `Map` as a native mapping over its own arbitrary keys.
@@ -2161,7 +2161,7 @@ impl<'env> JsEncoder<'env> {
     /// The core mapping already takes any value as a key, so a Map needs no
     /// wrapper. Two distinct JavaScript keys can still encode to one native
     /// key, and that collision is refused rather than silently collapsed.
-    fn encode_map(&mut self, object: &Object<'env>, depth: usize) -> Result<Value> {
+    fn encode_map(&mut self, object: &Object<'env>, depth: usize) -> Result<Scalar> {
         let entries = Self::iterator_values(object, self.map_entries)?;
         let mut values = Vec::with_capacity(entries.len());
         for entry in entries {
@@ -2172,19 +2172,19 @@ impl<'env> JsEncoder<'env> {
                 self.encode_required_property(&pair, "1", depth + 1, "Map value")?,
             ));
         }
-        Value::from_mapping(values).map_err(napi_error)
+        Scalar::from_mapping(values).map_err(napi_error)
     }
 
-    fn encode_set(&mut self, object: &Object<'env>, depth: usize) -> Result<Value> {
+    fn encode_set(&mut self, object: &Object<'env>, depth: usize) -> Result<Scalar> {
         let entries = Self::iterator_values(object, self.set_values)?;
         let mut values = Vec::with_capacity(entries.len());
         for entry in entries {
             values.push(match entry {
                 Some(entry) => self.encode_at(entry, depth + 1)?,
-                None => Value::Null,
+                None => Scalar::Null,
             });
         }
-        Ok(Value::from_sequence(values))
+        Ok(Scalar::from_sequence(values))
     }
 
     fn iterator_values(
@@ -2207,17 +2207,17 @@ impl<'env> JsEncoder<'env> {
         Ok(values)
     }
 
-    fn encode_properties(&mut self, object: &Object<'env>, depth: usize) -> Result<Value> {
+    fn encode_properties(&mut self, object: &Object<'env>, depth: usize) -> Result<Scalar> {
         let keys = Object::keys(object)?;
         let mut entries = Vec::with_capacity(keys.len());
         for key in keys {
             let value = match object.get::<Unknown<'_>>(&key)? {
                 Some(value) => self.encode_at(value, depth + 1)?,
-                None => Value::Null,
+                None => Scalar::Null,
             };
             entries.push((key, value));
         }
-        Value::from_record(entries).map_err(napi_error)
+        Scalar::from_record(entries).map_err(napi_error)
     }
 
     fn encode_required_property(
@@ -2226,13 +2226,13 @@ impl<'env> JsEncoder<'env> {
         name: &str,
         depth: usize,
         context: &str,
-    ) -> Result<Value> {
+    ) -> Result<Scalar> {
         if !object.has_named_property(name)? {
             return Err(napi_error(format!("{context} property is missing")));
         }
         match object.get::<Unknown<'_>>(name)? {
             Some(value) => self.encode_at(value, depth),
-            None => Ok(Value::Null),
+            None => Ok(Scalar::Null),
         }
     }
 
@@ -2264,7 +2264,7 @@ fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 6]> {
         ));
     }
     Ok([
-        required_array_object(values, 0, "Value")?,
+        required_array_object(values, 0, "Scalar")?,
         required_array_object(values, 1, "DataType")?,
         required_array_object(values, 2, "Field")?,
         required_array_object(values, 3, "Uri")?,
@@ -2320,36 +2320,36 @@ fn truncated(digits: &str) -> String {
     format!("{}…", &digits[..MAX_REPORTED_DIGITS])
 }
 
-fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<JsonValue> {
+fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<JsonValue> {
     if depth > max_depth {
         return Err(napi_error(format!(
             "decoded value exceeds maxDepth {max_depth}"
         )));
     }
     match value {
-        Value::Null => Ok(JsonValue::Null),
-        Value::Bool(value) => Ok(JsonValue::Bool(*value)),
-        Value::I8(value) => integer_transport(i128::from(*value)),
-        Value::I16(value) => integer_transport(i128::from(*value)),
-        Value::I32(value) => integer_transport(i128::from(*value)),
-        Value::I64(value) => integer_transport(i128::from(*value)),
-        Value::U8(value) => unsigned_transport(u128::from(*value)),
-        Value::U16(value) => unsigned_transport(u128::from(*value)),
-        Value::U32(value) => unsigned_transport(u128::from(*value)),
-        Value::U64(value) => unsigned_transport(u128::from(*value)),
-        Value::I128(value) => integer_transport(*value),
-        Value::U128(value) => unsigned_transport(*value),
-        Value::F16(value) => float_transport(value.as_f64()),
-        Value::F32(value) => float_transport(value.as_f64()),
-        Value::F64(value) => float_transport(value.as_f64()),
-        Value::String(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Null => Ok(JsonValue::Null),
+        Scalar::Bool(value) => Ok(JsonValue::Bool(*value)),
+        Scalar::I8(value) => integer_transport(i128::from(*value)),
+        Scalar::I16(value) => integer_transport(i128::from(*value)),
+        Scalar::I32(value) => integer_transport(i128::from(*value)),
+        Scalar::I64(value) => integer_transport(i128::from(*value)),
+        Scalar::U8(value) => unsigned_transport(u128::from(*value)),
+        Scalar::U16(value) => unsigned_transport(u128::from(*value)),
+        Scalar::U32(value) => unsigned_transport(u128::from(*value)),
+        Scalar::U64(value) => unsigned_transport(u128::from(*value)),
+        Scalar::I128(value) => integer_transport(*value),
+        Scalar::U128(value) => unsigned_transport(*value),
+        Scalar::F16(value) => float_transport(value.as_f64()),
+        Scalar::F32(value) => float_transport(value.as_f64()),
+        Scalar::F64(value) => float_transport(value.as_f64()),
+        Scalar::String(value) => Ok(JsonValue::String(value.to_string())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
-        Value::Bytes(value) | Value::Geospatial(value) => Ok(marker(
+        Scalar::Bytes(value) | Scalar::Geospatial(value) => Ok(marker(
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value)))],
         )),
-        Value::Sequence(values) => values
+        Scalar::Sequence(values) => values
             .iter()
             .map(|value| value_to_transport(value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
@@ -2357,41 +2357,41 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
         // A count is carried as text because a nanosecond instant needs more
         // than the 53 bits a JSON number keeps exactly; the JavaScript side
         // reads it as a bigint.
-        Value::D128(unscaled, scale) => Ok(marker(
+        Scalar::D128(unscaled, scale) => Ok(marker(
             "d128",
             [
                 ("value", JsonValue::String(unscaled.to_string())),
                 ("scale", JsonValue::Number(JsonNumber::from(*scale))),
             ],
         )),
-        Value::D256(unscaled, scale) => Ok(marker(
+        Scalar::D256(unscaled, scale) => Ok(marker(
             "d256",
             [
                 ("value", JsonValue::String(unscaled.to_string())),
                 ("scale", JsonValue::Number(JsonNumber::from(*scale))),
             ],
         )),
-        Value::Date32(count, unit, zone) => Ok(temporal_transport(
+        Scalar::Date32(count, unit, zone) => Ok(temporal_transport(
             "date32",
             i64::from(*count),
             *unit,
             zone,
             None,
         )),
-        Value::Date64(count, unit, zone) => {
+        Scalar::Date64(count, unit, zone) => {
             Ok(temporal_transport("date64", *count, *unit, zone, None))
         }
-        Value::Time32(count, unit, zone) => Ok(temporal_transport(
+        Scalar::Time32(count, unit, zone) => Ok(temporal_transport(
             "time32",
             i64::from(*count),
             *unit,
             zone,
             None,
         )),
-        Value::Time64(count, unit, zone) => {
+        Scalar::Time64(count, unit, zone) => {
             Ok(temporal_transport("time64", *count, *unit, zone, None))
         }
-        Value::DateTime64(count, unit, zone) => {
+        Scalar::DateTime64(count, unit, zone) => {
             let date = zone
                 .is_utc()
                 .then(|| value.temporal_count_at(TimeUnit::Millisecond))
@@ -2399,38 +2399,38 @@ fn value_to_transport(value: &Value, depth: usize, max_depth: usize) -> Result<J
                 .filter(|millis| millis.unsigned_abs() <= MAX_DATE_MILLISECONDS);
             Ok(temporal_transport("datetime64", *count, *unit, zone, date))
         }
-        Value::Duration32(count, unit, zone) => Ok(temporal_transport(
+        Scalar::Duration32(count, unit, zone) => Ok(temporal_transport(
             "duration32",
             i64::from(*count),
             *unit,
             zone,
             None,
         )),
-        Value::Duration64(count, unit, zone) => {
+        Scalar::Duration64(count, unit, zone) => {
             Ok(temporal_transport("duration64", *count, *unit, zone, None))
         }
-        Value::Mapping(entries) => mapping_transport(entries, depth, max_depth),
-        Value::Record(entries) => record_transport(entries, depth, max_depth),
+        Scalar::Mapping(entries) => mapping_transport(entries, depth, max_depth),
+        Scalar::Record(entries) => record_transport(entries, depth, max_depth),
     }
 }
 
 /// Project a typed core value into JavaScript while restoring struct names.
 ///
-/// Core rows stay ordered `Value::Sequence` values. At the language boundary
+/// Core rows stay ordered `Scalar::Sequence` values. At the language boundary
 /// a declared Struct becomes the object JavaScript uses for named records;
 /// nested structs, lists, maps, unions, and dictionary values follow the same
 /// field recursively.
 fn struct_transport_with_field(
-    value: &Value,
+    value: &Scalar,
     fields: &CoreFields,
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {
     let values = match value {
-        Value::Sequence(values) if values.len() == fields.len() => {
+        Scalar::Sequence(values) if values.len() == fields.len() => {
             fields.iter().zip(values.iter()).collect::<Vec<_>>()
         }
-        Value::Record(values) => fields
+        Scalar::Record(values) => fields
             .iter()
             .map(|field| {
                 values
@@ -2476,7 +2476,7 @@ fn struct_transport_with_field(
 }
 
 fn map_transport_with_field(
-    value: &Value,
+    value: &Scalar,
     map: &CoreMapType,
     depth: usize,
     max_depth: usize,
@@ -2500,7 +2500,7 @@ fn map_transport_with_field(
 }
 
 pub(crate) fn value_to_transport_with_field(
-    value: &Value,
+    value: &Scalar,
     field: &CoreField,
     depth: usize,
     max_depth: usize,
@@ -2564,19 +2564,19 @@ pub(crate) fn value_to_transport_with_field(
 
 /// Cross one decoded core value without lowering exact variants through JS.
 pub(crate) fn decoded_value_for_field(
-    value: Value,
+    value: Scalar,
     field: Option<&CoreField>,
     max_depth: usize,
-    native_value: bool,
-) -> Result<Either<JsCodecValue, JsonValue>> {
-    if native_value {
-        return Ok(Either::A(JsCodecValue::from_core(value)));
+    native_scalar: bool,
+) -> Result<Either<JsScalar, JsonValue>> {
+    if native_scalar {
+        return Ok(Either::A(JsScalar::from_core(value)));
     }
     value_to_transport_for_field(&value, field, max_depth).map(Either::B)
 }
 
 pub(crate) fn value_to_transport_for_field(
-    value: &Value,
+    value: &Scalar,
     field: Option<&CoreField>,
     max_depth: usize,
 ) -> Result<JsonValue> {
@@ -2610,7 +2610,7 @@ fn temporal_transport(
 }
 
 fn record_transport<K: AsRef<str> + Ord>(
-    entries: &std::collections::BTreeMap<K, Value>,
+    entries: &std::collections::BTreeMap<K, Scalar>,
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {
@@ -2683,7 +2683,7 @@ fn float_transport(value: f64) -> Result<JsonValue> {
 }
 
 fn mapping_transport(
-    entries: &[(Value, Value)],
+    entries: &[(Scalar, Scalar)],
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {

@@ -23,7 +23,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::PrimitiveType;
-use crate::{DataType, Error, Field, Result, Value};
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// The Iceberg property naming a schema identifier.
 pub(super) const SCHEMA_ID: &str = "schema-id";
@@ -60,7 +60,7 @@ const DECLARED_TYPE: &str = "type";
 /// Returns an error when the JSON is not a `struct` schema object, when a
 /// field is missing `id`, `name`, `required`, or `type`, or when a type has no
 /// core representation.
-pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field> {
+pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
     if schema.as_record().is_none() && schema.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg schema object, got {}",
@@ -70,7 +70,7 @@ pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field> {
 
     let type_name = schema
         .get_key_str("type")
-        .and_then(Value::as_str)
+        .and_then(Scalar::as_str)
         .unwrap_or("struct");
     if type_name != "struct" {
         return Err(invalid(format_smolstr!(
@@ -79,16 +79,16 @@ pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field> {
     }
 
     let mut root = struct_field_from_json(name, schema, false)?;
-    if let Some(id) = schema.get_key_str("schema-id").and_then(Value::as_i64) {
+    if let Some(id) = schema.get_key_str("schema-id").and_then(Scalar::as_i64) {
         root.iceberg_mut().insert(SCHEMA_ID, id.to_string())?;
     }
     if let Some(ids) = schema
         .get_key_str("identifier-field-ids")
-        .and_then(Value::as_sequence)
+        .and_then(Scalar::as_sequence)
     {
         let joined: Vec<String> = ids
             .iter()
-            .filter_map(Value::as_i64)
+            .filter_map(Scalar::as_i64)
             .map(|id| id.to_string())
             .collect();
         root.iceberg_mut().insert(IDENTIFIER, joined.join(","))?;
@@ -102,10 +102,10 @@ pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field> {
 ///
 /// Returns an error when the field is not a non-null struct root, when a
 /// column has no field id, or when a datatype has no Iceberg spelling.
-pub fn schema_to_json(root: &Field) -> Result<Value> {
+pub fn schema_to_json(root: &Field) -> Result<Scalar> {
     root.validate_struct_root()?;
 
-    let mut entries = vec![(Value::from("type"), Value::from("struct"))];
+    let mut entries = vec![(Scalar::from("type"), Scalar::from("struct"))];
     if let Some(id) = root.iceberg().get(SCHEMA_ID) {
         let id = id.parse::<i64>().map_err(|_| {
             invalid(format_smolstr!(
@@ -113,16 +113,16 @@ pub fn schema_to_json(root: &Field) -> Result<Value> {
                 root.iceberg().key(SCHEMA_ID)
             ))
         })?;
-        entries.push((Value::from("schema-id"), json_integer(id)));
+        entries.push((Scalar::from("schema-id"), json_integer(id)));
     }
     entries.push((
-        Value::from("fields"),
-        Value::from_sequence(fields_to_json(root)?),
+        Scalar::from("fields"),
+        Scalar::from_sequence(fields_to_json(root)?),
     ));
     if let Some(ids) = root.iceberg().get(IDENTIFIER) {
         let mut parsed = Vec::new();
         for id in ids.split(',').filter(|id| !id.is_empty()) {
-            parsed.push(Value::from(id.trim().parse::<i64>().map_err(|_| {
+            parsed.push(Scalar::from(id.trim().parse::<i64>().map_err(|_| {
                 invalid(format_smolstr!(
                     "expected comma-separated integers in {:?}, got {ids:?}",
                     root.iceberg().key(IDENTIFIER)
@@ -130,11 +130,11 @@ pub fn schema_to_json(root: &Field) -> Result<Value> {
             })?));
         }
         entries.push((
-            Value::from("identifier-field-ids"),
-            Value::from_sequence(parsed),
+            Scalar::from("identifier-field-ids"),
+            Scalar::from_sequence(parsed),
         ));
     }
-    Value::from_record(entries.into_iter().map(|(key, value)| {
+    Scalar::from_record(entries.into_iter().map(|(key, value)| {
         (
             SmolStr::new(
                 key.as_str()
@@ -172,10 +172,10 @@ pub fn last_field_id(root: &Field) -> Result<i32> {
 }
 
 /// Build a struct field from an Iceberg `fields` array.
-fn struct_field_from_json(name: &str, object: &Value, nullable: bool) -> Result<Field> {
+fn struct_field_from_json(name: &str, object: &Scalar, nullable: bool) -> Result<Field> {
     let entries = object
         .get_key_str("fields")
-        .and_then(Value::as_sequence)
+        .and_then(Scalar::as_sequence)
         .ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected an Iceberg \"fields\" array in {name}"
@@ -190,7 +190,7 @@ fn struct_field_from_json(name: &str, object: &Value, nullable: bool) -> Result<
 }
 
 /// Build one column from an Iceberg field object.
-fn field_from_json(entry: &Value) -> Result<Field> {
+fn field_from_json(entry: &Scalar) -> Result<Field> {
     if entry.as_record().is_none() && entry.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg field object, got {}",
@@ -200,11 +200,11 @@ fn field_from_json(entry: &Value) -> Result<Field> {
 
     let name = entry
         .get_key_str("name")
-        .and_then(Value::as_str)
+        .and_then(Scalar::as_str)
         .ok_or_else(|| invalid(SmolStr::new_static("expected an Iceberg field \"name\"")))?;
     let id = entry
         .get_key_str("id")
-        .and_then(Value::as_i64)
+        .and_then(Scalar::as_i64)
         .ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected an Iceberg field \"id\" on {name:?}"
@@ -213,7 +213,7 @@ fn field_from_json(entry: &Value) -> Result<Field> {
     // Iceberg states requirement; the core states nullability.
     let required = entry
         .get_key_str("required")
-        .and_then(Value::as_bool)
+        .and_then(Scalar::as_bool)
         .ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected an Iceberg field \"required\" flag on {name:?}"
@@ -228,7 +228,7 @@ fn field_from_json(entry: &Value) -> Result<Field> {
 
     let mut field = typed_field_from_json(name, type_json, !required)?;
     field.set_parquet_field_id(field_id(id, name)?);
-    if let Some(doc) = entry.get_key_str("doc").and_then(Value::as_str) {
+    if let Some(doc) = entry.get_key_str("doc").and_then(Scalar::as_str) {
         field.iceberg_mut().insert(DOC, doc)?;
     }
     // The v3 defaults are values, not schema, so they travel as encoded JSON
@@ -248,7 +248,7 @@ fn field_from_json(entry: &Value) -> Result<Field> {
 }
 
 /// Build a field from an Iceberg type, primitive or nested.
-fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Result<Field> {
+fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Result<Field> {
     if let Some(primitive) = type_json.as_str() {
         let parsed = PrimitiveType::from_str(primitive)?;
         let data_type = parsed.into_data_type()?;
@@ -268,7 +268,7 @@ fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Resul
         )));
     }
 
-    match type_json.get_key_str("type").and_then(Value::as_str) {
+    match type_json.get_key_str("type").and_then(Scalar::as_str) {
         Some("struct") => struct_field_from_json(name, type_json, nullable),
         Some("list") => {
             let element = type_json.get_key_str("element").ok_or_else(|| {
@@ -278,10 +278,10 @@ fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Resul
             })?;
             let required = type_json
                 .get_key_str("element-required")
-                .and_then(Value::as_bool)
+                .and_then(Scalar::as_bool)
                 .unwrap_or(true);
             let mut item = typed_field_from_json("element", element, !required)?;
-            if let Some(id) = type_json.get_key_str("element-id").and_then(Value::as_i64) {
+            if let Some(id) = type_json.get_key_str("element-id").and_then(Scalar::as_i64) {
                 item.set_parquet_field_id(field_id(id, name)?);
             }
             Ok(Field::new(name, DataType::list(item), nullable))
@@ -297,13 +297,13 @@ fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Resul
             let mut key = typed_field_from_json("key", key_json, false)?;
             let value_required = type_json
                 .get_key_str("value-required")
-                .and_then(Value::as_bool)
+                .and_then(Scalar::as_bool)
                 .unwrap_or(true);
             let mut value = typed_field_from_json("value", value_json, !value_required)?;
-            if let Some(id) = type_json.get_key_str("key-id").and_then(Value::as_i64) {
+            if let Some(id) = type_json.get_key_str("key-id").and_then(Scalar::as_i64) {
                 key.set_parquet_field_id(field_id(id, name)?);
             }
-            if let Some(id) = type_json.get_key_str("value-id").and_then(Value::as_i64) {
+            if let Some(id) = type_json.get_key_str("value-id").and_then(Scalar::as_i64) {
                 value.set_parquet_field_id(field_id(id, name)?);
             }
             let entries = Field::new("entries", DataType::from_fields([key, value])?, false);
@@ -317,7 +317,7 @@ fn typed_field_from_json(name: &str, type_json: &Value, nullable: bool) -> Resul
 }
 
 /// Render a struct field's children as Iceberg field objects.
-fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
+fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
     let fields = root.fields();
     let mut entries = Vec::with_capacity(fields.len());
     for field in fields {
@@ -328,20 +328,20 @@ fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
             ))
         })?;
         let mut object = vec![
-            (Value::from("id"), json_integer(i64::from(id))),
-            (Value::from("name"), Value::from(field.name())),
-            (Value::from("required"), Value::from(!field.is_nullable())),
-            (Value::from("type"), type_to_json(field)?),
+            (Scalar::from("id"), json_integer(i64::from(id))),
+            (Scalar::from("name"), Scalar::from(field.name())),
+            (Scalar::from("required"), Scalar::from(!field.is_nullable())),
+            (Scalar::from("type"), type_to_json(field)?),
         ];
         if let Some(doc) = field.iceberg().get(DOC) {
-            object.push((Value::from("doc"), Value::from(doc)));
+            object.push((Scalar::from("doc"), Scalar::from(doc)));
         }
         for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
             if let Some(encoded) = field.iceberg().get(property) {
-                object.push((Value::from(property), crate::json::from_utf8(encoded)?));
+                object.push((Scalar::from(property), crate::json::from_utf8(encoded)?));
             }
         }
-        entries.push(Value::from_record(object.into_iter().map(
+        entries.push(Scalar::from_record(object.into_iter().map(
             |(key, value)| {
                 (
                     SmolStr::new(
@@ -357,23 +357,23 @@ fn fields_to_json(root: &Field) -> Result<Vec<Value>> {
 }
 
 /// Render one field's datatype as an Iceberg type.
-fn type_to_json(field: &Field) -> Result<Value> {
+fn type_to_json(field: &Field) -> Result<Scalar> {
     match field.data_type() {
-        DataType::Struct(_) => Value::from_record([
-            ("type", Value::from("struct")),
-            ("fields", Value::from_sequence(fields_to_json(field)?)),
+        DataType::Struct(_) => Scalar::from_record([
+            ("type", Scalar::from("struct")),
+            ("fields", Scalar::from_sequence(fields_to_json(field)?)),
         ]),
         DataType::List(item) | DataType::LargeList(item) | DataType::ListView(item) => {
-            let mut object = vec![(Value::from("type"), Value::from("list"))];
+            let mut object = vec![(Scalar::from("type"), Scalar::from("list"))];
             if let Some(id) = item.parquet_field_id()? {
-                object.push((Value::from("element-id"), json_integer(i64::from(id))));
+                object.push((Scalar::from("element-id"), json_integer(i64::from(id))));
             }
-            object.push((Value::from("element"), type_to_json(item)?));
+            object.push((Scalar::from("element"), type_to_json(item)?));
             object.push((
-                Value::from("element-required"),
-                Value::from(!item.is_nullable()),
+                Scalar::from("element-required"),
+                Scalar::from(!item.is_nullable()),
             ));
-            Value::from_record(object.into_iter().map(|(key, value)| {
+            Scalar::from_record(object.into_iter().map(|(key, value)| {
                 (
                     SmolStr::new(
                         key.as_str()
@@ -397,20 +397,20 @@ fn type_to_json(field: &Field) -> Result<Value> {
                     field.name()
                 ))
             })?;
-            let mut object = vec![(Value::from("type"), Value::from("map"))];
+            let mut object = vec![(Scalar::from("type"), Scalar::from("map"))];
             if let Some(id) = key.parquet_field_id()? {
-                object.push((Value::from("key-id"), json_integer(i64::from(id))));
+                object.push((Scalar::from("key-id"), json_integer(i64::from(id))));
             }
-            object.push((Value::from("key"), type_to_json(key)?));
+            object.push((Scalar::from("key"), type_to_json(key)?));
             if let Some(id) = value.parquet_field_id()? {
-                object.push((Value::from("value-id"), json_integer(i64::from(id))));
+                object.push((Scalar::from("value-id"), json_integer(i64::from(id))));
             }
-            object.push((Value::from("value"), type_to_json(value)?));
+            object.push((Scalar::from("value"), type_to_json(value)?));
             object.push((
-                Value::from("value-required"),
-                Value::from(!value.is_nullable()),
+                Scalar::from("value-required"),
+                Scalar::from(!value.is_nullable()),
             ));
-            Value::from_record(object.into_iter().map(|(key, value)| {
+            Scalar::from_record(object.into_iter().map(|(key, value)| {
                 (
                     SmolStr::new(
                         key.as_str()
@@ -427,9 +427,9 @@ fn type_to_json(field: &Field) -> Result<Value> {
             if computed == PrimitiveType::Fixed(16)
                 && field.iceberg().get(DECLARED_TYPE) == Some("uuid")
             {
-                return Ok(Value::from("uuid"));
+                return Ok(Scalar::from("uuid"));
             }
-            Ok(Value::from(computed.to_string()))
+            Ok(Scalar::from(computed.to_string()))
         }
     }
 }
@@ -444,8 +444,8 @@ fn field_id(id: i64, name: &str) -> Result<i32> {
 }
 
 /// Spell a JSON integer with the same signedness the natural parser infers.
-fn json_integer(value: i64) -> Value {
-    u64::try_from(value).map_or_else(|_| Value::from(value), Value::from)
+fn json_integer(value: i64) -> Scalar {
+    u64::try_from(value).map_or_else(|_| Scalar::from(value), Scalar::from)
 }
 
 /// Report a malformed Iceberg schema document.

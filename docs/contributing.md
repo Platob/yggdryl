@@ -34,17 +34,17 @@ Start with the repository-wide `AGENTS.md`, which is the normative version of ev
 ## Where things go
 
 ```text
-rust/src/enums/      shared vocabulary     -> rust/tests/enums.rs       -> docs/enums.md
+rust/src/generic/    shared vocabulary     -> rust/tests/enums.rs       -> docs/generic.md
 rust/src/datatype/   logical types         -> rust/tests/datatype/      -> docs/datatype.md
 rust/src/field/      schema and casting    -> rust/tests/field/         -> docs/field.md
 rust/src/arrow/      scalars, projection   -> rust/tests/*.rs           -> docs/arrow.md
 rust/src/io/         IOBase, Buffer, roles -> rust/src/io/tests.rs      -> docs/io.md
-rust/src/generic/    enums and Value       -> rust/src/generic/**       -> docs/generic.md
+rust/src/generic/    enums and Scalar       -> rust/src/generic/**       -> docs/generic.md
 rust/src/local/      Path, Folder, File    -> rust/src/local/tests.rs   -> docs/local.md
 rust/src/gzip|zlib|zstd/ content codings   -> beside each module        -> docs/<name>.md
 rust/src/ipc|parquet|iceberg/ encodings    -> beside each module        -> docs/<name>.md
 rust/src/uri.rs      identifiers           -> rust/tests/uri.rs         -> docs/uri.md
-rust/src/text/       Value and text codecs -> rust/tests/text/          -> docs/text.md
+rust/src/text/       Scalar and text codecs -> rust/tests/text/          -> docs/text.md
 rust/src/json|yaml|toml/ formats           -> rust/tests/<format>.rs    -> docs/<format>.md
 
 python/src/*.rs      PyO3 views of core values

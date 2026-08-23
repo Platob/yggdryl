@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use yggdryl::OwnedDifferences;
 
 use crate::codec::{
-    PyCodecValueIterator, codec_decode, codec_decode_all, codec_decode_all_reader,
+    PyCodecScalarIterator, codec_decode, codec_decode_all, codec_decode_all_reader,
     codec_decode_all_text, codec_decode_inferred, codec_decode_inferred_text, codec_decode_iter,
     codec_decode_reader, codec_decode_text, codec_encode, codec_encode_all,
     codec_encode_all_writer, codec_encode_path, codec_encode_writer, codec_infer, codec_infer_path,
@@ -19,8 +19,8 @@ use crate::field::{
     PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolMetadata,
 };
 use crate::media::{PyMediaType, PyMediaTypeIterator, PyMimeType};
+use crate::scalar::PyScalar;
 use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
-use crate::value::PyValue;
 
 mod arrowfs;
 mod avro;
@@ -33,9 +33,9 @@ mod iceberg;
 mod io;
 mod media;
 mod record;
+mod scalar;
 mod timezone;
 mod uri;
-mod value;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -54,12 +54,12 @@ fn compare(ordering: Ordering, operation: CompareOp) -> bool {
 
 /// Fold the core's unsigned stable hash into Python's signed `Py_hash_t`.
 ///
-/// CPython reserves `-1` as an error sentinel, so that one result follows the
+/// `CPython` reserves `-1` as an error sentinel, so that one result follows the
 /// interpreter's own convention and becomes `-2`. The stable public accessor
 /// remains the full `u64`; only the `hash()` protocol needs this narrowing.
 pub(crate) const fn python_hash(stable: u64) -> isize {
     #[cfg(target_pointer_width = "64")]
-    let value = stable as i64 as isize;
+    let value = isize::from_ne_bytes(stable.to_ne_bytes());
     #[cfg(target_pointer_width = "32")]
     let value = ((stable ^ (stable >> 32)) as u32 as i32) as isize;
     if value == -1 { -2 } else { value }
@@ -225,9 +225,7 @@ impl PyDifferenceIterator {
 #[pyo3(name = "_enum_values")]
 fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     use pyo3::types::PyDict;
-    use yggdryl::{
-        Codec, DataTypeId, DataTypeKind, IOKind, Scheme, TimeUnit, UnionMode, WriteMode,
-    };
+    use yggdryl::{Codec, DataTypeId, DataTypeKind, IOKind, IOMode, Scheme, TimeUnit, UnionMode};
 
     let listing = PyDict::new(py);
     listing.set_item(
@@ -243,10 +241,7 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         "union_modes",
         UnionMode::ALL.map(UnionMode::as_str).to_vec(),
     )?;
-    listing.set_item(
-        "write_modes",
-        WriteMode::ALL.map(WriteMode::as_str).to_vec(),
-    )?;
+    listing.set_item("io_modes", IOMode::ALL.map(IOMode::as_str).to_vec())?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
     listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
     listing.set_item(
@@ -273,9 +268,9 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
     module.add_class::<PyField>()?;
-    module.add_class::<PyValue>()?;
-    module.add_class::<value::PyValueIterator>()?;
-    module.add_class::<value::PyValueEntryIterator>()?;
+    module.add_class::<PyScalar>()?;
+    module.add_class::<scalar::PyScalarIterator>()?;
+    module.add_class::<scalar::PyScalarEntryIterator>()?;
     module.add_class::<avro::PyAvroSchema>()?;
     module.add_class::<avro::PyAvroContainer>()?;
     module.add_class::<avro::PyAvroBlock>()?;
@@ -290,7 +285,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolMetadata>()?;
     module.add_class::<PyDifferenceIterator>()?;
-    module.add_class::<PyCodecValueIterator>()?;
+    module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;
     module.add_class::<PyMediaType>()?;
     module.add_class::<PyMediaTypeIterator>()?;

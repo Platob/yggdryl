@@ -13,17 +13,17 @@
 //!
 //! # An expression is not a value
 //!
-//! [`Value`](crate::Value) is the codec's lossless value tree: structural,
+//! [`Scalar`](crate::Scalar) is the codec's lossless value tree: structural,
 //! serializable, and meaningful on its own. An `Expression` is a computation
 //! whose meaning depends on a schema. They meet at exactly two points -
-//! [`Expression::Literal`] going in, and evaluation producing a `Value` coming
-//! out - and keeping them apart is what lets `Value` stay plain structural data
+//! [`Expression::Literal`] going in, and evaluation producing a `Scalar` coming
+//! out - and keeping them apart is what lets `Scalar` stay plain structural data
 //! while an expression carries schema-dependent meaning.
 //!
 //! # The four stages
 //!
 //! ```text
-//! text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶ Value | ArrayRef | mask
+//! text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶ Scalar | ArrayRef | mask
 //! ```
 //!
 //! 1. **Parse** ([`FromStr`](std::str::FromStr)) - one recursive grammar,
@@ -36,7 +36,7 @@
 //!    and conjuncts are ordered cheapest-first. This happens **once per
 //!    stream**, never per batch and never per row.
 //! 4. **Evaluate** - the one [`Bound`] answers three ways: row at a time over
-//!    [`Value`](crate::Value), vectorized over an Arrow `RecordBatch`, and
+//!    [`Scalar`](crate::Scalar), vectorized over an Arrow `RecordBatch`, and
 //!    three-valued over container statistics so a file, a manifest, or a
 //!    directory is skipped without being read. Each way is one target's
 //!    [`ApplyExpression`] implementation - the target owns how an expression
@@ -65,7 +65,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Result, TypedValue};
+use crate::{DataType, Error, Result, TypedScalar};
 
 pub use apply::{ApplyExpression, ApplyExpressionStream};
 pub use bind::{Bound, BoundStatement};
@@ -104,7 +104,7 @@ pub enum Segment {
     /// `['k']` - one map entry by key, the key read once through the map's own
     /// key type. A struct child may also be reached this way when the key is
     /// text, which is the spelling JSON tooling already uses.
-    Key(TypedValue),
+    Key(TypedScalar),
 }
 
 impl Segment {
@@ -126,8 +126,8 @@ impl Segment {
     ///
     /// Returns an error when the value and the datatype it is paired with
     /// disagree.
-    pub fn key(value: crate::Value) -> Result<Self> {
-        Ok(Self::Key(TypedValue::from_value(value)?))
+    pub fn key(value: crate::Scalar) -> Result<Self> {
+        Ok(Self::Key(TypedScalar::from_value(value)?))
     }
 }
 
@@ -536,10 +536,10 @@ pub enum Expression {
     // ---- Leaves: nodes with no expression children -----------------------
     /// A constant, carrying the datatype it belongs to.
     ///
-    /// A literal is a [`TypedValue`] and never a bare Rust primitive, so
+    /// A literal is a [`TypedScalar`] and never a bare Rust primitive, so
     /// `decimal '1.50'` stays an exact decimal at scale two all the way to the
     /// comparison rather than becoming an integer that happens to print alike.
-    Literal(TypedValue),
+    Literal(TypedScalar),
     /// A top-level column of the row, by name.
     Column(SmolStr),
     /// A path into a nested value: a base expression and the steps that reach
@@ -627,28 +627,28 @@ impl Expression {
     /// The expression that is true for every row.
     #[must_use]
     pub fn always_true() -> Self {
-        Self::literal(crate::Value::Bool(true))
+        Self::literal(crate::Scalar::Bool(true))
     }
 
     /// The expression that is true for no row.
     #[must_use]
     pub fn always_false() -> Self {
-        Self::literal(crate::Value::Bool(false))
+        Self::literal(crate::Scalar::Bool(false))
     }
 
     /// Hold a constant, inferring the datatype it belongs to.
     ///
     /// # Panics
     ///
-    /// Never: every [`Value`](crate::Value) this crate builds names a datatype,
+    /// Never: every [`Scalar`](crate::Scalar) this crate builds names a datatype,
     /// and one that does not is held as the null it is.
     #[must_use]
-    pub fn literal(value: impl Into<crate::Value>) -> Self {
+    pub fn literal(value: impl Into<crate::Scalar>) -> Self {
         let value = value.into();
-        TypedValue::from_value(value).map_or_else(
+        TypedScalar::from_value(value).map_or_else(
             |_| {
                 Self::Literal(
-                    TypedValue::from_parts(DataType::Null, crate::Value::Null)
+                    TypedScalar::from_parts(DataType::Null, crate::Scalar::Null)
                         .unwrap_or_else(|_| unreachable!("null belongs to the null datatype")),
                 )
             },
@@ -661,8 +661,8 @@ impl Expression {
     /// # Errors
     ///
     /// Returns an error when the value and the datatype disagree.
-    pub fn typed_literal(data_type: DataType, value: crate::Value) -> Result<Self> {
-        Ok(Self::Literal(TypedValue::from_parts(data_type, value)?))
+    pub fn typed_literal(data_type: DataType, value: crate::Scalar) -> Result<Self> {
+        Ok(Self::Literal(TypedScalar::from_parts(data_type, value)?))
     }
 
     /// Name a top-level column.
@@ -901,7 +901,7 @@ impl Expression {
     pub fn neg(self) -> Self {
         if let Self::Literal(held) = &self {
             if let Some(negated) = negate_value(held.value()) {
-                if let Ok(folded) = TypedValue::from_parts(held.data_type().clone(), negated) {
+                if let Ok(folded) = TypedScalar::from_parts(held.data_type().clone(), negated) {
                     return Self::Literal(folded);
                 }
             }
@@ -946,7 +946,7 @@ impl Expression {
     /// Borrow the constant this expression holds, if it holds one.
     #[must_use]
     #[inline]
-    pub const fn as_literal(&self) -> Option<&TypedValue> {
+    pub const fn as_literal(&self) -> Option<&TypedScalar> {
         match self {
             Self::Literal(value) => Some(value),
             _ => None,
@@ -967,7 +967,7 @@ impl Expression {
     #[must_use]
     pub fn is_always_true(&self) -> bool {
         match self {
-            Self::Literal(held) => matches!(held.value(), crate::Value::Bool(true)),
+            Self::Literal(held) => matches!(held.value(), crate::Scalar::Bool(true)),
             Self::And(operands) => operands.is_empty(),
             _ => false,
         }
@@ -977,7 +977,7 @@ impl Expression {
     #[must_use]
     pub fn is_always_false(&self) -> bool {
         match self {
-            Self::Literal(held) => matches!(held.value(), crate::Value::Bool(false)),
+            Self::Literal(held) => matches!(held.value(), crate::Scalar::Bool(false)),
             Self::Or(operands) => operands.is_empty(),
             _ => false,
         }
@@ -1367,21 +1367,21 @@ impl PartialOrd for Segment {
 /// Every signed family answers; an unsigned one does not, because `-1` is not
 /// a `uint8` and silently widening it would change the type a comparison runs
 /// in. A value that cannot be negated keeps its [`Expression::Negate`] node.
-fn negate_value(value: &crate::Value) -> Option<crate::Value> {
+fn negate_value(value: &crate::Scalar) -> Option<crate::Scalar> {
     matches!(
         value,
-        crate::Value::I8(_)
-            | crate::Value::I16(_)
-            | crate::Value::I32(_)
-            | crate::Value::I64(_)
-            | crate::Value::I128(_)
-            | crate::Value::F16(_)
-            | crate::Value::F32(_)
-            | crate::Value::F64(_)
-            | crate::Value::D128(..)
-            | crate::Value::D256(..)
-            | crate::Value::Duration32(..)
-            | crate::Value::Duration64(..)
+        crate::Scalar::I8(_)
+            | crate::Scalar::I16(_)
+            | crate::Scalar::I32(_)
+            | crate::Scalar::I64(_)
+            | crate::Scalar::I128(_)
+            | crate::Scalar::F16(_)
+            | crate::Scalar::F32(_)
+            | crate::Scalar::F64(_)
+            | crate::Scalar::D128(..)
+            | crate::Scalar::D256(..)
+            | crate::Scalar::Duration32(..)
+            | crate::Scalar::Duration64(..)
     )
     .then(|| value.checked_neg().ok())
     .flatten()
@@ -1548,6 +1548,6 @@ pub fn col(name: impl Into<SmolStr>) -> Expression {
 
 /// Build a constant. The free spelling of [`Expression::literal`].
 #[must_use]
-pub fn lit(value: impl Into<crate::Value>) -> Expression {
+pub fn lit(value: impl Into<crate::Scalar>) -> Expression {
     Expression::literal(value)
 }

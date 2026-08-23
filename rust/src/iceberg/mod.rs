@@ -15,7 +15,7 @@
 //!
 //! The vocabulary is the crate's own. A schema is a non-null struct
 //! [`Field`](crate::Field) whose children carry `PARQUET:field_id`, a metadata
-//! document is a [`Value`](crate::Value) read by [`crate::json`], a data file
+//! document is a [`Scalar`](crate::Scalar) read by [`crate::json`], a data file
 //! is whatever
 //! [`crate::parquet`] wrote plus the statistics it reported, and a scan is a
 //! [`BatchReader`](crate::arrow::BatchReader) with the same column pushdown
@@ -262,7 +262,7 @@ impl Located {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
-        options.require_write_mode(crate::WriteMode::Overwrite)?;
+        options.require_write_mode(crate::IOMode::Overwrite)?;
         let commit_row_size = options.require_commit_row_size()?;
         let stored = self.table.schema()?.clone();
         let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
@@ -304,7 +304,7 @@ impl Located {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
-        options.require_write_mode(crate::WriteMode::Append)?;
+        options.require_write_mode(crate::IOMode::Append)?;
         let commit_row_size = options.require_commit_row_size()?;
         options.require_write_limits()?;
         if options.write_limit_is_zero() {
@@ -339,7 +339,7 @@ impl Located {
     ) -> Result<()> {
         use crate::generic::IORecordOptions;
 
-        options.require_write_mode(crate::WriteMode::Merge)?;
+        options.require_write_mode(crate::IOMode::Merge)?;
         let commit_row_size = options.require_commit_row_size()?;
         options.require_write_limits()?;
         let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {

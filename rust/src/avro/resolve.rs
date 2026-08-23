@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::enums::TimeUnit;
-use crate::{Limits, Result, Timezone, Value};
+use crate::generic::TimeUnit;
+use crate::{Limits, Result, Scalar, Timezone};
 
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid};
 use super::schema::{EnumType, Node, Schema, Wire};
@@ -69,7 +69,7 @@ struct RecordPlan {
     /// One step per writer field, in encoding order.
     steps: Vec<Step>,
     /// Reader defaults for fields the writer never wrote: slot and value.
-    fills: Vec<(usize, Value)>,
+    fills: Vec<(usize, Scalar)>,
     /// The reader's field names, in reader order, for assembling the row.
     reader_fields: Arc<[SmolStr]>,
 }
@@ -127,7 +127,7 @@ impl Resolution {
         cursor: &mut Cursor<'_>,
         limits: Limits,
         budget: &mut usize,
-    ) -> Result<Value> {
+    ) -> Result<Scalar> {
         let runner = Runner {
             resolution: self,
             reader: DatumCodec {
@@ -401,7 +401,7 @@ impl Runner<'_> {
         cursor: &mut Cursor<'_>,
         depth: usize,
         budget: &mut usize,
-    ) -> Result<Value> {
+    ) -> Result<Scalar> {
         match op {
             Op::Leaf { from, reader } => {
                 self.reader.spend(budget)?;
@@ -434,7 +434,7 @@ impl Runner<'_> {
                         values.push(self.run(items, cursor, depth, budget)?);
                     }
                 }
-                Ok(Value::from_sequence(values))
+                Ok(Scalar::from_sequence(values))
             }
             Op::Map(values) => {
                 self.reader.spend(budget)?;
@@ -453,10 +453,10 @@ impl Runner<'_> {
                                 format_smolstr!("expected UTF-8 in an Avro map key, got {error}"),
                             )
                         })?;
-                        entries.push((Value::from(key), self.run(values, cursor, depth, budget)?));
+                        entries.push((Scalar::from(key), self.run(values, cursor, depth, budget)?));
                     }
                 }
-                Value::from_mapping(entries)
+                Scalar::from_mapping(entries)
             }
             Op::Enum(plan) => {
                 self.reader.spend(budget)?;
@@ -484,7 +484,7 @@ impl Runner<'_> {
                         ),
                     )
                 })?;
-                Ok(Value::String(symbol.clone()))
+                Ok(Scalar::String(symbol.clone()))
             }
             Op::FromUnion(branches) => {
                 self.reader.spend(budget)?;
@@ -515,10 +515,10 @@ impl Runner<'_> {
         cursor: &mut Cursor<'_>,
         depth: usize,
         budget: &mut usize,
-    ) -> Result<Value> {
+    ) -> Result<Scalar> {
         self.reader.spend(budget)?;
         let depth = self.reader.descend(depth)?;
-        let mut values: Vec<Value> = vec![Value::Null; plan.reader_fields.len()];
+        let mut values: Vec<Scalar> = vec![Scalar::Null; plan.reader_fields.len()];
         for (index, default) in &plan.fills {
             values[*index] = default.clone();
         }
@@ -530,7 +530,7 @@ impl Runner<'_> {
                 Step::Skip(node) => self.writer.skip(node, cursor, depth, budget)?,
             }
         }
-        Value::from_record(
+        Scalar::from_record(
             plan.reader_fields
                 .iter()
                 .zip(values)
@@ -540,20 +540,20 @@ impl Runner<'_> {
 }
 
 /// Decode one leaf: read the writer's wire shape, present the reader's value.
-fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Value> {
+fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scalar> {
     // Read the raw writer value first; every legal (wire, reader) pairing was
     // proven when the plan was built.
     Ok(match reader {
-        Node::Null => Value::Null,
-        Node::Boolean => Value::Bool(cursor.take(1)?.first().is_some_and(|byte| *byte != 0)),
-        Node::Int => Value::I32(cursor.int()?),
-        Node::Long => Value::I64(read_integer(from, cursor)?),
+        Node::Null => Scalar::Null,
+        Node::Boolean => Scalar::Bool(cursor.take(1)?.first().is_some_and(|byte| *byte != 0)),
+        Node::Int => Scalar::I32(cursor.int()?),
+        Node::Long => Scalar::I64(read_integer(from, cursor)?),
         Node::Float => {
             let value = match from {
                 Wire::Float => cursor.float()?,
                 _ => read_integer(from, cursor)? as f32,
             };
-            Value::from(value)
+            Scalar::from(value)
         }
         Node::Double => {
             let value = match from {
@@ -561,43 +561,43 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Value
                 Wire::Float => f64::from(cursor.float()?),
                 _ => read_integer(from, cursor)? as f64,
             };
-            Value::from(value)
+            Scalar::from(value)
         }
-        Node::Bytes => Value::Bytes(Arc::from(cursor.bytes()?)),
-        Node::String | Node::Uuid => Value::String(SmolStr::new(cursor.string()?)),
-        Node::Date => Value::date32(cursor.int()?),
-        Node::TimeMillis => Value::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?,
-        Node::TimeMicros => Value::time64(
+        Node::Bytes => Scalar::Bytes(Arc::from(cursor.bytes()?)),
+        Node::String | Node::Uuid => Scalar::String(SmolStr::new(cursor.string()?)),
+        Node::Date => Scalar::date32(cursor.int()?),
+        Node::TimeMillis => Scalar::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?,
+        Node::TimeMicros => Scalar::time64(
             read_integer(from, cursor)?,
             TimeUnit::Microsecond,
             Timezone::NAIVE,
         )?,
-        Node::TimestampMillis => Value::datetime64(
+        Node::TimestampMillis => Scalar::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Millisecond,
             Timezone::UTC,
         )?,
-        Node::TimestampMicros => Value::datetime64(
+        Node::TimestampMicros => Scalar::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Microsecond,
             Timezone::UTC,
         )?,
-        Node::TimestampNanos => Value::datetime64(
+        Node::TimestampNanos => Scalar::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Nanosecond,
             Timezone::UTC,
         )?,
-        Node::LocalTimestampMillis => Value::datetime64(
+        Node::LocalTimestampMillis => Scalar::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Millisecond,
             Timezone::NAIVE,
         )?,
-        Node::LocalTimestampMicros => Value::datetime64(
+        Node::LocalTimestampMicros => Scalar::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Microsecond,
             Timezone::NAIVE,
         )?,
-        Node::LocalTimestampNanos => Value::datetime64(
+        Node::LocalTimestampNanos => Scalar::datetime64(
             read_integer(from, cursor)?,
             TimeUnit::Nanosecond,
             Timezone::NAIVE,
@@ -616,14 +616,14 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Value
                     ),
                 )
             })?;
-            Value::d128(unscaled, decimal.scale as i8)
+            Scalar::d128(unscaled, decimal.scale as i8)
         }
         Node::Duration(_) | Node::UuidFixed(_) | Node::Fixed(_) => {
             let size = match from {
                 Wire::Fixed(size) => size,
                 _ => 0,
             };
-            Value::Bytes(Arc::from(cursor.take(size)?))
+            Scalar::Bytes(Arc::from(cursor.take(size)?))
         }
         // Containers never reach a leaf op; the builder proved as much.
         other => {
@@ -716,17 +716,17 @@ fn locate(error: crate::Error, record: &str, field: &str) -> crate::Error {
 const MAX_DEFAULT_DEPTH: usize = 64;
 
 /// Convert a schema-declared JSON default into the value a reader fills with.
-fn default_value(node: &Node, default: &Value, names: &HashMap<SmolStr, Node>) -> Result<Value> {
+fn default_value(node: &Node, default: &Scalar, names: &HashMap<SmolStr, Node>) -> Result<Scalar> {
     default_value_at(node, default, names, 0)
 }
 
 /// [`default_value`], bounded like every other recursive walk in the codec.
 fn default_value_at(
     node: &Node,
-    default: &Value,
+    default: &Scalar,
     names: &HashMap<SmolStr, Node>,
     depth: usize,
-) -> Result<Value> {
+) -> Result<Scalar> {
     if depth >= MAX_DEFAULT_DEPTH {
         return Err(invalid(format_smolstr!(
             "expected a default at most {MAX_DEFAULT_DEPTH} levels deep"
@@ -738,33 +738,33 @@ fn default_value_at(
             if !default.is_null() {
                 return Err(bad_default("null", default));
             }
-            Value::Null
+            Scalar::Null
         }
-        Node::Boolean => Value::Bool(
+        Node::Boolean => Scalar::Bool(
             default
                 .as_bool()
                 .ok_or_else(|| bad_default("boolean", default))?,
         ),
-        Node::Int => Value::I32(default_int(default, "int")?),
-        Node::Long => Value::I64(
+        Node::Int => Scalar::I32(default_int(default, "int")?),
+        Node::Long => Scalar::I64(
             default
                 .as_i64()
                 .ok_or_else(|| bad_default("long", default))?,
         ),
-        Node::Float => Value::from(
+        Node::Float => Scalar::from(
             default
                 .as_f64()
                 .or_else(|| default.as_i64().map(|value| value as f64))
                 .ok_or_else(|| bad_default("float", default))? as f32,
         ),
-        Node::Double => Value::from(
+        Node::Double => Scalar::from(
             default
                 .as_f64()
                 .or_else(|| default.as_i64().map(|value| value as f64))
                 .ok_or_else(|| bad_default("double", default))?,
         ),
         // A bytes default is a JSON string whose code points are the bytes.
-        Node::Bytes => Value::Bytes(default_bytes(default)?.into()),
+        Node::Bytes => Scalar::Bytes(default_bytes(default)?.into()),
         Node::Fixed(fixed) | Node::Duration(fixed) | Node::UuidFixed(fixed) => {
             let bytes = default_bytes(default)?;
             if bytes.len() != fixed.size {
@@ -774,26 +774,26 @@ fn default_value_at(
                     bytes.len()
                 )));
             }
-            Value::Bytes(bytes.into())
+            Scalar::Bytes(bytes.into())
         }
         Node::Decimal(decimal) => {
             let bytes = default_bytes(default)?;
             let unscaled = super::datum::decimal_from_bytes(&bytes)
                 .ok_or_else(|| bad_default("decimal", default))?;
-            Value::d128(unscaled, decimal.scale as i8)
+            Scalar::d128(unscaled, decimal.scale as i8)
         }
-        Node::String | Node::Uuid | Node::Enum(_) => Value::String(SmolStr::new(
+        Node::String | Node::Uuid | Node::Enum(_) => Scalar::String(SmolStr::new(
             default
                 .as_str()
                 .ok_or_else(|| bad_default(node.kind(), default))?,
         )),
-        Node::Date => Value::date32(default_int(default, "date")?),
-        Node::TimeMillis => Value::time32(
+        Node::Date => Scalar::date32(default_int(default, "date")?),
+        Node::TimeMillis => Scalar::time32(
             default_int(default, "time-millis")?,
             TimeUnit::Millisecond,
             Timezone::NAIVE,
         )?,
-        Node::TimeMicros => Value::time64(
+        Node::TimeMicros => Scalar::time64(
             default
                 .as_i64()
                 .ok_or_else(|| bad_default("time-micros", default))?,
@@ -809,7 +809,7 @@ fn default_value_at(
                 Node::TimestampNanos => TimeUnit::Nanosecond,
                 _ => TimeUnit::Microsecond,
             };
-            Value::datetime64(count, unit, Timezone::UTC)?
+            Scalar::datetime64(count, unit, Timezone::UTC)?
         }
         Node::LocalTimestampMillis | Node::LocalTimestampMicros | Node::LocalTimestampNanos => {
             let count = default
@@ -820,7 +820,7 @@ fn default_value_at(
                 Node::LocalTimestampNanos => TimeUnit::Nanosecond,
                 _ => TimeUnit::Microsecond,
             };
-            Value::datetime64(count, unit, Timezone::NAIVE)?
+            Scalar::datetime64(count, unit, Timezone::NAIVE)?
         }
         // A union default always describes the union's first branch.
         Node::Union(branches) => match branches.first() {
@@ -835,7 +835,7 @@ fn default_value_at(
             for value in values {
                 converted.push(default_value_at(items, value, names, depth)?);
             }
-            Value::from_sequence(converted)
+            Scalar::from_sequence(converted)
         }
         Node::Map(values) => {
             let entries = default
@@ -845,7 +845,7 @@ fn default_value_at(
             for (key, value) in entries {
                 converted.push((key.clone(), default_value_at(values, value, names, depth)?));
             }
-            Value::from_mapping(converted)?
+            Scalar::from_mapping(converted)?
         }
         Node::Record(record) => {
             if default.as_record().is_none() && default.as_mapping().is_none() {
@@ -868,7 +868,7 @@ fn default_value_at(
                 };
                 entries.push((field.name.clone(), value));
             }
-            Value::from_record(entries)?
+            Scalar::from_record(entries)?
         }
         Node::Ref(name) => {
             let target = names
@@ -881,7 +881,7 @@ fn default_value_at(
 }
 
 /// Read an integer default that must fit 32 bits.
-fn default_int(default: &Value, expected: &str) -> Result<i32> {
+fn default_int(default: &Scalar, expected: &str) -> Result<i32> {
     default
         .as_i64()
         .and_then(|value| i32::try_from(value).ok())
@@ -889,7 +889,7 @@ fn default_int(default: &Value, expected: &str) -> Result<i32> {
 }
 
 /// Read a bytes default: a JSON string whose code points are the bytes.
-fn default_bytes(default: &Value) -> Result<Vec<u8>> {
+fn default_bytes(default: &Scalar) -> Result<Vec<u8>> {
     let text = default
         .as_str()
         .ok_or_else(|| bad_default("bytes", default))?;
@@ -905,7 +905,7 @@ fn default_bytes(default: &Value) -> Result<Vec<u8>> {
 }
 
 /// Report a default that does not fit the schema it defaults.
-fn bad_default(expected: &str, default: &Value) -> crate::Error {
+fn bad_default(expected: &str, default: &Scalar) -> crate::Error {
     invalid(format_smolstr!(
         "expected an Avro {expected} default, got {}",
         default.kind()

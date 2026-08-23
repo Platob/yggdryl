@@ -8,7 +8,7 @@ use parquet::file::metadata::ParquetMetaData;
 use parquet::file::statistics::Statistics;
 
 use super::GeospatialStatistics;
-use crate::Value;
+use crate::Scalar;
 
 /// Bounds and counts for one column chunk within one row group.
 ///
@@ -163,111 +163,111 @@ impl FileStatistics {
 /// Footer key/value entries stay an ordered sequence rather than becoming a
 /// mapping: Parquet permits repeated keys, and a binding must not silently
 /// discard one while adapting the native value to a language object.
-impl From<FileStatistics> for Value {
+impl From<FileStatistics> for Scalar {
     fn from(statistics: FileStatistics) -> Self {
         statistics_record([
-            ("num_rows", Value::I64(statistics.num_rows)),
+            ("num_rows", Scalar::I64(statistics.num_rows)),
             (
                 "created_by",
-                statistics.created_by.map_or(Value::Null, Value::from),
+                statistics.created_by.map_or(Scalar::Null, Scalar::from),
             ),
             (
                 "key_value_metadata",
-                Value::from_sequence(statistics.key_value_metadata.into_iter().map(
+                Scalar::from_sequence(statistics.key_value_metadata.into_iter().map(
                     |(key, value)| {
                         statistics_record([
-                            ("key", Value::from(key)),
-                            ("value", Value::from(value)),
+                            ("key", Scalar::from(key)),
+                            ("value", Scalar::from(value)),
                         ])
                     },
                 )),
             ),
             (
                 "row_groups",
-                Value::from_sequence(statistics.row_groups.into_iter().map(Value::from)),
+                Scalar::from_sequence(statistics.row_groups.into_iter().map(Scalar::from)),
             ),
         ])
     }
 }
 
-impl From<RowGroupStatistics> for Value {
+impl From<RowGroupStatistics> for Scalar {
     fn from(statistics: RowGroupStatistics) -> Self {
         statistics_record([
-            ("num_rows", Value::I64(statistics.num_rows)),
-            ("compressed_size", Value::I64(statistics.compressed_size)),
+            ("num_rows", Scalar::I64(statistics.num_rows)),
+            ("compressed_size", Scalar::I64(statistics.compressed_size)),
             (
                 "file_offset",
-                statistics.file_offset.map_or(Value::Null, Value::I64),
+                statistics.file_offset.map_or(Scalar::Null, Scalar::I64),
             ),
             (
                 "columns",
-                Value::from_sequence(statistics.columns.into_iter().map(Value::from)),
+                Scalar::from_sequence(statistics.columns.into_iter().map(Scalar::from)),
             ),
         ])
     }
 }
 
-impl From<ColumnStatistics> for Value {
+impl From<ColumnStatistics> for Scalar {
     fn from(statistics: ColumnStatistics) -> Self {
         statistics_record([
-            ("path", Value::from(statistics.path)),
-            ("compressed_size", Value::I64(statistics.compressed_size)),
+            ("path", Scalar::from(statistics.path)),
+            ("compressed_size", Scalar::I64(statistics.compressed_size)),
             (
                 "uncompressed_size",
-                Value::I64(statistics.uncompressed_size),
+                Scalar::I64(statistics.uncompressed_size),
             ),
             (
                 "null_count",
-                statistics.null_count.map_or(Value::Null, Value::U64),
+                statistics.null_count.map_or(Scalar::Null, Scalar::U64),
             ),
             (
                 "min_bytes",
-                statistics.min_bytes.map_or(Value::Null, Value::from),
+                statistics.min_bytes.map_or(Scalar::Null, Scalar::from),
             ),
             (
                 "max_bytes",
-                statistics.max_bytes.map_or(Value::Null, Value::from),
+                statistics.max_bytes.map_or(Scalar::Null, Scalar::from),
             ),
             (
                 "geospatial",
-                statistics.geospatial.map_or(Value::Null, Value::from),
+                statistics.geospatial.map_or(Scalar::Null, Scalar::from),
             ),
         ])
     }
 }
 
-impl From<GeospatialStatistics> for Value {
+impl From<GeospatialStatistics> for Scalar {
     fn from(statistics: GeospatialStatistics) -> Self {
         statistics_record([
             (
                 "bounding_box",
-                statistics.bounding_box.map_or(Value::Null, |bounds| {
+                statistics.bounding_box.map_or(Scalar::Null, |bounds| {
                     statistics_record([
-                        ("xmin", Value::from(bounds.xmin)),
-                        ("xmax", Value::from(bounds.xmax)),
-                        ("ymin", Value::from(bounds.ymin)),
-                        ("ymax", Value::from(bounds.ymax)),
-                        ("zmin", bounds.zmin.map_or(Value::Null, Value::from)),
-                        ("zmax", bounds.zmax.map_or(Value::Null, Value::from)),
-                        ("mmin", bounds.mmin.map_or(Value::Null, Value::from)),
-                        ("mmax", bounds.mmax.map_or(Value::Null, Value::from)),
+                        ("xmin", Scalar::from(bounds.xmin)),
+                        ("xmax", Scalar::from(bounds.xmax)),
+                        ("ymin", Scalar::from(bounds.ymin)),
+                        ("ymax", Scalar::from(bounds.ymax)),
+                        ("zmin", bounds.zmin.map_or(Scalar::Null, Scalar::from)),
+                        ("zmax", bounds.zmax.map_or(Scalar::Null, Scalar::from)),
+                        ("mmin", bounds.mmin.map_or(Scalar::Null, Scalar::from)),
+                        ("mmax", bounds.mmax.map_or(Scalar::Null, Scalar::from)),
                     ])
                 }),
             ),
             (
                 "geometry_types",
-                Value::from_sequence(statistics.geometry_types.into_iter().map(Value::I32)),
+                Scalar::from_sequence(statistics.geometry_types.into_iter().map(Scalar::I32)),
             ),
         ])
     }
 }
 
 /// Build a record whose field names are fixed, distinct literals above.
-fn statistics_record<const N: usize>(entries: [(&'static str, Value); N]) -> Value {
+fn statistics_record<const N: usize>(entries: [(&'static str, Scalar); N]) -> Scalar {
     // Every call above uses distinct literals. Keeping construction here makes
     // that one auditable invariant and prevents either binding from growing a
     // separate Parquet DTO renderer.
-    Value::from_record(entries).expect("Parquet statistics field names are distinct")
+    Scalar::from_record(entries).expect("Parquet statistics field names are distinct")
 }
 
 /// Borrow a statistic's encoded minimum, when the writer recorded one.
@@ -283,7 +283,7 @@ fn max_bytes(statistics: &Statistics) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::{ColumnStatistics, FileStatistics, GeospatialStatistics, RowGroupStatistics};
-    use crate::Value;
+    use crate::Scalar;
     use crate::generic::wkb::BoundingBox;
 
     #[test]
@@ -324,31 +324,31 @@ mod tests {
             }],
         };
 
-        let value = Value::from(statistics);
+        let value = Scalar::from(statistics);
         assert_eq!(
-            value.get_key_str("num_rows").and_then(Value::as_i64),
+            value.get_key_str("num_rows").and_then(Scalar::as_i64),
             Some(2)
         );
         let metadata = value
             .get_key_str("key_value_metadata")
-            .and_then(Value::as_sequence)
+            .and_then(Scalar::as_sequence)
             .unwrap();
         assert_eq!(metadata.len(), 2);
         assert_eq!(
-            metadata[0].get_key_str("key").and_then(Value::as_utf8),
+            metadata[0].get_key_str("key").and_then(Scalar::as_utf8),
             Some("tag")
         );
         let geospatial = value
             .get_key_str("row_groups")
-            .and_then(Value::as_sequence)
+            .and_then(Scalar::as_sequence)
             .and_then(|groups| groups[0].get_key_str("columns"))
-            .and_then(Value::as_sequence)
+            .and_then(Scalar::as_sequence)
             .and_then(|columns| columns[0].get_key_str("geospatial"))
             .unwrap();
         assert_eq!(
             geospatial
                 .get_key_str("geometry_types")
-                .and_then(Value::as_sequence)
+                .and_then(Scalar::as_sequence)
                 .and_then(|types| types[0].as_i64()),
             Some(1)
         );

@@ -59,7 +59,7 @@ def loads(
     A ``str`` is always document content; use ``pathlib.Path`` or another
     ``os.PathLike`` to declare a source location.
 
-    ``cls=Value`` returns the exact core value without natural-type lowering.
+    ``cls=Scalar`` returns the exact core value without natural-type lowering.
 
     `placeholders` turns Jinja-style `{{ NAME }}` substitution on, resolving
     from the mapping it is given; `environment` additionally consults the

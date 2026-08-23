@@ -1,357 +1,368 @@
-//! One value naming every transparent content-coding handle.
+//! The content codings Yggdryl understands, and how to apply them.
+//!
+//! One [`Codec`] vocabulary names every coding, and each format module
+//! ([`crate::gzip`], [`crate::zlib`], [`crate::zstd`]) exposes the same four
+//! operations: `load`/`dump` for whole buffers and `reader`/`writer` for
+//! streams. Nothing buffers a whole object to compress it, so a multi-gigabyte
+//! file costs one window.
+//!
+//! [`Codec::from_media_type`] and [`Codec::from_url`] recover the coding from a
+//! filename, which is what lets `trades.json.gz` decode without a caller naming
+//! the codec.
+//!
+//! ```
+//! use yggdryl::{Codec, gzip};
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let compressed = gzip::dump(b"symbol,price\nAAPL,1\n")?;
+//! assert_eq!(gzip::load(&compressed)?, b"symbol,price\nAAPL,1\n");
+//!
+//! // The coding is recoverable from the filename alone.
+//! let url = yggdryl::Url::from_str("file:///trades.csv.gz")?;
+//! assert_eq!(Codec::from_url(&url), Codec::Gzip);
+//! # Ok(())
+//! # }
+//! ```
 
-use crate::gzip::Gzip;
-use crate::io::IOBase;
-use crate::zlib::Zlib;
-use crate::zstd::Zstd;
-use crate::{Error, Level, MediaType, Result, Url};
+use std::fmt;
+use std::io::{Read, Write};
+use std::str::FromStr;
 
-/// A handle wrapped in the content coding its media type names.
+use smol_str::format_smolstr;
+
+use crate::{Error, MediaType, MimeType, Result, Url, gzip, zlib, zstd};
+
+/// How aggressively a codec trades throughput for output size.
 ///
-/// [`crate::Codec`] says *which* coding a payload uses; this enum is that coding
-/// applied to a handle. Reading through one decompresses and writing through
-/// one compresses, so everything downstream - a codec, a record encoding,
-/// another handle - sees plain bytes.
-///
-/// ```
-/// use yggdryl::generic::Codec;
-/// use yggdryl::io::{Buffer, IOBase};
-/// use yggdryl::Url;
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// // The coding comes from the name, so nothing else in the call changes.
-/// let named = Url::from_str("file:///trades.csv.gz")?;
-/// let mut handle = Codec::wrap(Buffer::new(), yggdryl::Codec::from_url(&named));
-///
-/// handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
-/// handle.flush()?;
-/// assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug)]
-pub enum Codec<H: IOBase> {
-    /// The bytes pass through unchanged.
-    Identity(H),
-    /// RFC 1952 gzip framing over DEFLATE.
-    Gzip(Gzip<H>),
-    /// RFC 1950 zlib framing over DEFLATE.
-    Zlib(Zlib<H>),
-    /// RFC 8878 Zstandard.
-    Zstd(Zstd<H>),
+/// Levels are expressed on one shared 0-to-9 scale and mapped onto each
+/// codec's native range, so a caller can raise compression once without
+/// learning three numbering schemes.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Level(u8);
+
+impl Level {
+    /// No compression; the fastest setting a codec offers.
+    pub const NONE: Self = Self(0);
+    /// Favor throughput over output size.
+    pub const FAST: Self = Self(1);
+    /// The balanced setting used when a caller expresses no preference.
+    pub const DEFAULT: Self = Self(6);
+    /// Favor output size over throughput.
+    pub const BEST: Self = Self(9);
+
+    /// Clamp an arbitrary level onto the shared 0-to-9 scale.
+    pub const fn new(level: u8) -> Self {
+        Self(if level > 9 { 9 } else { level })
+    }
+
+    /// Return the level on the shared 0-to-9 scale.
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+
+    /// Map onto zstd's 1-to-19 range.
+    pub(crate) const fn zstd(self) -> i32 {
+        match self.0 {
+            0 => 1,
+            // Round up without `div_ceil`, which is not const on the 1.85 baseline.
+            level => (level as i32 * 19 + 8) / 9,
+        }
+    }
 }
 
-impl<H: IOBase> Codec<H> {
-    /// Wrap a handle in one coding.
+impl Default for Level {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl fmt::Display for Level {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+
+/// A content coding applied to a byte payload.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum Codec {
+    /// Bytes pass through unchanged.
+    #[default]
+    Identity,
+    /// RFC 1952 gzip framing over DEFLATE.
+    Gzip,
+    /// RFC 1950 zlib framing over DEFLATE.
+    Zlib,
+    /// Raw RFC 1951 DEFLATE with no framing.
+    Deflate,
+    /// RFC 8878 Zstandard.
+    Zstd,
+}
+
+impl Codec {
+    /// Every codec in canonical order.
+    pub const ALL: [Self; 5] = [
+        Self::Identity,
+        Self::Gzip,
+        Self::Zlib,
+        Self::Deflate,
+        Self::Zstd,
+    ];
+
+    /// Parse a canonical content-coding token.
     ///
-    /// [`crate::Codec::Deflate`] has no transparent handle of its own - raw DEFLATE
-    /// carries no framing to detect - so it wraps as [`Self::Zlib`], which is
-    /// the framed form of the same algorithm.
-    pub fn wrap(handle: H, codec: crate::Codec) -> Self {
-        match codec {
-            crate::Codec::Identity => Self::Identity(handle),
-            crate::Codec::Gzip => Self::Gzip(Gzip::new(handle)),
-            crate::Codec::Zlib | crate::Codec::Deflate => Self::Zlib(Zlib::new(handle)),
-            crate::Codec::Zstd => Self::Zstd(Zstd::new(handle)),
-        }
-    }
-
-    /// Wrap a handle in the coding its own media type declares.
-    pub fn infer(handle: H) -> Self {
-        let codec = handle.codec();
-        Self::wrap(handle, codec)
-    }
-
-    /// Return the coding applied to the wrapped handle.
-    pub const fn codec(&self) -> crate::Codec {
-        match self {
-            Self::Identity(_) => crate::Codec::Identity,
-            Self::Gzip(_) => crate::Codec::Gzip,
-            Self::Zlib(_) => crate::Codec::Zlib,
-            Self::Zstd(_) => crate::Codec::Zstd,
-        }
-    }
-
-    /// Return this handle with a different compression level.
-    #[must_use]
-    pub fn with_level(self, level: Level) -> Self {
-        match self {
-            Self::Identity(handle) => Self::Identity(handle),
-            Self::Gzip(handle) => Self::Gzip(handle.with_level(level)),
-            Self::Zlib(handle) => Self::Zlib(handle.with_level(level)),
-            Self::Zstd(handle) => Self::Zstd(handle.with_level(level)),
-        }
-    }
-
-    /// Borrow the compressed handle underneath.
-    pub const fn handle(&self) -> &H {
-        match self {
-            Self::Identity(handle) => handle,
-            Self::Gzip(handle) => handle.handle(),
-            Self::Zlib(handle) => handle.handle(),
-            Self::Zstd(handle) => handle.handle(),
-        }
-    }
-
-    /// Consume this handle, publishing any pending write first.
+    /// Leading/trailing whitespace and the legacy `x-` prefix are accepted, so
+    /// an HTTP `Content-Encoding` header value parses directly.
     ///
     /// # Errors
     ///
-    /// Returns the encode or write failure.
-    pub fn into_handle(self) -> Result<H> {
+    /// Returns [`Error::Parse`] naming the accepted vocabulary and the input.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> Result<Self> {
+        <Self as FromStr>::from_str(value)
+    }
+
+    /// Return the canonical lowercase name without allocating.
+    pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Identity(handle) => Ok(handle),
-            Self::Gzip(handle) => handle.into_handle(),
-            Self::Zlib(handle) => handle.into_handle(),
-            Self::Zstd(handle) => handle.into_handle(),
+            Self::Identity => "identity",
+            Self::Gzip => "gzip",
+            Self::Zlib => "zlib",
+            Self::Deflate => "deflate",
+            Self::Zstd => "zstd",
         }
     }
 
-    /// Borrow the coded handle as a byte handle.
-    pub fn as_io(&self) -> &dyn IOBase {
+    /// Return the customary filename suffix, when the coding has one.
+    pub const fn extension(self) -> Option<&'static str> {
         match self {
-            Self::Identity(handle) => handle,
-            Self::Gzip(handle) => handle,
-            Self::Zlib(handle) => handle,
-            Self::Zstd(handle) => handle,
+            Self::Identity | Self::Deflate => None,
+            Self::Gzip => Some("gz"),
+            Self::Zlib => Some("zz"),
+            Self::Zstd => Some("zst"),
         }
     }
 
-    /// Borrow the coded handle as a mutable byte handle.
-    pub fn as_io_mut(&mut self) -> &mut dyn IOBase {
+    /// Return whether the coding changes the bytes at all.
+    pub const fn is_identity(self) -> bool {
+        matches!(self, Self::Identity)
+    }
+
+    /// Recover the coding from a MIME type.
+    pub fn from_mime_type(value: &MimeType) -> Self {
+        if *value == MimeType::GZIP {
+            Self::Gzip
+        } else if *value == MimeType::ZLIB {
+            Self::Zlib
+        } else if *value == MimeType::ZSTD {
+            Self::Zstd
+        } else {
+            Self::Identity
+        }
+    }
+
+    /// Recover the outermost coding from a media type's encoding sequence.
+    ///
+    /// Encodings are listed in application order, so the last one applied is
+    /// the first that must be removed.
+    pub fn from_media_type(value: &MediaType) -> Self {
+        value
+            .encodings()
+            .last()
+            .map_or(Self::Identity, Self::from_mime_type)
+    }
+
+    /// Recover the outermost coding from a location's compound filename.
+    pub fn from_url(value: &Url) -> Self {
+        Self::from_media_type(&value.media_type())
+    }
+
+    /// Decode a complete buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the payload is not valid for this coding.
+    pub fn load(self, input: &[u8]) -> Result<Vec<u8>> {
         match self {
-            Self::Identity(handle) => handle,
-            Self::Gzip(handle) => handle,
-            Self::Zlib(handle) => handle,
-            Self::Zstd(handle) => handle,
+            Self::Identity => Ok(input.to_vec()),
+            Self::Gzip => gzip::load(input),
+            Self::Zlib => zlib::load(input),
+            Self::Deflate => zlib::load_raw(input),
+            Self::Zstd => zstd::load(input),
+        }
+    }
+
+    /// Encode a complete buffer at the default level.
+    ///
+    /// # Errors
+    ///
+    /// Returns the codec's encoding failure.
+    pub fn dump(self, input: &[u8]) -> Result<Vec<u8>> {
+        self.dump_with_level(input, Level::DEFAULT)
+    }
+
+    /// Encode a complete buffer at an explicit level.
+    ///
+    /// # Errors
+    ///
+    /// Returns the codec's encoding failure.
+    pub fn dump_with_level(self, input: &[u8], level: Level) -> Result<Vec<u8>> {
+        match self {
+            Self::Identity => Ok(input.to_vec()),
+            Self::Gzip => gzip::dump_with_level(input, level),
+            Self::Zlib => zlib::dump_with_level(input, level),
+            Self::Deflate => zlib::dump_raw_with_level(input, level),
+            Self::Zstd => zstd::dump_with_level(input, level),
+        }
+    }
+
+    /// Wrap a reader so it yields decoded bytes.
+    ///
+    /// Decoding is streaming: neither the encoded nor the decoded payload is
+    /// buffered whole.
+    pub fn reader<'source, R: Read + 'source>(self, source: R) -> Box<dyn Read + 'source> {
+        match self {
+            Self::Identity => Box::new(source),
+            Self::Gzip => gzip::reader(source),
+            Self::Zlib => zlib::reader(source),
+            Self::Deflate => zlib::raw_reader(source),
+            Self::Zstd => zstd::reader(source),
+        }
+    }
+
+    /// [`Self::reader`], with the `Send` every decoder already has made
+    /// visible in the type, so a decoded stream can cross a thread boundary.
+    pub(crate) fn reader_send<'source, R: Read + Send + 'source>(
+        self,
+        source: R,
+    ) -> Box<dyn Read + Send + 'source> {
+        match self {
+            Self::Identity => Box::new(source),
+            Self::Gzip => gzip::reader_send(source),
+            Self::Zlib => zlib::reader_send(source),
+            Self::Deflate => zlib::raw_reader_send(source),
+            Self::Zstd => zstd::reader_send(source),
+        }
+    }
+
+    /// Wrap a writer so written bytes are encoded at the default level.
+    ///
+    /// The returned writer must be finished with [`Encoder::finish`]; dropping
+    /// it leaves the trailer unwritten.
+    pub fn writer<'target, W: Write + 'target>(self, target: W) -> Encoder<'target> {
+        self.writer_with_level(target, Level::DEFAULT)
+    }
+
+    /// Wrap a writer so written bytes are encoded at an explicit level.
+    pub fn writer_with_level<'target, W: Write + 'target>(
+        self,
+        target: W,
+        level: Level,
+    ) -> Encoder<'target> {
+        match self {
+            Self::Identity => Encoder(EncoderKind::Identity(Box::new(target))),
+            Self::Gzip => gzip::writer_with_level(target, level),
+            Self::Zlib => zlib::writer_with_level(target, level),
+            Self::Deflate => zlib::raw_writer_with_level(target, level),
+            Self::Zstd => zstd::writer_with_level(target, level),
         }
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Codec<H> {
-    fn as_io_base(&self) -> &dyn IOBase {
-        self.as_io()
-    }
+impl FromStr for Codec {
+    type Err = Error;
 
-    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
-        self.as_io_mut()
-    }
-
-    #[cfg(feature = "arrow")]
-    fn row_size(&self) -> Result<u64> {
-        crate::io::IOMedia::row_size(self.as_io())
-    }
-
-    #[cfg(feature = "arrow")]
-    fn column_size(&self) -> Result<usize> {
-        crate::io::IOMedia::column_size(self.as_io())
-    }
-
-    #[cfg(feature = "arrow")]
-    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
-        crate::io::IOMedia::record_options(self.as_io())
-    }
-
-    #[cfg(feature = "arrow")]
-    fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
-        crate::io::IOMedia::read_arrow_field(self.as_io(), options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn read_arrow_reader(
-        &self,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        crate::io::IOMedia::read_arrow_reader(self.as_io(), options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn overwrite_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_reader(self.as_io_mut(), batches, options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn overwrite_prepared_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_io_mut(), batches, options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn overwrite_arrow_record_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_record_batch(self.as_io_mut(), batch, options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn append_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_reader(self.as_io_mut(), batches, options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn append_arrow_record_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_record_batch(self.as_io_mut(), batch, options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn merge_arrow_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_reader(self.as_io_mut(), batches, options)
-    }
-
-    #[cfg(feature = "arrow")]
-    fn merge_arrow_record_batch(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-        options: &crate::generic::RecordOptions,
-    ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_record_batch(self.as_io_mut(), batch, options)
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::io::IOMedia::read_parquet_statistics(self.as_io())
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
+    fn from_str(value: &str) -> Result<Self> {
+        // `x-gzip` and `x-deflate` remain in circulation from older tooling.
+        let normalized = value.trim().trim_start_matches("x-");
+        Self::ALL
+            .into_iter()
+            .find(|codec| normalized.eq_ignore_ascii_case(codec.as_str()))
+            .ok_or_else(|| Error::Parse {
+                target: "content coding",
+                position: 0,
+                reason: format_smolstr!(
+                    "expected one of {}, got {value:?}",
+                    Self::ALL
+                        .iter()
+                        .map(|codec| codec.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            })
     }
 }
 
-/// A `Compression` is the decoded view of the handle it wraps.
-impl<H: IOBase> IOBase for Codec<H> {
-    fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        self.as_io().pread(offset, buffer)
-    }
-
-    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::io::ByteStream<'_>> {
-        self.as_io().pstream_bytes(position, batch_size)
-    }
-
-    fn read_all_bytes(&self) -> Result<Vec<u8>> {
-        self.as_io().read_all_bytes()
-    }
-
-    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.as_io().read_range(offset, length)
-    }
-
-    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        self.as_io_mut().pwrite(offset, bytes)
-    }
-
-    fn size(&self) -> u64 {
-        self.as_io().size()
-    }
-
-    fn capacity(&self) -> u64 {
-        self.as_io().capacity()
-    }
-
-    fn reserve(&mut self, capacity: u64) -> Result<()> {
-        self.as_io_mut().reserve(capacity)
-    }
-
-    fn truncate(&mut self, size: u64) -> Result<()> {
-        self.as_io_mut().truncate(size)
-    }
-
-    fn url(&self) -> Option<&Url> {
-        self.as_io().url()
-    }
-
-    fn media_type(&self) -> &MediaType {
-        self.as_io().media_type()
-    }
-
-    fn set_media_type(&mut self, media_type: MediaType) {
-        self.as_io_mut().set_media_type(media_type);
-    }
-
-    fn kind(&self) -> crate::IOKind {
-        self.as_io().kind()
-    }
-
-    fn is_atomic(&self) -> bool {
-        self.as_io().is_atomic()
-    }
-
-    fn is_tabular(&self) -> bool {
-        self.as_io().is_tabular()
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        self.as_io_mut().flush()
-    }
-
-    fn open(&mut self) -> Result<()> {
-        self.as_io_mut().open()
-    }
-
-    fn opened(&self) -> bool {
-        self.as_io().opened()
-    }
-
-    fn close(&mut self) -> Result<()> {
-        self.as_io_mut().close()
-    }
-
-    fn clear(&mut self) -> Result<()> {
-        self.as_io_mut().clear()
-    }
-
-    fn remove(&mut self, recursive: bool) -> Result<()> {
-        self.as_io_mut().remove(recursive)
-    }
-
-    fn parent(&self) -> Option<super::Holder> {
-        self.as_io().parent()
-    }
-
-    fn child_by_path(&self, name: &str) -> Result<super::Holder> {
-        self.as_io().child_by_path(name)
-    }
-
-    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
-        self.as_io().ls(recursive, include_private)
+impl fmt::Display for Codec {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 
-impl<H: IOBase> TryFrom<Codec<H>> for Gzip<H> {
-    type Error = Error;
+/// A streaming encoder that must be explicitly finished.
+///
+/// Dropping without [`Self::finish`] omits the codec trailer, so the output is
+/// not a valid member of its format.
+pub struct Encoder<'target>(pub(crate) EncoderKind<'target>);
 
-    fn try_from(value: Codec<H>) -> Result<Self> {
-        match value {
-            Codec::Gzip(handle) => Ok(handle),
-            other => Err(Error::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("expected a gzip handle, got {}", other.codec()),
-            ))),
+pub(crate) enum EncoderKind<'target> {
+    Identity(Box<dyn Write + 'target>),
+    Flate(Box<dyn FlateFinish + 'target>),
+    Zstd(Box<dyn FlateFinish + 'target>),
+}
+
+/// Erases the concrete encoder so `finish` can be called through the box.
+pub(crate) trait FlateFinish: Write {
+    fn finish_boxed(self: Box<Self>) -> std::io::Result<()>;
+}
+
+impl Encoder<'_> {
+    /// Flush the codec trailer and release the underlying writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns the codec's flush failure.
+    pub fn finish(self) -> Result<()> {
+        match self.0 {
+            EncoderKind::Identity(mut target) => {
+                target.flush()?;
+                Ok(())
+            }
+            EncoderKind::Flate(encoder) | EncoderKind::Zstd(encoder) => {
+                encoder.finish_boxed()?;
+                Ok(())
+            }
         }
+    }
+}
+
+impl Write for Encoder<'_> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        match &mut self.0 {
+            EncoderKind::Identity(target) => target.write(buffer),
+            EncoderKind::Flate(target) | EncoderKind::Zstd(target) => target.write(buffer),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match &mut self.0 {
+            EncoderKind::Identity(target) => target.flush(),
+            EncoderKind::Flate(target) | EncoderKind::Zstd(target) => target.flush(),
+        }
+    }
+}
+
+impl fmt::Debug for Encoder<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match &self.0 {
+            EncoderKind::Identity(_) => "identity",
+            EncoderKind::Flate(_) => "flate",
+            EncoderKind::Zstd(_) => "zstd",
+        };
+        formatter
+            .debug_struct("Encoder")
+            .field("kind", &kind)
+            .finish()
     }
 }
 

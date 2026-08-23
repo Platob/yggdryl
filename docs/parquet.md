@@ -948,7 +948,7 @@ been renamed or moved: the id is in the data file, not just in the catalog.
 
 The inferred handle methods validate that the leaf is Parquet, range-read its footer, and decode no
 rows. Rust receives the typed `FileStatistics`; Python and JavaScript receive the same shape through
-the shared `Value` conversion, so integers, byte bounds, nulls, lists, and records become native
+the shared `Scalar` conversion, so integers, byte bounds, nulls, lists, and records become native
 language values without binding-side DTO logic.
 
 === "Rust"
@@ -960,7 +960,7 @@ language values without binding-side DTO logic.
     use yggdryl::arrow;
     use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, MimeType, Value};
+    use yggdryl::{DataType, MimeType, Scalar};
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
@@ -988,8 +988,8 @@ language values without binding-side DTO logic.
     assert_eq!(statistics.num_rows, 4);
     assert_eq!(statistics.row_groups.len(), 2);
     assert_eq!(statistics.null_count("symbol"), Some(2));
-    let native = Value::from(statistics);
-    assert_eq!(native.get_key_str("num_rows").and_then(Value::as_i64), Some(4));
+    let native = Scalar::from(statistics);
+    assert_eq!(native.get_key_str("num_rows").and_then(Scalar::as_i64), Some(4));
     ```
 
 === "Python"
@@ -1076,7 +1076,7 @@ per-runtime regression anchors, not a language comparison. Regenerate with the
 Footer geospatial data crosses with the rest of `read_parquet_statistics`. A fresh projected scan is
 `read_parquet_geospatial_statistics(column)` in Python and
 `readParquetGeospatialStatistics(column)` in JavaScript; both return native records with
-`bounding_box` and `geometry_types` through the same shared `Value` shape.
+`bounding_box` and `geometry_types` through the same shared `Scalar` shape.
 
 A column whose schema declares [geometry or geography](datatype.md) writes Parquet's own `GEOMETRY`
 or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB, from the schema's own declaration: the CRS and,

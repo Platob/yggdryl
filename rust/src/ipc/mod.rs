@@ -594,11 +594,13 @@ fn owned_decoded_reader<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn
         && handle
             .url()
             .is_some_and(|url| !crate::Codec::from_url(url).is_identity());
-    if !decoded_view_over_coded_url && let Some(parent) = handle.parent() {
-        if let Some(name) = handle.url().and_then(crate::Url::file_name) {
-            let mut child = parent.child_by_path(name)?;
-            child.set_media_type(handle.media_type().clone());
-            return decoded_prefix_reader(codec, crate::io::Cursor::new(child));
+    if !decoded_view_over_coded_url {
+        if let Some(parent) = handle.parent() {
+            if let Some(name) = handle.url().and_then(crate::Url::file_name) {
+                let mut child = parent.child_by_path(name)?;
+                child.set_media_type(handle.media_type().clone());
+                return decoded_prefix_reader(codec, crate::io::Cursor::new(child));
+            }
         }
     }
     let mut encoded = Vec::new();

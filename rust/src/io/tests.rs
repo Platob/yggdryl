@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 
 use super::{Buffer, IOBase};
 use crate::Codec;
-use crate::{Field, MediaType, MimeType, Url, Value};
+use crate::{Field, MediaType, MimeType, Scalar, Url};
 
 #[test]
 fn positional_writes_grow_and_zero_fill_the_gap() {
@@ -117,8 +117,11 @@ fn an_undeclared_media_type_is_inferred_from_content() {
 
 #[test]
 fn structured_values_follow_the_declared_format_and_content_coding() {
-    let expected =
-        Value::from_record([("quantity", Value::I64(2)), ("symbol", Value::from("AAPL"))]).unwrap();
+    let expected = Scalar::from_record([
+        ("quantity", Scalar::I64(2)),
+        ("symbol", Scalar::from("AAPL")),
+    ])
+    .unwrap();
 
     for name in [
         "trade.json",
@@ -147,7 +150,7 @@ fn structured_value_fields_direct_parsing_and_casting() {
     let media = Url::from_str("file:///trade.json").unwrap().media_type();
     let source = Buffer::from_bytes(br#"{"quantity":2}"#.to_vec()).with_media_type(media);
     let field = Field::from_str("trade: struct<quantity: int32 not null> not null").unwrap();
-    let expected = Value::from_sequence([Value::I64(2)]);
+    let expected = Scalar::from_sequence([Scalar::I64(2)]);
 
     assert_eq!(source.read_value(Some(&field)).unwrap(), expected);
 
@@ -377,7 +380,7 @@ mod records {
     use crate::arrow::BatchReader;
     use crate::generic::{IORecordOptions, RecordOptions};
     use crate::io::{ArrowWriteSession, Buffer, IOBase, IOMedia};
-    use crate::{DataType, Error, Field, MimeType, Url, Value, WriteMode};
+    use crate::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
     fn schema() -> Field {
         DataType::from_fields([
@@ -1420,11 +1423,11 @@ mod records {
         symbol: Option<&'static str>,
     }
 
-    impl From<NativeRow> for Value {
+    impl From<NativeRow> for Scalar {
         fn from(row: NativeRow) -> Self {
-            Value::from_sequence([
-                Value::from(row.id),
-                row.symbol.map_or(Value::Null, Value::from),
+            Scalar::from_sequence([
+                Scalar::from(row.id),
+                row.symbol.map_or(Scalar::Null, Scalar::from),
             ])
         }
     }
@@ -1439,10 +1442,10 @@ mod records {
             .with_batch_size(1);
 
         handle
-            .write_arrow_reader(reader(), WriteMode::Overwrite, &options)
+            .write_arrow_reader(reader(), IOMode::Overwrite, &options)
             .unwrap();
         handle
-            .write_arrow_record_batch(rows_batch(&[3]), WriteMode::Append, &options)
+            .write_arrow_record_batch(rows_batch(&[3]), IOMode::Append, &options)
             .unwrap();
         handle
             .write_records(
@@ -1456,7 +1459,7 @@ mod records {
                         symbol: Some("AMD"),
                     },
                 ],
-                WriteMode::Merge,
+                IOMode::Merge,
                 &options.clone().with_merge_by_names(["id"]),
             )
             .unwrap();
@@ -1475,14 +1478,14 @@ mod records {
             .with_field(schema())
             .with_commit_row_size(1);
         reader_handle
-            .write_arrow_reader(reader(), WriteMode::Overwrite, &options)
+            .write_arrow_reader(reader(), IOMode::Overwrite, &options)
             .unwrap();
         assert_eq!(reader_handle.publications.load(Ordering::SeqCst), 2);
 
         let mut batch_handle =
             PublicationProbe::new("generic-batch-commits.arrows", Arc::clone(&pulls));
         batch_handle
-            .write_arrow_record_batch(batch(), WriteMode::Overwrite, &options)
+            .write_arrow_record_batch(batch(), IOMode::Overwrite, &options)
             .unwrap();
         assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
 
@@ -1499,7 +1502,7 @@ mod records {
                         symbol: Some("MSFT"),
                     },
                 ],
-                WriteMode::Overwrite,
+                IOMode::Overwrite,
                 &options,
             )
             .unwrap();
@@ -1599,7 +1602,7 @@ mod records {
             Self: Sized,
             I: IntoIterator<Item = R>,
             I::IntoIter: Send + 'static,
-            R: TryInto<Value>,
+            R: TryInto<Scalar>,
             R::Error: Into<Error>,
         {
             self.record_calls[0] += 1;
@@ -1615,7 +1618,7 @@ mod records {
             Self: Sized,
             I: IntoIterator<Item = R>,
             I::IntoIter: Send + 'static,
-            R: TryInto<Value>,
+            R: TryInto<Scalar>,
             R::Error: Into<Error>,
         {
             self.record_calls[1] += 1;
@@ -1631,7 +1634,7 @@ mod records {
             Self: Sized,
             I: IntoIterator<Item = R>,
             I::IntoIter: Send + 'static,
-            R: TryInto<Value>,
+            R: TryInto<Scalar>,
             R::Error: Into<Error>,
         {
             self.record_calls[2] += 1;
@@ -1648,8 +1651,8 @@ mod records {
         let mut probe = TypedDispatchProbe::new();
         let plain = probe.record_options().unwrap().with_field(schema());
 
-        for mode in WriteMode::ALL {
-            let options = if mode == WriteMode::Merge {
+        for mode in IOMode::WRITE {
+            let options = if mode == IOMode::Merge {
                 plain.clone().with_merge_by_names(["id"])
             } else {
                 plain.clone()
@@ -1675,10 +1678,10 @@ mod records {
         let media: &mut dyn IOMedia = &mut probe;
 
         media
-            .write_arrow_reader(reader(), WriteMode::Overwrite, &options)
+            .write_arrow_reader(reader(), IOMode::Overwrite, &options)
             .unwrap();
         media
-            .write_arrow_record_batch(batch(), WriteMode::Append, &options)
+            .write_arrow_record_batch(batch(), IOMode::Append, &options)
             .unwrap();
 
         assert_eq!(probe.reader_calls, [1, 0, 0]);
@@ -1697,7 +1700,7 @@ mod records {
         let error = handle
             .write_arrow_reader(
                 source,
-                WriteMode::Overwrite,
+                IOMode::Overwrite,
                 &options.clone().with_merge_by_names(["id"]),
             )
             .unwrap_err();
@@ -1710,7 +1713,7 @@ mod records {
         let error = handle
             .write_arrow_record_batch(
                 rows_batch(&[6]),
-                WriteMode::Overwrite,
+                IOMode::Overwrite,
                 &options.clone().with_merge_by_names(["id"]),
             )
             .unwrap_err();
@@ -1736,7 +1739,7 @@ mod records {
         let error = handle
             .write_records(
                 CountedIntoRows(Arc::clone(&into_iters)),
-                WriteMode::Overwrite,
+                IOMode::Overwrite,
                 &untyped,
             )
             .unwrap_err();
@@ -1869,9 +1872,9 @@ mod records {
         }
     }
 
-    struct FallibleRow(std::result::Result<Value, Error>);
+    struct FallibleRow(std::result::Result<Scalar, Error>);
 
-    impl TryFrom<FallibleRow> for Value {
+    impl TryFrom<FallibleRow> for Scalar {
         type Error = Error;
 
         fn try_from(row: FallibleRow) -> std::result::Result<Self, Self::Error> {
@@ -1880,11 +1883,11 @@ mod records {
     }
 
     struct CountedFallibleRow {
-        value: std::result::Result<Value, Error>,
+        value: std::result::Result<Scalar, Error>,
         conversions: Arc<AtomicUsize>,
     }
 
-    impl TryFrom<CountedFallibleRow> for Value {
+    impl TryFrom<CountedFallibleRow> for Scalar {
         type Error = Error;
 
         fn try_from(row: CountedFallibleRow) -> std::result::Result<Self, Self::Error> {
@@ -1915,9 +1918,9 @@ mod records {
         let error = handle
             .append_records(
                 [
-                    FallibleRow(Ok(Value::from_sequence([
-                        Value::from(10_i64),
-                        Value::from("not-published"),
+                    FallibleRow(Ok(Scalar::from_sequence([
+                        Scalar::from(10_i64),
+                        Scalar::from("not-published"),
                     ]))),
                     FallibleRow(Err(Error::InvalidRecord {
                         path: "$.row".into(),
@@ -1946,9 +1949,9 @@ mod records {
             }
             let records = [
                 CountedFallibleRow {
-                    value: Ok(Value::from_sequence([
-                        Value::from(3_i64),
-                        Value::from("committed"),
+                    value: Ok(Scalar::from_sequence([
+                        Scalar::from(3_i64),
+                        Scalar::from("committed"),
                     ])),
                     conversions: Arc::clone(&conversions),
                 },
@@ -2001,9 +2004,9 @@ mod records {
         let mut records = Vec::new();
         for id in 1..=3_i64 {
             records.push(CountedFallibleRow {
-                value: Ok(Value::from_sequence([
-                    Value::from(id),
-                    Value::from("committed"),
+                value: Ok(Scalar::from_sequence([
+                    Scalar::from(id),
+                    Scalar::from("committed"),
                 ])),
                 conversions: Arc::clone(&conversions),
             });
@@ -3768,7 +3771,7 @@ mod applying {
     //! [`ApplyExpression`]: crate::expression::ApplyExpression
 
     use crate::expression::{ApplyExpression, Bound, Expression};
-    use crate::{DataType, Result, Url, Value};
+    use crate::{DataType, Result, Scalar, Url};
 
     /// An owned listing, seen as a target: applying a predicate yields the
     /// positions of the entries it does not rule out, in listing order.
@@ -3835,7 +3838,7 @@ mod applying {
             .unwrap()
             .bind(&schema)
             .unwrap();
-        let row = Value::from_sequence([Value::I64(41)]);
-        assert_eq!(row.apply_expression(&bound).unwrap(), Value::I64(42));
+        let row = Scalar::from_sequence([Scalar::I64(41)]);
+        assert_eq!(row.apply_expression(&bound).unwrap(), Scalar::I64(42));
     }
 }

@@ -10,7 +10,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use super::{Bound, Bounds, ColumnBounds, Expression, Residual, Selector, Statement};
-use crate::{DataType, Field, MediaType, Result, TimeUnit, Timezone, Url, Value};
+use crate::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -196,58 +196,59 @@ fn rows_schema() -> Field {
 }
 
 /// Rows chosen so every operator meets a null, a `nan`, and a boundary.
-fn rows() -> Vec<Value> {
-    let stamp = |micros: i64| Value::DateTime64(micros, TimeUnit::Microsecond, Timezone::UTC);
-    let nested = |leg: Option<&str>| Value::from_sequence([leg.map_or(Value::Null, Value::from)]);
+fn rows() -> Vec<Scalar> {
+    let stamp = |micros: i64| Scalar::DateTime64(micros, TimeUnit::Microsecond, Timezone::UTC);
+    let nested =
+        |leg: Option<&str>| Scalar::from_sequence([leg.map_or(Scalar::Null, Scalar::from)]);
     vec![
-        Value::from_sequence([
-            Value::I64(1),
-            Value::from(1.5_f64),
-            Value::d128(150, 2),
-            Value::from("alpha"),
-            Value::Bool(true),
+        Scalar::from_sequence([
+            Scalar::I64(1),
+            Scalar::from(1.5_f64),
+            Scalar::d128(150, 2),
+            Scalar::from("alpha"),
+            Scalar::Bool(true),
             stamp(1_700_000_000_000_000),
-            Value::I32(2024),
+            Scalar::I32(2024),
             nested(Some("EUR")),
         ]),
-        Value::from_sequence([
-            Value::I64(-3),
-            Value::from(f64::NAN),
-            Value::d128(-25, 2),
-            Value::from("beta"),
-            Value::Bool(false),
+        Scalar::from_sequence([
+            Scalar::I64(-3),
+            Scalar::from(f64::NAN),
+            Scalar::d128(-25, 2),
+            Scalar::from("beta"),
+            Scalar::Bool(false),
             stamp(0),
-            Value::I32(2024),
+            Scalar::I32(2024),
             nested(None),
         ]),
-        Value::from_sequence([
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::I32(2024),
-            Value::Null,
+        Scalar::from_sequence([
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::I32(2024),
+            Scalar::Null,
         ]),
-        Value::from_sequence([
-            Value::I64(100),
-            Value::from(f64::INFINITY),
-            Value::d128(10_000, 2),
-            Value::from("Alpha"),
-            Value::Null,
+        Scalar::from_sequence([
+            Scalar::I64(100),
+            Scalar::from(f64::INFINITY),
+            Scalar::d128(10_000, 2),
+            Scalar::from("Alpha"),
+            Scalar::Null,
             stamp(-1_000_000),
-            Value::I32(2023),
+            Scalar::I32(2023),
             nested(Some("USD")),
         ]),
-        Value::from_sequence([
-            Value::I64(0),
-            Value::from(0.0_f64),
-            Value::d128(0, 2),
-            Value::from(""),
-            Value::Bool(true),
+        Scalar::from_sequence([
+            Scalar::I64(0),
+            Scalar::from(0.0_f64),
+            Scalar::d128(0, 2),
+            Scalar::from(""),
+            Scalar::Bool(true),
             stamp(1_700_000_000_000_001),
-            Value::I32(2025),
+            Scalar::I32(2025),
             nested(Some("eur")),
         ]),
     ]
@@ -318,7 +319,7 @@ fn scalar_arithmetic_propagates_checked_failures() {
         bound.eval(&rows()[4]),
         Err(crate::Error::DivisionByZero { .. })
     ));
-    assert_eq!(bound.eval(&rows()[2]).unwrap(), Value::Null);
+    assert_eq!(bound.eval(&rows()[2]).unwrap(), Scalar::Null);
 
     let schema = Field::new(
         "rows",
@@ -331,7 +332,7 @@ fn scalar_arithmetic_propagates_checked_failures() {
         .bind(&schema)
         .unwrap();
     assert!(matches!(
-        negated.eval(&Value::from_sequence([Value::I8(i8::MIN)])),
+        negated.eval(&Scalar::from_sequence([Scalar::I8(i8::MIN)])),
         Err(crate::Error::ArithmeticOverflow {
             operation: "negation",
             ..
@@ -375,14 +376,14 @@ fn projections_agree_between_the_tiers() {
     }
 }
 
-fn batch_of(schema: &Field, rows: &[Value]) -> arrow_array::RecordBatch {
+fn batch_of(schema: &Field, rows: &[Scalar]) -> arrow_array::RecordBatch {
     let arrow_schema = crate::arrow::arrow_schema_from_field(schema).unwrap();
     let columns = schema
         .fields()
         .iter()
         .enumerate()
         .map(|(index, field)| {
-            let values: Vec<&Value> = rows
+            let values: Vec<&Scalar> = rows
                 .iter()
                 .map(|row| &row.as_sequence().unwrap()[index])
                 .collect();
@@ -562,7 +563,7 @@ fn every_selector_declares_a_cost_and_a_type() {
     let partition = Selector::Partition("year".into());
     assert_eq!(partition.cost(), super::Cost::Free);
     let url = Url::from_str("file:///lake/year=2024/part-0.parquet").unwrap();
-    assert_eq!(partition.read_url(&url), Value::from("2024"));
+    assert_eq!(partition.read_url(&url), Scalar::from("2024"));
 }
 
 // ---------------------------------------------------------------------------
@@ -644,11 +645,11 @@ fn a_split_conjoins_back_to_what_it_split() {
 }
 
 /// The statistics the fixture rows actually have, computed rather than guessed.
-fn bounds_of(schema: &Field, rows: &[Value]) -> Bounds {
+fn bounds_of(schema: &Field, rows: &[Scalar]) -> Bounds {
     let mut bounds = Bounds::new(Some(rows.len() as u64));
     for (index, field) in schema.fields().iter().enumerate() {
-        let mut minimum: Option<Value> = None;
-        let mut maximum: Option<Value> = None;
+        let mut minimum: Option<Scalar> = None;
+        let mut maximum: Option<Scalar> = None;
         let mut nulls = 0_u64;
         for row in rows {
             let value = &row.as_sequence().unwrap()[index];
@@ -656,7 +657,7 @@ fn bounds_of(schema: &Field, rows: &[Value]) -> Bounds {
                 nulls += 1;
                 continue;
             }
-            let ordered = |held: &Option<Value>, keep_greater: bool| match held {
+            let ordered = |held: &Option<Scalar>, keep_greater: bool| match held {
                 None => Some(value.clone()),
                 Some(held) => match super::eval::order(field.data_type(), value, held) {
                     Some(std::cmp::Ordering::Greater) if keep_greater => Some(value.clone()),
@@ -695,7 +696,7 @@ fn substring_takes_the_window_the_standard_names() {
         let bound = text.parse::<Expression>().unwrap().bind(&schema).unwrap();
         assert_eq!(
             bound.eval(&rows()[0]).unwrap(),
-            Value::from(expected),
+            Scalar::from(expected),
             "{text}"
         );
     }
@@ -757,7 +758,7 @@ fn an_exact_quotient_keeps_room_to_be_a_quotient() {
         "a quotient at the operands' own scale would be a rounding"
     );
     // 1.50 / 3.00 is exactly 0.5, and it stays exact.
-    assert_eq!(bound.eval(&rows()[0]).unwrap(), Value::d128(500_000, 6));
+    assert_eq!(bound.eval(&rows()[0]).unwrap(), Scalar::d128(500_000, 6));
 }
 
 #[test]
@@ -781,10 +782,10 @@ fn binds_and_evaluates_rows() {
     assert_eq!(bound.column_names(), vec!["ccy", "price", "size"]);
 
     let row = |ccy: &str, price: i128, size: Option<i32>| {
-        Value::from_sequence([
-            Value::from(ccy),
-            Value::d128(price, 2),
-            size.map_or(Value::Null, Value::I32),
+        Scalar::from_sequence([
+            Scalar::from(ccy),
+            Scalar::d128(price, 2),
+            size.map_or(Scalar::Null, Scalar::I32),
         ])
     };
     assert!(bound.matches(&row("EUR", 15_000, Some(5))).unwrap());
@@ -801,10 +802,10 @@ fn a_struct_expression_produces_and_reprints_a_row_sequence() {
         .unwrap()
         .bind(&schema)
         .unwrap();
-    let expected = Value::from_sequence([Value::I64(1), Value::from("XNAS")]);
+    let expected = Scalar::from_sequence([Scalar::I64(1), Scalar::from("XNAS")]);
     assert_eq!(bound.eval(&rows()[0]).unwrap(), expected);
 
-    // Constant folding retains the datatype on TypedValue rather than on the
+    // Constant folding retains the datatype on TypedScalar rather than on the
     // row. Display must use that schema to reconstruct the named expression.
     let printed = bound.expression().to_string();
     assert!(printed.contains("struct("), "{printed}");
@@ -825,7 +826,7 @@ fn unknown_is_not_true() {
         .bind(&schema)
         .unwrap();
     let row = &rows()[2];
-    assert_eq!(bound.eval(row).unwrap(), Value::Null);
+    assert_eq!(bound.eval(row).unwrap(), Scalar::Null);
     assert!(!bound.matches(row).unwrap());
 }
 
@@ -863,7 +864,7 @@ fn parameters_are_supplied_at_bind_and_never_again() {
     assert_eq!(expression.parameters(), vec!["floor".to_owned()]);
     assert!(expression.bind(&schema).is_err());
     let bound = expression
-        .bind_with(&schema, &[("floor", Value::I64(100))])
+        .bind_with(&schema, &[("floor", Scalar::I64(100))])
         .unwrap();
     assert_eq!(bound.expression().to_string(), "i >= 100");
     assert!(bound.matches(&rows()[3]).unwrap());

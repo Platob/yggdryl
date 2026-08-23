@@ -12,7 +12,7 @@ import timeit
 from collections.abc import Callable
 from decimal import Decimal
 
-from yggdryl import IOBase, Value, avro, codec, json, scalar, toml, yaml
+from yggdryl import IOBase, Scalar, avro, codec, json, scalar, toml, yaml
 
 
 @scalar(frozen=True, slots=True)
@@ -200,18 +200,18 @@ def main() -> None:
             args.iterations,
         )
         _measure(
-            "JSON exact Value decode",
-            lambda: json.loads(JSON, cls=Value),
+            "JSON exact Scalar decode",
+            lambda: json.loads(JSON, cls=Scalar),
             args.iterations,
         )
         _measure(
-            "TOML exact Value decode",
-            lambda: toml.loads(TOML, cls=Value),
+            "TOML exact Scalar decode",
+            lambda: toml.loads(TOML, cls=Scalar),
             args.iterations,
         )
         _measure(
-            "YAML exact Value decode",
-            lambda: yaml.loads(YAML, cls=Value),
+            "YAML exact Scalar decode",
+            lambda: yaml.loads(YAML, cls=Scalar),
             args.iterations,
         )
         _measure("JSON reader redirect", _decode_json_reader, args.iterations)
@@ -278,13 +278,13 @@ def main() -> None:
             _decode_yaml_document_reader,
             args.iterations,
         )
-        _measure("IOBase read Value", JSON_HANDLE.read_value, args.iterations)
+        _measure("IOBase read Scalar", JSON_HANDLE.read_value, args.iterations)
         _measure(
-            "IOBase read exact Value",
-            lambda: JSON_HANDLE.read_value(cls=Value),
+            "IOBase read exact Scalar",
+            lambda: JSON_HANDLE.read_value(cls=Scalar),
             args.iterations,
         )
-        _measure("IOBase write Value", _write_json_handle, args.iterations)
+        _measure("IOBase write Scalar", _write_json_handle, args.iterations)
         _measure(
             "Avro schema parse",
             lambda: avro.Schema(AVRO_SCHEMA_DOCUMENT),

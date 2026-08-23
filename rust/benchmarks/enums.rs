@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::path::Path;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use yggdryl::{MediaType, MimeType, WriteMode};
+use yggdryl::{IOMode, MediaType, MimeType};
 
 const KNOWN_MIME: &str = "application/vnd.apache.parquet";
 const UPPERCASE_MIME: &str = "APPLICATION/VND.APACHE.PARQUET";
@@ -80,10 +80,10 @@ fn write_modes_and_io_identity(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&encoded).is_io());
     });
     group.bench_function("write_mode_parse", |bencher| {
-        bencher.iter(|| WriteMode::from_str(black_box("overwrite")).unwrap());
+        bencher.iter(|| IOMode::from_str(black_box("overwrite")).unwrap());
     });
     group.bench_function("write_mode_name", |bencher| {
-        bencher.iter(|| black_box(WriteMode::Merge).as_str());
+        bencher.iter(|| black_box(IOMode::Merge).as_str());
     });
     group.finish();
 }

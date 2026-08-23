@@ -19,7 +19,7 @@ export {
   Uri,
   Url,
   Urn,
-  Value,
+  Scalar,
   type FieldBound,
   type FieldCount,
   type FieldSummaryView,
@@ -49,7 +49,7 @@ import type {
   Uri,
   Url,
   Urn,
-  Value,
+  Scalar,
 } from './index'
 // The Iceberg values are reached through the `iceberg` namespace, so they are
 // imported here as values to type it and re-exported as types only.
@@ -149,7 +149,7 @@ export type CodecSource = CodecSyncSource | CodecReadable
 /**
  * The parameter-free identity of one datatype variant.
  *
- * Mirrors `rust/src/enums/datatype_id.rs` and is what `DataType.id` returns.
+ * Mirrors `rust/src/generic/datatype_id.rs` and is what `DataType.id` returns.
  * Use it whenever the question is "which variant is this".
  */
 export type DataTypeId =
@@ -202,7 +202,7 @@ export type DataTypeId =
 /**
  * The coarse family one datatype variant belongs to.
  *
- * Mirrors `rust/src/enums/datatype_kind.rs` and is what `DataType.kind`
+ * Mirrors `rust/src/generic/datatype_kind.rs` and is what `DataType.kind`
  * returns. Only behavior that is uniform across a whole family reads it.
  */
 export type DataTypeKind =
@@ -283,7 +283,7 @@ export type CompatibilityScheme =
   | 'iceberg'
 
 /** Required intent for a generic record-write entry point. */
-export type WriteMode = 'overwrite' | 'append' | 'merge'
+export type IOMode = 'overwrite' | 'append' | 'merge' | 'readonly' | 'random'
 
 /** One field in the v2 Iceberg partition-spec JSON shape. */
 export interface PartitionFieldDocument {
@@ -292,7 +292,6 @@ export interface PartitionFieldDocument {
   'source-id': number
   'field-id': number
 }
-
 /** The v2 Iceberg partition-spec JSON shape emitted by the native core. */
 export interface PartitionSpecDocument {
   'spec-id': number
@@ -348,7 +347,7 @@ declare module './index' {
     /** Resolve every statement expression against one inferred native Field. */
     bind(
       schema: FieldLike,
-      parameters?: Readonly<Record<string, unknown>> | Value | null,
+      parameters?: Readonly<Record<string, unknown>> | Scalar | null,
     ): BoundStatement
   }
 
@@ -886,7 +885,7 @@ export type AvroSchemaDocument =
 /** Any schema spelling normalized into the one native Avro schema graph. */
 export type AvroSchemaInput =
   | AvroSchema
-  | Value
+  | Scalar
   | CodecContent
   | AvroSchemaDocument
 
@@ -902,7 +901,6 @@ export interface AvroDecodeLimits {
   /** Maximum decoded nodes or object-container rows. */
   maxNodes?: number | null
 }
-
 /** Container/block decode options, including one optional reader schema. */
 export interface AvroDecodeOptions extends AvroDecodeLimits {
   /** Resolve writer rows onto this reader schema while decoding. */
@@ -931,7 +929,7 @@ export interface AvroSchema {
   intoCanonicalForm(): string
   /** Encode one natural value with Avro single-object framing. */
   intoSingleObject(value: unknown): Buffer
-  /** Decode one single-object datum through the shared native Value pivot. */
+  /** Decode one single-object datum through the shared native Scalar pivot. */
   fromSingleObject<T = unknown>(input: AvroBytes, options?: AvroDecodeLimits | null): T
   /** Return the canonical form for JavaScript's string protocol. */
   toString(): string
@@ -941,7 +939,7 @@ export interface AvroSchema {
 
 export declare const AvroSchema: {
   readonly prototype: AvroSchema
-  /** Parse a natural value, native Value, JSON text, or JSON bytes. */
+  /** Parse a natural value, native Scalar, JSON text, or JSON bytes. */
   new(value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
   /** Parse any accepted schema representation. */
   from(value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
@@ -953,7 +951,7 @@ export interface AvroContainer<T = unknown> {
   schema: AvroSchema
   /** User metadata, excluding Avro's reserved header entries. */
   metadata: Record<string, string>
-  /** Rows decoded through the shared native Value conversion. */
+  /** Rows decoded through the shared native Scalar conversion. */
   rows: T[]
 }
 
@@ -1018,16 +1016,16 @@ export interface CodecOptions {
    * layout, a number requests spaces per level, and `"\t"` requests tabs.
    */
   indent?: number | '\t' | null
-  /** Return the exact native `Value` instead of its natural JavaScript view. */
-  value?: boolean | null
+  /** Return the exact native `Scalar` instead of its natural JavaScript view. */
+  scalar?: boolean | null
 }
 
-/** Options for one format-inferred `IOBase.readValue` call. */
-export interface ValueReadOptions {
+/** Options for one format-inferred `IOBase.readScalar` call. */
+export interface ScalarReadOptions {
   /** Native schema used by the core parser to type natural values. */
   field?: FieldLike | null
-  /** Return the exact native `Value` instead of its natural JavaScript view. */
-  value?: boolean | null
+  /** Return the exact native `Scalar` instead of its natural JavaScript view. */
+  scalar?: boolean | null
 }
 
 /** Page-cache controls for {@link IOBase.buffered}. */
@@ -1101,11 +1099,11 @@ export type CodecDestination = CodecSyncDestination | CodecWritable
 
 /** One-document byte codec. Caller-owned streams are never closed. */
 export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
-  loads(content: CodecContent, options: O & { value: true }): Value
+  loads(content: CodecContent, options: O & { scalar: true }): Scalar
   loads<T = unknown>(content: CodecContent, options?: O): T
-  load(source: CodecReadable, options: O & { value: true }): Promise<Value>
+  load(source: CodecReadable, options: O & { scalar: true }): Promise<Scalar>
   load<T = unknown>(source: CodecReadable, options?: O): Promise<T>
-  load(source: CodecSyncSource, options: O & { value: true }): Value
+  load(source: CodecSyncSource, options: O & { scalar: true }): Scalar
   load<T = unknown>(source: CodecSyncSource, options?: O): T
   dumps(value: unknown, options?: CodecOptions): Buffer
   dump(value: unknown, options?: CodecOptions): Buffer
@@ -1113,8 +1111,8 @@ export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
   dump(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
   loadStream(
     stream: AsyncIterable<CodecContent>,
-    options: O & { value: true },
-  ): Promise<Value>
+    options: O & { scalar: true },
+  ): Promise<Scalar>
   loadStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
     options?: O,
@@ -1129,11 +1127,11 @@ export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
 /** One-document operations plus JSON Lines/YAML collection operations. */
 export interface StructuredCodec<O extends CodecOptions = CodecOptions>
   extends SingleDocumentCodec<O> {
-  loadsAll(content: CodecContent, options: O & { value: true }): Value[]
+  loadsAll(content: CodecContent, options: O & { scalar: true }): Scalar[]
   loadsAll<T = unknown>(content: CodecContent, options?: O): T[]
-  loadAll(source: CodecReadable, options: O & { value: true }): AsyncIterable<Value>
+  loadAll(source: CodecReadable, options: O & { scalar: true }): AsyncIterable<Scalar>
   loadAll<T = unknown>(source: CodecReadable, options?: O): AsyncIterable<T>
-  loadAll(source: CodecSyncSource, options: O & { value: true }): Value[]
+  loadAll(source: CodecSyncSource, options: O & { scalar: true }): Scalar[]
   loadAll<T = unknown>(source: CodecSyncSource, options?: O): T[]
   dumpAll(values: Iterable<unknown>, options?: CodecOptions): Buffer
   dumpAll(
@@ -1148,8 +1146,8 @@ export interface StructuredCodec<O extends CodecOptions = CodecOptions>
   ): void
   loadAllStream(
     stream: AsyncIterable<CodecContent>,
-    options: O & { value: true },
-  ): AsyncIterable<Value>
+    options: O & { scalar: true },
+  ): AsyncIterable<Scalar>
   loadAllStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
     options?: O,
@@ -1164,20 +1162,20 @@ export interface StructuredCodec<O extends CodecOptions = CodecOptions>
 export interface GenericCodec {
   from(
     source: CodecReadable,
-    options: JsonLinesCodecOptions & { value: true },
-  ): AsyncIterable<Value>
+    options: JsonLinesCodecOptions & { scalar: true },
+  ): AsyncIterable<Scalar>
   from(
     source: CodecReadable,
-    options: TemplateCodecOptions & { value: true },
-  ): Promise<Value>
+    options: TemplateCodecOptions & { scalar: true },
+  ): Promise<Scalar>
   from(
     source: CodecSyncSource,
-    options: JsonLinesCodecOptions & { value: true },
-  ): Value[]
+    options: JsonLinesCodecOptions & { scalar: true },
+  ): Scalar[]
   from(
     source: CodecSyncSource,
-    options: TemplateCodecOptions & { value: true },
-  ): Value
+    options: TemplateCodecOptions & { scalar: true },
+  ): Scalar
   from<T = unknown>(source: CodecReadable, options: JsonLinesCodecOptions): AsyncIterable<T>
   from<T = unknown>(source: CodecReadable, options?: TemplateCodecOptions): Promise<T>
   from<T = unknown>(source: CodecSyncSource, options: JsonLinesCodecOptions): T[]
@@ -1206,12 +1204,12 @@ export interface GenericCodec {
   into(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
   fromStream(
     stream: AsyncIterable<CodecContent>,
-    options: JsonLinesCodecOptions & { value: true },
-  ): AsyncIterable<Value>
+    options: JsonLinesCodecOptions & { scalar: true },
+  ): AsyncIterable<Scalar>
   fromStream(
     stream: AsyncIterable<CodecContent>,
-    options: TemplateCodecOptions & { value: true },
-  ): Promise<Value>
+    options: TemplateCodecOptions & { scalar: true },
+  ): Promise<Scalar>
   fromStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
     options: JsonLinesCodecOptions,
@@ -1275,7 +1273,7 @@ export interface ParquetRowGroupStatistics {
   columns: ParquetColumnStatistics[]
 }
 
-/** Whole-file Parquet footer statistics, decoded through the native Value pivot. */
+/** Whole-file Parquet footer statistics, decoded through the native Scalar pivot. */
 export interface ParquetFileStatistics {
   num_rows: number | bigint
   created_by: string | null
@@ -1307,8 +1305,8 @@ export declare const enums: {
   readonly timeUnits: readonly CodecTimeUnit[]
   /** Both union modes: `'sparse'` and `'dense'`. */
   readonly unionModes: readonly ('sparse' | 'dense')[]
-  /** Every explicit record-write intent. */
-  readonly writeModes: readonly ('overwrite' | 'append' | 'merge')[]
+  /** Every generic I/O intent. */
+  readonly ioModes: readonly IOMode[]
   /** Every content coding, e.g. `'identity'`, `'gzip'`, `'zstd'`. */
   readonly codecs: readonly string[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
@@ -1435,37 +1433,37 @@ declare module './index' {
     /** Infer from one single-pass iterable of compound filename extensions. */
     function fromExtensions(values: Iterable<string>): MediaType
   }
-  interface Value extends Iterable<Value> {
+  interface Scalar extends Iterable<Scalar> {
     /** Add an inferred JavaScript or native numeric value in Rust. */
-    add(other: unknown): Value
+    add(other: unknown): Scalar
     /** Subtract an inferred JavaScript or native numeric value in Rust. */
-    subtract(other: unknown): Value
+    subtract(other: unknown): Scalar
     /** Multiply by an inferred JavaScript or native numeric value in Rust. */
-    multiply(other: unknown): Value
+    multiply(other: unknown): Scalar
     /** Divide by an inferred JavaScript or native numeric value in Rust. */
-    divide(other: unknown): Value
+    divide(other: unknown): Scalar
     /** Take the numeric remainder after one inferred conversion. */
-    remainder(other: unknown): Value
+    remainder(other: unknown): Scalar
     /** Negate this numeric value in Rust. */
-    negate(): Value
+    negate(): Scalar
     /** Return this numeric value's checked absolute value in Rust. */
-    absolute(): Value
+    absolute(): Scalar
     /** Number of direct sequence children, mapping entries, or record fields. */
     length: number
     /** Whether this is an empty sequence, mapping, or record. */
     isEmpty(): boolean
     /** Return one non-negative sequence index without projecting the child. */
-    at(index: number): Value | null
+    at(index: number): Scalar | null
     /** Read a sequence index, mapping key, or record field. */
-    get(key: unknown): Value | null
+    get(key: unknown): Scalar | null
     /** Whether a sequence index, mapping key, or record field resolves. */
     has(key: unknown): boolean
     /** Resolve a dotted mapping/record key and sequence-index path. */
-    path(path: string): Value | null
+    path(path: string): Scalar | null
     /** Return a mapping or record with one persistent replacement. */
-    set(key: unknown, value: unknown): Value
+    set(key: unknown, value: unknown): Scalar
     /** Return a mapping or record without one string key. */
-    remove(key: string): Value
+    remove(key: string): Scalar
     /** The JavaScript spelling of this value, or the value itself when it has none. */
     asJs(options?: CodecOptions): unknown
     /** Infer the exact native Field for this scalar value. */
@@ -1483,20 +1481,20 @@ declare module './index' {
     /** Materialize record values as an Apache Arrow Table. */
     intoArrowTable(field?: Field): ArrowTable
   }
-  namespace Value {
+  namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
-    function fromJs(value: unknown, options?: CodecOptions): Value
+    function fromJs(value: unknown, options?: CodecOptions): Scalar
     /** Read one item from a one-item Apache Arrow Vector. */
-    function fromArrowScalar(value: ArrowVector, field?: Field): Value
+    function fromArrowScalar(value: ArrowVector, field?: Field): Scalar
     /** Read an Apache Arrow Vector through native Arrow IPC. */
-    function fromArrowArray(value: ArrowVector, field?: Field): Value
+    function fromArrowArray(value: ArrowVector, field?: Field): Scalar
     /** Read an Apache Arrow RecordBatch through native Arrow IPC. */
     function fromArrowRecordBatch(
       value: ArrowRecordBatch,
       field?: Field,
-    ): Value
+    ): Scalar
     /** Read an Apache Arrow Table through native Arrow IPC. */
-    function fromArrowTable(value: ArrowTable, field?: Field): Value
+    function fromArrowTable(value: ArrowTable, field?: Field): Scalar
   }
   interface Uri extends Iterable<string> {
     /** Join path components through the generic URI core. */
@@ -1564,10 +1562,10 @@ declare module './index' {
     /** Add or reconfigure one native page cache and return this handle. */
     buffered(options?: BufferedOptions | null): IOBase
     /** Decode inferred JSON, YAML, or TOML, including its content coding. */
-    readValue(options: ValueReadOptions & { value: true }): Value
-    readValue<T = unknown>(options?: ValueReadOptions | FieldLike | null): T
-    /** Encode one JavaScript or native `Value` through the inferred format. */
-    writeValue(value: unknown | Value): void
+    readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
+    readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T
+    /** Encode one JavaScript or native `Scalar` through the inferred format. */
+    writeScalar(value: unknown | Scalar): void
     /** Read a Parquet leaf's footer statistics without decoding rows. */
     readParquetStatistics(): ParquetFileStatistics
     /** Recompute one Parquet WKB column's bounds and geometry types. */
@@ -1633,7 +1631,7 @@ declare module './index' {
     /** Write one native reader using the required explicit mode. */
     writeArrowReader(
       reader: BatchReader,
-      mode: WriteMode,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
     ): void
 
@@ -1646,7 +1644,7 @@ declare module './index' {
     /** Write one Apache Arrow JS table using the required explicit mode. */
     writeArrowTable(
       table: ArrowTable,
-      mode: WriteMode,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
     ): void
 
@@ -1668,7 +1666,7 @@ declare module './index' {
     /** Write one Apache Arrow JS record batch using the explicit mode. */
     writeArrowRecordBatch(
       batch: ArrowRecordBatch,
-      mode: WriteMode,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
     ): void
 
@@ -1704,12 +1702,12 @@ declare module './index' {
     /** Write records using the required explicit mode. */
     writeRecords(
       rows: AsyncIterable<StructRecord>,
-      mode: WriteMode,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
     ): Promise<void>
     writeRecords(
       rows: RecordSource,
-      mode: WriteMode,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
     ): void
   }
@@ -1855,9 +1853,9 @@ export interface Iceberg {
   /** Throw the core message when a type change is not a legal promotion. */
   canPromote(fromType: DataTypeInput, toType: DataTypeInput): void
   /** Read an Iceberg schema document as a root `Field`. */
-  schemaFromJson(name: string, document: Value | unknown): Field
+  schemaFromJson(name: string, document: Scalar | unknown): Field
   /** Write a root `Field` as an Iceberg schema document. */
-  schemaToJson(schema: Field): Value
+  schemaToJson(schema: Field): Scalar
 }
 
 export declare const iceberg: Iceberg

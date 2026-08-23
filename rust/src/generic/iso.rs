@@ -16,7 +16,7 @@
 
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
-use crate::enums::timezone::{civil_from_days, days_from_civil};
+use crate::generic::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, TimeUnit, Timezone};
 
 /// Seconds in one day, the modulus a datetime splits on.

@@ -14,7 +14,7 @@ from ._native import (
     Uri as Uri,
     Url as Url,
     Urn as Urn,
-    Value as Value,
+    Scalar as Scalar,
     __version__ as __version__,
     combined as combined,
     field_from_pattern as field_from_pattern,

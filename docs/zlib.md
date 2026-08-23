@@ -271,17 +271,17 @@ assert_eq!(zlib::load(inner.as_slice())?, plain);
 A transparent handle is chosen from what a payload declares -- a filename
 suffix, a media type, a content coding. Raw DEFLATE declares nothing: it has no
 framing to detect and no customary suffix. So it has no handle, and asking for
-one through [`generic::Codec`](generic.md) gives the zlib handle, which is the
+one through [`generic::Coded`](generic.md) gives the zlib handle, which is the
 framed form of the same algorithm.
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::zlib;
 
 let plain: &[u8] = b"symbol,price\nAAPL,1\n";
 
-let mut handle = Codec::wrap(Buffer::new(), yggdryl::Codec::Deflate);
+let mut handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Deflate);
 assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 
 handle.write_all_bytes(plain)?;
@@ -295,7 +295,7 @@ assert_eq!(yggdryl::Codec::Zlib.extension(), Some("zz"));
 ```
 
 The buffer and stream operations keep the distinction, because there the caller
-already knows which form the bytes are in. [`Codec`](enums.md) dispatches to
+already knows which form the bytes are in. [`Codec`](generic.md) dispatches to
 this module for both.
 
 ```rust

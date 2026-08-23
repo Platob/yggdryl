@@ -4,19 +4,19 @@ use std::io::Write;
 
 use base64::Engine as _;
 
-use crate::enums::timezone::{civil_from_days, days_from_civil};
-use crate::{Error, Result, TimeUnit, Timezone, Value};
+use crate::generic::timezone::{civil_from_days, days_from_civil};
+use crate::{Error, Result, Scalar, TimeUnit, Timezone};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
 
 /// Convert a TOML table into the natural named-record value.
-pub(super) fn decode_table(entries: Vec<(String, Value)>) -> Result<Value> {
-    Value::from_record(entries)
+pub(super) fn decode_table(entries: Vec<(String, Scalar)>) -> Result<Scalar> {
+    Scalar::from_record(entries)
 }
 
 /// Convert one native TOML date-time into its exact temporal value.
-pub(super) fn datetime_value(datetime: toml::value::Datetime) -> Result<Value> {
+pub(super) fn datetime_value(datetime: toml::value::Datetime) -> Result<Scalar> {
     match (datetime.date, datetime.time, datetime.offset) {
         (Some(date), Some(time), offset) => datetime_from_parts(date, time, offset),
         (Some(date), None, None) => date_value(date),
@@ -25,26 +25,28 @@ pub(super) fn datetime_value(datetime: toml::value::Datetime) -> Result<Value> {
     }
 }
 
-fn date_value(date: toml::value::Date) -> Result<Value> {
+fn date_value(date: toml::value::Date) -> Result<Scalar> {
     i32::try_from(days_from_civil(
         i32::from(date.year),
         u32::from(date.month),
         u32::from(date.day),
     ))
-    .map(Value::date32)
+    .map(Scalar::date32)
     .map_err(|_| codec_error("TOML date is outside the Date32 range"))
 }
 
-fn time_value(time: toml::value::Time) -> Result<Value> {
+fn time_value(time: toml::value::Time) -> Result<Scalar> {
     let (seconds, nanosecond) = seconds_of_day(time);
     let (count, unit) = scaled_count(seconds, nanosecond)?;
     match unit {
-        TimeUnit::Second | TimeUnit::Millisecond => Value::time32(
+        TimeUnit::Second | TimeUnit::Millisecond => Scalar::time32(
             i32::try_from(count).map_err(|_| codec_error("TOML time exceeds 32 bits"))?,
             unit,
             Timezone::NAIVE,
         ),
-        TimeUnit::Microsecond | TimeUnit::Nanosecond => Value::time64(count, unit, Timezone::NAIVE),
+        TimeUnit::Microsecond | TimeUnit::Nanosecond => {
+            Scalar::time64(count, unit, Timezone::NAIVE)
+        }
         _ => unreachable!("a TOML fraction names a scalar unit"),
     }
 }
@@ -53,7 +55,7 @@ fn datetime_from_parts(
     date: toml::value::Date,
     time: toml::value::Time,
     offset: Option<toml::value::Offset>,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let (within_day, nanosecond) = seconds_of_day(time);
     let local = days_from_civil(
         i32::from(date.year),
@@ -77,7 +79,7 @@ fn datetime_from_parts(
         None => (local, Timezone::NAIVE),
     };
     let (count, unit) = scaled_count(seconds, nanosecond)?;
-    Value::datetime64(count, unit, zone)
+    Scalar::datetime64(count, unit, zone)
 }
 
 const fn seconds_of_day(time: toml::value::Time) -> (i64, u32) {
@@ -118,16 +120,16 @@ const fn offset_seconds(offset: toml::value::Offset) -> i32 {
 }
 
 /// Preflight the natural TOML document.
-pub(super) fn check_depth(value: &Value, maximum: usize) -> Result<()> {
+pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<()> {
     observe_depth(1, maximum)?;
     match value {
-        Value::Record(entries) => {
+        Scalar::Record(entries) => {
             for value in entries.values() {
                 check_value(value, 1, maximum)?;
             }
             Ok(())
         }
-        Value::Mapping(entries) if entries.iter().all(|(key, _)| key.as_str().is_some()) => {
+        Scalar::Mapping(entries) if entries.iter().all(|(key, _)| key.as_str().is_some()) => {
             for (_, value) in entries.iter() {
                 check_value(value, 1, maximum)?;
             }
@@ -137,19 +139,19 @@ pub(super) fn check_depth(value: &Value, maximum: usize) -> Result<()> {
     }
 }
 
-fn check_value(value: &Value, parent: usize, maximum: usize) -> Result<()> {
+fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
     match value {
-        Value::Null => Err(codec_error("TOML cannot represent null")),
-        Value::U64(value) if i64::try_from(*value).is_err() => {
+        Scalar::Null => Err(codec_error("TOML cannot represent null")),
+        Scalar::U64(value) if i64::try_from(*value).is_err() => {
             Err(codec_error("TOML integer exceeds i64"))
         }
-        Value::I128(value) if i64::try_from(*value).is_err() => {
+        Scalar::I128(value) if i64::try_from(*value).is_err() => {
             Err(codec_error("TOML integer exceeds i64"))
         }
-        Value::U128(value) if i64::try_from(*value).is_err() => {
+        Scalar::U128(value) if i64::try_from(*value).is_err() => {
             Err(codec_error("TOML integer exceeds i64"))
         }
-        Value::Sequence(values) => {
+        Scalar::Sequence(values) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
             for value in values.iter() {
@@ -157,7 +159,7 @@ fn check_value(value: &Value, parent: usize, maximum: usize) -> Result<()> {
             }
             Ok(())
         }
-        Value::Record(entries) => {
+        Scalar::Record(entries) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
             for value in entries.values() {
@@ -165,7 +167,7 @@ fn check_value(value: &Value, parent: usize, maximum: usize) -> Result<()> {
             }
             Ok(())
         }
-        Value::Mapping(entries) => {
+        Scalar::Mapping(entries) => {
             if !entries.iter().all(|(key, _)| key.as_str().is_some()) {
                 return Err(codec_error("TOML table keys must be strings"));
             }
@@ -193,11 +195,11 @@ fn observe_depth(depth: usize, maximum: usize) -> Result<()> {
 /// Write one natural TOML document.
 pub(super) fn write_document<W: Write>(
     writer: &mut W,
-    value: &Value,
+    value: &Scalar,
     layout: Layout,
 ) -> Result<()> {
     match value {
-        Value::Record(entries) => {
+        Scalar::Record(entries) => {
             for (name, value) in entries.iter() {
                 write_quoted(writer, name)?;
                 writer.write_all(b" = ")?;
@@ -206,7 +208,7 @@ pub(super) fn write_document<W: Write>(
             }
             Ok(())
         }
-        Value::Mapping(entries) => {
+        Scalar::Mapping(entries) => {
             for (key, value) in entries.iter() {
                 let key = key
                     .as_str()
@@ -237,39 +239,39 @@ impl From<crate::text::Formatting> for Layout {
 
 fn write_value<W: Write>(
     writer: &mut W,
-    value: &Value,
+    value: &Scalar,
     layout: Layout,
     depth: usize,
 ) -> Result<()> {
     match value {
-        Value::Null => return Err(codec_error("TOML cannot represent null")),
-        Value::Bool(value) => writer.write_all(if *value { b"true" } else { b"false" })?,
-        Value::I8(value) => write!(writer, "{value}")?,
-        Value::I16(value) => write!(writer, "{value}")?,
-        Value::I32(value) => write!(writer, "{value}")?,
-        Value::I64(value) => write!(writer, "{value}")?,
-        Value::U8(value) => write!(writer, "{value}")?,
-        Value::U16(value) => write!(writer, "{value}")?,
-        Value::U32(value) => write!(writer, "{value}")?,
-        Value::U64(value) => write!(
+        Scalar::Null => return Err(codec_error("TOML cannot represent null")),
+        Scalar::Bool(value) => writer.write_all(if *value { b"true" } else { b"false" })?,
+        Scalar::I8(value) => write!(writer, "{value}")?,
+        Scalar::I16(value) => write!(writer, "{value}")?,
+        Scalar::I32(value) => write!(writer, "{value}")?,
+        Scalar::I64(value) => write!(writer, "{value}")?,
+        Scalar::U8(value) => write!(writer, "{value}")?,
+        Scalar::U16(value) => write!(writer, "{value}")?,
+        Scalar::U32(value) => write!(writer, "{value}")?,
+        Scalar::U64(value) => write!(
             writer,
             "{}",
             i64::try_from(*value).map_err(|_| codec_error("TOML integer exceeds i64"))?
         )?,
-        Value::I128(value) => write!(
+        Scalar::I128(value) => write!(
             writer,
             "{}",
             i64::try_from(*value).map_err(|_| codec_error("TOML integer exceeds i64"))?
         )?,
-        Value::U128(value) => write!(
+        Scalar::U128(value) => write!(
             writer,
             "{}",
             i64::try_from(*value).map_err(|_| codec_error("TOML integer exceeds i64"))?
         )?,
-        Value::F16(value) => write_float(writer, value.as_f64())?,
-        Value::F32(value) => write_float(writer, value.as_f64())?,
-        Value::F64(value) => write_float(writer, value.as_f64())?,
-        Value::D128(coefficient, scale) => {
+        Scalar::F16(value) => write_float(writer, value.as_f64())?,
+        Scalar::F32(value) => write_float(writer, value.as_f64())?,
+        Scalar::F64(value) => write_float(writer, value.as_f64())?,
+        Scalar::D128(coefficient, scale) => {
             write_quoted(
                 writer,
                 &crate::generic::decimal::decimal_text(
@@ -278,28 +280,28 @@ fn write_value<W: Write>(
                 ),
             )?;
         }
-        Value::D256(coefficient, scale) => {
+        Scalar::D256(coefficient, scale) => {
             write_quoted(
                 writer,
                 &crate::generic::decimal::decimal_text(*coefficient, *scale),
             )?;
         }
-        Value::String(value) => write_quoted(writer, value)?,
-        Value::Bytes(value) | Value::Geospatial(value) => write_quoted(
+        Scalar::String(value) => write_quoted(writer, value)?,
+        Scalar::Bytes(value) | Scalar::Geospatial(value) => write_quoted(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value),
         )?,
-        Value::Date32(..)
-        | Value::Date64(..)
-        | Value::Time32(..)
-        | Value::Time64(..)
-        | Value::DateTime64(..) => write_temporal(writer, value)?,
-        Value::Duration32(count, unit, zone) => {
+        Scalar::Date32(..)
+        | Scalar::Date64(..)
+        | Scalar::Time32(..)
+        | Scalar::Time64(..)
+        | Scalar::DateTime64(..) => write_temporal(writer, value)?,
+        Scalar::Duration32(count, unit, zone) => {
             write_duration(writer, i64::from(*count), *unit, zone)?;
         }
-        Value::Duration64(count, unit, zone) => write_duration(writer, *count, *unit, zone)?,
-        Value::Sequence(values) => write_sequence(writer, values, layout, depth)?,
-        Value::Record(entries) => {
+        Scalar::Duration64(count, unit, zone) => write_duration(writer, *count, *unit, zone)?,
+        Scalar::Sequence(values) => write_sequence(writer, values, layout, depth)?,
+        Scalar::Record(entries) => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.iter().enumerate() {
                 if index != 0 {
@@ -311,7 +313,7 @@ fn write_value<W: Write>(
             }
             writer.write_all(b"}")?;
         }
-        Value::Mapping(entries) => {
+        Scalar::Mapping(entries) => {
             writer.write_all(b"{")?;
             for (index, (key, value)) in entries.iter().enumerate() {
                 if index != 0 {
@@ -332,7 +334,7 @@ fn write_value<W: Write>(
 
 fn write_sequence<W: Write>(
     writer: &mut W,
-    values: &[Value],
+    values: &[Scalar],
     layout: Layout,
     depth: usize,
 ) -> Result<()> {
@@ -361,29 +363,29 @@ fn write_sequence<W: Write>(
     Ok(())
 }
 
-fn write_temporal<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+fn write_temporal<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     if let Some(datetime) = native_datetime(value) {
         write!(writer, "{datetime}")?;
         return Ok(());
     }
     match value {
-        Value::Date32(count, _, zone) => {
+        Scalar::Date32(count, _, zone) => {
             if !zone.is_naive() {
                 return Err(codec_error("Date32 cannot carry a timezone"));
             }
             write!(writer, "{count}")?;
         }
-        Value::Date64(count, _, zone) => {
+        Scalar::Date64(count, _, zone) => {
             if !zone.is_naive() {
                 return Err(codec_error("Date64 cannot carry a timezone"));
             }
             write!(writer, "{count}")?;
         }
-        Value::Time32(count, unit, zone) => {
+        Scalar::Time32(count, unit, zone) => {
             write_time(writer, i64::from(*count), *unit, zone)?;
         }
-        Value::Time64(count, unit, zone) => write_time(writer, *count, *unit, zone)?,
-        Value::DateTime64(count, unit, zone) => {
+        Scalar::Time64(count, unit, zone) => write_time(writer, *count, *unit, zone)?,
+        Scalar::DateTime64(count, unit, zone) => {
             let text = if zone.is_naive() {
                 crate::generic::iso::format_datetime(*count, *unit)
             } else {
@@ -429,16 +431,16 @@ fn write_time<W: Write>(writer: &mut W, count: i64, unit: TimeUnit, zone: &Timez
     write_quoted(writer, &text)
 }
 
-fn native_datetime(value: &Value) -> Option<toml::value::Datetime> {
+fn native_datetime(value: &Scalar) -> Option<toml::value::Datetime> {
     match value {
-        Value::Date32(count, TimeUnit::Day, zone) if zone.is_naive() => {
+        Scalar::Date32(count, TimeUnit::Day, zone) if zone.is_naive() => {
             Some(toml::value::Datetime {
                 date: Some(toml_date(i64::from(*count))?),
                 time: None,
                 offset: None,
             })
         }
-        Value::Date64(count, TimeUnit::Millisecond, zone)
+        Scalar::Date64(count, TimeUnit::Millisecond, zone)
             if zone.is_naive() && count.rem_euclid(86_400_000) == 0 =>
         {
             Some(toml::value::Datetime {
@@ -447,11 +449,11 @@ fn native_datetime(value: &Value) -> Option<toml::value::Datetime> {
                 offset: None,
             })
         }
-        Value::Time32(count, unit, zone) if zone.is_naive() => {
+        Scalar::Time32(count, unit, zone) if zone.is_naive() => {
             time_datetime(i64::from(*count), *unit)
         }
-        Value::Time64(count, unit, zone) if zone.is_naive() => time_datetime(*count, *unit),
-        Value::DateTime64(count, unit, zone) => datetime_datetime(*count, *unit, zone),
+        Scalar::Time64(count, unit, zone) if zone.is_naive() => time_datetime(*count, *unit),
+        Scalar::DateTime64(count, unit, zone) => datetime_datetime(*count, *unit, zone),
         _ => None,
     }
 }

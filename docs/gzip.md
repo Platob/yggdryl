@@ -59,7 +59,7 @@ carry - a caller who sees `loads` there is never left wondering where `load` wen
 
 The same four operations - `load`, `dump`, `reader`, `writer` - exist under
 [zlib](zlib.md) and [zstd](zstd.md) with identical signatures, and
-[`Codec`](enums.md) selects between them at runtime.
+[`Codec`](generic.md) selects between them at runtime.
 
 ## Levels
 
@@ -218,7 +218,7 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 ## A `.gz` name is enough
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::{MediaType, MimeType};
 
@@ -228,7 +228,7 @@ assert_eq!(named.base(), &MimeType::CSV);
 assert_eq!(yggdryl::Codec::from_media_type(&named), yggdryl::Codec::Gzip);
 
 // A handle that declares that media type picks its own coding.
-let mut handle = Codec::infer(Buffer::new().with_media_type(named));
+let mut handle = Coded::infer(Buffer::new().with_media_type(named));
 assert_eq!(handle.codec(), yggdryl::Codec::Gzip);
 
 handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;

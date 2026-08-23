@@ -18,7 +18,7 @@ const {
   arrowVectorIntoIPC,
 } = require('./values.js')
 
-// Native methods taking serde_json::Value recurse through caller-owned JS
+// Native methods taking serde_json::Scalar recurse through caller-owned JS
 // objects before Rust can enforce its own schema/value depth limits. Keep that
 // FFI traversal on a detached, bounded JSON tree. The 256 raw-container limit
 // admits Yggdryl's maximum valid 62-level nested structured wire (depth 254)
@@ -175,26 +175,26 @@ const {
   Uri: NativeUri,
   Url: NativeUrl,
   Urn: NativeUrn,
-  Value: NativeValue,
+  Scalar: NativeScalar,
 } = binding
 
 // The pivot keeps its private conversion handles inside this loader: `fromJs`
 // needs the intrinsic tables assembled below and `asJs` needs the transport
 // reader, and neither of those belongs on the published class.
-const nativeValueFromJs = NativeValue._fromJsNative.bind(NativeValue)
-const nativeValueAsJs = NativeValue.prototype._asJsNative
-const nativeValueIter = NativeValue.prototype._iterNative
-const nativeValueGet = NativeValue.prototype._getNative
-const nativeValueSet = NativeValue.prototype._setNative
-const nativeValueRemove = NativeValue.prototype._removeNative
-const nativeValueArithmetic = Object.freeze({
-  add: NativeValue.prototype._addNative,
-  subtract: NativeValue.prototype._subtractNative,
-  multiply: NativeValue.prototype._multiplyNative,
-  divide: NativeValue.prototype._divideNative,
-  remainder: NativeValue.prototype._remainderNative,
-  negate: NativeValue.prototype._negateNative,
-  absolute: NativeValue.prototype._absoluteNative,
+const nativeScalarFromJs = NativeScalar._fromJsNative.bind(NativeScalar)
+const nativeScalarAsJs = NativeScalar.prototype._asJsNative
+const nativeScalarIter = NativeScalar.prototype._iterNative
+const nativeScalarGet = NativeScalar.prototype._getNative
+const nativeScalarSet = NativeScalar.prototype._setNative
+const nativeScalarRemove = NativeScalar.prototype._removeNative
+const nativeScalarArithmetic = Object.freeze({
+  add: NativeScalar.prototype._addNative,
+  subtract: NativeScalar.prototype._subtractNative,
+  multiply: NativeScalar.prototype._multiplyNative,
+  divide: NativeScalar.prototype._divideNative,
+  remainder: NativeScalar.prototype._remainderNative,
+  negate: NativeScalar.prototype._negateNative,
+  absolute: NativeScalar.prototype._absoluteNative,
 })
 const nativeExpressionArithmetic = Object.freeze({
   add: NativeExpression.prototype._addNative,
@@ -203,27 +203,27 @@ const nativeExpressionArithmetic = Object.freeze({
   divide: NativeExpression.prototype._divideNative,
   remainder: NativeExpression.prototype._remainderNative,
 })
-const nativeValueFromArrowScalar =
-  NativeValue._fromArrowScalarIpcNative.bind(NativeValue)
-const nativeValueFromArrowArray =
-  NativeValue._fromArrowArrayIpcNative.bind(NativeValue)
-const nativeValueFromArrowRecordBatch =
-  NativeValue._fromArrowRecordBatchIpcNative.bind(NativeValue)
-const nativeValueFromArrowTable =
-  NativeValue._fromArrowTableIpcNative.bind(NativeValue)
-const nativeValueIntoArrowScalar =
-  NativeValue.prototype._intoArrowScalarIpcNative
-const nativeValueIntoArrowArray = NativeValue.prototype._intoArrowArrayIpcNative
-const nativeValueIntoArrowRecordBatch =
-  NativeValue.prototype._intoArrowRecordBatchIpcNative
-const nativeValueIntoArrowTable = NativeValue.prototype._intoArrowTableIpcNative
+const nativeScalarFromArrowScalar =
+  NativeScalar._fromArrowScalarIpcNative.bind(NativeScalar)
+const nativeScalarFromArrowArray =
+  NativeScalar._fromArrowArrayIpcNative.bind(NativeScalar)
+const nativeScalarFromArrowRecordBatch =
+  NativeScalar._fromArrowRecordBatchIpcNative.bind(NativeScalar)
+const nativeScalarFromArrowTable =
+  NativeScalar._fromArrowTableIpcNative.bind(NativeScalar)
+const nativeScalarIntoArrowScalar =
+  NativeScalar.prototype._intoArrowScalarIpcNative
+const nativeScalarIntoArrowArray = NativeScalar.prototype._intoArrowArrayIpcNative
+const nativeScalarIntoArrowRecordBatch =
+  NativeScalar.prototype._intoArrowRecordBatchIpcNative
+const nativeScalarIntoArrowTable = NativeScalar.prototype._intoArrowTableIpcNative
 const nativeAvroSchemaFromValue =
-  NativeAvroSchema._fromValueNative.bind(NativeAvroSchema)
+  NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
   NativeAvroSchema._fromUtf8Native.bind(NativeAvroSchema)
 const nativeAvroSchemaFromBytes =
   NativeAvroSchema._fromBytesNative.bind(NativeAvroSchema)
-const nativeAvroSchemaIntoValue = NativeAvroSchema.prototype._intoValueNative
+const nativeAvroSchemaIntoValue = NativeAvroSchema.prototype._intoScalarNative
 const nativeAvroIntoSingleObject =
   NativeAvroSchema.prototype._intoSingleObjectNative
 const nativeAvroFromSingleObject =
@@ -231,19 +231,19 @@ const nativeAvroFromSingleObject =
 const nativeAvroBlockRows = NativeAvroBlock.prototype._rowsNative
 const nativeAvroBlocksMetadata = NativeAvroBlocks.prototype._metadataNative
 const nativePartitionSpecFromValue =
-  NativePartitionSpec._fromValueNative.bind(NativePartitionSpec)
+  NativePartitionSpec._fromScalarNative.bind(NativePartitionSpec)
 const nativePartitionSpecIntoValue =
-  NativePartitionSpec.prototype._intoValueNative
+  NativePartitionSpec.prototype._intoScalarNative
 const nativeAvroBlocksGet = NativeAvroBlocks.prototype.get
 const nativeAvroBlocksNext = NativeAvroBlocks.prototype.next
 const nativeAvroBlocks = binding.avroBlocksNative
 const nativeAvroLoads = binding.avroLoadsNative
 const nativeAvroDumps = binding.avroDumpsNative
-delete NativeValue.prototype._asJsNative
-delete NativeValue.prototype._iterNative
-delete NativeValue.prototype._getNative
-delete NativeValue.prototype._setNative
-delete NativeValue.prototype._removeNative
+delete NativeScalar.prototype._asJsNative
+delete NativeScalar.prototype._iterNative
+delete NativeScalar.prototype._getNative
+delete NativeScalar.prototype._setNative
+delete NativeScalar.prototype._removeNative
 for (const nativeName of [
   '_addNative',
   '_subtractNative',
@@ -253,7 +253,7 @@ for (const nativeName of [
   '_negateNative',
   '_absoluteNative',
 ]) {
-  delete NativeValue.prototype[nativeName]
+  delete NativeScalar.prototype[nativeName]
 }
 for (const nativeName of [
   '_addNative',
@@ -264,20 +264,20 @@ for (const nativeName of [
 ]) {
   delete NativeExpression.prototype[nativeName]
 }
-delete NativeValue.prototype._intoArrowScalarIpcNative
-delete NativeValue.prototype._intoArrowArrayIpcNative
-delete NativeValue.prototype._intoArrowRecordBatchIpcNative
-delete NativeValue.prototype._intoArrowTableIpcNative
-delete NativeAvroSchema.prototype._intoValueNative
+delete NativeScalar.prototype._intoArrowScalarIpcNative
+delete NativeScalar.prototype._intoArrowArrayIpcNative
+delete NativeScalar.prototype._intoArrowRecordBatchIpcNative
+delete NativeScalar.prototype._intoArrowTableIpcNative
+delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
 delete NativeAvroBlock.prototype._rowsNative
 delete NativeAvroBlocks.prototype._metadataNative
-delete NativePartitionSpec.prototype._intoValueNative
+delete NativePartitionSpec.prototype._intoScalarNative
 delete binding.avroBlocksNative
 delete binding.avroLoadsNative
 delete binding.avroDumpsNative
-delete binding.ValueIterator
+delete binding.ScalarIterator
 
 function publicNativeClass(NativeClass, name, hiddenStatics) {
   const PublicClass = function (...args) {
@@ -351,9 +351,9 @@ const MediaType = publicNativeClass(
 const Uri = publicNativeClass(NativeUri, 'Uri', new Set(['fromJSON']))
 const Url = publicNativeClass(NativeUrl, 'Url', new Set(['fromJSON']))
 const Urn = publicNativeClass(NativeUrn, 'Urn', new Set(['fromJSON']))
-const Value = publicNativeClass(
-  NativeValue,
-  'Value',
+const Scalar = publicNativeClass(
+  NativeScalar,
+  'Scalar',
   new Set([
     '_fromJsNative',
     '_fromArrowScalarIpcNative',
@@ -365,7 +365,7 @@ const Value = publicNativeClass(
 const PartitionSpec = publicNativeClass(
   NativePartitionSpec,
   'PartitionSpec',
-  new Set(['_fromValueNative']),
+  new Set(['_fromScalarNative']),
 )
 
 // Avro schemas accept several JavaScript shapes, while the NAPI class itself
@@ -391,7 +391,7 @@ binding.MediaType = MediaType
 binding.Uri = Uri
 binding.Url = Url
 binding.Urn = Urn
-binding.Value = Value
+binding.Scalar = Scalar
 binding.PartitionSpec = PartitionSpec
 binding.AvroSchema = AvroSchema
 delete binding.AvroBlock
@@ -650,7 +650,7 @@ const DEFAULT_MAX_STREAM_DOCUMENTS = 1024
 const UTF8_REPLACEMENT_BYTE_LENGTH = 3
 const YAML_EXPLICIT_END = Buffer.from('...\n')
 const nativeWrapperPrototypes = Object.freeze([
-  Value.prototype,
+  Scalar.prototype,
   DataType.prototype,
   Field.prototype,
   Uri.prototype,
@@ -677,6 +677,21 @@ function checkedOptions(options) {
   if (options == null) return {}
   if (typeof options !== 'object' || Array.isArray(options)) {
     throw new TypeError('codec options must be an object')
+  }
+  const allowed = new Set([
+    'environment',
+    'field',
+    'format',
+    'indent',
+    'maxDepth',
+    'maxDocuments',
+    'maxInputBytes',
+    'maxNodes',
+    'placeholders',
+    'scalar',
+  ])
+  for (const name of Object.keys(options)) {
+    if (!allowed.has(name)) throw new TypeError(`unknown codec option ${name}`)
   }
   if (
     options.maxDepth !== undefined &&
@@ -711,11 +726,11 @@ function checkedOptions(options) {
     throw new TypeError('codec format must be a string')
   }
   if (
-    options.value !== undefined &&
-    options.value !== null &&
-    typeof options.value !== 'boolean'
+    options.scalar !== undefined &&
+    options.scalar !== null &&
+    typeof options.scalar !== 'boolean'
   ) {
-    throw new TypeError('value must be a boolean')
+    throw new TypeError('scalar must be a boolean')
   }
   const field =
     options.field === undefined || options.field === null
@@ -763,13 +778,13 @@ function codecDocumentLimit(options) {
     : options.maxDocuments
 }
 
-// The two `{{ }}` switches, crossing as one native `Value` and one boolean.
+// The two `{{ }}` switches, crossing as one native `Scalar` and one boolean.
 // Both stay `undefined` unless the caller set them, so a plain load is exactly
 // the plain load: no substitution pass, and no environment access at all.
 function fillingArguments(options) {
   const { placeholders, environment } = options
   return [
-    placeholders === undefined || placeholders === null ? null : Value.fromJs(placeholders),
+    placeholders === undefined || placeholders === null ? null : Scalar.fromJs(placeholders),
     environment === undefined ? null : environment,
   ]
 }
@@ -946,10 +961,10 @@ function markerShape(value, kind, keys) {
 function fromTypedMarker(value) {
   const decimalKeys = [TRANSPORT_KEY, 'scale', 'value'].sort()
   if (markerShape(value, 'd128', decimalKeys)) {
-    return Value.d128(BigInt(value.value), value.scale)
+    return Scalar.d128(BigInt(value.value), value.scale)
   }
   if (markerShape(value, 'd256', decimalKeys)) {
-    return Value.d256(BigInt(value.value), value.scale)
+    return Scalar.d256(BigInt(value.value), value.scale)
   }
   const temporalKeys = [TRANSPORT_KEY, 'date', 'unit', 'value', 'zone'].sort()
   const temporalKinds = new Set([
@@ -970,19 +985,19 @@ function fromTypedMarker(value) {
   }
   switch (kind) {
     case 'date32':
-      return Value.date32(Number(value.value))
+      return Scalar.date32(Number(value.value))
     case 'date64':
-      return Value.date64(BigInt(value.value))
+      return Scalar.date64(BigInt(value.value))
     case 'time32':
-      return Value.time32(Number(value.value), value.unit)
+      return Scalar.time32(Number(value.value), value.unit)
     case 'time64':
-      return Value.time64(BigInt(value.value), value.unit)
+      return Scalar.time64(BigInt(value.value), value.unit)
     case 'datetime64':
-      return Value.datetime64(BigInt(value.value), value.unit, value.zone)
+      return Scalar.datetime64(BigInt(value.value), value.unit, value.zone)
     case 'duration32':
-      return Value.duration32(Number(value.value), value.unit)
+      return Scalar.duration32(Number(value.value), value.unit)
     case 'duration64':
-      return Value.duration64(BigInt(value.value), value.unit)
+      return Scalar.duration64(BigInt(value.value), value.unit)
     default:
       return undefined
   }
@@ -1054,10 +1069,10 @@ function fromTransport(value) {
 
 // The conversion pair every codec entry point crosses. `dumps` is `fromJs`
 // with bytes on the far side and `loads` is `asJs`; they run this exact code.
-Object.defineProperty(Value, 'fromJs', {
+Object.defineProperty(Scalar, 'fromJs', {
   value(value, options) {
     options = checkedOptions(options)
-    return nativeValueFromJs(
+    return nativeScalarFromJs(
       value,
       options.maxDepth,
       nativeWrapperPrototypes,
@@ -1079,7 +1094,7 @@ Object.defineProperties(
               ? other
               : typeof other === 'string'
                 ? new NativeExpression(other)
-                : NativeExpression.literal(Value.fromJs(other))
+                : NativeExpression.literal(Scalar.fromJs(other))
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1087,18 +1102,18 @@ Object.defineProperties(
   ),
 )
 
-Object.defineProperty(Value.prototype, 'asJs', {
+Object.defineProperty(Scalar.prototype, 'asJs', {
   configurable: true,
   value(options) {
     options = checkedOptions(options)
-    return fromTransport(Reflect.apply(nativeValueAsJs, this, [options.maxDepth]))
+    return fromTransport(Reflect.apply(nativeScalarAsJs, this, [options.maxDepth]))
   },
 })
 
 Object.defineProperty(PartitionSpec, 'fromJSON', {
   configurable: true,
   value(value) {
-    return nativePartitionSpecFromValue(Value.fromJs(value))
+    return nativePartitionSpecFromValue(Scalar.fromJs(value))
   },
 })
 
@@ -1119,41 +1134,41 @@ Object.defineProperties(PartitionSpec.prototype, {
   },
 })
 
-Object.defineProperties(Value, {
+Object.defineProperties(Scalar, {
   fromArrowScalar: {
     value(value, field) {
-      return nativeValueFromArrowScalar(arrowScalarIntoIPC(value), field)
+      return nativeScalarFromArrowScalar(arrowScalarIntoIPC(value), field)
     },
   },
   fromArrowArray: {
     value(value, field) {
-      return nativeValueFromArrowArray(
-        arrowVectorIntoIPC(value, 'Value.fromArrowArray input'),
+      return nativeScalarFromArrowArray(
+        arrowVectorIntoIPC(value, 'Scalar.fromArrowArray input'),
         field,
       )
     },
   },
   fromArrowRecordBatch: {
     value(value, field) {
-      return nativeValueFromArrowRecordBatch(
-        arrowBatchIntoIPC(value, 'Value.fromArrowRecordBatch input'),
+      return nativeScalarFromArrowRecordBatch(
+        arrowBatchIntoIPC(value, 'Scalar.fromArrowRecordBatch input'),
         field,
       )
     },
   },
   fromArrowTable: {
     value(value, field) {
-      return nativeValueFromArrowTable(
-        arrowTableIntoIPC(value, 'Value.fromArrowTable input'),
+      return nativeScalarFromArrowTable(
+        arrowTableIntoIPC(value, 'Scalar.fromArrowTable input'),
         field,
       )
     },
   },
 })
 
-Object.defineProperties(Value.prototype, {
+Object.defineProperties(Scalar.prototype, {
   ...Object.fromEntries(
-    Object.entries(nativeValueArithmetic).map(([name, native]) => [
+    Object.entries(nativeScalarArithmetic).map(([name, native]) => [
       name,
       {
         configurable: true,
@@ -1161,7 +1176,7 @@ Object.defineProperties(Value.prototype, {
           if (name === 'negate' || name === 'absolute') {
             return Reflect.apply(native, this, [])
           }
-          const operand = other instanceof NativeValue ? other : Value.fromJs(other)
+          const operand = other instanceof NativeScalar ? other : Scalar.fromJs(other)
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1170,7 +1185,7 @@ Object.defineProperties(Value.prototype, {
   [Symbol.iterator]: {
     configurable: true,
     value() {
-      return Reflect.apply(nativeValueIter, this, [])
+      return Reflect.apply(nativeScalarIter, this, [])
     },
   },
   get: {
@@ -1185,8 +1200,8 @@ Object.defineProperties(Value.prototype, {
       if (this.kind === 'record' && typeof key !== 'string') {
         throw new TypeError('record field names must be strings')
       }
-      const nativeKey = key instanceof Value ? key : Value.fromJs(key)
-      return Reflect.apply(nativeValueGet, this, [nativeKey])
+      const nativeKey = key instanceof Scalar ? key : Scalar.fromJs(key)
+      return Reflect.apply(nativeScalarGet, this, [nativeKey])
     },
   },
   has: {
@@ -1201,9 +1216,9 @@ Object.defineProperties(Value.prototype, {
       if (this.kind === 'record' && typeof key !== 'string') {
         throw new TypeError('record field names must be strings')
       }
-      const nativeKey = key instanceof Value ? key : Value.fromJs(key)
-      const nativeItem = value instanceof Value ? value : Value.fromJs(value)
-      return Reflect.apply(nativeValueSet, this, [nativeKey, nativeItem])
+      const nativeKey = key instanceof Scalar ? key : Scalar.fromJs(key)
+      const nativeItem = value instanceof Scalar ? value : Scalar.fromJs(value)
+      return Reflect.apply(nativeScalarSet, this, [nativeKey, nativeItem])
     },
   },
   remove: {
@@ -1212,38 +1227,38 @@ Object.defineProperties(Value.prototype, {
       if (typeof key !== 'string') {
         throw new TypeError('remove requires a string key')
       }
-      return Reflect.apply(nativeValueRemove, this, [Value.fromJs(key)])
+      return Reflect.apply(nativeScalarRemove, this, [Scalar.fromJs(key)])
     },
   },
   intoArrowScalar: {
     value(field) {
       return arrowScalarFromIPC(
-        Reflect.apply(nativeValueIntoArrowScalar, this, [field]),
-        'Value.intoArrowScalar output',
+        Reflect.apply(nativeScalarIntoArrowScalar, this, [field]),
+        'Scalar.intoArrowScalar output',
       )
     },
   },
   intoArrowArray: {
     value(field) {
       return arrowVectorFromIPC(
-        Reflect.apply(nativeValueIntoArrowArray, this, [field]),
-        'Value.intoArrowArray output',
+        Reflect.apply(nativeScalarIntoArrowArray, this, [field]),
+        'Scalar.intoArrowArray output',
       )
     },
   },
   intoArrowRecordBatch: {
     value(field) {
       return arrowBatchFromIPC(
-        Reflect.apply(nativeValueIntoArrowRecordBatch, this, [field]),
-        'Value.intoArrowRecordBatch output',
+        Reflect.apply(nativeScalarIntoArrowRecordBatch, this, [field]),
+        'Scalar.intoArrowRecordBatch output',
       )
     },
   },
   intoArrowTable: {
     value(field) {
       return arrowTableFromIPC(
-        Reflect.apply(nativeValueIntoArrowTable, this, [field]),
-        'Value.intoArrowTable output',
+        Reflect.apply(nativeScalarIntoArrowTable, this, [field]),
+        'Scalar.intoArrowTable output',
       )
     },
   },
@@ -1311,7 +1326,7 @@ function avroSchemaFrom(value, clone = false, options) {
   ) {
     return nativeAvroSchemaFromBytes(toBytes(value), limits)
   }
-  return nativeAvroSchemaFromValue(Value.fromJs(value), limits)
+  return nativeAvroSchemaFromValue(Scalar.fromJs(value), limits)
 }
 
 function avroBytes(value, label) {
@@ -1347,7 +1362,7 @@ Object.defineProperties(AvroSchema.prototype, {
   },
   intoSingleObject: {
     value(value) {
-      return Reflect.apply(nativeAvroIntoSingleObject, this, [Value.fromJs(value)])
+      return Reflect.apply(nativeAvroIntoSingleObject, this, [Scalar.fromJs(value)])
     },
   },
   fromSingleObject: {
@@ -1441,10 +1456,10 @@ function avroLoads(input, options) {
     metadata,
     rows: decoded.rows,
     // The container already decoded this schema into the shared natural
-    // Value shape. A primitive schema is therefore `"long"`, not the JSON
-    // source text `'"long"'`; keep it on the native-Value path so those two
+    // Scalar shape. A primitive schema is therefore `"long"`, not the JSON
+    // source text `'"long"'`; keep it on the native-Scalar path so those two
     // intentionally distinct inputs cannot be confused.
-    schema: nativeAvroSchemaFromValue(Value.fromJs(decoded.schema)),
+    schema: nativeAvroSchemaFromValue(Scalar.fromJs(decoded.schema)),
   }
 }
 
@@ -1460,7 +1475,7 @@ function avroBlocks(input, options) {
 function avroDumps(rows, schema, metadata) {
   return nativeAvroDumps(
     avroSchemaFrom(schema),
-    Value.fromJs(avroRows(rows)),
+    Scalar.fromJs(avroRows(rows)),
     avroMetadata(metadata),
   )
 }
@@ -1498,9 +1513,9 @@ function nativeLoads(content, format, options) {
     toNativeContent(content),
     codecLimits(options),
     ...loadArguments(format, options),
-    options.value === true,
+    options.scalar === true,
   )
-  return options.value === true ? decoded : fromTransport(decoded)
+  return options.scalar === true ? decoded : fromTransport(decoded)
 }
 
 function nativeLoadsInferred(content, options) {
@@ -1509,9 +1524,9 @@ function nativeLoadsInferred(content, options) {
     toNativeContent(content),
     codecLimits(options),
     options.field,
-    options.value === true,
+    options.scalar === true,
   )
-  return options.value === true ? decoded : fromTransport(decoded)
+  return options.scalar === true ? decoded : fromTransport(decoded)
 }
 
 function nativeLoadsAll(content, format, options) {
@@ -1523,9 +1538,9 @@ function nativeLoadsAll(content, format, options) {
     toNativeContent(content),
     codecLimits(options),
     options.field,
-    options.value === true,
+    options.scalar === true,
   )
-  return options.value === true
+  return options.scalar === true
     ? decoded
     : decoded.map((value) => fromTransport(value))
 }
@@ -1536,9 +1551,9 @@ function nativeLoadPath(path, format, options) {
     path,
     codecLimits(options),
     ...loadArguments(format, options),
-    options.value === true,
+    options.scalar === true,
   )
-  return options.value === true ? decoded : fromTransport(decoded)
+  return options.scalar === true ? decoded : fromTransport(decoded)
 }
 
 function nativeLoadAllPath(path, format, options) {
@@ -1550,9 +1565,9 @@ function nativeLoadAllPath(path, format, options) {
     path,
     codecLimits(options),
     options.field,
-    options.value === true,
+    options.scalar === true,
   )
-  return options.value === true
+  return options.scalar === true
     ? decoded
     : decoded.map((value) => fromTransport(value))
 }
@@ -2041,7 +2056,7 @@ async function* yamlDocumentStream(stream, options) {
 
 async function dumpAllStream(values, stream, format, options) {
   // Pulling an async iterable and honoring Node/WHATWG backpressure are
-  // language-runtime duties. Value conversion and document encoding still
+  // language-runtime duties. Scalar conversion and document encoding still
   // cross the native codec once per item; holding all values merely to call a
   // buffered core collection writer would violate this method's stream shape.
   if (
@@ -2332,11 +2347,11 @@ for (const PathValue of [Uri, Url, Urn]) {
 }
 
 const { IOBase, Timezone } = binding
-const nativeIOReadValue = IOBase.prototype._readValueNative
-const nativeIOWriteValue = IOBase.prototype._writeValueNative
+const nativeIOReadValue = IOBase.prototype._readScalarNative
+const nativeIOWriteValue = IOBase.prototype._writeScalarNative
 const nativeIOBuffered = IOBase.prototype._bufferedNative
-delete IOBase.prototype._readValueNative
-delete IOBase.prototype._writeValueNative
+delete IOBase.prototype._readScalarNative
+delete IOBase.prototype._writeScalarNative
 delete IOBase.prototype._bufferedNative
 
 function checkedBufferedOptions(options) {
@@ -2357,26 +2372,31 @@ function checkedBufferedOptions(options) {
   return options
 }
 
-function readValueArguments(input) {
+function readScalarArguments(input) {
   if (isPlainObject(input)) {
+    for (const name of Object.keys(input)) {
+      if (name !== 'field' && name !== 'scalar') {
+        throw new TypeError(`unknown readScalar option ${name}`)
+      }
+    }
     if (
-      input.value !== undefined &&
-      input.value !== null &&
-      typeof input.value !== 'boolean'
+      input.scalar !== undefined &&
+      input.scalar !== null &&
+      typeof input.scalar !== 'boolean'
     ) {
-      throw new TypeError('value must be a boolean')
+      throw new TypeError('scalar must be a boolean')
     }
     return {
       field:
         input.field === undefined || input.field === null
           ? null
           : intoField(input.field),
-      nativeValue: input.value === true,
+      nativeScalar: input.scalar === true,
     }
   }
   return {
     field: input === undefined || input === null ? null : intoField(input),
-    nativeValue: false,
+    nativeScalar: false,
   }
 }
 
@@ -2394,20 +2414,20 @@ Object.defineProperties(IOBase.prototype, {
       return this
     },
   },
-  readValue: {
+  readScalar: {
     configurable: true,
     value(options) {
-      const { field, nativeValue } = readValueArguments(options)
-      const decoded = nativeIOReadValue.call(this, field, nativeValue)
-      return nativeValue ? decoded : fromTransport(decoded)
+      const { field, nativeScalar } = readScalarArguments(options)
+      const decoded = nativeIOReadValue.call(this, field, nativeScalar)
+      return nativeScalar ? decoded : fromTransport(decoded)
     },
   },
-  writeValue: {
+  writeScalar: {
     configurable: true,
     value(value) {
       return nativeIOWriteValue.call(
         this,
-        value instanceof Value ? value : Value.fromJs(value),
+        value instanceof Scalar ? value : Scalar.fromJs(value),
       )
     },
   },
@@ -2556,7 +2576,7 @@ binding.intoField = intoField
 
 // A Statement binds once in the native core. JavaScript widens only the two
 // inputs it can spell more conveniently: any FieldLike becomes one native
-// Field, and an ordinary parameter object becomes the shared Value::Record.
+// Field, and an ordinary parameter object becomes the shared Scalar::Record.
 // Batch execution then keeps the caller's Arrow holder: readers stay lazy,
 // tables remain tables, and a one-batch sort remains a RecordBatch operation.
 const NativeStatement = binding.Statement
@@ -2586,9 +2606,9 @@ Object.defineProperty(NativeStatement.prototype, 'bind', {
     const supplied =
       parameters === undefined || parameters === null
         ? undefined
-        : parameters instanceof Value
+        : parameters instanceof Scalar
           ? parameters
-          : Value.fromJs(parameters)
+          : Scalar.fromJs(parameters)
     return nativeStatementBind.call(this, intoField(schema), supplied)
   },
 })
@@ -2654,7 +2674,7 @@ Object.defineProperties(BoundStatement.prototype, {
   },
 })
 
-// Parquet's DTOs cross through the shared Value transport, never through a
+// Parquet's DTOs cross through the shared Scalar transport, never through a
 // second JavaScript metadata model.
 const nativeIOReadParquetStatistics =
   IOBase.prototype._readParquetStatisticsNative
@@ -2785,11 +2805,11 @@ const iceberg = Object.freeze({
   assignFieldIds: binding.icebergAssignFieldIdsNative,
   canPromote: binding.icebergCanPromoteNative,
   // A metadata document is whatever the JSON facade decoded, so a plain object
-  // crosses through the one conversion `Value.fromJs` already owns.
+  // crosses through the one conversion `Scalar.fromJs` already owns.
   schemaFromJson(name, document) {
     return nativeSchemaFromJson(
       name,
-      document instanceof Value ? document : Value.fromJs(document),
+      document instanceof Scalar ? document : Scalar.fromJs(document),
     )
   },
   schemaToJson: binding.icebergSchemaToJsonNative,
@@ -2933,7 +2953,7 @@ if (binding.LineIterator) {
   })
 }
 
-// The text-line surface. The whole extractor crosses as one native `Value` -
+// The text-line surface. The whole extractor crosses as one native `Scalar` -
 // the same shape a YAML or TOML document parses into - so JavaScript and a
 // configuration file configure the identical reader, and the core validates
 // both through one conversion. This block is only the coercion: camelCase
@@ -3043,7 +3063,7 @@ function lineOptionsValue(options, pattern) {
   ) {
     throw new TypeError(`byteSize must be a positive integer, got ${document.byte_size}`)
   }
-  return Object.keys(document).length === 0 ? null : Value.fromJs(document)
+  return Object.keys(document).length === 0 ? null : Scalar.fromJs(document)
 }
 
 // The first argument is the pattern the common case names positionally, or
@@ -3159,7 +3179,7 @@ binding.yaml = yaml
     dataTypeKinds: Object.freeze(listing.dataTypeKinds),
     timeUnits: Object.freeze(listing.timeUnits),
     unionModes: Object.freeze(listing.unionModes),
-    writeModes: Object.freeze(listing.writeModes),
+    ioModes: Object.freeze(listing.ioModes),
     codecs: Object.freeze(listing.codecs),
     ioKinds: Object.freeze(listing.ioKinds),
     compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),

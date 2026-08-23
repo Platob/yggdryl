@@ -15,7 +15,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 
-use yggdryl::WriteMode;
+use yggdryl::IOMode;
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::generic::{Holder, IORecordOptions as _};
 use yggdryl::io::{IOBase as _, IOMedia as _};
@@ -24,7 +24,7 @@ use yggdryl::text::TextLineOptions;
 use crate::arrow::JsBatchReader;
 use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
 use crate::codec::{
-    DEFAULT_JS_DEPTH, JsCodecValue, decoded_value_for_field, value_to_transport_for_field,
+    DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
 use crate::field::JsField;
 use crate::generic::JsRecordOptions;
@@ -546,12 +546,12 @@ impl JsIOBase {
     }
 
     /// Decode one structured value through the native inferred text codec.
-    #[napi(js_name = "_readValueNative", skip_typescript)]
-    pub fn read_value_native(
+    #[napi(js_name = "_readScalarNative", skip_typescript)]
+    pub fn read_scalar_native(
         &self,
         field: Option<ClassInstance<'_, JsField>>,
-        native_value: Option<bool>,
-    ) -> Result<Either<JsCodecValue, serde_json::Value>> {
+        native_scalar: Option<bool>,
+    ) -> Result<Either<JsScalar, serde_json::Value>> {
         let value = self
             .inner
             .read_value(field.as_ref().map(|field| &field.inner))
@@ -560,7 +560,7 @@ impl JsIOBase {
             value,
             field.as_ref().map(|field| &field.inner),
             DEFAULT_JS_DEPTH,
-            native_value.unwrap_or(false),
+            native_scalar.unwrap_or(false),
         )
     }
 
@@ -581,8 +581,8 @@ impl JsIOBase {
     }
 
     /// Encode one native structured value through the inferred text codec.
-    #[napi(js_name = "_writeValueNative", skip_typescript)]
-    pub fn write_value_native(&mut self, value: &JsCodecValue) -> Result<()> {
+    #[napi(js_name = "_writeScalarNative", skip_typescript)]
+    pub fn write_scalar_native(&mut self, value: &JsScalar) -> Result<()> {
         self.inner.write_value(&value.inner).map_err(napi_error)
     }
 
@@ -895,7 +895,7 @@ impl JsIOBase {
     /// Iterate this resource's text records, one at a time.
     ///
     /// The loader's `readLines` wraps this with its option coercion: the whole
-    /// extractor crosses as one native `Value` - the same shape a YAML or TOML
+    /// extractor crosses as one native `Scalar` - the same shape a YAML or TOML
     /// document parses into - so a reader is specifiable from configuration
     /// alone, in JavaScript or in a file.
     ///
@@ -906,7 +906,7 @@ impl JsIOBase {
     #[napi(js_name = "_readLinesNative", skip_typescript)]
     pub fn read_lines_native(
         &self,
-        options: Option<ClassInstance<'_, JsCodecValue>>,
+        options: Option<ClassInstance<'_, JsScalar>>,
     ) -> Result<JsLineIterator> {
         let built = text_line_options(options.as_deref())?;
         let handle = self.rebuilt()?;
@@ -931,7 +931,7 @@ impl JsIOBase {
     #[napi(js_name = "_readArrowLinesNative", skip_typescript)]
     pub fn read_arrow_lines_native(
         &self,
-        options: Option<ClassInstance<'_, JsCodecValue>>,
+        options: Option<ClassInstance<'_, JsScalar>>,
     ) -> Result<JsBatchReader> {
         let built = text_line_options(options.as_deref())?;
         // The borrowed core projection: it reopens a located leaf itself -
@@ -951,7 +951,7 @@ impl JsIOBase {
     pub fn write_lines_native(
         &mut self,
         pull: Function<'_, (), Option<Either<String, Uint8Array>>>,
-        options: Option<ClassInstance<'_, JsCodecValue>>,
+        options: Option<ClassInstance<'_, JsScalar>>,
     ) -> Result<()> {
         self.inner.truncate(0).map_err(napi_error)?;
         self.append_lines_native(pull, options)
@@ -966,7 +966,7 @@ impl JsIOBase {
     pub fn append_lines_native(
         &mut self,
         pull: Function<'_, (), Option<Either<String, Uint8Array>>>,
-        options: Option<ClassInstance<'_, JsCodecValue>>,
+        options: Option<ClassInstance<'_, JsScalar>>,
     ) -> Result<()> {
         let built = text_line_options(options.as_deref())?;
         let terminator = built.write_linesep().to_vec();
@@ -1011,7 +1011,7 @@ impl JsIOBase {
     #[napi(js_name = "_readParquetStatisticsNative", skip_typescript)]
     pub fn read_parquet_statistics_native(&self) -> Result<serde_json::Value> {
         let statistics = self.inner.read_parquet_statistics().map_err(napi_error)?;
-        value_to_transport_for_field(&yggdryl::Value::from(statistics), None, DEFAULT_JS_DEPTH)
+        value_to_transport_for_field(&yggdryl::Scalar::from(statistics), None, DEFAULT_JS_DEPTH)
     }
 
     /// Recompute one Parquet geospatial column's bounds and geometry types.
@@ -1024,7 +1024,7 @@ impl JsIOBase {
             .inner
             .read_parquet_geospatial_statistics(&column)
             .map_err(napi_error)?;
-        value_to_transport_for_field(&yggdryl::Value::from(statistics), None, DEFAULT_JS_DEPTH)
+        value_to_transport_for_field(&yggdryl::Scalar::from(statistics), None, DEFAULT_JS_DEPTH)
     }
 
     /// Read the canonical non-null struct root `Field` of this resource.
@@ -1065,7 +1065,7 @@ impl JsIOBase {
     ) -> Result<()> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
-            .require_write_mode(WriteMode::Overwrite)
+            .require_write_mode(IOMode::Overwrite)
             .map_err(napi_error)?;
         self.inner
             .overwrite_arrow_reader(batches.take()?, &options)
@@ -1084,7 +1084,7 @@ impl JsIOBase {
     ) -> Result<()> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
-            .require_write_mode(WriteMode::Append)
+            .require_write_mode(IOMode::Append)
             .map_err(napi_error)?;
         self.inner
             .append_arrow_reader(batches.take()?, &options)
@@ -1104,7 +1104,7 @@ impl JsIOBase {
     ) -> Result<()> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
-            .require_write_mode(WriteMode::Merge)
+            .require_write_mode(IOMode::Merge)
             .map_err(napi_error)?;
         self.inner
             .merge_arrow_reader(batches.take()?, &options)
@@ -1113,7 +1113,7 @@ impl JsIOBase {
 
     /// Write a native reader using one explicit mode.
     ///
-    /// The JavaScript adapter exposes this method with the closed `WriteMode`
+    /// The JavaScript adapter exposes this method with the closed `IOMode`
     /// union and the wider `RecordOptionsInput`. Keep napi-rs from also
     /// publishing a looser `string` overload in the generated declarations.
     #[napi(skip_typescript)]
@@ -1123,7 +1123,7 @@ impl JsIOBase {
         mode: String,
         options: Option<&JsRecordOptions>,
     ) -> Result<()> {
-        let mode = WriteMode::from_str(&mode).map_err(napi_error)?;
+        let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options.require_write_mode(mode).map_err(napi_error)?;
         self.inner
@@ -1138,7 +1138,7 @@ impl JsIOBase {
         mode: String,
         options: &JsRecordOptions,
     ) -> Result<JsArrowWriteSession> {
-        let mode = WriteMode::from_str(&mode).map_err(napi_error)?;
+        let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         yggdryl::io::ArrowWriteSession::new(mode, &options.inner)
             .map(|inner| JsArrowWriteSession { inner })
             .map_err(napi_error)
@@ -1464,18 +1464,16 @@ fn byte_stream_batch_size(value: Option<f64>) -> Result<usize> {
 // Discovered through NAPI's generated registration inventory rather than an
 // ordinary Rust call site.
 #[allow(dead_code)]
-pub fn field_from_pattern_native(
-    options: Option<ClassInstance<'_, JsCodecValue>>,
-) -> Result<JsField> {
+pub fn field_from_pattern_native(options: Option<ClassInstance<'_, JsScalar>>) -> Result<JsField> {
     text_line_options(options.as_deref()).map(|options| JsField::from_core(options.into_field()))
 }
 
-/// Read the whole extractor out of the one native `Value` the loader built.
+/// Read the whole extractor out of the one native `Scalar` the loader built.
 ///
 /// Every text-line entry point comes here, so the JavaScript surface and a
 /// configuration document are validated by exactly the same core conversion -
 /// there is no second option parser to drift.
-fn text_line_options(options: Option<&JsCodecValue>) -> Result<TextLineOptions> {
+fn text_line_options(options: Option<&JsScalar>) -> Result<TextLineOptions> {
     match options {
         Some(value) => TextLineOptions::from_value(value.inner.clone()).map_err(napi_error),
         None => Ok(TextLineOptions::new()),

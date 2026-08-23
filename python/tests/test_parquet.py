@@ -155,7 +155,7 @@ class TestOptions:
 class TestStatistics:
     """Footer metadata stays cheap; WKB recomputation names its scan."""
 
-    def test_footer_statistics_cross_as_native_values(
+    def test_footer_statistics_cross_as_native_scalars(
         self, file: IOBase, tmp_path: pathlib.Path
     ) -> None:
         options = file.record_options()

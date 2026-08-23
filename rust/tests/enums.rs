@@ -2,23 +2,23 @@ use std::collections::{BTreeSet, HashSet};
 
 use arrow_schema::{IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit};
 use yggdryl::{
-    DataTypeId, DataTypeKind, Error, IOKind, MediaType, MimeType, Scheme, TimeUnit, UnionMode,
-    WriteMode,
+    DataTypeId, DataTypeKind, Error, IOKind, IOMode, MediaType, MimeType, Scheme, TimeUnit,
+    UnionMode,
 };
 
 #[path = "enums/mime.rs"]
 mod mime;
 
 #[test]
-fn enums_module_reexports_the_public_vocabulary() {
-    let id: yggdryl::enums::DataTypeId = DataTypeId::Int32;
-    let kind: yggdryl::enums::DataTypeKind = DataTypeKind::Integer;
-    let scheme: yggdryl::enums::Scheme = Scheme::HTTPS;
-    let unit: yggdryl::enums::TimeUnit = TimeUnit::Nanosecond;
-    let mode: yggdryl::enums::UnionMode = UnionMode::Dense;
-    let mime: yggdryl::enums::MimeType = MimeType::JSON;
-    let media: yggdryl::enums::MediaType = MediaType::from(mime.clone());
-    let write: yggdryl::enums::WriteMode = WriteMode::Overwrite;
+fn generic_reexports_the_public_vocabulary() {
+    let id: yggdryl::generic::DataTypeId = DataTypeId::Int32;
+    let kind: yggdryl::generic::DataTypeKind = DataTypeKind::Integer;
+    let scheme: yggdryl::generic::Scheme = Scheme::HTTPS;
+    let unit: yggdryl::generic::TimeUnit = TimeUnit::Nanosecond;
+    let mode: yggdryl::generic::UnionMode = UnionMode::Dense;
+    let mime: yggdryl::generic::MimeType = MimeType::JSON;
+    let media: yggdryl::generic::MediaType = MediaType::from(mime.clone());
+    let write: yggdryl::generic::IOMode = IOMode::Overwrite;
 
     assert_eq!(scheme, Scheme::HTTPS);
     assert_eq!(id, DataTypeId::Int32);
@@ -28,49 +28,44 @@ fn enums_module_reexports_the_public_vocabulary() {
     assert_eq!(mode, UnionMode::Dense);
     assert_eq!(mime, MimeType::JSON);
     assert_eq!(media.base(), &MimeType::JSON);
-    assert_eq!(write, WriteMode::Overwrite);
+    assert_eq!(write, IOMode::Overwrite);
 }
 
 #[test]
-fn every_write_mode_has_one_required_canonical_spelling() {
+fn every_io_mode_has_one_required_canonical_spelling() {
     for (mode, canonical) in [
-        (WriteMode::Overwrite, "overwrite"),
-        (WriteMode::Append, "append"),
-        (WriteMode::Merge, "merge"),
+        (IOMode::Overwrite, "overwrite"),
+        (IOMode::Append, "append"),
+        (IOMode::Merge, "merge"),
+        (IOMode::ReadOnly, "readonly"),
+        (IOMode::Random, "random"),
     ] {
         assert_eq!(mode.as_str(), canonical);
         assert_eq!(mode.as_ref(), canonical);
         assert_eq!(mode.to_string(), canonical);
-        assert_eq!(WriteMode::from_str(canonical).unwrap(), mode);
-        assert_eq!(
-            WriteMode::from_str(&canonical.to_uppercase()).unwrap(),
-            mode
-        );
-        assert_eq!(
-            WriteMode::from_str(&format!("  {canonical}\t")).unwrap(),
-            mode
-        );
+        assert_eq!(IOMode::from_str(canonical).unwrap(), mode);
+        assert_eq!(IOMode::from_str(&canonical.to_uppercase()).unwrap(), mode);
+        assert_eq!(IOMode::from_str(&format!("  {canonical}\t")).unwrap(), mode);
         assert_eq!(
             serde_json::to_string(&mode).unwrap(),
             format!("\"{canonical}\"")
         );
         assert_eq!(
-            serde_json::from_str::<WriteMode>(&format!("\"{canonical}\"")).unwrap(),
+            serde_json::from_str::<IOMode>(&format!("\"{canonical}\"")).unwrap(),
             mode
         );
     }
-    assert_eq!(WriteMode::ALL.len(), 3);
+    assert_eq!(IOMode::ALL.len(), 5);
+    assert_eq!(IOMode::WRITE.len(), 3);
 
-    let error = WriteMode::from_str("upsert").unwrap_err();
-    assert!(matches!(
-        error,
-        Error::Parse {
-            target: "write mode",
-            ..
-        }
-    ));
-    assert!(error.to_string().contains("overwrite, append, merge"));
-    assert!(serde_json::from_str::<WriteMode>("\"write\"").is_err());
+    let error = IOMode::from_str("upsert").unwrap_err();
+    assert!(matches!(error, Error::Parse { target: "mode", .. }));
+    assert!(
+        error
+            .to_string()
+            .contains("overwrite, append, merge, readonly, random")
+    );
+    assert!(serde_json::from_str::<IOMode>("\"write\"").is_err());
 }
 
 #[test]

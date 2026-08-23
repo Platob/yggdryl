@@ -12,7 +12,7 @@ use flate2::write::{DeflateEncoder, ZlibEncoder};
 
 use crate::Result;
 
-use crate::enums::codec::{Encoder, EncoderKind, FlateFinish};
+use crate::generic::codec::{Encoder, EncoderKind, FlateFinish};
 use crate::io::{Coded, IOBase};
 use crate::{Codec, Level};
 

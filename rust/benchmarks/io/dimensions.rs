@@ -116,7 +116,7 @@ where
     });
 }
 
-/// Measure the complete Parquet footer projection and its binding-ready Value.
+/// Measure the complete Parquet footer projection and its binding-ready Scalar.
 fn parquet_statistics_cases(
     group: &mut BenchmarkGroup<'_, WallTime>,
     fresh: Parquet<Buffer>,
@@ -146,7 +146,7 @@ fn parquet_statistics_cases(
         .read_parquet_statistics()
         .expect("binding projection fixture");
     group.bench_function("parquet/statistics_into_value", |bencher| {
-        bencher.iter(|| black_box(yggdryl::Value::from(black_box(statistics.clone()))));
+        bencher.iter(|| black_box(yggdryl::Scalar::from(black_box(statistics.clone()))));
     });
     group.bench_function("parquet/read_geospatial_statistics", |bencher| {
         bencher.iter(|| {
@@ -162,7 +162,7 @@ fn parquet_statistics_cases(
         .expect("binding geospatial projection fixture");
     group.bench_function("parquet/geospatial_statistics_into_value", |bencher| {
         bencher.iter(|| {
-            black_box(yggdryl::Value::from(black_box(
+            black_box(yggdryl::Scalar::from(black_box(
                 geospatial_statistics.clone(),
             )))
         });

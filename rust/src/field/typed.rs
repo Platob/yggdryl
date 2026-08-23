@@ -37,7 +37,7 @@ pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync 
 /// The marker every datatype satisfies.
 ///
 /// A marker usually narrows a value to one variant. This one narrows nothing,
-/// so it is what an unnarrowed pairing such as [`crate::TypedValue`] carries by
+/// so it is what an unnarrowed pairing such as [`crate::TypedScalar`] carries by
 /// default: the datatype is still checked against the value, and the marker
 /// simply has no opinion about which datatype that was.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

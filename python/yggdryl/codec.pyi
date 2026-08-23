@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from typing import Any, Literal, TypeVar, overload
 
 from ._codec import Destination, Source
-from ._native import Value
+from ._native import Scalar
 
 _T = TypeVar("_T")
 _ErrorPolicy = Literal["raise", "default"]

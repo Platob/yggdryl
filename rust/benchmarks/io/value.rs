@@ -1,22 +1,22 @@
-//! Structured `Value` reads and writes through the generic handle surface.
+//! Structured `Scalar` reads and writes through the generic handle surface.
 
 use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput};
 use yggdryl::io::{Buffer, IOBase};
-use yggdryl::{Url, Value};
+use yggdryl::{Scalar, Url};
 
 const ROWS: usize = 16_384;
 
-fn value() -> Value {
-    Value::from_sequence((0..ROWS).map(|id| {
-        Value::from_record([
+fn value() -> Scalar {
+    Scalar::from_sequence((0..ROWS).map(|id| {
+        Scalar::from_record([
             (
                 "id",
-                Value::I64(i64::try_from(id).expect("the fixture id fits i64")),
+                Scalar::I64(i64::try_from(id).expect("the fixture id fits i64")),
             ),
-            ("symbol", Value::from(format!("SYMBOL-{id:08}"))),
-            ("venue", Value::from("XNAS")),
+            ("symbol", Scalar::from(format!("SYMBOL-{id:08}"))),
+            ("venue", Scalar::from("XNAS")),
         ])
         .expect("unique field names")
     }))

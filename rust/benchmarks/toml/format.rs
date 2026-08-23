@@ -3,7 +3,7 @@ use std::io::Cursor;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::text;
-use yggdryl::{Value, toml};
+use yggdryl::{Scalar, toml};
 
 use crate::fixtures::{nested, representative, typed};
 
@@ -49,16 +49,17 @@ pub fn toml_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    let deep = Value::from_record([("value", nested(48))]).unwrap();
+    let deep = Scalar::from_record([("value", nested(48))]).unwrap();
     let deep_encoded = toml::into_bytes(&deep).unwrap();
     group.throughput(Throughput::Bytes(deep_encoded.len() as u64));
     group.bench_function("decode_depth_49", |bencher| {
         bencher.iter(|| toml::from_bytes(black_box(&deep_encoded)).unwrap());
     });
 
-    let wide =
-        Value::from_record((0_i64..1_024).map(|index| (format!("key_{index}"), Value::I64(index))))
-            .unwrap();
+    let wide = Scalar::from_record(
+        (0_i64..1_024).map(|index| (format!("key_{index}"), Scalar::I64(index))),
+    )
+    .unwrap();
     let wide_encoded = toml::into_bytes(&wide).unwrap();
     group.throughput(Throughput::Bytes(wide_encoded.len() as u64));
     group.bench_function("decode_wide_mapping_1024", |bencher| {

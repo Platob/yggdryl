@@ -111,7 +111,7 @@ measuring a representative workload.
 - Keep string-key JSON mappings native. Use typed envelopes only for bytes,
   non-finite floats, wide integers, decimals, unspellable temporals, arbitrary
   mapping keys, and reserved-key collisions; every envelope kind names one
-  `Value` variant. YAML class comments are presentation only, and no decode
+  `Scalar` variant. YAML class comments are presentation only, and no decode
   path reads one.
 - Apply byte, depth, node, alias, and document limits while reading. Depth and
   node limits are per document; exact-limit acceptance and one-over rejection

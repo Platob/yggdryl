@@ -212,23 +212,23 @@ def _decode_inferred(
     """Infer and decode retained content through one native parse."""
 
     _check_decode_options(cls, safe, errors)
-    native_value = cls is _native.Value
+    native_scalar = cls is _native.Scalar
     limits = _limit_values(max_depth, max_input_bytes, max_nodes, max_documents)
     if isinstance(source, os.PathLike):
         with open(source, "rb") as stream:
             decoded = _native._codec_decode_inferred(
                 _read_bounded(stream.read, max_input_bytes),
                 _decode_field(field),
-                native_value,
+                native_scalar,
                 *limits,
             )
     elif isinstance(source, str):
         decoded = _native._codec_decode_inferred_text(
-            source, _decode_field(field), native_value, *limits
+            source, _decode_field(field), native_scalar, *limits
         )
     elif isinstance(source, (bytes, bytearray, memoryview)):
         decoded = _native._codec_decode_inferred(
-            source, _decode_field(field), native_value, *limits
+            source, _decode_field(field), native_scalar, *limits
         )
     else:
         reader = getattr(source, "read", None)
@@ -239,7 +239,7 @@ def _decode_inferred(
         decoded = _native._codec_decode_inferred(
             _read_bounded(reader, max_input_bytes),
             _decode_field(field),
-            native_value,
+            native_scalar,
             *limits,
         )
     return _materialize_decoded(decoded, cls, safe=safe, errors=errors)
@@ -413,7 +413,7 @@ def loads(
         placeholders=placeholders,
         environment=environment,
         field=_decode_field(field),
-        native_value=cls is _native.Value,
+        native_scalar=cls is _native.Scalar,
         limits=_limit_values(max_depth, max_input_bytes, max_nodes, max_documents),
     )
     return _materialize_decoded(decoded, cls, safe=safe, errors=errors)
@@ -426,7 +426,7 @@ def _decode_source(
     placeholders: Mapping[str, Any] | None = None,
     environment: bool = False,
     field: object | None = None,
-    native_value: bool = False,
+    native_scalar: bool = False,
     limits: tuple[int | None, int | None, int | None, int | None] = (
         None,
         None,
@@ -440,23 +440,23 @@ def _decode_source(
     filling = (placeholders, environment)
     if isinstance(source, (bytes, bytearray, memoryview)):
         return _native._codec_decode(
-            source, format, *filling, field, native_value, *limits
+            source, format, *filling, field, native_scalar, *limits
         )
     if isinstance(source, os.PathLike):
         with open(source, "rb") as stream:
             return _native._codec_decode_reader(
-                stream, format, *filling, field, native_value, *limits
+                stream, format, *filling, field, native_scalar, *limits
             )
     if isinstance(source, str):
         return _native._codec_decode_text(
-            source, format, *filling, field, native_value, *limits
+            source, format, *filling, field, native_scalar, *limits
         )
     if getattr(source, "read", None) is None:
         raise TypeError(
             "source must be bytes-like, str, PathLike, or a readable file object"
         )
     return _native._codec_decode_reader(
-        source, format, *filling, field, native_value, *limits
+        source, format, *filling, field, native_scalar, *limits
     )
 
 
@@ -493,7 +493,7 @@ def loads_all(
         source,
         selected,
         _decode_field(field),
-        native_value=cls is _native.Value,
+        native_scalar=cls is _native.Scalar,
         limits=_limit_values(max_depth, max_input_bytes, max_nodes, max_documents),
     )
 
@@ -509,7 +509,7 @@ def _decode_all_source(
     format: str,
     field: object | None,
     *,
-    native_value: bool = False,
+    native_scalar: bool = False,
     limits: tuple[int | None, int | None, int | None, int | None] = (
         None,
         None,
@@ -518,22 +518,22 @@ def _decode_all_source(
     ),
 ) -> list[Any]:
     if isinstance(source, (bytes, bytearray, memoryview)):
-        return _native._codec_decode_all(source, format, field, native_value, *limits)
+        return _native._codec_decode_all(source, format, field, native_scalar, *limits)
     if isinstance(source, os.PathLike):
         with open(source, "rb") as stream:
             return _native._codec_decode_all_reader(
-                stream, format, field, native_value, *limits
+                stream, format, field, native_scalar, *limits
             )
     if isinstance(source, str):
         return _native._codec_decode_all_text(
-            source, format, field, native_value, *limits
+            source, format, field, native_scalar, *limits
         )
     if getattr(source, "read", None) is None:
         raise TypeError(
             "source must be bytes-like, str, PathLike, or a readable file object"
         )
     return _native._codec_decode_all_reader(
-        source, format, field, native_value, *limits
+        source, format, field, native_scalar, *limits
     )
 
 
@@ -554,7 +554,7 @@ def _materialize_decoded(
 
     if cls is None:
         return decoded
-    if cls is _native.Value:
+    if cls is _native.Scalar:
         # The core already built this exact value. Returning it directly keeps
         # narrow floats, integers, temporal layouts, and geospatial bytes from
         # taking a lossy round trip through Python's natural types.
@@ -706,7 +706,7 @@ def _decode_stream(
         format,
         *limits,
         _decode_field(field),
-        cls is _native.Value,
+        cls is _native.Scalar,
     ):
         yield _materialize_decoded(
             decoded_value, cls, safe=safe, errors=errors

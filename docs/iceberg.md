@@ -147,7 +147,7 @@ from. Nothing in this module opens a path or calls the file system, so the same 
 local directory today and over an object store the moment a backend for one exists.
 
 The vocabulary is the crate's own. A schema is a non-null struct [`Field`](field.md) whose children
-carry `PARQUET:field_id`; a metadata document is a [`Value`](json.md) read by the crate's own JSON
+carry `PARQUET:field_id`; a metadata document is a [`Scalar`](json.md) read by the crate's own JSON
 parser; a data file is whatever [parquet](parquet.md) wrote plus the statistics it reported; a scan
 is a `BatchReader` with the same [column pushdown](io.md) every other read gets. No dependency is
 added for the table format itself - even the Avro container the manifests live in is implemented
@@ -539,7 +539,7 @@ must yield no rows rather than fail.
 Iceberg puts two levels of indirection between a snapshot and its rows, and both are Avro,
 implemented by the [`avro`](avro.md) codec module: a container is a header naming a writer schema,
 then blocks of records separated by a synchronization marker. Manifest rows cross the boundary as
-the same [`Value`](json.md) the JSON parser produces, so a manifest row and a metadata document are
+the same [`Scalar`](json.md) the JSON parser produces, so a manifest row and a metadata document are
 read with one vocabulary. The writer is deterministic - the marker is derived from the content - so
 two writers given the same entries produce the same bytes, which is what lets a conformance check
 diff manifests instead of only comparing what they mean.
@@ -568,7 +568,7 @@ column gets counts but no bounds, rather than bounds that mean something else.
 
 ```rust
 use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
-use yggdryl::{DataType, Value};
+use yggdryl::{DataType, Scalar};
 
 let mut schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
@@ -583,8 +583,8 @@ assert_eq!(spec.fields[0].field_id, 1000);
 assert_eq!(spec.fields[0].transform, Transform::Identity);
 
 // The directory chain is the `column=value` shape the crate's Hive reader knows.
-assert_eq!(spec.partition_path(&[Value::from("XNAS")])?, "venue=XNAS");
-assert_eq!(spec.partition_path(&[Value::Null])?, "venue=null");
+assert_eq!(spec.partition_path(&[Scalar::from("XNAS")])?, "venue=XNAS");
+assert_eq!(spec.partition_path(&[Scalar::Null])?, "venue=null");
 
 // A partition value is nullable even when its source column is not.
 let partition = spec.partition_field(&schema)?;
@@ -1586,7 +1586,7 @@ table's schema is authoritative, where a folder of leaves ignores a column its
 batches do not carry. (The Python and JavaScript tables keep their own scan and
 commit vocabulary; there, the folder handle above is the generic route.)
 
-It says what it is, too: `IOBase::kind` on a `Table` is [`IOKind::Table`](enums.md)
+It says what it is, too: `IOBase::kind` on a `Table` is [`IOKind::Table`](generic.md)
 rather than the `Directory` its root folder would answer, because the files below
 a table are its storage and not its contents, and `is_tabular` is `true` without
 touching storage at all. The folder route reaches the same shape by probing the
@@ -1717,7 +1717,7 @@ warehouse folder, namespaces as nested folders, and a table per name - `HadoopCa
 reached through [`IOBase`](io.md) and nothing else.
 
 Storage sees three indistinguishable folders there, so each value says which role it plays:
-`Catalog::kind` is [`IOKind::Catalog`](enums.md), `Namespace::kind` is `IOKind::Namespace`, and a
+`Catalog::kind` is [`IOKind::Catalog`](generic.md), `Namespace::kind` is `IOKind::Namespace`, and a
 `Table` answers `IOKind::Table` through `IOBase::kind`. The framing is what tells them apart, so it
 is the framing that answers - never a listing, and never a guess. (`IOKind` is Rust-only, as it is
 everywhere else; the bindings ask the questions rather than name the kinds.)
@@ -2168,7 +2168,10 @@ rather than at it - and a table that has accumulated small files rewrites them:
     assert.equal(table.scan().intoTable().numRows, 5)
 
     // Nothing to do is a no-op that commits nothing.
-    assert.deepEqual(table.compact(), { filesBefore: 0, filesAfter: 0, bytesRewritten: 0 })
+    const done = table.compact()
+    assert.equal(done.filesBefore, 0)
+    assert.equal(done.filesAfter, 0)
+    assert.equal(done.bytesRewritten, 0)
 
     fs.rmSync(warehouse, { recursive: true, force: true })
     ```
@@ -3446,7 +3449,7 @@ mirror: what comes back is a field the rest of the crate already reads, writes, 
 into [Arrow](arrow.md).
 
 Documents are read and written by the crate's own [JSON](json.md) parser, so an Iceberg document is
-an ordinary [`Value`](json.md) - the same value a YAML or TOML document decodes to - and no second
+an ordinary [`Scalar`](json.md) - the same value a YAML or TOML document decodes to - and no second
 JSON model enters the crate through this module.
 
 Three things the field model spells differently, all of which survive the round trip:

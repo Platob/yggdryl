@@ -14,7 +14,7 @@ use crate::{Error, Result};
 /// A signed two's-complement 256-bit integer.
 ///
 /// The four words are stored least-significant first. The type exists in the
-/// native value model so `Value::D256` does not depend on Arrow; Arrow
+/// native value model so `Scalar::D256` does not depend on Arrow; Arrow
 /// conversion copies the same 32 bytes when that feature is enabled.
 ///
 /// ```

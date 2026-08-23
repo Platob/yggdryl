@@ -14,7 +14,7 @@ use std::io::Read;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::io::IOBase;
-use crate::{Codec, Level, Limits, Result, Value};
+use crate::{Codec, Level, Limits, Result, Scalar};
 
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
 use super::resolve::Resolution;
@@ -40,14 +40,14 @@ pub struct Container {
     /// The header's key/value metadata, minus the reserved schema and codec.
     pub metadata: Vec<(SmolStr, SmolStr)>,
     /// Every decoded row, in file order.
-    pub rows: Vec<Value>,
+    pub rows: Vec<Scalar>,
 }
 
 #[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct ContainerIdentity<'a> {
     schema: &'a Schema,
     metadata: Vec<&'a (SmolStr, SmolStr)>,
-    rows: &'a [Value],
+    rows: &'a [Scalar],
 }
 
 impl Container {
@@ -526,7 +526,7 @@ fn decode_container<H: IOBase + ?Sized>(
 
 /// Replace a handle's bytes with an Avro object container holding `rows`.
 ///
-/// The schema is an Avro schema as its JSON [`Value`], and its JSON spelling
+/// The schema is an Avro schema as its JSON [`Scalar`], and its JSON spelling
 /// is written into the header verbatim, so attributes this implementation does
 /// not model - Iceberg's `field-id` among them - survive byte for byte. Every
 /// row is written as one block, compressed with raw deflate, which is what the
@@ -539,9 +539,9 @@ fn decode_container<H: IOBase + ?Sized>(
 /// fit it, or when the write fails.
 pub fn write_container<H: IOBase + ?Sized>(
     handle: &mut H,
-    schema_json: &Value,
+    schema_json: &Scalar,
     metadata: &[(&str, &str)],
-    rows: &[Value],
+    rows: &[Scalar],
 ) -> Result<()> {
     let schema = Schema::from_json(schema_json)?;
     let encoded_schema = crate::json::into_bytes(schema_json)?;
@@ -1074,7 +1074,7 @@ impl Block {
     ///
     /// Returns an error when the payload does not decompress or a row does
     /// not decode.
-    pub fn rows(&self) -> Result<Vec<Value>> {
+    pub fn rows(&self) -> Result<Vec<Scalar>> {
         let decoded = self.coding.load(&self.payload, self.limits)?;
         let mut cursor = Cursor::new(&decoded);
         let datum = DatumCodec {
@@ -1110,7 +1110,7 @@ impl Block {
     ///
     /// Returns an error when the payload does not decompress or a row does
     /// not resolve.
-    pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Value>> {
+    pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Scalar>> {
         let decoded = self.coding.load(&self.payload, self.limits)?;
         let mut cursor = Cursor::new(&decoded);
         let mut rows = Vec::new();

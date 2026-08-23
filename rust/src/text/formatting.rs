@@ -11,11 +11,11 @@
 //! beside it would be genuinely confusing.
 //!
 //! ```
-//! use yggdryl::generic::Value;
+//! use yggdryl::generic::Scalar;
 //! use yggdryl::text::{Formatting, Indent};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let value = Value::from_record([("id", Value::U64(1))])?;
+//! let value = Scalar::from_record([("id", Scalar::U64(1))])?;
 //!
 //! // The zero-configuration path is unchanged output.
 //! assert_eq!(yggdryl::json::into_bytes(&value)?, br#"{"id":1}"#);

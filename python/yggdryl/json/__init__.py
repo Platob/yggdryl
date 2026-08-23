@@ -57,7 +57,7 @@ def loads(
     A ``str`` is always document content; use ``pathlib.Path`` or another
     ``os.PathLike`` to declare a source location.
 
-    ``cls=Value`` returns the exact core value without natural-type lowering.
+    ``cls=Scalar`` returns the exact core value without natural-type lowering.
 
     JSON is a data interchange format, so `{{ }}` placeholder substitution is
     a YAML and TOML feature only - a configuration document that wants
@@ -116,7 +116,7 @@ def loads_all(
     max_nodes: int | None = None,
     max_documents: int | None = None,
 ) -> Iterator[_T | Any]:
-    """Iterate JSON Lines; ``cls=Value`` yields exact core values."""
+    """Iterate JSON Lines; ``cls=Scalar`` yields exact core values."""
 
     return _codec.loads_all(
         source,
@@ -144,7 +144,7 @@ def load_all(
     max_nodes: int | None = None,
     max_documents: int | None = None,
 ) -> Iterator[_T | Any]:
-    """Iterate JSON Lines lazily; ``cls=Value`` yields exact core values."""
+    """Iterate JSON Lines lazily; ``cls=Scalar`` yields exact core values."""
 
     return _codec.load_all_stream(
         source,

@@ -1,4 +1,4 @@
-"""Apache Avro schemas and Value codecs backed entirely by the Rust core.
+"""Apache Avro schemas and Scalar codecs backed entirely by the Rust core.
 
 The object-container pair works on bytes and returns the writer schema,
 metadata, and natural Python rows. A reader schema applies Avro's native

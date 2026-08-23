@@ -6,7 +6,7 @@ use std::ops::{
 
 use smol_str::SmolStr;
 
-use super::{Float16, Float32, Float64, I256, Value};
+use super::{Float16, Float32, Float64, I256, Scalar};
 use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
 #[derive(Clone, Copy)]
@@ -38,7 +38,7 @@ impl Arithmetic {
     }
 }
 
-impl Value {
+impl Scalar {
     /// Add two numeric values using checked, width-aware promotion.
     pub fn checked_add(&self, other: &Self) -> Result<Self> {
         self.checked_arithmetic(other, Arithmetic::Add)
@@ -200,11 +200,11 @@ impl Value {
 }
 
 fn checked_arithmetic_target(
-    left: &Value,
+    left: &Scalar,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     target: &ArithmeticTarget,
-) -> Result<Value> {
+) -> Result<Scalar> {
     match target {
         ArithmeticTarget::Integer { signed, bits } => {
             integer_arithmetic(left, operation, right, *signed, *bits)
@@ -241,7 +241,11 @@ fn target_from_data_type(data_type: &DataType) -> Option<ArithmeticTarget> {
     temporal_target(data_type).map(|_| ArithmeticTarget::Temporal(data_type.clone()))
 }
 
-fn inferred_target(left: &Value, operation: Arithmetic, right: &Value) -> Result<ArithmeticTarget> {
+fn inferred_target(
+    left: &Scalar,
+    operation: Arithmetic,
+    right: &Scalar,
+) -> Result<ArithmeticTarget> {
     if let (Some(left), Some(right)) = (integer_value_kind(left), integer_value_kind(right)) {
         return common_integer(left, right).ok_or_else(|| {
             invalid_binary(
@@ -287,8 +291,8 @@ fn inferred_target(left: &Value, operation: Arithmetic, right: &Value) -> Result
         }
         let left_scale = left_decimal.map_or(0, |parts| parts.1);
         let right_scale = right_decimal.map_or(0, |parts| parts.1);
-        let wide = matches!(left, Value::D256(..) | Value::I128(_) | Value::U128(_))
-            || matches!(right, Value::D256(..) | Value::I128(_) | Value::U128(_));
+        let wide = matches!(left, Scalar::D256(..) | Scalar::I128(_) | Scalar::U128(_))
+            || matches!(right, Scalar::D256(..) | Scalar::I128(_) | Scalar::U128(_));
         let scale = match operation {
             Arithmetic::Div => {
                 inferred_decimal_division_scale(left, left_scale, right, right_scale, wide)?
@@ -347,23 +351,23 @@ fn inferred_target(left: &Value, operation: Arithmetic, right: &Value) -> Result
 
 #[derive(Clone, Copy)]
 struct IntegerValueKind<'a> {
-    value: &'a Value,
+    value: &'a Scalar,
     signed: bool,
     bits: u16,
 }
 
-fn integer_value_kind(value: &Value) -> Option<IntegerValueKind<'_>> {
+fn integer_value_kind(value: &Scalar) -> Option<IntegerValueKind<'_>> {
     let (signed, bits) = match value {
-        Value::I8(_) => (true, 8),
-        Value::I16(_) => (true, 16),
-        Value::I32(_) => (true, 32),
-        Value::I64(_) => (true, 64),
-        Value::I128(_) => (true, 128),
-        Value::U8(_) => (false, 8),
-        Value::U16(_) => (false, 16),
-        Value::U32(_) => (false, 32),
-        Value::U64(_) => (false, 64),
-        Value::U128(_) => (false, 128),
+        Scalar::I8(_) => (true, 8),
+        Scalar::I16(_) => (true, 16),
+        Scalar::I32(_) => (true, 32),
+        Scalar::I64(_) => (true, 64),
+        Scalar::I128(_) => (true, 128),
+        Scalar::U8(_) => (false, 8),
+        Scalar::U16(_) => (false, 16),
+        Scalar::U32(_) => (false, 32),
+        Scalar::U64(_) => (false, 64),
+        Scalar::U128(_) => (false, 128),
         _ => return None,
     };
     Some(IntegerValueKind {
@@ -406,12 +410,12 @@ fn integer_kind(data_type: &DataType) -> Option<(bool, u16)> {
 }
 
 fn integer_arithmetic(
-    left: &Value,
+    left: &Scalar,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     signed: bool,
     bits: u16,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let zero = if signed {
         right.as_i128() == Some(0)
     } else {
@@ -469,24 +473,24 @@ fn integer_arithmetic(
     })
 }
 
-fn signed_value(bits: u16, value: i128) -> Option<Value> {
+fn signed_value(bits: u16, value: i128) -> Option<Scalar> {
     match bits {
-        8 => i8::try_from(value).ok().map(Value::I8),
-        16 => i16::try_from(value).ok().map(Value::I16),
-        32 => i32::try_from(value).ok().map(Value::I32),
-        64 => i64::try_from(value).ok().map(Value::I64),
-        128 => Some(Value::I128(value)),
+        8 => i8::try_from(value).ok().map(Scalar::I8),
+        16 => i16::try_from(value).ok().map(Scalar::I16),
+        32 => i32::try_from(value).ok().map(Scalar::I32),
+        64 => i64::try_from(value).ok().map(Scalar::I64),
+        128 => Some(Scalar::I128(value)),
         _ => None,
     }
 }
 
-fn unsigned_value_at(bits: u16, value: u128) -> Option<Value> {
+fn unsigned_value_at(bits: u16, value: u128) -> Option<Scalar> {
     match bits {
-        8 => u8::try_from(value).ok().map(Value::U8),
-        16 => u16::try_from(value).ok().map(Value::U16),
-        32 => u32::try_from(value).ok().map(Value::U32),
-        64 => u64::try_from(value).ok().map(Value::U64),
-        128 => Some(Value::U128(value)),
+        8 => u8::try_from(value).ok().map(Scalar::U8),
+        16 => u16::try_from(value).ok().map(Scalar::U16),
+        32 => u32::try_from(value).ok().map(Scalar::U32),
+        64 => u64::try_from(value).ok().map(Scalar::U64),
+        128 => Some(Scalar::U128(value)),
         _ => None,
     }
 }
@@ -507,11 +511,11 @@ const fn integer_kind_name(signed: bool, bits: u16) -> &'static str {
     }
 }
 
-fn float_value_width(value: &Value) -> Option<u8> {
+fn float_value_width(value: &Scalar) -> Option<u8> {
     match value {
-        Value::F16(_) => Some(16),
-        Value::F32(_) => Some(32),
-        Value::F64(_) => Some(64),
+        Scalar::F16(_) => Some(16),
+        Scalar::F32(_) => Some(32),
+        Scalar::F64(_) => Some(64),
         _ => None,
     }
 }
@@ -525,7 +529,7 @@ fn float_width(data_type: &DataType) -> Option<u8> {
     }
 }
 
-fn arithmetic_float(value: &Value) -> Option<f64> {
+fn arithmetic_float(value: &Scalar) -> Option<f64> {
     value.as_f64().or_else(|| {
         value
             .as_i128()
@@ -535,11 +539,11 @@ fn arithmetic_float(value: &Value) -> Option<f64> {
 }
 
 fn float_arithmetic(
-    left: &Value,
+    left: &Scalar,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     width: u8,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let left_number = arithmetic_float(left)
         .ok_or_else(|| invalid_binary(operation, left, right, "left operand is not numeric"))?;
     let right_number = arithmetic_float(right)
@@ -554,14 +558,14 @@ fn float_arithmetic(
             let left = left_number as f32;
             let right = right_number as f32;
             let held = float_operation(left, operation, right);
-            Value::F16(Float16::from_f16(half::f16::from_f32(held)))
+            Scalar::F16(Float16::from_f16(half::f16::from_f32(held)))
         }
-        32 => Value::F32(Float32::from_f32(float_operation(
+        32 => Scalar::F32(Float32::from_f32(float_operation(
             left_number as f32,
             operation,
             right_number as f32,
         ))),
-        _ => Value::F64(Float64::from_f64(float_operation(
+        _ => Scalar::F64(Float64::from_f64(float_operation(
             left_number,
             operation,
             right_number,
@@ -582,19 +586,19 @@ where
     }
 }
 
-fn is_exact_number(value: &Value) -> bool {
+fn is_exact_number(value: &Scalar) -> bool {
     integer_value_kind(value).is_some() || decimal_value_parts(value).is_some()
 }
 
-fn decimal_value_parts(value: &Value) -> Option<(I256, i8)> {
+fn decimal_value_parts(value: &Scalar) -> Option<(I256, i8)> {
     match value {
-        Value::D128(value, scale) => Some((I256::from_i128(*value), *scale)),
-        Value::D256(value, scale) => Some((*value, *scale)),
+        Scalar::D128(value, scale) => Some((I256::from_i128(*value), *scale)),
+        Scalar::D256(value, scale) => Some((*value, *scale)),
         _ => None,
     }
 }
 
-fn exact_value_parts(value: &Value) -> Option<(I256, i8)> {
+fn exact_value_parts(value: &Scalar) -> Option<(I256, i8)> {
     decimal_value_parts(value).or_else(|| {
         value
             .as_i128()
@@ -628,9 +632,9 @@ const fn result_decimal_scale(operation: Arithmetic, left: i8, right: i8) -> Opt
 /// the denominator can terminate in base ten. Input scales shift the required
 /// power of ten; the selected result never keeps arbitrary padding zeros.
 fn inferred_decimal_division_scale(
-    left: &Value,
+    left: &Scalar,
     left_scale: i8,
-    right: &Value,
+    right: &Scalar,
     right_scale: i8,
     wide: bool,
 ) -> Result<i8> {
@@ -700,12 +704,12 @@ fn factor_power(mut value: I256, factor: i128) -> (I256, i16) {
 }
 
 fn decimal_arithmetic(
-    left: &Value,
+    left: &Scalar,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     wide: bool,
     target_scale: i8,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let (left_number, left_scale) = exact_value_parts(left).ok_or_else(|| {
         invalid_binary(
             operation,
@@ -755,10 +759,10 @@ fn decimal_arithmetic(
     }
     .ok_or_else(|| decimal_overflow(operation, wide))?;
     if wide {
-        Ok(Value::d256(held, target_scale))
+        Ok(Scalar::d256(held, target_scale))
     } else {
         held.as_i128()
-            .map(|held| Value::d128(held, target_scale))
+            .map(|held| Scalar::d128(held, target_scale))
             .ok_or_else(|| decimal_overflow(operation, false))
     }
 }
@@ -897,20 +901,20 @@ struct TemporalParts {
     data_type: DataType,
 }
 
-fn temporal_value_parts(value: &Value) -> Option<TemporalParts> {
+fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
     let (family, unit, zone, data_type) = match value {
-        Value::Date32(_, unit, zone) => (0, *unit, zone.clone(), DataType::Date32),
-        Value::Date64(_, unit, zone) => (0, *unit, zone.clone(), DataType::Date64),
-        Value::Time32(_, unit, zone) => (1, *unit, zone.clone(), DataType::Time32(*unit)),
-        Value::Time64(_, unit, zone) => (1, *unit, zone.clone(), DataType::Time64(*unit)),
-        Value::DateTime64(_, unit, zone) => (
+        Scalar::Date32(_, unit, zone) => (0, *unit, zone.clone(), DataType::Date32),
+        Scalar::Date64(_, unit, zone) => (0, *unit, zone.clone(), DataType::Date64),
+        Scalar::Time32(_, unit, zone) => (1, *unit, zone.clone(), DataType::Time32(*unit)),
+        Scalar::Time64(_, unit, zone) => (1, *unit, zone.clone(), DataType::Time64(*unit)),
+        Scalar::DateTime64(_, unit, zone) => (
             2,
             *unit,
             zone.clone(),
             DataType::Timestamp(*unit, (!zone.is_naive()).then(|| zone.clone())),
         ),
-        Value::Duration32(_, unit, zone) => (3, *unit, zone.clone(), DataType::Duration32(*unit)),
-        Value::Duration64(_, unit, zone) => (3, *unit, zone.clone(), DataType::Duration64(*unit)),
+        Scalar::Duration32(_, unit, zone) => (3, *unit, zone.clone(), DataType::Duration32(*unit)),
+        Scalar::Duration64(_, unit, zone) => (3, *unit, zone.clone(), DataType::Duration64(*unit)),
         _ => return None,
     };
     Some(TemporalParts {
@@ -933,10 +937,10 @@ fn temporal_target(data_type: &DataType) -> Option<(u8, TimeUnit)> {
 }
 
 fn temporal_result_type(
-    left: &Value,
+    left: &Scalar,
     left_parts: TemporalParts,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     right_parts: TemporalParts,
 ) -> Result<DataType> {
     match (left_parts.family, right_parts.family, operation) {
@@ -995,11 +999,11 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 }
 
 fn temporal_arithmetic(
-    left: &Value,
+    left: &Scalar,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     target: &DataType,
-) -> Result<Value> {
+) -> Result<Scalar> {
     if !matches!(operation, Arithmetic::Add | Arithmetic::Sub) {
         return Err(invalid_binary(
             operation,
@@ -1067,11 +1071,11 @@ fn temporal_arithmetic(
 }
 
 fn duration_integer_arithmetic(
-    left: &Value,
+    left: &Scalar,
     operation: Arithmetic,
-    right: &Value,
+    right: &Scalar,
     target: &DataType,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let (duration, integer, duration_first) = if temporal_value_parts(left)
         .is_some_and(|parts| parts.family == 3)
         && integer_value_kind(right).is_some()
@@ -1141,7 +1145,12 @@ fn duration_integer_arithmetic(
     })
 }
 
-fn temporal_at(value: &Value, unit: TimeUnit, operation: Arithmetic, other: &Value) -> Result<i64> {
+fn temporal_at(
+    value: &Scalar,
+    unit: TimeUnit,
+    operation: Arithmetic,
+    other: &Scalar,
+) -> Result<i64> {
     value.temporal_count_at(unit).ok_or_else(|| {
         invalid_binary(
             operation,
@@ -1152,9 +1161,9 @@ fn temporal_at(value: &Value, unit: TimeUnit, operation: Arithmetic, other: &Val
     })
 }
 
-fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Value> {
+fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
     match data_type {
-        DataType::Date32 => Value::date32_in(
+        DataType::Date32 => Scalar::date32_in(
             i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
                 operation: "temporal arithmetic",
                 kind: "date32",
@@ -1162,8 +1171,8 @@ fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Va
             unit,
             Timezone::NAIVE,
         ),
-        DataType::Date64 => Value::date64_in(count, unit, Timezone::NAIVE),
-        DataType::Time32(expected) if *expected == unit => Value::time32(
+        DataType::Date64 => Scalar::date64_in(count, unit, Timezone::NAIVE),
+        DataType::Time32(expected) if *expected == unit => Scalar::time32(
             i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
                 operation: "temporal arithmetic",
                 kind: "time32",
@@ -1172,19 +1181,19 @@ fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Va
             Timezone::NAIVE,
         ),
         DataType::Time64(expected) if *expected == unit => {
-            Value::time64(count, unit, Timezone::NAIVE)
+            Scalar::time64(count, unit, Timezone::NAIVE)
         }
         DataType::Timestamp(expected, zone) if *expected == unit => {
-            Value::datetime64(count, unit, zone.clone().unwrap_or(Timezone::NAIVE))
+            Scalar::datetime64(count, unit, zone.clone().unwrap_or(Timezone::NAIVE))
         }
-        DataType::Duration32(expected) if *expected == unit => Value::duration32(
+        DataType::Duration32(expected) if *expected == unit => Scalar::duration32(
             i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
                 operation: "temporal arithmetic",
                 kind: "duration32",
             })?,
             unit,
         ),
-        DataType::Duration64(expected) if *expected == unit => Value::duration64(count, unit),
+        DataType::Duration64(expected) if *expected == unit => Scalar::duration64(count, unit),
         _ => Err(Error::InvalidArithmetic {
             operation: "temporal arithmetic",
             left: temporal_kind_name(data_type),
@@ -1209,8 +1218,8 @@ const fn temporal_kind_name(data_type: &DataType) -> &'static str {
 
 fn invalid_binary(
     operation: Arithmetic,
-    left: &Value,
-    right: &Value,
+    left: &Scalar,
+    right: &Scalar,
     reason: impl Into<SmolStr>,
 ) -> Error {
     Error::InvalidArithmetic {
@@ -1221,7 +1230,7 @@ fn invalid_binary(
     }
 }
 
-fn invalid_unary(operation: &'static str, value: &Value, reason: &'static str) -> Error {
+fn invalid_unary(operation: &'static str, value: &Scalar, reason: &'static str) -> Error {
     Error::InvalidArithmetic {
         operation,
         left: value.kind(),
@@ -1232,34 +1241,34 @@ fn invalid_unary(operation: &'static str, value: &Value, reason: &'static str) -
 
 macro_rules! value_binary_operator {
     ($trait:ident, $method:ident, $checked:ident) => {
-        impl $trait for Value {
-            type Output = Result<Value>;
+        impl $trait for Scalar {
+            type Output = Result<Scalar>;
 
             fn $method(self, other: Self) -> Self::Output {
                 self.$checked(&other)
             }
         }
 
-        impl $trait<&Value> for Value {
-            type Output = Result<Value>;
+        impl $trait<&Scalar> for Scalar {
+            type Output = Result<Scalar>;
 
-            fn $method(self, other: &Value) -> Self::Output {
+            fn $method(self, other: &Scalar) -> Self::Output {
                 self.$checked(other)
             }
         }
 
-        impl $trait<Value> for &Value {
-            type Output = Result<Value>;
+        impl $trait<Scalar> for &Scalar {
+            type Output = Result<Scalar>;
 
-            fn $method(self, other: Value) -> Self::Output {
+            fn $method(self, other: Scalar) -> Self::Output {
                 self.$checked(&other)
             }
         }
 
-        impl $trait<&Value> for &Value {
-            type Output = Result<Value>;
+        impl $trait<&Scalar> for &Scalar {
+            type Output = Result<Scalar>;
 
-            fn $method(self, other: &Value) -> Self::Output {
+            fn $method(self, other: &Scalar) -> Self::Output {
                 self.$checked(other)
             }
         }
@@ -1272,7 +1281,7 @@ value_binary_operator!(Mul, mul, checked_mul);
 value_binary_operator!(Div, div, checked_div);
 value_binary_operator!(Rem, rem, checked_rem);
 
-impl Neg for Value {
+impl Neg for Scalar {
     type Output = Result<Self>;
 
     fn neg(self) -> Self::Output {
@@ -1280,8 +1289,8 @@ impl Neg for Value {
     }
 }
 
-impl Neg for &Value {
-    type Output = Result<Value>;
+impl Neg for &Scalar {
+    type Output = Result<Scalar>;
 
     fn neg(self) -> Self::Output {
         self.checked_neg()
@@ -1365,37 +1374,37 @@ mod tests {
     #[test]
     fn integer_arithmetic_preserves_width_and_promotes_without_loss() {
         assert_eq!(
-            Value::I8(3).checked_add(&Value::I8(4)).unwrap(),
-            Value::I8(7)
+            Scalar::I8(3).checked_add(&Scalar::I8(4)).unwrap(),
+            Scalar::I8(7)
         );
         assert_eq!(
-            Value::I8(-1).checked_add(&Value::U8(2)).unwrap(),
-            Value::I16(1)
+            Scalar::I8(-1).checked_add(&Scalar::U8(2)).unwrap(),
+            Scalar::I16(1)
         );
         assert!(matches!(
-            Value::I8(127).checked_add(&Value::I8(1)),
+            Scalar::I8(127).checked_add(&Scalar::I8(1)),
             Err(Error::ArithmeticOverflow { kind: "i8", .. })
         ));
         assert!(matches!(
-            Value::I128(1).checked_add(&Value::U128(1)),
+            Scalar::I128(1).checked_add(&Scalar::U128(1)),
             Err(Error::InvalidArithmetic { .. })
         ));
     }
 
     #[test]
     fn float_arithmetic_promotes_width_and_uses_checked_zero() {
-        let left = Value::F16(Float16::from_f16(half::f16::from_f32(1.5)));
-        let right = Value::F32(Float32::from_f32(2.0));
+        let left = Scalar::F16(Float16::from_f16(half::f16::from_f32(1.5)));
+        let right = Scalar::F32(Float32::from_f32(2.0));
         assert_eq!(
             left.checked_mul(&right).unwrap(),
-            Value::F32(Float32::from_f32(3.0))
+            Scalar::F32(Float32::from_f32(3.0))
         );
         assert!(matches!(
-            right.checked_div(&Value::F32(Float32::from_f32(0.0))),
+            right.checked_div(&Scalar::F32(Float32::from_f32(0.0))),
             Err(Error::DivisionByZero { .. })
         ));
         assert!(matches!(
-            right.checked_rem(&Value::F32(Float32::from_f32(-0.0))),
+            right.checked_rem(&Scalar::F32(Float32::from_f32(-0.0))),
             Err(Error::DivisionByZero { .. })
         ));
     }
@@ -1416,40 +1425,46 @@ mod tests {
     #[test]
     fn decimal_arithmetic_is_scale_exact() {
         assert_eq!(
-            Value::d128(105, 2).checked_add(&Value::d128(2, 1)).unwrap(),
-            Value::d128(125, 2)
+            Scalar::d128(105, 2)
+                .checked_add(&Scalar::d128(2, 1))
+                .unwrap(),
+            Scalar::d128(125, 2)
         );
         assert_eq!(
-            Value::d128(1, 0).checked_div(&Value::d128(2, 0)).unwrap(),
-            Value::d128(5, 1)
+            Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0)).unwrap(),
+            Scalar::d128(5, 1)
         );
         assert_eq!(
-            Value::d128(100, 2).checked_div(&Value::d128(2, 0)).unwrap(),
-            Value::d128(5, 1)
+            Scalar::d128(100, 2)
+                .checked_div(&Scalar::d128(2, 0))
+                .unwrap(),
+            Scalar::d128(5, 1)
         );
         assert_eq!(
-            Value::d128(1, 0).checked_div(&Value::d128(128, 0)).unwrap(),
-            Value::d128(78_125, 7)
+            Scalar::d128(1, 0)
+                .checked_div(&Scalar::d128(128, 0))
+                .unwrap(),
+            Scalar::d128(78_125, 7)
         );
         assert!(matches!(
-            Value::d128(1, 0).checked_div(&Value::d128(3, 0)),
+            Scalar::d128(1, 0).checked_div(&Scalar::d128(3, 0)),
             Err(Error::InexactArithmetic { .. })
         ));
 
-        let maximum = Value::d128(i128::MAX, 0);
-        assert_eq!(maximum.checked_div(&maximum).unwrap(), Value::d128(1, 0));
+        let maximum = Scalar::d128(i128::MAX, 0);
+        assert_eq!(maximum.checked_div(&maximum).unwrap(), Scalar::d128(1, 0));
         let wide: I256 =
             "9999999999999999999999999999999999999999999999999999999999999999999999999999"
                 .parse()
                 .unwrap();
-        let maximum = Value::d256(wide, 0);
+        let maximum = Scalar::d256(wide, 0);
         assert_eq!(
             maximum.checked_div(&maximum).unwrap(),
-            Value::d256(I256::from_i128(1), 0)
+            Scalar::d256(I256::from_i128(1), 0)
         );
         assert_eq!(
-            Value::d128(3, 0).checked_div(&Value::d128(6, 0)).unwrap(),
-            Value::d128(5, 1)
+            Scalar::d128(3, 0).checked_div(&Scalar::d128(6, 0)).unwrap(),
+            Scalar::d128(5, 1)
         );
 
         let denominator = (0..75).fold(I256::from_i128(1), |value, _| {
@@ -1459,73 +1474,73 @@ mod tests {
             value.checked_mul(I256::from_i128(5)).unwrap()
         });
         assert_eq!(
-            Value::d256(I256::from_i128(1), 0)
-                .checked_div(&Value::d256(denominator, 0))
+            Scalar::d256(I256::from_i128(1), 0)
+                .checked_div(&Scalar::d256(denominator, 0))
                 .unwrap(),
-            Value::d256(coefficient, 75)
+            Scalar::d256(coefficient, 75)
         );
     }
 
     #[test]
     fn temporal_arithmetic_uses_durations_and_preserves_zone() {
-        let at = Value::datetime64(1_000, TimeUnit::Millisecond, Timezone::UTC).unwrap();
-        let elapsed = Value::duration64(2, TimeUnit::Second).unwrap();
+        let at = Scalar::datetime64(1_000, TimeUnit::Millisecond, Timezone::UTC).unwrap();
+        let elapsed = Scalar::duration64(2, TimeUnit::Second).unwrap();
         assert_eq!(
             at.checked_add(&elapsed).unwrap(),
-            Value::datetime64(3_000, TimeUnit::Millisecond, Timezone::UTC).unwrap()
+            Scalar::datetime64(3_000, TimeUnit::Millisecond, Timezone::UTC).unwrap()
         );
         assert_eq!(
-            at.checked_sub(&Value::datetime64(500, TimeUnit::Millisecond, Timezone::UTC).unwrap())
+            at.checked_sub(&Scalar::datetime64(500, TimeUnit::Millisecond, Timezone::UTC).unwrap())
                 .unwrap(),
-            Value::duration64(500, TimeUnit::Millisecond).unwrap()
+            Scalar::duration64(500, TimeUnit::Millisecond).unwrap()
         );
         assert_eq!(
-            Value::date32(2).checked_sub(&Value::date32(1)).unwrap(),
-            Value::duration64(1, TimeUnit::Day).unwrap()
+            Scalar::date32(2).checked_sub(&Scalar::date32(1)).unwrap(),
+            Scalar::duration64(1, TimeUnit::Day).unwrap()
         );
         assert_eq!(
-            Value::date64(86_400_001)
-                .checked_sub(&Value::date32(1))
+            Scalar::date64(86_400_001)
+                .checked_sub(&Scalar::date32(1))
                 .unwrap(),
-            Value::duration64(1, TimeUnit::Millisecond).unwrap()
+            Scalar::duration64(1, TimeUnit::Millisecond).unwrap()
         );
         assert_eq!(
-            Value::datetime64(2, TimeUnit::Second, Timezone::NAIVE)
+            Scalar::datetime64(2, TimeUnit::Second, Timezone::NAIVE)
                 .unwrap()
                 .checked_sub(
-                    &Value::datetime64(1_000_000_000, TimeUnit::Nanosecond, Timezone::NAIVE,)
+                    &Scalar::datetime64(1_000_000_000, TimeUnit::Nanosecond, Timezone::NAIVE,)
                         .unwrap(),
                 )
                 .unwrap(),
-            Value::duration64(1_000_000_000, TimeUnit::Nanosecond).unwrap()
+            Scalar::duration64(1_000_000_000, TimeUnit::Nanosecond).unwrap()
         );
     }
 
     #[test]
     fn durations_scale_only_by_exact_integers() {
-        let duration = Value::duration32(12, TimeUnit::Second).unwrap();
+        let duration = Scalar::duration32(12, TimeUnit::Second).unwrap();
         assert_eq!(
-            duration.checked_mul(&Value::I16(-3)).unwrap(),
-            Value::duration32(-36, TimeUnit::Second).unwrap()
+            duration.checked_mul(&Scalar::I16(-3)).unwrap(),
+            Scalar::duration32(-36, TimeUnit::Second).unwrap()
         );
         assert_eq!(
-            Value::U8(3).checked_mul(&duration).unwrap(),
-            Value::duration32(36, TimeUnit::Second).unwrap()
+            Scalar::U8(3).checked_mul(&duration).unwrap(),
+            Scalar::duration32(36, TimeUnit::Second).unwrap()
         );
         assert_eq!(
-            duration.checked_div(&Value::I8(3)).unwrap(),
-            Value::duration32(4, TimeUnit::Second).unwrap()
+            duration.checked_div(&Scalar::I8(3)).unwrap(),
+            Scalar::duration32(4, TimeUnit::Second).unwrap()
         );
         assert!(matches!(
-            duration.checked_div(&Value::I8(5)),
+            duration.checked_div(&Scalar::I8(5)),
             Err(Error::InexactArithmetic { .. })
         ));
         assert!(matches!(
-            duration.checked_div(&Value::I8(0)),
+            duration.checked_div(&Scalar::I8(0)),
             Err(Error::DivisionByZero { .. })
         ));
-        assert!(Value::date32(1).checked_mul(&Value::I8(2)).is_err());
-        assert!(Value::I8(2).checked_div(&duration).is_err());
+        assert!(Scalar::date32(1).checked_mul(&Scalar::I8(2)).is_err());
+        assert!(Scalar::I8(2).checked_div(&duration).is_err());
     }
 
     #[test]
@@ -1538,35 +1553,38 @@ mod tests {
             Arithmetic::Rem,
         ] {
             assert_eq!(
-                Value::Null
-                    .checked_arithmetic(&Value::I8(0), operation)
+                Scalar::Null
+                    .checked_arithmetic(&Scalar::I8(0), operation)
                     .unwrap(),
-                Value::Null
+                Scalar::Null
             );
             assert_eq!(
-                Value::I8(0)
-                    .checked_arithmetic(&Value::Null, operation)
+                Scalar::I8(0)
+                    .checked_arithmetic(&Scalar::Null, operation)
                     .unwrap(),
-                Value::Null
+                Scalar::Null
             );
         }
-        assert_eq!(Value::Null.checked_neg().unwrap(), Value::Null);
-        assert_eq!(Value::Null.checked_abs().unwrap(), Value::Null);
+        assert_eq!(Scalar::Null.checked_neg().unwrap(), Scalar::Null);
+        assert_eq!(Scalar::Null.checked_abs().unwrap(), Scalar::Null);
     }
 
     #[test]
     fn operator_traits_are_checked_and_do_not_concatenate() {
-        assert_eq!((&Value::I16(7) + &Value::I16(5)).unwrap(), Value::I16(12));
-        assert_eq!((-Value::U8(7)).unwrap(), Value::I16(-7));
-        assert_eq!(Value::I16(-7).checked_abs().unwrap(), Value::I16(7));
         assert_eq!(
-            Value::U128(u128::MAX).checked_abs().unwrap(),
-            Value::U128(u128::MAX)
+            (&Scalar::I16(7) + &Scalar::I16(5)).unwrap(),
+            Scalar::I16(12)
+        );
+        assert_eq!((-Scalar::U8(7)).unwrap(), Scalar::I16(-7));
+        assert_eq!(Scalar::I16(-7).checked_abs().unwrap(), Scalar::I16(7));
+        assert_eq!(
+            Scalar::U128(u128::MAX).checked_abs().unwrap(),
+            Scalar::U128(u128::MAX)
         );
         assert!(matches!(
-            Value::I8(i8::MIN).checked_abs(),
+            Scalar::I8(i8::MIN).checked_abs(),
             Err(Error::ArithmeticOverflow { .. })
         ));
-        assert!((Value::from("a") + Value::from("b")).is_err());
+        assert!((Scalar::from("a") + Scalar::from("b")).is_err());
     }
 }

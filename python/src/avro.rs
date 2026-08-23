@@ -1,8 +1,8 @@
-//! Python views over the core Avro schema and `Value` codecs.
+//! Python views over the core Avro schema and `Scalar` codecs.
 //!
 //! This boundary owns no Avro model: schemas, containers, resolution, and
 //! single-object framing all remain native Rust values. Python values enter
-//! and leave through the same shared `Value` conversion used by the structured
+//! and leave through the same shared `Scalar` conversion used by the structured
 //! codecs and record adapters.
 
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use yggdryl::io::Buffer;
 use yggdryl::text::Limits;
 
 use crate::record::string_pairs_from_value;
-use crate::value::{PyValue, as_py, from_py};
+use crate::scalar::{PyScalar, as_py, from_py};
 use crate::value_error;
 
 /// A parsed native Apache Avro schema.
@@ -42,7 +42,7 @@ impl PyAvroSchema {
 #[pymethods]
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 impl PyAvroSchema {
-    /// Parse an Avro schema from a native Value, a Python natural value, JSON
+    /// Parse an Avro schema from a native Scalar, a Python natural value, JSON
     /// UTF-8, or JSON bytes.
     #[new]
     #[pyo3(signature = (value, *, max_depth = None, max_input_bytes = None, max_nodes = None))]
@@ -162,7 +162,7 @@ impl PyAvroContainer {
             .inner
             .rows
             .iter()
-            .map(|row| crate::value::value_pickle_state(py, row))
+            .map(|row| crate::scalar::scalar_pickle_state(py, row))
             .collect::<PyResult<Vec<_>>>()?;
         state.set_item("rows", PyList::new(py, rows)?)?;
         Ok(state)
@@ -188,7 +188,7 @@ impl PyAvroContainer {
             .get_item("rows")?
             .ok_or_else(|| PyTypeError::new_err("AvroContainer pickle state needs rows"))?
             .try_iter()?
-            .map(|row| crate::value::value_from_pickle_state(&row?, 0))
+            .map(|row| crate::scalar::scalar_from_pickle_state(&row?, 0))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(Self {
             inner: Container {
@@ -220,7 +220,7 @@ impl PyAvroContainer {
         self.inner.get(key)
     }
 
-    /// Every row decoded through the shared native Value conversion.
+    /// Every row decoded through the shared native Scalar conversion.
     #[getter]
     fn rows<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
         let rows = self
@@ -552,7 +552,7 @@ fn schema_from_value(value: &Bound<'_, PyAny>, limits: Limits) -> PyResult<Schem
     if let Ok(schema) = value.extract::<PyRef<'_, PyAvroSchema>>() {
         return Ok(schema.inner.clone());
     }
-    if let Ok(native) = value.extract::<PyRef<'_, PyValue>>() {
+    if let Ok(native) = value.extract::<PyRef<'_, PyScalar>>() {
         return Schema::from_json_with_limits(&native.inner, limits).map_err(value_error);
     }
     if let Ok(text) = value.extract::<&str>() {
@@ -604,11 +604,11 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     ))
 }
 
-/// Convert a Python iterable to native Values exactly once.
+/// Convert a Python iterable to native Scalars exactly once.
 fn values_from_iterable(
     value: &Bound<'_, PyAny>,
     message: &'static str,
-) -> PyResult<Vec<yggdryl::Value>> {
+) -> PyResult<Vec<yggdryl::Scalar>> {
     let iterator = value
         .try_iter()
         .map_err(|_| PyTypeError::new_err(message))?;

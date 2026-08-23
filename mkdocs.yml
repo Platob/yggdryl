@@ -130,7 +130,6 @@ nav:
       - field: field.md
       - arrow: arrow.md
   - Generic:
-      - enums: enums.md
       - generic: generic.md
   - Storage:
       - uri: uri.md

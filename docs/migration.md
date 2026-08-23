@@ -41,7 +41,7 @@ keep their upstream names.
 | Rust `Metadata::to_json`, `Metadata::to_arrow`, `ProtocolMetadata::to_metadata` | `into_json`, `into_arrow`, `into_metadata` |
 | Rust `Uri::to_url`, `to_urn`, `to_path`, `to_json`; `Url::to_uri`, `to_path`, `to_json`; `Urn::to_uri`, `to_json` | the matching `into_*` method |
 | Rust `Timezone::to_local`, `Timezone::to_utc` | `into_local`, `into_utc` |
-| Rust `StructScalar::to_arrow_scalar`, `TypedValue::to_arrow_array` | `into_arrow_scalar`, `into_arrow_array` |
+| Rust `StructScalar::to_arrow_scalar`, `TypedScalar::to_arrow_array` | `into_arrow_scalar`, `into_arrow_array` |
 | Rust WKB `Geometry::to_wkt` and `wkb::to_wkt` | `into_wkt` |
 | Rust `Expression::to_json`, `Statement::to_json` | `into_json` |
 | Rust Avro `to_single_object_vec`, `Schema::to_json`, `Schema::to_canonical_form` | `into_single_object_vec`, `into_json`, `into_canonical_form` |
@@ -75,18 +75,19 @@ is a breaking source-read change with no existence-based fallback or compatibili
 
 ## Generic values and natural text
 
-`Value` now mirrors physical widths instead of collapsing them. Removed
+`Scalar` now mirrors physical widths instead of collapsing them. Removed
 variants and factories have no aliases:
 
 | Removed | Replacement |
 | --- | --- |
+| Rust `generic::Value` / `TypedValue`; Python and JavaScript `Value` | `generic::Scalar` / `TypedScalar`; Python and JavaScript `Scalar` |
 | `Decimal` / `decimal` | `D128` / `d128`; use `D256` / `d256` for a 256-bit coefficient |
 | one generic float value | `F16`, `F32`, or `F64` |
 | `Date` | `Date32` or `Date64` |
 | `Time` | `Time32` or `Time64` |
 | `Timestamp` and `DateTime` | `DateTime64(count, unit, timezone)`; use `Timezone::NAIVE` explicitly |
 | `Duration` | `Duration32` or `Duration64` |
-| insertion-shaped string-key maps used as rows | sorted `Value::Record(BTreeMap<name, Value>)` |
+| insertion-shaped string-key maps used as rows | sorted `Scalar::Record(BTreeMap<name, Scalar>)` |
 
 Every temporal carries a `TimeUnit` and a non-null `Timezone`. All values are
 hashable and expose `as_bytes`, `as_utf8`, `as_json_bytes`, and
@@ -96,7 +97,7 @@ temporal components as `count` / `unit` / `zone` and decimal components as
 
 Container values now expose native persistent traversal in both extensions:
 length/emptiness, iteration, indexed or keyed lookup, dotted paths, membership,
-replacement, and removal. Every returned child remains a native `Value`, so an
+replacement, and removal. Every returned child remains a native `Scalar`, so an
 exact integer, temporal, or decimal is never projected through a lossy host
 number on the way. Replacement and removal return new values and leave the
 source unchanged.
@@ -104,15 +105,15 @@ source unchanged.
 Field-directed canonicalization also preserves the declared signed or
 unsigned integer width. A value accepted by an `Int8`, `Int16`, `Int32`,
 `Int64`, `UInt8`, `UInt16`, `UInt32`, or `UInt64` field now returns that exact
-physical `Value` variant rather than a widened integer.
+physical `Scalar` variant rather than a widened integer.
 
-Value-to-Arrow inference is now centralized in the core as
+Scalar-to-Arrow inference is now centralized in the core as
 `inferred_scalar_field`, `inferred_array_field`, and `inferred_struct_field`.
 The inferred names are uniformly `value`, `item`, and `row`; notably,
 JavaScript array inference no longer uses `value` for the item Field. Duration
 timezone validation likewise moved into native `duration32_in` /
 `duration64_in`, so both bindings redirect instead of maintaining their own
-NAIVE check. Python exposes the three Field results as `Value.into_field`,
+NAIVE check. Python exposes the three Field results as `Scalar.into_field`,
 `into_array_field`, and `into_struct_field`; JavaScript uses `intoField`,
 `intoArrayField`, and `intoStructField`. These are direct core calls, not a
 second binding-side inference path.
@@ -125,8 +126,8 @@ UTF-8 text explicitly, or write the same result directly to a destination.
 
 Field-directed JavaScript Struct loads now return named objects rather than
 positional arrays, matching Python while Rust retains its canonical ordered
-`Value::Sequence`. New `IOBase::read_value` / `write_value` methods expose the
-same Value path directly on handles (`readValue` / `writeValue` in JavaScript),
+`Scalar::Sequence`. New `IOBase::read_value` / `write_value` methods expose the
+same Scalar path directly on handles (`readScalar` / `writeScalar` in JavaScript),
 including inferred gzip, zlib, and zstd content coding.
 
 Python and JavaScript now expose the Rust Avro schema, object-container,
@@ -171,7 +172,7 @@ Batch sorting is explicit because a globally ordered stream requires
 materialization outside this API. These are additive APIs; no compatibility
 aliases were introduced.
 
-JavaScript temporal `Value` constructors now accept a native `Timezone`, a
+JavaScript temporal `Scalar` constructors now accept a native `Timezone`, a
 timezone name, `null`, or no timezone. Omitted and `null` values infer
 `Timezone.NAIVE`; `date32`/`date64` infer day/millisecond units, while the core
 still validates which units and zones each temporal kind permits.
@@ -180,7 +181,7 @@ The binding-parity audit also added Parquet metadata reads to inferred
 `IOBase` handles. Python exposes `read_parquet_statistics` and
 `read_parquet_geospatial_statistics`; JavaScript exposes
 `readParquetStatistics` and `readParquetGeospatialStatistics`. Both return the
-same core-projected, native-language `Value` shape and reject non-Parquet media
+same core-projected, native-language `Scalar` shape and reject non-Parquet media
 with the core typed record error. The stateful `Parquet<H>` wrapper and its
 open-session cache, free encoding functions, and Rust DTO accessors remain
 intentional Rust-only seams; bindings do not duplicate those models.
@@ -190,8 +191,8 @@ intentional Rust-only seams; bindings do not duplicate those models.
 | Removed | Replacement |
 | --- | --- |
 | Python `@record` / `records` module / `Record` | Python `@scalar` over an ordinary dataclass |
-| schema-carrying Rust `Value::Record(Field, values)` / `Value::record` | `Value::Record(BTreeMap<name, Value>)` as a sorted named input, or `Value::Sequence` as the canonical row |
-| Rust `Value::record_to_mapping` | use the new name-only `Value::Record`; struct `Field` canonicalization resolves it to schema order |
+| schema-carrying Rust `Scalar::Record(Field, values)` / `Scalar::record` | `Scalar::Record(BTreeMap<name, Scalar>)` as a sorted named input, or `Scalar::Sequence` as the canonical row |
+| Rust `Scalar::record_to_mapping` | use the new name-only `Scalar::Record`; struct `Field` canonicalization resolves it to schema order |
 | datatype parser alias `record(...)` / `record<...>` | canonical `struct<...>` or SQL `row(...)` |
 | Python `Class.FIELD` / `Class.into_struct_field()` | cached static `Class.field()` |
 | JavaScript static `FIELD`, stored `intoStructField` Field, or `intoStructField()` method | actual static `get intoStructField()` getter, memoized by `intoField` |
@@ -215,8 +216,8 @@ Rust keeps its typed consuming accessors: `TypedField::into_field` and
 `StructField::into_struct_field`.
 
 The old schema-carrying record payload has no compatibility decoder. A row's schema is no longer
-serialized once per row: use `Value::Sequence` for an already ordered row or the new sorted
-`Value::Record` for name-directed input. JSON, YAML, and TOML write that record as a natural object;
+serialized once per row: use `Scalar::Sequence` for an already ordered row or the new sorted
+`Scalar::Record` for name-directed input. JSON, YAML, and TOML write that record as a natural object;
 no private record tag is emitted.
 
 ## Record writes
@@ -283,7 +284,9 @@ declared field.
 
 ## Generic write mode
 
-`WriteMode` is the Rust enum with exactly `overwrite`, `append`, and `merge`.
+`WriteMode` was removed. `IOMode` directly exposes `overwrite`, `append`,
+`merge`, `readonly`, and `random`; `IOMode::WRITE` identifies the three modes
+accepted by write dispatchers.
 The generic core dispatchers are:
 
 ```text
@@ -303,6 +306,15 @@ one optional `options` value.
 These are new required-mode APIs, not compatibility overloads. An omitted or
 unknown mode fails before the input is inspected. Merge keys remain data for
 the selected merge operation and never choose it.
+
+## Generic module flattening
+
+Shared vocabulary now lives directly below `generic`: import
+`generic::{Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, IOKind, IOMode,
+MediaType, MimeType, Scheme, TimeUnit, Timezone, UnionMode}`. The former
+`enums::*` and `generic::enums::*` paths were removed. The runtime content-code
+wrapper is `generic::Coded<H>`; `generic::Codec<H>` was removed so `Codec`
+unambiguously names the coding enum.
 
 ## Media capability and dimensions
 

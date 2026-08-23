@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { DataType, Field, IOBase, Value, fields, iceberg } = require('yggdryl')
+const { DataType, Field, IOBase, Scalar, fields, iceberg } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-iceberg-'))
@@ -274,8 +274,8 @@ test('a transform that cannot place a row is refused by name', (t) => {
   assert.deepEqual(spec.intoJSON(), document)
   assert.ok(iceberg.PartitionSpec.fromJSON(document).equals(spec))
   assert.deepEqual(JSON.parse(JSON.stringify(spec)), document)
-  assert.equal(iceberg.PartitionSpec._fromValueNative, undefined)
-  assert.equal(spec._intoValueNative, undefined)
+  assert.equal(iceberg.PartitionSpec._fromScalarNative, undefined)
+  assert.equal(spec._intoScalarNative, undefined)
   const unpartitioned = iceberg.PartitionSpec.unpartitioned()
   assert.ok(unpartitioned.isUnpartitioned())
   assert.notEqual(spec.compare(unpartitioned), 0)
@@ -565,7 +565,7 @@ test('a schema is a document in both directions', () => {
   }
   assert.ok(
     iceberg
-      .schemaFromJson('trade', Value.fromJs(foreign))
+      .schemaFromJson('trade', Scalar.fromJs(foreign))
       .equals(iceberg.schemaFromJson('trade', foreign)),
   )
   const imported = iceberg.schemaFromJson('trade', foreign)

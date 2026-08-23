@@ -28,7 +28,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::io::IOBase;
-use crate::{DataType, Error, Field, Result, Url, Value};
+use crate::{DataType, Error, Field, Result, Scalar, Url};
 
 /// What answering one attribute costs.
 ///
@@ -209,22 +209,24 @@ impl Selector {
     /// answers null, because a URL genuinely does not know a file's length -
     /// and null is this crate's spelling of "not known", not of "zero".
     #[must_use]
-    pub fn read_url(&self, url: &Url) -> Value {
-        let text = |value: Option<&str>| value.map_or(Value::Null, Value::from);
+    pub fn read_url(&self, url: &Url) -> Scalar {
+        let text = |value: Option<&str>| value.map_or(Scalar::Null, Scalar::from);
         match self {
-            Self::Url => Value::from(url.to_string()),
-            Self::Path => Value::from(url.path().as_str()),
+            Self::Url => Scalar::from(url.to_string()),
+            Self::Path => Scalar::from(url.path().as_str()),
             Self::Name => text(url.file_name()),
             Self::Stem => text(url.stem()),
             Self::Extension => text(url.extension()),
-            Self::Scheme => Value::from(url.scheme().to_string()),
+            Self::Scheme => Scalar::from(url.scheme().to_string()),
             Self::Parent => url
                 .parent()
-                .map_or(Value::Null, |parent| Value::from(parent.to_string())),
-            Self::Depth => Value::I64(i64::try_from(url.path().segment_len()).unwrap_or(i64::MAX)),
-            Self::MimeType => Value::from(url.mime_type().to_string()),
-            Self::Partition(column) => url.hive_partition(column).map_or(Value::Null, Value::from),
-            Self::Size | Self::Kind | Self::IsContainer | Self::IsEmpty => Value::Null,
+                .map_or(Scalar::Null, |parent| Scalar::from(parent.to_string())),
+            Self::Depth => Scalar::I64(i64::try_from(url.path().segment_len()).unwrap_or(i64::MAX)),
+            Self::MimeType => Scalar::from(url.mime_type().to_string()),
+            Self::Partition(column) => url
+                .hive_partition(column)
+                .map_or(Scalar::Null, Scalar::from),
+            Self::Size | Self::Kind | Self::IsContainer | Self::IsEmpty => Scalar::Null,
         }
     }
 }
@@ -248,7 +250,7 @@ impl std::fmt::Display for Selector {
 /// manifest row, and a test double that counts its calls all answer the same
 /// question, and the evaluator never learns which one it holds.
 pub trait Attributes {
-    /// Answer one attribute, or [`Value::Null`] when this holder has no answer.
+    /// Answer one attribute, or [`Scalar::Null`] when this holder has no answer.
     ///
     /// Absence is null rather than an error for the same reason a missing map
     /// key is: a predicate over a heterogeneous listing is asking *whether*,
@@ -258,11 +260,11 @@ pub trait Attributes {
     ///
     /// Returns the backing store's failure when a [`Cost::Stat`] selector
     /// cannot be answered.
-    fn attribute(&self, selector: &Selector) -> Result<Value>;
+    fn attribute(&self, selector: &Selector) -> Result<Scalar>;
 }
 
 impl Attributes for Url {
-    fn attribute(&self, selector: &Selector) -> Result<Value> {
+    fn attribute(&self, selector: &Selector) -> Result<Scalar> {
         Ok(selector.read_url(self))
     }
 }
@@ -289,7 +291,7 @@ impl Attributes for Url {
 pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H);
 
 impl<H: IOBase + ?Sized> Attributes for Handle<'_, H> {
-    fn attribute(&self, selector: &Selector) -> Result<Value> {
+    fn attribute(&self, selector: &Selector) -> Result<Scalar> {
         read_handle(self.0, selector)
     }
 }
@@ -303,19 +305,19 @@ impl<H: IOBase + ?Sized> Attributes for Handle<'_, H> {
 /// # Errors
 ///
 /// Returns the backing store's failure.
-pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Result<Value> {
+pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Result<Scalar> {
     match selector.cost() {
         Cost::Free => Ok(handle
             .url()
-            .map_or(Value::Null, |url| selector.read_url(url))),
+            .map_or(Scalar::Null, |url| selector.read_url(url))),
         Cost::Stat => Ok(match selector {
-            Selector::Size => i64::try_from(handle.size()).map_or(Value::Null, Value::I64),
-            Selector::Kind => Value::from(handle.kind().to_string()),
-            Selector::IsContainer => Value::Bool(handle.is_container()),
-            Selector::IsEmpty => Value::Bool(handle.is_empty()),
+            Selector::Size => i64::try_from(handle.size()).map_or(Scalar::Null, Scalar::I64),
+            Selector::Kind => Scalar::from(handle.kind().to_string()),
+            Selector::IsContainer => Scalar::Bool(handle.is_container()),
+            Selector::IsEmpty => Scalar::Bool(handle.is_empty()),
             // Unreachable by the cost table above, and stated rather than
             // panicked so a selector added later degrades to "not known".
-            _ => Value::Null,
+            _ => Scalar::Null,
         }),
     }
 }

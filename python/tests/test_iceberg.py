@@ -130,7 +130,7 @@ class TestCreatingAndOpening:
         # An empty table reads as no rows rather than as a failure.
         assert table.scan().read_all().num_rows == 0
 
-    def test_immutable_metadata_views_use_complete_native_value_protocols(
+    def test_immutable_metadata_views_use_complete_native_scalar_protocols(
         self, table: Table
     ) -> None:
         table.append(_rows())

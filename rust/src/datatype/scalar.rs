@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::enums::{DataTypeId, DataTypeKind};
+use crate::generic::{DataTypeId, DataTypeKind};
 use crate::{Error, Field, Result};
 
 use super::DataType;

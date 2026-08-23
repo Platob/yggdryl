@@ -7,7 +7,7 @@
 //! what keeps the table format's promise that no dependency is added for the
 //! format itself.
 //!
-//! Rows cross this boundary as the same [`Value`](crate::Value) the JSON
+//! Rows cross this boundary as the same [`Scalar`](crate::Scalar) the JSON
 //! parser produces, so an Avro record and a JSON document are read with one
 //! vocabulary: a record is a mapping, an array is a sequence, and a union
 //! carries the branch value directly rather than a wrapper. Logical types are

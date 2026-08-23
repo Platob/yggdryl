@@ -1,19 +1,19 @@
 //! Width-accurate temporal values with explicit units and zones.
 //!
 //! ```
-//! use yggdryl::{TimeUnit, Timezone, Value};
+//! use yggdryl::{TimeUnit, Timezone, Scalar};
 //!
-//! let day = Value::date32(20_000);
-//! let at = Value::datetime64(1, TimeUnit::Microsecond, Timezone::UTC)?;
+//! let day = Scalar::date32(20_000);
+//! let at = Scalar::datetime64(1, TimeUnit::Microsecond, Timezone::UTC)?;
 //! assert_eq!(day.as_date32().map(|parts| parts.1), Some(TimeUnit::Day));
 //! assert_eq!(at.temporal_timezone(), Some(&Timezone::UTC));
 //! # Ok::<(), yggdryl::Error>(())
 //! ```
 
-use super::value::Value;
+use super::scalar::Scalar;
 use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
-impl Value {
+impl Scalar {
     /// Build a Date32 day count.
     pub const fn date32(days: i32) -> Self {
         Self::Date32(days, TimeUnit::Day, Timezone::NAIVE)
@@ -265,21 +265,21 @@ mod tests {
 
     #[test]
     fn constructors_reject_illegal_width_unit_combinations() {
-        assert!(Value::time32(1, TimeUnit::Microsecond, Timezone::NAIVE).is_err());
-        assert!(Value::time64(1, TimeUnit::Millisecond, Timezone::NAIVE).is_err());
-        assert!(Value::duration32(1, TimeUnit::DayTime).is_err());
-        assert!(Value::duration64(1, TimeUnit::DayTime).is_err());
-        assert!(Value::duration32_in(1, TimeUnit::Second, Timezone::UTC).is_err());
-        assert!(Value::duration64_in(1, TimeUnit::Second, Timezone::UTC).is_err());
-        assert!(Value::date32_in(1, TimeUnit::DayTime, Timezone::NAIVE).is_err());
-        assert!(Value::date64_in(1, TimeUnit::Second, Timezone::NAIVE).is_err());
+        assert!(Scalar::time32(1, TimeUnit::Microsecond, Timezone::NAIVE).is_err());
+        assert!(Scalar::time64(1, TimeUnit::Millisecond, Timezone::NAIVE).is_err());
+        assert!(Scalar::duration32(1, TimeUnit::DayTime).is_err());
+        assert!(Scalar::duration64(1, TimeUnit::DayTime).is_err());
+        assert!(Scalar::duration32_in(1, TimeUnit::Second, Timezone::UTC).is_err());
+        assert!(Scalar::duration64_in(1, TimeUnit::Second, Timezone::UTC).is_err());
+        assert!(Scalar::date32_in(1, TimeUnit::DayTime, Timezone::NAIVE).is_err());
+        assert!(Scalar::date64_in(1, TimeUnit::Second, Timezone::NAIVE).is_err());
     }
 
     #[test]
     fn time_of_day_refuses_a_zone_its_datatype_would_lose() {
         for error in [
-            Value::time32(1, TimeUnit::Second, Timezone::UTC).unwrap_err(),
-            Value::time64(1, TimeUnit::Microsecond, Timezone::UTC).unwrap_err(),
+            Scalar::time32(1, TimeUnit::Second, Timezone::UTC).unwrap_err(),
+            Scalar::time64(1, TimeUnit::Microsecond, Timezone::UTC).unwrap_err(),
         ] {
             let message = error.to_string();
             assert!(message.contains("timezone"), "{message}");
@@ -290,14 +290,14 @@ mod tests {
     #[test]
     fn every_temporal_carries_a_zone() {
         let values = [
-            Value::date32(1),
-            Value::date64(86_400_000),
-            Value::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-            Value::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
-            Value::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
-            Value::duration32(1, TimeUnit::Millisecond).unwrap(),
-            Value::duration64(1, TimeUnit::Microsecond).unwrap(),
+            Scalar::date32(1),
+            Scalar::date64(86_400_000),
+            Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+            Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+            Scalar::duration32(1, TimeUnit::Millisecond).unwrap(),
+            Scalar::duration64(1, TimeUnit::Microsecond).unwrap(),
         ];
-        assert!(values.iter().all(Value::is_temporal));
+        assert!(values.iter().all(Scalar::is_temporal));
     }
 }

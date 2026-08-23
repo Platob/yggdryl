@@ -218,7 +218,7 @@ base-10 numeric strings, selecting Decimal128 through precision 38 and
 Decimal256 through precision 76.
 `DataType.time(unit)` accepts the shared native unit aliases and selects
 Time32 for seconds/milliseconds or Time64 for microseconds/nanoseconds.
-`Value` exposes checked native arithmetic through `add`, `subtract`,
+`Scalar` exposes checked native arithmetic through `add`, `subtract`,
 `multiply`, `divide`, `remainder`, `negate`, and `absolute`, plus Python's
 matching operators (including reflected operators and `abs`). Python-native
 operands are inferred once at the boundary; overflow, zero division, inexact
@@ -226,7 +226,7 @@ decimal division, and invalid operand kinds retain distinct Python errors.
 `Expression` uses the same arithmetic names and operators to build native
 trees. Strings remain expression grammar (`"price"` names a column and
 `"'fee'"` is a literal); every non-string Python operand is inferred as one
-native `Value`, and reflected operators preserve left-to-right order.
+native `Scalar`, and reflected operators preserve left-to-right order.
 Avro schemas compare, order, and hash by their complete retained native schema
 identity; `fingerprint()` remains the separate Parsing Canonical Form identity
 that intentionally omits annotations. Decoded Avro containers and immutable

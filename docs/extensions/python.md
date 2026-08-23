@@ -36,14 +36,14 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | --- | --- |
 | `DataType` | [datatype](../datatype.md) |
 | `Field`, `field`, `scalar`, `fields` | [field](../field.md) and this page |
-| `Value` | this page and [text](../text.md) |
+| `Scalar` | this page and [text](../text.md) |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
 | `field_from_pattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
-| `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
+| `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
 | `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
@@ -79,27 +79,27 @@ assert str(Url.from_path("C:/tmp/a.json")) == "file:///C:/tmp/a.json"
 value, a string, a PyArrow value, a Python type annotation - and dispatches to the matching core
 constructor.
 
-## Native `Value`
+## Native `Scalar`
 
-`Value` is a Python view of the Rust tree, not a Python-side model. Its factories
-name exact widths; `from_python` chooses the natural language-native shape.
+`Scalar` is a Python view of the Rust tree, not a Python-side model. Its factories
+name exact widths; `from_py` chooses the natural language-native shape.
 
 ```python
 from decimal import Decimal
 
 import pyarrow as pa
 
-from yggdryl import Value
+from yggdryl import Scalar
 
-price = Value.d256("1234567890123456789012345678901234567890", 2)
+price = Scalar.d256("1234567890123456789012345678901234567890", 2)
 assert price.kind == "d256"
-assert price.into_python() == Decimal("12345678901234567890123456789012345678.90")
+assert price.as_py() == Decimal("12345678901234567890123456789012345678.90")
 
-values = Value.from_arrow_array(pa.array([1, 2], type=pa.int16()))
+values = Scalar.from_arrow_array(pa.array([1, 2], type=pa.int16()))
 assert values.into_arrow_array().type == pa.int16()
 
-tree = Value.from_python({"legs": [{"id": 1}]})
-assert tree["legs"][0]["id"].into_python() == 1
+tree = Scalar.from_py({"legs": [{"id": 1}]})
+assert tree["legs"][0]["id"].as_py() == 1
 assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 ```
 
@@ -108,7 +108,7 @@ assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 counterparts preserve exact physical types. Pass `field=` to cast to a declared
 shape; empty output collections require it because they cannot infer a type.
 Array conversion uses one native builder. A table is imported through Arrow C
-Stream batch by batch, then owned as rows because a `Value` is materialized by
+Stream batch by batch, then owned as rows because a `Scalar` is materialized by
 definition.
 
 The exact temporal factories are `date32`, `date64`, `time32`, `time64`,
@@ -121,7 +121,7 @@ All values are hashable. `kind` and `data_type` expose their exact native type;
 `as_json_bytes` and `as_json_utf8` use the core's natural JSON writer.
 `len`, iteration, indexing, `get`, `path`, containment, and
 `keys` / `values` / `items` keep child values native. `set` and `remove` are
-persistent updates: they return a rebuilt `Value` and leave the source intact.
+persistent updates: they return a rebuilt `Scalar` and leave the source intact.
 
 The same conversion pair backs codecs, expressions, and records:
 
@@ -180,7 +180,7 @@ implementation, with no second parser in Python.
 
 Canonical immutable wrappers compare, order, hash, copy, and pickle by their
 complete native identity. This includes `DataType`, `MimeType`, `Timezone`,
-`Value`, `Expression`, `Statement`, Avro schemas and containers, and the frozen
+`Scalar`, `Expression`, `Statement`, Avro schemas and containers, and the frozen
 Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`,
 `ManifestFile`, `DataFile`, and `ScanPlan` count report. `stable_hash()` returns
 the deterministic native `u64`; Python's built-in `hash()` remaps that value to
@@ -204,12 +204,12 @@ bounded report, not a hidden executable plan.
 import copy
 import pickle
 
-from yggdryl import Expression, IOBase, Uri, Value
+from yggdryl import Expression, IOBase, Uri, Scalar
 
-value = Value.from_python({"id": 1})
+value = Scalar.from_py({"id": 1})
 assert {value: "row"}[copy.copy(value)] == "row"
 assert pickle.loads(pickle.dumps(value)) == value
-assert Value.from_python(12).divide(3).into_python() == 4
+assert Scalar.from_py(12).divide(3).as_py() == 4
 assert isinstance((Expression("price") + 2) * 3, Expression)
 
 location = Uri("https://example.com/data.json")
@@ -231,13 +231,13 @@ else:
     raise AssertionError("a live handle has no value hash")
 ```
 
-`Value`'s named arithmetic (`add`, `subtract`, `multiply`, `divide`,
+`Scalar`'s named arithmetic (`add`, `subtract`, `multiply`, `divide`,
 `remainder`, `negate`, `absolute`) and Python operators are native checked
 operations: invalid types raise `TypeError`, overflow raises `OverflowError`,
 division by zero raises `ZeroDivisionError`, and inexact integer division raises
 `ArithmeticError`. `Expression` exposes the same binary spellings as builders;
 strings keep expression parsing, while other Python operands become native
-literal `Value` nodes, including in reflected operators.
+literal `Scalar` nodes, including in reflected operators.
 
 ## What a Python value loses
 

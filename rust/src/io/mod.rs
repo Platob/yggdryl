@@ -1051,7 +1051,7 @@ pub trait IOBase: Send + IOMedia {
         Ok(bytes)
     }
 
-    /// Decode one structured [`Value`](crate::Value) from this handle.
+    /// Decode one structured [`Scalar`](crate::Scalar) from this handle.
     ///
     /// The media type selects JSON, YAML, or TOML and its content coding. A
     /// `field` directs parsing and casting; without one the value is inferred.
@@ -1060,19 +1060,19 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::io::{Buffer, IOBase};
-    /// use yggdryl::{Field, Url, Value};
+    /// use yggdryl::{Field, Url, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let media = Url::from_str("file:///trade.json.gz")?.media_type();
     /// let mut handle = Buffer::new().with_media_type(media);
-    /// let value = Value::from_record([("quantity", Value::I64(2))])?;
+    /// let value = Scalar::from_record([("quantity", Scalar::I64(2))])?;
     /// handle.write_value(&value)?;
     ///
     /// let field = Field::from_str("trade: struct<quantity: int64 not null> not null")?;
     /// assert_eq!(handle.read_value(None)?, value);
     /// assert_eq!(
     ///     handle.read_value(Some(&field))?,
-    ///     Value::from_sequence([Value::I64(2)])
+    ///     Scalar::from_sequence([Scalar::I64(2)])
     /// );
     /// # Ok(())
     /// # }
@@ -1081,21 +1081,21 @@ pub trait IOBase: Send + IOMedia {
     /// # Errors
     ///
     /// Returns a read, decompression, format, parse, or field-cast failure.
-    fn read_value(&self, field: Option<&crate::Field>) -> Result<crate::Value> {
+    fn read_value(&self, field: Option<&crate::Field>) -> Result<crate::Scalar> {
         match field {
             Some(field) => crate::text::from_io_with_field(self, field),
             None => crate::text::from_io(self),
         }
     }
 
-    /// Encode one structured [`Value`](crate::Value), replacing this handle.
+    /// Encode one structured [`Scalar`](crate::Scalar), replacing this handle.
     ///
     /// The media type selects JSON, YAML, or TOML and its content coding.
     ///
     /// # Errors
     ///
     /// Returns a format, representation, compression, or write failure.
-    fn write_value(&mut self, value: &crate::Value) -> Result<()> {
+    fn write_value(&mut self, value: &crate::Scalar) -> Result<()> {
         crate::text::into_io(value, self)
     }
 
@@ -1686,7 +1686,7 @@ pub(crate) fn append_arrow_reader_default(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
-    options.require_write_mode(crate::WriteMode::Append)?;
+    options.require_write_mode(crate::IOMode::Append)?;
     let commit_row_size = options.require_commit_row_size()?;
     options.require_write_limits()?;
     if options.write_limit_is_zero() {
@@ -1734,7 +1734,7 @@ pub(crate) fn merge_arrow_reader_default(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
-    options.require_write_mode(crate::WriteMode::Merge)?;
+    options.require_write_mode(crate::IOMode::Merge)?;
     let commit_row_size = options.require_commit_row_size()?;
     options.require_write_limits()?;
     // Key and limit intent is deterministic and has already been validated;
@@ -1817,7 +1817,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
 ) -> Result<Option<crate::Field>> {
     use crate::generic::IORecordOptions;
 
-    options.require_write_mode(crate::WriteMode::Overwrite)?;
+    options.require_write_mode(crate::IOMode::Overwrite)?;
     let commit_row_size = options.require_commit_row_size()?;
     let container = handle.is_container();
     if container {
@@ -2041,12 +2041,12 @@ fn prepare_leaf_arrow_write(
 /// remainder.
 ///
 /// This is hidden because it is a narrow runtime bridge, not another write
-/// operation. Its mode is the same public [`crate::WriteMode`] accepted by the
+/// operation. Its mode is the same public [`crate::IOMode`] accepted by the
 /// generic media entry points.
 #[cfg(feature = "arrow")]
 #[doc(hidden)]
 pub struct ArrowWriteSession {
-    mode: crate::WriteMode,
+    mode: crate::IOMode,
     options: RecordOptions,
     delegated: RecordOptions,
     declared: Option<crate::Field>,
@@ -2084,21 +2084,21 @@ enum ArrowWriteTarget {
 impl ArrowWriteSession {
     /// Start an overwrite session without touching a destination or source.
     pub fn overwrite(options: &RecordOptions) -> Result<Self> {
-        Self::new(crate::WriteMode::Overwrite, options)
+        Self::new(crate::IOMode::Overwrite, options)
     }
 
     /// Start an append session without touching a destination or source.
     pub fn append(options: &RecordOptions) -> Result<Self> {
-        Self::new(crate::WriteMode::Append, options)
+        Self::new(crate::IOMode::Append, options)
     }
 
     /// Start a merge session without touching a destination or source.
     pub fn merge(options: &RecordOptions) -> Result<Self> {
-        Self::new(crate::WriteMode::Merge, options)
+        Self::new(crate::IOMode::Merge, options)
     }
 
     /// Start a session for one explicit write mode.
-    pub fn new(mode: crate::WriteMode, options: &RecordOptions) -> Result<Self> {
+    pub fn new(mode: crate::IOMode, options: &RecordOptions) -> Result<Self> {
         use crate::generic::IORecordOptions;
 
         options.require_write_mode(mode)?;
@@ -2243,7 +2243,7 @@ impl ArrowWriteSession {
                 return Err(error);
             }
         }
-        if self.mode == crate::WriteMode::Overwrite && !self.published {
+        if self.mode == crate::IOMode::Overwrite && !self.published {
             if self.shaped_schema.is_none() {
                 let field = match self.options.require_field() {
                     Ok(field) => field.clone(),
@@ -2414,7 +2414,7 @@ impl ArrowWriteSession {
         use crate::generic::IORecordOptions as _;
 
         let mode = match (self.mode, self.published) {
-            (crate::WriteMode::Overwrite, true) => crate::WriteMode::Append,
+            (crate::IOMode::Overwrite, true) => crate::IOMode::Append,
             (mode, _) => mode,
         };
         match self
@@ -2423,51 +2423,83 @@ impl ArrowWriteSession {
             .expect("a publishing session has resolved its target")
         {
             ArrowWriteTarget::Leaf { stored } => match mode {
-                crate::WriteMode::Overwrite => {
+                crate::IOMode::Overwrite => {
                     handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
                 }
-                crate::WriteMode::Append => {
+                crate::IOMode::Append => {
                     append_leaf_onto(handle, batches, &self.delegated, stored)?
                 }
-                crate::WriteMode::Merge => merge_leaf_onto(
+                crate::IOMode::Merge => merge_leaf_onto(
                     handle,
                     batches,
                     &self.delegated,
                     self.delegated.merge_by_names(),
                     stored,
                 )?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
             },
             ArrowWriteTarget::TextLeaf => match mode {
-                crate::WriteMode::Overwrite => {
+                crate::IOMode::Overwrite => {
                     handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
                 }
-                crate::WriteMode::Append => append_leaf(handle, batches, &self.delegated)?,
-                crate::WriteMode::Merge => merge_leaf(
+                crate::IOMode::Append => append_leaf(handle, batches, &self.delegated)?,
+                crate::IOMode::Merge => merge_leaf(
                     handle,
                     batches,
                     &self.delegated,
                     self.delegated.merge_by_names(),
                 )?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
             },
             ArrowWriteTarget::EmptyLeaf => {
                 unreachable!("a shaped session has resolved an empty leaf field")
             }
             ArrowWriteTarget::Folder { writer } => match mode {
-                crate::WriteMode::Overwrite => writer.overwrite(handle, batches)?,
-                crate::WriteMode::Append => writer.append(handle, batches)?,
-                crate::WriteMode::Merge => writer.merge(handle, batches)?,
+                crate::IOMode::Overwrite => writer.overwrite(handle, batches)?,
+                crate::IOMode::Append => writer.append(handle, batches)?,
+                crate::IOMode::Merge => writer.merge(handle, batches)?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
             },
             #[cfg(feature = "iceberg")]
             ArrowWriteTarget::Iceberg { located, .. } => match mode {
-                crate::WriteMode::Overwrite => {
+                crate::IOMode::Overwrite => {
                     located.overwrite_prepared(batches, self.delegated.safe())?
                 }
-                crate::WriteMode::Append => located.append_prepared(batches)?,
-                crate::WriteMode::Merge => located.merge_prepared(
+                crate::IOMode::Append => located.append_prepared(batches)?,
+                crate::IOMode::Merge => located.merge_prepared(
                     batches,
                     self.delegated.merge_by_names(),
                     self.delegated.safe(),
                 )?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
             },
         }
         self.published = true;

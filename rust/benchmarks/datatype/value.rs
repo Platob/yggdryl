@@ -1,39 +1,39 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{Float16, Float32, Float64, I256, TimeUnit, TypedValue, Value};
+use yggdryl::{Float16, Float32, Float64, I256, Scalar, TimeUnit, TypedScalar};
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
-    let record = Value::from_record([
+    let record = Scalar::from_record([
         (
             "at",
-            Value::datetime64(
+            Scalar::datetime64(
                 1_700_000_000_000_000,
                 TimeUnit::Microsecond,
                 yggdryl::Timezone::UTC,
             )
             .unwrap(),
         ),
-        ("id", Value::from(42_i64)),
-        ("price", Value::d256(I256::from_i128(1_050), 2)),
-        ("symbol", Value::from("AAPL")),
+        ("id", Scalar::from(42_i64)),
+        ("price", Scalar::d256(I256::from_i128(1_050), 2)),
+        ("symbol", Scalar::from("AAPL")),
     ])
     .unwrap();
-    let array = Value::from_sequence([Value::from(42_i64), Value::Null]);
-    let rows = Value::from_sequence([record.clone()]);
-    let integer_left = Value::I64(9_876_543);
-    let integer_right = Value::I64(97);
-    let decimal_left = Value::d128(1_050, 2);
-    let decimal_right = Value::d128(2, 0);
-    let instant = Value::datetime64(
+    let array = Scalar::from_sequence([Scalar::from(42_i64), Scalar::Null]);
+    let rows = Scalar::from_sequence([record.clone()]);
+    let integer_left = Scalar::I64(9_876_543);
+    let integer_right = Scalar::I64(97);
+    let decimal_left = Scalar::d128(1_050, 2);
+    let decimal_right = Scalar::d128(2, 0);
+    let instant = Scalar::datetime64(
         1_700_000_000_000_000,
         TimeUnit::Microsecond,
         yggdryl::Timezone::UTC,
     )
     .unwrap();
-    let duration = Value::duration64(250, TimeUnit::Millisecond).unwrap();
-    let duration_scalar = Value::I64(5);
-    let typed: TypedValue = TypedValue::try_from_value(Value::I64(42)).unwrap();
+    let duration = Scalar::duration64(250, TimeUnit::Millisecond).unwrap();
+    let duration_scalar = Scalar::I64(5);
+    let typed: TypedScalar = TypedScalar::try_from_value(Scalar::I64(42)).unwrap();
     let integer256: I256 = "1234567890123456789012345678901234567890".parse().unwrap();
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
@@ -63,7 +63,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("infer_scalar_field", |bencher| {
         bencher.iter(|| {
-            black_box(&Value::from(42_i64))
+            black_box(&Scalar::from(42_i64))
                 .inferred_scalar_field()
                 .unwrap()
         });
@@ -78,7 +78,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&record).with_field("venue", "XNAS").unwrap());
     });
     group.bench_function("temporal_restate_day_to_nanosecond", |bencher| {
-        let date = Value::date32(20_000);
+        let date = Scalar::date32(20_000);
         bencher.iter(|| black_box(&date).temporal_count_at(TimeUnit::Nanosecond));
     });
     group.bench_function("json_bytes_record", |bencher| {

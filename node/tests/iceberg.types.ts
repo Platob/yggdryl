@@ -6,7 +6,7 @@ import {
   Field,
   IOBase,
   Url,
-  Value,
+  Scalar,
   iceberg,
   type Catalog,
   type Compaction,
@@ -34,7 +34,7 @@ declare const arrowTable: ArrowTable
 
 const numbered: Field = iceberg.assignFieldIds(schema)
 const renumbered: Field = iceberg.assignFieldIds(schema, 10)
-const document: Value = iceberg.schemaToJson(numbered)
+const document: Scalar = iceberg.schemaToJson(numbered)
 const parsed: Field = iceberg.schemaFromJson('row', document)
 
 const unpartitioned: PartitionSpec = iceberg.PartitionSpec.unpartitioned()
@@ -98,7 +98,7 @@ declare const file: DataFile
 const filePath: string = file.filePath
 const fileFormat: string = file.fileFormat
 const content: number = file.content
-const partition: Value[] = file.partition
+const partition: Scalar[] = file.partition
 const partitionNames: string[] = file.partitionNames
 const recordCount: number = file.recordCount
 const fileSize: number = file.fileSizeInBytes

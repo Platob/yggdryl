@@ -29,7 +29,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{Expression, Function, Operator, Safety, Segment};
-use crate::{DataType, Error, Field, Result, TimeUnit, Value};
+use crate::{DataType, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -857,7 +857,7 @@ fn function_field(
             let segment = match key.data_type() {
                 data_type if is_integer(data_type) => Segment::Index(0),
                 _ => Segment::Key(
-                    crate::TypedValue::from_parts(key.data_type().clone(), Value::Null)
+                    crate::TypedScalar::from_parts(key.data_type().clone(), Scalar::Null)
                         .map_err(|error| typing_error(format_smolstr!("{error}")))?,
                 ),
             };

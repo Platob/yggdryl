@@ -1,4 +1,4 @@
-use crate::{TimeUnit, Timezone, Value};
+use crate::{Scalar, TimeUnit, Timezone};
 
 use super::{civil_from_days, days_from_civil, native_datetime, split_count};
 
@@ -24,9 +24,9 @@ fn negative_counts_keep_a_positive_subsecond_fraction() {
 
 #[test]
 fn temporal_values_use_native_toml_when_the_shape_fits() {
-    let date = Value::date32(3_433);
-    let time = Value::time64(27_120_123_456, TimeUnit::Microsecond, Timezone::NAIVE).unwrap();
-    let datetime = Value::datetime64(296_638_320, TimeUnit::Second, Timezone::UTC).unwrap();
+    let date = Scalar::date32(3_433);
+    let time = Scalar::time64(27_120_123_456, TimeUnit::Microsecond, Timezone::NAIVE).unwrap();
+    let datetime = Scalar::datetime64(296_638_320, TimeUnit::Second, Timezone::UTC).unwrap();
 
     assert_eq!(native_datetime(&date).unwrap().to_string(), "1979-05-27");
     assert_eq!(
@@ -41,8 +41,9 @@ fn temporal_values_use_native_toml_when_the_shape_fits() {
 
 #[test]
 fn named_zones_and_durations_have_no_native_toml_scalar() {
-    let datetime = Value::datetime64(0, TimeUnit::Second, "Europe/Paris".parse().unwrap()).unwrap();
-    let duration = Value::duration64(90, TimeUnit::Second).unwrap();
+    let datetime =
+        Scalar::datetime64(0, TimeUnit::Second, "Europe/Paris".parse().unwrap()).unwrap();
+    let duration = Scalar::duration64(90, TimeUnit::Second).unwrap();
     assert!(native_datetime(&datetime).is_none());
     assert!(native_datetime(&duration).is_none());
 }

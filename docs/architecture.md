@@ -29,7 +29,7 @@ Five decisions shape this codebase; everything else follows from them.
                                              over any Arrow
                                              filesystem
 
-   Holder │ Media │ Codec │ RecordOptions │ Value ──── generic/
+   Holder │ Media │ Codec │ RecordOptions │ Scalar ──── generic/
 
    Uri ──► Url / Urn ──► MimeType + MediaType ──► Codec vocabulary
 ```
@@ -77,14 +77,14 @@ content coding, `RecordOptions` every encoding's settings. Holding one means hol
 as a concrete value, which is what lets a listing or a binding pass an implementation around without
 knowing which one it is.
 
-`generic` also owns [`Value`](text.md), the one native value the whole project speaks: every
+`generic` also owns [`Scalar`](text.md), the one native value the whole project speaks: every
 codec parses into it, every field validates it, and every binding converts its own objects to it.
 
 ## Arrow speaks batches; codecs speak values
 
 Two currencies, deliberately separate. [Arrow](arrow.md) carries columnar batches, and reading
 [IPC](ipc.md) or [Parquet](parquet.md) returns a reader that streams them rather than
-collecting. `Value` is what [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md)
+collecting. `Scalar` is what [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md)
 read and write.
 
 There is no row-to-Arrow conversion layer between them: converting a batch to values is a caller's
@@ -94,7 +94,7 @@ decision with a caller's cost, not something the storage path does implicitly.
 
 There is exactly one way to say which rows: [`Expression`](expression.md). It parses through one
 grammar, types itself against a schema, compiles once, and then answers three ways - row at a time
-over a `Value`, vectorized over an Arrow batch, and three-valued over container statistics.
+over a `Scalar`, vectorized over an Arrow batch, and three-valued over container statistics.
 
 The three tiers share one resolved tree, which is the mechanism rather than the intention behind
 their agreeing. Where Arrow owns a kernel the kernel runs; where it does not, the row evaluator runs
@@ -143,18 +143,17 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 
 | Module | Owns |
 | --- | --- |
-| `enums` | [Shared vocabulary](enums.md): datatype ids and kinds, MIME and media types, schemes, codecs, I/O kinds |
 | `datatype` | [The logical type tree](datatype.md) |
 | `field` | [Names, nullability, metadata, protocol views, partition marks, validation, casting](field.md) |
 | `arrow` | [Scalars, schema projection, batch readers](arrow.md) |
 | `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](io.md) |
 | `expression` | [The one filter and projection tree, its grammar, its bind, and its three tiers](expression.md) |
-| `generic` | [`Holder`, `Media`, `Codec`, `RecordOptions`, `Value`, `TypedValue`](generic.md) |
+| `generic` | [`Scalar`, `TypedScalar`, enums, `Holder`, `Coded`, `Media`, `RecordOptions`](generic.md) |
 | `local` | [`Path`, `Folder`, `File`](local.md) |
 | `gzip`, `zlib`, `zstd` | [Content codings and transparent handles](gzip.md) |
 | `ipc`, `parquet`, `iceberg` | [Batches and tables on disk](ipc.md) |
 | `uri` | [URI, URL, URN, and std path interop](uri.md) |
-| `text`, `json`, `yaml`, `toml` | [The shared value tree](text.md) and its codecs |
+| `text`, `json`, `yaml`, `toml` | [Structured codecs](text.md) over `Scalar` |
 | `text::line` | [`Text<H>`, the text-record handle](io.md#text-records): record splitting, the extractor options, and their Arrow projection - the one place lines are split |
 | `buffered` | [`Buffered<H>`, the page cache](buffered.md): fixed-size pages under a byte budget and a time to live, both ends pinned, write-through and invalidating |
 

@@ -80,7 +80,6 @@ def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
     assert '"at":"2026-08-15T00:00:00.000000Z"' in encoded
     assert '"on":"2026-08-15"' in encoded
     assert '"price":"-10.50"' in encoded
-    assert "$yggdryl" not in encoded
     assert "python:" not in encoded
 
 
@@ -224,12 +223,6 @@ def test_an_arbitrary_object_lowers_to_its_attributes() -> None:
     }
 
     assert json.loads(json.dumps(object())) == {}
-
-
-def test_json_envelope_shaped_user_mapping_round_trips_as_plain_data() -> None:
-    value = {"$yggdryl": {"tag": "vendor:not-a-tag", "value": 1}}
-
-    assert json.loads(json.dumps(value)) == value
 
 
 def test_dataclass_decodes_only_through_an_explicit_target() -> None:

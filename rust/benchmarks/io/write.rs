@@ -25,7 +25,7 @@ use yggdryl::io::IOMedia;
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
 use yggdryl::text::Text;
-use yggdryl::{DataType, Field, Value, WriteMode};
+use yggdryl::{DataType, Field, IOMode, Scalar};
 
 use super::{batch, handle, reader, stored_with, wide};
 
@@ -294,7 +294,7 @@ struct CountedBatches {
 }
 
 /// One ordinary Rust row. The record benchmarks pass these values to the
-/// `TryInto<Value>` adapters; they do not pre-build binding-side records or a
+/// `TryInto<Scalar>` adapters; they do not pre-build binding-side records or a
 /// parallel schema object.
 #[derive(Clone, Copy)]
 struct NativeRow {
@@ -304,13 +304,13 @@ struct NativeRow {
     venue: &'static str,
 }
 
-impl From<NativeRow> for Value {
+impl From<NativeRow> for Scalar {
     fn from(row: NativeRow) -> Self {
-        Value::from_sequence([
-            Value::from(row.id),
-            Value::from(row.symbol),
-            Value::from(row.price),
-            Value::from(row.venue),
+        Scalar::from_sequence([
+            Scalar::from(row.id),
+            Scalar::from(row.symbol),
+            Scalar::from(row.price),
+            Scalar::from(row.venue),
         ])
     }
 }
@@ -511,7 +511,7 @@ fn native_record_benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || (handle("native-overwrite.arrows"), rows.clone()),
             |(mut target, rows)| {
-                // Fixture cloning is setup; NativeRow -> Value::Sequence and
+                // Fixture cloning is setup; NativeRow -> Scalar::Sequence and
                 // row validation stay inside the public operation being timed.
                 target
                     .overwrite_records(black_box(rows), &options)
@@ -586,8 +586,8 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
     group.sample_size(10);
     group.throughput(Throughput::Elements(STATEFUL_ROWS as u64));
 
-    for mode in WriteMode::ALL {
-        let options = if mode == WriteMode::Merge {
+    for mode in IOMode::ALL {
+        let options = if mode == IOMode::Merge {
             &merging
         } else {
             &plain
@@ -597,7 +597,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("write_arrow_reader/{name}"), |bencher| {
             bencher.iter_batched(
                 || {
-                    if mode == WriteMode::Overwrite {
+                    if mode == IOMode::Overwrite {
                         handle("mode-reader.arrows")
                     } else {
                         stored_with("mode-reader.arrows", &source)
@@ -614,7 +614,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("write_arrow_record_batch/{name}"), |bencher| {
             bencher.iter_batched(
                 || {
-                    if mode == WriteMode::Overwrite {
+                    if mode == IOMode::Overwrite {
                         handle("mode-batch.arrows")
                     } else {
                         stored_with("mode-batch.arrows", &source)
@@ -635,7 +635,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("write_records/{name}"), |bencher| {
             bencher.iter_batched(
                 || {
-                    let target = if mode == WriteMode::Overwrite {
+                    let target = if mode == IOMode::Overwrite {
                         handle("mode-records.arrows")
                     } else {
                         stored_with("mode-records.arrows", &source)

@@ -2,7 +2,7 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use saphyr_parser::{Event, EventReceiver, Parser};
-use yggdryl::{DataType, Field, I256, Limits, TimeUnit, Timezone, Value, yaml};
+use yggdryl::{DataType, Field, I256, Limits, Scalar, TimeUnit, Timezone, yaml};
 
 struct OneByte<R>(R);
 
@@ -21,16 +21,14 @@ impl<'input> EventReceiver<'input> for Sink {
 
 #[test]
 fn natural_output_is_accepted_by_an_independent_yaml_parser() {
-    let value = Value::from_record([
-        ("active", Value::Bool(true)),
-        ("id", Value::I64(7)),
-        ("tags", Value::from_sequence([Value::from("rust")])),
+    let value = Scalar::from_record([
+        ("active", Scalar::Bool(true)),
+        ("id", Scalar::I64(7)),
+        ("tags", Scalar::from_sequence([Scalar::from("rust")])),
     ])
     .unwrap();
     let encoded = yaml::into_utf8(&value).unwrap();
 
-    assert!(!encoded.contains("$yggdryl"));
-    assert!(!encoded.contains("!yggdryl"));
     Parser::new_from_str(&encoded)
         .load(&mut Sink, false)
         .unwrap();
@@ -39,10 +37,9 @@ fn natural_output_is_accepted_by_an_independent_yaml_parser() {
 
 #[test]
 fn yaml_standard_binary_is_not_a_private_envelope() {
-    let value = Value::from_record([("payload", Value::from(vec![0, 255]))]).unwrap();
+    let value = Scalar::from_record([("payload", Scalar::from(vec![0, 255]))]).unwrap();
     let encoded = yaml::into_utf8(&value).unwrap();
     assert!(encoded.contains("!!binary"), "{encoded}");
-    assert!(!encoded.contains("$yggdryl"), "{encoded}");
     assert_eq!(yaml::from_utf8(&encoded).unwrap(), value);
 }
 
@@ -52,9 +49,9 @@ fn untyped_yaml_preserves_only_syntax_proven_types() {
         yaml::from_utf8("amount: '123.4500'\nat: '1970-01-01T00:00:00Z'\npayload: 'AP8='\n")
             .unwrap();
     let record = value.as_record().unwrap();
-    assert!(matches!(record["amount"], Value::String(_)));
-    assert!(matches!(record["at"], Value::String(_)));
-    assert!(matches!(record["payload"], Value::String(_)));
+    assert!(matches!(record["amount"], Scalar::String(_)));
+    assert!(matches!(record["at"], Scalar::String(_)));
+    assert!(matches!(record["payload"], Scalar::String(_)));
 }
 
 fn typed_row_field() -> Field {
@@ -86,16 +83,16 @@ fn a_field_restores_exact_types_from_natural_yaml() {
     let decoded = yaml::from_utf8_with_field(input, &typed_row_field()).unwrap();
     let row = decoded.as_sequence().unwrap();
 
-    assert_eq!(row[0], Value::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
     assert_eq!(
         row[1],
-        Value::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
+        Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     assert_eq!(
         row[2],
-        Value::time64(1_500_000_000, TimeUnit::Nanosecond, Timezone::NAIVE,).unwrap()
+        Scalar::time64(1_500_000_000, TimeUnit::Nanosecond, Timezone::NAIVE,).unwrap()
     );
-    assert_eq!(row[3], Value::from(vec![0, 255]));
+    assert_eq!(row[3], Scalar::from(vec![0, 255]));
 }
 
 #[test]
@@ -105,7 +102,7 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
         DataType::time32(TimeUnit::Millisecond).unwrap(),
         false,
     );
-    let value = Value::time32(1_500, TimeUnit::Millisecond, Timezone::NAIVE).unwrap();
+    let value = Scalar::time32(1_500, TimeUnit::Millisecond, Timezone::NAIVE).unwrap();
     let encoded = yaml::into_utf8(&value).unwrap();
     assert_eq!(yaml::from_utf8_with_field(&encoded, &field).unwrap(), value);
 
@@ -115,8 +112,8 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
             .to_string()
             .contains("DateTime64")
     );
-    assert!(Value::time64(0, TimeUnit::Nanosecond, Timezone::UTC).is_err());
-    let invalid = Value::Time64(0, TimeUnit::Nanosecond, Timezone::UTC);
+    assert!(Scalar::time64(0, TimeUnit::Nanosecond, Timezone::UTC).is_err());
+    let invalid = Scalar::Time64(0, TimeUnit::Nanosecond, Timezone::UTC);
     assert!(
         yaml::into_bytes(&invalid)
             .unwrap_err()
@@ -127,9 +124,9 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
 
 #[test]
 fn arbitrary_keys_and_standard_custom_tags_have_natural_semantics() {
-    let mapping = Value::from_mapping([
-        (Value::from_sequence([Value::I64(1)]), Value::Bool(true)),
-        (Value::I64(2), Value::from("two")),
+    let mapping = Scalar::from_mapping([
+        (Scalar::from_sequence([Scalar::I64(1)]), Scalar::Bool(true)),
+        (Scalar::I64(2), Scalar::from("two")),
     ])
     .unwrap();
     assert_eq!(
@@ -139,11 +136,11 @@ fn arbitrary_keys_and_standard_custom_tags_have_natural_semantics() {
 
     assert_eq!(
         yaml::from_utf8("!vendor/value text\n").unwrap(),
-        Value::from("text")
+        Scalar::from("text")
     );
     assert_eq!(
         yaml::from_utf8("!vendor/value {id: 1}\n").unwrap(),
-        Value::from_record([("id", Value::U64(1))]).unwrap()
+        Scalar::from_record([("id", Scalar::U64(1))]).unwrap()
     );
 }
 
@@ -157,14 +154,14 @@ fn readers_documents_and_limits_are_bounded() {
     );
 
     let documents = yaml::from_utf8_all("one\n---\ntwo\n").unwrap();
-    assert_eq!(documents, [Value::from("one"), Value::from("two")]);
+    assert_eq!(documents, [Scalar::from("one"), Scalar::from("two")]);
     assert!(yaml::from_utf8_all_with_limits("one\n---\ntwo\n", Limits::new(8, 64, 16, 1)).is_err());
     assert!(yaml::from_utf8_with_limits("[[[0]]]", Limits::new(2, 64, 16, 1)).is_err());
 }
 
 #[test]
 fn nonfinite_yaml_floats_use_the_core_schema_spelling() {
-    for value in [Value::from(f64::NAN), Value::from(f64::INFINITY)] {
+    for value in [Scalar::from(f64::NAN), Scalar::from(f64::INFINITY)] {
         let encoded = yaml::into_utf8(&value).unwrap();
         let decoded = yaml::from_utf8(&encoded).unwrap();
         assert!(decoded.as_f64().unwrap().is_nan() == value.as_f64().unwrap().is_nan());

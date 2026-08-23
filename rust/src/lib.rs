@@ -21,7 +21,6 @@ pub mod avro;
 // so it lives beside them rather than inside `io`, and it needs no Arrow.
 pub mod buffered;
 mod datatype;
-pub mod enums;
 mod error;
 pub mod expression;
 pub mod field;
@@ -58,10 +57,6 @@ pub mod zstd;
 pub use datatype::{
     DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType, UnionFields,
 };
-pub use enums::{
-    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, IOKind, Level, MediaType, MimeType,
-    Scheme, TimeUnit, Timezone, UnionMode, WriteMode,
-};
 pub use error::{Error, Result};
 pub use expression::Expression;
 #[cfg(feature = "arrow")]
@@ -70,11 +65,15 @@ pub use field::{
     AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
     PartitionFields, Pretty, TypedField, TypedFieldRef,
 };
-pub use generic::I256;
+pub use generic::{
+    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, IOKind, IOMode, Level, MediaType,
+    MimeType, Scheme, TimeUnit, Timezone, UnionMode,
+};
+pub use generic::{I256, Scalar};
 pub use metadata::{
     Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata, ProtocolMetadataMut,
 };
-pub use text::{Children, Float16, Float32, Float64, Format, Limits, TypedValue, Value, ValueIter};
+pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,

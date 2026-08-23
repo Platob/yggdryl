@@ -312,7 +312,7 @@ class TestExplicitIntent:
         assert source.pulls == 0
 
 
-class TestGenericWriteMode:
+class TestGenericIOMode:
     """Every generic representation routes through the required core mode."""
 
     @staticmethod
@@ -364,7 +364,7 @@ class TestGenericWriteMode:
     @pytest.mark.parametrize(
         ("mode", "keys", "message"),
         [
-            ("replace", [], "write mode"),
+            ("replace", [], "invalid mode"),
             ("overwrite", ["id"], "write mode overwrite does not accept"),
             ("merge", [], "write mode merge requires at least one"),
         ],

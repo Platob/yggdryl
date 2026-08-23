@@ -55,13 +55,13 @@ fn partition_format() -> FormatOptions<'static> {
 ///
 /// ```
 /// use yggdryl::io::partition::partition_text;
-/// use yggdryl::Value;
+/// use yggdryl::Scalar;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// assert_eq!(partition_text(&Value::from("XNAS"))?, "XNAS");
-/// assert_eq!(partition_text(&Value::date32(19_723))?, "2024-01-01");
-/// assert_eq!(partition_text(&Value::d128(150, 2))?, "1.50");
-/// assert_eq!(partition_text(&Value::Null)?, "null");
+/// assert_eq!(partition_text(&Scalar::from("XNAS"))?, "XNAS");
+/// assert_eq!(partition_text(&Scalar::date32(19_723))?, "2024-01-01");
+/// assert_eq!(partition_text(&Scalar::d128(150, 2))?, "1.50");
+/// assert_eq!(partition_text(&Scalar::Null)?, "null");
 /// # Ok(())
 /// # }
 /// ```
@@ -70,14 +70,14 @@ fn partition_format() -> FormatOptions<'static> {
 ///
 /// Returns an error when the value names no single datatype, or when it cannot
 /// be materialized as the one-element array the formatter reads.
-pub fn partition_text(value: &crate::Value) -> Result<smol_str::SmolStr> {
+pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     if value.is_null() {
         return Ok(smol_str::SmolStr::new_static(NULL_PARTITION));
     }
     // The value is non-null here, so the typed pairing's own projection is the
     // one-row array the formatter reads; a value the datatype cannot hold was
     // already refused when the pairing was built.
-    let typed = crate::TypedValue::from_value(value.clone())?;
+    let typed = crate::TypedScalar::from_value(value.clone())?;
     let array = typed.into_arrow_array()?;
     let formatter =
         ArrayFormatter::try_new(array.as_ref(), &partition_format()).map_err(Error::Arrow)?;

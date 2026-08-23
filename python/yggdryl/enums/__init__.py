@@ -26,8 +26,8 @@ TIME_UNITS: tuple[str, ...] = tuple(_LISTING["time_units"])
 #: Both union modes: ``"sparse"`` and ``"dense"``.
 UNION_MODES: tuple[str, ...] = tuple(_LISTING["union_modes"])
 
-#: Every explicit record-write intent: ``"overwrite"``, ``"append"``, ``"merge"``.
-WRITE_MODES: tuple[str, ...] = tuple(_LISTING["write_modes"])
+#: Every generic I/O intent.
+IO_MODES: tuple[str, ...] = tuple(_LISTING["io_modes"])
 
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
@@ -50,5 +50,5 @@ __all__ = [
     "LEVELS",
     "TIME_UNITS",
     "UNION_MODES",
-    "WRITE_MODES",
+    "IO_MODES",
 ]

@@ -1,4 +1,4 @@
-//! Native JavaScript redirections over the raw Avro `Value` codec.
+//! Native JavaScript redirections over the raw Avro `Scalar` codec.
 
 use std::sync::Arc;
 
@@ -6,9 +6,9 @@ use napi::bindgen_prelude::{Buffer, ClassInstance, Result};
 use napi_derive::napi;
 use yggdryl::avro::{Block as CoreBlock, Blocks as CoreBlocks, Container, Resolution, Schema};
 use yggdryl::io::Buffer as CoreBuffer;
-use yggdryl::{Limits, Value};
+use yggdryl::{Limits, Scalar};
 
-use crate::codec::JsCodecValue;
+use crate::codec::JsScalar;
 use crate::field::MetadataEntry;
 use crate::{exact_u64, napi_error};
 
@@ -64,10 +64,10 @@ impl JsAvroSchema {
 
 #[napi]
 impl JsAvroSchema {
-    /// Parse a schema from one native `Value`.
-    #[napi(factory, js_name = "_fromValueNative", skip_typescript)]
-    pub fn from_value_native(
-        value: &JsCodecValue,
+    /// Parse a schema from one native `Scalar`.
+    #[napi(factory, js_name = "_fromScalarNative", skip_typescript)]
+    pub fn from_scalar_native(
+        value: &JsScalar,
         limits: Option<AvroDecodeLimitsInput>,
     ) -> Result<Self> {
         Schema::from_json_with_limits(&value.inner, decode_limits(limits)?)
@@ -95,10 +95,10 @@ impl JsAvroSchema {
             .map_err(napi_error)
     }
 
-    /// Return the exact schema document as one native `Value`.
-    #[napi(js_name = "_intoValueNative", skip_typescript)]
-    pub fn into_value_native(&self) -> JsCodecValue {
-        JsCodecValue::from_core(self.inner.clone().into_json())
+    /// Return the exact schema document as one native `Scalar`.
+    #[napi(js_name = "_intoScalarNative", skip_typescript)]
+    pub fn into_scalar_native(&self) -> JsScalar {
+        JsScalar::from_core(self.inner.clone().into_json())
     }
 
     /// Return the root Avro kind.
@@ -145,7 +145,7 @@ impl JsAvroSchema {
 
     /// Encode one value with Avro single-object framing.
     #[napi(js_name = "_intoSingleObjectNative", skip_typescript)]
-    pub fn into_single_object_native(&self, value: &JsCodecValue) -> Result<Buffer> {
+    pub fn into_single_object_native(&self, value: &JsScalar) -> Result<Buffer> {
         yggdryl::avro::into_single_object_vec(&self.inner, &value.inner)
             .map(Into::into)
             .map_err(napi_error)
@@ -157,13 +157,13 @@ impl JsAvroSchema {
         &self,
         input: Buffer,
         limits: Option<AvroDecodeLimitsInput>,
-    ) -> Result<JsCodecValue> {
+    ) -> Result<JsScalar> {
         yggdryl::avro::from_single_object_slice_with_limits(
             &input,
             &self.inner,
             decode_limits(limits)?,
         )
-        .map(JsCodecValue::from_core)
+        .map(JsScalar::from_core)
         .map_err(napi_error)
     }
 }
@@ -191,13 +191,13 @@ impl JsAvroBlock {
 
     /// Decode this block only, through the optional compiled resolution plan.
     #[napi(js_name = "_rowsNative", skip_typescript)]
-    pub fn rows_native(&self) -> Result<JsCodecValue> {
+    pub fn rows_native(&self) -> Result<JsScalar> {
         let rows = match self.resolution.as_deref() {
             Some(resolution) => self.inner.rows_resolved(resolution),
             None => self.inner.rows(),
         }
         .map_err(napi_error)?;
-        Ok(JsCodecValue::from_core(Value::from_sequence(rows)))
+        Ok(JsScalar::from_core(Scalar::from_sequence(rows)))
     }
 }
 
@@ -259,13 +259,13 @@ impl JsAvroBlocks {
     }
 }
 
-/// Decode a whole Avro object container into the shared native `Value`.
+/// Decode a whole Avro object container into the shared native `Scalar`.
 #[napi(js_name = "avroLoadsNative", skip_typescript)]
 pub fn avro_loads_native(
     input: Buffer,
     reader_schema: Option<ClassInstance<'_, JsAvroSchema>>,
     limits: Option<AvroDecodeLimitsInput>,
-) -> Result<JsCodecValue> {
+) -> Result<JsScalar> {
     let handle = CoreBuffer::from_bytes(input.to_vec());
     let limits = decode_limits(limits)?;
     let container = match reader_schema.as_ref() {
@@ -275,8 +275,8 @@ pub fn avro_loads_native(
         None => yggdryl::avro::read_container_with_limits(&handle, limits),
     }
     .map_err(napi_error)?;
-    container_into_value(container)
-        .map(JsCodecValue::from_core)
+    container_into_scalar(container)
+        .map(JsScalar::from_core)
         .map_err(napi_error)
 }
 
@@ -309,7 +309,7 @@ pub fn avro_blocks_native(
 #[napi(js_name = "avroDumpsNative", skip_typescript)]
 pub fn avro_dumps_native(
     schema: &JsAvroSchema,
-    rows: &JsCodecValue,
+    rows: &JsScalar,
     metadata: Vec<MetadataEntry>,
 ) -> Result<Buffer> {
     let rows = rows
@@ -335,20 +335,20 @@ pub fn avro_dumps_native(
     Ok(handle.into_bytes().into())
 }
 
-fn container_into_value(container: Container) -> yggdryl::Result<Value> {
+fn container_into_scalar(container: Container) -> yggdryl::Result<Scalar> {
     let metadata = container
         .metadata
         .into_iter()
         .map(|(key, value)| {
-            Value::from_record([
-                ("key", Value::from(key.as_str())),
-                ("value", Value::from(value.as_str())),
+            Scalar::from_record([
+                ("key", Scalar::from(key.as_str())),
+                ("value", Scalar::from(value.as_str())),
             ])
         })
         .collect::<yggdryl::Result<Vec<_>>>()?;
-    Value::from_record([
+    Scalar::from_record([
         ("schema", container.schema.into_json()),
-        ("metadata", Value::from_sequence(metadata)),
-        ("rows", Value::from_sequence(container.rows)),
+        ("metadata", Scalar::from_sequence(metadata)),
+        ("rows", Scalar::from_sequence(container.rows)),
     ])
 }

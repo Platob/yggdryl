@@ -1,54 +1,51 @@
-//! The enums that generalize over every implementation of one contract.
-//!
-//! A trait says what an implementation must do; the enum here says which
-//! implementations exist. Holding one of these means holding "some handle" or
-//! "some media" as a concrete value - no trait object, no generic parameter -
-//! which is what lets a location, a listing, or a binding pass an
-//! implementation around without knowing which one it is.
-//!
-//! - [`Holder`] names every [`crate::io::IOBase`] implementation.
-//! - [`Codec`] names every transparent content coding applied to a handle.
-//!
-//! It also owns [`Value`], the one native value the whole project speaks: every
-//! codec parses into it, every field validates it, and every binding converts
-//! its own objects to it. Its scalar behavior is split by what it describes -
-//! `value` for the shape and the ordering, `decimal` and `temporal` for the
-//! kinds that carry a scale or a unit, `inference` for the datatype a value
-//! already names, and `typed` for one value paired with the datatype it
-//! belongs to.
-//! - [`Media`] names every record encoding bound to a handle.
-//! - [`RecordOptions`] names every encoding's read and write settings.
-//! - [`wkb`] reads Well-Known Binary geometries: their bounds, their type
-//!   codes, and their WKT spelling.
-//!
-//! Each one delegates the whole contract to the variant it holds, so code
-//! written against the enum behaves exactly as code written against the
-//! implementation would.
+//! Shared scalar, dispatch, I/O vocabulary, and runtime wrappers.
 
 mod arithmetic;
-mod codec;
+pub(crate) mod codec;
+mod coded;
+mod datatype_id;
+mod datatype_kind;
 pub(crate) mod decimal;
+mod edge_algorithm;
 mod holder;
 mod i256;
 mod inference;
+mod io_kind;
+mod io_mode;
 pub(crate) mod iso;
+mod magic;
 #[cfg(feature = "arrow")]
 mod media;
+mod media_type;
+mod mime_type;
 #[cfg(feature = "arrow")]
 mod options;
 mod pairs;
+pub mod scalar;
+mod scheme;
 mod temporal;
 mod text;
+mod time_unit;
+pub(crate) mod timezone;
 mod typed;
-pub mod value;
+mod union_mode;
 pub mod wkb;
 
 pub(crate) use arithmetic::Arithmetic;
-pub use codec::Codec;
+pub use codec::{Codec, Encoder, Level};
+pub use coded::Coded;
+pub use datatype_id::DataTypeId;
+pub use datatype_kind::DataTypeKind;
+pub use edge_algorithm::EdgeAlgorithm;
 pub use holder::Holder;
 pub use i256::I256;
+pub use io_kind::IOKind;
+pub use io_mode::IOMode;
+pub use magic::MAGIC_PROBE_LEN;
 #[cfg(feature = "arrow")]
 pub use media::Media;
+pub use media_type::MediaType;
+pub use mime_type::MimeType;
 #[cfg(feature = "arrow")]
 pub(crate) use options::{CommitBuffer, WriteLimitState};
 #[cfg(feature = "arrow")]
@@ -56,15 +53,20 @@ pub use options::{DEFAULT_RECORD_BATCH_SIZE, IORecordOptions, RecordOptions};
 pub(crate) use pairs::sorted_pairs;
 #[cfg(feature = "iceberg")]
 pub(crate) use pairs::sorted_values;
+pub use scalar::{Children, Float16, Float32, Float64, Scalar};
+pub use scheme::Scheme;
 pub use text::Text;
+pub use time_unit::TimeUnit;
+pub use timezone::Timezone;
 pub use typed::{
-    BinaryValue, BinaryViewValue, BooleanValue, Date32Value, Date64Value, Decimal32Value,
-    Decimal64Value, Decimal128Value, Decimal256Value, DictionaryValue, Duration32Value,
-    Duration64Value, FixedSizeBinaryValue, FixedSizeListValue, Float16Value, Float32Value,
-    Float64Value, GeographyValue, GeometryValue, Int8Value, Int16Value, Int32Value, Int64Value,
-    IntervalValue, LargeBinaryValue, LargeListValue, LargeListViewValue, LargeUtf8Value, ListValue,
-    ListViewValue, MapValue, NullValue, RunEndEncodedValue, StructValue, Time32Value, Time64Value,
-    TimestampValue, TypedValue, UInt8Value, UInt16Value, UInt32Value, UInt64Value, UnionValue,
-    Utf8Value, Utf8ViewValue, VariantValue,
+    BinaryScalar, BinaryViewScalar, BooleanScalar, Date32Scalar, Date64Scalar, Decimal32Scalar,
+    Decimal64Scalar, Decimal128Scalar, Decimal256Scalar, DictionaryScalar, Duration32Scalar,
+    Duration64Scalar, FixedSizeBinaryScalar, FixedSizeListScalar, Float16Scalar, Float32Scalar,
+    Float64Scalar, GeographyScalar, GeometryScalar, Int8Scalar, Int16Scalar, Int32Scalar,
+    Int64Scalar, IntervalScalar, LargeBinaryScalar, LargeListScalar, LargeListViewScalar,
+    LargeUtf8Scalar, ListScalar, ListViewScalar, MapScalar, NullScalar, RunEndEncodedScalar,
+    StructScalar, Time32Scalar, Time64Scalar, TimestampScalar, TypedScalar, UInt8Scalar,
+    UInt16Scalar, UInt32Scalar, UInt64Scalar, UnionScalar, Utf8Scalar, Utf8ViewScalar,
+    VariantScalar,
 };
-pub use value::{Children, Float16, Float32, Float64, Value};
+pub use union_mode::UnionMode;

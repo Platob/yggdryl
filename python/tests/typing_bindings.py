@@ -24,7 +24,7 @@ from yggdryl import (
     Uri,
     Url,
     Urn,
-    Value,
+    Scalar,
     avro,
     fields,
     gzip,
@@ -42,8 +42,8 @@ from yggdryl._native import (
     IcebergNames,
     LineIterator,
     Listing,
-    ValueEntryIterator,
-    ValueIterator,
+    ScalarEntryIterator,
+    ScalarIterator,
 )
 from yggdryl.fields import (
     DenseUnionField,
@@ -104,8 +104,8 @@ cursor_hash: None = IOCursor.__hash__
 line_iterator_hash: None = LineIterator.__hash__
 byte_iterator_hash: None = ByteIterator.__hash__
 listing_hash: None = Listing.__hash__
-value_iterator_hash: None = ValueIterator.__hash__
-value_entry_iterator_hash: None = ValueEntryIterator.__hash__
+value_iterator_hash: None = ScalarIterator.__hash__
+value_entry_iterator_hash: None = ScalarEntryIterator.__hash__
 iceberg_names_hash: None = IcebergNames.__hash__
 bound_hash: None = Bound.__hash__
 bound_statement_hash: None = BoundStatement.__hash__
@@ -215,20 +215,20 @@ value_handle = IOBase("value.json.gz")
 value_handle.write_value({"id": 1})
 loaded_value: Any = value_handle.read_value()
 typed_loaded_value: Any = value_handle.read_value("row: struct<id: int64 not null> not null")
-native_loaded_value: Value = value_handle.read_value(cls=Value)
-native_typed_loaded_value: Value = value_handle.read_value(
+native_loaded_value: Scalar = value_handle.read_value(cls=Scalar)
+native_typed_loaded_value: Scalar = value_handle.read_value(
     "row: struct<id: int64 not null> not null",
-    cls=Value,
+    cls=Scalar,
 )
-native_json_value: Value = json.loads("1.5", cls=Value)
+native_json_value: Scalar = json.loads("1.5", cls=Scalar)
 typed_struct_data_type_value: object | Mapping[str, object] = (
     typed_struct.data_type.default_pyvalue()
 )
-native_instant = Value.datetime64(0, "us", "UTC")
-native_decimal = Value.d256("1234567890123456789012345678901234567890", 2)
-native_value_field: Field = Value.from_python(1).into_field()
-native_array_field: Field = Value.from_python([1]).into_array_field()
-native_struct_field: Field = Value.from_python([{"id": 1}]).into_struct_field()
+native_instant = Scalar.datetime64(0, "us", "UTC")
+native_decimal = Scalar.d256("1234567890123456789012345678901234567890", 2)
+native_scalar_field: Field = Scalar.from_py(1).into_field()
+native_array_field: Field = Scalar.from_py([1]).into_array_field()
+native_struct_field: Field = Scalar.from_py([{"id": 1}]).into_struct_field()
 temporal_count: int | None = native_instant.count
 temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone

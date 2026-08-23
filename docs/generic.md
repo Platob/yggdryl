@@ -1,12 +1,61 @@
-# Generic enums
+# Generic
 
-One enum per contract, so a caller can hold *some* handle, *some* coding, *some* encoding, or *some* settings as a concrete, matchable value.
+Shared scalar, enum vocabulary, and runtime dispatch wrappers.
+
+## Shared vocabulary
+
+The enums live directly in `yggdryl::generic` and are re-exported at the crate root.
+
+| Type | Contract |
+| --- | --- |
+| `DataTypeId`, `DataTypeKind` | Exact datatype identity and family |
+| `Codec`, `Level` | Content coding and the shared 0–9 compression scale |
+| `MimeType`, `MediaType` | Base representation and ordered content codings |
+| `Scheme` | URI and compatibility schemes |
+| `IOKind`, `IOMode` | Resource kind and I/O intent |
+| `TimeUnit`, `Timezone` | Temporal resolution and zone |
+| `UnionMode`, `EdgeAlgorithm` | Union layout and geospatial edge model |
+
+`IOMode` contains `overwrite`, `append`, `merge`, `readonly`, and `random`.
+Write entry points reject the two non-write modes.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::generic::{DataTypeId, IOMode, TimeUnit};
+
+    assert_eq!(DataTypeId::Int64.as_str(), "int64");
+    assert_eq!(TimeUnit::Millisecond.as_str(), "ms");
+    assert_eq!(IOMode::ReadOnly.as_str(), "readonly");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import enums
+
+    assert "int64" in enums.DATA_TYPE_IDS
+    assert enums.IO_MODES == ("overwrite", "append", "merge", "readonly", "random")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { enums } = require('yggdryl')
+
+    assert.ok(enums.dataTypeIds.includes('int64'))
+    assert.deepEqual(enums.ioModes, ['overwrite', 'append', 'merge', 'readonly', 'random'])
+    ```
+
+`MAGIC_PROBE_LEN` bounds content inference. `Codec`, `MimeType`, and
+`MediaType` own suffix and coding inference; consumers do not duplicate it.
 
 !!! note "Mostly Rust"
     The bindings hold one handle class and one record settings value rather
     than the enums behind them; `RecordOptions` crosses, and the [static enum
-    vocabularies](enums.md#listing-the-vocabularies) cross as `yggdryl.enums`
-    in Python and the `enums` export in JavaScript. `TypedValue` and the
+    vocabularies cross as `yggdryl.enums` in Python and the `enums` export in
+    JavaScript. `TypedScalar` and the
     `wkb` reader are Rust-only; a geospatial value crosses the bindings as
     its plain WKB bytes.
 
@@ -72,17 +121,17 @@ assert_eq!(leaf.size(), 0);
 
 ## Codec: a coding over a handle
 
-[`yggdryl::Codec`](enums.md) says *which* content coding a payload uses. `generic::Codec` is that coding applied to a handle: reading through one decompresses, writing through one compresses, and everything downstream sees plain bytes.
+`Codec` names a content coding. `generic::Coded` applies it to a handle: reads decompress and writes compress while downstream code sees plain bytes.
 
-`Codec::infer` takes the coding from the handle's own media type, so a name is all the configuration there is.
+`Coded::infer` takes the coding from the handle's media type.
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::Url;
 
 let named = Buffer::new().with_media_type(Url::from_str("file:///trades.csv.zst")?.media_type());
-let mut handle = Codec::infer(named);
+let mut handle = Coded::infer(named);
 assert_eq!(handle.codec(), yggdryl::Codec::Zstd);
 
 handle.write_all_bytes(b"symbol,price\nAAPL,1\nAAPL,2\n")?;
@@ -93,14 +142,14 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
 assert_ne!(handle.handle().as_slice(), b"symbol,price\nAAPL,1\nAAPL,2\n");
 ```
 
-The two `Codec` types share a name, so one of them is written out in full wherever both appear. Name the coding yourself with `Codec::wrap` when the handle's media type does not carry it.
+Use `Coded::wrap` when the handle does not declare its coding.
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::Level;
 
-let mut handle = Codec::wrap(Buffer::new(), yggdryl::Codec::Gzip).with_level(Level::BEST);
+let mut handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Gzip).with_level(Level::BEST);
 handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
 
 // into_handle publishes the pending write, then gives back the compressed bytes.
@@ -111,14 +160,14 @@ assert_eq!(yggdryl::gzip::load(inner.as_slice())?, b"symbol,price\nAAPL,1\n");
 There are four variants for five codings. Raw DEFLATE carries no framing to detect, so it has no transparent handle of its own and wraps as [`Zlib`](zlib.md), the framed form of the same algorithm.
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::Buffer;
 
-let handle = Codec::wrap(Buffer::new(), yggdryl::Codec::Deflate);
+let handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Deflate);
 assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 ```
 
-`Codec<H>` is generic over the handle it wraps, unlike the other three enums here: it composes over anything implementing `IOBase`, including a `Holder` or another coded handle. Levels reach [`gzip`](gzip.md), [`zlib`](zlib.md), and [`zstd`](zstd.md) and are ignored by `Identity`.
+`Coded<H>` composes over any `IOBase`, including `Holder` or another coded handle. Levels reach [`gzip`](gzip.md), [`zlib`](zlib.md), and [`zstd`](zstd.md); `Identity` ignores them.
 
 ## Media: a record encoding over a handle
 
@@ -401,30 +450,29 @@ let zero = Float32::from_f32(0.0);
 let negative_zero = Float32::from_f32(-0.0);
 assert_ne!(zero, negative_zero);
 assert_ne!(zero.stable_hash(), negative_zero.stable_hash());
-# Ok::<(), yggdryl::Error>(())
 ```
 
 Criterion covers all four stable-hash entry points in the datatype/value
 benchmark group.
 
-## TypedValue: one value and its datatype
+## TypedScalar: one value and its datatype
 
-This module also owns the value every part of the project speaks, and the pairing beside it. `Value` is documented with the [structured text](text.md) that parses into it; `TypedValue` is one value and one datatype, checked against each other, with one alias per datatype for a caller who knows which is coming.
+This module also owns the value every part of the project speaks, and the pairing beside it. `Scalar` is documented with the [structured text](text.md) that parses into it; `TypedScalar` is one value and one datatype, checked against each other, with one alias per datatype for a caller who knows which is coming.
 
 ```rust
-use yggdryl::generic::{Int64Value, TypedValue};
-use yggdryl::{DataType, Value};
+use yggdryl::generic::{Int64Scalar, TypedScalar};
+use yggdryl::{DataType, Scalar};
 
-let price = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?;
+let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
 assert_eq!(price.data_type(), &DataType::Int64);
 
 // The same pairing, with the datatype fixed at compile time.
-let typed: Int64Value = price.try_into_typed()?;
-assert_eq!(typed.value(), &Value::I64(7));
-assert!(Int64Value::new(Value::from("seven")).is_err());
+let typed: Int64Scalar = price.try_into_typed()?;
+assert_eq!(typed.value(), &Scalar::I64(7));
+assert!(Int64Scalar::new(Scalar::from("seven")).is_err());
 ```
 
-When no schema was supplied, `Value` can expose the exact `Field` the core
+When no schema was supplied, `Scalar` can expose the exact `Field` the core
 already inferred. The three names describe the expected shape and the returned
 type: a scalar yields `value`, an outer sequence yields its `item`, and named
 record rows yield a non-null Struct root named `row`. Empty or positional rows
@@ -434,12 +482,12 @@ this inference.
 === "Rust"
 
     ```rust
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
-    let scalar = Value::from(42_i64).inferred_scalar_field()?;
-    let array = Value::from_sequence([Value::from(1_i64), Value::Null]);
-    let row = Value::from_record([("id", Value::from(1_i64))])?;
-    let rows = Value::from_sequence([row]);
+    let scalar = Scalar::from(42_i64).inferred_scalar_field()?;
+    let array = Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null]);
+    let row = Scalar::from_record([("id", Scalar::from(1_i64))])?;
+    let rows = Scalar::from_sequence([row]);
 
     assert_eq!(scalar.name(), "value");
     assert_eq!(array.inferred_array_field()?.name(), "item");
@@ -451,26 +499,26 @@ this inference.
     ```python
     from dataclasses import dataclass
 
-    from yggdryl import Value
+    from yggdryl import Scalar
 
     @dataclass
     class Row:
         id: int
 
-    assert Value.from_python(42).into_field().name == "value"
-    assert Value.from_python([1, None]).into_array_field().name == "item"
-    assert Value.from_python([Row(1)]).into_struct_field().name == "row"
+    assert Scalar.from_py(42).into_field().name == "value"
+    assert Scalar.from_py([1, None]).into_array_field().name == "item"
+    assert Scalar.from_py([Row(1)]).into_struct_field().name == "row"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value } = require('yggdryl')
+    const { Scalar } = require('yggdryl')
 
-    assert.equal(Value.fromJs(42).intoField().name, 'value')
-    assert.equal(Value.fromJs([1, null]).intoArrayField().name, 'item')
-    assert.equal(Value.fromJs([{ id: 1 }]).intoStructField().name, 'row')
+    assert.equal(Scalar.fromJs(42).intoField().name, 'value')
+    assert.equal(Scalar.fromJs([1, null]).intoArrayField().name, 'item')
+    assert.equal(Scalar.fromJs([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
 The inference itself stays in Rust. A local Windows x86_64 release smoke run on an AMD Ryzen 5
@@ -482,7 +530,7 @@ the deployment host with:
 cargo bench -p yggdryl --bench datatype --all-features -- "value/infer_.*_field"
 ```
 
-The markers are the same family a [typed field](field.md) uses, so a value and a field spell one datatype the same way. Both are covered in full under [structured text](text.md#typed-value-families). Behind the default `arrow` feature the pairing is also the one scalar Arrow projection - `into_arrow_array` materializes one row and `from_arrow_array` decodes one back - documented with the rest of the array boundary in [arrow.md](arrow.md).
+The markers are the same family a [typed field](field.md) uses, so a value and a field spell one datatype the same way. Both are covered in full under [structured text](text.md#typed-scalar-families). Behind the default `arrow` feature the pairing is also the one scalar Arrow projection - `into_arrow_array` materializes one row and `from_arrow_array` decodes one back - documented with the rest of the array boundary in [arrow.md](arrow.md).
 
 ## The WKB reader
 
@@ -535,12 +583,12 @@ let error = wkb::bounding_box(&[1, 1, 0, 0, 0]).unwrap_err();
 assert!(error.to_string().contains("byte 5"), "{error}");
 ```
 
-The value these bytes travel in is `Value::Geospatial`: the canonical spelling of one WKB payload
-inside the shared [`Value`](text.md) model, which
+The value these bytes travel in is `Scalar::Geospatial`: the canonical spelling of one WKB payload
+inside the shared [`Scalar`](text.md) model, which
 [geometry and geography columns](datatype.md#variant-geometry-and-geography) read back, which
-canonicalization rewrites plain `Value::Bytes` into on the way in, and whose `as_wkb` accessor
+canonicalization rewrites plain `Scalar::Bytes` into on the way in, and whose `as_wkb` accessor
 reads both spellings so an inbound payload is never rejected for arriving as plain bytes. There is
-deliberately no `Value::Variant` beside it: a variant value *is* the self-describing `Value` tree
+deliberately no `Scalar::Variant` beside it: a variant value *is* the self-describing `Scalar` tree
 itself, and its Parquet binary encoding lands with the Iceberg v3 layer. Across Arrow boundaries
 the geospatial pair is Binary storage under the community `geoarrow.wkb` extension name, whose
 GeoArrow JSON metadata carries the CRS and edge algorithm - GeoArrow's own documentation says the

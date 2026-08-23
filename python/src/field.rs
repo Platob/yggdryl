@@ -717,7 +717,7 @@ impl PyField {
     /// document a caller already builds.
     #[allow(clippy::wrong_self_convention)]
     fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::value::as_py(py, &self.inner.clone().into_value())
+        crate::scalar::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
@@ -725,7 +725,7 @@ impl PyField {
     /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreField::from_value(crate::value::from_py(value)?)
+        CoreField::from_value(crate::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }

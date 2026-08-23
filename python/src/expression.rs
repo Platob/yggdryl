@@ -17,7 +17,7 @@ use yggdryl::expression::{
     Bound as CoreBound, BoundStatement as CoreBoundStatement, Direction, NullsOrder, Operator,
     Statement as CoreStatement,
 };
-use yggdryl::{Expression as CoreExpression, Value};
+use yggdryl::{Expression as CoreExpression, Scalar};
 
 use crate::field::core_field_from_value;
 use crate::record::{
@@ -27,18 +27,18 @@ use crate::record::{
 use crate::value_error;
 
 /// Read late-bound values once, before either expression or statement binding.
-fn supplied_parameters(parameters: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(String, Value)>> {
+fn supplied_parameters(parameters: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(String, Scalar)>> {
     match parameters {
         Some(parameters) => parameters
             .iter()
-            .map(|(name, value)| Ok((name.extract::<String>()?, crate::value::from_py(&value)?)))
+            .map(|(name, value)| Ok((name.extract::<String>()?, crate::scalar::from_py(&value)?)))
             .collect(),
         None => Ok(Vec::new()),
     }
 }
 
 /// Borrow the core parameter shape for exactly one bind call.
-fn parameter_refs(parameters: &[(String, Value)]) -> Vec<(&str, Value)> {
+fn parameter_refs(parameters: &[(String, Scalar)]) -> Vec<(&str, Scalar)> {
     parameters
         .iter()
         .map(|(name, value)| (name.as_str(), value.clone()))
@@ -76,7 +76,7 @@ pub(crate) fn expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreEx
 ///
 /// A string keeps the expression grammar's meaning (`"price"` is a column and
 /// `"'EUR'"` is a literal). Every other native Python value crosses through
-/// the shared `Value` inference before becoming a literal expression.
+/// the shared `Scalar` inference before becoming a literal expression.
 fn arithmetic_expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreExpression> {
     if let Ok(expression) = value.extract::<PyRef<'_, PyExpression>>() {
         return Ok(expression.inner.clone());
@@ -87,7 +87,7 @@ fn arithmetic_expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreEx
             .parse::<CoreExpression>()
             .map_err(value_error);
     }
-    Ok(CoreExpression::literal(crate::value::from_py(value)?))
+    Ok(CoreExpression::literal(crate::scalar::from_py(value)?))
 }
 
 /// A recursive, typed filter and projection tree.
@@ -144,7 +144,7 @@ impl PyExpression {
     #[staticmethod]
     fn literal(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self {
-            inner: CoreExpression::literal(crate::value::from_py(value)?),
+            inner: CoreExpression::literal(crate::scalar::from_py(value)?),
         })
     }
 
@@ -477,7 +477,7 @@ impl PyBound {
             .inner
             .eval(&self.row_value(row)?)
             .map_err(value_error)?;
-        crate::value::as_py(py, &value)
+        crate::scalar::as_py(py, &value)
     }
 
     /// Answer this predicate for one row, reading unknown as "no".
@@ -507,20 +507,20 @@ impl PyBound {
 
 impl PyBound {
     /// Read one row, whichever way Python spelled it.
-    fn row_value(&self, row: &Bound<'_, PyAny>) -> PyResult<Value> {
+    fn row_value(&self, row: &Bound<'_, PyAny>) -> PyResult<Scalar> {
         if let Ok(mapping) = row.cast::<PyDict>() {
             let mut values = Vec::with_capacity(self.inner.schema().field_len());
             for field in self.inner.schema().fields() {
                 let held = mapping.get_item(field.name())?;
                 values.push(match held {
-                    Some(held) => crate::value::from_py(&held)?,
-                    None => Value::Null,
+                    Some(held) => crate::scalar::from_py(&held)?,
+                    None => Scalar::Null,
                 });
             }
-            return Ok(Value::from_sequence(values));
+            return Ok(Scalar::from_sequence(values));
         }
         if row.is_instance_of::<PyList>() || row.is_instance_of::<PyTuple>() {
-            return crate::value::from_py(row);
+            return crate::scalar::from_py(row);
         }
         Err(value_error(
             "expected a sequence of column values in schema order, or a mapping of column to value",

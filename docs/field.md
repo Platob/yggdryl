@@ -408,7 +408,7 @@ canonicalizes on the way in and out. `PARQUET:field_id` is a signed 32-bit integ
 marks a field a schema still declares but a constructor must not accept. `location` parses as a
 [`Url`](uri.md), and `alias`, `catalog_name`, `schema_name`, and `table_name` carry validated text.
 
-Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](enums.md). The
+Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](generic.md). The
 prefix is canonicalized, so `HTTPS:Content-Type`, `HTTP:content-type`, and `http:content-type` are
 one entry, and `get_property` matches HTTP names case-insensitively. The `http:` family is the one
 with parsing accessors on top - `content_type`, `content_length`, `mime_type`, `media_type`,
@@ -508,7 +508,7 @@ The view is a borrow, not a snapshot: it reads out of the field's own metadata a
 field's own cache-aware mutation, so two views of one field see each other's writes and a protocol
 write invalidates a populated Arrow projection exactly as a direct metadata write does. Every
 well-known protocol has a named accessor - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`, and
-the rest of the [`Scheme`](enums.md) vocabulary - and `protocol` takes one that is only known at
+the rest of the [`Scheme`](generic.md) vocabulary - and `protocol` takes one that is only known at
 runtime. There is no `https` accessor, because HTTPS shares the canonical `http:` namespace; the view
 for either scheme reports `http` as its prefix.
 
@@ -735,11 +735,11 @@ is why it remains visible as a separate case.
 
 ## Row values are validated against the root
 
-Validating and canonicalizing a [`Value`](generic.md) against a struct root is Rust-only. Python and
+Validating and canonicalizing a [`Scalar`](generic.md) against a struct root is Rust-only. Python and
 JavaScript reconcile Arrow data instead.
 
 ```rust
-use yggdryl::{DataType, Field, Value};
+use yggdryl::{DataType, Field, Scalar};
 
 let schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
@@ -748,19 +748,19 @@ let schema = DataType::from_fields([
 .required_field("trade");
 
 // A row is one ordered sequence with one value per struct child.
-let row = Value::from_sequence([Value::from(7u64), Value::from(0.1f64)]);
+let row = Scalar::from_sequence([Scalar::from(7u64), Scalar::from(0.1f64)]);
 schema.validate_value(&row)?;
 
 // Canonicalizing narrows every value into the representation the root declares.
 let canonical = schema.canonicalize_value(row)?;
-assert_eq!(canonical.get(0), Some(&Value::I64(7)));
+assert_eq!(canonical.get(0), Some(&Scalar::I64(7)));
 assert_eq!(
-    canonical.get(1).and_then(Value::as_f64),
+    canonical.get(1).and_then(Scalar::as_f64),
     Some(f64::from(0.1f32))
 );
 
 // A value that does not fit names the path walked to reach it.
-let wrong = Value::from_sequence([Value::from("seven"), Value::Null]);
+let wrong = Scalar::from_sequence([Scalar::from("seven"), Scalar::Null]);
 let message = schema.validate_value(&wrong).unwrap_err().to_string();
 assert!(message.contains("$.trade.id"), "{message}");
 ```
@@ -776,7 +776,7 @@ dot/bracket path of the first thing that does not fit.
 ## Serializing a schema
 
 `Field` reads and writes the three structured-text formats through **one** structural model. There
-is exactly one `Field` ⇄ `Value` mapping - `into_value`/`from_value` in Rust, `into_dict`/`from_dict` in
+is exactly one `Field` ⇄ `Scalar` mapping - `into_value`/`from_value` in Rust, `into_dict`/`from_dict` in
 Python - and JSON, YAML, and TOML are three writers over it, so the three agree by construction
 rather than by three sets of tests. That is also what makes a schema *embeddable*: a configuration
 document can carry a declared schema inline beside the rest of its settings, with no
@@ -794,7 +794,7 @@ Each format takes the shared [`Formatting`](text.md#formatting) option; Python s
 
     ```rust
     use yggdryl::{DataType, Field};
-    use yggdryl::generic::Value;
+    use yggdryl::generic::Scalar;
 
     let field = Field::from_parts("price", DataType::Float64, false, [("venue", "XPAR")])?;
 
@@ -804,9 +804,9 @@ Each format takes the shared [`Formatting`](text.md#formatting) option; Python s
     assert_eq!(Field::from_yaml(&field.clone().into_yaml()?)?, field);
     assert_eq!(Field::from_toml(&field.clone().into_toml()?)?, field);
 
-    // The mapping is the shared `Value`, so it drops into any document.
+    // The mapping is the shared `Scalar`, so it drops into any document.
     let shape = field.into_value();
-    assert_eq!(shape.get_key_str("name").and_then(Value::as_utf8), Some("price"));
+    assert_eq!(shape.get_key_str("name").and_then(Scalar::as_utf8), Some("price"));
     // Unset optional attributes are absent rather than null.
     assert!(shape.get_key_str("dictionary_id").is_none());
     ```

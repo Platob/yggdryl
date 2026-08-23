@@ -10,21 +10,21 @@ For streamed Arrow batches with explicit overwrite and append behavior, use
 keyed merge because a line has no stable row identity. JSON Lines is the
 multi-value document stream described below.
 
-## Raw shared-Value access
+## Raw shared-Scalar access
 
-Rust returns `Value`; Python and JavaScript project the same tree into native
+Rust returns `Scalar`; Python and JavaScript project the same tree into native
 objects. Dumps produce JSON accepted by other implementations, and loads return
 only types the JSON grammar proves.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{json, Value};
+    use yggdryl::{json, Scalar};
 
     let value = json::from_utf8(r#"{"symbol":"AAPL","quantity":100}"#)?;
 
     assert_eq!(
-        value.get_key_str("symbol").and_then(Value::as_utf8),
+        value.get_key_str("symbol").and_then(Scalar::as_utf8),
         Some("AAPL")
     );
     assert_eq!(
@@ -36,13 +36,13 @@ only types the JSON grammar proves.
 === "Python"
 
     ```python
-    from yggdryl import Value, json
+    from yggdryl import Scalar, json
 
     natural = json.loads('{"symbol":"AAPL","quantity":100}')
-    value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Value)
+    value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
 
     assert value.kind == "record"
-    assert value.into_python() == natural == {"quantity": 100, "symbol": "AAPL"}
+    assert value.as_py() == natural == {"quantity": 100, "symbol": "AAPL"}
     assert json.dumps(value) == b'{"quantity":100,"symbol":"AAPL"}'
     ```
 
@@ -50,13 +50,13 @@ only types the JSON grammar proves.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, json } = require('yggdryl')
+    const { Scalar, json } = require('yggdryl')
 
     const natural = json.loads('{"symbol":"AAPL","quantity":100}')
-    const value = json.loads('{"symbol":"AAPL","quantity":100}', { value: true })
+    const value = json.loads('{"symbol":"AAPL","quantity":100}', { scalar: true })
     const encoded = json.dumps(value)
 
-    assert.ok(value instanceof Value)
+    assert.ok(value instanceof Scalar)
     assert.equal(value.kind, 'record')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
@@ -65,8 +65,8 @@ only types the JSON grammar proves.
 
 Objects become name-sorted `Record` values, arrays become `Sequence`, and
 numbers use the narrowest exact natural family available to the parser.
-Duplicate object names are rejected. Python `cls=Value` and JavaScript
-`{ value: true }` return that exact native tree directly; omitting the selector
+Duplicate object names are rejected. Python `cls=Scalar` and JavaScript
+`{ scalar: true }` return that exact native tree directly; omitting the selector
 keeps the existing natural Python/JavaScript result.
 
 ## Natural values and exact Fields
@@ -82,19 +82,19 @@ string-key objects. Other native values use interoperable scalar spellings:
 | non-finite float | error |
 | Mapping with non-string keys | error |
 
-There is no private `$yggdryl` envelope. Consequently a schemaless reader sees
+There is no private marker envelope. Consequently a schemaless reader sees
 `"12.50"`, `"AP8="`, and `"2026-08-15T10:30:00Z"` as strings. Pass a native
 [`Field`](field.md) when those spellings must recover exact types:
 
 === "Rust"
 
     ```rust
-    use yggdryl::{json, DataType, Field, Value};
+    use yggdryl::{json, DataType, Field, Scalar};
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let decoded = json::from_utf8_with_field(r#""12.50""#, &amount)?;
 
-    assert_eq!(decoded, Value::d128(1_250, 2));
+    assert_eq!(decoded, Scalar::d128(1_250, 2));
     ```
 
 === "Python"
@@ -137,7 +137,7 @@ Rust names each transport in the method:
 - `from_lines_*` and the `JsonLines` format require one value per non-empty
   line.
 
-Borrowed reader iterators yield one `Result<Value>` at a time and fuse after
+Borrowed reader iterators yield one `Result<Scalar>` at a time and fuse after
 the first error. Writers stream directly to `Write`. Python and JavaScript keep
 the conventional `loads` / `dumps` names and leave caller-owned streams open.
 
@@ -196,9 +196,9 @@ never changes the parsed value.
 
     ```rust
     use yggdryl::text::Formatting;
-    use yggdryl::{json, Value};
+    use yggdryl::{json, Scalar};
 
-    let value = Value::from_record([("id", Value::I64(1))])?;
+    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
     let pretty =
         json::into_utf8_with_formatting(&value, Formatting::indented(2))?;
 

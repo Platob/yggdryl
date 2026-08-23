@@ -40,7 +40,7 @@ use crate::arrow::BatchReader;
 use crate::expression::{Bound, Bounds, Selector};
 use crate::field::cast::ArrowCast;
 use crate::generic::Holder;
-use crate::{DataType, Error, Expression, Field, Result, Value};
+use crate::{DataType, Error, Expression, Field, Result, Scalar};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -178,7 +178,7 @@ pub(super) fn manifest_bounds(
         // does not order the way a number does.
         if let (Some(low), Some(high)) = (&minimum, &maximum) {
             if low == high {
-                let text = Value::from(super::value::scalar_text(low).as_str());
+                let text = Scalar::from(super::value::scalar_text(low).as_str());
                 bounds = bounds.with_attribute(
                     Selector::Partition(column.name().into()),
                     Some(text.clone()),
@@ -219,7 +219,11 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let Some(column) = identity_column(spec, position, schema) else {
             continue;
         };
-        let value = file.partition.get(position).cloned().unwrap_or(Value::Null);
+        let value = file
+            .partition
+            .get(position)
+            .cloned()
+            .unwrap_or(Scalar::Null);
         settled.push(column.name());
         if value.is_null() {
             bounds = bounds.with_column(column.name(), None, None, rows);
@@ -227,7 +231,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         }
         // The manifest is the authority on the value, and a path spells the
         // same one, so both spellings are recorded from the same source.
-        let text = Value::from(super::value::scalar_text(&value).as_str());
+        let text = Scalar::from(super::value::scalar_text(&value).as_str());
         bounds = bounds
             .with_attribute(
                 Selector::Partition(column.name().into()),
@@ -371,7 +375,7 @@ pub(super) struct ScanPart {
     /// The file size the manifest recorded, which sizes the parallel decision.
     pub(super) size: i64,
     /// Partition columns to restore, when the file does not store them.
-    pub(super) partition: Vec<(Field, Value)>,
+    pub(super) partition: Vec<(Field, Scalar)>,
     /// The filters this file's rows still have to be tested against.
     pub(super) residual: Vec<usize>,
 }
@@ -381,7 +385,7 @@ struct Open {
     /// The file's own reader.
     reader: BatchReader,
     /// Partition columns to restore, when the file does not store them.
-    partition: Vec<(Field, Value)>,
+    partition: Vec<(Field, Scalar)>,
     /// The filters this file's rows still have to be tested against.
     residual: Vec<usize>,
 }
@@ -448,7 +452,7 @@ impl Refine {
     fn batch(
         &self,
         batch: &RecordBatch,
-        partition: &[(Field, Value)],
+        partition: &[(Field, Scalar)],
         residual: &[usize],
     ) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
         restore_partitions(batch, partition)
@@ -876,8 +880,8 @@ fn align_by_field_id(batch: RecordBatch, read_root: &Field) -> Result<RecordBatc
 }
 
 /// Add the partition columns a data file left out, typed as declared.
-fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Result<RecordBatch> {
-    let missing: Vec<&(Field, Value)> = partition
+fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Result<RecordBatch> {
+    let missing: Vec<&(Field, Scalar)> = partition
         .iter()
         .filter(|(field, _)| batch.schema().index_of(field.name()).is_err())
         .collect();
@@ -917,7 +921,7 @@ pub(super) fn partition_columns(
     spec: &PartitionSpec,
     schema: &Field,
     file: &DataFile,
-) -> Result<Vec<(Field, Value)>> {
+) -> Result<Vec<(Field, Scalar)>> {
     let partition = spec.partition_field(schema)?;
     Ok(partition
         .fields()

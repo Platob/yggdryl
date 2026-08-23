@@ -1,10 +1,10 @@
 //! Lazy row-value widening for the record I/O adapters.
 //!
 //! A row canonicalizes to one ordered
-//! [`Value::Sequence`](crate::Value::Sequence) under a non-null Struct
-//! [`Field`]. A sorted [`Value::Record`](crate::Value::Record) is the named
+//! [`Scalar::Sequence`](crate::Scalar::Sequence) under a non-null Struct
+//! [`Field`]. A sorted [`Scalar::Record`](crate::Scalar::Record) is the named
 //! input shape, not a second schema model. Rust structs opt in with
-//! `TryInto<Value>`, and the I/O methods widen that iterator into the one Arrow
+//! `TryInto<Scalar>`, and the I/O methods widen that iterator into the one Arrow
 //! reader primitive.
 
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use arrow_array::{RecordBatch, RecordBatchOptions, StructArray};
 use arrow_schema::{ArrowError, SchemaRef};
 
-use crate::{Field, Value};
+use crate::{Field, Scalar};
 
 use super::{BatchReader, Error, Result, arrow_schema_from_field};
 
@@ -35,7 +35,7 @@ pub(crate) fn reader<I, R>(
 where
     I: IntoIterator<Item = R>,
     I::IntoIter: Send + 'static,
-    R: TryInto<Value>,
+    R: TryInto<Scalar>,
     R::Error: Into<crate::Error>,
 {
     let schema = arrow_schema_from_field(field)?;
@@ -66,8 +66,8 @@ struct Rows<I> {
 impl<I> Iterator for Rows<I>
 where
     I: Iterator,
-    I::Item: TryInto<Value>,
-    <I::Item as TryInto<Value>>::Error: Into<crate::Error>,
+    I::Item: TryInto<Scalar>,
+    <I::Item as TryInto<Scalar>>::Error: Into<crate::Error>,
 {
     type Item = std::result::Result<RecordBatch, ArrowError>;
 
@@ -157,8 +157,8 @@ where
 impl<I> arrow_array::RecordBatchReader for Rows<I>
 where
     I: Iterator + Send,
-    I::Item: TryInto<Value>,
-    <I::Item as TryInto<Value>>::Error: Into<crate::Error>,
+    I::Item: TryInto<Scalar>,
+    <I::Item as TryInto<Scalar>>::Error: Into<crate::Error>,
 {
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
@@ -168,9 +168,9 @@ where
 pub(super) fn batch_from_values(
     field: &Field,
     schema: SchemaRef,
-    values: &[Value],
+    values: &[Scalar],
 ) -> Result<RecordBatch> {
-    let refs: Vec<&Value> = values.iter().collect();
+    let refs: Vec<&Scalar> = values.iter().collect();
     let array = super::value::array_from_values(field, &refs)?;
     let struct_array = array
         .as_any()
@@ -197,7 +197,7 @@ mod tests {
     use arrow_array::{Int32Array, RecordBatchReader as _};
     use arrow_schema::ArrowError;
 
-    use crate::{DataType, Error as CoreError, Field, Value};
+    use crate::{DataType, Error as CoreError, Field, Scalar};
 
     use super::reader;
 
@@ -216,11 +216,11 @@ mod tests {
         name: Option<&'static str>,
     }
 
-    impl From<Row> for Value {
+    impl From<Row> for Scalar {
         fn from(row: Row) -> Self {
-            Value::from_sequence([
-                Value::from(row.id),
-                row.name.map_or(Value::Null, Value::from),
+            Scalar::from_sequence([
+                Scalar::from(row.id),
+                row.name.map_or(Scalar::Null, Scalar::from),
             ])
         }
     }
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn empty_rows_keep_the_declared_schema_without_a_pull() {
-        let mut batches = reader::<_, Value>(&field(), [], None, None, None).unwrap();
+        let mut batches = reader::<_, Scalar>(&field(), [], None, None, None).unwrap();
         assert_eq!(batches.schema(), field().into_arrow_schema().unwrap());
         assert!(batches.next().is_none());
     }
@@ -299,9 +299,9 @@ mod tests {
     #[test]
     fn invalid_row_is_typed_and_fuses_the_reader() {
         let rows = [
-            Value::from_sequence([Value::from(1_i32), Value::from("ok")]),
-            Value::from_sequence([Value::from("wrong"), Value::from("bad")]),
-            Value::from_sequence([Value::from(3_i32), Value::from("unread")]),
+            Scalar::from_sequence([Scalar::from(1_i32), Scalar::from("ok")]),
+            Scalar::from_sequence([Scalar::from("wrong"), Scalar::from("bad")]),
+            Scalar::from_sequence([Scalar::from(3_i32), Scalar::from("unread")]),
         ];
         let mut batches = reader(&field(), rows, Some(3), None, None).unwrap();
         let error = batches.next().unwrap().unwrap_err();
@@ -318,7 +318,7 @@ mod tests {
         let root = DataType::from_fields([]).unwrap().required_field("empty");
         let mut batches = reader(
             &root,
-            [Value::from_sequence([]), Value::from_sequence([])],
+            [Scalar::from_sequence([]), Scalar::from_sequence([])],
             None,
             None,
             None,

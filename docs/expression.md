@@ -2,7 +2,7 @@
 
 `yggdryl::Expression` is the one way this project says *which rows* and *which values*. It is a
 recursive tree, it types itself against a schema, it compiles once, and it answers three ways: row at
-a time over a [`Value`](text.md), vectorized over an Arrow batch, and three-valued over container
+a time over a [`Scalar`](text.md), vectorized over an Arrow batch, and three-valued over container
 statistics so a file, a manifest, or a directory is skipped without being read.
 
 Before it existed the same question was asked five times in the weakest language available - a
@@ -12,15 +12,15 @@ sugar; there is no second implementation behind them.
 
 ## An expression is not a value
 
-A [`Value`](text.md) is the codec's lossless value tree: structural, serializable, meaningful on its
+A [`Scalar`](text.md) is the codec's lossless value tree: structural, serializable, meaningful on its
 own. An `Expression` is a computation whose meaning depends on a schema. They meet at exactly two
 points - a literal going in, and evaluation producing a value coming out - and keeping them apart is
-what lets `Value` stay plain data while an expression carries schema-dependent meaning.
+what lets `Scalar` stay plain data while an expression carries schema-dependent meaning.
 
 ## The four stages
 
 ```text
-text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶ Value | ArrayRef | mask
+text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶ Scalar | ArrayRef | mask
 ```
 
 1. **Parse.** One recursive grammar, re-entered by every nested construct, with byte-positioned
@@ -38,7 +38,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
     ```rust
     use std::str::FromStr;
 
-    use yggdryl::{Expression, Field, Value};
+    use yggdryl::{Expression, Field, Scalar};
 
     let schema = Field::from_str("trades:struct<ccy:utf8,price:decimal(9,2),size:bigint>")?;
     let filter: Expression = "ccy = 'EUR' and price > 100".parse()?;
@@ -54,10 +54,10 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
         "ccy = 'EUR' and price > decimal128(9,2) '100.00'",
     );
 
-    let row = Value::from_sequence([
-        Value::from("EUR"),
-        Value::D128(15_000, 2),
-        Value::I64(5),
+    let row = Scalar::from_sequence([
+        Scalar::from("EUR"),
+        Scalar::D128(15_000, 2),
+        Scalar::I64(5),
     ]);
     assert!(bound.matches(&row)?);
     ```
@@ -90,7 +90,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Expression, Field, Value } = require('yggdryl')
+    const { Expression, Field, Scalar } = require('yggdryl')
 
     const schema = new Field('trades', 'struct<ccy:utf8,price:decimal(9,2),size:bigint>', false)
     const filter = new Expression("ccy = 'EUR' and price > 100")
@@ -106,9 +106,9 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
 
     // The price is an exact decimal, because the column is exact and so is
     // the comparison: a JavaScript number here would be a different one.
-    const price = Value.d128(15000n, 2)
-    assert.equal(bound.matches(Value.fromJs(['EUR', price, 5])), true)
-    assert.equal(bound.matches(Value.fromJs(['USD', price, 5])), false)
+    const price = Scalar.d128(15000n, 2)
+    assert.equal(bound.matches(Scalar.fromJs(['EUR', price, 5])), true)
+    assert.equal(bound.matches(Scalar.fromJs(['USD', price, 5])), false)
     ```
 
 ## Text round-trips
@@ -154,13 +154,13 @@ A row is kept when the predicate is **true**, so unknown filters the row out - a
 decision from what the predicate evaluated to.
 
 ```rust
-use yggdryl::{Expression, Field, Value};
+use yggdryl::{Expression, Field, Scalar};
 
 let schema: Field = "rows:struct<a:bigint>".parse()?;
 let bound = "a > 1".parse::<Expression>()?.bind(&schema)?;
 
-let missing = Value::from_sequence([Value::Null]);
-assert_eq!(bound.eval(&missing)?, Value::Null); // the answer is unknown
+let missing = Scalar::from_sequence([Scalar::Null]);
+assert_eq!(bound.eval(&missing)?, Scalar::Null); // the answer is unknown
 assert!(!bound.matches(&missing)?); // and unknown does not keep the row
 ```
 
@@ -271,12 +271,12 @@ everything it cannot prove is a `true` that costs one read.
 
 ```rust
 use yggdryl::expression::Bounds;
-use yggdryl::{Expression, Field, Value};
+use yggdryl::{Expression, Field, Scalar};
 
 let schema: Field = "trades:struct<ccy:utf8,size:bigint>".parse()?;
 let bounds = Bounds::new(Some(1_000))
-    .with_column("ccy", Some(Value::from("EUR")), Some(Value::from("USD")), Some(0))
-    .with_column("size", Some(Value::I64(1)), Some(Value::I64(99)), Some(4));
+    .with_column("ccy", Some(Scalar::from("EUR")), Some(Scalar::from("USD")), Some(0))
+    .with_column("size", Some(Scalar::I64(1)), Some(Scalar::I64(99)), Some(4));
 
 // Provably empty: no row can hold a size above the file's maximum.
 assert!(!"size > 1000".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
@@ -333,8 +333,8 @@ struct `Field`. The resulting `BoundStatement` exposes that resolved plan withou
 `ordering` reports each expression with its direction and optional null placement; `is_all` is true
 only for an unfiltered, unordered, unlimited `select *`.
 
-Rust uses `bind_with(&field, &[(name, Value)])`. Python accepts a mapping in
-`statement.bind(field, parameters=None)`, and JavaScript accepts a native `Value` record or an ordinary
+Rust uses `bind_with(&field, &[(name, Scalar)])`. Python accepts a mapping in
+`statement.bind(field, parameters=None)`, and JavaScript accepts a native `Scalar` record or an ordinary
 object in `statement.bind(fieldLike, parameters?)`; both redirect to the same core binder.
 
 Arrow projection is streamed where the holder permits it. `project_reader` wraps a `BatchReader`,
@@ -392,7 +392,7 @@ four implementations:
 
 | Target | Applying an expression produces |
 | --- | --- |
-| one row (`Value`) | the `Value` the expression computes |
+| one row (`Scalar`) | the `Scalar` the expression computes |
 | one holder (`dyn Attributes`) | what the holder alone settles, three-valued |
 | one Arrow `RecordBatch` | one column of answers, an `ArrayRef` |
 | one container's statistics (`Bounds`) | the `Option<bool>` certainty pruning runs on |
@@ -409,15 +409,15 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::expression::{ApplyExpression, ApplyExpressionStream, Attributes, Bounds};
-use yggdryl::{Expression, Field, Url, Value};
+use yggdryl::{Expression, Field, Url, Scalar};
 
 // Non-nullable at the root, because the batch below projects it to Arrow.
 let schema = "trades:struct<ccy:utf8,size:bigint>".parse::<Field>()?.with_nullable(false);
 let bound = "ccy = 'EUR' and size > 10".parse::<Expression>()?.bind(&schema)?;
 
 // One row applies to the value the expression computes.
-let row = Value::from_sequence([Value::from("EUR"), Value::I64(25)]);
-assert_eq!(row.apply_expression(&bound)?, Value::Bool(true));
+let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::I64(25)]);
+assert_eq!(row.apply_expression(&bound)?, Scalar::Bool(true));
 
 // One batch applies to one column of answers, one per row.
 let arrow_schema = schema.into_arrow_schema()?;
@@ -433,14 +433,14 @@ assert_eq!(batch.apply_expression(&bound)?.len(), 2);
 // Statistics apply to the certainty pruning runs on: every size is below 10,
 // so no row can match and the container is skipped unread.
 let bounds = Bounds::new(Some(1_000))
-    .with_column("size", Some(Value::I64(1)), Some(Value::I64(5)), Some(0));
+    .with_column("size", Some(Scalar::I64(1)), Some(Scalar::I64(5)), Some(0));
 assert_eq!(bounds.apply_expression(&bound)?, Some(false));
 
 // A holder settles only the conjuncts that need no row - here none - and an
 // unknown answer excludes nothing.
 let url = Url::from_str("file:///lake/year=2024/part-0.parquet")?;
 let holder: &dyn Attributes = &url;
-assert_eq!(holder.apply_expression(&bound)?, Value::Null);
+assert_eq!(holder.apply_expression(&bound)?, Scalar::Null);
 
 // The stream sibling consumes its reader, and its application is the
 // filtering reader: only the EUR row above survives.

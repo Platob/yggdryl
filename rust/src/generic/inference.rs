@@ -1,6 +1,6 @@
 //! The datatype a value already is.
 //!
-//! Every [`Value`] variant carries the parts its Arrow datatype needs - the
+//! Every [`Scalar`] variant carries the parts its Arrow datatype needs - the
 //! width of an integer, the unit and zone of a timestamp, the scale of a
 //! decimal - so naming that datatype is a read, not a guess. This module is
 //! where the read lives, because a caller holding rows and no schema has
@@ -20,17 +20,17 @@
 //! value's.
 //!
 //! ```
-//! use yggdryl::{DataType, TimeUnit, Timezone, Value};
+//! use yggdryl::{DataType, TimeUnit, Timezone, Scalar};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! assert_eq!(Value::from(u64::MAX).data_type()?, DataType::UInt64);
-//! assert_eq!(Value::d128(1_050, 2).data_type()?, DataType::decimal128(4, 2)?);
+//! assert_eq!(Scalar::from(u64::MAX).data_type()?, DataType::UInt64);
+//! assert_eq!(Scalar::d128(1_050, 2).data_type()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
-//!     Value::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.data_type()?,
+//!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.data_type()?,
 //!     DataType::Timestamp(TimeUnit::Microsecond, None),
 //! );
 //! assert_eq!(
-//!     Value::from_sequence([Value::from("AAPL"), Value::Null]).data_type()?,
+//!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).data_type()?,
 //!     DataType::list(yggdryl::Field::new("item", DataType::Utf8, true)),
 //! );
 //! # Ok(())
@@ -39,13 +39,13 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::value::Value;
+use super::scalar::Scalar;
 use crate::{DataType, Error, Field, I256, Result, TimeUnit};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
 
-impl Value {
+impl Scalar {
     /// Return the datatype this value materializes into.
     ///
     /// The name is read off the variant, so a timestamp keeps its unit and
@@ -244,7 +244,7 @@ impl Value {
 
 /// Return the one datatype every non-null value names, and whether any was null.
 fn agreed<'a>(
-    values: impl IntoIterator<Item = &'a Value>,
+    values: impl IntoIterator<Item = &'a Scalar>,
     role: &'static str,
     depth: usize,
 ) -> Result<(DataType, bool)> {

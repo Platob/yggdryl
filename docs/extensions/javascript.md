@@ -44,8 +44,8 @@ declarations are checked against the tests that use them.
 | `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
 | `fieldFromPattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
-| `MimeType`, `MediaType`, `Timezone` | [enums](../enums.md) |
-| `codec`, `json`, `toml`, `yaml`, `Value` | [text](../text.md) and the format pages |
+| `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
+| `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text.md) and the format pages |
 | `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
 
@@ -139,9 +139,9 @@ The converter also accepts a native `Field` or field expression. Invalid roots a
 they cross into a table operation: `intoStructField` must resolve to a native Struct field whose
 root is non-null.
 
-## Values cross as their natural shape
+## Scalars cross as their natural shape
 
-A JavaScript value becomes the nearest native value, and comes back as the nearest JavaScript value
+A JavaScript value becomes the nearest native scalar, and comes back as the nearest JavaScript value
 to that. No class name travels beside the data, so a shape the core does not have arrives as the
 shape it was lowered to.
 
@@ -181,7 +181,7 @@ assert.equal(decoded.id, 2n ** 100n)
 | `URL` | its `href` string | `string` |
 | `RegExp` | its literal string, flags included | `string` |
 | `DataType`, `Field`, `Uri`, `Url`, `Urn` | its canonical string | `string` |
-| `Value` | itself | `Date` when one holds it exactly, otherwise `Value` |
+| `Scalar` | itself | `Date` when one holds it exactly, otherwise `Scalar` |
 
 These are the losses, and they are deliberate: a `Set` comes back a list, a `URL` and a `RegExp`
 come back strings, a class instance comes back a plain object, a `Map` of text keys comes back a
@@ -214,7 +214,7 @@ prototypes.
 
 ## Width-specific values
 
-`Value` exposes the native vocabulary directly: `f16`/`f32`/`f64`,
+`Scalar` exposes the native vocabulary directly: `f16`/`f32`/`f64`,
 `d128`/`d256`, `date32`/`date64`, `time32`/`time64`, `datetime64`, and
 `duration32`/`duration64`. Every temporal carries a unit and a non-null zone;
 `NAIVE` is the explicit zone-free marker. Schemaless text writes natural ISO
@@ -227,21 +227,21 @@ a timezone name or native `Timezone`. The Rust core validates the unit allowed
 by each physical width.
 
 ```javascript
-const { Timezone, Value, json } = require('yggdryl')
+const { Timezone, Scalar, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
-const price = Value.d256(-(2n ** 200n), 7)
+const price = Scalar.d256(-(2n ** 200n), 7)
 assert.equal(price.kind, 'd256')
 assert.equal(price.scale, 7)
-assert.ok(Value.d128(150n, 2).equals(Value.d128(15n, 1)))
+assert.ok(Scalar.d128(150n, 2).equals(Scalar.d128(15n, 1)))
 
-const at = Value.datetime64(1700000000123456n, 'us', 'UTC')
+const at = Scalar.datetime64(1700000000123456n, 'us', 'UTC')
 assert.equal(json.loads(json.dumps(at)), '2023-11-14T22:13:20.123456Z')
-assert.equal(Value.datetime64(0n, 'ms').zone, 'NAIVE')
-assert.equal(Value.time64(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
+assert.equal(Scalar.datetime64(0n, 'ms').zone, 'NAIVE')
+assert.equal(Scalar.time64(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
 assert.ok(
-  Value.fromJs(new Date('2026-08-15T12:30:00.000Z'))
-    .equals(Value.datetime64(1786797000000n, 'ms', 'UTC')),
+  Scalar.fromJs(new Date('2026-08-15T12:30:00.000Z'))
+    .equals(Scalar.datetime64(1786797000000n, 'ms', 'UTC')),
 )
 ```
 
@@ -252,7 +252,7 @@ payload. `asBytes`/`asUtf8` borrow scalar content; `asJsonBytes` and
 ## Native value protocols and checked arithmetic
 
 Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
-when the Rust core has a complete value identity. This includes `Value`,
+when the Rust core has a complete value identity. This includes `Scalar`,
 `Expression`, `Statement`, `avro.Schema`, `iceberg.PartitionSpec`,
 `iceberg.DataFile`, and `iceberg.ScanPlan`; other domain wrappers expose the
 same methods wherever their core identity is complete. `compare` uses the
@@ -262,18 +262,18 @@ core's total order, and equal values always return the same deterministic
 readers, iterators, and handles do not invent a value identity from hidden
 state.
 
-`Value` equality, order, and hashing normalize equivalent decimal and temporal
+`Scalar` equality, order, and hashing normalize equivalent decimal and temporal
 resolutions. Avro schema identity retains logical types, defaults, aliases, and
 extension attributes; `fingerprint()` alone follows Parsing Canonical Form.
 `iceberg.IcebergOptions` has the same four methods over its current explicit
 configuration, so a detached clone stops comparing equal after either copy is
 mutated.
 
-JavaScript cannot overload arithmetic operators, so `Value` exposes the
+JavaScript cannot overload arithmetic operators, so `Scalar` exposes the
 checked core operations as `add`, `subtract`, `multiply`, `divide`,
 `remainder`, `negate`, and `absolute`. Each binary method accepts either a
-native `Value` or a JavaScript value inferred once through `Value.fromJs`, and
-returns a native `Value`. Numeric operations preserve widths and promote only
+native `Scalar` or a JavaScript value inferred once through `Scalar.fromJs`, and
+returns a native `Scalar`. Numeric operations preserve widths and promote only
 as the core defines; exact decimal division uses the smallest terminating
 scale. Supported datetime/duration pairs use the same checked path. Text and
 containers are never silently concatenated or coerced.
@@ -285,10 +285,10 @@ as a literal.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Expression, Value } = require('yggdryl')
+const { Expression, Scalar } = require('yggdryl')
 
-const half = Value.d128(1n, 0).divide(Value.d128(2n, 0))
-assert.ok(half.equals(Value.d128(5n, 1)))
+const half = Scalar.d128(1n, 0).divide(Scalar.d128(2n, 0))
+assert.ok(half.equals(Scalar.d128(5n, 1)))
 assert.equal(half.clone().compare(half), 0)
 assert.equal(typeof half.stableHash(), 'bigint')
 
@@ -297,7 +297,7 @@ assert.equal(size.toString(), 'size + 1')
 assert.ok(size.clone().equals(size))
 
 assert.throws(
-  () => Value.fromJs(1).divide(0),
+  () => Scalar.fromJs(1).divide(0),
   (error) => error instanceof RangeError &&
     error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO',
 )
@@ -311,22 +311,22 @@ exact decimal division throw `RangeError` with distinct
 
 ## fromJs and asJs
 
-`Value.fromJs` and `Value.prototype.asJs` are the conversion pair. Every `load` and `dump` crosses
+`Scalar.fromJs` and `Scalar.prototype.asJs` are the conversion pair. Every `load` and `dump` crosses
 them - `dumps` is `fromJs` with bytes on the far side, `loads` is `asJs` - so calling them directly
 is how you see what a value becomes before any format is involved.
 
 ```javascript
-const { Value, json } = require('yggdryl')
+const { Scalar, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
-assert.equal(Value.fromJs(new Set([1, 2])).kind, 'sequence')
-assert.deepEqual(Value.fromJs(new Set([1, 2])).asJs(), [1, 2])
-assert.equal(Value.fromJs(new Map([['id', 1]])).kind, 'mapping')
+assert.equal(Scalar.fromJs(new Set([1, 2])).kind, 'sequence')
+assert.deepEqual(Scalar.fromJs(new Set([1, 2])).asJs(), [1, 2])
+assert.equal(Scalar.fromJs(new Map([['id', 1]])).kind, 'mapping')
 
 const value = { id: 1, tags: new Set(['a']) }
-assert.deepEqual(json.loads(json.dumps(value)), Value.fromJs(value).asJs())
+assert.deepEqual(json.loads(json.dumps(value)), Scalar.fromJs(value).asJs())
 
-const tree = Value.fromJs({ legs: [{ id: 1 }] })
+const tree = Scalar.fromJs({ legs: [{ id: 1 }] })
 assert.equal(tree.get('legs').at(0).get('id').asJs(), 1)
 assert.equal(tree.set('venue', 'XNAS').get('venue').asUtf8(), 'XNAS')
 ```

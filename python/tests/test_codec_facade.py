@@ -7,20 +7,20 @@ import pathlib
 
 import pytest
 
-from yggdryl import Field, Value, codec
+from yggdryl import Field, Scalar, codec
 
 
 def test_from_io_infers_content_once_and_keeps_exact_field_casting() -> None:
     exact = codec.from_io(
         b'{"id":7}',
-        cls=Value,
+        cls=Scalar,
         field=Field("row", "struct<id: int16>", nullable=False),
         max_depth=2,
         max_input_bytes=8,
         max_nodes=3,
         max_documents=1,
     )
-    assert isinstance(exact, Value)
+    assert isinstance(exact, Scalar)
     assert exact.at(0) is not None and exact.at(0).kind == "i16"
 
 

@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import pytest
 
-from yggdryl import Field, Value, json, toml, yaml
+from yggdryl import Field, Scalar, json, toml, yaml
 from yggdryl import _codec
 
 
@@ -77,7 +77,7 @@ def test_stream_limits_and_field_casting_stay_in_the_core() -> None:
     exact = list(
         json.load_all(
             io.BytesIO(rows),
-            cls=Value,
+            cls=Scalar,
             field=field,
             max_depth=4,
             max_input_bytes=len(rows),
@@ -98,7 +98,7 @@ def test_inferred_decode_uses_one_core_parse_with_limits_and_field() -> None:
     field = Field("value", "int16", nullable=False)
     value = _codec._decode_inferred(
         b"42",
-        cls=Value,
+        cls=Scalar,
         field=field,
         max_depth=1,
         max_input_bytes=2,
@@ -126,7 +126,7 @@ def test_field_directed_decode_preserves_every_integer_width(
 ) -> None:
     value = json.loads(
         "7",
-        cls=Value,
+        cls=Scalar,
         field=Field("value", data_type, nullable=False),
     )
     assert value.kind == kind

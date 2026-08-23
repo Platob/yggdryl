@@ -23,9 +23,9 @@ existence probe and JavaScript whole-file staging. Streams preserve
 backpressure and remain caller-owned.
 
 ```javascript
-const { Value, fields, json } = require('yggdryl')
+const { Scalar, fields, json } = require('yggdryl')
 
-const price = Value.d256(123456789012345678901234n, 4)
+const price = Scalar.d256(123456789012345678901234n, 4)
 const field = fields.decimal256('price', 40, 4, { nullable: false })
 const restored = json.loads(json.dumps(price), { field })
 
@@ -36,7 +36,7 @@ console.assert(price.clone().compare(price) === 0)
 console.assert(price.asJsonUtf8() === '"12345678901234567890.1234"')
 ```
 
-`Value` factories retain `f16`/`f32`/`f64`, `d128`/`d256`, `date32`/`date64`,
+`Scalar` factories retain `f16`/`f32`/`f64`, `d128`/`d256`, `date32`/`date64`,
 `time32`/`time64`, `datetime64`, and `duration32`/`duration64`. Plain objects
 become sorted named Records; JavaScript `Map` remains a Mapping.
 Temporal factories take `(count, unit, timezone)`, accept a timezone name or
@@ -49,9 +49,9 @@ same native total structural order rather than a binding-side approximation.
 `RecordOptions` exposes the same four methods over its encoding variant and
 every current core setting; a clone is detached, so later mutation changes
 only that copy's equality, order, and hash.
-`Value.add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, and
+`Scalar.add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, and
 `absolute` are checked native numeric operations. A plain JavaScript operand crosses
-`Value.fromJs` exactly once before the operation; containers and text are not
+`Scalar.fromJs` exactly once before the operation; containers and text are not
 silently concatenated or coerced. Invalid operands throw `TypeError` with
 `ERR_YGGDRYL_INVALID_ARITHMETIC`; overflow, zero division, and inexact decimal
 results throw `RangeError` with distinct `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`,
@@ -81,7 +81,7 @@ console.assert(blocks.next().value.rows().length === 2)
 The frozen `avro` namespace exposes native schemas, whole containers,
 single-object framing, and a fused lazy compressed-block iterator. Optional
 reader resolution and all decode limits cross in the same options object;
-natural values still pass through the shared native `Value` conversion. A
+natural values still pass through the shared native `Scalar` conversion. A
 whole decoded container is a detached `{schema, metadata, rows}` JavaScript
 projection for natural destructuring and JSON use; only its native `schema`
 member carries value protocols. Compressed blocks and their iterator are
@@ -149,7 +149,7 @@ console.assert(encoded.fileName === 'trades.json.gz')
 ```
 
 The Node-API package exposes native `DataType`, `Field`, `IOBase`, `MimeType`,
-`MediaType`, `Timezone`, `Uri`, `Url`, `Urn`, and `Value` values, the record pair
+`MediaType`, `Timezone`, `Uri`, `Url`, `Urn`, and `Scalar` values, the record pair
 `BatchReader` and `RecordOptions`, and the frozen `avro` and `iceberg`
 namespaces over all of them.
 Recursive parsing, validation, Arrow casting, structured scalar conversion, codec
@@ -189,7 +189,7 @@ rejected. There is no static `FIELD` property and no JavaScript-side schema
 model. Passing a different `name` returns a renamed clone and leaves the cached
 root untouched.
 
-Apache Arrow JS conversion is an explicit copied IPC boundary. `Value` exposes
+Apache Arrow JS conversion is an explicit copied IPC boundary. `Scalar` exposes
 `fromArrowScalar`, `fromArrowArray`, `fromArrowRecordBatch`, and
 `fromArrowTable`, with matching `intoArrow*` methods; an optional native
 `Field` selects and casts through the Rust Arrow engine. Empty or positional
@@ -321,7 +321,7 @@ console.assert(table.dataFiles().length === 2)
 only names its tuple positions and is not part of the core file identity;
 cloning retains that projection context. `PartitionSpec.fromJSON` accepts the
 v1 field array or v2 object, while `intoJSON` and the standard `toJSON` hook
-emit the v2 object through the shared native `Value`. `IcebergOptions` exposes
+emit the v2 object through the shared native `Scalar`. `IcebergOptions` exposes
 the same four value methods over its explicitly configured settings; a clone
 is detached, and mutation naturally changes equality, order, and hash.
 `ScanPlan` is an immutable bounded report with the same four methods. Its

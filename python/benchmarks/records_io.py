@@ -10,7 +10,7 @@ PyArrow reader on the way out. Fixtures are written before timing, and the
 column-pushdown pair reports the bytes each read materializes so "moves less
 data" is a measured number rather than an inference from elapsed time.
 Parquet footer and projected-WKB statistics additionally measure the core
-`Value` projection into one native Python record.
+`Scalar` projection into one native Python record.
 
 The intent matrix measures reader, table, record-batch, records, pandas, and
 polars adapters under overwrite, append, and merge. Append and merge reset a
@@ -270,7 +270,7 @@ def _read_arrow_field() -> object:
 
 
 def _read_parquet_statistics() -> object:
-    """Cross the native footer DTO through the shared Value projection."""
+    """Cross the native footer DTO through the shared Scalar projection."""
     return FILE.read_parquet_statistics()
 
 

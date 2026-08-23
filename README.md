@@ -3,13 +3,13 @@
 Yggdryl is a focused Rust core for Arrow-native schemas, validated resource
 identifiers, byte-oriented structured text, and record I/O. `DataType`, `Field`,
 immutable `Metadata`, `MimeType`, `MediaType`, the unified `TimeUnit`, `Scheme`,
-`Uri`, `Url`, `Urn`, and the codec `Value` own parsing, validation, comparison,
+`Uri`, `Url`, `Urn`, and `Scalar` own parsing, validation, comparison,
 hashing, and serialization in one place. Python and JavaScript are runtime views
 of those native values; neither maintains a parallel schema or codec model.
 
 A struct `Field` is the schema. There is no separate record or schema type: a
 non-null `Struct` field describes rows, and a row is one ordered
-`Value::Sequence` with a value per child field.
+`Scalar::Sequence` with one value per child field.
 
 Query execution, network clients, and transport protocols are outside the
 project's scope.
@@ -25,7 +25,7 @@ module, so the site tree and the source tree are the same tree:
 
 | Area | Pages |
 | --- | --- |
-| Schema | [enums](docs/enums.md), [datatype](docs/datatype.md), [field](docs/field.md), [arrow](docs/arrow.md) |
+| Schema | [generic](docs/generic.md), [datatype](docs/datatype.md), [field](docs/field.md), [arrow](docs/arrow.md) |
 | Storage | [io](docs/io.md), [expression](docs/expression.md), [generic](docs/generic.md), [local](docs/local.md) |
 | Content codings | [gzip](docs/gzip.md), [zlib](docs/zlib.md), [zstd](docs/zstd.md) |
 | Record encodings | [ipc](docs/ipc.md), [parquet](docs/parquet.md) |
@@ -56,7 +56,7 @@ rust/                    The core crate
   src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
   src/io/                The IOBase storage trait, Buffer, and Coded
   src/expression/        The one filter and projection tree, and its three tiers
-  src/generic/           Holder, Media, RecordOptions, and the shared Value
+  src/generic/           Scalar, enums, Holder, Media, and RecordOptions
   src/local/             Local Path, Folder, and memory-mapped File
   src/arrowfs/           Any Arrow filesystem (S3, GCS, Azure, your own) as a handle
   src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
@@ -175,12 +175,12 @@ the same preferred-extension table as inference.
 
 ```rust
 use yggdryl::text::{self, Format};
-use yggdryl::Value;
+use yggdryl::Scalar;
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-let value = Value::from_mapping([
-    (Value::from("id"), Value::from(42_i64)),
-    (Value::from("active"), Value::from(true)),
+let value = Scalar::from_mapping([
+    (Scalar::from("id"), Scalar::from(42_i64)),
+    (Scalar::from("active"), Scalar::from(true)),
 ])?;
 let bytes = text::into_bytes(&value, Format::Json)?;
 

@@ -1,4 +1,4 @@
-//! Arrow array and IPC interoperability for [`crate::Value`].
+//! Arrow array and IPC interoperability for [`crate::Scalar`].
 //!
 //! Conversion is schema-directed and never serializes values through JSON.
 
@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Field, Value};
-use arrow_array::{Array, ArrayRef, RecordBatch, Scalar, StructArray};
+use crate::{DataType, Field, Scalar};
+use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod rows;
@@ -709,14 +709,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// same schema-directed walk every row value takes - the exact Field is the
 /// authority on nullability, dictionary options, and extension identity - and
 /// then materialized under the shared physical budgets. A caller holding a
-/// [`crate::TypedValue`] with no Field around it uses
-/// [`crate::TypedValue::into_arrow_array`] instead.
+/// [`crate::TypedScalar`] with no Field around it uses
+/// [`crate::TypedScalar::into_arrow_array`] instead.
 ///
 /// # Errors
 ///
 /// Returns an error when the value violates the Field or the physical Arrow
 /// layout cannot represent it.
-pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef> {
+pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
     let value = validate_scalar_value(field, value.clone())?;
     value::array_from_values(field, &[&value])
 }
@@ -730,7 +730,7 @@ pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef> {
 ///
 /// Returns an error when `values` is not a sequence or an element violates
 /// `field`.
-pub fn array_from_value(field: &Field, values: &Value) -> Result<ArrayRef> {
+pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
     let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of array values"),
@@ -739,7 +739,7 @@ pub fn array_from_value(field: &Field, values: &Value) -> Result<ArrayRef> {
     let root = DataType::from_fields([field.clone()])?.required_field("row");
     let mut canonical = Vec::with_capacity(values.len());
     for value in values {
-        let row = Value::from_sequence([value.clone()]);
+        let row = Scalar::from_sequence([value.clone()]);
         let row = root.canonicalize_value(row)?;
         canonical.push(
             row.as_sequence()
@@ -755,14 +755,14 @@ pub fn array_from_value(field: &Field, values: &Value) -> Result<ArrayRef> {
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
 /// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`Value::Record`]. The root Field validates and canonicalizes every
+/// a named [`Scalar::Record`]. The root Field validates and canonicalizes every
 /// row before one columnar build.
 ///
 /// # Errors
 ///
 /// Returns an error when `root` is not a record root, `rows` is not a
 /// sequence, or a row violates the schema.
-pub fn batch_from_value(root: &Field, rows: &Value) -> Result<RecordBatch> {
+pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
     let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of record values"),
@@ -788,7 +788,7 @@ pub fn batch_from_value(root: &Field, rows: &Value) -> Result<RecordBatch> {
 /// such as null-only dictionaries, unions, and run-end encodings closed under
 /// [`scalar_array`] followed by this function without admitting arbitrary
 /// selected-null values.
-pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Value> {
+pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     if array.len() != 1 {
         return Err(Error::IncompatibleSchema(format!(
             "Arrow scalar must contain exactly one value, got {}",
@@ -835,15 +835,15 @@ pub(crate) fn default_scalar_array(field: &Field) -> Result<ArrayRef> {
     let value = field.default_value()?;
     // The core planner has already bounded and recursively validated this
     // exact Field/value pair. Keep public [`scalar_array`] defensive for
-    // caller input without paying for a second Value validation here.
+    // caller input without paying for a second Scalar validation here.
     value::array_from_values(field, &[&value])
 }
 
-pub(crate) fn validate_scalar_value(field: &Field, value: Value) -> Result<Value> {
+pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scalar> {
     // Wrap the single value in a one-column row so it goes through exactly the
     // same schema-directed validator every other value does.
     let root = Field::new("scalar", DataType::from_fields([field.clone()])?, false);
-    let row = root.canonicalize_value(Value::from_sequence([value]))?;
+    let row = root.canonicalize_value(Scalar::from_sequence([value]))?;
     row.as_sequence()
         .and_then(|values| values.first())
         .cloned()
@@ -873,7 +873,7 @@ impl StructScalar {
         }
         if array.is_null(0) {
             return Err(Error::IncompatibleSchema(
-                "a native Value cannot represent a null root struct".to_owned(),
+                "a native Scalar cannot represent a null root struct".to_owned(),
             ));
         }
         ensure_struct_compatible(&schema, &array)?;
@@ -912,22 +912,22 @@ impl StructScalar {
     }
 
     /// Consumes this value into Arrow's scalar marker.
-    pub fn into_arrow_scalar(self) -> Scalar<StructArray> {
-        Scalar::new(self.array)
+    pub fn into_arrow_scalar(self) -> ArrowScalar<StructArray> {
+        ArrowScalar::new(self.array)
     }
 }
 
 /// Read one Arrow array as a sequence of values, typed by `field`.
 ///
-/// Every row becomes the [`Value`] its datatype spells - a null slot is
-/// [`Value::Null`] - so the result serializes through any text format exactly
+/// Every row becomes the [`Scalar`] its datatype spells - a null slot is
+/// [`Scalar::Null`] - so the result serializes through any text format exactly
 /// as the rest of the value model does.
 ///
 /// # Errors
 ///
 /// Returns an error when the array does not hold the field's datatype or a
 /// value cannot be represented.
-pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value> {
+pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     let mut rows = Vec::with_capacity(array.len());
     for index in 0..array.len() {
         rows.push(super::arrow::value::value_from_array(
@@ -936,12 +936,12 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value> {
             index,
         )?);
     }
-    Ok(Value::from_sequence(rows))
+    Ok(Scalar::from_sequence(rows))
 }
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`Value::Sequence`] with one value per column, in schema
+/// Each row becomes a [`Scalar::Sequence`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///
@@ -949,7 +949,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value> {
 ///
 /// Returns an error when the batch's schema does not project to a record root
 /// or a value cannot be represented.
-pub fn batch_to_value(batch: &RecordBatch) -> Result<Value> {
+pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar> {
     let root = field_from_arrow_schema("row", batch.schema().as_ref())?;
     let fields: Vec<Field> = root
         .data_type()
@@ -966,9 +966,9 @@ pub fn batch_to_value(batch: &RecordBatch) -> Result<Value> {
                 index,
             )?);
         }
-        rows.push(Value::from_sequence(values));
+        rows.push(Scalar::from_sequence(values));
     }
-    Ok(Value::from_sequence(rows))
+    Ok(Scalar::from_sequence(rows))
 }
 
 /// Build the root a `select_by_names` selection narrows `root` to.

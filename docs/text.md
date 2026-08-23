@@ -3,7 +3,7 @@
 `yggdryl::text` presents record media first and document codecs second:
 
 - plain text as streamed line records and Arrow batches;
-- JSON, JSON Lines, YAML, and TOML as the shared native [`Value`](generic.md).
+- JSON, JSON Lines, YAML, and TOML as the shared native [`Scalar`](generic.md).
 
 Both use `IOBase` handles, infer their representation from media type, and keep
 parsing and encoding in the Rust core.
@@ -254,7 +254,7 @@ cargo bench -p yggdryl --bench text -- lines_first --noplot
 ```
 
 Observed 2026-08-23 on Windows 11 x86_64, AMD Ryzen 5 150 (6 cores / 12
-threads), rustc 1.96.1, release profile. Values are Criterion median point
+threads), rustc 1.96.1, release profile. Cells are Criterion median point
 estimates from the generated `new/estimates.json` files:
 
 | coding | first line, local | first line, memory | first Arrow batch, local | first Arrow batch, snapshot |
@@ -307,20 +307,20 @@ regenerate on the deployment host):
 The fresh count was about ten times faster than Arrow decoding; opened counts
 and configuration-only width paths were nanosecond-scale.
 
-## Raw shared-Value access
+## Raw shared-Scalar access
 
-`Value` is the one Rust value tree used by JSON, YAML, TOML, Fields, Arrow, and
+`Scalar` is the one Rust value tree used by JSON, YAML, TOML, Fields, Arrow, and
 both extensions. Records use deterministic name order.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{json, Value};
+    use yggdryl::{json, Scalar};
 
     let quote = json::from_utf8(r#"{"symbol":"AAPL","price":12.5}"#)?;
 
     assert_eq!(
-        quote.get_key_str("symbol").and_then(Value::as_utf8),
+        quote.get_key_str("symbol").and_then(Scalar::as_utf8),
         Some("AAPL")
     );
     assert_eq!(json::into_utf8(&quote)?, r#"{"price":12.5,"symbol":"AAPL"}"#);
@@ -329,40 +329,40 @@ both extensions. Records use deterministic name order.
 === "Python"
 
     ```python
-    from yggdryl import Value, json
+    from yggdryl import Scalar, json
 
-    quote = json.loads('{"symbol":"AAPL","price":12.5}', cls=Value)
+    quote = json.loads('{"symbol":"AAPL","price":12.5}', cls=Scalar)
 
     assert quote["symbol"].as_utf8() == "AAPL"
     assert quote.path("price").kind == "f64"
     assert quote.set("venue", "XNAS").get("venue").as_utf8() == "XNAS"
-    assert quote.into_python() == {"price": 12.5, "symbol": "AAPL"}
+    assert quote.as_py() == {"price": 12.5, "symbol": "AAPL"}
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, json } = require('yggdryl')
+    const { Scalar, json } = require('yggdryl')
 
-    const quote = json.loads('{"symbol":"AAPL","price":12.5}', { value: true })
+    const quote = json.loads('{"symbol":"AAPL","price":12.5}', { scalar: true })
 
-    assert.ok(quote instanceof Value)
+    assert.ok(quote instanceof Scalar)
     assert.equal(quote.get('symbol').asUtf8(), 'AAPL')
     assert.equal(quote.path('price').kind, 'f64')
     assert.equal(quote.set('venue', 'XNAS').get('venue').asUtf8(), 'XNAS')
     assert.deepEqual(quote.asJs(), { price: 12.5, symbol: 'AAPL' })
     ```
 
-Bindings return native objects by default. Their explicit `Value` wrappers are
+Bindings return native objects by default. Their explicit `Scalar` wrappers are
 the lossless pivot for widths, D256 decimals, exact temporal units, hashing,
 and Arrow conversion. Container access stays exact too: indexing, `get`,
 `path`, iteration, `keys` / `values` / `items`, and persistent `set` / `remove`
-return new or child `Value` wrappers instead of converting the whole tree.
+return new or child `Scalar` wrappers instead of converting the whole tree.
 
-### Typed `Value` families
+### Typed `Scalar` families
 
-Every `Value` is hashable and totally ordered. Equal numeric or temporal values
+Every `Scalar` is hashable and totally ordered. Equal numeric or temporal values
 share one hash even when their storage widths differ; width remains available
 for datatype and Arrow projection.
 
@@ -393,42 +393,42 @@ operand pair are separate core errors. Text and containers do not overload
 `+`: concatenation is deliberately not arithmetic. Rust exposes
 `checked_add` / `checked_sub` / `checked_mul` / `checked_div` /
 `checked_rem`, `checked_neg`, and `checked_abs`; its operator traits return a
-`Result<Value>`. Python provides the normal operators plus the named methods,
+`Result<Scalar>`. Python provides the normal operators plus the named methods,
 and JavaScript provides the named methods because JavaScript cannot overload
 operators.
 
 === "Rust"
 
     ```rust
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     assert_eq!(
-        Value::I8(-1).checked_add(&Value::U8(2))?,
-        Value::I16(1),
+        Scalar::I8(-1).checked_add(&Scalar::U8(2))?,
+        Scalar::I16(1),
     );
     assert_eq!(
-        Value::d128(1, 0).checked_div(&Value::d128(2, 0))?,
-        Value::d128(5, 1),
+        Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0))?,
+        Scalar::d128(5, 1),
     );
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import Value
+    from yggdryl import Scalar
 
-    assert (Value.from_python(40) + 2).into_python() == 42
-    assert Value.d128(1, 0).divide(Value.d128(2, 0)) == Value.d128(5, 1)
+    assert (Scalar.from_py(40) + 2).as_py() == 42
+    assert Scalar.d128(1, 0).divide(Scalar.d128(2, 0)) == Scalar.d128(5, 1)
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value } = require('yggdryl')
+    const { Scalar } = require('yggdryl')
 
-    assert.equal(Value.fromJs(40).add(2).asJs(), 42)
-    assert.ok(Value.d128(1n, 0).divide(Value.d128(2n, 0)).equals(Value.d128(5n, 1)))
+    assert.equal(Scalar.fromJs(40).add(2).asJs(), 42)
+    assert.ok(Scalar.d128(1n, 0).divide(Scalar.d128(2n, 0)).equals(Scalar.d128(5n, 1)))
     ```
 
 Every temporal carries a `TimeUnit` and `Timezone`. `Timezone::NAIVE` is the
@@ -439,9 +439,9 @@ single instant/wall-clock datetime value.
 `Record` is a sorted name-to-value input shape. A Struct `Field` is still the
 only row schema: applying it resolves a Record's names and returns one ordered
 `Sequence` in child-field order. `Mapping` remains insertion-ordered and may
-use any unique `Value` as a key.
+use any unique `Scalar` as a key.
 
-When no Field is supplied, `Value::inferred_scalar_field`,
+When no Field is supplied, `Scalar::inferred_scalar_field`,
 `inferred_array_field`, and `inferred_struct_field` are the one inference path
 used by Rust and both bindings. Their stable names are `value`, `item`, and
 `row`; empty or positional rows remain ambiguous and require an explicit Field.
@@ -453,7 +453,7 @@ JavaScript also expose read-only `count`, `unit`, and `zone` temporal parts and
 `unscaled` and `scale` decimal parts; unrelated kinds return `None` / `null`,
 so inspecting a D256 coefficient never routes through a narrower host value.
 
-### Value and Arrow boundary costs
+### Scalar and Arrow boundary costs
 
 These release smoke runs measure the accessors above and keep conversion setup
 outside the timed loop. They were recorded on Windows x86_64; regenerate them
@@ -476,13 +476,13 @@ cd python
 
 | CPython release boundary | estimate |
 | --- | ---: |
-| native Python into / from `Value` | 1.66 us / 596 ns |
+| native Python into / from `Scalar` | 1.66 us / 596 ns |
 | stable hash | 232 ns |
 | JSON bytes / UTF-8 | 675 ns / 664 ns |
-| Arrow scalar into / from `Value` | 16.3 us / 6.66 us |
-| Arrow array, 4,096 values, into / from `Value` | 312 us / 1.76 ms |
-| Arrow batch, 4,096 rows, into / from `Value` | 1.27 ms / 1.88 ms |
-| Arrow table, 4,096 rows, into / from `Value` | 1.39 ms / 1.94 ms |
+| Arrow scalar into / from `Scalar` | 16.3 us / 6.66 us |
+| Arrow array, 4,096 values, into / from `Scalar` | 312 us / 1.76 ms |
+| Arrow batch, 4,096 rows, into / from `Scalar` | 1.27 ms / 1.88 ms |
+| Arrow table, 4,096 rows, into / from `Scalar` | 1.39 ms / 1.94 ms |
 
 ## Field-directed parsing
 
@@ -498,7 +498,7 @@ canonicalizes the resulting natural value last.
 === "Rust"
 
     ```rust
-    use yggdryl::{json, DataType, Field, Value};
+    use yggdryl::{json, DataType, Field, Scalar};
 
     let amount = Field::new(
         "amount",
@@ -507,7 +507,7 @@ canonicalizes the resulting natural value last.
     );
     let value = json::from_utf8_with_field(r#""12.50""#, &amount)?;
 
-    assert_eq!(value, Value::d128(1_250, 2));
+    assert_eq!(value, Scalar::d128(1_250, 2));
     ```
 
 === "Python"
@@ -515,10 +515,10 @@ canonicalizes the resulting natural value last.
     ```python
     from decimal import Decimal
 
-    from yggdryl import Field, Value, json
+    from yggdryl import Field, Scalar, json
 
     amount = Field("amount", "decimal128(8, 2)", nullable=False)
-    value = json.loads('"12.50"', field=amount, cls=Value)
+    value = json.loads('"12.50"', field=amount, cls=Scalar)
 
     assert value.kind == "d128"
     assert value.unscaled == 1_250
@@ -532,15 +532,15 @@ canonicalizes the resulting natural value last.
     const { Field, json } = require('yggdryl')
 
     const amount = new Field('amount', 'decimal128(8, 2)', false)
-    const value = json.loads('"12.50"', { field: amount, value: true })
+    const value = json.loads('"12.50"', { field: amount, scalar: true })
 
     assert.equal(value.kind, 'd128')
     assert.equal(value.unscaled, 1250n)
     assert.equal(value.scale, 2)
     ```
 
-`field=` requests native strict typing. Python `cls=Value` and JavaScript
-`value: true` return the resulting core `Value` without a natural-language
+`field=` requests native strict typing. Python `cls=Scalar` and JavaScript
+`scalar: true` return the resulting core `Scalar` without a natural-language
 round trip; omit them for ordinary Python/JavaScript values. Other Python
 `cls=` targets remain dataclass/object materializers with safe wrapper casts.
 
@@ -572,23 +572,23 @@ contradicts a suffix is rejected.
 
     ```rust
     use yggdryl::text::{self, Format};
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     let (format, value) = text::from_utf8_inferred(r#"{"id":1}"#)?;
 
     assert_eq!(format, Format::Json);
-    assert_eq!(value.get_key_str("id"), Some(&Value::U64(1)));
+    assert_eq!(value.get_key_str("id"), Some(&Scalar::U64(1)));
     assert_eq!(text::into_utf8(&value, format)?, r#"{"id":1}"#);
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import Value, codec
+    from yggdryl import Scalar, codec
 
-    value = codec.from_io('{"id":1}', cls=Value)
+    value = codec.from_io('{"id":1}', cls=Scalar)
 
-    assert isinstance(value, Value)
+    assert isinstance(value, Scalar)
     assert value["id"].kind == "u64"
     assert codec.into_io(value, format="json", utf8=True) == '{"id":1}'
     ```
@@ -597,11 +597,11 @@ contradicts a suffix is rejected.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, codec } = require('yggdryl')
+    const { Scalar, codec } = require('yggdryl')
 
-    const value = codec.from('{"id":1}', { value: true })
+    const value = codec.from('{"id":1}', { scalar: true })
 
-    assert.ok(value instanceof Value)
+    assert.ok(value instanceof Scalar)
     assert.equal(value.get('id').kind, 'u64')
     assert.deepEqual(codec.into(value, { format: 'json' }), Buffer.from('{"id":1}'))
     ```
@@ -646,9 +646,9 @@ Node. Regenerate with `python benchmarks/codecs.py --iterations 10000` and
 
     ```rust
     use yggdryl::text::Formatting;
-    use yggdryl::{json, Value};
+    use yggdryl::{json, Scalar};
 
-    let value = Value::from_record([("id", Value::I64(1))])?;
+    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
     let pretty =
         json::into_utf8_with_formatting(&value, Formatting::indented(2))?;
 
@@ -706,10 +706,10 @@ mapping or the environment switch is supplied.
 
     ```rust
     use yggdryl::text::{Format, Loading, Placeholders};
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     let loading = Loading::new().with_placeholders(
-        Placeholders::new().with_variable("HOST", Value::from("db.internal")),
+        Placeholders::new().with_variable("HOST", Scalar::from("db.internal")),
     );
     let value = yggdryl::text::from_utf8_with(
         "host: \"{{ HOST }}\"\nport: \"{{ PORT | default(8080) }}\"\n",
@@ -717,8 +717,8 @@ mapping or the environment switch is supplied.
         &loading,
     )?;
 
-    assert_eq!(value.get_key_str("host").and_then(Value::as_utf8), Some("db.internal"));
-    assert_eq!(value.get_key_str("port"), Some(&Value::I64(8080)));
+    assert_eq!(value.get_key_str("host").and_then(Scalar::as_utf8), Some("db.internal"));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(8080)));
     ```
 
 === "Python"

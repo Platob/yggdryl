@@ -20,7 +20,7 @@ from yggdryl import (
     Statement,
     Timezone,
     Uri,
-    Value,
+    Scalar,
     _native,
 )
 from yggdryl.iceberg import Catalog, PartitionSpec, Table
@@ -39,7 +39,7 @@ def test_canonical_values_remain_hashable_by_native_identity() -> None:
         DataType("int64"),
         MimeType.JSON,
         Timezone.UTC,
-        Value.from_python({"id": 1}),
+        Scalar.from_py({"id": 1}),
         Expression("id + 1"),
         Statement("select id"),
         PartitionSpec.unpartitioned(),
@@ -190,8 +190,8 @@ def test_operational_handles_views_and_iterators_are_explicitly_unhashable(
         handle.pstream_bytes(batch_size=2),
         IOBase(text_path).read_lines(),
         IOBase(tmp_path).iterdir(),
-        iter(Value.from_python([1, 2])),
-        Value.from_python({"id": 1}).items(),
+        iter(Scalar.from_py([1, 2])),
+        Scalar.from_py({"id": 1}).items(),
         iter(field.data_type),
         field.data_type.show_diffs(DataType.from_fields([])),
         iter(MediaType.from_parts(MimeType.JSON, [MimeType.GZIP])),

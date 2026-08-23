@@ -3,15 +3,15 @@ use std::str::FromStr;
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, I256, Result, TimeUnit, Timezone, Value};
+use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
 
 /// Interpret a natural text value under one field, then validate it.
-pub(crate) fn with_field(value: Value, field: &Field) -> Result<Value> {
+pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
     let value = prepare(value, field)?;
     // Row canonicalization is the single schema conversion implementation.
     // A one-child root gives scalar and struct parses that same path.
     let root = Field::new("$", DataType::from_fields([field.clone()])?, false);
-    let row = root.canonicalize_value(Value::from_sequence([value]))?;
+    let row = root.canonicalize_value(Scalar::from_sequence([value]))?;
     root.validate_value(&row)?;
     row.as_sequence()
         .and_then(|values| values.first())
@@ -19,7 +19,7 @@ pub(crate) fn with_field(value: Value, field: &Field) -> Result<Value> {
         .ok_or_else(|| invalid(field, "canonical row is empty"))
 }
 
-fn prepare(value: Value, field: &Field) -> Result<Value> {
+fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     if value.is_null() {
         return Ok(value);
     }
@@ -54,7 +54,7 @@ fn prepare(value: Value, field: &Field) -> Result<Value> {
     }
 }
 
-fn prepare_for_type(value: Value, data_type: &DataType, context: &Field) -> Result<Value> {
+fn prepare_for_type(value: Scalar, data_type: &DataType, context: &Field) -> Result<Scalar> {
     prepare(
         value,
         &Field::new(context.name(), data_type.clone(), context.is_nullable()),
@@ -62,11 +62,11 @@ fn prepare_for_type(value: Value, data_type: &DataType, context: &Field) -> Resu
 }
 
 fn sequence(
-    value: Value,
-    mut prepare_value: impl FnMut(Value) -> Result<Value>,
+    value: Scalar,
+    mut prepare_value: impl FnMut(Scalar) -> Result<Scalar>,
     field: &Field,
-) -> Result<Value> {
-    let Value::Sequence(values) = value else {
+) -> Result<Scalar> {
+    let Scalar::Sequence(values) = value else {
         return Err(invalid(field, "expected an array"));
     };
     values
@@ -74,12 +74,12 @@ fn sequence(
         .cloned()
         .map(&mut prepare_value)
         .collect::<Result<Vec<_>>>()
-        .map(Value::from_sequence)
+        .map(Scalar::from_sequence)
 }
 
-fn structure(value: Value, fields: &crate::Fields, field: &Field) -> Result<Value> {
+fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
     match value {
-        Value::Record(entries) => {
+        Scalar::Record(entries) => {
             let prepared = entries
                 .iter()
                 .map(|(name, value)| {
@@ -89,9 +89,9 @@ fn structure(value: Value, fields: &crate::Fields, field: &Field) -> Result<Valu
                     Ok((name.clone(), prepare(value.clone(), child)?))
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Value::from_record(prepared)
+            Scalar::from_record(prepared)
         }
-        Value::Sequence(values) => {
+        Scalar::Sequence(values) => {
             if values.len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
@@ -101,14 +101,14 @@ fn structure(value: Value, fields: &crate::Fields, field: &Field) -> Result<Valu
                 .zip(fields.iter())
                 .map(|(value, child)| prepare(value, child))
                 .collect::<Result<Vec<_>>>()
-                .map(Value::from_sequence)
+                .map(Scalar::from_sequence)
         }
         _ => Err(invalid(field, "expected an object or ordered struct array")),
     }
 }
 
-fn union(value: Value, fields: &crate::UnionFields, field: &Field) -> Result<Value> {
-    let Value::Sequence(values) = value else {
+fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Scalar> {
+    let Scalar::Sequence(values) = value else {
         return Err(invalid(field, "expected [type_id, value] for a union"));
     };
     let [type_id, payload] = values.as_ref() else {
@@ -122,13 +122,13 @@ fn union(value: Value, fields: &crate::UnionFields, field: &Field) -> Result<Val
         .iter()
         .find_map(|(candidate, branch)| (candidate == id).then_some(branch))
         .ok_or_else(|| invalid(field, "union type id is not declared"))?;
-    Ok(Value::from_sequence([
+    Ok(Scalar::from_sequence([
         type_id.clone(),
         prepare(payload.clone(), branch)?,
     ]))
 }
 
-fn mapping(value: Value, map: &crate::MapType, field: &Field) -> Result<Value> {
+fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar> {
     let fields = map.entries().fields();
     let [key_field, value_field] = fields else {
         return Err(invalid(
@@ -137,14 +137,14 @@ fn mapping(value: Value, map: &crate::MapType, field: &Field) -> Result<Value> {
         ));
     };
     let entries = match value {
-        Value::Mapping(entries) => entries.iter().cloned().collect::<Vec<_>>(),
-        Value::Record(entries) => entries
+        Scalar::Mapping(entries) => entries.iter().cloned().collect::<Vec<_>>(),
+        Scalar::Record(entries) => entries
             .iter()
-            .map(|(name, value)| (Value::from(name.as_str()), value.clone()))
+            .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
             .collect(),
         _ => return Err(invalid(field, "expected an object or mapping")),
     };
-    Value::from_mapping(
+    Scalar::from_mapping(
         entries
             .into_iter()
             .map(|(key, value)| Ok((prepare(key, key_field)?, prepare(value, value_field)?)))
@@ -152,27 +152,27 @@ fn mapping(value: Value, map: &crate::MapType, field: &Field) -> Result<Value> {
     )
 }
 
-fn binary(value: Value, field: &Field) -> Result<Value> {
+fn binary(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Value::String(encoded) => base64::engine::general_purpose::STANDARD
+        Scalar::String(encoded) => base64::engine::general_purpose::STANDARD
             .decode(encoded.as_bytes())
-            .map(Value::from)
+            .map(Scalar::from)
             .map_err(|_| invalid(field, "expected base64 text")),
         value => Ok(value),
     }
 }
 
-fn geospatial(value: Value, field: &Field) -> Result<Value> {
+fn geospatial(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Value::String(encoded) => base64::engine::general_purpose::STANDARD
+        Scalar::String(encoded) => base64::engine::general_purpose::STANDARD
             .decode(encoded.as_bytes())
-            .map(|bytes| Value::Geospatial(bytes.into()))
+            .map(|bytes| Scalar::Geospatial(bytes.into()))
             .map_err(|_| invalid(field, "expected base64 WKB text")),
         value => Ok(value),
     }
 }
 
-fn decimal(value: Value, scale: i8, wide: bool, field: &Field) -> Result<Value> {
+fn decimal(value: Scalar, scale: i8, wide: bool, field: &Field) -> Result<Scalar> {
     if value.is_decimal() {
         return Ok(value);
     }
@@ -180,31 +180,31 @@ fn decimal(value: Value, scale: i8, wide: bool, field: &Field) -> Result<Value> 
         .ok_or_else(|| invalid(field, "expected decimal text or a number"))?;
     let coefficient = decimal_coefficient(&text, scale).map_err(|reason| invalid(field, reason))?;
     if wide {
-        Ok(Value::d256(coefficient, scale))
+        Ok(Scalar::d256(coefficient, scale))
     } else {
         coefficient
             .as_i128()
-            .map(|coefficient| Value::d128(coefficient, scale))
+            .map(|coefficient| Scalar::d128(coefficient, scale))
             .ok_or_else(|| invalid(field, "decimal coefficient exceeds 128 bits"))
     }
 }
 
-fn scalar_number_text(value: &Value) -> Option<String> {
+fn scalar_number_text(value: &Scalar) -> Option<String> {
     match value {
-        Value::String(value) => Some(value.to_string()),
-        Value::I8(value) => Some(value.to_string()),
-        Value::I16(value) => Some(value.to_string()),
-        Value::I32(value) => Some(value.to_string()),
-        Value::I64(value) => Some(value.to_string()),
-        Value::I128(value) => Some(value.to_string()),
-        Value::U8(value) => Some(value.to_string()),
-        Value::U16(value) => Some(value.to_string()),
-        Value::U32(value) => Some(value.to_string()),
-        Value::U64(value) => Some(value.to_string()),
-        Value::U128(value) => Some(value.to_string()),
-        Value::F16(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
-        Value::F32(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
-        Value::F64(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
+        Scalar::String(value) => Some(value.to_string()),
+        Scalar::I8(value) => Some(value.to_string()),
+        Scalar::I16(value) => Some(value.to_string()),
+        Scalar::I32(value) => Some(value.to_string()),
+        Scalar::I64(value) => Some(value.to_string()),
+        Scalar::I128(value) => Some(value.to_string()),
+        Scalar::U8(value) => Some(value.to_string()),
+        Scalar::U16(value) => Some(value.to_string()),
+        Scalar::U32(value) => Some(value.to_string()),
+        Scalar::U64(value) => Some(value.to_string()),
+        Scalar::U128(value) => Some(value.to_string()),
+        Scalar::F16(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
+        Scalar::F32(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
+        Scalar::F64(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
         _ => None,
     }
 }
@@ -266,29 +266,29 @@ fn decimal_coefficient(text: &str, target_scale: i8) -> std::result::Result<I256
     Ok(coefficient)
 }
 
-fn date32(value: Value, field: &Field) -> Result<Value> {
+fn date32(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Value::String(text) => crate::generic::iso::parse_date(&text)
-            .map(Value::date32)
+        Scalar::String(text) => crate::generic::iso::parse_date(&text)
+            .map(Scalar::date32)
             .map_err(|_| invalid(field, "expected an ISO date")),
         value => Ok(value),
     }
 }
 
-fn date64(value: Value, field: &Field) -> Result<Value> {
+fn date64(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Value::String(text) => crate::generic::iso::parse_date(&text)
+        Scalar::String(text) => crate::generic::iso::parse_date(&text)
             .ok()
             .and_then(|days| i64::from(days).checked_mul(86_400_000))
-            .map(Value::date64)
+            .map(Scalar::date64)
             .ok_or_else(|| invalid(field, "expected an ISO date")),
         value => Ok(value),
     }
 }
 
-fn time32(value: Value, unit: TimeUnit, field: &Field) -> Result<Value> {
+fn time32(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
     match value {
-        Value::String(text) => {
+        Scalar::String(text) => {
             let (count, source, zone) =
                 parse_time_with_zone(&text).map_err(|_| invalid(field, "expected an ISO time"))?;
             if !zone.is_naive() {
@@ -300,15 +300,15 @@ fn time32(value: Value, unit: TimeUnit, field: &Field) -> Result<Value> {
             let count = rescale(count, source, unit)
                 .and_then(|count| i32::try_from(count).ok())
                 .ok_or_else(|| invalid(field, "time does not fit its declared unit"))?;
-            Value::time32(count, unit, zone)
+            Scalar::time32(count, unit, zone)
         }
         value => Ok(value),
     }
 }
 
-fn time64(value: Value, unit: TimeUnit, field: &Field) -> Result<Value> {
+fn time64(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
     match value {
-        Value::String(text) => {
+        Scalar::String(text) => {
             let (count, source, zone) =
                 parse_time_with_zone(&text).map_err(|_| invalid(field, "expected an ISO time"))?;
             if !zone.is_naive() {
@@ -319,19 +319,19 @@ fn time64(value: Value, unit: TimeUnit, field: &Field) -> Result<Value> {
             }
             let count = rescale(count, source, unit)
                 .ok_or_else(|| invalid(field, "time does not fit its declared unit"))?;
-            Value::time64(count, unit, zone)
+            Scalar::time64(count, unit, zone)
         }
         value => Ok(value),
     }
 }
 
 fn datetime64(
-    value: Value,
+    value: Scalar,
     unit: TimeUnit,
     declared_zone: Option<&Timezone>,
     field: &Field,
-) -> Result<Value> {
-    let Value::String(text) = value else {
+) -> Result<Scalar> {
+    let Scalar::String(text) = value else {
         return Ok(value);
     };
     let (count, source, parsed_zone) = if declared_zone.is_some() {
@@ -345,32 +345,32 @@ fn datetime64(
     };
     let count = rescale(count, source, unit)
         .ok_or_else(|| invalid(field, "datetime does not fit its declared unit"))?;
-    Value::datetime64(count, unit, declared_zone.cloned().unwrap_or(parsed_zone))
+    Scalar::datetime64(count, unit, declared_zone.cloned().unwrap_or(parsed_zone))
 }
 
-fn duration32(value: Value, unit: TimeUnit, field: &Field) -> Result<Value> {
-    let Value::String(text) = value else {
+fn duration32(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
+    let Scalar::String(text) = value else {
         return Ok(value);
     };
     let (count, source) = crate::generic::iso::parse_duration(&text)
         .map_err(|_| invalid(field, "expected an ISO duration"))?;
     let count = rescale(count, source, unit)
         .ok_or_else(|| invalid(field, "duration does not fit its declared unit"))?;
-    Value::duration32(
+    Scalar::duration32(
         i32::try_from(count).map_err(|_| invalid(field, "duration exceeds 32 bits"))?,
         unit,
     )
 }
 
-fn duration64(value: Value, unit: TimeUnit, field: &Field) -> Result<Value> {
-    let Value::String(text) = value else {
+fn duration64(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
+    let Scalar::String(text) = value else {
         return Ok(value);
     };
     let (count, source) = crate::generic::iso::parse_duration(&text)
         .map_err(|_| invalid(field, "expected an ISO duration"))?;
     let count = rescale(count, source, unit)
         .ok_or_else(|| invalid(field, "duration does not fit its declared unit"))?;
-    Value::duration64(count, unit)
+    Scalar::duration64(count, unit)
 }
 
 fn parse_time_with_zone(text: &str) -> Result<(i64, TimeUnit, Timezone)> {

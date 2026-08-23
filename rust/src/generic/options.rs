@@ -39,7 +39,7 @@ use smol_str::SmolStr;
 
 use crate::Level;
 use crate::ipc::IpcOptions;
-use crate::{Error, Field, MediaType, MimeType, Result, WriteMode};
+use crate::{Error, Field, IOMode, MediaType, MimeType, Result};
 
 /// Default rows materialized in one native-record conversion batch.
 ///
@@ -1103,8 +1103,8 @@ impl RecordOptions {
     /// it implicitly: merge requires at least one key, while overwrite and
     /// append refuse every key.
     #[doc(hidden)]
-    pub fn require_write_mode(&self, mode: WriteMode) -> Result<()> {
-        let keyed = mode == WriteMode::Merge;
+    pub fn require_write_mode(&self, mode: IOMode) -> Result<()> {
+        let keyed = mode == IOMode::Merge;
         let keys = self.merge_by_names();
         if keyed != keys.is_empty() {
             return Ok(());

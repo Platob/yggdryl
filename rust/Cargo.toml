@@ -120,7 +120,7 @@ name = "toml"
 path = "benchmarks/toml.rs"
 harness = false
 
-# The Avro codec: container decode and encode over the shared `Value`. Avro is
+# The Avro codec: container decode and encode over the shared `Scalar`. Avro is
 # an unconditional module, so the target compiles in a default build.
 [[bench]]
 name = "avro"

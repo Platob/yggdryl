@@ -1,6 +1,6 @@
 use smol_str::SmolStr;
 
-use super::{Limits, Value};
+use super::{Limits, Scalar};
 use crate::{Error, Result};
 
 /// Parser-neutral syntax nodes.
@@ -52,33 +52,33 @@ impl DecodeState {
     }
 }
 
-pub(crate) fn from_raw(raw: RawValue, limits: Limits, format: &'static str) -> Result<Value> {
+pub(crate) fn from_raw(raw: RawValue, limits: Limits, format: &'static str) -> Result<Scalar> {
     decode(raw, 0, &mut DecodeState::new(limits, format))
 }
 
-fn decode(raw: RawValue, depth: usize, state: &mut DecodeState) -> Result<Value> {
+fn decode(raw: RawValue, depth: usize, state: &mut DecodeState) -> Result<Scalar> {
     state.visit(depth)?;
     match raw {
-        RawValue::Null => Ok(Value::Null),
-        RawValue::Bool(value) => Ok(Value::Bool(value)),
-        RawValue::I64(value) => Ok(Value::I64(value)),
-        RawValue::U64(value) => Ok(Value::U64(value)),
-        RawValue::I128(value) => Ok(Value::I128(value)),
-        RawValue::U128(value) => Ok(Value::U128(value)),
-        RawValue::Float(value) => Ok(Value::from(value)),
-        RawValue::String(value) => Ok(Value::from(value)),
-        RawValue::Bytes(value) => Ok(Value::from(value)),
+        RawValue::Null => Ok(Scalar::Null),
+        RawValue::Bool(value) => Ok(Scalar::Bool(value)),
+        RawValue::I64(value) => Ok(Scalar::I64(value)),
+        RawValue::U64(value) => Ok(Scalar::U64(value)),
+        RawValue::I128(value) => Ok(Scalar::I128(value)),
+        RawValue::U128(value) => Ok(Scalar::U128(value)),
+        RawValue::Float(value) => Ok(Scalar::from(value)),
+        RawValue::String(value) => Ok(Scalar::from(value)),
+        RawValue::Bytes(value) => Ok(Scalar::from(value)),
         RawValue::Sequence(values) => values
             .into_iter()
             .map(|value| decode(value, depth.saturating_add(1), state))
             .collect::<Result<Vec<_>>>()
-            .map(Value::from_sequence),
+            .map(Scalar::from_sequence),
         RawValue::Mapping(entries) => decode_mapping(entries, None, depth, state),
-        RawValue::YamlMergeKey => Ok(Value::from("<<")),
+        RawValue::YamlMergeKey => Ok(Scalar::from("<<")),
         RawValue::YamlMapping(entries, positions) => {
             decode_mapping(entries, Some(&positions), depth, state)
         }
-        // A YAML tag is an annotation. Value has no tag carrier, so standard
+        // A YAML tag is an annotation. Scalar has no tag carrier, so standard
         // and application tags retain their natural payload.
         RawValue::YamlTagged(value) => decode(*value, depth, state),
     }
@@ -89,7 +89,7 @@ fn decode_mapping(
     positions: Option<&[usize]>,
     depth: usize,
     state: &mut DecodeState,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let entries = entries
         .into_iter()
         .map(|(key, value)| {
@@ -102,15 +102,15 @@ fn decode_mapping(
 
     if entries.iter().all(|(key, _)| key.as_str().is_some()) {
         let record = entries.into_iter().map(|(key, value)| {
-            let Value::String(name) = key else {
+            let Scalar::String(name) = key else {
                 unreachable!("the record predicate accepted only strings")
             };
             (name, value)
         });
-        return Value::from_record(record).map_err(|error| positioned(error, positions, state));
+        return Scalar::from_record(record).map_err(|error| positioned(error, positions, state));
     }
 
-    Value::from_mapping(entries).map_err(|error| positioned(error, positions, state))
+    Scalar::from_mapping(entries).map_err(|error| positioned(error, positions, state))
 }
 
 fn positioned(error: Error, positions: Option<&[usize]>, state: &DecodeState) -> Error {

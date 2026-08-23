@@ -5,7 +5,7 @@ use std::collections::TryReserveError;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::field::push_field_name_path;
-use crate::{Error, Field, Result, TimeUnit, Value};
+use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;
 
@@ -62,7 +62,7 @@ impl DataType {
     /// wrappers that contain only null values are the intrinsic exceptions.
     /// Nested Struct and fixed-size-list children use [`Field::default_value`],
     /// so their own nullability remains authoritative.
-    pub fn default_value(&self) -> Result<Value> {
+    pub fn default_value(&self) -> Result<Scalar> {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
         let planned = plan_data_type(self, &mut path).map_err(public_planning_error)?;
@@ -76,7 +76,7 @@ impl DataType {
     /// useful at foreign scalar boundaries that need to recognize intrinsic
     /// logical-null defaults without allocating the default merely to compare
     /// it.
-    pub fn is_default_value(&self, value: &Value) -> Result<bool> {
+    pub fn is_default_value(&self, value: &Scalar) -> Result<bool> {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
         let planned = plan_data_type(self, &mut path).map_err(public_planning_error)?;
@@ -111,7 +111,7 @@ impl DataType {
 }
 
 /// Materializes a Field default while applying its nullability policy.
-pub(crate) fn default_value_for_field(field: &Field) -> Result<Value> {
+pub(crate) fn default_value_for_field(field: &Field) -> Result<Scalar> {
     preflight_schema_shape(field.data_type(), "DefaultValue")?;
     field.validate()?;
     let mut path = Vec::new();
@@ -370,7 +370,7 @@ fn plan_data_type<'a>(
         }
         D::Decimal256 { .. } => scalar(DefaultPlan::Decimal256, false),
         // The variant's present zero value is the variant null: a variant can
-        // hold null as a first-class value, so `Value::Null` here is a value,
+        // hold null as a first-class value, so `Scalar::Null` here is a value,
         // not an absence, and the plan is not logically null.
         D::Variant => scalar(DefaultPlan::Null, false),
         // The geospatial pair's present empty value is `POINT EMPTY`.
@@ -562,25 +562,25 @@ fn ensure_budget(nodes: usize, bytes: usize, path: &[PathSegment<'_>]) -> Planni
     Ok(())
 }
 
-fn materialize(plan: DefaultPlan) -> Result<Value> {
+fn materialize(plan: DefaultPlan) -> Result<Scalar> {
     match plan {
-        DefaultPlan::Null => Ok(Value::Null),
-        DefaultPlan::Bool => Ok(Value::Bool(false)),
-        DefaultPlan::Signed => Ok(Value::I64(0)),
-        DefaultPlan::Unsigned => Ok(Value::U64(0)),
-        DefaultPlan::Float => Ok(Value::from(0.0_f64)),
-        DefaultPlan::Decimal => Ok(Value::I128(0)),
-        DefaultPlan::Decimal256 => Ok(Value::d256(crate::I256::ZERO, 0)),
-        DefaultPlan::String => Ok(Value::from("")),
+        DefaultPlan::Null => Ok(Scalar::Null),
+        DefaultPlan::Bool => Ok(Scalar::Bool(false)),
+        DefaultPlan::Signed => Ok(Scalar::I64(0)),
+        DefaultPlan::Unsigned => Ok(Scalar::U64(0)),
+        DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
+        DefaultPlan::Decimal => Ok(Scalar::I128(0)),
+        DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::I256::ZERO, 0)),
+        DefaultPlan::String => Ok(Scalar::from("")),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
             bytes
                 .try_reserve_exact(width)
                 .map_err(|error| allocation_error("$", error))?;
             bytes.resize(width, 0);
-            Ok(Value::from(bytes))
+            Ok(Scalar::from(bytes))
         }
-        DefaultPlan::EmptySequence => Ok(Value::from_sequence([])),
+        DefaultPlan::EmptySequence => Ok(Scalar::from_sequence([])),
         DefaultPlan::Sequence(plans) => {
             let mut values = Vec::new();
             values
@@ -589,7 +589,7 @@ fn materialize(plan: DefaultPlan) -> Result<Value> {
             for plan in plans {
                 values.push(materialize(plan)?);
             }
-            Ok(Value::from_sequence(values))
+            Ok(Scalar::from_sequence(values))
         }
         DefaultPlan::Repeated(plan, length) => {
             let value = materialize(*plan)?;
@@ -598,17 +598,17 @@ fn materialize(plan: DefaultPlan) -> Result<Value> {
                 .try_reserve_exact(length)
                 .map_err(|error| allocation_error("$", error))?;
             values.resize(length, value);
-            Ok(Value::from_sequence(values))
+            Ok(Scalar::from_sequence(values))
         }
-        DefaultPlan::Union(type_id, value) => Ok(Value::from_sequence([
-            Value::I64(i64::from(type_id)),
+        DefaultPlan::Union(type_id, value) => Ok(Scalar::from_sequence([
+            Scalar::I64(i64::from(type_id)),
             materialize(*value)?,
         ])),
-        DefaultPlan::EmptyMapping => Value::from_mapping([]),
+        DefaultPlan::EmptyMapping => Scalar::from_mapping([]),
         // Little-endian `POINT EMPTY`: the conventional empty geometry, spelled
         // as a point whose coordinates are NaN, in the canonical geospatial
         // value spelling.
-        DefaultPlan::PointEmpty => Ok(Value::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
+        DefaultPlan::PointEmpty => Ok(Scalar::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
     }
 }
 
@@ -618,38 +618,38 @@ pub(crate) const POINT_EMPTY_WKB: [u8; 21] = [
     0x00, 0x00, 0x00, 0xF8, 0x7F,
 ];
 
-fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
+fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
     match plan {
-        DefaultPlan::Null => matches!(value, Value::Null),
-        DefaultPlan::Bool => matches!(value, Value::Bool(false)),
+        DefaultPlan::Null => matches!(value, Scalar::Null),
+        DefaultPlan::Bool => matches!(value, Scalar::Bool(false)),
         // A temporal zero read back off an Arrow column carries its unit and
         // zone; it is the same datum the plan's bare zero spells, so both
         // spellings are the default.
         DefaultPlan::Signed => matches!(
             value,
-            Value::I8(0)
-                | Value::I16(0)
-                | Value::I32(0)
-                | Value::I64(0)
-                | Value::Date32(0, _, _)
-                | Value::Date64(0, _, _)
-                | Value::Time32(0, _, _)
-                | Value::Time64(0, _, _)
-                | Value::DateTime64(0, _, _)
-                | Value::Duration32(0, _, _)
-                | Value::Duration64(0, _, _)
+            Scalar::I8(0)
+                | Scalar::I16(0)
+                | Scalar::I32(0)
+                | Scalar::I64(0)
+                | Scalar::Date32(0, _, _)
+                | Scalar::Date64(0, _, _)
+                | Scalar::Time32(0, _, _)
+                | Scalar::Time64(0, _, _)
+                | Scalar::DateTime64(0, _, _)
+                | Scalar::Duration32(0, _, _)
+                | Scalar::Duration64(0, _, _)
         ),
         DefaultPlan::Unsigned => {
             matches!(
                 value,
-                Value::U8(0) | Value::U16(0) | Value::U32(0) | Value::U64(0)
+                Scalar::U8(0) | Scalar::U16(0) | Scalar::U32(0) | Scalar::U64(0)
             )
         }
         DefaultPlan::Float => value
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
         // A zero coefficient is zero at every scale.
-        DefaultPlan::Decimal => matches!(value, Value::I128(0) | Value::D128(0, _)),
+        DefaultPlan::Decimal => matches!(value, Scalar::I128(0) | Scalar::D128(0, _)),
         DefaultPlan::Decimal256 => value
             .as_d256()
             .is_some_and(|(coefficient, _)| coefficient == crate::I256::ZERO),
@@ -657,7 +657,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),
-        DefaultPlan::EmptySequence => value.as_sequence().is_some_and(<[Value]>::is_empty),
+        DefaultPlan::EmptySequence => value.as_sequence().is_some_and(<[Scalar]>::is_empty),
         DefaultPlan::Sequence(plans) => value.as_sequence().is_some_and(|values| {
             values.len() == plans.len()
                 && plans
@@ -675,12 +675,14 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Value) -> bool {
             actual_type_id.as_i128() == Some(i128::from(*type_id))
                 && plan_matches_value(payload, actual_payload)
         }),
-        DefaultPlan::EmptyMapping => value.as_mapping().is_some_and(<[(Value, Value)]>::is_empty),
+        DefaultPlan::EmptyMapping => value
+            .as_mapping()
+            .is_some_and(<[(Scalar, Scalar)]>::is_empty),
         DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
     }
 }
 
-pub(crate) fn value_is_logically_null(data_type: &DataType, value: &Value) -> bool {
+pub(crate) fn value_is_logically_null(data_type: &DataType, value: &Scalar) -> bool {
     // A variant can *spell* null: the variant null is a present value the
     // encoding writes, so `Null` in a variant column is a value, never the
     // absence a validity bitmap records - which is exactly why a required
@@ -688,7 +690,7 @@ pub(crate) fn value_is_logically_null(data_type: &DataType, value: &Value) -> bo
     if matches!(data_type, DataType::Variant) {
         return false;
     }
-    if matches!(value, Value::Null) {
+    if matches!(value, Scalar::Null) {
         return true;
     }
     match data_type {

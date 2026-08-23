@@ -393,7 +393,7 @@ mod arrow_lines {
 
     use super::*;
 
-    use crate::{Scheme, Value};
+    use crate::{Scalar, Scheme};
     use arrow_array::{
         Date32Array, Int32Array, Int64Array, RecordBatch, StringArray, Time64MicrosecondArray,
     };
@@ -723,8 +723,8 @@ mod arrow_lines {
     fn custom_constants_append_typed_columns_to_every_row() {
         let options = options()
             .try_with_custom_fields([
-                ("venue", Value::from("XNAS")),
-                ("session", Value::from(7_i64)),
+                ("venue", Scalar::from("XNAS")),
+                ("session", Scalar::from(7_i64)),
             ])
             .unwrap();
         let batch = &batches(named("app.log", LOG).read_arrow_lines(&options).unwrap())[0];
@@ -748,7 +748,7 @@ mod arrow_lines {
 
         // A custom column shadowing a capture, case-insensitively.
         let error = options()
-            .try_with_custom_fields([("LEVEL", Value::from("x"))])
+            .try_with_custom_fields([("LEVEL", Scalar::from("x"))])
             .unwrap_err()
             .to_string();
         assert!(error.contains("capture group"), "{error}");
@@ -756,7 +756,7 @@ mod arrow_lines {
         // A datatype the strict Iceberg codec cannot spell is refused with
         // the codec's own words, before any resource is read.
         let error = options()
-            .try_with_custom_fields([("count", Value::from(1_u64))])
+            .try_with_custom_fields([("count", Scalar::from(1_u64))])
             .unwrap_err()
             .to_string();
         assert!(error.contains("Iceberg can express"), "{error}");
@@ -772,7 +772,7 @@ mod arrow_lines {
         // A negative decimal scale has no Iceberg spelling; the codec's own
         // rejection lands here, not after the table metadata is committed.
         let error = options()
-            .try_with_custom_fields([("px", Value::d128(5, -2))])
+            .try_with_custom_fields([("px", Scalar::d128(5, -2))])
             .unwrap_err()
             .to_string();
         assert!(error.contains("decimal(1, -2)"), "{error}");
@@ -783,10 +783,10 @@ mod arrow_lines {
         // column they cannot legally declare must fail before the first
         // batch.
         for (name, value) in [
-            ("note", Value::Null),
+            ("note", Scalar::Null),
             (
                 "stamp",
-                Value::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::NAIVE).unwrap(),
+                Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::NAIVE).unwrap(),
             ),
         ] {
             let error = options()
@@ -799,7 +799,7 @@ mod arrow_lines {
         // Failure leaves the options unchanged.
         let mut kept = options();
         assert!(
-            kept.set_custom_fields(vec![("hash".into(), Value::from("x"))])
+            kept.set_custom_fields(vec![("hash".into(), Scalar::from("x"))])
                 .is_err()
         );
         assert!(kept.custom_fields().is_empty());
@@ -1063,9 +1063,9 @@ mod arrow_lines {
     fn the_emitted_schema_maps_to_iceberg_unchanged() {
         let options = options()
             .try_with_custom_fields([
-                ("venue", Value::from("XNAS")),
-                ("session", Value::from(7_i64)),
-                ("day", Value::date32(19_754)),
+                ("venue", Scalar::from("XNAS")),
+                ("session", Scalar::from(7_i64)),
+                ("day", Scalar::date32(19_754)),
             ])
             .unwrap();
         let schema = options.field();
@@ -2134,7 +2134,7 @@ mod configuration {
     //! A reader is fully specifiable from a document: no code anywhere.
 
     use super::*;
-    use crate::generic::Value;
+    use crate::generic::Scalar;
 
     #[test]
     fn a_yaml_document_defines_a_whole_reader() {
@@ -2224,7 +2224,7 @@ custom_fields:
             .unwrap()
             .try_with_capture_types([("qty", crate::DataType::Int64)])
             .unwrap()
-            .try_with_custom_fields([("venue", Value::String("XPAR".into()))])
+            .try_with_custom_fields([("venue", Scalar::String("XPAR".into()))])
             .unwrap();
 
         let restored = TextLineOptions::from_value(options.into_value()).unwrap();
@@ -2255,7 +2255,7 @@ custom_fields:
             .with_byte_size(4_096)
             .try_with_capture_types([("qty", crate::DataType::Int64)])
             .unwrap()
-            .try_with_custom_fields([("venue", Value::String("XPAR".into()))])
+            .try_with_custom_fields([("venue", Scalar::String("XPAR".into()))])
             .unwrap();
         let restored = TextLineOptions::from_value(options.into_value()).unwrap();
 
@@ -2278,7 +2278,7 @@ custom_fields:
     fn log_mode_round_trips_as_an_explicit_opening() {
         let value = TextLineOptions::for_logs().into_value();
         assert_eq!(
-            value.get_key_str("opening").and_then(Value::as_str),
+            value.get_key_str("opening").and_then(Scalar::as_str),
             Some("timestamp")
         );
         assert!(TextLineOptions::from_value(value).unwrap().is_log_mode());
@@ -2287,32 +2287,32 @@ custom_fields:
     #[test]
     fn an_unknown_key_and_a_bad_value_are_refused_naming_the_option() {
         let unknown =
-            Value::from_mapping([(Value::String("batch-size".into()), Value::U64(10))]).unwrap();
+            Scalar::from_mapping([(Scalar::String("batch-size".into()), Scalar::U64(10))]).unwrap();
         let refused = TextLineOptions::from_value(unknown)
             .unwrap_err()
             .to_string();
         assert!(refused.contains("batch-size"), "{refused}");
         assert!(refused.contains("a known option"), "{refused}");
 
-        let wrong = Value::from_mapping([(
-            Value::String("byte_size".into()),
-            Value::String("lots".into()),
+        let wrong = Scalar::from_mapping([(
+            Scalar::String("byte_size".into()),
+            Scalar::String("lots".into()),
         )])
         .unwrap();
         let refused = TextLineOptions::from_value(wrong).unwrap_err().to_string();
         assert!(refused.contains("byte_size"), "{refused}");
         assert!(refused.contains("a count"), "{refused}");
 
-        let bad_capture = Value::from_mapping([
+        let bad_capture = Scalar::from_mapping([
             (
-                Value::String("pattern".into()),
-                Value::String(r"^\[".into()),
+                Scalar::String("pattern".into()),
+                Scalar::String(r"^\[".into()),
             ),
             (
-                Value::String("capture_types".into()),
-                Value::from_mapping([(
-                    Value::String("absent".into()),
-                    Value::String("int64".into()),
+                Scalar::String("capture_types".into()),
+                Scalar::from_mapping([(
+                    Scalar::String("absent".into()),
+                    Scalar::String("int64".into()),
                 )])
                 .unwrap(),
             ),

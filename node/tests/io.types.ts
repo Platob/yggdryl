@@ -59,16 +59,16 @@ const bytes: Buffer = handle.readBytes()
 const text: string = handle.readText()
 const written: number = handle.writeBytes(Buffer.from('AAPL'))
 const wroteText: number = handle.writeText('AAPL')
-handle.writeValue({ id: 1 })
-const value: unknown = handle.readValue()
-const typedValue: { id: number } = handle.readValue<{ id: number }>(
+handle.writeScalar({ id: 1 })
+const value: unknown = handle.readScalar()
+const typedValue: { id: number } = handle.readScalar<{ id: number }>(
   'row: struct<id: int64 not null> not null',
 )
 declare class TypedRow {
   static readonly intoStructField: Field
   id: number
 }
-const classTypedValue: TypedRow = handle.readValue<TypedRow>(TypedRow)
+const classTypedScalar: TypedRow = handle.readScalar<TypedRow>(TypedRow)
 const parquetStatistics: ParquetFileStatistics = handle.readParquetStatistics()
 const parquetGeospatial: ParquetGeospatialStatistics =
   handle.readParquetGeospatialStatistics('shape')

@@ -19,9 +19,9 @@
   Uri: authority, bucket, clear_extensions, extension, extensions, file_name, fragment, from_json, from_path, from_str, from_value, hostname, into_json, into_path, into_url, into_urn, joinpath, media_type, mime_type, password, path, path_segments, query, region, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stable_hash, stem, user
   Url: as_posix, as_uri, authority, bucket, clear_extensions, exists, extension, extensions, file_name, fragment, from_json, from_path, from_str, from_uri, from_value, full_match, hostname, into_json, into_path, into_uri, is_absolute, is_dir, is_file, is_glob, is_private, is_relative_to, joinpath, match, media_type, mime_type, name, parent, parents, partition, partitions, parts, password, path, path_segments, query, region, relative_to, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stable_hash, stem, suffix, suffixes, user, with_name, with_stem, with_suffix
   Urn: authority, clear_extensions, extension, extensions, file_name, fragment, from_json, from_str, from_uri, from_value, into_json, into_uri, media_type, mime_type, namespace, namespace_specific, path, path_segments, query, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_stem, stable_hash, stem
-  Value: __abs__, __add__, __contains__, __getitem__, __iter__, __len__, __mod__, __mul__, __neg__, __radd__, __rmod__, __rmul__, __rsub__, __rtruediv__, __sub__, __truediv__, absolute, add, as_bytes, as_json_bytes, as_json_utf8, as_utf8, at, count, d128, d256, data_type, date32, date64, datetime64, divide, duration32, duration64, f16, f32, f64, from_arrow_array, from_arrow_record_batch, from_arrow_scalar, from_arrow_table, from_python, get, has, is_empty, items, into_array_field, into_arrow_array, into_arrow_record_batch, into_arrow_scalar, into_arrow_table, into_field, into_python, into_struct_field, keys, kind, multiply, negate, path, remainder, remove, scale, set, stable_hash, subtract, time32, time64, unit, unscaled, values, zone
+  Scalar: __abs__, __add__, __contains__, __getitem__, __iter__, __len__, __mod__, __mul__, __neg__, __radd__, __rmod__, __rmul__, __rsub__, __rtruediv__, __sub__, __truediv__, absolute, add, as_bytes, as_json_bytes, as_json_utf8, as_utf8, at, count, d128, d256, data_type, date32, date64, datetime64, divide, duration32, duration64, f16, f32, f64, from_arrow_array, from_arrow_record_batch, from_arrow_scalar, from_arrow_table, from_py, get, has, is_empty, items, into_array_field, into_arrow_array, into_arrow_record_batch, into_arrow_scalar, into_arrow_table, into_field, as_py, into_struct_field, keys, kind, multiply, negate, path, remainder, remove, scale, set, stable_hash, subtract, time32, time64, unit, unscaled, values, zone
   __version__: (module or value)
-  enums: CODECS, COMPATIBILITY_SCHEMES, DATA_TYPE_IDS, DATA_TYPE_KINDS, IO_KINDS, LEVELS, TIME_UNITS, UNION_MODES, WRITE_MODES
+  enums: CODECS, COMPATIBILITY_SCHEMES, DATA_TYPE_IDS, DATA_TYPE_KINDS, IO_KINDS, LEVELS, TIME_UNITS, UNION_MODES, IO_MODES
   scalar classes: field (cached staticmethod)
   combined: (module or value)
   field_from_pattern: (module or value)
@@ -112,7 +112,7 @@
     instance: clone, compare, contentCoding, equals, extension, format, isApplication, isArchive, isAudio, isBinary, isEncoding, isFont, isHaptics, isImage, isIo, isKnown, isMessage, isModel, isMultipart, isStructured, isTabular, isText, isTextual, isVideo, stableHash, structuredSuffix, subtype, toJSON, toString, topLevel
   IOBase
     statics: from, fromArrowFs, fromBytes
-    instance: append, appendArrowReader, appendArrowRecordBatch, appendArrowTable, appendLines, appendRecords, buffered, childrenMatching, childrenWhere, clear, close, closed, codec, columnSize, compressInto, copyInto, cursor, decompressInto, exists, flush, glob, intoPath, isAtomic, isDir, isFile, isIo, isTabular, iterdir, joinpath, kind, ls, mediaType, mergeArrowReader, mergeArrowRecordBatch, mergeArrowTable, mergeRecords, mkdir, name, open, opened, overwriteArrowReader, overwriteArrowRecordBatch, overwriteArrowTable, overwriteRecords, parent, partitions, pread, pstreamBytes, pwrite, readArrowField, readArrowLines, readArrowReader, readBytes, readLines, readParquetGeospatialStatistics, readParquetStatistics, readRecords, readText, readValue, recordOptions, remove, rglob, rowSize, size, toString, touch, truncate, unlink, url, writeArrowReader, writeArrowRecordBatch, writeArrowTable, writeBytes, writeLines, writeRecords, writeText, writeValue
+    instance: append, appendArrowReader, appendArrowRecordBatch, appendArrowTable, appendLines, appendRecords, buffered, childrenMatching, childrenWhere, clear, close, closed, codec, columnSize, compressInto, copyInto, cursor, decompressInto, exists, flush, glob, intoPath, isAtomic, isDir, isFile, isIo, isTabular, iterdir, joinpath, kind, ls, mediaType, mergeArrowReader, mergeArrowRecordBatch, mergeArrowTable, mergeRecords, mkdir, name, open, opened, overwriteArrowReader, overwriteArrowRecordBatch, overwriteArrowTable, overwriteRecords, parent, partitions, pread, pstreamBytes, pwrite, readArrowField, readArrowLines, readArrowReader, readBytes, readLines, readParquetGeospatialStatistics, readParquetStatistics, readRecords, readText, readScalar, recordOptions, remove, rglob, rowSize, size, toString, touch, truncate, unlink, url, writeArrowReader, writeArrowRecordBatch, writeArrowTable, writeBytes, writeLines, writeRecords, writeText, writeScalar
   IOCursor
     instance: flush, position, read, seek, streamBytes, tell, write
   ByteIterator
@@ -133,7 +133,7 @@
   Timezone
     statics: UTC, aliases, from, fromOffset, fromString, registered
     instance: abbreviationAt, clone, compare, equals, getTimezoneOffset, intoLocal, intoUtc, isFixed, isKnown, isSavingAt, isUtc, key, observesSaving, offsetAt, stableHash, standardOffset, toJSON, toString
-  Value
+  Scalar
     statics: d128, d256, date32, date64, datetime64, duration32, duration64, f16, f32, f64, fromArrowArray, fromArrowRecordBatch, fromArrowScalar, fromArrowTable, fromJs, time32, time64
     instance: Symbol.iterator, absolute, add, asBytes, asJs, asJsonBytes, asJsonUtf8, asUtf8, at, clone, compare, count, dataType, divide, equals, get, has, intoArrayField, intoArrowArray, intoArrowRecordBatch, intoArrowScalar, intoArrowTable, intoField, intoStructField, isEmpty, kind, length, multiply, negate, path, remainder, remove, scale, set, stableHash, subtract, toJSON, toString, unit, unscaled, zone
   AvroSchema
@@ -189,7 +189,7 @@
     options: format, field, maxDepth, maxInputBytes, maxNodes, maxDocuments, indent, value
   fields
     statics: null, boolean, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float16, float32, float64, timestamp, date32, date64, time, time32, time64, duration32, duration64, interval, binary, fixedSizeBinary, largeBinary, binaryView, utf8, largeUtf8, utf8View, list, listView, fixedSizeList, largeList, largeListView, struct, union, denseUnion, variant, geometry, geography, dictionary, decimal, decimal32, decimal64, decimal128, decimal256, map, mapOf, runEndEncoded
-  enums: codecs, compatibilitySchemes, dataTypeIds, dataTypeKinds, ioKinds, levels, timeUnits, unionModes, writeModes
+  enums: codecs, compatibilitySchemes, dataTypeIds, dataTypeKinds, ioKinds, levels, timeUnits, unionModes, ioModes
   json
     statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream
   toml

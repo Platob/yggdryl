@@ -100,7 +100,7 @@ use super::Table;
 use crate::generic::Holder;
 use crate::io::IOBase;
 use crate::metadata::Metadata;
-use crate::{Error, Result, Value};
+use crate::{Error, Result, Scalar};
 
 /// The reserved folder every level keeps its own document in.
 ///
@@ -442,12 +442,12 @@ fn write_properties(folder: &Holder, document: &str, pairs: Vec<(SmolStr, SmolSt
 
 /// [`write_properties`], on the document handle itself.
 fn write_properties_at(document: &mut Holder, pairs: Vec<(SmolStr, SmolStr)>) -> Result<()> {
-    let properties = Value::from_mapping(
+    let properties = Scalar::from_mapping(
         pairs
             .into_iter()
-            .map(|(key, value)| (Value::from(key.as_str()), Value::from(value.as_str()))),
+            .map(|(key, value)| (Scalar::from(key.as_str()), Scalar::from(value.as_str()))),
     )?;
-    let body = Value::from_mapping([(Value::from("properties"), properties)])?;
+    let body = Scalar::from_mapping([(Scalar::from("properties"), properties)])?;
     let bytes = crate::json::into_bytes(&body)?;
     document.write_all_bytes(&bytes)?;
     Ok(())

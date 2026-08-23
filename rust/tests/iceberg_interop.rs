@@ -349,7 +349,7 @@ fn a_large_manifest_is_left_for_baseline_readers() {
                 7_001,
                 DataFile {
                     file_path: format!("file:///bench/data/part-{index:05}.parquet").into(),
-                    partition: vec![yggdryl::Value::from(["XNAS", "XNYS"][index as usize % 2])],
+                    partition: vec![yggdryl::Scalar::from(["XNAS", "XNYS"][index as usize % 2])],
                     record_count: 100 + index,
                     file_size_in_bytes: 4_096,
                     column_sizes: vec![(1, 512), (2, 256), (3, 128)],

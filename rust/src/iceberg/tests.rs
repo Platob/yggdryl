@@ -8,7 +8,7 @@ use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 
 use crate::io::IOBase;
 use crate::local::Folder;
-use crate::{DataType, Field, Value};
+use crate::{DataType, Field, Scalar};
 
 use super::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
@@ -69,7 +69,7 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
 
     let data = DataFile {
         file_path: "data/part.parquet".into(),
-        partition: vec![Value::I32(2024)],
+        partition: vec![Scalar::I32(2024)],
         record_count: 4,
         file_size_in_bytes: 128,
         value_counts: vec![(2, 4), (1, 4)],
@@ -334,7 +334,7 @@ fn collect(reader: crate::arrow::BatchReader) -> Vec<(i64, Option<String>, Optio
 }
 
 mod schema_documents {
-    use super::{Value, assign_field_ids, schema_from_json, schema_to_json};
+    use super::{Scalar, assign_field_ids, schema_from_json, schema_to_json};
     use crate::DataType;
 
     #[test]
@@ -479,7 +479,7 @@ mod schema_documents {
     #[test]
     fn a_schema_document_reads_through_the_core_json_parser() {
         // The point of the port: no second JSON value model reaches this module.
-        let document: Value = crate::json::from_utf8(
+        let document: Scalar = crate::json::from_utf8(
             r#"{"type":"struct","fields":[{"id":1,"name":"id","required":true,"type":"long"}]}"#,
         )
         .unwrap();
@@ -575,7 +575,7 @@ mod types {
 mod partition_specs {
     use super::{PartitionSpec, Transform, trade_schema};
     use crate::iceberg::assign_field_ids;
-    use crate::{DataType, Value};
+    use crate::{DataType, Scalar};
 
     #[test]
     fn a_spec_round_trips_through_its_v2_document() {
@@ -604,12 +604,12 @@ mod partition_specs {
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         assert_eq!(
-            spec.partition_path(&[Value::from("XNAS")]).unwrap(),
+            spec.partition_path(&[Scalar::from("XNAS")]).unwrap(),
             "venue=XNAS"
         );
         // A null value is spelled `null`, which a path cannot distinguish from
         // the string; that is why the manifest is the authority.
-        assert_eq!(spec.partition_path(&[Value::Null]).unwrap(), "venue=null");
+        assert_eq!(spec.partition_path(&[Scalar::Null]).unwrap(), "venue=null");
     }
 
     #[test]
@@ -658,11 +658,11 @@ mod partition_specs {
         // A date is days on the wire and a calendar day in a path, which is
         // what `column=value` means everywhere else in the crate.
         assert_eq!(
-            spec.partition_path(&[Value::date32(19_723)]).unwrap(),
+            spec.partition_path(&[Scalar::date32(19_723)]).unwrap(),
             "day=2024-01-01"
         );
         assert_eq!(
-            crate::io::partition::partition_text(&Value::date32(19_723)).unwrap(),
+            crate::io::partition::partition_text(&Scalar::date32(19_723)).unwrap(),
             "2024-01-01"
         );
     }
@@ -916,7 +916,7 @@ mod tables {
     };
     use crate::generic::IORecordOptions;
     use crate::io::IOMedia;
-    use crate::{DataType, Value};
+    use crate::{DataType, Scalar};
 
     #[test]
     fn create_numbers_an_unnumbered_schema_itself() {
@@ -1075,7 +1075,7 @@ mod tables {
             assert_eq!(partitions.len(), 1, "{}", file.file_path);
             assert_eq!(partitions[0].0, "venue");
             assert_eq!(
-                Value::from(partitions[0].1.as_str()),
+                Scalar::from(partitions[0].1.as_str()),
                 file.partition[0],
                 "the path and the manifest agree"
             );
@@ -3104,7 +3104,7 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
         .data_files()
         .unwrap()
         .into_iter()
-        .find(|(file, _)| file.partition[0] == Value::from("XLON"))
+        .find(|(file, _)| file.partition[0] == Scalar::from("XLON"))
         .unwrap()
         .0
         .file_path;
@@ -3121,7 +3121,7 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
     for venue in ["XNAS", "XNYS", "XLON"] {
         let held: Vec<_> = files
             .iter()
-            .filter(|(file, _)| file.partition[0] == Value::from(venue))
+            .filter(|(file, _)| file.partition[0] == Scalar::from(venue))
             .collect();
         assert_eq!(held.len(), 1, "{venue}");
         assert!(
@@ -3642,10 +3642,10 @@ mod datatype_coverage {
 
     use super::*;
     use crate::arrow::value::array_from_values;
-    use crate::{TimeUnit, Value};
+    use crate::{Scalar, TimeUnit};
 
     /// Append `rows` under `children`, scan them back, and return the records.
-    fn round_trip(label: &str, children: Vec<Field>, rows: &[Vec<Value>]) -> Vec<Value> {
+    fn round_trip(label: &str, children: Vec<Field>, rows: &[Vec<Scalar>]) -> Vec<Scalar> {
         let path = root(label);
         let schema = DataType::from_fields(children.clone())
             .unwrap()
@@ -3662,7 +3662,7 @@ mod datatype_coverage {
             .iter()
             .enumerate()
             .map(|(index, child)| {
-                let column: Vec<&Value> = rows.iter().map(|row| &row[index]).collect();
+                let column: Vec<&Scalar> = rows.iter().map(|row| &row[index]).collect();
                 array_from_values(child, &column).unwrap()
             })
             .collect();
@@ -3703,65 +3703,65 @@ mod datatype_coverage {
         ];
         let rows = vec![
             vec![
-                Value::Bool(true),
-                Value::I64(41),
-                Value::I64(1),
-                Value::from(0.5_f32),
-                Value::from(2.25_f64),
-                Value::d128(1_500_000, 4),
-                Value::date32(20_000),
-                Value::time64(
+                Scalar::Bool(true),
+                Scalar::I64(41),
+                Scalar::I64(1),
+                Scalar::from(0.5_f32),
+                Scalar::from(2.25_f64),
+                Scalar::d128(1_500_000, 4),
+                Scalar::date32(20_000),
+                Scalar::time64(
                     43_200_000_000,
                     TimeUnit::Microsecond,
                     crate::Timezone::NAIVE,
                 )
                 .unwrap(),
-                Value::datetime64(
+                Scalar::datetime64(
                     1_700_000_000_000_000,
                     TimeUnit::Microsecond,
                     crate::Timezone::NAIVE,
                 )
                 .unwrap(),
-                Value::String("alpha".into()),
-                Value::from(vec![1_u8, 2]),
-                Value::from(vec![9_u8, 9, 9, 9]),
+                Scalar::String("alpha".into()),
+                Scalar::from(vec![1_u8, 2]),
+                Scalar::from(vec![9_u8, 9, 9, 9]),
             ],
             // A row of nulls proves every column's null path through Parquet.
             vec![
-                Value::Null,
-                Value::Null,
-                Value::I64(2),
-                Value::Null,
-                Value::Null,
-                Value::Null,
-                Value::Null,
-                Value::Null,
-                Value::Null,
-                Value::Null,
-                Value::Null,
-                Value::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::I64(2),
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
             ],
         ];
 
         let records = round_trip("types-primitive", children, &rows);
         assert_eq!(records.len(), 2);
         let first = records[0].as_sequence().unwrap();
-        assert_eq!(first[0], Value::Bool(true));
-        assert_eq!(first[2], Value::I64(1));
-        assert_eq!(first[5], Value::d128(1_500_000, 4));
+        assert_eq!(first[0], Scalar::Bool(true));
+        assert_eq!(first[2], Scalar::I64(1));
+        assert_eq!(first[5], Scalar::d128(1_500_000, 4));
         assert_eq!(
             first[8],
-            Value::datetime64(
+            Scalar::datetime64(
                 1_700_000_000_000_000,
                 TimeUnit::Microsecond,
                 crate::Timezone::NAIVE,
             )
             .unwrap()
         );
-        assert_eq!(first[11], Value::from(vec![9_u8, 9, 9, 9]));
+        assert_eq!(first[11], Scalar::from(vec![9_u8, 9, 9, 9]));
         let second = records[1].as_sequence().unwrap();
-        assert_eq!(second[0], Value::Null);
-        assert_eq!(second[5], Value::Null);
+        assert_eq!(second[0], Scalar::Null);
+        assert_eq!(second[5], Scalar::Null);
     }
 
     #[test]
@@ -3785,16 +3785,16 @@ mod datatype_coverage {
         ];
 
         let point_value = |x: i64, label: &str| {
-            Value::from_sequence([Value::I64(x), Value::String(label.into())])
+            Scalar::from_sequence([Scalar::I64(x), Scalar::String(label.into())])
         };
-        let deep_value = Value::from_sequence([
-            Value::from_sequence([Value::I64(1), Value::Null, Value::I64(3)]),
-            Value::from_mapping([(Value::from("origin"), point_value(0, "o"))]).unwrap(),
+        let deep_value = Scalar::from_sequence([
+            Scalar::from_sequence([Scalar::I64(1), Scalar::Null, Scalar::I64(3)]),
+            Scalar::from_mapping([(Scalar::from("origin"), point_value(0, "o"))]).unwrap(),
         ]);
         let rows = vec![vec![
-            Value::I64(1),
+            Scalar::I64(1),
             point_value(7, "seven"),
-            Value::from_sequence([deep_value]),
+            Scalar::from_sequence([deep_value]),
         ]];
 
         let records = round_trip("types-nested", children, &rows);
@@ -3802,9 +3802,9 @@ mod datatype_coverage {
         let values = records[0].as_sequence().unwrap();
         // The struct survives with both children.
         match &values[1] {
-            Value::Sequence(fields) => {
-                assert_eq!(fields[0], Value::I64(7));
-                assert_eq!(fields[1], Value::String("seven".into()));
+            Scalar::Sequence(fields) => {
+                assert_eq!(fields[0], Scalar::I64(7));
+                assert_eq!(fields[1], Scalar::String("seven".into()));
             }
             other => panic!("expected a struct row back, got {}", other.kind()),
         }
@@ -3837,13 +3837,13 @@ mod datatype_coverage {
         .unwrap();
 
         let batch_of = |rows: &[(i64, &str, i128)]| {
-            let columns: Vec<Vec<Value>> = (0..3)
+            let columns: Vec<Vec<Scalar>> = (0..3)
                 .map(|index| {
                     rows.iter()
                         .map(|(id, venue, price)| match index {
-                            0 => Value::I64(*id),
-                            1 => Value::String((*venue).into()),
-                            _ => Value::d128(*price, 4),
+                            0 => Scalar::I64(*id),
+                            1 => Scalar::String((*venue).into()),
+                            _ => Scalar::d128(*price, 4),
                         })
                         .collect()
                 })
@@ -3851,8 +3851,8 @@ mod datatype_coverage {
             let arrays: Vec<_> = children
                 .iter()
                 .zip(columns.iter())
-                .map(|(child, column): (&Field, &Vec<Value>)| {
-                    let refs: Vec<&Value> = column.iter().collect();
+                .map(|(child, column): (&Field, &Vec<Scalar>)| {
+                    let refs: Vec<&Scalar> = column.iter().collect();
                     array_from_values(child, &refs).unwrap()
                 })
                 .collect();
@@ -3879,13 +3879,13 @@ mod datatype_coverage {
             let value = crate::arrow::batch_to_value(&batch.unwrap()).unwrap();
             for row in value.as_sequence().unwrap() {
                 let fields = row.as_sequence().unwrap();
-                let Value::I64(id) = fields[0] else { panic!() };
+                let Scalar::I64(id) = fields[0] else { panic!() };
                 prices.insert(id, fields[2].clone());
             }
         }
         assert_eq!(prices.len(), 3);
-        assert_eq!(prices[&1], Value::d128(99_000, 4));
-        assert_eq!(prices[&3], Value::d128(30_000, 4));
+        assert_eq!(prices[&1], Scalar::d128(99_000, 4));
+        assert_eq!(prices[&3], Scalar::d128(30_000, 4));
     }
 }
 
@@ -4051,7 +4051,7 @@ mod line_projection {
     fn options() -> TextLineOptions {
         TextLineOptions::with_pattern(PATTERN)
             .unwrap()
-            .try_with_custom_fields([("venue", Value::from("XNAS"))])
+            .try_with_custom_fields([("venue", Scalar::from("XNAS"))])
             .unwrap()
     }
 
@@ -4283,11 +4283,11 @@ mod line_projection {
             let partitions = url.hive_partitions();
             assert_eq!(partitions[0].0, "level");
             match &file.partition[0] {
-                Value::Null => assert_eq!(partitions[0].1, "null"),
-                held => assert_eq!(held, &Value::from(partitions[0].1.as_str())),
+                Scalar::Null => assert_eq!(partitions[0].1, "null"),
+                held => assert_eq!(held, &Scalar::from(partitions[0].1.as_str())),
             }
         }
-        let by_level = |level: Value| {
+        let by_level = |level: Scalar| {
             files
                 .iter()
                 .find(|(file, _)| file.partition[0] == level)
@@ -4301,7 +4301,7 @@ mod line_projection {
                 .map(|(_, bytes)| bytes.clone())
         };
 
-        let errors = by_level(Value::from("ee"));
+        let errors = by_level(Scalar::from("ee"));
         assert_eq!(errors.record_count, 1);
         assert_eq!(
             bound(&errors.lower_bounds, unix_id).as_deref(),
@@ -4318,7 +4318,7 @@ mod line_projection {
             "the string bound is the UTF-8 single-value encoding"
         );
 
-        let fills = by_level(Value::from("ii"));
+        let fills = by_level(Scalar::from("ii"));
         assert_eq!(
             fills.record_count, 2,
             "both leaves' fills grouped into one partition file"
@@ -4332,7 +4332,7 @@ mod line_projection {
             Some((T0 + HOUR).to_le_bytes().as_slice())
         );
 
-        let preamble = by_level(Value::Null);
+        let preamble = by_level(Scalar::Null);
         assert_eq!(preamble.record_count, 1);
         assert!(
             bound(&preamble.lower_bounds, unix_id).is_none(),
@@ -4422,7 +4422,7 @@ mod manifest_planning {
         DataFile, FormatVersion, ManifestEntry, PartitionSpec, read_manifest, write_manifest,
     };
     use super::trade_schema;
-    use crate::Value;
+    use crate::Scalar;
     use crate::io::{Buffer, IOBase};
 
     /// One entry carrying every statistic a manifest can record.
@@ -4431,7 +4431,7 @@ mod manifest_planning {
             7_001,
             DataFile {
                 file_path: smol_str::format_smolstr!("file:///t/data/part-{index}.parquet"),
-                partition: vec![Value::from("XNAS")],
+                partition: vec![Scalar::from("XNAS")],
                 record_count: 100 + index,
                 file_size_in_bytes: 4_096,
                 column_sizes: vec![(1, 512), (2, 256)],
@@ -4502,7 +4502,7 @@ mod manifest_planning {
         assert!(pruned[0].data_file.value_counts.is_empty());
         assert!(pruned[0].data_file.lower_bounds.is_empty());
         assert_eq!(pruned[0].data_file.record_count, 100);
-        assert_eq!(pruned[0].data_file.partition, vec![Value::from("XNAS")]);
+        assert_eq!(pruned[0].data_file.partition, vec![Scalar::from("XNAS")]);
     }
 
     #[test]
@@ -4878,7 +4878,7 @@ mod interop_regressions {
             ],
         };
         let file = super::super::manifest::DataFile {
-            partition: vec![Value::from("AAPL"), Value::from(3_i64)],
+            partition: vec![Scalar::from("AAPL"), Scalar::from(3_i64)],
             ..Default::default()
         };
 
@@ -4887,7 +4887,7 @@ mod interop_regressions {
         // manifest where it belongs.
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].0.name(), "symbol");
-        assert_eq!(restored[0].1, Value::from("AAPL"));
+        assert_eq!(restored[0].1, Scalar::from("AAPL"));
     }
 }
 

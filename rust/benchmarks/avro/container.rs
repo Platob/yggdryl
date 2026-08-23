@@ -1,4 +1,4 @@
-//! Avro object container round trips over the shared `Value`.
+//! Avro object container round trips over the shared `Scalar`.
 //!
 //! The fixture mirrors what a manifest-shaped row carries - an int, a string,
 //! a nullable double, an array, a nested record - so the numbers describe the
@@ -7,13 +7,13 @@
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::io::{Buffer, IOBase};
-use yggdryl::{Value, avro, json};
+use yggdryl::{Scalar, avro, json};
 
 /// Rows in the representative container.
 const ROWS: usize = 1_000;
 
 /// The writer schema every benchmark row is encoded against.
-fn schema() -> Value {
+fn schema() -> Scalar {
     json::from_utf8(
         r#"{"type": "record", "name": "row", "fields": [
             {"name": "code", "type": "int"},
@@ -29,23 +29,23 @@ fn schema() -> Value {
 }
 
 /// One representative row per index.
-fn row(index: usize) -> Value {
+fn row(index: usize) -> Scalar {
     let score = if index % 3 == 0 {
-        Value::Null
+        Scalar::Null
     } else {
-        Value::from(index as f64 * 0.25)
+        Scalar::from(index as f64 * 0.25)
     };
-    Value::from_mapping([
-        (Value::from("code"), Value::from(index as i64 - 500)),
-        (Value::from("name"), Value::from(format!("SYM{index:04}"))),
-        (Value::from("score"), score),
+    Scalar::from_mapping([
+        (Scalar::from("code"), Scalar::from(index as i64 - 500)),
+        (Scalar::from("name"), Scalar::from(format!("SYM{index:04}"))),
+        (Scalar::from("score"), score),
         (
-            Value::from("tags"),
-            Value::from_sequence((0..index % 4).map(|tag| Value::from(tag as i64))),
+            Scalar::from("tags"),
+            Scalar::from_sequence((0..index % 4).map(|tag| Scalar::from(tag as i64))),
         ),
         (
-            Value::from("nested"),
-            Value::from_mapping([(Value::from("flag"), Value::Bool(index % 2 == 0))])
+            Scalar::from("nested"),
+            Scalar::from_mapping([(Scalar::from("flag"), Scalar::Bool(index % 2 == 0))])
                 .expect("unique keys"),
         ),
     ])
@@ -54,7 +54,7 @@ fn row(index: usize) -> Value {
 
 pub(crate) fn avro_benchmarks(criterion: &mut Criterion) {
     let schema = schema();
-    let rows: Vec<Value> = (0..ROWS).map(row).collect();
+    let rows: Vec<Scalar> = (0..ROWS).map(row).collect();
 
     let mut stored = Buffer::new();
     avro::write_container(&mut stored, &schema, &[], &rows)

@@ -11,7 +11,7 @@ import pyarrow as pa  # type: ignore[import-untyped]
 from yggdryl import (
     DataType,
     Field,
-    Value,
+    Scalar,
     field,
     json,
     scalar,
@@ -44,9 +44,9 @@ variant_datatype: DataType = DataType.variant(
     [Field("integer", "int64", nullable=False), Field("text", "utf8", nullable=False)]
 )
 optional: Field = Field.from_pyhint("note", str | None)
-native_value: Value = Value.from_python(order)
-python_value: object = native_value.into_python()
-arrow_value: pa.Scalar = Value.f32(1.5).into_arrow_scalar()
+native_scalar: Scalar = Scalar.from_py(order)
+python_value: object = native_scalar.as_py()
+arrow_value: pa.Scalar = Scalar.f32(1.5).into_arrow_scalar()
 
 yaml_payload: bytes = yaml.dumps(order)
 from_yaml: TypedOrder = yaml.loads(yaml_payload, cls=TypedOrder)

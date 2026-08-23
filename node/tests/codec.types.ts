@@ -1,7 +1,7 @@
 import {
   Field,
   Timezone,
-  Value,
+  Scalar,
   codec,
   json,
   toml,
@@ -37,58 +37,58 @@ void tabbedOptions
 
 const unit: CodecTimeUnit = 'us'
 const utc: TimezoneInput = Timezone.UTC
-const at: Value = Value.datetime64(1700000000000000n, unit, utc)
-const naive: Value = Value.datetime64(1700000000000n, 'ms')
-const on: Value = Value.date32(19723, 'd', 'NAIVE')
-const wideDate: Value = Value.date64(1700000000000n, 'ms', Timezone.from('NAIVE'))
-const sinceMidnight: Value = Value.time64(45296000000n, unit, 'NAIVE')
-const shortTime: Value = Value.time32(1000, 'ms', Timezone.from('NAIVE'))
-const took: Value = Value.duration32(90, 's', 'NAIVE')
-const longTook: Value = Value.duration64(90n, 's', Timezone.from('NAIVE'))
+const at: Scalar = Scalar.datetime64(1700000000000000n, unit, utc)
+const naive: Scalar = Scalar.datetime64(1700000000000n, 'ms')
+const on: Scalar = Scalar.date32(19723, 'd', 'NAIVE')
+const wideDate: Scalar = Scalar.date64(1700000000000n, 'ms', Timezone.from('NAIVE'))
+const sinceMidnight: Scalar = Scalar.time64(45296000000n, unit, 'NAIVE')
+const shortTime: Scalar = Scalar.time32(1000, 'ms', Timezone.from('NAIVE'))
+const took: Scalar = Scalar.duration32(90, 's', 'NAIVE')
+const longTook: Scalar = Scalar.duration64(90n, 's', Timezone.from('NAIVE'))
 // @ts-expect-error the untyped decimal factory was removed
-Value.decimal(1n, 0)
-const price: Value = Value.d128(-1050n, 2)
-const widePrice: Value = Value.d256(-(2n ** 200n), 2)
-const half: Value = Value.f16(1.5)
-const single: Value = Value.f32(1.5)
-const double: Value = Value.f64(1.5)
+Scalar.decimal(1n, 0)
+const price: Scalar = Scalar.d128(-1050n, 2)
+const widePrice: Scalar = Scalar.d256(-(2n ** 200n), 2)
+const half: Scalar = Scalar.f16(1.5)
+const single: Scalar = Scalar.f32(1.5)
+const double: Scalar = Scalar.f64(1.5)
 const kind: string = at.kind
 const count: bigint | null = at.count
 const zone: string | null = at.zone
 const unscaled: bigint | null = price.unscaled
 const scale: number | null = price.scale
-const same: boolean = took.equals(Value.duration64(90000n, 'ms'))
+const same: boolean = took.equals(Scalar.duration64(90000n, 'ms'))
 const hash: bigint = widePrice.stableHash()
-const valueClone: Value = widePrice.clone()
+const valueClone: Scalar = widePrice.clone()
 const valueOrder: number = widePrice.compare(valueClone)
-const valueSum: Value = price.add(Value.d128(50n, 2))
-const inferredSum: Value = Value.fromJs(40).add(2)
-const valueDifference: Value = price.subtract(1)
-const valueProduct: Value = price.multiply(2)
-const valueQuotient: Value = price.divide(2)
-const valueRemainder: Value = Value.fromJs(5).remainder(2)
-const negativeValue: Value = price.negate()
-const absoluteValue: Value = negativeValue.absolute()
+const valueSum: Scalar = price.add(Scalar.d128(50n, 2))
+const inferredSum: Scalar = Scalar.fromJs(40).add(2)
+const valueDifference: Scalar = price.subtract(1)
+const valueProduct: Scalar = price.multiply(2)
+const valueQuotient: Scalar = price.divide(2)
+const valueRemainder: Scalar = Scalar.fromJs(5).remainder(2)
+const negativeValue: Scalar = price.negate()
+const absoluteValue: Scalar = negativeValue.absolute()
 const dataType = widePrice.dataType
-const rawBytes: Buffer | null = Value.fromJs(Buffer.from('x')).asBytes()
-const rawUtf8: string | null = Value.fromJs('x').asUtf8()
+const rawBytes: Buffer | null = Scalar.fromJs(Buffer.from('x')).asBytes()
+const rawUtf8: string | null = Scalar.fromJs('x').asUtf8()
 const jsonBytes: Buffer = widePrice.asJsonBytes()
 const jsonUtf8: string = widePrice.asJsonUtf8()
-const pivot: Value = Value.fromJs(new Set([1, 2]), { maxDepth: 8 })
+const pivot: Scalar = Scalar.fromJs(new Set([1, 2]), { maxDepth: 8 })
 const lowered: unknown = pivot.asJs()
-const scalarField: Field = Value.fromJs(1).intoField()
-const arrayField: Field = Value.fromJs([1]).intoArrayField()
-const inferredStructField: Field = Value.fromJs([{ id: 1 }]).intoStructField()
-const nestedValues = Value.fromJs({ rows: [Value.datetime64(1n, 'ns')] })
+const scalarField: Field = Scalar.fromJs(1).intoField()
+const arrayField: Field = Scalar.fromJs([1]).intoArrayField()
+const inferredStructField: Field = Scalar.fromJs([{ id: 1 }]).intoStructField()
+const nestedValues = Scalar.fromJs({ rows: [Scalar.datetime64(1n, 'ns')] })
 const childCount: number = nestedValues.length
 const emptyContainer: boolean = nestedValues.isEmpty()
-const childAt: Value | null = Value.fromJs([1]).at(0)
-const childByKey: Value | null = nestedValues.get('rows')
-const childByPath: Value | null = nestedValues.path('rows.0')
+const childAt: Scalar | null = Scalar.fromJs([1]).at(0)
+const childByKey: Scalar | null = nestedValues.get('rows')
+const childByPath: Scalar | null = nestedValues.path('rows.0')
 const hasChild: boolean = nestedValues.has('rows')
-const replacedValue: Value = nestedValues.set('rows', [2])
-const removedValue: Value = nestedValues.remove('rows')
-const iteratedValues: Value[] = [...nestedValues]
+const replacedValue: Scalar = nestedValues.set('rows', [2])
+const removedValue: Scalar = nestedValues.remove('rows')
+const iteratedValues: Scalar[] = [...nestedValues]
 void childCount
 void emptyContainer
 void childAt
@@ -100,12 +100,12 @@ void removedValue
 void iteratedValues
 
 const arrowVector = vectorFromArray([1, 2], new Int32())
-const arrowValue: Value = Value.fromArrowArray(arrowVector)
+const arrowValue: Scalar = Scalar.fromArrowArray(arrowVector)
 const nativeVector = arrowValue.intoArrowArray()
-const arrowScalar: Value = Value.fromArrowScalar(vectorFromArray([1], new Int32()))
+const arrowScalar: Scalar = Scalar.fromArrowScalar(vectorFromArray([1], new Int32()))
 const nativeScalar: unknown = arrowScalar.intoArrowScalar()
 const arrowTable = tableFromArrays({ id: Int32Array.from([1, 2]) })
-const tableValue: Value = Value.fromArrowTable(arrowTable)
+const tableValue: Scalar = Scalar.fromArrowTable(arrowTable)
 const rowField = new Field('row', 'struct<id:int32 not null>', false)
 class TypedOrder {
   static get intoStructField(): Field {
@@ -117,11 +117,11 @@ const instanceFieldOptions: CodecOptions = { field: new TypedOrder() }
 const classTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', classFieldOptions)
 const instanceTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', instanceFieldOptions)
 const nativeTable = tableValue.intoArrowTable(rowField)
-const batchValue: Value = Value.fromArrowRecordBatch(arrowTable.batches[0], rowField)
+const batchValue: Scalar = Scalar.fromArrowRecordBatch(arrowTable.batches[0], rowField)
 const nativeBatch = batchValue.intoArrowRecordBatch(rowField)
-const narrowNative: Value = json.loads('7', {
+const narrowNative: Scalar = json.loads('7', {
   field: new Field('value', 'int16', false),
-  value: true,
+  scalar: true,
 })
 void narrowNative
 

@@ -6,7 +6,7 @@ mod placeholder;
 mod value;
 
 use std::io::Cursor;
-use yggdryl::Value;
+use yggdryl::Scalar;
 use yggdryl::text::{self, Format, Limits};
 
 #[test]
@@ -24,11 +24,11 @@ fn borrowed_text_dispatches_without_owned_utf8_staging() {
     let lines = "1\n2\n";
     assert_eq!(
         text::from_utf8(lines, Format::JsonLines).unwrap(),
-        Value::from_sequence([Value::from(1_u64), Value::from(2_u64)])
+        Scalar::from_sequence([Scalar::from(1_u64), Scalar::from(2_u64)])
     );
     assert_eq!(
         text::from_utf8_all_with_limits(lines, Format::JsonLines, Limits::default()).unwrap(),
-        vec![Value::from(1_u64), Value::from(2_u64)]
+        vec![Scalar::from(1_u64), Scalar::from(2_u64)]
     );
 
     let yaml = "label: café\n---\nlabel: second\n";
@@ -48,16 +48,16 @@ fn all_dispatch_paths_share_exact_document_limits() {
         let exact = Limits::new(8, input.len(), 8, 2);
         assert_eq!(
             text::from_bytes_all_with_limits(input, format, exact).unwrap(),
-            vec![Value::from(1_u64), Value::from(2_u64)]
+            vec![Scalar::from(1_u64), Scalar::from(2_u64)]
         );
         assert_eq!(
             text::from_utf8_all_with_limits(std::str::from_utf8(input).unwrap(), format, exact)
                 .unwrap(),
-            vec![Value::from(1_u64), Value::from(2_u64)]
+            vec![Scalar::from(1_u64), Scalar::from(2_u64)]
         );
         assert_eq!(
             text::from_reader_all_with_limits(Cursor::new(input), format, exact).unwrap(),
-            vec![Value::from(1_u64), Value::from(2_u64)]
+            vec![Scalar::from(1_u64), Scalar::from(2_u64)]
         );
 
         let one = Limits::new(8, input.len(), 8, 1);

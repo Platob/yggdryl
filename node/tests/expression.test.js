@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Expression, Field, IOBase, Statement, Value, fields, iceberg } = require('yggdryl')
+const { BatchReader, Expression, Field, IOBase, Statement, Scalar, fields, iceberg } = require('yggdryl')
 
 const TRADES = new Field(
   'trades',
@@ -81,15 +81,15 @@ test('arithmetic builders stay lazy expression nodes', () => {
   const size = Expression.column('size')
   assert.equal(size.add('1').toString(), 'size + 1')
   assert.equal(size.add(1).toString(), 'size + 1')
-  assert.equal(size.add(Value.fromJs(1)).toString(), 'size + 1')
+  assert.equal(size.add(Scalar.fromJs(1)).toString(), 'size + 1')
   assert.equal(size.subtract('1').toString(), 'size - 1')
   assert.equal(size.multiply('2').toString(), 'size * 2')
   assert.equal(size.divide('2').toString(), 'size / 2')
   assert.equal(size.remainder('2').toString(), 'size % 2')
   assert.equal(size.negate().toString(), '-size')
 
-  const computed = size.add('1').bind(TRADES).eval(Value.fromJs(['EUR', null, 4]))
-  assert.ok(computed.equals(Value.fromJs(5)))
+  const computed = size.add('1').bind(TRADES).eval(Scalar.fromJs(['EUR', null, 4]))
+  assert.ok(computed.equals(Scalar.fromJs(5)))
   for (const hidden of [
     '_addNative',
     '_subtractNative',
@@ -114,9 +114,9 @@ test('binding resolves the columns and folds the literals', () => {
 
 test('a row answers, and unknown is not true', () => {
   const bound = new Expression("ccy = 'EUR' and size > 1").bind(TRADES)
-  assert.equal(bound.matches(Value.fromJs(['EUR', null, 5])), true)
-  assert.equal(bound.matches(Value.fromJs(['USD', null, 5])), false)
-  assert.equal(bound.matches(Value.fromJs(['EUR', null, null])), false)
+  assert.equal(bound.matches(Scalar.fromJs(['EUR', null, 5])), true)
+  assert.equal(bound.matches(Scalar.fromJs(['USD', null, 5])), false)
+  assert.equal(bound.matches(Scalar.fromJs(['EUR', null, null])), false)
 })
 
 test('a holder attribute is its own question', () => {

@@ -2,7 +2,7 @@
 
 Read and write Avro as streamed Arrow batches first, then use its more flexible
 schema, object-container, and single-value operations over the shared
-[`Value`](generic.md). Every path works over any [`IOBase`](io.md) handle, with
+[`Scalar`](generic.md). Every path works over any [`IOBase`](io.md) handle, with
 no Avro crate underneath.
 
 !!! note "Two surfaces"
@@ -125,7 +125,7 @@ Avro answers the same read and explicit overwrite, append, and merge intents as
 every other encoding. Their [canonical signatures and streaming
 rules](io.md#canonical-record-write-signatures) apply to a handle whose media
 type says `avro`, with no format argument anywhere. Decoding is columnar - one builder per leaf, appended per
-record, with no intermediate `Value` tree on that path - and a declared schema
+record, with no intermediate `Scalar` tree on that path - and a declared schema
 becomes the encoding's own projection: an unselected top-level column's bytes
 are *skipped*, not decoded, so a projection saves decode, allocation, and
 those bytes. What it cannot save is reading the row, because Avro interleaves
@@ -168,7 +168,7 @@ fresh/opened `column_size` at 22.3 us/87.8 ns, and fresh/opened `read_arrow_fiel
 adds two settings to the shared surface: the block codec name and an optional
 fixed synchronization marker for byte-reproducible writes. A union wider than
 `null` plus one branch, a recursive schema, or a datatype Avro cannot spell is
-refused by name on this surface; the `Value`-level functions below have no
+refused by name on this surface; the `Scalar`-level functions below have no
 such limits. Avro compresses inside its blocks, so - like Parquet and unlike
 IPC - a handle declaring an outer content coding such as `trades.avro.gz` is
 rejected rather than double-compressed.
@@ -234,20 +234,20 @@ estimates; regenerate them on the deployment host with:
 cargo bench -p yggdryl --bench io --all-features -- "io_dimensions/avro/options"
 ```
 
-## Flexible Value containers and schema methods
+## Flexible Scalar containers and schema methods
 
-!!! note "Native Value surface"
+!!! note "Native Scalar surface"
     Python exposes this layer as `avro.Schema`, `loads` / `dumps`, and
     `loads_single` / `dumps_single`; JavaScript uses `Schema`, `loads` /
     `dumps`, and `loadsSingle` / `dumpsSingle`. Their natural host values cross
-    through the same core [`Value`](generic.md). Their `blocks` iterator keeps
+    through the same core [`Scalar`](generic.md). Their `blocks` iterator keeps
     compressed blocks lazy; the explicit `Resolution` object remains Rust-only.
 
 === "Rust"
 
     ```rust
     use yggdryl::io::Buffer;
-    use yggdryl::{Value, avro, json};
+    use yggdryl::{Scalar, avro, json};
 
     let schema = json::from_utf8(
         r#"{"type":"record","name":"trade","fields":[
@@ -266,7 +266,7 @@ cargo bench -p yggdryl --bench io --all-features -- "io_dimensions/avro/options"
     assert_eq!(decoded.get("source"), Some("docs"));
     assert_eq!(decoded.rows.len(), 2);
     assert_eq!(
-        decoded.rows[0].get_key_str("symbol").and_then(Value::as_utf8),
+        decoded.rows[0].get_key_str("symbol").and_then(Scalar::as_utf8),
         Some("AAPL")
     );
     ```
@@ -323,7 +323,7 @@ cargo bench -p yggdryl --bench io --all-features -- "io_dimensions/avro/options"
 An Avro object container is a self-describing file: its header carries the
 writer's schema as JSON, so reading one needs nothing but the bytes.
 `read_container` hands back the schema, the header metadata, and every row;
-`write_container` takes the schema as its JSON [`Value`](generic.md), writes
+`write_container` takes the schema as its JSON [`Scalar`](generic.md), writes
 that JSON into the header verbatim - so attributes this implementation does not
 model, such as Iceberg's `field-id`, survive byte for byte - and encodes the
 rows against it.
@@ -415,9 +415,9 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
 === "Rust"
 
     ```rust
-    use yggdryl::enums::TimeUnit;
+    use yggdryl::generic::TimeUnit;
     use yggdryl::io::Buffer;
-    use yggdryl::{Timezone, Value, avro, json};
+    use yggdryl::{Timezone, Scalar, avro, json};
 
     let schema = json::from_utf8(
         r#"{"type": "record", "name": "row", "fields": [
@@ -427,14 +427,14 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
                                         "precision": 10, "scale": 2}}
         ]}"#,
     )?;
-    let row = Value::from_record([
-        ("day", Value::Date32(19_782, TimeUnit::Day, Timezone::NAIVE)),
-        ("at", Value::DateTime64(
+    let row = Scalar::from_record([
+        ("day", Scalar::Date32(19_782, TimeUnit::Day, Timezone::NAIVE)),
+        ("at", Scalar::DateTime64(
             1_700_000_000_000_000,
             TimeUnit::Microsecond,
             Timezone::UTC,
         )),
-        ("price", Value::D128(18_750, 2)),
+        ("price", Scalar::D128(18_750, 2)),
     ])?;
 
     let mut handle = Buffer::new();
@@ -474,7 +474,7 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, avro } = require('yggdryl')
+    const { Scalar, avro } = require('yggdryl')
 
     const decimal = {
       type: 'bytes',
@@ -482,10 +482,10 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
       precision: 10,
       scale: 2,
     }
-    const value = Value.d128(18750n, 2)
+    const value = Scalar.d128(18750n, 2)
     const decoded = avro.loadsSingle(avro.dumpsSingle(value, decimal), decimal)
 
-    assert.ok(decoded instanceof Value)
+    assert.ok(decoded instanceof Scalar)
     assert.equal(decoded.kind, 'd128')
     assert.equal(decoded.unscaled, 18750n)
     assert.equal(decoded.scale, 2)
@@ -509,7 +509,7 @@ month/day/millisecond interval, not one elapsed count.
     ```rust
     use yggdryl::avro::Schema;
     use yggdryl::io::Buffer;
-    use yggdryl::{Value, avro, json};
+    use yggdryl::{Scalar, avro, json};
 
     let writer = json::from_utf8(
         r#"{"type":"record","name":"trade","fields":[
@@ -528,7 +528,7 @@ month/day/millisecond interval, not one elapsed count.
 
     let decoded = avro::read_container_resolved(&handle, &reader)?;
     assert_eq!(
-        decoded.rows[0].get_key_str("quantity").and_then(Value::as_i64),
+        decoded.rows[0].get_key_str("quantity").and_then(Scalar::as_i64),
         Some(100),
     );
     assert_eq!(decoded.rows[0].len(), 2, "unwanted writer fields are skipped");
@@ -615,12 +615,12 @@ which is the specification's rule.
 
     ```rust
     use yggdryl::io::Buffer;
-    use yggdryl::{Value, avro, json};
+    use yggdryl::{Scalar, avro, json};
 
     let schema = json::from_utf8(r#"{"type":"record","name":"row","fields":[
         {"name":"id","type":"long"}]}"#)?;
-    let rows: Vec<Value> = (0..3)
-        .map(|id| Value::from_record([("id", Value::from(id))]))
+    let rows: Vec<Scalar> = (0..3)
+        .map(|id| Scalar::from_record([("id", Scalar::from(id))]))
         .collect::<Result<_, _>>()?;
     let mut handle = Buffer::new();
     avro::write_container(&mut handle, &schema, &[], &rows)?;
@@ -684,11 +684,11 @@ is small by construction.
 
     ```rust
     use yggdryl::avro::Schema;
-    use yggdryl::{Value, avro};
+    use yggdryl::{Scalar, avro};
 
     let schema = Schema::from_str(r#"{"type":"record","name":"tick","fields":[
         {"name":"price","type":"double"}]}"#)?;
-    let value = Value::from_record([("price", Value::from(187.5))])?;
+    let value = Scalar::from_record([("price", Scalar::from(187.5))])?;
     let framed = avro::into_single_object_vec(&schema, &value)?;
 
     assert_eq!(&framed[..2], &[0xC3, 0x01]);
@@ -739,14 +739,14 @@ out of a store - and the natural key for caching a [`Resolution`].
 
     ```rust
     use yggdryl::io::Buffer;
-    use yggdryl::{Limits, Value, avro, json};
+    use yggdryl::{Limits, Scalar, avro, json};
 
     let schema = json::from_utf8(r#""long""#)?;
     let mut bytes = Buffer::new();
-    avro::write_container(&mut bytes, &schema, &[], &[Value::I64(7)])?;
+    avro::write_container(&mut bytes, &schema, &[], &[Scalar::I64(7)])?;
 
     let limits = Limits::new(8, 1_024, 8, 1);
-    assert_eq!(avro::read_container_with_limits(&bytes, limits)?.rows, [Value::I64(7)]);
+    assert_eq!(avro::read_container_with_limits(&bytes, limits)?.rows, [Scalar::I64(7)]);
     ```
 
 === "Python"
@@ -782,7 +782,7 @@ out of a store - and the natural key for caching a [`Resolution`].
     ```
 
 Blocks are decompressed with the codec the header names: `null`, `deflate`,
-and `zstandard` map onto the crate's own [`Codec`](enums.md) implementations,
+and `zstandard` map onto the crate's own [`Codec`](generic.md) implementations,
 and `snappy` - raw Snappy followed by a big-endian CRC-32 of the uncompressed
 block - decodes in builds carrying the `parquet` feature, which is what
 already compiles the Snappy code. Any other name, `bzip2` and `xz` among

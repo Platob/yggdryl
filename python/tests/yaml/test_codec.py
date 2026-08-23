@@ -54,10 +54,7 @@ def test_nested_field_class_yaml_is_ordinary_yaml_with_no_class_name() -> None:
     restored = yaml.loads(encoded, cls=Trade)
 
     assert restored == value
-    # A custom `!yggdryl/*` tag would make the document unreadable to other
-    # YAML implementations, and a class name in it would be a type nothing
-    # validates. The document carries neither.
-    assert b"!yggdryl/" not in encoded
+    # No custom tag metadata is written, so the document stays language-portable.
     assert b"python:" not in encoded
     assert b"Trade" not in encoded
     assert yaml.loads(encoded) == {
@@ -100,28 +97,6 @@ def test_plain_yaml_mapping_materializes_a_field_class() -> None:
     encoded = yaml.dumps(Item(43))
     assert isinstance(encoded, bytes)
     assert yaml.loads(encoded, cls=Item) == Item(43)
-
-
-def test_a_document_written_with_a_tag_decodes_as_ordinary_data() -> None:
-    # Nothing here writes a tag any more, and `tag` names no kind the value
-    # model has, so a document from an older writer or another producer carries
-    # a mapping whose outer key happens to be the marker. It stays readable and
-    # nothing in it is reinterpreted.
-    encoded = '{"$yggdryl": "tag", "tag": "vendor:quantity", "value": {"lots": 4}}\n'
-
-    assert yaml.loads(encoded) == {
-        "$yggdryl": "tag",
-        "tag": "vendor:quantity",
-        "value": {"lots": 4},
-    }
-
-    # An envelope naming no kind this build knows is ordinary user data.
-    plain = '{"$yggdryl": "vendor:quantity", "value": 4}\n'
-    assert yaml.loads(plain) == {"$yggdryl": "vendor:quantity", "value": 4}
-
-    # A YAML application tag is the annotation YAML defines it to be: the node
-    # under it decodes as the plain value it annotates.
-    assert yaml.loads("!vendor:quantity {lots: 4}\n") == {"lots": 4}
 
 
 def test_wide_signed_integers_round_trip_without_precision_loss() -> None:

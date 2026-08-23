@@ -170,7 +170,7 @@ fn typed_arrow_scalar<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     match pyarrow.getattr("scalar")?.call1((value, target.clone())) {
         Ok(scalar) => Ok(scalar),
-        Err(scalar_error) => {
+        Err(value_error) => {
             // PyArrow exposes a few valid scalar layouts only through an
             // array slot (currently run-end encoding is the important case).
             let values = PyList::new(py, [value])?;
@@ -179,7 +179,7 @@ fn typed_arrow_scalar<'py>(
             kwargs.set_item("safe", safe)?;
             match pyarrow.getattr("array")?.call((values,), Some(&kwargs)) {
                 Ok(array) => array.get_item(0),
-                Err(_) => Err(scalar_error),
+                Err(_) => Err(value_error),
             }
         }
     }
@@ -827,7 +827,7 @@ impl PyDataType {
     /// document a caller already builds.
     #[allow(clippy::wrong_self_convention)]
     fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::value::as_py(py, &self.inner.clone().into_value())
+        crate::scalar::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
@@ -835,7 +835,7 @@ impl PyDataType {
     /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreDataType::from_value(crate::value::from_py(value)?)
+        CoreDataType::from_value(crate::scalar::from_py(value)?)
             .map_err(value_error)
             .and_then(Self::from_validated)
     }

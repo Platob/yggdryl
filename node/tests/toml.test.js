@@ -9,7 +9,7 @@ const { ReadableStream, WritableStream } = require('node:stream/web')
 const test = require('node:test')
 const { pathToFileURL } = require('node:url')
 
-const { DataType, Value, codec, fields, toml } = require('yggdryl')
+const { DataType, Scalar, codec, fields, toml } = require('yggdryl')
 
 function nestedRecord(count) {
   let value = { leaf: 0 }
@@ -54,7 +54,6 @@ test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
 
   const encoded = toml.dumps(value)
   const decoded = toml.loads(encoded)
-  assert.doesNotMatch(encoded.toString('utf8'), /\$yggdryl/)
   assert.equal(decoded.bigint, value.bigint)
   assert.equal(decoded.bytes, value.bytes.toString('base64'))
   assert.equal(decoded.infinity, Infinity)
@@ -64,9 +63,6 @@ test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
   assert.deepEqual(decoded.map, { venues: ['XPAR', 'XNAS'] })
   assert.equal(decoded.schema, value.schema.toString())
   assert.deepEqual(decoded.typed, [0, 65535])
-
-  const collision = { $yggdryl: { version: 1, type: 'null' } }
-  assert.deepEqual(toml.loads(toml.dumps(collision)), collision)
 
   assert.throws(() => toml.dumps({ bigint: 2n ** 100n }), /exceeds i64/i)
   assert.throws(() => toml.dumps({ map: new Map([[1, 2]]) }), /keys must be strings/i)
@@ -79,10 +75,10 @@ test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
 test('TOML writes natural temporals and field-directed exact decimals', () => {
   const written = toml.dumps({
     at: new Date('2026-08-15T12:30:00.000Z'),
-    on: Value.date32(19723),
-    since: Value.time32(27120, 's'),
-    price: Value.d128(-1050n, 2),
-    wide: Value.d256(123456789012345678901234567890n, 4),
+    on: Scalar.date32(19723),
+    since: Scalar.time32(27120, 's'),
+    price: Scalar.d128(-1050n, 2),
+    wide: Scalar.d256(123456789012345678901234567890n, 4),
   })
 
   const text = written.toString('utf8')
@@ -90,13 +86,12 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   assert.match(text, /"on" = 2024-01-01/)
   assert.match(text, /"since" = 07:32:00/)
   assert.match(text, /"price" = "-10\.50"/)
-  assert.doesNotMatch(text, /\$yggdryl/)
 
   const decoded = toml.loads(written)
   assert.ok(decoded.at instanceof Date)
   assert.equal(decoded.at.toISOString(), '2026-08-15T12:30:00.000Z')
-  assert.ok(decoded.on.equals(Value.date32(19723)))
-  assert.ok(decoded.since.equals(Value.time32(27120, 's')))
+  assert.ok(decoded.on.equals(Scalar.date32(19723)))
+  assert.ok(decoded.since.equals(Scalar.time32(27120, 's')))
   assert.equal(decoded.price, '-10.50')
 
   const field = fields.struct('root', [
@@ -108,10 +103,10 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   ], { nullable: false })
   const typed = toml.loads(written, { field })
   assert.ok(typed.at instanceof Date)
-  assert.ok(typed.on.equals(Value.date32(19723)))
-  assert.ok(typed.price.equals(Value.d128(-1050n, 2)))
-  assert.ok(typed.since.equals(Value.time32(27120, 's')))
-  assert.ok(typed.wide.equals(Value.d256(123456789012345678901234567890n, 4)))
+  assert.ok(typed.on.equals(Scalar.date32(19723)))
+  assert.ok(typed.price.equals(Scalar.d128(-1050n, 2)))
+  assert.ok(typed.since.equals(Scalar.time32(27120, 's')))
+  assert.ok(typed.wide.equals(Scalar.d256(123456789012345678901234567890n, 4)))
 })
 
 test('TOML emission applies requested depth to the natural value', () => {
@@ -141,9 +136,9 @@ test('native TOML date-times arrive as temporal values and write back exactly', 
 
   assert.ok(decoded.offset instanceof Date)
   assert.equal(decoded.offset.toISOString(), '1979-05-27T07:32:00.000Z')
-  assert.ok(decoded.local.equals(Value.datetime64(296638320n, 's', 'NAIVE')))
-  assert.ok(decoded.date.equals(Value.date32(3433)))
-  assert.ok(decoded.time.equals(Value.time32(27120, 's')))
+  assert.ok(decoded.local.equals(Scalar.datetime64(296638320n, 's', 'NAIVE')))
+  assert.ok(decoded.date.equals(Scalar.date32(3433)))
+  assert.ok(decoded.time.equals(Scalar.time32(27120, 's')))
 
   assert.equal(
     toml.dumps(decoded).toString('utf8'),

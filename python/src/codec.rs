@@ -2,7 +2,7 @@
 //!
 //! Everything here is plumbing: bytes in, bytes out, and the stream adapters
 //! that let the core read from and write to a caller-owned Python file object.
-//! The value conversion itself belongs to [`crate::value`], so a document is
+//! The value conversion itself belongs to [`crate::scalar`], so a document is
 //! read and written through exactly one pair of functions.
 
 use std::cell::RefCell;
@@ -14,10 +14,10 @@ use pyo3::exceptions::{PyOSError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyIterator, PyMemoryView, PyString};
 use yggdryl::Field as CoreField;
-use yggdryl::text::{Format, Formatting, Indent, Limits, Value};
+use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 
 use crate::field::core_field_from_value;
-use crate::value::{PyValue, as_py, as_py_with_field, from_py};
+use crate::scalar::{PyScalar, as_py, as_py_with_field, from_py};
 use crate::value_error;
 
 /// How many documents one multi-document call may encode.
@@ -328,17 +328,17 @@ impl Read for OwnedPythonReader {
 }
 
 /// Lazy native iterator over a caller-owned Python byte or text reader.
-#[pyclass(name = "_CodecValueIterator", module = "yggdryl._native", unsendable)]
-pub(crate) struct PyCodecValueIterator {
-    inner: Box<dyn Iterator<Item = yggdryl::Result<Value>>>,
+#[pyclass(name = "_CodecScalarIterator", module = "yggdryl._native", unsendable)]
+pub(crate) struct PyCodecScalarIterator {
+    inner: Box<dyn Iterator<Item = yggdryl::Result<Scalar>>>,
     field: Option<CoreField>,
-    native_value: bool,
+    native_scalar: bool,
     reader_error: Rc<RefCell<Option<PyErr>>>,
     finished: bool,
 }
 
 #[pymethods]
-impl PyCodecValueIterator {
+impl PyCodecScalarIterator {
     // Consumption changes decoder and stream state.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
@@ -368,7 +368,7 @@ impl PyCodecValueIterator {
                         return Err(value_error(error));
                     }
                 };
-                match decoded_into_py(py, value, self.field.as_ref(), self.native_value) {
+                match decoded_into_py(py, value, self.field.as_ref(), self.native_scalar) {
                     Ok(value) => Ok(Some(value)),
                     Err(error) => {
                         self.finished = true;
@@ -600,7 +600,7 @@ pub(crate) fn codec_infer_path(value: &str) -> PyResult<&'static str> {
 #[pyo3(signature = (
     data,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -611,7 +611,7 @@ pub(crate) fn codec_decode_inferred(
     py: Python<'_>,
     data: &Bound<'_, PyAny>,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -628,14 +628,14 @@ pub(crate) fn codec_decode_inferred(
             .map_err(value_error)?;
         Ok((format, value))
     })?;
-    decoded_into_py(py, value, field.as_ref(), native_value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_decode_inferred_text")]
 #[pyo3(signature = (
     data,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -646,7 +646,7 @@ pub(crate) fn codec_decode_inferred_text(
     py: Python<'_>,
     data: &str,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -660,7 +660,7 @@ pub(crate) fn codec_decode_inferred_text(
         .as_ref()
         .map_or(Ok(value.clone()), |field| field.from_natural_value(value))
         .map_err(value_error)?;
-    decoded_into_py(py, value, field.as_ref(), native_value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_encode")]
@@ -695,7 +695,7 @@ pub(crate) fn codec_encode_writer(
 }
 
 fn encode_value_to_python_writer(
-    value: &Value,
+    value: &Scalar,
     destination: &Bound<'_, PyAny>,
     format: Format,
     formatting: Formatting,
@@ -780,7 +780,7 @@ fn loading_from(
     placeholders = None,
     environment = false,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -794,7 +794,7 @@ pub(crate) fn codec_decode(
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -811,7 +811,7 @@ pub(crate) fn codec_decode(
     let value = with_python_bytes(data, |data| {
         yggdryl::text::from_bytes_with(data, format, &loading).map_err(value_error)
     })?;
-    decoded_into_py(py, value, field.as_ref(), native_value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_decode_text")]
@@ -821,7 +821,7 @@ pub(crate) fn codec_decode(
     placeholders = None,
     environment = false,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -835,7 +835,7 @@ pub(crate) fn codec_decode_text(
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -850,7 +850,7 @@ pub(crate) fn codec_decode_text(
     )?;
     let value = yggdryl::text::from_utf8_with(data, format_from_str(format)?, &loading)
         .map_err(value_error)?;
-    decoded_into_py(py, value, field.as_ref(), native_value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_decode_reader")]
@@ -860,7 +860,7 @@ pub(crate) fn codec_decode_text(
     placeholders = None,
     environment = false,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -874,7 +874,7 @@ pub(crate) fn codec_decode_reader(
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -893,7 +893,7 @@ pub(crate) fn codec_decode_reader(
         return Err(error);
     }
     let value = decoded.map_err(value_error)?;
-    decoded_into_py(py, value, field.as_ref(), native_value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 /// Start one lazy core decoder over a caller-owned Python reader.
@@ -910,7 +910,7 @@ pub(crate) fn codec_decode_reader(
     max_nodes = None,
     max_documents = None,
     field = None,
-    native_value = false,
+    native_scalar = false,
 ))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_iter(
@@ -921,8 +921,8 @@ pub(crate) fn codec_decode_iter(
     max_nodes: Option<usize>,
     max_documents: Option<usize>,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
-) -> PyResult<PyCodecValueIterator> {
+    native_scalar: bool,
+) -> PyResult<PyCodecScalarIterator> {
     let format = format_from_str(format)?;
     if format == Format::Toml {
         return Err(PyValueError::new_err(
@@ -947,16 +947,16 @@ pub(crate) fn codec_decode_iter(
     let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
     let reader_error = Rc::new(RefCell::new(None));
     let reader = OwnedPythonReader::new(source.clone().unbind(), method, Rc::clone(&reader_error));
-    let inner: Box<dyn Iterator<Item = yggdryl::Result<Value>>> = match format {
+    let inner: Box<dyn Iterator<Item = yggdryl::Result<Scalar>>> = match format {
         Format::Json => Box::new(yggdryl::json::Reader::with_limits(reader, limits)),
         Format::JsonLines => Box::new(yggdryl::json::LinesReader::with_limits(reader, limits)),
         Format::Yaml => Box::new(yggdryl::yaml::Reader::with_limits(reader, limits)),
         Format::Toml => unreachable!("TOML was rejected before reader construction"),
     };
-    Ok(PyCodecValueIterator {
+    Ok(PyCodecScalarIterator {
         inner,
         field: field.map(core_field_from_value).transpose()?,
-        native_value,
+        native_scalar,
         reader_error,
         finished: false,
     })
@@ -1083,7 +1083,7 @@ fn close_iterator(iterator: &Bound<'_, PyIterator>) {
     data,
     format,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -1095,7 +1095,7 @@ pub(crate) fn codec_decode_all(
     data: &Bound<'_, PyAny>,
     format: &str,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -1116,7 +1116,7 @@ pub(crate) fn codec_decode_all(
             .map_err(value_error)
     })?
     .into_iter()
-    .map(|value| decoded_into_py(py, value, field.as_ref(), native_value))
+    .map(|value| decoded_into_py(py, value, field.as_ref(), native_scalar))
     .collect()
 }
 
@@ -1125,7 +1125,7 @@ pub(crate) fn codec_decode_all(
     data,
     format,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -1137,7 +1137,7 @@ pub(crate) fn codec_decode_all_text(
     data: &str,
     format: &str,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -1154,7 +1154,7 @@ pub(crate) fn codec_decode_all_text(
         )
         .map_err(value_error)?
         .into_iter()
-        .map(|value| decoded_into_py(py, value, field.as_ref(), native_value))
+        .map(|value| decoded_into_py(py, value, field.as_ref(), native_scalar))
         .collect()
 }
 
@@ -1163,7 +1163,7 @@ pub(crate) fn codec_decode_all_text(
     source,
     format,
     field = None,
-    native_value = false,
+    native_scalar = false,
     max_depth = None,
     max_input_bytes = None,
     max_nodes = None,
@@ -1175,7 +1175,7 @@ pub(crate) fn codec_decode_all_reader(
     source: &Bound<'_, PyAny>,
     format: &str,
     field: Option<&Bound<'_, PyAny>>,
-    native_value: bool,
+    native_scalar: bool,
     max_depth: Option<usize>,
     max_input_bytes: Option<usize>,
     max_nodes: Option<usize>,
@@ -1197,26 +1197,26 @@ pub(crate) fn codec_decode_all_reader(
     decoded
         .map_err(value_error)?
         .into_iter()
-        .map(|value| decoded_into_py(py, value, field.as_ref(), native_value))
+        .map(|value| decoded_into_py(py, value, field.as_ref(), native_scalar))
         .collect()
 }
 
 /// Cross one decoded core value without materializing a lossy Python view.
 pub(crate) fn decoded_into_py(
     py: Python<'_>,
-    value: Value,
+    value: Scalar,
     field: Option<&CoreField>,
-    native_value: bool,
+    native_scalar: bool,
 ) -> PyResult<Py<PyAny>> {
-    if native_value {
-        return Ok(Py::new(py, PyValue::from_inner(value))?.into_any());
+    if native_scalar {
+        return Ok(Py::new(py, PyScalar::from_inner(value))?.into_any());
     }
     decoded_as_py(py, &value, field)
 }
 
 pub(crate) fn decoded_as_py(
     py: Python<'_>,
-    value: &Value,
+    value: &Scalar,
     field: Option<&CoreField>,
 ) -> PyResult<Py<PyAny>> {
     match field {

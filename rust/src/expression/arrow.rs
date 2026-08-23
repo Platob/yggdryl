@@ -27,7 +27,8 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Datum, RecordBatch, RecordBatchReader, Scalar, UInt32Array,
+    Array, ArrayRef, BooleanArray, Datum, RecordBatch, RecordBatchReader, Scalar as ArrowScalar,
+    UInt32Array,
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_ord::cmp;
@@ -43,7 +44,7 @@ use super::selector::Attributes;
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result};
 use crate::field::cast::ArrowCast;
-use crate::{Field, Value};
+use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.
 ///
@@ -62,7 +63,7 @@ impl Vector {
     fn datum(&self) -> Box<dyn Datum + '_> {
         match self {
             Self::Column(array) => Box::new(array.clone()),
-            Self::Constant(array) => Box::new(Scalar::new(array.clone())),
+            Self::Constant(array) => Box::new(ArrowScalar::new(array.clone())),
         }
     }
 
@@ -639,7 +640,7 @@ fn validity(array: &BooleanArray, length: usize) -> BooleanBuffer {
 fn fallback(node: &Node, context: &Context<'_>) -> Result<Vector> {
     let rows = context.batch.num_rows();
     let indices = node.column_indices();
-    let mut row = vec![Value::Null; context.schema.field_len()];
+    let mut row = vec![Scalar::Null; context.schema.field_len()];
     let mut columns = Vec::with_capacity(indices.len());
     for index in &indices {
         let field = context.schema.get_field(*index).ok_or_else(|| {
@@ -654,6 +655,6 @@ fn fallback(node: &Node, context: &Context<'_>) -> Result<Vector> {
         }
         answers.push(node.eval(&Row::new(Some(&row), context.holder))?);
     }
-    let borrowed: Vec<&Value> = answers.iter().collect();
+    let borrowed: Vec<&Scalar> = answers.iter().collect();
     Ok(Vector::Column(array_from_values(&node.field, &borrowed)?))
 }

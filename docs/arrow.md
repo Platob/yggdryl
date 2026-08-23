@@ -61,7 +61,7 @@ why an `int64` arrives as a `BigInt`.
     ```rust
     use arrow_array::Array;
     use yggdryl::arrow::scalar_value;
-    use yggdryl::{DataType, Field, Value};
+    use yggdryl::{DataType, Field, Scalar};
 
     // A bare DataType projects through its own datatype default planner.
     let array = DataType::Int64.default_arrow_array()?;
@@ -72,7 +72,7 @@ why an `int64` arrives as a `BigInt`.
     let optional = Field::new("symbol", DataType::Utf8, true);
     let array = optional.default_arrow_array()?;
     assert!(array.is_null(0));
-    assert_eq!(scalar_value(&optional, array.as_ref())?, Value::Null);
+    assert_eq!(scalar_value(&optional, array.as_ref())?, Scalar::Null);
 
     // A required Null column has no value it could ever hold.
     let refused = Field::new("never", DataType::Null, false).default_arrow_array();
@@ -128,7 +128,7 @@ Field method is the one that can return a logical null.
 
     ```rust
     use yggdryl::arrow::scalar_value;
-    use yggdryl::{DataType, Field, Value};
+    use yggdryl::{DataType, Field, Scalar};
 
     let schema = Field::new(
         "row",
@@ -143,7 +143,7 @@ Field method is the one that can return a logical null.
     let values = row.as_sequence().ok_or("a struct row is an ordered sequence")?;
     assert_eq!(values.len(), 2);
     assert_eq!(values[0].as_i128(), Some(0));
-    assert_eq!(values[1], Value::Null);
+    assert_eq!(values[1], Scalar::Null);
     ```
 
 === "Python"
@@ -192,7 +192,7 @@ Field method is the one that can return a logical null.
     ```
 
 A non-null Struct Field is the schema, described in [field.md](field.md), so the default scalar of
-a schema is one default row. A Rust `Value` for a struct is positional, which is why the row above
+a schema is one default row. A Rust `Scalar` for a struct is positional, which is why the row above
 is indexed rather than keyed; Python and JavaScript project the same row through their own struct
 scalar, keyed by name.
 
@@ -210,10 +210,10 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int64Array};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, Value};
+use yggdryl::{DataType, Field, Scalar};
 
 let field = Field::new("id", DataType::Int64, false);
-let array = scalar_array(&field, &Value::from(7_i64))?;
+let array = scalar_array(&field, &Scalar::from(7_i64))?;
 assert_eq!(array.len(), 1);
 
 // The exact Field decodes the same one-row array back, unchanged.
@@ -224,12 +224,12 @@ let two: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
 assert!(scalar_value(&field, two.as_ref()).is_err());
 
 // And the value has to satisfy the Field, recursively.
-assert!(scalar_array(&field, &Value::Null).is_err());
+assert!(scalar_array(&field, &Scalar::Null).is_err());
 ```
 
 `scalar_array` and `scalar_value` are the two directions of one boundary: a validated native value
 becomes an immutable one-row `ArrayRef`, and a one-row array that came from somewhere else decodes
-back to its canonical `Value`. The exact `Field` beside them is the authority an array datatype
+back to its canonical `Scalar`. The exact `Field` beside them is the authority an array datatype
 alone cannot be - it carries the name, the nullability, the dictionary options, the metadata, and
 the extension identity - so both directions validate through the same schema-directed walk every
 row value takes. The array is a plain `ArrayRef`, so exporting to Arrow never copies buffers.
@@ -241,32 +241,32 @@ but only when the decoded value is exactly its datatype's canonical intrinsic de
 exception is what keeps null-only dictionaries, unions, and run-end encodings closed under
 `scalar_array` followed by `scalar_value`, without admitting an arbitrary selected null.
 
-## TypedValue is the scalar without a Field
+## TypedScalar is the scalar without a Field
 
 ```rust
 use arrow_array::Array;
-use yggdryl::generic::Int64Value;
-use yggdryl::{DataType, TypedValue, Value};
+use yggdryl::generic::Int64Scalar;
+use yggdryl::{DataType, TypedScalar, Scalar};
 
-let price = TypedValue::from_parts(DataType::Int64, Value::from(7_i64))?;
+let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
 let array = price.clone().into_arrow_array()?;
 assert_eq!(array.len(), 1);
-assert_eq!(TypedValue::from_arrow_array(DataType::Int64, array.as_ref())?, price);
+assert_eq!(TypedScalar::from_arrow_array(DataType::Int64, array.as_ref())?, price);
 
 // The marker-narrowed decode checks the datatype at compile time too.
-let typed = Int64Value::try_from_arrow_array(DataType::Int64, array.as_ref())?;
-assert_eq!(typed.value(), &Value::I64(7));
+let typed = Int64Scalar::try_from_arrow_array(DataType::Int64, array.as_ref())?;
+assert_eq!(typed.value(), &Scalar::I64(7));
 
 // A null projects only when the datatype's own default spells it...
-let nothing = TypedValue::from_parts(DataType::Null, Value::Null)?;
+let nothing = TypedScalar::from_parts(DataType::Null, Scalar::Null)?;
 assert_eq!(nothing.into_arrow_array()?.logical_null_count(), 1);
 
 // ...an int64 null belongs to a nullable Field, so the pairing refuses it.
-let absent = TypedValue::from_parts(DataType::Int64, Value::Null)?;
+let absent = TypedScalar::from_parts(DataType::Int64, Scalar::Null)?;
 assert!(absent.into_arrow_array().is_err());
 ```
 
-A caller holding a [`TypedValue`](generic.md) - one value and one datatype, with no Field around
+A caller holding a [`TypedScalar`](generic.md) - one value and one datatype, with no Field around
 them - projects the same boundary directly: `into_arrow_array` materializes one row, and
 `from_arrow_array` (or the marker-narrowed `try_from_arrow_array`) decodes row zero of a one-row
 array into a validated pairing. The projection runs through a synthetic non-nullable Field over the
@@ -321,7 +321,7 @@ assert_eq!(inner.len(), 1);
 
 `StructScalar` is the same idea one level up: one present Arrow struct row paired with the root
 Field it satisfies. `from_parts` refuses
-anything that is not exactly one row, refuses a null root - a native `Value` cannot represent one -
+anything that is not exactly one row, refuses a null root - a native `Scalar` cannot represent one -
 and refuses a struct array whose columns are not exactly the ones the Field declares, naming both
 schemas in the error.
 
@@ -599,7 +599,7 @@ is already the declared shape rather than rebuilding arrays it would hand back u
 
 ```rust
 use yggdryl::arrow::scalar_array;
-use yggdryl::{DataType, Field, Value};
+use yggdryl::{DataType, Field, Scalar};
 
 // One logical null, one million and one mandatory physical child slots.
 let items = Field::new(
@@ -607,7 +607,7 @@ let items = Field::new(
     DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 1_000_001)?,
     true,
 );
-let message = scalar_array(&items, &Value::Null).unwrap_err().to_string();
+let message = scalar_array(&items, &Scalar::Null).unwrap_err().to_string();
 assert!(message.contains("expanded slots"), "{message}");
 assert!(message.contains("expected at most 1000000"), "{message}");
 assert!(message.contains("got 1000001"), "{message}");
@@ -617,7 +617,7 @@ let wide = DataType::from_fields([
     Field::new("left", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
     Field::new("right", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
 ])?;
-let message = scalar_array(&Field::new("wide", wide, true), &Value::Null)
+let message = scalar_array(&Field::new("wide", wide, true), &Scalar::Null)
     .unwrap_err()
     .to_string();
 assert!(message.contains("fixed bytes"), "{message}");
@@ -638,7 +638,7 @@ A sparse union pays for every child at once, because sparse children are all ful
 
 ```rust
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, UnionMode, Value};
+use yggdryl::{DataType, Field, UnionMode, Scalar};
 
 // The inactive branch is far past the byte budget, and is never visited.
 let dense = DataType::union(
@@ -657,7 +657,7 @@ let dense = DataType::union(
 )?;
 
 let choice = Field::new("choice", dense, false);
-let chosen = Value::from_sequence([Value::from(0_i8), Value::from(11_i32)]);
+let chosen = Scalar::from_sequence([Scalar::from(0_i8), Scalar::from(11_i32)]);
 let array = scalar_array(&choice, &chosen)?;
 assert_eq!(scalar_value(&choice, array.as_ref())?, chosen);
 ```

@@ -47,7 +47,7 @@ ARCHITECTURE IN BRIEF:
   `Field::into_arrow_exchange_schema`), and BatchReader.
 - \`yggdryl::field::cast\` holds the ArrowCast trait and the typed per-datatype casts
   (Int64Field::cast_arrow_array -> Int64Array via ArrowFieldType). Batch casting IS array casting.
-- \`yggdryl::text\` holds the shared \`Value\` tree and the four format types \`Json\`, \`Jsonl\`,
+- \`yggdryl::generic\` holds the shared \`Scalar\` tree; \`yggdryl::text\` owns the four format types \`Json\`, \`Jsonl\`,
   \`Toml\`, \`Yaml\`, all implementing \`TextCodec\`.
 - \`yggdryl::uri\` holds Uri/Url/Urn with full std Path/PathBuf interop.
 - \`yggdryl::iceberg\` (non-default \`iceberg\` feature) maps Iceberg schemas to struct Fields.
@@ -124,10 +124,10 @@ const CORE_PAGES = [
     cover: 'Building and parsing logical types, nesting, decimals, temporal units, dictionaries, run-end encoding, unions and the variant alias, the id/kind vocabulary, Arrow projection, default values, and compatibility rewriting for spark/polars/pandas.' },
   { module: 'field', title: 'Field', bindings: true,
     read: 'rust/src/field/ (mod.rs, typed.rs, value.rs, diff.rs, parser.rs, serde.rs, arrow.rs, cast/), rust/tests/field/, python/src/field.rs, python/tests/test_field.py, node/src/field.rs, node/tests/field.test.js, node/tests/fields.test.js',
-    cover: 'A field is a name, datatype, nullability, and metadata; a non-null struct field is the schema. Cover construction, metadata mappings, typed aliases, Value validation/canonicalization, comparison, and ArrowCast. Python `@scalar` wraps a stdlib dataclass and installs cached static `Class.field()`; global `field(value, name=None)` is only a builder. Rust keeps typed `into_field`/`into_struct_field`.' },
+    cover: 'A field is a name, datatype, nullability, and metadata; a non-null struct field is the schema. Cover construction, metadata mappings, typed aliases, Scalar validation/canonicalization, comparison, and ArrowCast. Python `@scalar` wraps a stdlib dataclass and installs cached static `Class.field()`; global `field(value, name=None)` is only a builder. Rust keeps typed `into_field`/`into_struct_field`.' },
   { module: 'arrow', title: 'Arrow interoperability', bindings: true,
     read: 'rust/src/arrow/, rust/tests/default_scalar.rs, rust/tests/value_bounds.rs, rust/tests/batch_cast.rs, plus the arrow_scalar methods in python/src and node/src',
-    cover: 'scalar_array / scalar_value and StructScalar, the DataType/Field default_arrow_array methods and the TypedValue Arrow projection, Field::into_arrow_schema / Field::from_arrow_schema / Field::into_arrow_exchange_schema, and the streaming BatchReader. Say plainly that Arrow speaks batches and scalars. Cover materialization budgets that reject oversized allocations first. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
+    cover: 'scalar_array / scalar_value and StructScalar, the DataType/Field default_arrow_array methods and the TypedScalar Arrow projection, Field::into_arrow_schema / Field::from_arrow_schema / Field::into_arrow_exchange_schema, and the streaming BatchReader. Say plainly that Arrow speaks batches and scalars. Cover materialization budgets that reject oversized allocations first. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
   { module: 'ipc', title: 'Arrow IPC', bindings: true,
     read: 'rust/src/ipc/ (mod.rs, tests.rs), rust/src/io/media.rs, python/src/io.rs, python/tests/test_ipc.py, node/src/io.rs, node/tests/io.test.js',
     cover: 'Reading and writing Arrow IPC over any handle: read_arrow_field/read_arrow_reader, overwrite/append/merge and the mode-dispatching write methods, optimized table and record-batch widening, shared RecordOptions, streaming BatchReader behavior, and automatic content coding. Present overwrite, append, keyed merge, and read in Rust/Python/JavaScript tabs.' },
@@ -142,16 +142,16 @@ const CORE_PAGES = [
     cover: 'Parsing and canonical syntax, components, path segments and extensions, compound-filename media inference, joinpath/parent/parents/parts, default_port, and Path/PathBuf interop (from_path, into_path, TryFrom, join_path, is_local, exists, is_dir, is_file, local_mime_type). All three languages expose this.' },
   { module: 'text', title: 'Structured text values', bindings: true,
     read: 'rust/src/text/ (mod.rs, codec.rs, format.rs, limits.rs, display.rs, io.rs), rust/src/generic/value.rs, rust/tests/text/, python/src/codec.rs, node/src/codec.rs',
-    cover: 'The shared Value tree - variants, floats, limits, byte positions, format inference - and then the four format types Json/Jsonl/Toml/Yaml behind one TextCodec surface, including reading and writing through an IOBase handle with its content coding. Python and JavaScript expose the value conversion and the codecs, so those examples get three tabs.' },
+    cover: 'The shared Scalar tree - variants, floats, limits, byte positions, format inference - and then the four format types Json/Jsonl/Toml/Yaml behind one TextCodec surface, including reading and writing through an IOBase handle with its content coding. Python and JavaScript expose scalar conversion and the codecs, so those examples get three tabs.' },
   { module: 'json', title: 'JSON', bindings: true,
     read: 'rust/src/json/, rust/tests/json.rs, python/yggdryl/json/, node/tests/codec.test.js',
-    cover: 'Reading and writing JSON through the shared Value: whole-value and streaming forms, newline-delimited JSON, limits, and automatic content coding from a filename.' },
+    cover: 'Reading and writing JSON through Scalar: whole-value and streaming forms, newline-delimited JSON, limits, and automatic content coding from a filename.' },
   { module: 'yaml', title: 'YAML', bindings: true,
     read: 'rust/src/yaml/, rust/tests/yaml.rs, python/yggdryl/yaml/, node/tests/codec.test.js',
-    cover: 'Reading and writing YAML through the shared Value, multi-document handling, the deliberate absence of tag emission, and how a tag on input is read.' },
+    cover: 'Reading and writing YAML through Scalar, multi-document handling, the deliberate absence of tag emission, and how a tag on input is read.' },
   { module: 'toml', title: 'TOML', bindings: true,
     read: 'rust/src/toml/, rust/tests/toml.rs, python/yggdryl/toml/, node/tests/toml.test.js',
-    cover: 'Reading and writing TOML through the shared Value, table ordering, and the type mapping.' },
+    cover: 'Reading and writing TOML through Scalar, table ordering, and the type mapping.' },
 ]
 
 const CORE_LINKS = CORE_PAGES.map((page) => `${page.module}.md`).join(', ')

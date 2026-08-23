@@ -54,7 +54,7 @@
 Scheme, authority, and path are concrete values, not optionals: a URI with no authority has the
 empty authority, and a URI with no path has the empty path. Query and fragment are the two
 components that are genuinely absent or present, so they are the only ones that arrive as an
-option. The scheme is a [`Scheme`](enums.md) and the path is a `UriPath`, both of which validate
+option. The scheme is a [`Scheme`](generic.md) and the path is a `UriPath`, both of which validate
 on construction, so an ill-formed component cannot reach a `Uri` at all.
 
 ## Canonical on arrival
@@ -457,7 +457,7 @@ refused: encoding is the caller's decision, and the setters will not silently ma
     ```
 
 `report.csv.gz.zst` is CSV that was gzipped and then zstd-compressed, and the extension chain says
-so in order. [`MediaType`](enums.md) splits that into a base and its transparent encodings, which
+so in order. [`MediaType`](generic.md) splits that into a base and its transparent encodings, which
 is exactly what an HTTP `Content-Type` plus `Content-Encoding` pair carries, so a name and a set
 of headers describe the same thing. A name with no recognised suffix reads as
 `application/octet-stream` rather than failing.
@@ -783,7 +783,7 @@ which is a fact about the scheme rather than a missing value.
 scheme, because reporting anything else would require a network call an accessor has no business
 making. `local_mime_type` follows the same rule from the other side: an existing directory is
 `MimeType::DIRECTORY`, an existing local file is identified from its name and falls back to
-`MimeType::FILE`, and a remote URL falls back to the [`MimeType`](enums.md) its name already
+`MimeType::FILE`, and a remote URL falls back to the [`MimeType`](generic.md) its name already
 implies.
 
 ## Patterns and partitions

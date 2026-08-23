@@ -1489,7 +1489,7 @@ mod geospatial {
             crate::DataType::geometry(Some("EPSG:3857"))
                 .unwrap()
                 .nullable_field("shape"),
-            crate::DataType::geography(None, Some(crate::enums::EdgeAlgorithm::Vincenty))
+            crate::DataType::geography(None, Some(crate::generic::EdgeAlgorithm::Vincenty))
                 .unwrap()
                 .nullable_field("route"),
             crate::DataType::variant().nullable_field("payload"),

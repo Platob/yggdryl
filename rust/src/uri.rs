@@ -11,7 +11,7 @@ use serde::ser::SerializeStruct as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, SmolStrBuilder};
 
-use crate::enums::{MediaType, MimeType, Scheme};
+use crate::generic::{MediaType, MimeType, Scheme};
 use crate::{Error, Result, stable_hash_display};
 
 pub(crate) mod pattern;

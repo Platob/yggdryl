@@ -24,7 +24,7 @@ use crate::metadata::{
     property_key, write_json_string as write_quoted,
 };
 use crate::{
-    Error, MediaType, Metadata, MimeType, Result, Scheme, Url, Value, stable_hash_display,
+    Error, MediaType, Metadata, MimeType, Result, Scalar, Scheme, Url, stable_hash_display,
 };
 
 /// Emit the borrowed and mutable protocol view accessors of one protocol.
@@ -172,7 +172,7 @@ pub type FieldRef = Arc<ArrowField>;
 
 /// An allocation-conscious Arrow field with field-owned metadata.
 ///
-/// Value traits ignore the projection cache. Clones share metadata, nested
+/// Scalar traits ignore the projection cache. Clones share metadata, nested
 /// datatype state, and a populated Arrow projection until an effective change
 /// invalidates the cache.
 pub struct Field {
@@ -203,7 +203,7 @@ impl Field {
     ///
     /// Nullable fields prefer logical null. Union and run-end layouts encode
     /// that null through a physically nullable logical child when possible.
-    pub fn default_value(&self) -> Result<Value> {
+    pub fn default_value(&self) -> Result<Scalar> {
         default_value_for_field(self)
     }
 
@@ -497,7 +497,7 @@ impl Field {
 
     /// Validates one row value against this struct root.
     ///
-    /// The row is an ordered [`Value::Sequence`] with one entry per struct
+    /// The row is an ordered [`Scalar::Sequence`] with one entry per struct
     /// child. Validation is schema-directed and reports the dot/bracket path
     /// of the first value that does not fit.
     ///
@@ -505,7 +505,7 @@ impl Field {
     ///
     /// Returns an error when the root is not a struct, the row has the wrong
     /// arity, or any value violates its field's datatype or nullability.
-    pub fn validate_value(&self, value: &Value) -> Result<()> {
+    pub fn validate_value(&self, value: &Scalar) -> Result<()> {
         // Only a struct is required here. Nullability is a media-root concern:
         // a nullable struct is a perfectly good row schema, and a null row is
         // representable in Arrow even though a tabular resource forbids it.
@@ -522,7 +522,7 @@ impl Field {
     /// # Errors
     ///
     /// Returns an error when a value cannot be represented by its field.
-    pub fn canonicalize_value(&self, value: Value) -> Result<Value> {
+    pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar> {
         self.validate_value(&value)?;
         value::canonicalize_row(self, value)
     }
@@ -536,7 +536,7 @@ impl Field {
     ///
     /// Returns the first value whose natural representation cannot satisfy
     /// this field.
-    pub fn from_natural_value(&self, value: Value) -> Result<Value> {
+    pub fn from_natural_value(&self, value: Scalar) -> Result<Scalar> {
         crate::text::typed::with_field(value, self)
     }
 

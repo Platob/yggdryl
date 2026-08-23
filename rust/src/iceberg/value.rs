@@ -2,7 +2,7 @@
 //!
 //! Two places in the format store a value as text rather than as data: a
 //! partition directory name and a snapshot summary entry. Both need the same
-//! rendering, and neither can use the core [`Value`]'s serialization, because
+//! rendering, and neither can use the core [`Scalar`]'s serialization, because
 //! `"XNAS"` must become `XNAS` and not `"XNAS"`.
 //!
 //! The rendering itself is not Iceberg's. A `column=value` directory is the
@@ -29,7 +29,7 @@ use std::cmp::Ordering;
 
 use smol_str::SmolStr;
 
-use crate::{DataType, Value};
+use crate::{DataType, Scalar};
 
 /// The literal Iceberg writes for a null partition value.
 pub(super) const NULL_TEXT: &str = crate::io::partition::NULL_PARTITION;
@@ -40,7 +40,7 @@ pub(super) const NULL_TEXT: &str = crate::io::partition::NULL_PARTITION;
 /// mapping - has no directory spelling at all, so it falls back to its JSON
 /// form: lossless and readable rather than invented. A partition tuple never
 /// contains one, because a partition value is a scalar.
-pub(super) fn scalar_text(value: &Value) -> SmolStr {
+pub(super) fn scalar_text(value: &Scalar) -> SmolStr {
     crate::io::partition::partition_text(value).unwrap_or_else(|_| {
         crate::json::into_bytes(value)
             .ok()
@@ -80,9 +80,9 @@ pub(super) const fn is_portable(data_type: &DataType) -> bool {
 ///
 /// The datatype decides the encoding rather than the value's own variant,
 /// because a column declared `Int32` still arrives as a 64-bit
-/// [`Value::I64`]. A value that does not fit the column, and every type whose
+/// [`Scalar::I64`]. A value that does not fit the column, and every type whose
 /// encoding is not [`is_portable`], has no bytes rather than the wrong ones.
-pub(super) fn single_value(value: &Value, data_type: &DataType) -> Option<Vec<u8>> {
+pub(super) fn single_value(value: &Scalar, data_type: &DataType) -> Option<Vec<u8>> {
     match data_type {
         DataType::Boolean => value.as_bool().map(|flag| vec![u8::from(flag)]),
         DataType::Int32 | DataType::Date32 => i32::try_from(count(value)?)
@@ -114,28 +114,28 @@ pub(super) fn single_value(value: &Value, data_type: &DataType) -> Option<Vec<u8
 /// not bytes, so a bound has to become a value exactly once. A type whose
 /// encoding [`is_portable`] does not cover has no value rather than a wrong
 /// one, and the pruner then simply declines.
-pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Value> {
+pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Scalar> {
     match data_type {
-        DataType::Boolean => bytes.first().map(|byte| Value::Bool(*byte != 0)),
-        DataType::Int32 => Some(Value::I32(int32(bytes))),
-        DataType::Date32 => Some(Value::date32(int32(bytes))),
-        DataType::Int64 => Some(Value::I64(int64(bytes))),
-        DataType::Time64(unit) => Value::time64(int64(bytes), *unit, crate::Timezone::NAIVE).ok(),
+        DataType::Boolean => bytes.first().map(|byte| Scalar::Bool(*byte != 0)),
+        DataType::Int32 => Some(Scalar::I32(int32(bytes))),
+        DataType::Date32 => Some(Scalar::date32(int32(bytes))),
+        DataType::Int64 => Some(Scalar::I64(int64(bytes))),
+        DataType::Time64(unit) => Scalar::time64(int64(bytes), *unit, crate::Timezone::NAIVE).ok(),
         DataType::Timestamp(unit, Some(zone)) => {
-            Value::datetime64(int64(bytes), *unit, zone.clone()).ok()
+            Scalar::datetime64(int64(bytes), *unit, zone.clone()).ok()
         }
         DataType::Timestamp(unit, None) => {
-            Value::datetime64(int64(bytes), *unit, crate::Timezone::NAIVE).ok()
+            Scalar::datetime64(int64(bytes), *unit, crate::Timezone::NAIVE).ok()
         }
-        DataType::Float32 => Some(Value::F32(crate::Float32::from_f32(float32(bytes)))),
-        DataType::Float64 => Some(Value::F64(crate::Float64::from_f64(float64(bytes)))),
+        DataType::Float32 => Some(Scalar::F32(crate::Float32::from_f32(float32(bytes)))),
+        DataType::Float64 => Some(Scalar::F64(crate::Float64::from_f64(float64(bytes)))),
         DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-            std::str::from_utf8(bytes).ok().map(Value::from)
+            std::str::from_utf8(bytes).ok().map(Scalar::from)
         }
         DataType::Binary
         | DataType::LargeBinary
         | DataType::BinaryView
-        | DataType::FixedSizeBinary(_) => Some(Value::from(bytes)),
+        | DataType::FixedSizeBinary(_) => Some(Scalar::from(bytes)),
         _ => None,
     }
 }
@@ -144,15 +144,15 @@ pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Valu
 ///
 /// A date counts days, a time counts its unit since midnight, and a timestamp
 /// counts its unit since the epoch, so all three are one integer to an encoder.
-fn count(value: &Value) -> Option<i64> {
+fn count(value: &Scalar) -> Option<i64> {
     match value {
-        Value::Date32(count, _, _)
-        | Value::Time32(count, _, _)
-        | Value::Duration32(count, _, _) => Some(i64::from(*count)),
-        Value::Date64(count, _, _)
-        | Value::Time64(count, _, _)
-        | Value::DateTime64(count, _, _)
-        | Value::Duration64(count, _, _) => Some(*count),
+        Scalar::Date32(count, _, _)
+        | Scalar::Time32(count, _, _)
+        | Scalar::Duration32(count, _, _) => Some(i64::from(*count)),
+        Scalar::Date64(count, _, _)
+        | Scalar::Time64(count, _, _)
+        | Scalar::DateTime64(count, _, _)
+        | Scalar::Duration64(count, _, _) => Some(*count),
         other => other.as_i64(),
     }
 }

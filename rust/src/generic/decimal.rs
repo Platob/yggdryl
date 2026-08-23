@@ -13,24 +13,24 @@
 //! mapping key.
 //!
 //! ```
-//! use yggdryl::Value;
+//! use yggdryl::Scalar;
 //!
-//! let price = Value::d128(1_050, 2); // 10.50
+//! let price = Scalar::d128(1_050, 2); // 10.50
 //!
 //! assert_eq!(price.as_d128(), Some((1_050, 2)));
-//! assert_eq!(price, Value::d128(105, 1));
+//! assert_eq!(price, Scalar::d128(105, 1));
 //! assert_eq!(price.decimal_unscaled_at(4), Some(105_000));
 //! ```
 
 use std::cmp::Ordering;
 
-use super::value::Value;
+use super::scalar::Scalar;
 use crate::I256;
 
-impl Value {
+impl Scalar {
     /// Build an exact decimal from an unscaled integer and a scale.
     ///
-    /// The value is `unscaled * 10^-scale`, so `Value::d128(1_050, 2)` is
+    /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
     /// `10.50`. A negative scale multiplies instead, exactly as Arrow allows.
     pub const fn d128(unscaled: i128, scale: i8) -> Self {
         Self::D128(unscaled, scale)

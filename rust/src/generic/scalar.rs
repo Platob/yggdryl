@@ -1,6 +1,6 @@
 //! The one value every part of the project speaks.
 //!
-//! A [`Value`] is any native value: null, a boolean, a signed or unsigned
+//! A [`Scalar`] is any native value: null, a boolean, a signed or unsigned
 //! integer at every width from 8 to 128 bits, a float at 16, 32, or 64 bits,
 //! an exact decimal, text, bytes, width-typed temporals, an ordered sequence,
 //! an arbitrary-key mapping, or a name-sorted record. It is what [`crate::json`], [`crate::yaml`], and
@@ -11,21 +11,21 @@
 //!
 //! Every kind that carries a unit or a scale carries it as a typed field rather
 //! than as a free-form name over an untyped payload, because a name nothing
-//! validates is not a type. [`Value::data_type`] reads the datatype straight
+//! validates is not a type. [`Scalar::data_type`] reads the datatype straight
 //! off the variant for exactly that reason. There is deliberately no `Variant`
-//! kind: a variant value is a `Value` - a self-describing tree - so the binary
+//! kind: a variant value is a `Scalar` - a self-describing tree - so the binary
 //! form is an encoding of the one value model, not a second value model.
 //!
 //! ```
-//! use yggdryl::Value;
+//! use yggdryl::Scalar;
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let quote = Value::from_record([
-//!     ("symbol", Value::from("AAPL")),
-//!     ("price", Value::d128(125, 1)),
+//! let quote = Scalar::from_record([
+//!     ("symbol", Scalar::from("AAPL")),
+//!     ("price", Scalar::d128(125, 1)),
 //! ])?;
 //!
-//! assert_eq!(quote.get_key_str("symbol").and_then(Value::as_utf8), Some("AAPL"));
+//! assert_eq!(quote.get_key_str("symbol").and_then(Scalar::as_utf8), Some("AAPL"));
 //! assert_eq!(quote.len(), 2);
 //! # Ok(())
 //! # }
@@ -528,9 +528,9 @@ impl<'de> Deserialize<'de> for Float32 {
     }
 }
 
-/// A shared, deterministic structured-data value spanning JSON and YAML.
+/// The shared deterministic scalar spanning native and structured formats.
 #[derive(Clone, Debug)]
-pub enum Value {
+pub enum Scalar {
     /// The null value.
     Null,
     /// A boolean.
@@ -592,14 +592,14 @@ pub enum Value {
     /// A 64-bit elapsed count, unit, and explicit zone-free marker.
     Duration64(i64, TimeUnit, Timezone),
     /// An ordered sequence.
-    Sequence(Arc<[Value]>),
+    Sequence(Arc<[Scalar]>),
     /// An insertion-ordered mapping with arbitrary unique keys.
-    Mapping(Arc<[(Value, Value)]>),
+    Mapping(Arc<[(Scalar, Scalar)]>),
     /// A deterministic row mapping sorted by field name.
-    Record(Arc<BTreeMap<SmolStr, Value>>),
+    Record(Arc<BTreeMap<SmolStr, Scalar>>),
 }
 
-impl Serialize for Value {
+impl Serialize for Scalar {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -644,7 +644,7 @@ impl Serialize for Value {
             tag: &'static str,
             value: &T,
         ) -> std::result::Result<S::Ok, S::Error> {
-            let mut document = serializer.serialize_struct("Value", 2)?;
+            let mut document = serializer.serialize_struct("Scalar", 2)?;
             document.serialize_field("type", tag)?;
             document.serialize_field("value", value)?;
             document.end()
@@ -652,7 +652,7 @@ impl Serialize for Value {
 
         match self {
             Self::Null => {
-                let mut document = serializer.serialize_struct("Value", 1)?;
+                let mut document = serializer.serialize_struct("Scalar", 1)?;
                 document.serialize_field("type", "null")?;
                 document.end()
             }
@@ -725,7 +725,7 @@ impl Serialize for Value {
     }
 }
 
-impl<'de> Deserialize<'de> for Value {
+impl<'de> Deserialize<'de> for Scalar {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -748,7 +748,7 @@ impl<'de> Deserialize<'de> for Value {
 
         /// Record entries kept in input order until the canonical constructor
         /// sorts them and rejects duplicate field names.
-        struct RecordEntries(Vec<(SmolStr, Value)>);
+        struct RecordEntries(Vec<(SmolStr, Scalar)>);
 
         impl<'de> Deserialize<'de> for RecordEntries {
             fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
@@ -780,7 +780,7 @@ impl<'de> Deserialize<'de> for Value {
             }
         }
 
-        // This mirror must stay variant-for-variant identical to `Value`: a
+        // This mirror must stay variant-for-variant identical to `Scalar`: a
         // variant missing here is not a compile error, it is a variant serde
         // silently refuses to read back.
         #[derive(Deserialize)]
@@ -814,8 +814,8 @@ impl<'de> Deserialize<'de> for Value {
             DateTime64(Temporal64),
             Duration32(Temporal32),
             Duration64(Temporal64),
-            Sequence(Vec<Value>),
-            Mapping(Vec<(Value, Value)>),
+            Sequence(Vec<Scalar>),
+            Mapping(Vec<(Scalar, Scalar)>),
             Record(RecordEntries),
         }
 
@@ -928,21 +928,21 @@ impl<'de> Deserialize<'de> for Value {
     }
 }
 
-impl PartialEq for Value {
+impl PartialEq for Scalar {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl Eq for Value {}
+impl Eq for Scalar {}
 
-impl PartialOrd for Value {
+impl PartialOrd for Scalar {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Value {
+impl Ord for Scalar {
     fn cmp(&self, other: &Self) -> Ordering {
         match (integer(self), integer(other)) {
             (Some(left), Some(right)) => return compare_integer(left, right),
@@ -1018,7 +1018,7 @@ impl Ord for Value {
     }
 }
 
-impl Hash for Value {
+impl Hash for Scalar {
     fn hash<H: Hasher>(&self, state: &mut H) {
         value_rank(self).hash(state);
         if let Some(integer) = integer(self) {
@@ -1079,7 +1079,7 @@ enum Integer {
     NonNegative(u128),
 }
 
-fn integer(value: &Value) -> Option<Integer> {
+fn integer(value: &Scalar) -> Option<Integer> {
     fn signed(value: i128) -> Integer {
         if value < 0 {
             Integer::Negative(value.unsigned_abs())
@@ -1088,16 +1088,16 @@ fn integer(value: &Value) -> Option<Integer> {
         }
     }
     match value {
-        Value::I8(value) => Some(signed(i128::from(*value))),
-        Value::I16(value) => Some(signed(i128::from(*value))),
-        Value::I32(value) => Some(signed(i128::from(*value))),
-        Value::I64(value) => Some(signed(i128::from(*value))),
-        Value::I128(value) => Some(signed(*value)),
-        Value::U8(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Value::U16(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Value::U32(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Value::U64(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Value::U128(value) => Some(Integer::NonNegative(*value)),
+        Scalar::I8(value) => Some(signed(i128::from(*value))),
+        Scalar::I16(value) => Some(signed(i128::from(*value))),
+        Scalar::I32(value) => Some(signed(i128::from(*value))),
+        Scalar::I64(value) => Some(signed(i128::from(*value))),
+        Scalar::I128(value) => Some(signed(*value)),
+        Scalar::U8(value) => Some(Integer::NonNegative(u128::from(*value))),
+        Scalar::U16(value) => Some(Integer::NonNegative(u128::from(*value))),
+        Scalar::U32(value) => Some(Integer::NonNegative(u128::from(*value))),
+        Scalar::U64(value) => Some(Integer::NonNegative(u128::from(*value))),
+        Scalar::U128(value) => Some(Integer::NonNegative(*value)),
         _ => None,
     }
 }
@@ -1106,35 +1106,39 @@ fn integer(value: &Value) -> Option<Integer> {
 ///
 /// Widening an `f32` to `f64` is exact, so one total order covers the family;
 /// the width stays on the value itself and on the wire.
-fn float(value: &Value) -> Option<Float64> {
+fn float(value: &Scalar) -> Option<Float64> {
     match value {
-        Value::F16(value) => Some(Float64::from_f64(value.as_f64())),
-        Value::F32(value) => Some(Float64::from_f64(value.as_f64())),
-        Value::F64(value) => Some(*value),
+        Scalar::F16(value) => Some(Float64::from_f64(value.as_f64())),
+        Scalar::F32(value) => Some(Float64::from_f64(value.as_f64())),
+        Scalar::F64(value) => Some(*value),
         _ => None,
     }
 }
 
-fn decimal_value(value: &Value) -> Option<(I256, i8)> {
+fn decimal_value(value: &Scalar) -> Option<(I256, i8)> {
     match value {
-        Value::D128(unscaled, scale) => Some((I256::from_i128(*unscaled), *scale)),
-        Value::D256(unscaled, scale) => Some((*unscaled, *scale)),
+        Scalar::D128(unscaled, scale) => Some((I256::from_i128(*unscaled), *scale)),
+        Scalar::D256(unscaled, scale) => Some((*unscaled, *scale)),
         _ => None,
     }
 }
 
 /// The family, normalized count, and zone of one temporal.
-fn temporal_value(value: &Value) -> Option<(u8, (u8, i128), &Timezone)> {
+fn temporal_value(value: &Scalar) -> Option<(u8, (u8, i128), &Timezone)> {
     match value {
-        Value::Date32(count, unit, zone) => Some((0, temporal_key(i64::from(*count), *unit), zone)),
-        Value::Date64(count, unit, zone) => Some((0, temporal_key(*count, *unit), zone)),
-        Value::Time32(count, unit, zone) => Some((1, temporal_key(i64::from(*count), *unit), zone)),
-        Value::Time64(count, unit, zone) => Some((1, temporal_key(*count, *unit), zone)),
-        Value::DateTime64(count, unit, zone) => Some((2, temporal_key(*count, *unit), zone)),
-        Value::Duration32(count, unit, zone) => {
+        Scalar::Date32(count, unit, zone) => {
+            Some((0, temporal_key(i64::from(*count), *unit), zone))
+        }
+        Scalar::Date64(count, unit, zone) => Some((0, temporal_key(*count, *unit), zone)),
+        Scalar::Time32(count, unit, zone) => {
+            Some((1, temporal_key(i64::from(*count), *unit), zone))
+        }
+        Scalar::Time64(count, unit, zone) => Some((1, temporal_key(*count, *unit), zone)),
+        Scalar::DateTime64(count, unit, zone) => Some((2, temporal_key(*count, *unit), zone)),
+        Scalar::Duration32(count, unit, zone) => {
             Some((3, temporal_key(i64::from(*count), *unit), zone))
         }
-        Value::Duration64(count, unit, zone) => Some((3, temporal_key(*count, *unit), zone)),
+        Scalar::Duration64(count, unit, zone) => Some((3, temporal_key(*count, *unit), zone)),
         _ => None,
     }
 }
@@ -1156,36 +1160,36 @@ fn compare_integer(left: Integer, right: Integer) -> Ordering {
 /// numbers, then the text, then the instants, then the containers - so a kind
 /// added later takes the next free number rather than displacing an existing
 /// one.
-const fn value_rank(value: &Value) -> u8 {
+const fn value_rank(value: &Scalar) -> u8 {
     match value {
-        Value::Null => 0,
-        Value::Bool(_) => 1,
-        Value::I8(_)
-        | Value::I16(_)
-        | Value::I32(_)
-        | Value::I64(_)
-        | Value::U8(_)
-        | Value::U16(_)
-        | Value::U32(_)
-        | Value::U64(_)
-        | Value::I128(_)
-        | Value::U128(_) => 2,
-        Value::F16(_) | Value::F32(_) | Value::F64(_) => 3,
-        Value::D128(..) | Value::D256(..) => 4,
-        Value::String(_) => 5,
-        Value::Bytes(_) => 6,
-        Value::Date32(..) | Value::Date64(..) => 7,
-        Value::Time32(..) | Value::Time64(..) => 8,
-        Value::DateTime64(..) => 9,
-        Value::Duration32(..) | Value::Duration64(..) => 10,
-        Value::Sequence(_) => 11,
-        Value::Mapping(_) => 12,
-        Value::Record(_) => 13,
-        Value::Geospatial(_) => 14,
+        Scalar::Null => 0,
+        Scalar::Bool(_) => 1,
+        Scalar::I8(_)
+        | Scalar::I16(_)
+        | Scalar::I32(_)
+        | Scalar::I64(_)
+        | Scalar::U8(_)
+        | Scalar::U16(_)
+        | Scalar::U32(_)
+        | Scalar::U64(_)
+        | Scalar::I128(_)
+        | Scalar::U128(_) => 2,
+        Scalar::F16(_) | Scalar::F32(_) | Scalar::F64(_) => 3,
+        Scalar::D128(..) | Scalar::D256(..) => 4,
+        Scalar::String(_) => 5,
+        Scalar::Bytes(_) => 6,
+        Scalar::Date32(..) | Scalar::Date64(..) => 7,
+        Scalar::Time32(..) | Scalar::Time64(..) => 8,
+        Scalar::DateTime64(..) => 9,
+        Scalar::Duration32(..) | Scalar::Duration64(..) => 10,
+        Scalar::Sequence(_) => 11,
+        Scalar::Mapping(_) => 12,
+        Scalar::Record(_) => 13,
+        Scalar::Geospatial(_) => 14,
     }
 }
 
-impl Value {
+impl Scalar {
     /// The canonical vocabulary name for this value's kind, such as `mapping`.
     ///
     /// This is the spelling every error message uses for an observed value, so
@@ -1239,7 +1243,7 @@ impl Value {
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         if values.is_empty() {
-            static EMPTY: OnceLock<Arc<[Value]>> = OnceLock::new();
+            static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
             return Self::Sequence(Arc::clone(EMPTY.get_or_init(|| Arc::from([]))));
         }
         Self::Sequence(values.into())
@@ -1255,7 +1259,7 @@ impl Value {
                 }
             }
         } else {
-            // `Value`'s hash reads canonical content only, never the
+            // `Scalar`'s hash reads canonical content only, never the
             // interior-mutable caches a datatype holds, so the key is stable.
             #[allow(clippy::mutable_key_type)]
             let mut seen = HashSet::with_capacity(entries.len());
@@ -1266,7 +1270,7 @@ impl Value {
             }
         }
         if entries.is_empty() {
-            static EMPTY: OnceLock<Arc<[(Value, Value)]>> = OnceLock::new();
+            static EMPTY: OnceLock<Arc<[(Scalar, Scalar)]>> = OnceLock::new();
             return Ok(Self::Mapping(Arc::clone(
                 EMPTY.get_or_init(|| Arc::from([])),
             )));
@@ -1295,7 +1299,7 @@ impl Value {
             }
         }
         if record.is_empty() {
-            static EMPTY: OnceLock<Arc<BTreeMap<SmolStr, Value>>> = OnceLock::new();
+            static EMPTY: OnceLock<Arc<BTreeMap<SmolStr, Scalar>>> = OnceLock::new();
             return Ok(Self::Record(Arc::clone(
                 EMPTY.get_or_init(|| Arc::new(BTreeMap::new())),
             )));
@@ -1506,7 +1510,7 @@ impl Value {
 
     /// Iterate over record name/value pairs in deterministic name order.
     pub fn record_iter(&self) -> std::collections::btree_map::Iter<'_, SmolStr, Self> {
-        static EMPTY: OnceLock<BTreeMap<SmolStr, Value>> = OnceLock::new();
+        static EMPTY: OnceLock<BTreeMap<SmolStr, Scalar>> = OnceLock::new();
         self.as_record()
             .unwrap_or_else(|| EMPTY.get_or_init(BTreeMap::new))
             .iter()
@@ -1576,18 +1580,18 @@ impl Value {
     /// shape needs no nested matching.
     ///
     /// ```
-    /// use yggdryl::Value;
+    /// use yggdryl::Scalar;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let order = Value::from_mapping([(
-    ///     Value::from("legs"),
-    ///     Value::from_sequence([Value::from_mapping([(
-    ///         Value::from("price"),
-    ///         Value::from(12_i64),
+    /// let order = Scalar::from_mapping([(
+    ///     Scalar::from("legs"),
+    ///     Scalar::from_sequence([Scalar::from_mapping([(
+    ///         Scalar::from("price"),
+    ///         Scalar::from(12_i64),
     ///     )])?]),
     /// )])?;
     ///
-    /// assert_eq!(order.path("legs.0.price").and_then(Value::as_i64), Some(12));
+    /// assert_eq!(order.path("legs.0.price").and_then(Scalar::as_i64), Some(12));
     /// assert!(order.path("legs.9.price").is_none());
     /// # Ok(())
     /// # }
@@ -1731,15 +1735,15 @@ impl Value {
 /// A borrowed iterator over sequence values or mapping keys.
 pub enum Children<'a> {
     /// Sequence values.
-    Sequence(std::slice::Iter<'a, Value>),
+    Sequence(std::slice::Iter<'a, Scalar>),
     /// Mapping keys.
-    Mapping(std::slice::Iter<'a, (Value, Value)>),
+    Mapping(std::slice::Iter<'a, (Scalar, Scalar)>),
     /// Record field values in sorted name order.
-    Record(std::collections::btree_map::Values<'a, SmolStr, Value>),
+    Record(std::collections::btree_map::Values<'a, SmolStr, Scalar>),
 }
 
 impl<'a> Iterator for Children<'a> {
-    type Item = &'a Value;
+    type Item = &'a Scalar;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -1777,8 +1781,8 @@ impl ExactSizeIterator for Children<'_> {
 
 impl std::iter::FusedIterator for Children<'_> {}
 
-impl<'a> IntoIterator for &'a Value {
-    type Item = &'a Value;
+impl<'a> IntoIterator for &'a Scalar {
+    type Item = &'a Scalar;
     type IntoIter = Children<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -1794,13 +1798,13 @@ fn duplicate_key_error(index: usize) -> Error {
     }
 }
 
-impl From<()> for Value {
+impl From<()> for Scalar {
     fn from((): ()) -> Self {
         Self::Null
     }
 }
 
-impl From<bool> for Value {
+impl From<bool> for Scalar {
     fn from(value: bool) -> Self {
         Self::Bool(value)
     }
@@ -1810,7 +1814,7 @@ impl From<bool> for Value {
 // happens to fit, because the width is what a column declaration reads back.
 macro_rules! width_value_from {
     ($($type:ty => $variant:ident),+ $(,)?) => {$(
-        impl From<$type> for Value {
+        impl From<$type> for Scalar {
             fn from(value: $type) -> Self {
                 Self::$variant(value)
             }
@@ -1823,55 +1827,55 @@ width_value_from!(
     u8 => U8, u16 => U16, u32 => U32, u64 => U64,
 );
 
-impl From<i128> for Value {
+impl From<i128> for Scalar {
     fn from(value: i128) -> Self {
         i64::try_from(value).map_or(Self::I128(value), Self::I64)
     }
 }
 
-impl From<u128> for Value {
+impl From<u128> for Scalar {
     fn from(value: u128) -> Self {
         u64::try_from(value).map_or(Self::U128(value), Self::U64)
     }
 }
 
-impl From<f32> for Value {
+impl From<f32> for Scalar {
     fn from(value: f32) -> Self {
         Self::F32(Float32::from_f32(value))
     }
 }
 
-impl From<half::f16> for Value {
+impl From<half::f16> for Scalar {
     fn from(value: half::f16) -> Self {
         Self::F16(Float16::from_f16(value))
     }
 }
 
-impl From<f64> for Value {
+impl From<f64> for Scalar {
     fn from(value: f64) -> Self {
         Self::F64(Float64::from_f64(value))
     }
 }
 
-impl From<&str> for Value {
+impl From<&str> for Scalar {
     fn from(value: &str) -> Self {
         Self::String(SmolStr::new(value))
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Scalar {
     fn from(value: String) -> Self {
         Self::String(SmolStr::from(value))
     }
 }
 
-impl From<SmolStr> for Value {
+impl From<SmolStr> for Scalar {
     fn from(value: SmolStr) -> Self {
         Self::String(value)
     }
 }
 
-impl From<Vec<u8>> for Value {
+impl From<Vec<u8>> for Scalar {
     fn from(value: Vec<u8>) -> Self {
         if value.is_empty() {
             static EMPTY: OnceLock<Arc<[u8]>> = OnceLock::new();
@@ -1881,7 +1885,7 @@ impl From<Vec<u8>> for Value {
     }
 }
 
-impl From<&[u8]> for Value {
+impl From<&[u8]> for Scalar {
     fn from(value: &[u8]) -> Self {
         // Borrowed bytes are the shape every reader hands out, so taking them
         // directly saves the caller a `to_vec` whose only purpose was this call.
@@ -1892,13 +1896,13 @@ impl From<&[u8]> for Value {
     }
 }
 
-impl<const N: usize> From<&[u8; N]> for Value {
+impl<const N: usize> From<&[u8; N]> for Scalar {
     fn from(value: &[u8; N]) -> Self {
         Self::from(value.as_slice())
     }
 }
 
-impl From<Arc<[u8]>> for Value {
+impl From<Arc<[u8]>> for Scalar {
     fn from(value: Arc<[u8]>) -> Self {
         if value.is_empty() {
             return Self::from(Vec::<u8>::new());
@@ -1907,36 +1911,36 @@ impl From<Arc<[u8]>> for Value {
     }
 }
 
-impl From<Vec<Value>> for Value {
-    fn from(value: Vec<Value>) -> Self {
+impl From<Vec<Scalar>> for Scalar {
+    fn from(value: Vec<Scalar>) -> Self {
         Self::from_sequence(value)
     }
 }
 
-impl FromIterator<Value> for Value {
-    fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
+impl FromIterator<Scalar> for Scalar {
+    fn from_iter<T: IntoIterator<Item = Scalar>>(iter: T) -> Self {
         Self::from_sequence(iter)
     }
 }
 
-impl Index<usize> for Value {
-    type Output = Value;
+impl Index<usize> for Scalar {
+    type Output = Scalar;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.as_sequence().expect("value is not a sequence")[index]
     }
 }
 
-impl Index<&Value> for Value {
-    type Output = Value;
+impl Index<&Scalar> for Scalar {
+    type Output = Scalar;
 
-    fn index(&self, key: &Value) -> &Self::Output {
+    fn index(&self, key: &Scalar) -> &Self::Output {
         self.get_key(key).expect("mapping key is not present")
     }
 }
 
-impl Index<&str> for Value {
-    type Output = Value;
+impl Index<&str> for Scalar {
+    type Output = Scalar;
 
     fn index(&self, key: &str) -> &Self::Output {
         self.get_key_str(key).expect("mapping key is not present")
@@ -1947,20 +1951,20 @@ impl Index<&str> for Value {
 mod tests {
     use std::sync::Arc;
 
-    use super::{Float16, Float32, Float64, Value};
+    use super::{Float16, Float32, Float64, Scalar};
     use crate::{I256, TimeUnit, Timezone};
 
-    fn order() -> Value {
-        Value::from_mapping([
-            (Value::from("symbol"), Value::from("AAPL")),
+    fn order() -> Scalar {
+        Scalar::from_mapping([
+            (Scalar::from("symbol"), Scalar::from("AAPL")),
             (
-                Value::from("legs"),
-                Value::from_sequence([
-                    Value::from_mapping([(Value::from("price"), Value::from(12_i64))]).unwrap(),
-                    Value::from_mapping([(Value::from("price"), Value::from(13_i64))]).unwrap(),
+                Scalar::from("legs"),
+                Scalar::from_sequence([
+                    Scalar::from_mapping([(Scalar::from("price"), Scalar::from(12_i64))]).unwrap(),
+                    Scalar::from_mapping([(Scalar::from("price"), Scalar::from(13_i64))]).unwrap(),
                 ]),
             ),
-            (Value::from("venue"), Value::Null),
+            (Scalar::from("venue"), Scalar::Null),
         ])
         .unwrap()
     }
@@ -1969,8 +1973,11 @@ mod tests {
     fn a_dotted_path_walks_mappings_and_sequences() {
         let order = order();
 
-        assert_eq!(order.path("symbol").and_then(Value::as_str), Some("AAPL"));
-        assert_eq!(order.path("legs.1.price").and_then(Value::as_i64), Some(13));
+        assert_eq!(order.path("symbol").and_then(Scalar::as_str), Some("AAPL"));
+        assert_eq!(
+            order.path("legs.1.price").and_then(Scalar::as_i64),
+            Some(13)
+        );
 
         // A segment that does not resolve is absence, not an error.
         assert!(order.path("legs.9.price").is_none());
@@ -1983,13 +1990,13 @@ mod tests {
 
     #[test]
     fn narrowing_an_integer_refuses_to_lose_magnitude() {
-        assert_eq!(Value::from(7_i64).as_i64(), Some(7));
-        assert_eq!(Value::from(7_u64).as_u64(), Some(7));
+        assert_eq!(Scalar::from(7_i64).as_i64(), Some(7));
+        assert_eq!(Scalar::from(7_u64).as_u64(), Some(7));
 
         // A 128-bit value that does not fit is None rather than a wrapped one.
-        assert_eq!(Value::from(i128::MAX).as_i64(), None);
-        assert_eq!(Value::from(u128::MAX).as_u64(), None);
-        assert_eq!(Value::from(-1_i64).as_u64(), None);
+        assert_eq!(Scalar::from(i128::MAX).as_i64(), None);
+        assert_eq!(Scalar::from(u128::MAX).as_u64(), None);
+        assert_eq!(Scalar::from(-1_i64).as_u64(), None);
     }
 
     #[test]
@@ -2026,14 +2033,14 @@ mod tests {
 
     #[test]
     fn shape_predicates_answer_without_matching() {
-        assert!(Value::Null.is_null());
-        assert!(Value::from(1_i64).is_integer());
-        assert!(Value::from(1.5).is_number());
-        assert!(Value::d128(15, 1).is_number());
-        assert!(Value::d256(I256::from_i128(15), 1).is_number());
-        assert!(!Value::from(1.5).is_integer());
+        assert!(Scalar::Null.is_null());
+        assert!(Scalar::from(1_i64).is_integer());
+        assert!(Scalar::from(1.5).is_number());
+        assert!(Scalar::d128(15, 1).is_number());
+        assert!(Scalar::d256(I256::from_i128(15), 1).is_number());
+        assert!(!Scalar::from(1.5).is_integer());
         assert!(order().is_container());
-        assert!(!Value::from("AAPL").is_container());
+        assert!(!Scalar::from("AAPL").is_container());
     }
 
     #[test]
@@ -2045,14 +2052,14 @@ mod tests {
         assert_eq!(order.entries().count(), 3);
 
         // A null value counts as absent for a default.
-        let fallback = Value::from("XPAR");
+        let fallback = Scalar::from("XPAR");
         assert_eq!(order.get_or("venue", &fallback), &fallback);
-        assert_eq!(order.get_or("symbol", &fallback), &Value::from("AAPL"));
+        assert_eq!(order.get_or("symbol", &fallback), &Scalar::from("AAPL"));
 
         // Replacing keeps position; adding appends.
         let updated = order.with_key("venue", "XPAR").unwrap();
         assert_eq!(updated.keys(), vec!["symbol", "legs", "venue"]);
-        assert_eq!(updated.path("venue").and_then(Value::as_str), Some("XPAR"));
+        assert_eq!(updated.path("venue").and_then(Scalar::as_str), Some("XPAR"));
 
         let added = order.with_key("currency", "EUR").unwrap();
         assert_eq!(added.keys(), vec!["symbol", "legs", "venue", "currency"]);
@@ -2067,34 +2074,34 @@ mod tests {
     fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
         use std::hash::{Hash, Hasher};
 
-        fn hash_of(value: &Value) -> u64 {
+        fn hash_of(value: &Scalar) -> u64 {
             let mut hasher = std::hash::DefaultHasher::new();
             value.hash(&mut hasher);
             hasher.finish()
         }
 
         let wkb: &[u8] = &[1, 1, 0, 0, 0];
-        let point = Value::Geospatial(wkb.into());
+        let point = Scalar::Geospatial(wkb.into());
         assert_eq!(point.kind(), "geospatial");
 
         // The same bytes under the bytes kind are a different value: the kind
         // is part of the identity, exactly as it is for string versus bytes.
-        let bytes = Value::from(wkb);
+        let bytes = Scalar::from(wkb);
         assert_ne!(point, bytes);
         assert_ne!(hash_of(&point), hash_of(&bytes));
 
         // Within the kind, the bytes compare, and equal values hash equal.
-        assert_eq!(point, Value::Geospatial(wkb.into()));
-        assert_eq!(hash_of(&point), hash_of(&Value::Geospatial(wkb.into())));
-        assert!(point < Value::Geospatial([1u8, 2].as_slice().into()));
+        assert_eq!(point, Scalar::Geospatial(wkb.into()));
+        assert_eq!(hash_of(&point), hash_of(&Scalar::Geospatial(wkb.into())));
+        assert!(point < Scalar::Geospatial([1u8, 2].as_slice().into()));
     }
 
     #[test]
     fn the_structural_wire_round_trips_a_geospatial_value() {
-        let point = Value::Geospatial([1u8, 1, 0, 0, 0].as_slice().into());
+        let point = Scalar::Geospatial([1u8, 1, 0, 0, 0].as_slice().into());
         let encoded = serde_json::to_string(&point).unwrap();
         assert!(encoded.contains("\"type\":\"geospatial\""), "{encoded}");
-        let decoded: Value = serde_json::from_str(&encoded).unwrap();
+        let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, point);
     }
 
@@ -2104,14 +2111,14 @@ mod tests {
             "z":{"type":"i8","value":2},
             "a":{"type":"i8","value":1}
         }}"#;
-        let record: Value = serde_json::from_str(unordered).unwrap();
+        let record: Scalar = serde_json::from_str(unordered).unwrap();
         assert_eq!(record.keys(), ["a", "z"]);
 
         let duplicate = r#"{"type":"record","value":{
             "a":{"type":"i8","value":1},
             "a":{"type":"i8","value":2}
         }}"#;
-        let message = serde_json::from_str::<Value>(duplicate)
+        let message = serde_json::from_str::<Scalar>(duplicate)
             .unwrap_err()
             .to_string();
         assert!(message.contains("duplicate field name"), "{message}");
@@ -2119,7 +2126,7 @@ mod tests {
 
     #[test]
     fn rebuilding_a_value_that_is_not_a_mapping_says_what_it_is() {
-        let message = Value::from("AAPL")
+        let message = Scalar::from("AAPL")
             .with_key("symbol", "AAPL")
             .unwrap_err()
             .to_string();
@@ -2130,17 +2137,17 @@ mod tests {
     #[test]
     fn equal_cross_width_values_have_one_stable_hash() {
         let groups = [
-            vec![Value::I8(1), Value::U64(1), Value::I128(1)],
+            vec![Scalar::I8(1), Scalar::U64(1), Scalar::I128(1)],
             vec![
-                Value::F16(Float16::from_f16(half::f16::from_f32(1.0))),
-                Value::F32(Float32::from_f32(1.0)),
-                Value::F64(Float64::from_f64(1.0)),
+                Scalar::F16(Float16::from_f16(half::f16::from_f32(1.0))),
+                Scalar::F32(Float32::from_f32(1.0)),
+                Scalar::F64(Float64::from_f64(1.0)),
             ],
-            vec![Value::d128(100, 2), Value::d256(I256::from_i128(10), 1)],
-            vec![Value::date32(1), Value::date64(86_400_000)],
+            vec![Scalar::d128(100, 2), Scalar::d256(I256::from_i128(10), 1)],
+            vec![Scalar::date32(1), Scalar::date64(86_400_000)],
             vec![
-                Value::duration32(1, TimeUnit::Second).unwrap(),
-                Value::duration64(1_000, TimeUnit::Millisecond).unwrap(),
+                Scalar::duration32(1, TimeUnit::Second).unwrap(),
+                Scalar::duration64(1_000, TimeUnit::Millisecond).unwrap(),
             ],
         ];
         for group in groups {
@@ -2153,10 +2160,10 @@ mod tests {
 
     #[test]
     fn records_are_sorted_and_rebuilt_by_field_name() {
-        let record = Value::from_record([
-            ("z", Value::from(3)),
-            ("a", Value::from(1)),
-            ("m", Value::from(2)),
+        let record = Scalar::from_record([
+            ("z", Scalar::from(3)),
+            ("a", Scalar::from(1)),
+            ("m", Scalar::from(2)),
         ])
         .unwrap();
         assert_eq!(record.keys(), vec!["a", "m", "z"]);
@@ -2168,7 +2175,7 @@ mod tests {
             vec!["a", "m", "z"]
         );
         assert_eq!(
-            record.iter().filter_map(Value::as_i64).collect::<Vec<_>>(),
+            record.iter().filter_map(Scalar::as_i64).collect::<Vec<_>>(),
             vec![1, 2, 3]
         );
 
@@ -2178,25 +2185,30 @@ mod tests {
             .without_field("m")
             .unwrap();
         assert_eq!(updated.keys(), vec!["a", "b", "z"]);
-        assert_eq!(updated.get_key_str("b").and_then(Value::as_i64), Some(4));
+        assert_eq!(updated.get_key_str("b").and_then(Scalar::as_i64), Some(4));
         assert!(updated.without_field("absent").unwrap() == updated);
-        assert!(Value::from_mapping([]).unwrap().with_field("x", 1).is_err());
+        assert!(
+            Scalar::from_mapping([])
+                .unwrap()
+                .with_field("x", 1)
+                .is_err()
+        );
     }
 
     #[test]
     fn native_and_json_accessors_have_explicit_borrowing_semantics() {
-        let text = Value::from("AAPL");
-        let bytes = Value::from(b"AAPL".as_slice());
-        let geometry = Value::Geospatial(Arc::from(b"WKB".as_slice()));
+        let text = Scalar::from("AAPL");
+        let bytes = Scalar::from(b"AAPL".as_slice());
+        let geometry = Scalar::Geospatial(Arc::from(b"WKB".as_slice()));
         assert_eq!(text.as_utf8(), Some("AAPL"));
         assert_eq!(text.as_bytes(), None);
         assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
         assert_eq!(bytes.as_utf8(), None);
         assert_eq!(geometry.as_bytes(), Some(b"WKB".as_slice()));
 
-        let record = Value::from_record([
-            ("symbol", Value::from("AAPL")),
-            ("active", Value::from(true)),
+        let record = Scalar::from_record([
+            ("symbol", Scalar::from("AAPL")),
+            ("active", Scalar::from(true)),
         ])
         .unwrap();
         let json_bytes = record.as_json_bytes().unwrap();
@@ -2207,7 +2219,7 @@ mod tests {
 
     #[test]
     fn time_datatype_inference_refuses_zones_it_cannot_preserve() {
-        let zoned = Value::Time64(1, TimeUnit::Microsecond, Timezone::UTC);
+        let zoned = Scalar::Time64(1, TimeUnit::Microsecond, Timezone::UTC);
         assert!(zoned.data_type().is_err());
     }
 }

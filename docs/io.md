@@ -139,7 +139,7 @@ Through `Buffered`, it deliberately bypasses the page cache, leaving
 ### Measured streamed-byte behavior
 
 Criterion measured the same 8 MiB decoded fixture on Windows 11 x86_64, an
-AMD Ryzen 5 150 (6 cores/12 threads), and rustc 1.96.1 on 2026-08-23. Values
+AMD Ryzen 5 150 (6 cores/12 threads), and rustc 1.96.1 on 2026-08-23. Cells
 are medians; the stream cases retain no decoded pages.
 
 | operation | decoded bytes | plain | gzip | zlib | zstd |
@@ -349,7 +349,7 @@ location that does not exist yet. A table format adds `Table`, `Namespace`, and 
 them containers, all of them answered by the value that adds the framing rather than by storage,
 which sees three indistinguishable folders. `is_container`, `is_leaf`, and `is_known` are the
 questions callers actually ask; the enum is documented with the rest of the shared enums in
-[enums.md](enums.md). The bindings expose the questions rather than the enum, as `exists`, `is_dir`,
+[generic.md](generic.md). The bindings expose the questions rather than the enum, as `exists`, `is_dir`,
 and `is_file`.
 
 ## Bytes or rows
@@ -508,29 +508,29 @@ carries the media type across. It is `copy_into` in Python and `copyInto` in Jav
 YAML, or TOML and any outer gzip, zlib, or zstd coding. Reads feed the parser
 from `pstream_bytes`, so decoded pages are not retained. An optional `Field`
 directs native parsing and casting; omitting it infers the natural value.
-Rust keeps a typed Struct row as its canonical ordered `Value::Sequence`;
+Rust keeps a typed Struct row as its canonical ordered `Scalar::Sequence`;
 Python and JavaScript restore the field names as dictionaries and objects by
-default. Python `cls=Value` and JavaScript `{ value: true }` return that exact
+default. Python `cls=Scalar` and JavaScript `{ scalar: true }` return that exact
 core value instead.
 
 === "Rust"
 
     ```rust
     use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{Field, Url, Value};
+    use yggdryl::{Field, Url, Scalar};
 
     let media = Url::from_str("file:///trade.json.gz")?.media_type();
     let mut handle = Buffer::new().with_media_type(media);
-    let value = Value::from_record([
-        ("quantity", Value::I64(2)),
-        ("symbol", Value::from("AAPL")),
+    let value = Scalar::from_record([
+        ("quantity", Scalar::I64(2)),
+        ("symbol", Scalar::from("AAPL")),
     ])?;
     handle.write_value(&value)?;
 
     let field = Field::from_str(
         "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null",
     )?;
-    assert_eq!(handle.read_value(Some(&field))?[0], Value::I64(2));
+    assert_eq!(handle.read_value(Some(&field))?[0], Scalar::I64(2));
     ```
 
 === "Python"
@@ -539,14 +539,14 @@ core value instead.
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase, Value
+    from yggdryl import IOBase, Scalar
 
     path = pathlib.Path(tempfile.mkdtemp()) / "trade.json.gz"
     handle = IOBase(path)
     handle.write_value({"quantity": 2, "symbol": "AAPL"})
     field = "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null"
     assert handle.read_value(field) == {"quantity": 2, "symbol": "AAPL"}
-    value = handle.read_value(field, cls=Value)
+    value = handle.read_value(field, cls=Scalar)
     assert value.kind == "sequence"
     ```
 
@@ -557,15 +557,15 @@ core value instead.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase, Value } = require('yggdryl')
+    const { IOBase, Scalar } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-value-'))
     const handle = new IOBase(path.join(root, 'trade.json.gz'))
-    handle.writeValue({ quantity: 2, symbol: 'AAPL' })
+    handle.writeScalar({ quantity: 2, symbol: 'AAPL' })
     const field = 'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null'
-    assert.deepEqual(handle.readValue(field), { quantity: 2, symbol: 'AAPL' })
-    const value = handle.readValue({ field, value: true })
-    assert.ok(value instanceof Value)
+    assert.deepEqual(handle.readScalar(field), { quantity: 2, symbol: 'AAPL' })
+    const value = handle.readScalar({ field, scalar: true })
+    assert.ok(value instanceof Scalar)
     assert.equal(value.kind, 'sequence')
     ```
 
@@ -1523,9 +1523,9 @@ overwrite_records(&mut self, records, options: &RecordOptions) -> Result<()>
 append_records(&mut self, records, options: &RecordOptions) -> Result<()>
 merge_records(&mut self, records, options: &RecordOptions) -> Result<()>
 
-write_arrow_reader(&mut self, reader: BatchReader, mode: WriteMode, options: &RecordOptions) -> Result<()>
-write_arrow_record_batch(&mut self, batch: RecordBatch, mode: WriteMode, options: &RecordOptions) -> Result<()>
-write_records(&mut self, records, mode: WriteMode, options: &RecordOptions) -> Result<()>
+write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
+write_arrow_record_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
+write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<()>
 ```
 
 The mode-selected method validates intent before touching its input, then selects the same-shape
@@ -1549,7 +1549,7 @@ estimates; regenerate on the deployment host):
 The mode branch itself is shared by all three columns in a row. The larger
 differences are the selected operation: append re-encodes the stored side,
 merge indexes it by key, and native records additionally validate and
-materialize ordered `Value::Sequence` rows.
+materialize ordered `Scalar::Sequence` rows.
 
 Bindings keep the input-before-options order and the same intent errors while
 using their native naming and Arrow holders. Rust requires `&RecordOptions`;
@@ -1648,11 +1648,11 @@ boundary, then widen their input into this same reader instead of adding another
 encoder.
 
 The Rust `*_records` triplet takes any iterator whose row implements
-`TryInto<Value>`. A canonical row is one ordered `Value::Sequence` under
-`options.field`; a sorted name-to-value `Value::Record` is accepted as input
+`TryInto<Scalar>`. A canonical row is one ordered `Scalar::Sequence` under
+`options.field`; a sorted name-to-value `Scalar::Record` is accepted as input
 and resolved to that order. The field is required, and there is no separate
 record/schema model. An infallible Rust struct implements
-`From<Row> for Value` and receives the standard blanket `TryInto`
+`From<Row> for Scalar` and receives the standard blanket `TryInto`
 implementation. Conversion is lazy, batches hold at most `options.batch_size`
 rows and never more than `options.commit_row_size` when a cadence is set, and
 the resulting exact-schema reader redirects to the same three primitives
@@ -1661,13 +1661,13 @@ above.
 ```rust
 use yggdryl::generic::IORecordOptions;
 use yggdryl::io::{Buffer, IOBase, IOMedia};
-use yggdryl::{DataType, MimeType, Value};
+use yggdryl::{DataType, MimeType, Scalar};
 
 struct Quote(i32, &'static str);
 
-impl From<Quote> for Value {
+impl From<Quote> for Scalar {
     fn from(row: Quote) -> Self {
-        Value::from_sequence([Value::from(row.0), Value::from(row.1)])
+        Scalar::from_sequence([Scalar::from(row.0), Scalar::from(row.1)])
     }
 }
 
@@ -1773,7 +1773,7 @@ filters; [`IORecordOptions`](generic.md) defines them once.
 !!! note "JavaScript example"
     JavaScript's object-and-constructor behavior is shown below. Python exposes
     the corresponding lazy `read_records` mapping/dataclass view and all three
-    record-write intents; Rust accepts typed `TryInto<Value>` rows on writes
+    record-write intents; Rust accepts typed `TryInto<Scalar>` rows on writes
     and keeps its primitive read surface Arrow-native.
 
 ```javascript
@@ -2719,7 +2719,7 @@ the whole record as `message`.
     ```rust
     use yggdryl::io::{Buffer, IOBase};
     use yggdryl::text::TextLineOptions;
-    use yggdryl::{Url, Value};
+    use yggdryl::{Url, Scalar};
 
     let mut handle = Buffer::new()
         .with_media_type(Url::from_str("file:///app.log.gz")?.media_type());
@@ -2731,7 +2731,7 @@ the whole record as `message`.
     let options = TextLineOptions::with_pattern(
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]",
     )?
-    .try_with_custom_fields([("venue", Value::from("XNAS"))])?;
+    .try_with_custom_fields([("venue", Scalar::from("XNAS"))])?;
 
     let batches: Vec<_> = handle.read_arrow_lines(&options)?.collect::<Result<_, _>>()?;
     assert_eq!(batches.len(), 1);
@@ -3323,7 +3323,7 @@ for the next reader to prune with.
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
     use yggdryl::text::TextLineOptions;
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     let root = std::env::temp_dir().join("yggdryl-doc-log-lake");
     let _ = std::fs::remove_dir_all(&root);
@@ -3342,7 +3342,7 @@ for the next reader to prune with.
     let options = TextLineOptions::with_pattern(
         r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]",
     )?
-    .try_with_custom_fields([("venue", Value::from("XNAS"))])?;
+    .try_with_custom_fields([("venue", Scalar::from("XNAS"))])?;
 
     // The options already know the schema, so the table exists - partitioned
     // by `level` - before the first log line is parsed.
@@ -3539,7 +3539,7 @@ makes the line surface worth having.
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
     use yggdryl::text::TextLineOptions;
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     let pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\] \[(?<thread_id>\d+)\] took=(?<latency_us>\d+)";
     // The older extractor: same records, no thread column.
@@ -3576,7 +3576,7 @@ makes the line surface worth having.
 
     // 1. The extractor, and the table it implies - both before anything is read.
     let options = TextLineOptions::with_pattern(pattern)?
-        .try_with_custom_fields([("source", Value::from("gateway"))])?
+        .try_with_custom_fields([("source", Scalar::from("gateway"))])?
         .with_byte_size(8 * 1024 * 1024);
     let marked = options.field().with_partition_fields(&["level"])?;
 
@@ -3585,7 +3585,7 @@ makes the line surface worth having.
 
     // 2, 3, 4. One handle per folder, and one lazy combine over the two.
     let older = TextLineOptions::with_pattern(archived)?
-        .try_with_custom_fields([("source", Value::from("archive"))])?;
+        .try_with_custom_fields([("source", Scalar::from("archive"))])?;
     let stream = yggdryl::arrow::combined(
         Folder::new(&incoming)?.into_arrow_lines(&options)?,
         Folder::new(&archive)?.into_arrow_lines(&older)?,

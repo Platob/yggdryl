@@ -60,7 +60,7 @@ fn chained(count: i64, step_ms: i64) -> TableMetadata {
 
 mod references {
     use super::{SnapshotRef, TableMetadata, chained};
-    use crate::Value;
+    use crate::Scalar;
 
     #[test]
     fn a_branch_and_a_tag_report_their_kind() {
@@ -161,19 +161,19 @@ mod references {
         assert_eq!(
             document
                 .get_key_str("min-snapshots-to-keep")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             Some(2)
         );
         assert_eq!(
             document
                 .get_key_str("max-snapshot-age-ms")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             Some(1_000)
         );
         assert_eq!(
             document
                 .get_key_str("max-ref-age-ms")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             Some(2_000)
         );
         assert_eq!(SnapshotRef::from_json(&document).unwrap(), retained);

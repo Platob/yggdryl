@@ -30,7 +30,7 @@ use super::bind::{Bound, Kind, Node};
 use super::eval::{compare as compare_values, order};
 use super::selector::Selector;
 use super::{Comparison, Expression, Function};
-use crate::{Field, Value};
+use crate::{Field, Scalar};
 
 /// What a statistics-level answer can be.
 ///
@@ -68,21 +68,21 @@ impl Certainty {
 /// One column's statistics: what it holds at least, at most, and how often not.
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ColumnBounds {
-    minimum: Option<Value>,
-    maximum: Option<Value>,
+    minimum: Option<Scalar>,
+    maximum: Option<Scalar>,
     nulls: Option<u64>,
 }
 
 impl ColumnBounds {
     /// The smallest value the column holds, when it is known.
     #[must_use]
-    pub const fn minimum(&self) -> Option<&Value> {
+    pub const fn minimum(&self) -> Option<&Scalar> {
         self.minimum.as_ref()
     }
 
     /// The largest value the column holds, when it is known.
     #[must_use]
-    pub const fn maximum(&self) -> Option<&Value> {
+    pub const fn maximum(&self) -> Option<&Scalar> {
         self.maximum.as_ref()
     }
 
@@ -124,8 +124,8 @@ impl Bounds {
     pub fn with_column(
         mut self,
         name: impl Into<SmolStr>,
-        minimum: Option<Value>,
-        maximum: Option<Value>,
+        minimum: Option<Scalar>,
+        maximum: Option<Scalar>,
         nulls: Option<u64>,
     ) -> Self {
         self.columns.push((
@@ -159,10 +159,10 @@ impl Bounds {
             };
             let value = super::eval::convert(
                 field.data_type(),
-                &Value::from(written.as_str()),
+                &Scalar::from(written.as_str()),
                 super::Safety::Safe,
             )
-            .unwrap_or(Value::Null);
+            .unwrap_or(Scalar::Null);
             if value.is_null() {
                 continue;
             }
@@ -182,8 +182,8 @@ impl Bounds {
     pub fn with_attribute(
         mut self,
         selector: Selector,
-        minimum: Option<Value>,
-        maximum: Option<Value>,
+        minimum: Option<Scalar>,
+        maximum: Option<Scalar>,
         nulls: Option<u64>,
     ) -> Self {
         self.attributes.push((
@@ -488,7 +488,7 @@ fn prune(node: &Node, schema: &Field, bounds: &Bounds) -> Certainty {
 fn oriented<'node>(
     left: &'node Node,
     right: &'node Node,
-) -> Option<(&'node Node, &'node Value, bool)> {
+) -> Option<(&'node Node, &'node Scalar, bool)> {
     if let Some(literal) = right.as_literal() {
         return Some((left, literal, false));
     }
@@ -516,7 +516,7 @@ fn column_bounds<'bounds>(
 fn compare_bounds(
     node: &Node,
     comparison: Comparison,
-    literal: &Value,
+    literal: &Scalar,
     schema: &Field,
     bounds: &Bounds,
 ) -> Certainty {
@@ -526,7 +526,7 @@ fn compare_bounds(
 fn settle(
     node: &Node,
     comparison: Comparison,
-    literal: &Value,
+    literal: &Scalar,
     schema: &Field,
     bounds: &Bounds,
 ) -> Certainty {
@@ -548,17 +548,17 @@ fn compare_range(
     node: &Node,
     column: &ColumnBounds,
     comparison: Comparison,
-    literal: &Value,
+    literal: &Scalar,
 ) -> Certainty {
     let data_type = node.field.data_type();
-    let below = |value: &Value| -> Option<bool> {
+    let below = |value: &Scalar| -> Option<bool> {
         column
             .minimum
             .as_ref()
             .and_then(|minimum| order(data_type, value, minimum))
             .map(std::cmp::Ordering::is_lt)
     };
-    let above = |value: &Value| -> Option<bool> {
+    let above = |value: &Scalar| -> Option<bool> {
         column
             .maximum
             .as_ref()
@@ -678,7 +678,7 @@ fn prefix_prune(node: &Node, prefix: &str, schema: &Field, bounds: &Bounds) -> C
     // needs the successor of the prefix, which is not spellable for every
     // encoding, so only the lower side prunes.
     let data_type = node.field.data_type();
-    let literal = Value::from(prefix);
+    let literal = Scalar::from(prefix);
     if let Some(maximum) = &column.maximum {
         if order(data_type, maximum, &literal).is_some_and(std::cmp::Ordering::is_lt) {
             return Certainty::Never;

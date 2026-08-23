@@ -88,14 +88,14 @@ export declare class Bound {
   /** Return whether answering this expression requires reading rows. */
   get readsRows(): boolean
   /** Evaluate this expression for one row of column values, in schema order. */
-  eval(row: Value): Value
+  eval(row: Scalar): Scalar
   /**
    * Answer this predicate for one row, reading unknown as "no".
    *
    * Unknown is not true, so a row whose value is null does not pass a
    * comparison against it.
    */
-  matches(row: Value): boolean
+  matches(row: Scalar): boolean
   /** The canonical text of the expression this resolved. */
   toString(): string
 }
@@ -242,7 +242,7 @@ export type JsCompaction = Compaction
  * One live data file of the current snapshot, with the spec that placed it.
  *
  * This is a class rather than a plain object because a partition value crosses
- * as the native [`Value`](crate::codec::JsCodecValue) the manifest recorded.
+ * as the native [`Scalar`](crate::codec::JsScalar) the manifest recorded.
  * Rendering it as text here would have to spell a null `null`, which is exactly
  * what makes a directory name unable to answer the question.
  */
@@ -254,7 +254,7 @@ export declare class DataFile {
   /** The encoding the file uses. */
   get fileFormat(): string
   /** The partition tuple the manifest records, in spec order. */
-  get partition(): Array<Value>
+  get partition(): Array<Scalar>
   /** The partition field names, in the same order as the tuple. */
   get partitionNames(): Array<string>
   /** Rows in the file. */
@@ -374,12 +374,12 @@ export declare class Expression {
   /**
    * Hold one constant.
    *
-   * The constant is a `Value`, which is the JavaScript spelling of the
+   * The constant is a `Scalar`, which is the JavaScript spelling of the
    * values JavaScript itself has none of - an exact decimal, a date, a
-   * timestamp at a resolution a `Date` cannot hold. `Value.fromJs` makes
+   * timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
    * one out of an ordinary JavaScript value.
    */
-  static literal(value: Value): Expression
+  static literal(value: Scalar): Expression
   /** Name one holder attribute, such as `size`, or `partition` with a column. */
   static attribute(name: string, key?: string | undefined | null): Expression
   /** Name one late-bound value. */
@@ -1843,6 +1843,121 @@ export declare class RecordOptions {
 export type JsRecordOptions = RecordOptions
 
 /**
+ * One native codec value: the pivot every JavaScript value crosses.
+ *
+ * A `Scalar` is what the core actually stores, so it is also the honest answer
+ * to "what did my JavaScript become". `fromJs` builds one from any JavaScript
+ * value and `asJs` reads it back; a load and a dump are those two conversions
+ * with bytes on the far side, and they run the same code.
+ *
+ * It is also the JavaScript spelling of the values JavaScript has none of: an
+ * exact decimal, a date, a time of day, a duration, and any timestamp whose
+ * resolution or zone a `Date` cannot hold.
+ */
+export declare class Scalar {
+  /** Build a 16-bit float, rounding once to IEEE binary16. */
+  static f16(value: number): Scalar
+  /** Build a real 32-bit float. */
+  static f32(value: number): Scalar
+  /** Build a 64-bit float. */
+  static f64(value: number): Scalar
+  /** Build a 128-bit exact decimal. */
+  static d128(unscaled: bigint, scale: number): Scalar
+  /** Build a 256-bit exact decimal. */
+  static d256(unscaled: bigint, scale: number): Scalar
+  /** Build a Date32 day count with its explicit unit and non-null timezone. */
+  static date32(count: number, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build a Date64 millisecond count with its explicit unit and non-null timezone. */
+  static date64(count: bigint, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build a 32-bit time-of-day count with a non-null timezone. */
+  static time32(count: number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build a 64-bit time-of-day count with a non-null timezone. */
+  static time64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build a 64-bit epoch or wall-clock datetime with a non-null timezone. */
+  static datetime64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build a 32-bit elapsed count whose explicit timezone must be NAIVE. */
+  static duration32(count: number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build a 64-bit elapsed count whose explicit timezone must be NAIVE. */
+  static duration64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** The canonical width-specific vocabulary name. */
+  get kind(): string
+  /** The number of direct sequence children, mapping entries, or record fields. */
+  get length(): number
+  /** Whether this is an empty sequence, mapping, or record. */
+  isEmpty(): boolean
+  /** Look up one non-negative sequence index without projecting its value. */
+  at(index: number): Scalar | null
+  /** Look up a dotted mapping/record key and sequence-index path. */
+  path(path: string): Scalar | null
+  /** The count a temporal holds, or `null`. */
+  get count(): bigint | null
+  /** The unit carried by a temporal, or `null`. */
+  get unit(): string | null
+  /** The non-null timezone marker carried by a temporal, or `null`. */
+  get zone(): string | null
+  /** The unscaled coefficient of an exact decimal, or `null`. */
+  get unscaled(): bigint | null
+  /** The scale of an exact decimal, or `null`. */
+  get scale(): number | null
+  /** Infer the exact native datatype this value names. */
+  get dataType(): JsDataType
+  /** Infer the exact native Field for this scalar value. */
+  intoField(): JsField
+  /** Infer the exact item Field for this non-empty outer Sequence. */
+  intoArrayField(): JsField
+  /** Infer a non-null Struct root from named Record rows. */
+  intoStructField(): JsField
+  /** Return deterministic hash bits shared with Rust and Python. */
+  stableHash(): bigint
+  /**
+   * Compare two native values by the core's total value order.
+   *
+   * Numeric widths compare by value, as equality does: `i8(1)` and
+   * `u64(1)` compare equal, and exact decimals are normalized first.
+   */
+  compare(other: Scalar): number
+  /** Make a cheap native clone without projecting through JavaScript. */
+  clone(): Scalar
+  /** Borrow binary content as a Buffer, or `null` for another kind. */
+  asBytes(): Buffer | null
+  /** Borrow string content, or `null` for another kind. */
+  asUtf8(): string | null
+  /** Encode this value as natural compact JSON bytes. */
+  asJsonBytes(): Buffer
+  /** Encode this value as natural compact JSON UTF-8. */
+  asJsonUtf8(): string
+  /** Natural compact JSON for the standard JavaScript string protocol. */
+  toString(): string
+  /**
+   * Whether two native values are the same value.
+   *
+   * One instant spelled in two resolutions is one value, and so are two
+   * spellings of one exact decimal, because the core compares what a value
+   * names rather than how it was written.
+   */
+  equals(other: Scalar): boolean
+}
+export type JsScalar = Scalar
+
+/**
+ * An owning iterator over one native value's direct children.
+ *
+ * The iterator snapshots cheap `Scalar` clones. Nested containers retain their
+ * shared native storage, so an exact temporal or decimal never crosses the
+ * lossy JavaScript projection merely because its parent is iterated.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class ScalarIterator {
+
+}
+export type JsScalarIterator = ScalarIterator
+
+/**
  * A bounded five-count report of what a scan decided before reading rows.
  *
  * The core plan holds the data files themselves because a write needs them;
@@ -2788,121 +2903,6 @@ export declare class Urn {
   toJSON(): any
 }
 export type JsUrn = Urn
-
-/**
- * One native codec value: the pivot every JavaScript value crosses.
- *
- * A `Value` is what the core actually stores, so it is also the honest answer
- * to "what did my JavaScript become". `fromJs` builds one from any JavaScript
- * value and `asJs` reads it back; a load and a dump are those two conversions
- * with bytes on the far side, and they run the same code.
- *
- * It is also the JavaScript spelling of the values JavaScript has none of: an
- * exact decimal, a date, a time of day, a duration, and any timestamp whose
- * resolution or zone a `Date` cannot hold.
- */
-export declare class Value {
-  /** Build a 16-bit float, rounding once to IEEE binary16. */
-  static f16(value: number): Value
-  /** Build a real 32-bit float. */
-  static f32(value: number): Value
-  /** Build a 64-bit float. */
-  static f64(value: number): Value
-  /** Build a 128-bit exact decimal. */
-  static d128(unscaled: bigint, scale: number): Value
-  /** Build a 256-bit exact decimal. */
-  static d256(unscaled: bigint, scale: number): Value
-  /** Build a Date32 day count with its explicit unit and non-null timezone. */
-  static date32(count: number, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Value
-  /** Build a Date64 millisecond count with its explicit unit and non-null timezone. */
-  static date64(count: bigint, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Value
-  /** Build a 32-bit time-of-day count with a non-null timezone. */
-  static time32(count: number, unit: string, timezone?: TimezoneInput | undefined | null): Value
-  /** Build a 64-bit time-of-day count with a non-null timezone. */
-  static time64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Value
-  /** Build a 64-bit epoch or wall-clock datetime with a non-null timezone. */
-  static datetime64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Value
-  /** Build a 32-bit elapsed count whose explicit timezone must be NAIVE. */
-  static duration32(count: number, unit: string, timezone?: TimezoneInput | undefined | null): Value
-  /** Build a 64-bit elapsed count whose explicit timezone must be NAIVE. */
-  static duration64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Value
-  /** The canonical width-specific vocabulary name. */
-  get kind(): string
-  /** The number of direct sequence children, mapping entries, or record fields. */
-  get length(): number
-  /** Whether this is an empty sequence, mapping, or record. */
-  isEmpty(): boolean
-  /** Look up one non-negative sequence index without projecting its value. */
-  at(index: number): Value | null
-  /** Look up a dotted mapping/record key and sequence-index path. */
-  path(path: string): Value | null
-  /** The count a temporal holds, or `null`. */
-  get count(): bigint | null
-  /** The unit carried by a temporal, or `null`. */
-  get unit(): string | null
-  /** The non-null timezone marker carried by a temporal, or `null`. */
-  get zone(): string | null
-  /** The unscaled coefficient of an exact decimal, or `null`. */
-  get unscaled(): bigint | null
-  /** The scale of an exact decimal, or `null`. */
-  get scale(): number | null
-  /** Infer the exact native datatype this value names. */
-  get dataType(): JsDataType
-  /** Infer the exact native Field for this scalar value. */
-  intoField(): JsField
-  /** Infer the exact item Field for this non-empty outer Sequence. */
-  intoArrayField(): JsField
-  /** Infer a non-null Struct root from named Record rows. */
-  intoStructField(): JsField
-  /** Return deterministic hash bits shared with Rust and Python. */
-  stableHash(): bigint
-  /**
-   * Compare two native values by the core's total value order.
-   *
-   * Numeric widths compare by value, as equality does: `i8(1)` and
-   * `u64(1)` compare equal, and exact decimals are normalized first.
-   */
-  compare(other: Value): number
-  /** Make a cheap native clone without projecting through JavaScript. */
-  clone(): Value
-  /** Borrow binary content as a Buffer, or `null` for another kind. */
-  asBytes(): Buffer | null
-  /** Borrow string content, or `null` for another kind. */
-  asUtf8(): string | null
-  /** Encode this value as natural compact JSON bytes. */
-  asJsonBytes(): Buffer
-  /** Encode this value as natural compact JSON UTF-8. */
-  asJsonUtf8(): string
-  /** Natural compact JSON for the standard JavaScript string protocol. */
-  toString(): string
-  /**
-   * Whether two native values are the same value.
-   *
-   * One instant spelled in two resolutions is one value, and so are two
-   * spellings of one exact decimal, because the core compares what a value
-   * names rather than how it was written.
-   */
-  equals(other: Value): boolean
-}
-export type JsCodecValue = Value
-
-/**
- * An owning iterator over one native value's direct children.
- *
- * The iterator snapshots cheap `Value` clones. Nested containers retain their
- * shared native storage, so an exact temporal or decimal never crosses the
- * lossy JavaScript projection merely because its parent is iterated.
- *
- * This type implements JavaScript's iterable iterator protocol.
- * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
- */
-export declare class ValueIterator {
-
-}
-export type JsCodecValueIterator = ValueIterator
 
 /**
  * What a file system handler reports about one path.

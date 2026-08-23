@@ -13,8 +13,8 @@
   pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader>
   pub fn cast_reader(inner: BatchReader, field: &Field, safe: bool) -> Result<BatchReader>
   pub type Result<T> = std::result::Result<T, Error>;
-  pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef>
-  pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Value>
+  pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef>
+  pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar>
   pub struct StructScalar
   pub fn from_parts(schema: Field, array: StructArray) -> Result<Self>
   pub const fn field(&self) -> &Field
@@ -23,17 +23,17 @@
   pub fn get_by_name(&self, name: &str) -> Option<ArrayRef>
   pub fn entry(&self, index: usize) -> Option<(&Field, ArrayRef)>
   pub fn into_arrow_scalar(self) -> Scalar<StructArray>
-  pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value>
-  pub fn batch_to_value(batch: &RecordBatch) -> Result<Value>
+  pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar>
+  pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar>
 
 ### yggdryl::avro::schema  [rust\src\avro\schema.rs]
   pub const MAX_SCHEMA_DEPTH: usize = 384;
   pub struct Schema
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn from_json_with_limits(document: &Value, limits: Limits) -> Result<Self>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn from_json_with_limits(document: &Scalar, limits: Limits) -> Result<Self>
   pub fn from_str(input: &str) -> Result<Self>
   pub fn from_slice(input: &[u8]) -> Result<Self>
-  pub fn into_json(self) -> Value
+  pub fn into_json(self) -> Scalar
   pub fn kind(&self) -> &'static str
   pub fn into_canonical_form(self) -> String
   pub fn fingerprint(&self) -> u64
@@ -66,7 +66,7 @@
   pub fn read_container_with_limits<H: IOBase + ?Sized>(handle: &H, limits: Limits) -> Result<Container>
   pub fn read_container_resolved<H: IOBase + ?Sized>(handle: &H, reader: &Schema) -> Result<Container>
   pub fn read_container_resolved_with_limits<H: IOBase + ?Sized>( handle: &H, reader: &Schema, limits: Limits, ) -> Result<Container>
-  pub fn write_container<H: IOBase + ?Sized>( handle: &mut H, schema_json: &Value, metadata: &[(&str, &str)], rows: &[Value], ) -> Result<()>
+  pub fn write_container<H: IOBase + ?Sized>( handle: &mut H, schema_json: &Scalar, metadata: &[(&str, &str)], rows: &[Scalar], ) -> Result<()>
   pub struct Blocks<'handle, H: IOBase + ?Sized>
   pub fn read_blocks<H: IOBase + ?Sized>(handle: &H) -> Result<Blocks<'_, H>>
   pub fn read_blocks_with_limits<H: IOBase + ?Sized>(handle: &H, limits: Limits) -> Result<Blocks<'_, H>>
@@ -79,17 +79,17 @@
   pub struct Block
   pub const fn count(&self) -> u64
   pub fn size(&self) -> usize
-  pub fn rows(&self) -> Result<Vec<Value>>
-  pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Value>>
+  pub fn rows(&self) -> Result<Vec<Scalar>>
+  pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Scalar>>
 
 ### yggdryl::avro::resolve  [rust\src\avro\resolve.rs]
   pub struct Resolution
   pub fn from_schemas(writer: &Schema, reader: &Schema) -> Result<Self>
 
 ### yggdryl::avro::single  [rust\src\avro\single.rs]
-  pub fn into_single_object_vec(schema: &Schema, value: &Value) -> Result<Vec<u8>>
-  pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Value>
-  pub fn from_single_object_slice_with_limits( input: &[u8], writer: &Schema, limits: Limits, ) -> Result<Value>
+  pub fn into_single_object_vec(schema: &Schema, value: &Scalar) -> Result<Vec<u8>>
+  pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Scalar>
+  pub fn from_single_object_slice_with_limits( input: &[u8], writer: &Schema, limits: Limits, ) -> Result<Scalar>
 
 ### yggdryl::datatype::arrow  [rust\src\datatype\arrow.rs]
   pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
@@ -108,8 +108,8 @@
   pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
 
 ### yggdryl::datatype::default  [rust\src\datatype\default.rs]
-  pub fn default_value(&self) -> Result<Value>
-  pub fn is_default_value(&self, value: &Value) -> Result<bool>
+  pub fn default_value(&self) -> Result<Scalar>
+  pub fn is_default_value(&self, value: &Scalar) -> Result<bool>
   pub fn validate_bounded(&self) -> Result<()>
   pub fn default_union_type_id(&self) -> Result<Option<i8>>
 
@@ -172,30 +172,30 @@
 
 ### yggdryl::io::partition  [rust\src\io\partition.rs]
   pub const NULL_PARTITION: &str = "null";
-  pub fn partition_text(value: &Value) -> Result<SmolStr>
+  pub fn partition_text(value: &Scalar) -> Result<SmolStr>
   pub fn with_partitions( batch: &RecordBatch, partitions: &[(String, String)], field: Option<&Field>, ) -> Result<RecordBatch>
   pub fn without_partitions( batch: &RecordBatch, partitions: &[(String, String)], ) -> Result<RecordBatch>
   pub fn partitioned_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, field: Option<Field>, ) -> Result<crate::arrow::BatchReader>
   pub fn narrowed_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, schema: Arc<Schema>, ) -> crate::arrow::BatchReader
 
 ### yggdryl::generic::typed  [rust\src\generic\typed.rs]
-  pub struct TypedValue<K: FieldType = AnyType>
-  pub fn try_from_parts(data_type: DataType, value: Value) -> Result<Self>
-  pub fn try_from_value(value: Value) -> Result<Self>
-  pub fn from_parts(data_type: DataType, value: Value) -> Result<Self>
-  pub fn from_value(value: Value) -> Result<Self>
+  pub struct TypedScalar<K: FieldType = AnyType>
+  pub fn try_from_parts(data_type: DataType, value: Scalar) -> Result<Self>
+  pub fn try_from_value(value: Scalar) -> Result<Self>
+  pub fn from_parts(data_type: DataType, value: Scalar) -> Result<Self>
+  pub fn from_value(value: Scalar) -> Result<Self>
   pub const fn data_type(&self) -> &DataType
-  pub const fn value(&self) -> &Value
+  pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
-  pub fn into_parts(self) -> (DataType, Value)
-  pub fn into_value(self) -> Value
-  pub fn into_any(self) -> TypedValue
-  pub fn try_into_typed<J: FieldType>(self) -> Result<TypedValue<J>>
+  pub fn into_parts(self) -> (DataType, Scalar)
+  pub fn into_value(self) -> Scalar
+  pub fn into_any(self) -> TypedScalar
+  pub fn try_into_typed<J: FieldType>(self) -> Result<TypedScalar<J>>
   pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef>
   pub fn try_from_arrow_array( data_type: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( data_type: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
-  pub fn new(value: Value) -> Result<Self>
-  pub type NullValue = TypedValue<scalar::Null>;  // one alias per datatype, through RunEndEncodedValue
+  pub fn new(value: Scalar) -> Result<Self>
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar
 
 ### yggdryl::datatype::parser  [rust\src\datatype\parser.rs]
   pub const PARSE_RECURSION_LIMIT: usize = 64;
@@ -224,7 +224,7 @@
   pub fn duration32(unit: TimeUnit) -> Result<Self>
   pub fn duration64(unit: TimeUnit) -> Result<Self>
 
-### yggdryl::enums::codec  [rust\src\enums\codec.rs]
+### yggdryl::generic::codec  [rust\src\generic\codec.rs]
   pub struct Level(u8);
   pub const NONE: Self = Self(0);
   pub const FAST: Self = Self(1);
@@ -249,9 +249,15 @@
   pub fn writer_with_level<'target, W: Write + 'target>( self, target: W, level: Level, ) -> Encoder<'target>
   pub fn finish(self) -> Result<()>
 
-### yggdryl::enums::datatype_id  [rust\src\enums\datatype_id.rs]
+### yggdryl::generic::edge_algorithm  [rust\src\generic\edge_algorithm.rs]
+  pub enum EdgeAlgorithm
+  pub const ALL: [Self; 5] = [Self::Spherical, Self::Vincenty, Self::Thomas, Self::Andoyer, Self::Karney];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+
+### yggdryl::generic::datatype_id  [rust\src\generic\datatype_id.rs]
   pub enum DataTypeId
-  pub const ALL: [Self; 41] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 45] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn kind(self) -> DataTypeKind
@@ -268,9 +274,9 @@
   pub const fn is_wrapper(self) -> bool
   pub const fn fixed_byte_width(self) -> Option<usize>
 
-### yggdryl::enums::datatype_kind  [rust\src\enums\datatype_kind.rs]
+### yggdryl::generic::datatype_kind  [rust\src\generic\datatype_kind.rs]
   pub enum DataTypeKind
-  pub const ALL: [Self; 14] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Binary,
+  pub const ALL: [Self; 16] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Binary,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn is_nested(self) -> bool
@@ -279,23 +285,23 @@
   pub const fn is_bytes(self) -> bool
   pub const fn is_ordered(self) -> bool
 
-### yggdryl::enums::io_kind  [rust\src\enums\io_kind.rs]
+### yggdryl::generic::io_kind  [rust\src\generic\io_kind.rs]
   pub enum IOKind
-  pub const ALL: [Self; 4] = [Self::Memory, Self::File, Self::Directory, Self::Unknown];
+  pub const ALL: [Self; 7] = [Self::Memory, Self::File, Self::Directory, Self::Table, Self::Namespace, Self::Catalog, Self::Unknown];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn is_container(self) -> bool
   pub const fn is_leaf(self) -> bool
   pub const fn is_known(self) -> bool
 
-### yggdryl::enums::magic  [rust\src\enums\magic.rs]
+### yggdryl::generic::magic  [rust\src\generic\magic.rs]
   pub const MAGIC_PROBE_LEN: usize = 64;
   pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
   pub fn from_text_bytes(input: &[u8]) -> Option<Self>
   pub fn from_bytes(input: &[u8]) -> Option<Self>
   pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
 
-### yggdryl::enums::media_type  [rust\src\enums\media_type.rs]
+### yggdryl::generic::media_type  [rust\src\generic\media_type.rs]
   pub struct MediaType
   pub fn new(base: MimeType) -> Self
   pub fn from_parts<I>(base: MimeType, encodings: I) -> Result<Self> where I: IntoIterator<Item = MimeType>,
@@ -338,7 +344,7 @@
   pub fn is_binary(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::enums::mime_type  [rust\src\enums\mime_type.rs]
+### yggdryl::generic::mime_type  [rust\src\generic\mime_type.rs]
   pub struct MimeType(MimeTypeValue);
   pub const OCTET_STREAM: Self = Self(MimeTypeValue::OctetStream);
   pub const JSON: Self = Self(MimeTypeValue::Json);
@@ -433,7 +439,7 @@
   pub fn is_binary(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::enums::scheme  [rust\src\enums\scheme.rs]
+### yggdryl::generic::scheme  [rust\src\generic\scheme.rs]
   pub struct Scheme(SchemeValue);
   pub const HTTP: Self = Self(SchemeValue::Http);
   pub const HTTPS: Self = Self(SchemeValue::Https);
@@ -464,7 +470,7 @@
   pub const fn is_compatibility_target(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::enums::time_unit  [rust\src\enums\time_unit.rs]
+### yggdryl::generic::time_unit  [rust\src\generic\time_unit.rs]
   pub enum TimeUnit
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn from_arrow_time(value: arrow_schema::TimeUnit) -> Self
@@ -475,13 +481,39 @@
   pub const fn is_interval(self) -> bool
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::enums::union_mode  [rust\src\enums\union_mode.rs]
+### yggdryl::generic::timezone  [rust\src\generic\timezone.rs]
+  pub struct Timezone
+  pub const NAIVE: Self
+  pub const UTC: Self
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_offset(seconds: i32) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn as_smol_str(&self) -> &SmolStr
+  pub fn into_smol_str(self) -> SmolStr
+  pub fn is_utc(&self) -> bool
+  pub fn is_naive(&self) -> bool
+  pub fn is_known(&self) -> bool
+  pub fn is_fixed(&self) -> bool
+  pub fn observes_saving(&self) -> bool
+  pub fn offset_at(&self, epoch: i64) -> Option<i32>
+  pub fn standard_offset(&self) -> Option<i32>
+  pub fn is_saving_at(&self, epoch: i64) -> Option<bool>
+  pub fn abbreviation_at(&self, epoch: i64) -> Option<&'static str>
+  pub fn into_local(self, epoch: i64) -> Result<i64>
+  pub fn into_utc(self, local: i64) -> Result<i64>
+  pub fn registered() -> impl ExactSizeIterator<Item = Self>
+  pub fn aliases() -> impl ExactSizeIterator<Item = (&'static str, &'static str)>
+  pub fn stable_hash(&self) -> u64
+  pub fn from_smol_str(value: SmolStr) -> Result<Self>
+
+### yggdryl::generic::union_mode  [rust\src\generic\union_mode.rs]
   pub enum UnionMode
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::enums::write_mode  [rust\src\enums\write_mode.rs]
-  pub enum WriteMode
-  pub const ALL: [Self; 3] = [Self::Overwrite, Self::Append, Self::Merge];
+### yggdryl::generic::io_mode  [rust\src\generic\io_mode.rs]
+  pub enum IOMode
+  pub const ALL: [Self; 5] = [Self::Overwrite, Self::Append, Self::Merge, Self::ReadOnly, Self::Random];
+  pub const WRITE: [Self; 3] = [Self::Overwrite, Self::Append, Self::Merge];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
 
@@ -500,7 +532,7 @@
   pub enum Segment
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
-  pub fn key(value: Value) -> Result<Self>
+  pub fn key(value: Scalar) -> Result<Self>
   pub enum Comparison
   pub const fn as_str(self) -> &'static str
   pub const fn is_two_valued(self) -> bool
@@ -522,8 +554,8 @@
   pub enum Expression
   pub fn always_true() -> Self
   pub fn always_false() -> Self
-  pub fn literal(value: impl Into<Value>) -> Self
-  pub fn typed_literal(data_type: DataType, value: Value) -> Result<Self>
+  pub fn literal(value: impl Into<Scalar>) -> Self
+  pub fn typed_literal(data_type: DataType, value: Scalar) -> Result<Self>
   pub fn column(name: impl Into<SmolStr>) -> Self
   pub const fn attribute(selector: Selector) -> Self
   pub fn parameter(name: impl Into<SmolStr>) -> Self
@@ -556,7 +588,7 @@
   pub fn try_cast(self, data_type: DataType) -> Self
   pub fn case(branches: impl IntoIterator<Item = (Self, Self)>, otherwise: Option<Self>) -> Self
   pub const fn is_literal(&self) -> bool
-  pub const fn as_literal(&self) -> Option<&TypedValue>
+  pub const fn as_literal(&self) -> Option<&TypedScalar>
   pub fn as_column(&self) -> Option<&str>
   pub fn is_always_true(&self) -> bool
   pub fn is_always_false(&self) -> bool
@@ -576,7 +608,7 @@
   pub fn holder_carries_partition(column: &str, value: &str) -> Self
   pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>(pairs: impl IntoIterator<Item = (C, V)>) -> Self
   pub fn col(name: impl Into<SmolStr>) -> Expression
-  pub fn lit(value: impl Into<Value>) -> Expression
+  pub fn lit(value: impl Into<Scalar>) -> Expression
 
 ### yggdryl::expression::parser  [rust\src\expression\parser.rs]
   pub enum Direction
@@ -628,10 +660,10 @@
   pub const fn cost(&self) -> Cost
   pub fn data_type(&self) -> DataType
   pub fn field(&self) -> Field
-  pub fn read_url(&self, url: &Url) -> Value
+  pub fn read_url(&self, url: &Url) -> Scalar
   pub trait Attributes
   pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H);
-  pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Result<Value>
+  pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Result<Scalar>
 
 ### yggdryl::expression::apply  [rust\src\expression\apply.rs]
   pub trait ApplyExpression
@@ -646,10 +678,10 @@
   pub fn column_indices(&self) -> Vec<usize>
   pub fn column_names(&self) -> Vec<String>
   pub fn reads_rows(&self) -> bool
-  pub fn eval(&self, row: &Value) -> Result<Value>
-  pub fn eval_with(&self, row: &Value, holder: &dyn Attributes) -> Result<Value>
-  pub fn matches(&self, row: &Value) -> Result<bool>
-  pub fn matches_with(&self, row: &Value, holder: &dyn Attributes) -> Result<bool>
+  pub fn eval(&self, row: &Scalar) -> Result<Scalar>
+  pub fn eval_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<Scalar>
+  pub fn matches(&self, row: &Scalar) -> Result<bool>
+  pub fn matches_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<bool>
   pub fn matches_holder(&self, holder: &dyn Attributes) -> Result<bool>
   pub struct BoundStatement
   pub const fn schema(&self) -> &Field
@@ -660,20 +692,20 @@
   pub const fn limit(&self) -> Option<u64>
   pub fn is_all(&self) -> bool
   pub fn bind(&self, schema: &Field) -> Result<Bound>
-  pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Value)]) -> Result<Bound>
+  pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound>
   pub fn bind(&self, schema: &Field) -> Result<BoundStatement>
-  pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Value)]) -> Result<BoundStatement>
+  pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<BoundStatement>
 
 ### yggdryl::expression::pushdown  [rust\src\expression\pushdown.rs]
   pub struct ColumnBounds
-  pub const fn minimum(&self) -> Option<&Value>
-  pub const fn maximum(&self) -> Option<&Value>
+  pub const fn minimum(&self) -> Option<&Scalar>
+  pub const fn maximum(&self) -> Option<&Scalar>
   pub const fn nulls(&self) -> Option<u64>
   pub struct Bounds
   pub const fn new(rows: Option<u64>) -> Self
-  pub fn with_column(self, name: impl Into<SmolStr>, minimum: Option<Value>, maximum: Option<Value>, nulls: Option<u64>) -> Self
+  pub fn with_column(self, name: impl Into<SmolStr>, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>) -> Self
   pub fn from_partitions(schema: &Field, partitions: &[(String, String)]) -> Self
-  pub fn with_attribute(self, selector: Selector, minimum: Option<Value>, maximum: Option<Value>, nulls: Option<u64>) -> Self
+  pub fn with_attribute(self, selector: Selector, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>) -> Self
   pub fn from_url(url: &Url) -> Self
   pub fn with(self, other: Self) -> Self
   pub const fn row_count(&self) -> Option<u64>
@@ -774,7 +806,7 @@
   pub type FieldRef = Arc<ArrowField>;
   pub struct Field
   pub fn new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Self
-  pub fn default_value(&self) -> Result<Value>
+  pub fn default_value(&self) -> Result<Scalar>
   pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>>
   pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>>
   pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, data_type: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>,
@@ -787,8 +819,8 @@
   pub fn get_field(&self, index: usize) -> Option<&Field>
   pub fn get_field_by_name(&self, name: &str) -> Option<&Field>
   pub fn index_of(&self, name: &str) -> Option<usize>
-  pub fn validate_value(&self, value: &Value) -> Result<()>
-  pub fn canonicalize_value(&self, value: Value) -> Result<Value>
+  pub fn validate_value(&self, value: &Scalar) -> Result<()>
+  pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar>
   pub fn require_struct(&self) -> Result<()>
   pub fn validate_struct_root(&self) -> Result<()>
   pub const fn dictionary_id(&self) -> Option<i64>
@@ -977,8 +1009,8 @@
   pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self
   pub fn from_parts<I, M, V>( name: impl Into<SmolStr>, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>, M: Into<String>,
 
-### yggdryl::generic::codec  [rust\src\generic\codec.rs]
-  pub enum Codec<H: IOBase>
+### yggdryl::generic::coded  [rust\src\generic\coded.rs]
+  pub enum Coded<H: IOBase>
   pub fn wrap(handle: H, codec: crate::Codec) -> Self
   pub fn infer(handle: H) -> Self
   pub const fn codec(&self) -> crate::Codec
@@ -1031,7 +1063,7 @@
   pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()>
   pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]>
   pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()>
-  pub fn require_write_mode(&self, mode: WriteMode) -> Result<()>
+  pub fn require_write_mode(&self, mode: IOMode) -> Result<()>
   pub fn require_commit_row_size(&self) -> Result<Option<usize>>
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>
@@ -1078,8 +1110,8 @@
   pub struct SortField
   pub struct SortOrder
   pub const fn unsorted() -> Self
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn into_json(self) -> Result<Value>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn into_json(self) -> Result<Scalar>
   pub struct TableMetadata
   pub fn new(format_version: FormatVersion, location: impl Into<SmolStr>, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub fn stable_hash(&self) -> u64
@@ -1091,8 +1123,8 @@
   pub fn spec_by_id(&self, spec_id: i32) -> Option<&PartitionSpec>
   pub fn property(&self, key: &str) -> Option<&str>
   pub fn add_schema(&mut self, schema: Field) -> Result<i32>
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn into_json(self) -> Result<Value>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn into_json(self) -> Result<Scalar>
   pub fn set_current_snapshot(&mut self, snapshot: Snapshot)
 
 ### yggdryl::iceberg::partition  [rust\src\iceberg\partition.rs]
@@ -1103,8 +1135,8 @@
   pub fn result_type(self, source: &DataType) -> Result<DataType>
   pub struct PartitionField
   pub fn identity(source_id: i32, field_id: i32, name: impl Into<SmolStr>) -> Self
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn into_json(self) -> Result<Value>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn into_json(self) -> Result<Scalar>
   pub struct PartitionSpec
   pub const fn unpartitioned() -> Self
   pub fn identity(spec_id: i32, schema: &Field, columns: &[&str]) -> Result<Self>
@@ -1116,10 +1148,10 @@
   pub fn source_names(&self, schema: &Field) -> Result<Vec<SmolStr>>
   pub fn require_writable(&self) -> Result<()>
   pub fn partition_field(&self, schema: &Field) -> Result<Field>
-  pub fn partition_path(&self, values: &[Value]) -> Result<String>
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn into_json(self) -> Result<Value>
-  pub fn into_v1_json(self) -> Result<Value>
+  pub fn partition_path(&self, values: &[Scalar]) -> Result<String>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn into_json(self) -> Result<Scalar>
+  pub fn into_v1_json(self) -> Result<Scalar>
 
 ### yggdryl::iceberg::scan  [rust\src\iceberg\scan.rs]
   pub struct ScanTask
@@ -1187,8 +1219,8 @@
   pub struct Compaction { pub files_before: usize, pub files_after: usize, pub bytes_rewritten: i64 }
 
 ### yggdryl::iceberg::schema  [rust\src\iceberg\schema.rs]
-  pub fn schema_from_json(name: &str, schema: &Value) -> Result<Field>
-  pub fn schema_to_json(root: &Field) -> Result<Value>
+  pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field>
+  pub fn schema_to_json(root: &Field) -> Result<Scalar>
   pub fn assign_field_ids(root: &mut Field, start: i32) -> Result<i32>
   pub fn last_field_id(root: &Field) -> Result<i32>
 
@@ -1197,12 +1229,12 @@
   pub struct Snapshot
   pub fn summary_value(&self, key: &str) -> Option<&str>
   pub fn operation(&self) -> &str
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn into_json(self, version: FormatVersion) -> Result<Value>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn into_json(self, version: FormatVersion) -> Result<Scalar>
   pub struct SnapshotRef
   pub fn branch(snapshot_id: i64) -> Self
-  pub fn from_json(document: &Value) -> Result<Self>
-  pub fn into_json(self) -> Result<Value>
+  pub fn from_json(document: &Scalar) -> Result<Self>
+  pub fn into_json(self) -> Result<Scalar>
 
 ### yggdryl::iceberg::table  [rust\src\iceberg\table.rs]
   pub struct Table<H: IOBase>
@@ -1319,14 +1351,14 @@
   pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
-  fn read_value(&self, field: Option<&Field>) -> Result<Value>
-  fn write_value(&mut self, value: &Value) -> Result<()>
+  fn read_value(&self, field: Option<&Field>) -> Result<Scalar>
+  fn write_value(&mut self, value: &Scalar) -> Result<()>
   fn is_io(&self) -> bool
   pub struct ArrowWriteSession
   pub fn overwrite(options: &RecordOptions) -> Result<Self>
   pub fn append(options: &RecordOptions) -> Result<Self>
   pub fn merge(options: &RecordOptions) -> Result<Self>
-  pub fn new(mode: WriteMode, options: &RecordOptions) -> Result<Self>
+  pub fn new(mode: IOMode, options: &RecordOptions) -> Result<Self>
   pub fn push(&mut self, handle: &mut (impl IOBase + ?Sized), batches: BatchReader) -> Result<bool>
   pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()>
   pub fn abort(&mut self)
@@ -1361,15 +1393,15 @@
   fn read_parquet_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics>
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader>
-  fn write_arrow_reader(&mut self, batches: BatchReader, mode: WriteMode, options: &RecordOptions) -> Result<()>
+  fn write_arrow_reader(&mut self, batches: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
   fn overwrite_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
   fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
   fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
-  fn write_arrow_record_batch(&mut self, batch: RecordBatch, mode: WriteMode, options: &RecordOptions) -> Result<()>
+  fn write_arrow_record_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
   fn overwrite_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
   fn append_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
   fn merge_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
-  fn write_records<I, R>(&mut self, records: I, mode: WriteMode, options: &RecordOptions) -> Result<()>
+  fn write_records<I, R>(&mut self, records: I, mode: IOMode, options: &RecordOptions) -> Result<()>
   fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
   fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
   fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
@@ -1400,30 +1432,30 @@
 
 ### yggdryl::json  [rust\src\json\mod.rs]
   pub const MAX_PARSER_DEPTH: usize = 384;
-  pub fn from_utf8(input: &str) -> Result<Value>
-  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Value>
-  pub fn from_bytes(input: &[u8]) -> Result<Value>
-  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Value>
-  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Value>
-  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Value>
-  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_reader<R: Read>(reader: R) -> Result<Value>
-  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value>
-  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Value>
-  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Value>>
-  pub fn from_utf8_all(input: &str) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_utf8(input: &str) -> Result<Scalar>
+  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes(input: &[u8]) -> Result<Scalar>
+  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar>
+  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar>
+  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Scalar>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar>
+  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar>
+  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
   pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
   pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
   pub fn from_reader_iter_with_field<'a, R: Read + 'a>(reader: &'a mut R, field: &Field) -> ValueIter<'a>
@@ -1432,30 +1464,30 @@
   pub fn new(reader: R) -> Self
   pub fn with_limits(reader: R, limits: Limits) -> Self
   pub fn byte_offset(&self) -> usize
-  pub fn from_lines_bytes(input: &[u8]) -> Result<Vec<Value>>
-  pub fn from_lines_utf8(input: &str) -> Result<Vec<Value>>
-  pub fn from_lines_utf8_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_lines_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
-  pub fn from_lines_reader<R: Read>(reader: R) -> Result<Vec<Value>>
-  pub fn from_lines_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_lines_bytes(input: &[u8]) -> Result<Vec<Scalar>>
+  pub fn from_lines_utf8(input: &str) -> Result<Vec<Scalar>>
+  pub fn from_lines_utf8_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_lines_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_lines_reader<R: Read>(reader: R) -> Result<Vec<Scalar>>
+  pub fn from_lines_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>>
   pub fn from_lines_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
   pub fn from_lines_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
   pub struct LinesReader<R: Read>
   pub fn new(reader: R) -> Self
   pub fn with_limits(reader: R, limits: Limits) -> Self
   pub const fn byte_offset(&self) -> usize
-  pub fn into_bytes(value: &Value) -> Result<Vec<u8>>
-  pub fn into_bytes_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8(value: &Value) -> Result<String>
-  pub fn into_utf8_with_formatting(value: &Value, formatting: Formatting) -> Result<String>
-  pub fn into_writer<W: Write>(value: &Value, writer: W) -> Result<()>
-  pub fn into_writer_with_formatting<W: Write>(value: &Value, writer: W, formatting: Formatting) -> Result<()>
-  pub fn into_bytes_all(values: &[Value]) -> Result<Vec<u8>>
-  pub fn into_bytes_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8_all(values: &[Value]) -> Result<String>
-  pub fn into_utf8_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<String>
-  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
-  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
+  pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>>
+  pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8(value: &Scalar) -> Result<String>
+  pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String>
+  pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()>
+  pub fn into_writer_with_formatting<W: Write>(value: &Scalar, writer: W, formatting: Formatting) -> Result<()>
+  pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>>
+  pub fn into_bytes_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8_all(values: &[Scalar]) -> Result<String>
+  pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
+  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
 ### yggdryl::local::file  [rust\src\local\file.rs]
   pub struct File
@@ -1627,13 +1659,13 @@
   pub fn detect(handle: &impl IOBase, head: &[u8]) -> Result<Self>
   pub const fn format(self) -> Format
   pub const fn codec(self) -> Codec
-  pub fn load(source: &impl IOBase) -> Result<Value>
-  pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value>
-  pub fn load_all(source: &impl IOBase) -> Result<Vec<Value>>
-  pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Value>>
-  pub fn dump(target: &mut impl IOBase, value: &Value) -> Result<()>
-  pub fn dump_with_level(target: &mut impl IOBase, value: &Value, level: Level) -> Result<()>
-  pub fn dump_all(target: &mut impl IOBase, values: &[Value]) -> Result<()>
+  pub fn load(source: &impl IOBase) -> Result<Scalar>
+  pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Scalar>
+  pub fn load_all(source: &impl IOBase) -> Result<Vec<Scalar>>
+  pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn dump(target: &mut impl IOBase, value: &Scalar) -> Result<()>
+  pub fn dump_with_level(target: &mut impl IOBase, value: &Scalar, level: Level) -> Result<()>
+  pub fn dump_all(target: &mut impl IOBase, values: &[Scalar]) -> Result<()>
 
 ### yggdryl::text::limits  [rust\src\text\limits.rs]
   pub struct Limits
@@ -1653,62 +1685,62 @@
   pub struct TextOptions
   pub fn stable_hash(&self) -> u64
   pub struct ValueIter<'a>
-  pub fn from_utf8(input: &str, format: Format) -> Result<Value>
-  pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Result<Value>
-  pub fn from_utf8_with_field(input: &str, format: Format, field: &Field) -> Result<Value>
-  pub fn from_utf8_with_field_and_limits(input: &str, format: Format, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_utf8_with(input: &str, format: Format, loading: &Loading) -> Result<Value>
-  pub fn from_bytes(input: &[u8], format: Format) -> Result<Value>
-  pub fn from_bytes_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Value>
-  pub fn from_bytes_with_field(input: &[u8], format: Format, field: &Field) -> Result<Value>
-  pub fn from_bytes_with_field_and_limits(input: &[u8], format: Format, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_bytes_with(input: &[u8], format: Format, loading: &Loading) -> Result<Value>
-  pub fn from_reader<R: Read>(reader: R, format: Format) -> Result<Value>
-  pub fn from_reader_with_limits<R: Read>( reader: R, format: Format, limits: Limits, ) -> Result<Value>
-  pub fn from_reader_with_field<R: Read>(reader: R, format: Format, field: &Field) -> Result<Value>
-  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, format: Format, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -> Result<Value>
-  pub fn from_bytes_all(input: &[u8], format: Format) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field(input: &[u8], format: Format, field: &Field) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field_and_limits(input: &[u8], format: Format, field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_utf8_all(input: &str, format: Format) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_limits(input: &str, format: Format, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field(input: &str, format: Format, field: &Field) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field_and_limits(input: &str, format: Format, field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all<R: Read>(reader: R, format: Format) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_limits<R: Read>( reader: R, format: Format, limits: Limits, ) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field<R: Read>(reader: R, format: Format, field: &Field) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, format: Format, field: &Field, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_utf8(input: &str, format: Format) -> Result<Scalar>
+  pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with_field(input: &str, format: Format, field: &Field) -> Result<Scalar>
+  pub fn from_utf8_with_field_and_limits(input: &str, format: Format, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with(input: &str, format: Format, loading: &Loading) -> Result<Scalar>
+  pub fn from_bytes(input: &[u8], format: Format) -> Result<Scalar>
+  pub fn from_bytes_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_with_field(input: &[u8], format: Format, field: &Field) -> Result<Scalar>
+  pub fn from_bytes_with_field_and_limits(input: &[u8], format: Format, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_with(input: &[u8], format: Format, loading: &Loading) -> Result<Scalar>
+  pub fn from_reader<R: Read>(reader: R, format: Format) -> Result<Scalar>
+  pub fn from_reader_with_limits<R: Read>( reader: R, format: Format, limits: Limits, ) -> Result<Scalar>
+  pub fn from_reader_with_field<R: Read>(reader: R, format: Format, field: &Field) -> Result<Scalar>
+  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, format: Format, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -> Result<Scalar>
+  pub fn from_bytes_all(input: &[u8], format: Format) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field(input: &[u8], format: Format, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field_and_limits(input: &[u8], format: Format, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all(input: &str, format: Format) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_limits(input: &str, format: Format, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field(input: &str, format: Format, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field_and_limits(input: &str, format: Format, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all<R: Read>(reader: R, format: Format) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_limits<R: Read>( reader: R, format: Format, limits: Limits, ) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field<R: Read>(reader: R, format: Format, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, format: Format, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
   pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R, format: Format) -> ValueIter<'a>
   pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, format: Format, limits: Limits, ) -> ValueIter<'a>
   pub fn from_reader_iter_with_field<'a, R: Read + 'a>(reader: &'a mut R, format: Format, field: &Field) -> ValueIter<'a>
   pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(reader: &'a mut R, format: Format, field: &Field, limits: Limits) -> ValueIter<'a>
-  pub fn into_bytes(value: &Value, format: Format) -> Result<Vec<u8>>
-  pub fn into_bytes_with_formatting(value: &Value, format: Format, formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8(value: &Value, format: Format) -> Result<String>
-  pub fn into_utf8_with_formatting(value: &Value, format: Format, formatting: Formatting) -> Result<String>
-  pub fn into_writer<W: Write>(value: &Value, writer: W, format: Format) -> Result<()>
-  pub fn into_writer_with_formatting<W: Write>(value: &Value, writer: W, format: Format, formatting: Formatting) -> Result<()>
-  pub fn into_bytes_all(values: &[Value], format: Format) -> Result<Vec<u8>>
-  pub fn into_bytes_all_with_formatting(values: &[Value], format: Format, formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8_all(values: &[Value], format: Format) -> Result<String>
-  pub fn into_utf8_all_with_formatting(values: &[Value], format: Format, formatting: Formatting) -> Result<String>
-  pub fn into_writer_all<W, I, V>(values: I, writer: W, format: Format) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
-  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, format: Format, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
+  pub fn into_bytes(value: &Scalar, format: Format) -> Result<Vec<u8>>
+  pub fn into_bytes_with_formatting(value: &Scalar, format: Format, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8(value: &Scalar, format: Format) -> Result<String>
+  pub fn into_utf8_with_formatting(value: &Scalar, format: Format, formatting: Formatting) -> Result<String>
+  pub fn into_writer<W: Write>(value: &Scalar, writer: W, format: Format) -> Result<()>
+  pub fn into_writer_with_formatting<W: Write>(value: &Scalar, writer: W, format: Format, formatting: Formatting) -> Result<()>
+  pub fn into_bytes_all(values: &[Scalar], format: Format) -> Result<Vec<u8>>
+  pub fn into_bytes_all_with_formatting(values: &[Scalar], format: Format, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8_all(values: &[Scalar], format: Format) -> Result<String>
+  pub fn into_utf8_all_with_formatting(values: &[Scalar], format: Format, formatting: Formatting) -> Result<String>
+  pub fn into_writer_all<W, I, V>(values: I, writer: W, format: Format) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, format: Format, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
   pub fn infer_format(input: &[u8]) -> Result<Format>
-  pub fn from_utf8_inferred(input: &str) -> Result<(Format, Value)>
-  pub fn from_utf8_inferred_with_limits(input: &str, limits: Limits) -> Result<(Format, Value)>
-  pub fn from_utf8_inferred_with_field(input: &str, field: &Field) -> Result<(Format, Value)>
-  pub fn from_bytes_inferred(input: &[u8]) -> Result<(Format, Value)>
-  pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Value)>
-  pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Value)>
+  pub fn from_utf8_inferred(input: &str) -> Result<(Format, Scalar)>
+  pub fn from_utf8_inferred_with_limits(input: &str, limits: Limits) -> Result<(Format, Scalar)>
+  pub fn from_utf8_inferred_with_field(input: &str, field: &Field) -> Result<(Format, Scalar)>
+  pub fn from_bytes_inferred(input: &[u8]) -> Result<(Format, Scalar)>
+  pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Scalar)>
+  pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Scalar)>
 
 ### yggdryl::generic::i256  [rust\src\generic\i256.rs]
   pub struct I256([u64; 4]);
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::generic::value  [rust\src\generic\value.rs]
+### yggdryl::generic::scalar  [rust\src\generic\scalar.rs]
   pub struct Float16(u16);
   pub fn from_f16(value: half::f16) -> Self
   pub const fn as_f16(self) -> half::f16
@@ -1725,7 +1757,7 @@
   pub const fn as_f64(self) -> f64
   pub const fn into_f64(self) -> f64
   pub fn stable_hash(&self) -> u64
-  pub enum Value
+  pub enum Scalar
   pub const fn kind(&self) -> &'static str
   pub fn stable_hash(&self) -> u64
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
@@ -1801,30 +1833,30 @@
 
 ### yggdryl::toml  [rust\src\toml\mod.rs]
   pub const MAX_PARSER_DEPTH: usize = 64;
-  pub fn from_utf8(input: &str) -> Result<Value>
-  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Value>
-  pub fn from_bytes(input: &[u8]) -> Result<Value>
-  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Value>
-  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Value>
-  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Value>
-  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_reader<R: Read>(reader: R) -> Result<Value>
-  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value>
-  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Value>
-  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_utf8_all(input: &str) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_utf8(input: &str) -> Result<Scalar>
+  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes(input: &[u8]) -> Result<Scalar>
+  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar>
+  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar>
+  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Scalar>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar>
+  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar>
+  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
   pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
   pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
   pub fn from_reader_iter_with_field<'a, R: Read + 'a>(reader: &'a mut R, field: &Field) -> ValueIter<'a>
@@ -1833,20 +1865,20 @@
   pub fn new(reader: R) -> Self
   pub const fn with_limits(reader: R, limits: Limits) -> Self
   pub const fn byte_offset(&self) -> usize
-  pub fn into_bytes(value: &Value) -> Result<Vec<u8>>
-  pub fn into_bytes_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8(value: &Value) -> Result<String>
-  pub fn into_utf8_with_formatting(value: &Value, formatting: Formatting) -> Result<String>
-  pub fn validate_for_write(value: &Value) -> Result<()>
-  pub fn validate_for_write_with_limits(value: &Value, limits: Limits) -> Result<()>
-  pub fn into_writer<W: Write>(value: &Value, writer: W) -> Result<()>
-  pub fn into_writer_with_formatting<W: Write>(value: &Value, writer: W, formatting: Formatting) -> Result<()>
-  pub fn into_bytes_all(values: &[Value]) -> Result<Vec<u8>>
-  pub fn into_bytes_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8_all(values: &[Value]) -> Result<String>
-  pub fn into_utf8_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<String>
-  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
-  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Value>,
+  pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>>
+  pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8(value: &Scalar) -> Result<String>
+  pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String>
+  pub fn validate_for_write(value: &Scalar) -> Result<()>
+  pub fn validate_for_write_with_limits(value: &Scalar, limits: Limits) -> Result<()>
+  pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()>
+  pub fn into_writer_with_formatting<W: Write>(value: &Scalar, writer: W, formatting: Formatting) -> Result<()>
+  pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>>
+  pub fn into_bytes_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8_all(values: &[Scalar]) -> Result<String>
+  pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
+  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
 ### yggdryl::uri  [rust\src\uri.rs]
   pub struct Authority(SmolStr);
@@ -2002,30 +2034,30 @@
 ### yggdryl::yaml  [rust\src\yaml\mod.rs]
   pub const MAX_FLOW_DEPTH: usize = 255;
   pub const MAX_PARSER_DEPTH: usize = 384;
-  pub fn from_utf8(input: &str) -> Result<Value>
-  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Value>
-  pub fn from_bytes(input: &[u8]) -> Result<Value>
-  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Value>
-  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Value>
-  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Value>
-  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_reader<R: Read>(reader: R) -> Result<Value>
-  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value>
-  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Value>
-  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Value>
-  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Value>>
-  pub fn from_utf8_all(input: &str) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Value>>
-  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Value>>
-  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Value>>
-  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Value>>
+  pub fn from_utf8(input: &str) -> Result<Scalar>
+  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes(input: &[u8]) -> Result<Scalar>
+  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar>
+  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar>
+  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Scalar>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar>
+  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar>
+  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
   pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a>
   pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
   pub fn from_reader_iter_with_field<'a, R: Read + 'a>(reader: &'a mut R, field: &Field) -> ValueIter<'a>
@@ -2034,18 +2066,18 @@
   pub fn new<R: Read + 'a>(reader: R) -> Self
   pub fn with_limits<R: Read + 'a>(reader: R, limits: Limits) -> Self
   pub fn byte_offset(&self) -> usize
-  pub fn into_bytes(value: &Value) -> Result<Vec<u8>>
-  pub fn into_bytes_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8(value: &Value) -> Result<String>
-  pub fn into_utf8_with_formatting(value: &Value, formatting: Formatting) -> Result<String>
-  pub fn into_writer<W: Write>(value: &Value, writer: W) -> Result<()>
-  pub fn into_writer_with_formatting<W: Write>(value: &Value, writer: W, formatting: Formatting) -> Result<()>
-  pub fn into_bytes_all(values: &[Value]) -> Result<Vec<u8>>
-  pub fn into_bytes_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>>
-  pub fn into_utf8_all(values: &[Value]) -> Result<String>
-  pub fn into_utf8_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<String>
-  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Value>,
-  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Value>,
+  pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>>
+  pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8(value: &Scalar) -> Result<String>
+  pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String>
+  pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()>
+  pub fn into_writer_with_formatting<W: Write>(value: &Scalar, writer: W, formatting: Formatting) -> Result<()>
+  pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>>
+  pub fn into_bytes_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8_all(values: &[Scalar]) -> Result<String>
+  pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
+  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Scalar>,
+  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Scalar>,
 
 ### yggdryl::zlib  [rust\src\zlib\mod.rs]
   pub fn load(input: &[u8]) -> Result<Vec<u8>>

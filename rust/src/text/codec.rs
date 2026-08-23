@@ -2,7 +2,7 @@
 
 use std::io::{Read, Write};
 
-use super::{Format, Formatting, Limits, Value};
+use super::{Format, Formatting, Limits, Scalar};
 use crate::io::IOBase;
 use crate::{Field, Level, MimeType, Result};
 
@@ -36,94 +36,98 @@ pub trait TextCodec: Copy {
     }
 
     /// Parse one value from UTF-8.
-    fn from_utf8(&self, input: &str) -> Result<Value> {
+    fn from_utf8(&self, input: &str) -> Result<Scalar> {
         super::from_utf8_with_limits(input, self.format(), self.limits())
     }
 
     /// Parse and type one UTF-8 value under `field`.
-    fn from_utf8_with_field(&self, input: &str, field: &Field) -> Result<Value> {
+    fn from_utf8_with_field(&self, input: &str, field: &Field) -> Result<Scalar> {
         super::from_utf8_with_field_and_limits(input, self.format(), field, self.limits())
     }
 
     /// Parse one value from bytes.
-    fn from_bytes(&self, input: &[u8]) -> Result<Value> {
+    fn from_bytes(&self, input: &[u8]) -> Result<Scalar> {
         super::from_bytes_with_limits(input, self.format(), self.limits())
     }
 
     /// Parse and type one byte value under `field`.
-    fn from_bytes_with_field(&self, input: &[u8], field: &Field) -> Result<Value> {
+    fn from_bytes_with_field(&self, input: &[u8], field: &Field) -> Result<Scalar> {
         super::from_bytes_with_field_and_limits(input, self.format(), field, self.limits())
     }
 
     /// Parse one value from a standard byte reader.
-    fn from_reader<R: Read>(&self, reader: R) -> Result<Value> {
+    fn from_reader<R: Read>(&self, reader: R) -> Result<Scalar> {
         super::from_reader_with_limits(reader, self.format(), self.limits())
     }
 
     /// Parse and type one reader value under `field`.
-    fn from_reader_with_field<R: Read>(&self, reader: R, field: &Field) -> Result<Value> {
+    fn from_reader_with_field<R: Read>(&self, reader: R, field: &Field) -> Result<Scalar> {
         super::from_reader_with_field_and_limits(reader, self.format(), field, self.limits())
     }
 
     /// Parse every UTF-8 document.
-    fn from_utf8_all(&self, input: &str) -> Result<Vec<Value>> {
+    fn from_utf8_all(&self, input: &str) -> Result<Vec<Scalar>> {
         super::from_utf8_all_with_limits(input, self.format(), self.limits())
     }
 
     /// Parse and type every UTF-8 document under `field`.
-    fn from_utf8_all_with_field(&self, input: &str, field: &Field) -> Result<Vec<Value>> {
+    fn from_utf8_all_with_field(&self, input: &str, field: &Field) -> Result<Vec<Scalar>> {
         super::from_utf8_all_with_field_and_limits(input, self.format(), field, self.limits())
     }
 
     /// Parse every byte document.
-    fn from_bytes_all(&self, input: &[u8]) -> Result<Vec<Value>> {
+    fn from_bytes_all(&self, input: &[u8]) -> Result<Vec<Scalar>> {
         super::from_bytes_all_with_limits(input, self.format(), self.limits())
     }
 
     /// Parse and type every byte document under `field`.
-    fn from_bytes_all_with_field(&self, input: &[u8], field: &Field) -> Result<Vec<Value>> {
+    fn from_bytes_all_with_field(&self, input: &[u8], field: &Field) -> Result<Vec<Scalar>> {
         super::from_bytes_all_with_field_and_limits(input, self.format(), field, self.limits())
     }
 
     /// Parse every document from a standard byte reader.
-    fn from_reader_all<R: Read>(&self, reader: R) -> Result<Vec<Value>> {
+    fn from_reader_all<R: Read>(&self, reader: R) -> Result<Vec<Scalar>> {
         super::from_reader_all_with_limits(reader, self.format(), self.limits())
     }
 
     /// Parse and type every reader document under `field`.
-    fn from_reader_all_with_field<R: Read>(&self, reader: R, field: &Field) -> Result<Vec<Value>> {
+    fn from_reader_all_with_field<R: Read>(&self, reader: R, field: &Field) -> Result<Vec<Scalar>> {
         super::from_reader_all_with_field_and_limits(reader, self.format(), field, self.limits())
     }
 
     /// Encode one value as UTF-8.
-    fn into_utf8(&self, value: &Value) -> Result<String> {
+    fn into_utf8(&self, value: &Scalar) -> Result<String> {
         super::into_utf8(value, self.format())
     }
 
     /// Encode one value as UTF-8 with explicit formatting.
-    fn into_utf8_with_formatting(&self, value: &Value, formatting: Formatting) -> Result<String> {
+    fn into_utf8_with_formatting(&self, value: &Scalar, formatting: Formatting) -> Result<String> {
         super::into_utf8_with_formatting(value, self.format(), formatting)
     }
 
     /// Encode one value as bytes.
-    fn into_bytes(&self, value: &Value) -> Result<Vec<u8>> {
+    fn into_bytes(&self, value: &Scalar) -> Result<Vec<u8>> {
         super::into_bytes(value, self.format())
     }
 
     /// Encode one value as bytes with explicit formatting.
-    fn into_bytes_with_formatting(&self, value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
+    fn into_bytes_with_formatting(
+        &self,
+        value: &Scalar,
+        formatting: Formatting,
+    ) -> Result<Vec<u8>> {
         super::into_bytes_with_formatting(value, self.format(), formatting)
     }
 
     /// Encode one value to a standard byte writer.
-    fn into_writer<W: Write>(&self, value: &Value, writer: W) -> Result<()> {
+    fn into_writer<W: Write>(&self, value: &Scalar, writer: W) -> Result<()> {
         super::into_writer(value, writer, self.format())
     }
 
     /// Encode one value to a writer with explicit formatting.
     fn into_writer_with_formatting<W: Write>(
         &self,
-        value: &Value,
+        value: &Scalar,
         writer: W,
         formatting: Formatting,
     ) -> Result<()> {
@@ -131,34 +135,34 @@ pub trait TextCodec: Copy {
     }
 
     /// Encode values as UTF-8.
-    fn into_utf8_all(&self, values: &[Value]) -> Result<String> {
+    fn into_utf8_all(&self, values: &[Scalar]) -> Result<String> {
         super::into_utf8_all(values, self.format())
     }
 
     /// Encode values as bytes.
-    fn into_bytes_all(&self, values: &[Value]) -> Result<Vec<u8>> {
+    fn into_bytes_all(&self, values: &[Scalar]) -> Result<Vec<u8>> {
         super::into_bytes_all(values, self.format())
     }
 
     /// Encode values to a standard byte writer.
-    fn into_writer_all<W: Write>(&self, values: &[Value], writer: W) -> Result<()> {
+    fn into_writer_all<W: Write>(&self, values: &[Scalar], writer: W) -> Result<()> {
         super::into_writer_all(values, writer, self.format())
     }
 
     /// Parse one value from a Yggdryl I/O handle.
-    fn from_io<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Value> {
+    fn from_io<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Scalar> {
         let decoded = super::io::decoded_for_format(handle, self.format())?;
         super::from_reader_with_limits(decoded, self.format(), self.limits())
     }
 
     /// Parse and type one handle value under `field`.
-    fn from_io_with_field<H: IOBase + ?Sized>(&self, handle: &H, field: &Field) -> Result<Value> {
+    fn from_io_with_field<H: IOBase + ?Sized>(&self, handle: &H, field: &Field) -> Result<Scalar> {
         let decoded = super::io::decoded_for_format(handle, self.format())?;
         super::from_reader_with_field_and_limits(decoded, self.format(), field, self.limits())
     }
 
     /// Parse every value from a Yggdryl I/O handle.
-    fn from_io_all<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Vec<Value>> {
+    fn from_io_all<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Vec<Scalar>> {
         let decoded = super::io::decoded_for_format(handle, self.format())?;
         super::from_reader_all_with_limits(decoded, self.format(), self.limits())
     }
@@ -168,20 +172,20 @@ pub trait TextCodec: Copy {
         &self,
         handle: &H,
         field: &Field,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<Vec<Scalar>> {
         let decoded = super::io::decoded_for_format(handle, self.format())?;
         super::from_reader_all_with_field_and_limits(decoded, self.format(), field, self.limits())
     }
 
     /// Replace a Yggdryl handle with one encoded value.
-    fn into_io<H: IOBase + ?Sized>(&self, value: &Value, handle: &mut H) -> Result<()> {
+    fn into_io<H: IOBase + ?Sized>(&self, value: &Scalar, handle: &mut H) -> Result<()> {
         self.into_io_with_formatting(value, handle, Formatting::default())
     }
 
     /// Replace a handle with one value at an explicit compression level.
     fn into_io_with_level<H: IOBase + ?Sized>(
         &self,
-        value: &Value,
+        value: &Scalar,
         handle: &mut H,
         level: Level,
     ) -> Result<()> {
@@ -191,7 +195,7 @@ pub trait TextCodec: Copy {
     /// Replace a handle with one value under explicit formatting.
     fn into_io_with_formatting<H: IOBase + ?Sized>(
         &self,
-        value: &Value,
+        value: &Scalar,
         handle: &mut H,
         formatting: Formatting,
     ) -> Result<()> {
@@ -207,7 +211,7 @@ pub trait TextCodec: Copy {
     }
 
     /// Replace a handle with encoded values.
-    fn into_io_all<H: IOBase + ?Sized>(&self, values: &[Value], handle: &mut H) -> Result<()> {
+    fn into_io_all<H: IOBase + ?Sized>(&self, values: &[Scalar], handle: &mut H) -> Result<()> {
         let mut encoded = Vec::new();
         {
             let mut writer = handle.codec().writer(&mut encoded);

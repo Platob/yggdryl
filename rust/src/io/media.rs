@@ -261,7 +261,7 @@ pub trait IOMedia: Send {
         options.limit_arrow_reader(super::select_reader(reader, options)?)
     }
 
-    /// Write a batch stream using one explicit [`WriteMode`](crate::WriteMode).
+    /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).
     ///
     /// This is the configurable counterpart to the three intent-specific
     /// primitives. The canonical argument order is input, mode, options; the
@@ -277,7 +277,7 @@ pub trait IOMedia: Send {
     fn write_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
-        mode: crate::WriteMode,
+        mode: crate::IOMode,
         options: &RecordOptions,
     ) -> Result<()> {
         // The generic entry point owns mode validation so an implementor's
@@ -285,9 +285,15 @@ pub trait IOMedia: Send {
         // authoritative intent and its key settings are known to agree.
         options.require_write_mode(mode)?;
         match mode {
-            crate::WriteMode::Overwrite => self.overwrite_arrow_reader(batches, options),
-            crate::WriteMode::Append => self.append_arrow_reader(batches, options),
-            crate::WriteMode::Merge => self.merge_arrow_reader(batches, options),
+            crate::IOMode::Overwrite => self.overwrite_arrow_reader(batches, options),
+            crate::IOMode::Append => self.append_arrow_reader(batches, options),
+            crate::IOMode::Merge => self.merge_arrow_reader(batches, options),
+            crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$.mode"),
+                reason: smol_str::SmolStr::new_static(
+                    "write mode readonly or random is not supported for write_arrow_reader",
+                ),
+            }),
         }
     }
 
@@ -386,14 +392,20 @@ pub trait IOMedia: Send {
     fn write_arrow_record_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
-        mode: crate::WriteMode,
+        mode: crate::IOMode,
         options: &RecordOptions,
     ) -> Result<()> {
         options.require_write_mode(mode)?;
         match mode {
-            crate::WriteMode::Overwrite => self.overwrite_arrow_record_batch(batch, options),
-            crate::WriteMode::Append => self.append_arrow_record_batch(batch, options),
-            crate::WriteMode::Merge => self.merge_arrow_record_batch(batch, options),
+            crate::IOMode::Overwrite => self.overwrite_arrow_record_batch(batch, options),
+            crate::IOMode::Append => self.append_arrow_record_batch(batch, options),
+            crate::IOMode::Merge => self.merge_arrow_record_batch(batch, options),
+            crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$.mode"),
+                reason: smol_str::SmolStr::new_static(
+                    "write mode readonly or random is not supported for write_arrow_record_batch",
+                ),
+            }),
         }
     }
 
@@ -503,10 +515,10 @@ pub trait IOMedia: Send {
 
     /// Replace this resource from native row values.
     ///
-    /// A native row is one ordered [`Value`](crate::Value) sequence under
+    /// A native row is one ordered [`Scalar`](crate::Scalar) sequence under
     /// `options.field`; no parallel record or record-schema type exists.
-    /// Rust structs participate with `TryInto<Value>`. Implementing the
-    /// ordinary infallible `From<Row> for Value` is sufficient because the
+    /// Rust structs participate with `TryInto<Scalar>`. Implementing the
+    /// ordinary infallible `From<Row> for Scalar` is sufficient because the
     /// standard library supplies its `TryInto` implementation.
     ///
     /// Rows are converted lazily and held only for the current
@@ -520,16 +532,16 @@ pub trait IOMedia: Send {
     /// ```
     /// use yggdryl::generic::IORecordOptions;
     /// use yggdryl::io::{Buffer, IOMedia};
-    /// use yggdryl::{DataType, MimeType, Value};
+    /// use yggdryl::{DataType, MimeType, Scalar};
     ///
     /// struct Quote {
     ///     id: i32,
     ///     symbol: &'static str,
     /// }
     ///
-    /// impl From<Quote> for Value {
+    /// impl From<Quote> for Scalar {
     ///     fn from(row: Quote) -> Self {
-    ///         Value::from_sequence([Value::from(row.id), Value::from(row.symbol)])
+    ///         Scalar::from_sequence([Scalar::from(row.id), Scalar::from(row.symbol)])
     ///     }
     /// }
     ///
@@ -555,7 +567,7 @@ pub trait IOMedia: Send {
     ///
     /// Returns an error before pulling `records` when `options.field` is
     /// absent or not a non-null Struct root. A pulled row can fail its
-    /// `TryInto<Value>` conversion, field validation, Arrow materialization,
+    /// `TryInto<Scalar>` conversion, field validation, Arrow materialization,
     /// or the delegated overwrite.
     #[cfg(feature = "arrow")]
     fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
@@ -563,12 +575,12 @@ pub trait IOMedia: Send {
         Self: Sized,
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
-        R: TryInto<crate::Value>,
+        R: TryInto<crate::Scalar>,
         R::Error: Into<crate::Error>,
     {
         use crate::generic::IORecordOptions;
 
-        options.require_write_mode(crate::WriteMode::Overwrite)?;
+        options.require_write_mode(crate::IOMode::Overwrite)?;
         options.require_commit_row_size()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
@@ -585,7 +597,7 @@ pub trait IOMedia: Send {
     ///
     /// This is the row-by-row adapter over
     /// [`append_arrow_reader`](Self::append_arrow_reader). It requires
-    /// `options.field`, lazily converts each struct through `TryInto<Value>`,
+    /// `options.field`, lazily converts each struct through `TryInto<Scalar>`,
     /// and holds at most the current row batch. An empty iterator is a no-op.
     ///
     /// # Errors
@@ -599,12 +611,12 @@ pub trait IOMedia: Send {
         Self: Sized,
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
-        R: TryInto<crate::Value>,
+        R: TryInto<crate::Scalar>,
         R::Error: Into<crate::Error>,
     {
         use crate::generic::IORecordOptions;
 
-        options.require_write_mode(crate::WriteMode::Append)?;
+        options.require_write_mode(crate::IOMode::Append)?;
         options.require_commit_row_size()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
@@ -635,12 +647,12 @@ pub trait IOMedia: Send {
         Self: Sized,
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
-        R: TryInto<crate::Value>,
+        R: TryInto<crate::Scalar>,
         R::Error: Into<crate::Error>,
     {
         use crate::generic::IORecordOptions;
 
-        options.require_write_mode(crate::WriteMode::Merge)?;
+        options.require_write_mode(crate::IOMode::Merge)?;
         options.require_commit_row_size()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
@@ -668,21 +680,27 @@ pub trait IOMedia: Send {
     fn write_records<I, R>(
         &mut self,
         records: I,
-        mode: crate::WriteMode,
+        mode: crate::IOMode,
         options: &RecordOptions,
     ) -> Result<()>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
         I::IntoIter: Send + 'static,
-        R: TryInto<crate::Value>,
+        R: TryInto<crate::Scalar>,
         R::Error: Into<crate::Error>,
     {
         options.require_write_mode(mode)?;
         match mode {
-            crate::WriteMode::Overwrite => self.overwrite_records(records, options),
-            crate::WriteMode::Append => self.append_records(records, options),
-            crate::WriteMode::Merge => self.merge_records(records, options),
+            crate::IOMode::Overwrite => self.overwrite_records(records, options),
+            crate::IOMode::Append => self.append_records(records, options),
+            crate::IOMode::Merge => self.merge_records(records, options),
+            crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$.mode"),
+                reason: smol_str::SmolStr::new_static(
+                    "write mode readonly or random is not supported for write_records",
+                ),
+            }),
         }
     }
 }
@@ -879,7 +897,7 @@ macro_rules! __delegate_iomedia_arrow {
             Self: Sized,
             I: IntoIterator<Item = R>,
             I::IntoIter: Send + 'static,
-            R: TryInto<$crate::Value>,
+            R: TryInto<$crate::Scalar>,
             R::Error: Into<$crate::Error>,
         {
             $crate::io::IOMedia::overwrite_records(&mut self.$handle, records, options)
@@ -894,7 +912,7 @@ macro_rules! __delegate_iomedia_arrow {
             Self: Sized,
             I: IntoIterator<Item = R>,
             I::IntoIter: Send + 'static,
-            R: TryInto<$crate::Value>,
+            R: TryInto<$crate::Scalar>,
             R::Error: Into<$crate::Error>,
         {
             $crate::io::IOMedia::append_records(&mut self.$handle, records, options)
@@ -909,7 +927,7 @@ macro_rules! __delegate_iomedia_arrow {
             Self: Sized,
             I: IntoIterator<Item = R>,
             I::IntoIter: Send + 'static,
-            R: TryInto<$crate::Value>,
+            R: TryInto<$crate::Scalar>,
             R::Error: Into<$crate::Error>,
         {
             $crate::io::IOMedia::merge_records(&mut self.$handle, records, options)

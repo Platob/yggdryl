@@ -9,15 +9,15 @@ Arrow batches with explicit overwrite and append behavior, use [Text
 media](text.md#text-media-and-arrow-batches). Text deliberately refuses keyed
 merge because a line has no stable row identity.
 
-## Raw shared-Value access
+## Raw shared-Scalar access
 
-Rust returns `Value`; Python and JavaScript redirect native mappings through
+Rust returns `Scalar`; Python and JavaScript redirect native mappings through
 the same codec.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{toml, Value};
+    use yggdryl::{toml, Scalar};
 
     let value = toml::from_utf8(
         "title = \"yggdryl\"\ncount = 3\n\n[owner]\nname = \"Ada\"\n"
@@ -25,7 +25,7 @@ the same codec.
     let encoded = toml::into_utf8(&value)?;
 
     assert_eq!(
-        value.get_key_str("title").and_then(Value::as_utf8),
+        value.get_key_str("title").and_then(Scalar::as_utf8),
         Some("yggdryl")
     );
     assert_eq!(toml::from_utf8(&encoded)?, value);
@@ -34,14 +34,14 @@ the same codec.
 === "Python"
 
     ```python
-    from yggdryl import Value, toml
+    from yggdryl import Scalar, toml
 
     source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
     natural = toml.loads(source)
-    value = toml.loads(source, cls=Value)
+    value = toml.loads(source, cls=Scalar)
 
     assert value.kind == "record"
-    assert value.into_python() == natural == {
+    assert value.as_py() == natural == {
         "count": 3,
         "owner": {"name": "Ada"},
         "title": "yggdryl",
@@ -53,14 +53,14 @@ the same codec.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, toml } = require('yggdryl')
+    const { Scalar, toml } = require('yggdryl')
 
     const source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
     const natural = toml.loads(source)
-    const value = toml.loads(source, { value: true })
+    const value = toml.loads(source, { scalar: true })
     const encoded = toml.dumps(value)
 
-    assert.ok(value instanceof Value)
+    assert.ok(value instanceof Scalar)
     assert.equal(value.kind, 'record')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
@@ -68,7 +68,7 @@ the same codec.
     ```
 
 Tables become sorted `Record` values. Empty or comment-only TOML is an empty
-Record. Python `cls=Value` and JavaScript `{ value: true }` expose that exact
+Record. Python `cls=Scalar` and JavaScript `{ scalar: true }` expose that exact
 tree; omitting the selector returns natural mappings. Deterministic order makes
 repeated writes byte-identical.
 
@@ -91,18 +91,18 @@ scalar document root, or multi-document stream.
 | integer outside `i64` | error |
 | Mapping with non-string keys | error |
 
-There is no `$yggdryl` envelope or private tagged table. A user key with that
-name is ordinary application data. Values TOML cannot spell are rejected
+There is no private marker envelope or private tagged table. A user key with that
+same spelling is ordinary application data. Scalars TOML cannot spell are rejected
 before a destination is opened, not encoded into a hidden side format.
 
-TOML's own date/time syntax produces temporal Values without a schema. Exact
+TOML's own date/time syntax produces temporal Scalars without a schema. Exact
 decimal width and scale, binary, string-encoded temporal values, and Struct
 child order require a [`Field`](field.md).
 
 === "Rust"
 
     ```rust
-    use yggdryl::{toml, DataType, Field, Value};
+    use yggdryl::{toml, DataType, Field, Scalar};
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let row = Field::new(
@@ -112,7 +112,7 @@ child order require a [`Field`](field.md).
     );
     let decoded = toml::from_utf8_with_field("amount = '12.50'\n", &row)?;
 
-    assert_eq!(decoded.as_sequence().unwrap()[0], Value::d128(1_250, 2));
+    assert_eq!(decoded.as_sequence().unwrap()[0], Scalar::d128(1_250, 2));
     ```
 
 === "Python"
@@ -167,7 +167,7 @@ can interpret exactly. Named zones that TOML cannot express remain ISO strings
 instead of being silently rewritten to the zone's current offset.
 
 Bindings use their closest native temporal where it is lossless. The explicit
-`Value` wrapper retains resolutions and zone semantics the host language
+`Scalar` wrapper retains resolutions and zone semantics the host language
 cannot represent.
 
 ## Documents and streams
@@ -234,11 +234,11 @@ does not.
 
     ```rust
     use yggdryl::text::Formatting;
-    use yggdryl::{toml, Value};
+    use yggdryl::{toml, Scalar};
 
-    let value = Value::from_record([(
+    let value = Scalar::from_record([(
         "items",
-        Value::from_sequence([Value::I64(1), Value::I64(2), Value::I64(3)]),
+        Scalar::from_sequence([Scalar::I64(1), Scalar::I64(2), Scalar::I64(3)]),
     )])?;
     let laid_out =
         toml::into_utf8_with_formatting(&value, Formatting::indented(2))?;
@@ -287,12 +287,12 @@ runs after parsing and before optional Field interpretation.
 
     ```rust
     use yggdryl::text::{Format, Loading, Placeholders};
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     let loading = Loading::new().with_placeholders(
         Placeholders::new()
-            .with_variable("HOST", Value::from("db.internal"))
-            .with_variable("PORT", Value::I64(5432)),
+            .with_variable("HOST", Scalar::from("db.internal"))
+            .with_variable("PORT", Scalar::I64(5432)),
     );
     let value = yggdryl::text::from_utf8_with(
         "host = \"{{ HOST }}\"\nport = \"{{ PORT }}\"\n",
@@ -300,8 +300,8 @@ runs after parsing and before optional Field interpretation.
         &loading,
     )?;
 
-    assert_eq!(value.get_key_str("host").and_then(Value::as_utf8), Some("db.internal"));
-    assert_eq!(value.get_key_str("port"), Some(&Value::I64(5432)));
+    assert_eq!(value.get_key_str("host").and_then(Scalar::as_utf8), Some("db.internal"));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(5432)));
     ```
 
 === "Python"

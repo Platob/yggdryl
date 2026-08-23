@@ -5,7 +5,7 @@ import pickle
 
 import pytest
 
-from yggdryl import RecordOptions, Value, avro
+from yggdryl import RecordOptions, Scalar, avro
 
 
 SCHEMA = {
@@ -45,9 +45,9 @@ def test_record_options_expose_validated_avro_block_settings() -> None:
         ipc.sync_marker = None
 
 
-def test_schema_accepts_natural_value_native_value_text_and_bytes() -> None:
+def test_schema_accepts_natural_value_native_scalar_text_and_bytes() -> None:
     natural = avro.Schema(SCHEMA)
-    native = avro.Schema(Value(SCHEMA))
+    native = avro.Schema(Scalar(SCHEMA))
     text = avro.Schema('{"type":"long"}')
     binary = avro.Schema(b'"long"')
 
@@ -105,7 +105,7 @@ def test_object_container_round_trips_metadata_rows_and_writer_schema() -> None:
     assert avro.loads(memoryview(encoded)).rows == rows
 
 
-def test_object_container_uses_complete_native_value_protocols() -> None:
+def test_object_container_uses_complete_native_scalar_protocols() -> None:
     encoded = avro.dumps(
         [{"symbol": "AAPL", "qty": 100}],
         SCHEMA,

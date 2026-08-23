@@ -78,7 +78,7 @@ buffer, a [local file or directory](local.md), and a
 [Arrow IPC](ipc.md) or [Parquet](parquet.md) from its own media type, and
 [Iceberg](iceberg.md) reads its schemas as ordinary fields.
 
-**Values are one tree.** [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md) share
+**Scalars are one tree.** [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md) share
 the [structured value](text.md), and [URIs](uri.md) name where any of it lives.
 
 ## Install

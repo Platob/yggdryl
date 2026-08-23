@@ -285,22 +285,20 @@ fn record_options_preflight_each_write_intent_without_an_input_reader() {
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let plain = RecordOptions::for_media_type(&media_type).unwrap();
 
-    plain
-        .require_write_mode(crate::WriteMode::Overwrite)
-        .unwrap();
-    plain.require_write_mode(crate::WriteMode::Append).unwrap();
+    plain.require_write_mode(crate::IOMode::Overwrite).unwrap();
+    plain.require_write_mode(crate::IOMode::Append).unwrap();
     let merge = plain
-        .require_write_mode(crate::WriteMode::Merge)
+        .require_write_mode(crate::IOMode::Merge)
         .unwrap_err()
         .to_string();
     assert!(merge.contains("write mode merge requires"), "{merge}");
     assert!(merge.contains("$.merge_by_names"), "{merge}");
 
     let keyed = plain.with_merge_by_names(["id"]);
-    keyed.require_write_mode(crate::WriteMode::Merge).unwrap();
+    keyed.require_write_mode(crate::IOMode::Merge).unwrap();
     for refused in [
-        keyed.require_write_mode(crate::WriteMode::Overwrite),
-        keyed.require_write_mode(crate::WriteMode::Append),
+        keyed.require_write_mode(crate::IOMode::Overwrite),
+        keyed.require_write_mode(crate::IOMode::Append),
     ] {
         let message = refused.unwrap_err().to_string();
         assert!(

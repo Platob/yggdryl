@@ -9,7 +9,7 @@ they measure:
   [record write dispatch](io.md#canonical-record-write-signatures), and
   [Text dimensions](text.md#dimensions-and-opened-sessions);
 - [placeholder overhead](text.md#jinja-style-placeholders);
-- [native Value and Arrow boundaries](text.md#value-and-arrow-boundary-costs);
+- [native Scalar and Arrow boundaries](text.md#scalar-and-arrow-boundary-costs);
 - [natural codec boundaries](text.md#natural-codec-boundary-costs);
 - [streamed byte reads](io.md#measured-streamed-byte-behavior);
 - [structured handle values](io.md#structured-values);
@@ -88,7 +88,7 @@ runs use one containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores,
 | `datatype` | parsing, defaults, compatibility, Arrow, temporal and decimal construction |
 | `field` | construction, mutation, typed views, cached field access, Arrow schemas |
 | `enums`, `uri` | media inference and URI parsing/component access |
-| `text` | Value construction, natural format inference, Field-directed parsing, placeholders, line projection and record shape |
+| `text` | Scalar construction, natural format inference, Field-directed parsing, placeholders, line projection and record shape |
 | `json`, `yaml`, `toml` | natural whole-value/streaming encode and decode, including exact Field recovery |
 | `avro` | type families, block sizing, projection, resolution plans and varints |
 | `io` | byte streams, structured values, record round trips, dimensions, opened caches, write dispatch and projection pushdown |

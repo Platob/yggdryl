@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::field::{RecognizedExtension, recognized_arrow_extension};
 use crate::generic::wkb;
-use crate::{DataType, Field, UnionMode, Value};
+use crate::{DataType, Field, Scalar, UnionMode};
 use arrow_array::types::{
     ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType, UInt8Type,
     UInt16Type, UInt32Type, UInt64Type,
@@ -16,8 +16,8 @@ use arrow_array::{
     FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array, Float64Array,
     Int16RunArray, Int32RunArray, Int64RunArray, LargeBinaryArray, LargeListArray,
     LargeListViewArray, LargeStringArray, ListArray, ListViewArray, MapArray, PrimitiveArray,
-    RecordBatch, RecordBatchOptions, RunArray, Scalar, StringArray, StringViewArray, StructArray,
-    UInt32Array, UnionArray, make_array, new_null_array,
+    RecordBatch, RecordBatchOptions, RunArray, Scalar as ArrowScalar, StringArray, StringViewArray,
+    StructArray, UInt32Array, UnionArray, make_array, new_null_array,
 };
 use arrow_buffer::{ArrowNativeType, BooleanBuffer, BooleanBufferBuilder, i256};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
@@ -71,14 +71,14 @@ pub trait ArrowCast {
     ///
     /// Returns an error when the array does not hold exactly one row, or any
     /// error the array cast returns.
-    fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<ArrayRef>> {
+    fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<ArrowScalar<ArrayRef>> {
         if array.len() != 1 {
             return Err(Error::IncompatibleSchema(format!(
                 "a scalar cast takes exactly one row, got {}",
                 array.len()
             )));
         }
-        Ok(Scalar::new(self.cast_arrow_array(array, safe)?))
+        Ok(ArrowScalar::new(self.cast_arrow_array(array, safe)?))
     }
 
     /// The full name of [`cast_arrow_batch`](Self::cast_arrow_batch), for
@@ -1501,7 +1501,7 @@ fn run_key_comparator<R: RunEndIndexType>(
     }))
 }
 
-#[allow(clippy::too_many_lines)] // Recurses only where native Value ordering differs from Arrow.
+#[allow(clippy::too_many_lines)] // Recurses only where native Scalar ordering differs from Arrow.
 fn make_yggdryl_key_comparator(
     data_type: &DataType,
     array: &ArrayRef,
@@ -1510,7 +1510,7 @@ fn make_yggdryl_key_comparator(
     make_yggdryl_comparator(data_type, array, array, budget)
 }
 
-#[allow(clippy::too_many_lines)] // Recurses only where native Value ordering differs from Arrow.
+#[allow(clippy::too_many_lines)] // Recurses only where native Scalar ordering differs from Arrow.
 fn make_yggdryl_comparator(
     data_type: &DataType,
     left: &ArrayRef,
@@ -1800,7 +1800,7 @@ fn make_yggdryl_comparator(
         }
     };
     // Union's native representation is always a present `[id, payload]`
-    // sequence. Every other sensitive wrapper follows ordinary Value nulls.
+    // sequence. Every other sensitive wrapper follows ordinary Scalar nulls.
     if matches!(data_type, DataType::Union(..)) {
         Ok(compare)
     } else {
@@ -3216,7 +3216,7 @@ fn arrow_cast_exposed(
         } else {
             (scattered, placeholder)
         };
-        let placeholder = Scalar::new(placeholder);
+        let placeholder = ArrowScalar::new(placeholder);
         zip(&mask, &scattered.as_ref(), &placeholder).map_err(Into::into)
     })()?;
 
@@ -3244,7 +3244,7 @@ fn fill_nulls(
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    if data_type_semantics && field.data_type().is_default_value(&Value::Null)? {
+    if data_type_semantics && field.data_type().is_default_value(&Scalar::Null)? {
         return Ok(array);
     }
     if let DataType::Dictionary(dictionary) = field.data_type() {
@@ -3323,7 +3323,7 @@ fn fill_nulls(
     } else {
         (array, default)
     };
-    let default = Scalar::new(default);
+    let default = ArrowScalar::new(default);
     let truthy: &dyn Array = array.as_ref();
     let output = zip(&mask, &truthy, &default)?;
 
@@ -5252,8 +5252,8 @@ fn default_array(
             } else {
                 (default, placeholder)
             };
-            let default = Scalar::new(default);
-            let placeholder = Scalar::new(placeholder);
+            let default = ArrowScalar::new(default);
+            let placeholder = ArrowScalar::new(placeholder);
             zip(&mask, &default, &placeholder)?
         }
     };

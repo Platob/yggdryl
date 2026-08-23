@@ -10,20 +10,20 @@ For streamed Arrow batches with explicit overwrite and append behavior, use
 [Text media](text.md#text-media-and-arrow-batches). Text deliberately refuses
 keyed merge because a line has no stable row identity.
 
-## Raw shared-Value access
+## Raw shared-Scalar access
 
-Rust returns the shared `Value`; Python and JavaScript project it into native
+Rust returns the shared `Scalar`; Python and JavaScript project it into native
 objects through the same codec.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{yaml, Value};
+    use yggdryl::{yaml, Scalar};
 
     let value = yaml::from_utf8("symbol: AAPL\nquantity: 2\n")?;
 
     assert_eq!(
-        value.get_key_str("symbol").and_then(Value::as_utf8),
+        value.get_key_str("symbol").and_then(Scalar::as_utf8),
         Some("AAPL")
     );
     assert_eq!(yaml::into_utf8(&value)?, "quantity: 2\nsymbol: AAPL\n");
@@ -32,13 +32,13 @@ objects through the same codec.
 === "Python"
 
     ```python
-    from yggdryl import Value, yaml
+    from yggdryl import Scalar, yaml
 
     natural = yaml.loads("symbol: AAPL\nquantity: 2\n")
-    value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Value)
+    value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
 
     assert value.kind == "record"
-    assert value.into_python() == natural == {"quantity": 2, "symbol": "AAPL"}
+    assert value.as_py() == natural == {"quantity": 2, "symbol": "AAPL"}
     assert yaml.dumps(value) == b"quantity: 2\nsymbol: AAPL\n"
     ```
 
@@ -46,13 +46,13 @@ objects through the same codec.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Value, yaml } = require('yggdryl')
+    const { Scalar, yaml } = require('yggdryl')
 
     const natural = yaml.loads('symbol: AAPL\nquantity: 2\n')
-    const value = yaml.loads('symbol: AAPL\nquantity: 2\n', { value: true })
+    const value = yaml.loads('symbol: AAPL\nquantity: 2\n', { scalar: true })
     const encoded = yaml.dumps(value)
 
-    assert.ok(value instanceof Value)
+    assert.ok(value instanceof Scalar)
     assert.equal(value.kind, 'record')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
@@ -61,7 +61,7 @@ objects through the same codec.
 
 Mappings with string names become sorted `Record` values. YAML mappings with
 other keys remain `Mapping` and preserve insertion order. Duplicate keys are
-rejected. Python `cls=Value` and JavaScript `{ value: true }` return the exact
+rejected. Python `cls=Scalar` and JavaScript `{ scalar: true }` return the exact
 native tree; omitting the selector keeps natural language objects.
 
 ## Natural values and exact Fields
@@ -80,19 +80,19 @@ Exact native values dump as interoperable YAML:
 | date, time, `DateTime64`, duration | ISO scalar when representable |
 | `F16`, `F32`, `F64` | YAML float, including non-finite values |
 
-`!!binary` is a YAML standard tag, not a `$yggdryl` envelope. No private tag is
-written. A plain quoted `"AP8="` therefore stays a string unless a
+`!!binary` is a YAML standard tag, not a private marker envelope. No private
+tag is written. A plain quoted `"AP8="` therefore stays a string unless a
 [`Field`](field.md) declares it binary.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{yaml, DataType, Field, Value};
+    use yggdryl::{yaml, DataType, Field, Scalar};
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let decoded = yaml::from_utf8_with_field("'12.50'\n", &amount)?;
 
-    assert_eq!(decoded, Value::d128(1_250, 2));
+    assert_eq!(decoded, Scalar::d128(1_250, 2));
     ```
 
 === "Python"
@@ -187,9 +187,9 @@ never meaning.
 
     ```rust
     use yggdryl::text::Formatting;
-    use yggdryl::{yaml, Value};
+    use yggdryl::{yaml, Scalar};
 
-    let value = Value::from_record([("id", Value::I64(1))])?;
+    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
     let flow =
         yaml::into_utf8_with_formatting(&value, Formatting::compact())?;
 
@@ -239,10 +239,10 @@ unquoted braces are YAML flow-mapping syntax.
 
     ```rust
     use yggdryl::text::{Format, Loading, Placeholders};
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
     let loading = Loading::new().with_placeholders(
-        Placeholders::new().with_variable("PORT", Value::I64(8080)),
+        Placeholders::new().with_variable("PORT", Scalar::I64(8080)),
     );
     let value = yggdryl::text::from_utf8_with(
         "port: \"{{ PORT }}\"\n",
@@ -250,7 +250,7 @@ unquoted braces are YAML flow-mapping syntax.
         &loading,
     )?;
 
-    assert_eq!(value.get_key_str("port"), Some(&Value::I64(8080)));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(8080)));
     ```
 
 === "Python"

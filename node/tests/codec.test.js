@@ -15,7 +15,7 @@ const nativeBinding = require('../index.js')
 const nativeJsonDumps = nativeBinding.jsonDumpsNative
 const nativeYamlDumpAll = nativeBinding.yamlDumpAllNative
 const rawNativeWrapperPrototypes = [
-  nativeBinding.Value.prototype,
+  nativeBinding.Scalar.prototype,
   nativeBinding.DataType.prototype,
   nativeBinding.Field.prototype,
   nativeBinding.Uri.prototype,
@@ -45,7 +45,7 @@ const {
   Url,
   Urn,
   Timezone,
-  Value,
+  Scalar,
   codec,
   json,
   toml,
@@ -176,12 +176,12 @@ test('a URL and a Date read their state from the prototype, not the instance', (
 
 test('temporal values cross as classic ISO strings; a decimal stays typed', () => {
   const values = {
-    at: Value.datetime64(1700000000000000n, 'us', 'UTC'),
-    naive: Value.datetime64(1700000000123456n, 'us', 'NAIVE'),
-    on: Value.date32(19723),
-    sinceMidnight: Value.time64(45296000000n, 'us'),
-    took: Value.duration32(90, 's'),
-    price: Value.d128(-1050n, 2),
+    at: Scalar.datetime64(1700000000000000n, 'us', 'UTC'),
+    naive: Scalar.datetime64(1700000000123456n, 'us', 'NAIVE'),
+    on: Scalar.date32(19723),
+    sinceMidnight: Scalar.time64(45296000000n, 'us'),
+    took: Scalar.duration32(90, 's'),
+    price: Scalar.d128(-1050n, 2),
   }
 
   for (const format of [json, yaml]) {
@@ -202,20 +202,20 @@ test('temporal values cross as classic ISO strings; a decimal stays typed', () =
   )
   // One instant in two resolutions is one value, and so is one number in two
   // spellings, because the core compares what a value names.
-  assert.ok(Value.duration32(1, 's').equals(Value.duration64(1000n, 'ms')))
-  assert.ok(Value.d128(150n, 2).equals(Value.d128(15n, 1)))
+  assert.ok(Scalar.duration32(1, 's').equals(Scalar.duration64(1000n, 'ms')))
+  assert.ok(Scalar.d128(150n, 2).equals(Scalar.d128(15n, 1)))
 })
 
 test('temporal constructors keep one unit and non-null timezone contract', () => {
   const naive = Timezone.from('naive')
   const values = [
-    [Value.date32(7), 'date32', 7n, 'd'],
-    [Value.date64(7n), 'date64', 7n, 'ms'],
-    [Value.time32(7, 's'), 'time32', 7n, 's'],
-    [Value.time64(7n, 'us'), 'time64', 7n, 'us'],
-    [Value.datetime64(7n, 'ns'), 'datetime64', 7n, 'ns'],
-    [Value.duration32(7, 'ms'), 'duration32', 7n, 'ms'],
-    [Value.duration64(7n, 'us'), 'duration64', 7n, 'us'],
+    [Scalar.date32(7), 'date32', 7n, 'd'],
+    [Scalar.date64(7n), 'date64', 7n, 'ms'],
+    [Scalar.time32(7, 's'), 'time32', 7n, 's'],
+    [Scalar.time64(7n, 'us'), 'time64', 7n, 'us'],
+    [Scalar.datetime64(7n, 'ns'), 'datetime64', 7n, 'ns'],
+    [Scalar.duration32(7, 'ms'), 'duration32', 7n, 'ms'],
+    [Scalar.duration64(7n, 'us'), 'duration64', 7n, 'us'],
   ]
 
   for (const [value, kind, count, unit] of values) {
@@ -225,52 +225,52 @@ test('temporal constructors keep one unit and non-null timezone contract', () =>
     assert.equal(value.zone, 'NAIVE')
   }
 
-  assert.ok(Value.date32(7, 'd', naive).equals(Value.date32(7)))
-  assert.ok(Value.date32(7, null, null).equals(Value.date32(7)))
-  assert.ok(Value.date64(7n, 'ms', 'NAIVE').equals(Value.date64(7n)))
-  assert.ok(Value.time32(7, 's', naive).equals(Value.time32(7, 's')))
-  assert.ok(Value.time64(7n, 'us', 'naive').equals(Value.time64(7n, 'us')))
+  assert.ok(Scalar.date32(7, 'd', naive).equals(Scalar.date32(7)))
+  assert.ok(Scalar.date32(7, null, null).equals(Scalar.date32(7)))
+  assert.ok(Scalar.date64(7n, 'ms', 'NAIVE').equals(Scalar.date64(7n)))
+  assert.ok(Scalar.time32(7, 's', naive).equals(Scalar.time32(7, 's')))
+  assert.ok(Scalar.time64(7n, 'us', 'naive').equals(Scalar.time64(7n, 'us')))
   assert.ok(
-    Value.datetime64(7n, 'ns', Timezone.UTC).equals(
-      Value.datetime64(7n, 'ns', 'UTC'),
+    Scalar.datetime64(7n, 'ns', Timezone.UTC).equals(
+      Scalar.datetime64(7n, 'ns', 'UTC'),
     ),
   )
-  assert.ok(Value.datetime64(7n, 'ns', null).equals(Value.datetime64(7n, 'ns')))
+  assert.ok(Scalar.datetime64(7n, 'ns', null).equals(Scalar.datetime64(7n, 'ns')))
   assert.ok(
-    Value.duration32(7, 'ms', naive).equals(Value.duration32(7, 'ms')),
+    Scalar.duration32(7, 'ms', naive).equals(Scalar.duration32(7, 'ms')),
   )
   assert.ok(
-    Value.duration64(7n, 'us', 'NAIVE').equals(Value.duration64(7n, 'us')),
+    Scalar.duration64(7n, 'us', 'NAIVE').equals(Scalar.duration64(7n, 'us')),
   )
 
-  assert.throws(() => Value.date32(1, 'ms'), /date32 unit must be day/)
-  assert.throws(() => Value.date64(1n, 's'), /date64 unit must be millisecond/)
-  assert.throws(() => Value.time32(1, 'us'), /time32 unit/)
-  assert.throws(() => Value.time64(1n, 'ms'), /time64 unit/)
-  assert.throws(() => Value.time32(1, 's', 'UTC'), /timezone must be NAIVE/)
-  assert.throws(() => Value.time64(1n, 'us', Timezone.UTC), /timezone must be NAIVE/)
-  assert.throws(() => Value.duration32(1, 's', 'UTC'), /duration32 timezone must be NAIVE/)
+  assert.throws(() => Scalar.date32(1, 'ms'), /date32 unit must be day/)
+  assert.throws(() => Scalar.date64(1n, 's'), /date64 unit must be millisecond/)
+  assert.throws(() => Scalar.time32(1, 'us'), /time32 unit/)
+  assert.throws(() => Scalar.time64(1n, 'ms'), /time64 unit/)
+  assert.throws(() => Scalar.time32(1, 's', 'UTC'), /timezone must be NAIVE/)
+  assert.throws(() => Scalar.time64(1n, 'us', Timezone.UTC), /timezone must be NAIVE/)
+  assert.throws(() => Scalar.duration32(1, 's', 'UTC'), /duration32 timezone must be NAIVE/)
   assert.throws(
-    () => Value.duration64(1n, 'ns', Timezone.UTC),
+    () => Scalar.duration64(1n, 'ns', Timezone.UTC),
     /duration64 timezone must be NAIVE/,
   )
 })
 
-test('Value keeps widths, exact coefficients, hashes, and natural accessors', () => {
-  const wide = Value.d256(-(2n ** 200n), 7)
-  assert.equal(Value.f16(1.5).kind, 'f16')
-  assert.equal(Value.f32(1.5).kind, 'f32')
-  assert.equal(Value.f64(1.5).kind, 'f64')
+test('Scalar keeps widths, exact coefficients, hashes, and natural accessors', () => {
+  const wide = Scalar.d256(-(2n ** 200n), 7)
+  assert.equal(Scalar.f16(1.5).kind, 'f16')
+  assert.equal(Scalar.f32(1.5).kind, 'f32')
+  assert.equal(Scalar.f64(1.5).kind, 'f64')
   assert.equal(wide.kind, 'd256')
   assert.equal(wide.unscaled, -(2n ** 200n))
   assert.equal(wide.scale, 7)
   assert.match(wide.dataType.toString(), /^decimal256/)
   assert.equal(typeof wide.stableHash(), 'bigint')
 
-  assert.deepEqual(Value.fromJs(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
-  assert.equal(Value.fromJs('AAPL').asUtf8(), 'AAPL')
-  assert.equal(Value.fromJs(1).asUtf8(), null)
-  const record = Value.fromJs({ z: 2, a: 1 })
+  assert.deepEqual(Scalar.fromJs(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
+  assert.equal(Scalar.fromJs('AAPL').asUtf8(), 'AAPL')
+  assert.equal(Scalar.fromJs(1).asUtf8(), null)
+  const record = Scalar.fromJs({ z: 2, a: 1 })
   assert.equal(record.asJsonUtf8(), '{"a":1,"z":2}')
   assert.deepEqual(record.asJsonBytes(), Buffer.from(record.asJsonUtf8()))
   assert.equal(record.toString(), record.asJsonUtf8())
@@ -280,34 +280,34 @@ test('Value keeps widths, exact coefficients, hashes, and natural accessors', ()
   assert.ok(clone.equals(record))
   assert.equal(clone.compare(record), 0)
   assert.equal(clone.stableHash(), record.stableHash())
-  assert.ok(Value.fromJs(1).compare(Value.fromJs(2)) < 0)
-  assert.equal(Value.d128(150n, 2).compare(Value.d256(15n, 1)), 0)
+  assert.ok(Scalar.fromJs(1).compare(Scalar.fromJs(2)) < 0)
+  assert.equal(Scalar.d128(150n, 2).compare(Scalar.d256(15n, 1)), 0)
   for (const removed of ['decimal', 'date', 'time', 'datetime', 'timestamp', 'duration']) {
-    assert.equal(Value[removed], undefined, removed)
+    assert.equal(Scalar[removed], undefined, removed)
   }
 })
 
-test('Value traversal and persistent updates stay entirely native', () => {
-  const instant = Value.datetime64(1700000000123456789n, 'ns', 'Europe/Paris')
-  const record = Value.fromJs({ z: 2, legs: [{ at: instant }] })
+test('Scalar traversal and persistent updates stay entirely native', () => {
+  const instant = Scalar.datetime64(1700000000123456789n, 'ns', 'Europe/Paris')
+  const record = Scalar.fromJs({ z: 2, legs: [{ at: instant }] })
 
   assert.equal(record.length, 2)
   assert.equal(record.isEmpty(), false)
-  assert.equal(Value.fromJs({}).isEmpty(), true)
-  assert.equal(Value.fromJs(1).isEmpty(), false)
+  assert.equal(Scalar.fromJs({}).isEmpty(), true)
+  assert.equal(Scalar.fromJs(1).isEmpty(), false)
   assert.equal(record.get('missing'), null)
   assert.equal(record.has('legs'), true)
   assert.equal(record.has('missing'), false)
 
   const legs = record.get('legs')
-  assert.ok(legs instanceof Value)
+  assert.ok(legs instanceof Scalar)
   assert.equal(legs.length, 1)
   assert.ok(legs.get(0).equals(legs.at(0)))
   assert.equal(legs.at(1), null)
   assert.throws(() => legs.at(-1), /non-negative/)
 
   const nested = record.path('legs.0.at')
-  assert.ok(nested instanceof Value)
+  assert.ok(nested instanceof Scalar)
   assert.equal(nested.kind, 'datetime64')
   assert.equal(nested.count, 1700000000123456789n)
   assert.equal(nested.unit, 'ns')
@@ -332,10 +332,10 @@ test('Value traversal and persistent updates stay entirely native', () => {
   assert.equal(changed.has('legs'), true)
   assert.ok(removed.remove('missing').equals(removed))
 
-  const decimalKey = Value.d128(150n, 2)
-  const mapping = Value.fromJs(new Map([[decimalKey, instant]]))
+  const decimalKey = Scalar.d128(150n, 2)
+  const mapping = Scalar.fromJs(new Map([[decimalKey, instant]]))
   assert.equal(mapping.length, 1)
-  assert.equal(mapping.get(Value.d128(15n, 1)).count, instant.count)
+  assert.equal(mapping.get(Scalar.d128(15n, 1)).count, instant.count)
   assert.equal([...mapping][0].kind, 'd128')
   const added = mapping.set('venue', 'XNAS')
   assert.equal(added.get('venue').asUtf8(), 'XNAS')
@@ -348,63 +348,63 @@ test('Value traversal and persistent updates stay entirely native', () => {
   assert.throws(() => legs.set(0, 1), /mapping or record/)
 })
 
-test('Value arithmetic infers JavaScript operands once and stays native', () => {
-  const forty = Value.fromJs(40)
-  assert.ok(forty.add(2).equals(Value.fromJs(42)))
-  assert.ok(forty.subtract(Value.fromJs(2)).equals(Value.fromJs(38)))
-  assert.ok(Value.fromJs(6).multiply(7).equals(Value.fromJs(42)))
-  assert.ok(Value.fromJs(84).divide(2).equals(Value.fromJs(42)))
-  assert.ok(Value.fromJs(5).remainder(2).equals(Value.fromJs(1)))
-  assert.ok(Value.fromJs(5).negate().equals(Value.fromJs(-5)))
-  assert.ok(Value.fromJs(-5).absolute().equals(Value.fromJs(5)))
+test('Scalar arithmetic infers JavaScript operands once and stays native', () => {
+  const forty = Scalar.fromJs(40)
+  assert.ok(forty.add(2).equals(Scalar.fromJs(42)))
+  assert.ok(forty.subtract(Scalar.fromJs(2)).equals(Scalar.fromJs(38)))
+  assert.ok(Scalar.fromJs(6).multiply(7).equals(Scalar.fromJs(42)))
+  assert.ok(Scalar.fromJs(84).divide(2).equals(Scalar.fromJs(42)))
+  assert.ok(Scalar.fromJs(5).remainder(2).equals(Scalar.fromJs(1)))
+  assert.ok(Scalar.fromJs(5).negate().equals(Scalar.fromJs(-5)))
+  assert.ok(Scalar.fromJs(-5).absolute().equals(Scalar.fromJs(5)))
 
   assert.ok(
-    Value.d128(105n, 2).add(Value.d128(2n, 1)).equals(Value.d128(125n, 2)),
+    Scalar.d128(105n, 2).add(Scalar.d128(2n, 1)).equals(Scalar.d128(125n, 2)),
   )
   assert.ok(
-    Value.d128(1n, 0)
-      .divide(Value.d128(2n, 0))
-      .equals(Value.d128(5n, 1)),
+    Scalar.d128(1n, 0)
+      .divide(Scalar.d128(2n, 0))
+      .equals(Scalar.d128(5n, 1)),
   )
   assert.ok(
-    Value.d128(1n, 0)
-      .divide(Value.d128(128n, 0))
-      .equals(Value.d128(78125n, 7)),
+    Scalar.d128(1n, 0)
+      .divide(Scalar.d128(128n, 0))
+      .equals(Scalar.d128(78125n, 7)),
   )
   assert.throws(
-    () => Value.d128(1n, 0).divide(Value.d128(3n, 0)),
+    () => Scalar.d128(1n, 0).divide(Scalar.d128(3n, 0)),
     (error) =>
       error instanceof RangeError &&
       error.code === 'ERR_YGGDRYL_INEXACT_ARITHMETIC',
   )
-  assert.equal(Value.f16(1.5).multiply(Value.f32(2)).kind, 'f32')
+  assert.equal(Scalar.f16(1.5).multiply(Scalar.f32(2)).kind, 'f32')
 
-  const instant = Value.datetime64(1000n, 'ms', 'UTC')
+  const instant = Scalar.datetime64(1000n, 'ms', 'UTC')
   assert.ok(
     instant
-      .add(Value.duration64(2n, 's'))
-      .equals(Value.datetime64(3000n, 'ms', 'UTC')),
+      .add(Scalar.duration64(2n, 's'))
+      .equals(Scalar.datetime64(3000n, 'ms', 'UTC')),
   )
   assert.ok(
     instant
-      .subtract(Value.datetime64(500n, 'ms', 'UTC'))
-      .equals(Value.duration64(500n, 'ms')),
+      .subtract(Scalar.datetime64(500n, 'ms', 'UTC'))
+      .equals(Scalar.duration64(500n, 'ms')),
   )
 
   assert.throws(
-    () => Value.fromJs(1).divide(0),
+    () => Scalar.fromJs(1).divide(0),
     (error) =>
       error instanceof RangeError &&
       error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO' &&
       /division by zero/i.test(error.message),
   )
   assert.throws(
-    () => Value.fromJs(9223372036854775807n).add(1n),
+    () => Scalar.fromJs(9223372036854775807n).add(1n),
     (error) =>
       error instanceof RangeError && error.code === 'ERR_YGGDRYL_ARITHMETIC_OVERFLOW',
   )
   assert.throws(
-    () => Value.fromJs('a').add('b'),
+    () => Scalar.fromJs('a').add('b'),
     (error) =>
       error instanceof TypeError &&
       error.code === 'ERR_YGGDRYL_INVALID_ARITHMETIC' &&
@@ -426,9 +426,9 @@ test('Value arithmetic infers JavaScript operands once and stays native', () => 
 test('Field-directed natural JSON keeps exact typed values', () => {
   const narrow = json.loads('7', {
     field: new Field('value', 'int16', false),
-    value: true,
+    scalar: true,
   })
-  assert.ok(narrow instanceof Value)
+  assert.ok(narrow instanceof Scalar)
   assert.equal(narrow.kind, 'i16')
 
   const decimal = new Field('price', 'decimal256(40,2)', false)
@@ -465,46 +465,46 @@ test('Field-directed natural JSON keeps exact typed values', () => {
   assert.throws(() => json.loads('1', { field: {} }), /static intoStructField getter/)
 })
 
-test('Value Arrow scalar and array interop uses standard IPC', () => {
+test('Scalar Arrow scalar and array interop uses standard IPC', () => {
   const vector = arrow.vectorFromArray(Int32Array.from([1, 2, 3]))
-  const values = Value.fromArrowArray(vector)
+  const values = Scalar.fromArrowArray(vector)
   assert.equal(values.kind, 'sequence')
   assert.deepEqual(values.asJs(), [1, 2, 3])
   assert.deepEqual([...values.intoArrowArray()], [1, 2, 3])
 
   const scalarVector = arrow.vectorFromArray(Int32Array.of(42))
-  const scalar = Value.fromArrowScalar(scalarVector)
+  const scalar = Scalar.fromArrowScalar(scalarVector)
   assert.equal(scalar.kind, 'i32')
   assert.equal(scalar.intoArrowScalar(), 42)
   assert.throws(
-    () => Value.fromArrowScalar(vector),
+    () => Scalar.fromArrowScalar(vector),
     /one-item Arrow Vector/,
   )
 
-  const empty = Value.fromJs([])
+  const empty = Scalar.fromJs([])
   assert.throws(() => empty.intoArrowArray(), /empty.*pass a Field/i)
   const emptyVector = empty.intoArrowArray(new Field('value', 'int32', true))
   assert.equal(emptyVector.length, 0)
 
   const overflowing = arrow.vectorFromArray(Int32Array.of(200))
   assert.deepEqual(
-    Value.fromArrowArray(overflowing, new Field('value', 'int8', false)).asJs(),
+    Scalar.fromArrowArray(overflowing, new Field('value', 'int8', false)).asJs(),
     [0],
   )
 })
 
-test('Value Field accessors redirect to core inference', () => {
-  const scalar = Value.fromJs(42).intoField()
+test('Scalar Field accessors redirect to core inference', () => {
+  const scalar = Scalar.fromJs(42).intoField()
   assert.equal(scalar.name, 'value')
   assert.equal(scalar.dataType.toString(), 'int64')
   assert.equal(scalar.nullable, false)
 
-  const item = Value.fromJs([1, null]).intoArrayField()
+  const item = Scalar.fromJs([1, null]).intoArrayField()
   assert.equal(item.name, 'item')
   assert.equal(item.dataType.toString(), 'int64')
   assert.equal(item.nullable, true)
 
-  const root = Value.fromJs([{ id: 1, venue: null }, { id: 2, venue: 'XNAS' }])
+  const root = Scalar.fromJs([{ id: 1, venue: null }, { id: 2, venue: 'XNAS' }])
     .intoStructField()
   assert.equal(root.name, 'row')
   assert.equal(root.nullable, false)
@@ -512,11 +512,11 @@ test('Value Field accessors redirect to core inference', () => {
   assert.deepEqual(children.map((child) => child.name), ['id', 'venue'])
   assert.equal(children[1].nullable, true)
 
-  assert.throws(() => Value.fromJs([]).intoArrayField(), /empty Sequence/)
-  assert.throws(() => Value.fromJs([[1]]).intoStructField(), /field names/)
+  assert.throws(() => Scalar.fromJs([]).intoArrayField(), /empty Sequence/)
+  assert.throws(() => Scalar.fromJs([[1]]).intoStructField(), /field names/)
 })
 
-test('Value Arrow record and table interop uses the native schema engine', () => {
+test('Scalar Arrow record and table interop uses the native schema engine', () => {
   const table = arrow.tableFromArrays({
     id: Int32Array.from([1, 2]),
     symbol: ['AAPL', 'MSFT'],
@@ -529,33 +529,33 @@ test('Value Arrow record and table interop uses the native schema engine', () =>
     ]),
     false,
   )
-  const rows = Value.fromArrowTable(table, root)
+  const rows = Scalar.fromArrowTable(table, root)
   assert.deepEqual(rows.asJs(), [[1, 'AAPL'], [2, 'MSFT']])
   const restored = rows.intoArrowTable(root)
   assert.equal(restored.numRows, 2)
   assert.deepEqual([...restored.getChild('id')], [1, 2])
 
-  const inferred = Value.fromJs([{ id: 1 }, { id: 2 }]).intoArrowRecordBatch()
+  const inferred = Scalar.fromJs([{ id: 1 }, { id: 2 }]).intoArrowRecordBatch()
   assert.deepEqual([...inferred.getChild('id')], [1n, 2n])
   assert.throws(
-    () => Value.fromJs([]).intoArrowTable(),
+    () => Scalar.fromJs([]).intoArrowTable(),
     /cannot infer a Struct Field from empty rows; pass a Struct Field/i,
   )
 })
 
 test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => {
   const date = new Date('2026-08-15T12:30:00.000Z')
-  assert.ok(Value.fromJs(date).equals(Value.datetime64(1786797000000n, 'ms', 'UTC')))
-  assert.ok(Value.fromJs(date).asJs() instanceof Date)
+  assert.ok(Scalar.fromJs(date).equals(Scalar.datetime64(1786797000000n, 'ms', 'UTC')))
+  assert.ok(Scalar.fromJs(date).asJs() instanceof Date)
 
   // On the wire every temporal is its classic ISO string; the typed reading
   // comes back wherever a schema names the column's datatype.
   assert.equal(
-    json.loads(json.dumps(Value.datetime64(1786797000n, 's', 'NAIVE'))),
+    json.loads(json.dumps(Scalar.datetime64(1786797000n, 's', 'NAIVE'))),
     '2026-08-15T12:30:00',
   )
   assert.equal(
-    json.loads(json.dumps(Value.datetime64(1786797000000n, 'ms', 'Europe/Paris'))),
+    json.loads(json.dumps(Scalar.datetime64(1786797000000n, 'ms', 'Europe/Paris'))),
     '2026-08-15T14:30:00.000+02:00[Europe/Paris]',
   )
 })
@@ -563,8 +563,8 @@ test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => 
 test('null crosses everywhere a value goes', () => {
   // Null is a value, not a trap: alone, inside arrays, as an object value,
   // and through both codecs, it stays null - and undefined lowers to it.
-  assert.equal(Value.fromJs(null).kind, 'null')
-  assert.equal(Value.fromJs(null).asJs(), null)
+  assert.equal(Scalar.fromJs(null).kind, 'null')
+  assert.equal(Scalar.fromJs(null).asJs(), null)
   assert.deepEqual(json.loads(json.dumps({ gap: null, list: [null, 1] })), {
     gap: null,
     list: [null, 1],
@@ -574,19 +574,19 @@ test('null crosses everywhere a value goes', () => {
 
 test('fromJs and asJs are the conversion every codec entry point crosses', () => {
   // The pivot answers what a JavaScript value becomes, losses included.
-  assert.equal(Value.fromJs(new Set([1, 2])).kind, 'sequence')
-  assert.deepEqual(Value.fromJs(new Set([1, 2])).asJs(), [1, 2])
-  assert.equal(Value.fromJs(new Map([['id', 1]])).kind, 'mapping')
-  assert.deepEqual(Value.fromJs(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
-  assert.equal(Value.fromJs({ id: 1 }).kind, 'record')
-  assert.equal(Value.fromJs(undefined).kind, 'null')
+  assert.equal(Scalar.fromJs(new Set([1, 2])).kind, 'sequence')
+  assert.deepEqual(Scalar.fromJs(new Set([1, 2])).asJs(), [1, 2])
+  assert.equal(Scalar.fromJs(new Map([['id', 1]])).kind, 'mapping')
+  assert.deepEqual(Scalar.fromJs(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
+  assert.equal(Scalar.fromJs({ id: 1 }).kind, 'record')
+  assert.equal(Scalar.fromJs(undefined).kind, 'null')
 
   // dumps is fromJs with bytes on the far side, and loads is asJs - except
   // the instant, which the wire spells as its classic string.
   const value = { id: 1, tags: new Set(['a']) }
-  assert.deepEqual(json.loads(json.dumps(value)), Value.fromJs(value).asJs())
+  assert.deepEqual(json.loads(json.dumps(value)), Scalar.fromJs(value).asJs())
   assert.equal(json.loads(json.dumps({ at: new Date(0) })).at, '1970-01-01T00:00:00.000Z')
-  assert.throws(() => Value.fromJs({}, { maxDepth: 0 }), /between 1 and 48/)
+  assert.throws(() => Scalar.fromJs({}, { maxDepth: 0 }), /between 1 and 48/)
 })
 
 test('same-named native wrapper subclasses cannot lose application state', () => {
@@ -766,8 +766,8 @@ test('reserved transport keys and non-string map keys do not collide', () => {
   ]
   assert.equal(publicBinding.TaggedValue, undefined)
   assert.equal(publicBinding.codecDumps, undefined)
-  assert.equal(publicBinding.Value._fromJsNative, undefined)
-  assert.equal(publicBinding.Value.prototype._asJsNative, undefined)
+  assert.equal(publicBinding.Scalar._fromJsNative, undefined)
+  assert.equal(publicBinding.Scalar.prototype._asJsNative, undefined)
   for (const name of nativeHelpers) assert.equal(publicBinding[name], undefined)
 
   const generatedTypes = fs.readFileSync(

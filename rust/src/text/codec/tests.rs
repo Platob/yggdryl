@@ -1,6 +1,6 @@
 use super::{Json, Jsonl, TextCodec, Toml, Yaml};
 use crate::io::{Buffer, IOBase};
-use crate::{MimeType, Url, Value};
+use crate::{MimeType, Scalar, Url};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn handle(name: &str) -> Buffer {
@@ -11,7 +11,7 @@ fn handle(name: &str) -> Buffer {
     )
 }
 
-fn value() -> Value {
+fn value() -> Scalar {
     Json.from_utf8(r#"{"price":1.5,"symbol":"AAPL"}"#).unwrap()
 }
 
@@ -94,7 +94,7 @@ impl IOBase for Measured {
 #[test]
 fn text_codec_handle_reads_stream_without_measuring_the_payload() {
     let message = "0123456789abcdef".repeat(32 * 1024);
-    let expected = Value::from_record([("message", Value::from(message))]).unwrap();
+    let expected = Scalar::from_record([("message", Scalar::from(message))]).unwrap();
     let plain = Json.into_bytes(&expected).unwrap();
     let encoded = crate::gzip::dump(&plain).unwrap();
     let source = Measured {

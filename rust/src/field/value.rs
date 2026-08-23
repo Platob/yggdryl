@@ -1,7 +1,7 @@
 //! Schema-directed validation and canonicalization of row values.
 //!
 //! A struct [`Field`] is the schema of the rows it describes, so validating a
-//! row is validating one [`Value::Sequence`] against that field's children.
+//! row is validating one [`Scalar::Sequence`] against that field's children.
 //! Canonicalization is the same walk with rewriting: it narrows integers,
 //! floats, and nested containers into the exact representation the schema
 //! declares, and returns the input untouched when nothing needed changing.
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::value_is_logically_null;
-use crate::{DataType, Error, Field, Fields, Result, TimeUnit, Timezone, Value};
+use crate::{DataType, Error, Field, Fields, Result, Scalar, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -46,7 +46,7 @@ impl ValidationFailure {
 }
 
 /// Validate one row value against a struct root field.
-pub(crate) fn validate_row(root: &Field, value: &Value) -> Result<()> {
+pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
     let expected = root.field_len();
     if let Some(record) = value.as_record() {
         validate_record_fields(root.fields(), record, 0)
@@ -79,13 +79,13 @@ pub(crate) fn validate_row(root: &Field, value: &Value) -> Result<()> {
 
 /// Validate one value against the datatype it claims, outside any row.
 ///
-/// A [`crate::TypedValue`] is one value and one datatype with no field around
+/// A [`crate::TypedScalar`] is one value and one datatype with no field around
 /// them, so it validates through the same walk a column value takes and
 /// reports the same failures, rooted at the value itself. A null is accepted
 /// by every datatype, because nullability belongs to the field that holds the
 /// column rather than to the value in it.
-pub(crate) fn validate_data_type_value_for(data_type: &DataType, value: &Value) -> Result<()> {
-    if matches!(value, Value::Null) {
+pub(crate) fn validate_data_type_value_for(data_type: &DataType, value: &Scalar) -> Result<()> {
+    if matches!(value, Scalar::Null) {
         return Ok(());
     }
     validate_data_type_value(data_type, value, 0).map_err(|failure| {
@@ -101,10 +101,10 @@ pub(crate) fn validate_data_type_value_for(data_type: &DataType, value: &Value) 
 }
 
 /// Rewrite one row value into the exact representation a root field declares.
-pub(crate) fn canonicalize_row(root: &Field, value: Value) -> Result<Value> {
+pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
     if let Some(record) = value.as_record() {
         let values = record_values(root.fields(), record)?;
-        return canonicalize_row(root, Value::from_sequence(values));
+        return canonicalize_row(root, Scalar::from_sequence(values));
     }
     let Some(values) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
@@ -123,7 +123,7 @@ pub(crate) fn canonicalize_row(root: &Field, value: Value) -> Result<Value> {
         prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
     })?;
     if let Some(canonical) = canonical {
-        Ok(Value::from_sequence(canonical))
+        Ok(Scalar::from_sequence(canonical))
     } else {
         Ok(value)
     }
@@ -136,15 +136,15 @@ fn root_path(name: &str) -> String {
     path
 }
 
-fn canonicalize_field_value(field: &Field, value: &Value) -> Result<(Value, bool)> {
+fn canonicalize_field_value(field: &Field, value: &Scalar) -> Result<(Scalar, bool)> {
     canonicalize_field_payload(field, value).map_err(|error| {
         prepend_canonical_error(error, PathSegment::Field(SmolStr::new(field.name())))
     })
 }
 
-fn canonicalize_field_payload(field: &Field, value: &Value) -> Result<(Value, bool)> {
-    if matches!(value, Value::Null) {
-        return Ok((Value::Null, false));
+fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, bool)> {
+    if matches!(value, Scalar::Null) {
+        return Ok((Scalar::Null, false));
     }
     canonicalize_data_type_value(field.data_type(), value)
 }
@@ -157,7 +157,7 @@ fn canonicalize_field_payload(field: &Field, value: &Value) -> Result<(Value, bo
 /// count the column stores and answers `None`, as does a restatement that would
 /// have dropped a digit - which then fails the ordinary check below, naming the
 /// kind that did not fit.
-fn restated(data_type: &DataType, value: &Value) -> Option<i128> {
+fn restated(data_type: &DataType, value: &Scalar) -> Option<i128> {
     use DataType as D;
     match data_type {
         D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. }
@@ -200,16 +200,16 @@ enum TemporalFamily {
 
 /// Check the logical temporal family and the zone a datatype can preserve.
 fn temporal_matches(
-    value: &Value,
+    value: &Scalar,
     family: TemporalFamily,
     expected_zone: Option<&Timezone>,
 ) -> bool {
     let matched = match family {
-        TemporalFamily::Date => matches!(value, Value::Date32(..) | Value::Date64(..)),
-        TemporalFamily::Time => matches!(value, Value::Time32(..) | Value::Time64(..)),
-        TemporalFamily::DateTime => matches!(value, Value::DateTime64(..)),
+        TemporalFamily::Date => matches!(value, Scalar::Date32(..) | Scalar::Date64(..)),
+        TemporalFamily::Time => matches!(value, Scalar::Time32(..) | Scalar::Time64(..)),
+        TemporalFamily::DateTime => matches!(value, Scalar::DateTime64(..)),
         TemporalFamily::Duration => {
-            matches!(value, Value::Duration32(..) | Value::Duration64(..))
+            matches!(value, Scalar::Duration32(..) | Scalar::Duration64(..))
         }
     };
     if !matched {
@@ -226,7 +226,7 @@ fn temporal_matches(
 }
 
 #[allow(clippy::too_many_lines)]
-fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(Value, bool)> {
+fn canonicalize_data_type_value(data_type: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     use DataType as D;
     match data_type {
         D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
@@ -239,7 +239,7 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
                 path: SmolStr::new_static("$"),
                 reason: format_smolstr!("expected a d128 representable at scale {scale}"),
             })?;
-            let canonical = Value::d128(coefficient, *scale);
+            let canonical = Scalar::d128(coefficient, *scale);
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Decimal256 { scale, .. } => {
@@ -252,12 +252,12 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
                 path: SmolStr::new_static("$"),
                 reason: format_smolstr!("expected a d256 representable at scale {scale}"),
             })?;
-            let canonical = Value::d256(coefficient, *scale);
+            let canonical = Scalar::d256(coefficient, *scale);
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Date32 => {
             let count = temporal_or_integer(value, TimeUnit::Day, TemporalFamily::Date, None)?;
-            let canonical = Value::date32(
+            let canonical = Scalar::date32(
                 i32::try_from(count)
                     .map_err(|_| canonical_error("date32 count does not fit signed 32 bits"))?,
             );
@@ -266,12 +266,12 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         D::Date64 => {
             let count =
                 temporal_or_integer(value, TimeUnit::Millisecond, TemporalFamily::Date, None)?;
-            let canonical = Value::date64(count);
+            let canonical = Scalar::date64(count);
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Time32(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
-            let canonical = Value::time32(
+            let canonical = Scalar::time32(
                 i32::try_from(count)
                     .map_err(|_| canonical_error("time32 count does not fit signed 32 bits"))?,
                 *unit,
@@ -281,18 +281,18 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         }
         D::Time64(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
-            let canonical = Value::time64(count, *unit, Timezone::NAIVE)?;
+            let canonical = Scalar::time64(count, *unit, Timezone::NAIVE)?;
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Timestamp(unit, zone) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::DateTime, zone.as_ref())?;
             let canonical =
-                Value::datetime64(count, *unit, zone.clone().unwrap_or(Timezone::NAIVE))?;
+                Scalar::datetime64(count, *unit, zone.clone().unwrap_or(Timezone::NAIVE))?;
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Duration32(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
-            let canonical = Value::duration32(
+            let canonical = Scalar::duration32(
                 i32::try_from(count)
                     .map_err(|_| canonical_error("duration32 count does not fit signed 32 bits"))?,
                 *unit,
@@ -301,14 +301,14 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         }
         D::Duration64(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
-            let canonical = Value::duration64(count, *unit)?;
+            let canonical = Scalar::duration64(count, *unit)?;
             return Ok((canonical.clone(), value != &canonical));
         }
         _ => {}
     }
     if let Some(physical) = restated(data_type, value) {
         // A restatement always rewrote something, so it is always a change.
-        let (canonical, _) = canonicalize_data_type_value(data_type, &Value::I128(physical))?;
+        let (canonical, _) = canonicalize_data_type_value(data_type, &Scalar::I128(physical))?;
         return Ok((canonical, true));
     }
     match data_type {
@@ -356,17 +356,17 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Value) -> Result<(
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
         // A variant value is any value: the tree describes itself.
         D::Variant => Ok((value.clone(), false)),
-        // The canonical geospatial spelling is `Value::Geospatial`; plain
+        // The canonical geospatial spelling is `Scalar::Geospatial`; plain
         // bytes are accepted on the way in and rewritten here.
         D::Geometry(_) | D::Geography(_) => match value {
-            Value::Geospatial(_) => Ok((value.clone(), false)),
-            Value::Bytes(bytes) => Ok((Value::Geospatial(Arc::from(bytes.as_ref())), true)),
+            Scalar::Geospatial(_) => Ok((value.clone(), false)),
+            Scalar::Bytes(bytes) => Ok((Scalar::Geospatial(Arc::from(bytes.as_ref())), true)),
             other => Ok((other.clone(), false)),
         },
     }
 }
 
-fn canonical_signed(data_type: &DataType, value: &Value) -> Result<(Value, bool)> {
+fn canonical_signed(data_type: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(integer) = value.as_i128() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -379,25 +379,25 @@ fn canonical_signed(data_type: &DataType, value: &Value) -> Result<(Value, bool)
         });
     };
     let canonical = match data_type {
-        DataType::Int8 => Value::I8(i8::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int16 => Value::I16(i16::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int32 => Value::I32(i32::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::Int8 => Scalar::I8(i8::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::Int16 => Scalar::I16(i16::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::Int32 => Scalar::I32(i32::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int64 | DataType::Interval(TimeUnit::YearMonth) => {
-            Value::I64(i64::try_from(integer).map_err(canonical_integer_error)?)
+            Scalar::I64(i64::try_from(integer).map_err(canonical_integer_error)?)
         }
         _ => unreachable!("signed canonicalization requires a signed datatype"),
     };
     let changed = match &canonical {
-        Value::I8(expected) => !matches!(value, Value::I8(current) if current == expected),
-        Value::I16(expected) => !matches!(value, Value::I16(current) if current == expected),
-        Value::I32(expected) => !matches!(value, Value::I32(current) if current == expected),
-        Value::I64(expected) => !matches!(value, Value::I64(current) if current == expected),
+        Scalar::I8(expected) => !matches!(value, Scalar::I8(current) if current == expected),
+        Scalar::I16(expected) => !matches!(value, Scalar::I16(current) if current == expected),
+        Scalar::I32(expected) => !matches!(value, Scalar::I32(current) if current == expected),
+        Scalar::I64(expected) => !matches!(value, Scalar::I64(current) if current == expected),
         _ => unreachable!("signed canonical value has a signed kind"),
     };
     Ok((canonical, changed))
 }
 
-fn canonical_unsigned(data_type: &DataType, value: &Value) -> Result<(Value, bool)> {
+fn canonical_unsigned(data_type: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(integer) = value.as_u128() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -405,17 +405,17 @@ fn canonical_unsigned(data_type: &DataType, value: &Value) -> Result<(Value, boo
         });
     };
     let canonical = match data_type {
-        DataType::UInt8 => Value::U8(u8::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::UInt16 => Value::U16(u16::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::UInt32 => Value::U32(u32::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::UInt64 => Value::U64(u64::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt8 => Scalar::U8(u8::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt16 => Scalar::U16(u16::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt32 => Scalar::U32(u32::try_from(integer).map_err(canonical_integer_error)?),
+        DataType::UInt64 => Scalar::U64(u64::try_from(integer).map_err(canonical_integer_error)?),
         _ => unreachable!("unsigned canonicalization requires an unsigned datatype"),
     };
     let changed = match &canonical {
-        Value::U8(expected) => !matches!(value, Value::U8(current) if current == expected),
-        Value::U16(expected) => !matches!(value, Value::U16(current) if current == expected),
-        Value::U32(expected) => !matches!(value, Value::U32(current) if current == expected),
-        Value::U64(expected) => !matches!(value, Value::U64(current) if current == expected),
+        Scalar::U8(expected) => !matches!(value, Scalar::U8(current) if current == expected),
+        Scalar::U16(expected) => !matches!(value, Scalar::U16(current) if current == expected),
+        Scalar::U32(expected) => !matches!(value, Scalar::U32(current) if current == expected),
+        Scalar::U64(expected) => !matches!(value, Scalar::U64(current) if current == expected),
         _ => unreachable!("unsigned canonical value has an unsigned kind"),
     };
     Ok((canonical, changed))
@@ -431,7 +431,7 @@ enum FloatWidth {
     Float64,
 }
 
-fn canonical_float(value: &Value, width: FloatWidth) -> Result<(Value, bool)> {
+fn canonical_float(value: &Scalar, width: FloatWidth) -> Result<(Scalar, bool)> {
     let Some(number) = value.as_f64() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -439,16 +439,16 @@ fn canonical_float(value: &Value, width: FloatWidth) -> Result<(Value, bool)> {
         });
     };
     let canonical = match width {
-        FloatWidth::Float16 => Value::from(half::f16::from_f64(number)),
-        FloatWidth::Float32 => Value::from(number as f32),
-        FloatWidth::Float64 => Value::from(number),
+        FloatWidth::Float16 => Scalar::from(half::f16::from_f64(number)),
+        FloatWidth::Float32 => Scalar::from(number as f32),
+        FloatWidth::Float64 => Scalar::from(number),
     };
     let changed = value != &canonical;
     Ok((canonical, changed))
 }
 
 fn temporal_or_integer(
-    value: &Value,
+    value: &Scalar,
     unit: TimeUnit,
     family: TemporalFamily,
     zone: Option<&Timezone>,
@@ -476,7 +476,7 @@ fn canonical_error(reason: &'static str) -> Error {
     }
 }
 
-fn canonical_integer_sequence(value: &Value, length: usize) -> Result<(Value, bool)> {
+fn canonical_integer_sequence(value: &Scalar, length: usize) -> Result<(Scalar, bool)> {
     let Some(values) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -493,9 +493,9 @@ fn canonical_integer_sequence(value: &Value, length: usize) -> Result<(Value, bo
 }
 
 fn canonical_sequence(
-    value: &Value,
-    mut canonicalize: impl FnMut(&Value) -> Result<(Value, bool)>,
-) -> Result<(Value, bool)> {
+    value: &Scalar,
+    mut canonicalize: impl FnMut(&Scalar) -> Result<(Scalar, bool)>,
+) -> Result<(Scalar, bool)> {
     let Some(values) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -506,16 +506,16 @@ fn canonical_sequence(
         canonicalize(value)
             .map_err(|error| prepend_canonical_error(error, PathSegment::Index(index)))
     })? {
-        Ok((Value::from_sequence(canonical), true))
+        Ok((Scalar::from_sequence(canonical), true))
     } else {
         Ok((value.clone(), false))
     }
 }
 
-fn canonical_struct(fields: &Fields, value: &Value) -> Result<(Value, bool)> {
+fn canonical_struct(fields: &Fields, value: &Scalar) -> Result<(Scalar, bool)> {
     if let Some(record) = value.as_record() {
         let values = record_values(fields, record)?;
-        let sequence = Value::from_sequence(values);
+        let sequence = Scalar::from_sequence(values);
         return canonical_struct(fields, &sequence).map(|(value, _)| (value, true));
     }
     let Some(values) = value.as_sequence() else {
@@ -524,13 +524,13 @@ fn canonical_struct(fields: &Fields, value: &Value) -> Result<(Value, bool)> {
     if let Some(canonical) = canonicalize_slice(values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })? {
-        Ok((Value::from_sequence(canonical), true))
+        Ok((Scalar::from_sequence(canonical), true))
     } else {
         Ok((value.clone(), false))
     }
 }
 
-fn canonical_union(fields: &crate::UnionFields, value: &Value) -> Result<(Value, bool)> {
+fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some([type_id, payload]) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -555,10 +555,10 @@ fn canonical_union(fields: &crate::UnionFields, value: &Value) -> Result<(Value,
     let (payload, payload_changed) = canonicalize_field_value(field, payload)
         .map_err(|error| prepend_canonical_error(error, PathSegment::Union(type_id_number)))?;
     let id_changed =
-        !matches!(type_id, Value::I64(current) if *current == i64::from(type_id_number));
+        !matches!(type_id, Scalar::I64(current) if *current == i64::from(type_id_number));
     if id_changed || payload_changed {
         Ok((
-            Value::from_sequence([Value::I64(i64::from(type_id_number)), payload]),
+            Scalar::from_sequence([Scalar::I64(i64::from(type_id_number)), payload]),
             true,
         ))
     } else {
@@ -566,7 +566,7 @@ fn canonical_union(fields: &crate::UnionFields, value: &Value) -> Result<(Value,
     }
 }
 
-fn canonical_map(map: &crate::MapType, value: &Value) -> Result<(Value, bool)> {
+fn canonical_map(map: &crate::MapType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(entries) = value.as_mapping() else {
         return canonicalization_failure(&DataType::Map(map.clone().into()));
     };
@@ -605,7 +605,7 @@ fn canonical_map(map: &crate::MapType, value: &Value) -> Result<(Value, bool)> {
                     ),
                 });
             }
-            let canonical = Value::from_mapping(canonical)?;
+            let canonical = Scalar::from_mapping(canonical)?;
             let canonical_entries = canonical.as_mapping().unwrap_or_default();
             if map.keys_sorted() {
                 if let Some(index) = canonical_entries
@@ -627,7 +627,7 @@ fn canonical_map(map: &crate::MapType, value: &Value) -> Result<(Value, bool)> {
     Ok((value.clone(), false))
 }
 
-fn duplicate_mapping_key_index(entries: &[(Value, Value)]) -> Option<usize> {
+fn duplicate_mapping_key_index(entries: &[(Scalar, Scalar)]) -> Option<usize> {
     if entries.len() <= 16 {
         return (1..entries.len()).find(|index| {
             entries[..*index]
@@ -635,7 +635,7 @@ fn duplicate_mapping_key_index(entries: &[(Value, Value)]) -> Option<usize> {
                 .any(|(key, _)| key == &entries[*index].0)
         });
     }
-    // `Value`'s hash reads canonical content only, never the
+    // `Scalar`'s hash reads canonical content only, never the
     // interior-mutable caches a datatype holds, so the key is stable.
     #[allow(clippy::mutable_key_type)]
     let mut seen = HashSet::with_capacity(entries.len());
@@ -646,9 +646,9 @@ fn duplicate_mapping_key_index(entries: &[(Value, Value)]) -> Option<usize> {
 }
 
 fn canonicalize_slice(
-    values: &[Value],
-    mut canonicalize: impl FnMut(usize, &Value) -> Result<(Value, bool)>,
-) -> Result<Option<Vec<Value>>> {
+    values: &[Scalar],
+    mut canonicalize: impl FnMut(usize, &Scalar) -> Result<(Scalar, bool)>,
+) -> Result<Option<Vec<Scalar>>> {
     for (index, value) in values.iter().enumerate() {
         let (canonical_value, changed) = canonicalize(index, value)?;
         if changed {
@@ -713,14 +713,14 @@ fn push_path_segment(path: &mut String, segment: PathSegment) {
 
 fn validate_field_value(
     field: &Field,
-    value: &Value,
+    value: &Scalar,
 ) -> std::result::Result<(), ValidationFailure> {
     validate_field_value_at_depth(field, value, 0)
 }
 
 fn validate_field_value_at_depth(
     field: &Field,
-    value: &Value,
+    value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     validate_field_payload_at_depth(field, value, depth)
@@ -729,7 +729,7 @@ fn validate_field_value_at_depth(
 
 fn validate_field_payload_at_depth(
     field: &Field,
-    value: &Value,
+    value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     if depth >= DataType::PARSE_RECURSION_LIMIT {
@@ -741,7 +741,7 @@ fn validate_field_payload_at_depth(
     if value_is_logically_null(field.data_type(), value) && !field.is_nullable() {
         return Err(ValidationFailure::new("non-nullable field received null"));
     }
-    if matches!(value, Value::Null)
+    if matches!(value, Scalar::Null)
         && !matches!(
             field.data_type(),
             DataType::Union(..) | DataType::RunEndEncoded(_)
@@ -755,16 +755,16 @@ fn validate_field_payload_at_depth(
 #[allow(clippy::too_many_lines)]
 fn validate_data_type_value(
     data_type: &DataType,
-    value: &Value,
+    value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     use DataType as D;
     if let Some(physical) = restated(data_type, value) {
-        return validate_data_type_value(data_type, &Value::I128(physical), depth);
+        return validate_data_type_value(data_type, &Scalar::I128(physical), depth);
     }
     match data_type {
         D::Null => Err(expected("null", value)),
-        D::Boolean => require(matches!(value, Value::Bool(_)), "boolean", value),
+        D::Boolean => require(matches!(value, Scalar::Bool(_)), "boolean", value),
         D::Int8 => validate_signed(value, i128::from(i8::MIN), i128::from(i8::MAX), "int8"),
         D::Int16 => validate_signed(value, i128::from(i16::MIN), i128::from(i16::MAX), "int16"),
         D::Int32 => validate_signed(value, i128::from(i32::MIN), i128::from(i32::MAX), "int32"),
@@ -810,7 +810,7 @@ fn validate_data_type_value(
         }
         D::Interval(_) => Err(ValidationFailure::new("invalid interval layout")),
         D::Binary | D::LargeBinary | D::BinaryView => {
-            require(matches!(value, Value::Bytes(_)), data_type.name(), value)
+            require(matches!(value, Scalar::Bytes(_)), data_type.name(), value)
         }
         D::FixedSizeBinary(width) => match value.as_bytes() {
             Some(bytes) if usize::try_from(*width).ok() == Some(bytes.len()) => Ok(()),
@@ -821,7 +821,7 @@ fn validate_data_type_value(
             None => Err(expected("fixed-size binary bytes", value)),
         },
         D::Utf8 | D::LargeUtf8 | D::Utf8View => {
-            require(matches!(value, Value::String(_)), data_type.name(), value)
+            require(matches!(value, Scalar::String(_)), data_type.name(), value)
         }
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, data_type.name(), depth + 1)
@@ -861,7 +861,7 @@ fn validate_data_type_value(
 }
 
 fn validate_signed(
-    value: &Value,
+    value: &Scalar,
     minimum: i128,
     maximum: i128,
     expected_name: &str,
@@ -873,7 +873,7 @@ fn validate_signed(
 }
 
 fn validate_unsigned(
-    value: &Value,
+    value: &Scalar,
     maximum: u128,
     expected_name: &str,
 ) -> std::result::Result<(), ValidationFailure> {
@@ -883,7 +883,7 @@ fn validate_unsigned(
     }
 }
 
-fn validate_date64(value: &Value) -> std::result::Result<(), ValidationFailure> {
+fn validate_date64(value: &Scalar) -> std::result::Result<(), ValidationFailure> {
     const MILLIS_PER_DAY: i128 = 86_400_000;
     let Some(number) = value.as_i128() else {
         return Err(expected("date64 whole-day milliseconds", value));
@@ -896,7 +896,7 @@ fn validate_date64(value: &Value) -> std::result::Result<(), ValidationFailure> 
     Ok(())
 }
 
-fn validate_time(value: &Value, unit: TimeUnit) -> std::result::Result<(), ValidationFailure> {
+fn validate_time(value: &Scalar, unit: TimeUnit) -> std::result::Result<(), ValidationFailure> {
     let maximum = match unit {
         TimeUnit::Second => 86_400_i128,
         TimeUnit::Millisecond => 86_400_000_i128,
@@ -916,7 +916,7 @@ fn validate_time(value: &Value, unit: TimeUnit) -> std::result::Result<(), Valid
 }
 
 fn validate_integer_tuple(
-    value: &Value,
+    value: &Scalar,
     widths: &[u8],
     expected_name: &str,
 ) -> std::result::Result<(), ValidationFailure> {
@@ -944,7 +944,7 @@ fn validate_integer_tuple(
 
 fn validate_sequence(
     field: &Field,
-    value: &Value,
+    value: &Scalar,
     expected_len: Option<usize>,
     expected_name: &str,
     depth: usize,
@@ -969,7 +969,7 @@ fn validate_sequence(
 
 fn validate_struct(
     fields: &Fields,
-    value: &Value,
+    value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     if let Some(record) = value.as_record() {
@@ -993,7 +993,7 @@ fn validate_struct(
 
 fn validate_record_fields(
     fields: &[Field],
-    record: &std::collections::BTreeMap<SmolStr, Value>,
+    record: &std::collections::BTreeMap<SmolStr, Scalar>,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     if let Some(name) = record
@@ -1019,8 +1019,8 @@ fn validate_record_fields(
 
 fn record_values(
     fields: &[Field],
-    record: &std::collections::BTreeMap<SmolStr, Value>,
-) -> Result<Vec<Value>> {
+    record: &std::collections::BTreeMap<SmolStr, Scalar>,
+) -> Result<Vec<Scalar>> {
     if let Some(name) = record
         .keys()
         .find(|name| !fields.iter().any(|field| field.name() == name.as_str()))
@@ -1043,7 +1043,7 @@ fn record_values(
 
 fn validate_union(
     fields: &crate::UnionFields,
-    value: &Value,
+    value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     let values = value
@@ -1069,7 +1069,7 @@ fn validate_union(
 }
 
 fn validate_decimal(
-    value: &Value,
+    value: &Scalar,
     precision: u8,
     width: u16,
 ) -> std::result::Result<(), ValidationFailure> {
@@ -1090,7 +1090,7 @@ fn validate_decimal(
 }
 
 fn validate_decimal256(
-    value: &Value,
+    value: &Scalar,
     precision: u8,
     scale: i8,
 ) -> std::result::Result<(), ValidationFailure> {
@@ -1112,14 +1112,14 @@ fn validate_decimal256(
 }
 
 /// Report a value whose kind does not match what the schema declared.
-fn expected(expected_name: &str, value: &Value) -> ValidationFailure {
+fn expected(expected_name: &str, value: &Scalar) -> ValidationFailure {
     ValidationFailure::new(crate::text::expected_got(expected_name, value.kind()))
 }
 
 /// [`expected`], carrying the refusal that says why the payload failed.
 fn expected_because(
     expected_name: &str,
-    value: &Value,
+    value: &Scalar,
     because: &crate::Error,
 ) -> ValidationFailure {
     ValidationFailure::new(format_smolstr!(
@@ -1132,7 +1132,7 @@ fn expected_because(
 fn require(
     matched: bool,
     expected_name: &str,
-    value: &Value,
+    value: &Scalar,
 ) -> std::result::Result<(), ValidationFailure> {
     if matched {
         Ok(())
@@ -1147,7 +1147,7 @@ fn require(
 /// a value field; every entry is validated against those two.
 fn validate_map(
     map: &crate::MapType,
-    value: &Value,
+    value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     let entries = value
@@ -1194,12 +1194,12 @@ mod tests {
             DataType::Int64.required_field("id"),
             DataType::Utf8.nullable_field("venue"),
         ]);
-        let record = Value::from_record([("id", Value::I8(7))]).unwrap();
+        let record = Scalar::from_record([("id", Scalar::I8(7))]).unwrap();
 
         schema.validate_value(&record).unwrap();
         assert_eq!(
             schema.canonicalize_value(record).unwrap(),
-            Value::from_sequence([Value::I64(7), Value::Null])
+            Scalar::from_sequence([Scalar::I64(7), Scalar::Null])
         );
     }
 
@@ -1207,7 +1207,7 @@ mod tests {
     fn a_record_refuses_unknown_names() {
         let schema = root([DataType::Int64.required_field("id")]);
         let record =
-            Value::from_record([("id", Value::I64(7)), ("unknown", Value::I64(1))]).unwrap();
+            Scalar::from_record([("id", Scalar::I64(7)), ("unknown", Scalar::I64(1))]).unwrap();
 
         let validation = schema.validate_value(&record).unwrap_err().to_string();
         let canonical = schema.canonicalize_value(record).unwrap_err().to_string();
@@ -1227,26 +1227,26 @@ mod tests {
             DataType::UInt32.required_field("u32"),
             DataType::UInt64.required_field("u64"),
         ]);
-        let natural = Value::from_sequence([
-            Value::I64(-1),
-            Value::U64(2),
-            Value::I64(-3),
-            Value::I8(-4),
-            Value::U64(1),
-            Value::U64(2),
-            Value::U64(3),
-            Value::U8(4),
+        let natural = Scalar::from_sequence([
+            Scalar::I64(-1),
+            Scalar::U64(2),
+            Scalar::I64(-3),
+            Scalar::I8(-4),
+            Scalar::U64(1),
+            Scalar::U64(2),
+            Scalar::U64(3),
+            Scalar::U8(4),
         ]);
         let canonical = schema.canonicalize_value(natural).unwrap();
         let values = canonical.as_sequence().unwrap();
-        assert!(matches!(values[0], Value::I8(-1)));
-        assert!(matches!(values[1], Value::I16(2)));
-        assert!(matches!(values[2], Value::I32(-3)));
-        assert!(matches!(values[3], Value::I64(-4)));
-        assert!(matches!(values[4], Value::U8(1)));
-        assert!(matches!(values[5], Value::U16(2)));
-        assert!(matches!(values[6], Value::U32(3)));
-        assert!(matches!(values[7], Value::U64(4)));
+        assert!(matches!(values[0], Scalar::I8(-1)));
+        assert!(matches!(values[1], Scalar::I16(2)));
+        assert!(matches!(values[2], Scalar::I32(-3)));
+        assert!(matches!(values[3], Scalar::I64(-4)));
+        assert!(matches!(values[4], Scalar::U8(1)));
+        assert!(matches!(values[5], Scalar::U16(2)));
+        assert!(matches!(values[6], Scalar::U32(3)));
+        assert!(matches!(values[7], Scalar::U64(4)));
     }
 
     #[test]
@@ -1255,9 +1255,9 @@ mod tests {
 
         assert_eq!(
             schema
-                .canonicalize_value(Value::from_sequence([Value::I8(18)]))
+                .canonicalize_value(Scalar::from_sequence([Scalar::I8(18)]))
                 .unwrap(),
-            Value::from_sequence([Value::I64(18)])
+            Scalar::from_sequence([Scalar::I64(18)])
         );
     }
 
@@ -1268,35 +1268,35 @@ mod tests {
             DataType::Time32(TimeUnit::Second).required_field("clock"),
             DataType::Duration32(TimeUnit::Millisecond).required_field("elapsed"),
         ]);
-        let valid = Value::from_sequence([
-            Value::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
-            Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-            Value::duration64(3, TimeUnit::Second).unwrap(),
+        let valid = Scalar::from_sequence([
+            Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+            Scalar::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Scalar::duration64(3, TimeUnit::Second).unwrap(),
         ]);
         assert_eq!(
             schema.canonicalize_value(valid).unwrap(),
-            Value::from_sequence([
-                Value::datetime64(1_000, TimeUnit::Millisecond, Timezone::UTC).unwrap(),
-                Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-                Value::duration32(3_000, TimeUnit::Millisecond).unwrap(),
+            Scalar::from_sequence([
+                Scalar::datetime64(1_000, TimeUnit::Millisecond, Timezone::UTC).unwrap(),
+                Scalar::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Scalar::duration32(3_000, TimeUnit::Millisecond).unwrap(),
             ])
         );
 
         for invalid in [
-            Value::from_sequence([
-                Value::datetime64(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-                Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-                Value::duration32(3, TimeUnit::Millisecond).unwrap(),
+            Scalar::from_sequence([
+                Scalar::datetime64(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Scalar::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Scalar::duration32(3, TimeUnit::Millisecond).unwrap(),
             ]),
-            Value::from_sequence([
-                Value::duration64(1, TimeUnit::Second).unwrap(),
-                Value::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-                Value::duration32(3, TimeUnit::Millisecond).unwrap(),
+            Scalar::from_sequence([
+                Scalar::duration64(1, TimeUnit::Second).unwrap(),
+                Scalar::time32(2, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Scalar::duration32(3, TimeUnit::Millisecond).unwrap(),
             ]),
-            Value::from_sequence([
-                Value::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
-                Value::Time32(2, TimeUnit::Second, Timezone::UTC),
-                Value::duration32(3, TimeUnit::Millisecond).unwrap(),
+            Scalar::from_sequence([
+                Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+                Scalar::Time32(2, TimeUnit::Second, Timezone::UTC),
+                Scalar::duration32(3, TimeUnit::Millisecond).unwrap(),
             ]),
         ] {
             assert!(schema.validate_value(&invalid).is_err());

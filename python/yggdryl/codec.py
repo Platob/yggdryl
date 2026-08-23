@@ -1,4 +1,4 @@
-"""Inferred structured-text I/O over the shared native Value codec."""
+"""Inferred structured-text I/O over the shared native Scalar codec."""
 
 from __future__ import annotations
 

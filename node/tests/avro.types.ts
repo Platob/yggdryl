@@ -1,6 +1,6 @@
 import {
   AvroSchema,
-  Value,
+  Scalar,
   avro,
   type AvroContainer,
   type AvroBlock,
@@ -29,7 +29,7 @@ const input: AvroSchemaInput = document
 const limits: AvroDecodeLimits = { maxDepth: 16, maxInputBytes: 1_000_000, maxNodes: 10_000 }
 const options: AvroDecodeOptions = { ...limits, readerSchema: document }
 const schema = new AvroSchema(input, limits)
-const fromNative: AvroSchema = AvroSchema.from(Value.fromJs(document), limits)
+const fromNative: AvroSchema = AvroSchema.from(Scalar.fromJs(document), limits)
 const canonical: string = schema.intoCanonicalForm()
 const canonicalProperty: string = schema.canonicalForm
 const fingerprint: bigint = schema.fingerprint
@@ -66,8 +66,8 @@ const throughSchema: Trade = schema.fromSingleObject<Trade>(
   schema.intoSingleObject(decoded),
   limits,
 )
-const exact: Value = avro.loadsSingle<Value>(
-  avro.dumpsSingle(Value.d128(18750n, 2), {
+const exact: Scalar = avro.loadsSingle<Scalar>(
+  avro.dumpsSingle(Scalar.d128(18750n, 2), {
     type: 'bytes',
     logicalType: 'decimal',
     precision: 10,

@@ -4,7 +4,7 @@
 //! counts as its header, what is left as the message, how the message is
 //! trimmed, which captures are typed, how batches are bounded, and which zone a
 //! naive timestamp is read in. It round-trips through the shared
-//! [`Value`](crate::generic::Value), so a JSON, YAML, or TOML document already
+//! [`Scalar`](crate::generic::Scalar), so a JSON, YAML, or TOML document already
 //! readable by this crate **fully defines a reader** - no code, no callbacks,
 //! no per-row work in any language.
 //!
@@ -21,7 +21,7 @@ use std::str::FromStr;
 use regex::Regex;
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
-use crate::generic::Value;
+use crate::generic::Scalar;
 use crate::iceberg::PrimitiveType;
 use crate::{DataType, Error, Field, Result, TimeUnit, Timezone};
 
@@ -172,7 +172,7 @@ pub struct TextLineOptions {
     batch_size: Option<usize>,
     timestamp_capture: Option<SmolStr>,
     timezone: Option<Timezone>,
-    custom_fields: Vec<(SmolStr, Value)>,
+    custom_fields: Vec<(SmolStr, Scalar)>,
     capture_types: Vec<(SmolStr, DataType)>,
     /// Every named capture of both expressions, in emission order.
     captures: Vec<SmolStr>,
@@ -195,7 +195,7 @@ struct TextLineIdentity<'a> {
     batch_size: Option<usize>,
     timestamp_capture: Option<&'a SmolStr>,
     timezone: Option<&'a Timezone>,
-    custom_fields: &'a [(SmolStr, Value)],
+    custom_fields: &'a [(SmolStr, Scalar)],
     capture_types: &'a [(SmolStr, DataType)],
 }
 
@@ -677,7 +677,7 @@ impl TextLineOptions {
 
     /// Borrow the constant columns appended to every row, in column order.
     #[must_use]
-    pub fn custom_fields(&self) -> &[(SmolStr, Value)] {
+    pub fn custom_fields(&self) -> &[(SmolStr, Scalar)] {
         &self.custom_fields
     }
 
@@ -692,7 +692,7 @@ impl TextLineOptions {
     /// Returns the codec's own rejection under the column's path, or a
     /// collision with a base, capture, or earlier custom column. Failure leaves
     /// the options unchanged.
-    pub fn set_custom_fields(&mut self, custom_fields: Vec<(SmolStr, Value)>) -> Result<()> {
+    pub fn set_custom_fields(&mut self, custom_fields: Vec<(SmolStr, Scalar)>) -> Result<()> {
         self.rebuild_with(|options| &mut options.custom_fields, custom_fields)
     }
 
@@ -708,7 +708,7 @@ impl TextLineOptions {
     /// name collides.
     pub fn try_with_custom_fields<I, N>(mut self, custom_fields: I) -> Result<Self>
     where
-        I: IntoIterator<Item = (N, Value)>,
+        I: IntoIterator<Item = (N, Scalar)>,
         N: Into<SmolStr>,
     {
         self.set_custom_fields(
@@ -926,7 +926,7 @@ impl TextLineOptions {
             fields.push(Field::new(
                 name.clone(),
                 data_type,
-                matches!(value, Value::Null),
+                matches!(value, Scalar::Null),
             ));
         }
         Ok(DataType::from_fields(fields)?.required_field(ROOT_NAME))
@@ -1157,14 +1157,14 @@ impl FromStr for TextLineOptions {
 // ---------------------------------------------------------------------------
 
 impl TextLineOptions {
-    /// Project these options onto the shared structural [`Value`].
+    /// Project these options onto the shared structural [`Scalar`].
     ///
     /// Only what is actually set is emitted, so a default extractor is an empty
     /// mapping and a document round-trips without accumulating noise. The keys
     /// are the option names, in a fixed order.
     ///
     /// ```
-    /// use yggdryl::generic::Value;
+    /// use yggdryl::generic::Scalar;
     /// use yggdryl::text::TextLineOptions;
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -1173,7 +1173,7 @@ impl TextLineOptions {
     /// let value = options.into_value();
     ///
     /// assert_eq!(
-    ///     value.get_key_str("pattern").and_then(Value::as_utf8),
+    ///     value.get_key_str("pattern").and_then(Scalar::as_utf8),
     ///     Some(r"^\[(?<level>[A-Z]+)\]"),
     /// );
     /// assert_eq!(TextLineOptions::from_value(value)?.byte_size(), Some(1 << 20));
@@ -1181,72 +1181,72 @@ impl TextLineOptions {
     /// # }
     /// ```
     #[must_use]
-    pub fn into_value(&self) -> Value {
-        let key = |name: &str| Value::String(SmolStr::new(name));
-        let mut entries: Vec<(Value, Value)> = Vec::new();
+    pub fn into_value(&self) -> Scalar {
+        let key = |name: &str| Scalar::String(SmolStr::new(name));
+        let mut entries: Vec<(Scalar, Scalar)> = Vec::new();
         match &self.opening {
             Opening::EveryLine => {}
             Opening::Timestamp => entries.push((key("opening"), key("timestamp"))),
             Opening::Pattern(pattern) => {
                 entries.push((
                     key("pattern"),
-                    Value::String(SmolStr::new(pattern.as_str())),
+                    Scalar::String(SmolStr::new(pattern.as_str())),
                 ));
             }
         }
         if let Some(header) = &self.header {
-            entries.push((key("header"), Value::String(SmolStr::new(header.as_str()))));
+            entries.push((key("header"), Scalar::String(SmolStr::new(header.as_str()))));
         }
         if let Some(linesep) = &self.linesep {
-            entries.push((key("linesep"), Value::String(escaped(linesep.as_bytes()))));
+            entries.push((key("linesep"), Scalar::String(escaped(linesep.as_bytes()))));
         }
         if !matches!(self.lstrip, Strip::Whitespace) {
-            entries.push((key("lstrip"), Value::String(self.lstrip.to_smolstr())));
+            entries.push((key("lstrip"), Scalar::String(self.lstrip.to_smolstr())));
         }
         if !matches!(self.rstrip, Strip::Whitespace) {
-            entries.push((key("rstrip"), Value::String(self.rstrip.to_smolstr())));
+            entries.push((key("rstrip"), Scalar::String(self.rstrip.to_smolstr())));
         }
         if let Some(byte_size) = self.byte_size {
-            entries.push((key("byte_size"), Value::U64(byte_size as u64)));
+            entries.push((key("byte_size"), Scalar::U64(byte_size as u64)));
         }
         if let Some(batch_size) = self.batch_size {
-            entries.push((key("batch_size"), Value::U64(batch_size as u64)));
+            entries.push((key("batch_size"), Scalar::U64(batch_size as u64)));
         }
         if let Some(capture) = &self.timestamp_capture {
-            entries.push((key("timestamp_capture"), Value::String(capture.clone())));
+            entries.push((key("timestamp_capture"), Scalar::String(capture.clone())));
         }
         if let Some(timezone) = &self.timezone {
             entries.push((
                 key("timezone"),
-                Value::String(SmolStr::new(timezone.as_str())),
+                Scalar::String(SmolStr::new(timezone.as_str())),
             ));
         }
         if !self.capture_types.is_empty() {
             entries.push((
                 key("capture_types"),
-                Value::from_mapping(
+                Scalar::from_mapping(
                     self.capture_types.iter().map(|(name, data_type)| {
-                        (key(name), Value::String(data_type.to_smolstr()))
+                        (key(name), Scalar::String(data_type.to_smolstr()))
                     }),
                 )
-                .unwrap_or(Value::Null),
+                .unwrap_or(Scalar::Null),
             ));
         }
         if !self.custom_fields.is_empty() {
             entries.push((
                 key("custom_fields"),
-                Value::from_mapping(
+                Scalar::from_mapping(
                     self.custom_fields
                         .iter()
                         .map(|(name, value)| (key(name), value.clone())),
                 )
-                .unwrap_or(Value::Null),
+                .unwrap_or(Scalar::Null),
             ));
         }
-        Value::from_mapping(entries).unwrap_or(Value::Null)
+        Scalar::from_mapping(entries).unwrap_or(Scalar::Null)
     }
 
-    /// Read options back from the shared structural [`Value`].
+    /// Read options back from the shared structural [`Scalar`].
     ///
     /// This is what makes a reader **fully specifiable from a document**: parse
     /// a config file with [`text::from_utf8`](crate::text::from_utf8), hand the
@@ -1259,7 +1259,7 @@ impl TextLineOptions {
     ///
     /// Returns an error naming the key and the expectation when the value is
     /// not a mapping, a key is unknown, or a setting does not validate.
-    pub fn from_value(value: Value) -> Result<Self> {
+    pub fn from_value(value: Scalar) -> Result<Self> {
         let entries = named_entries(&value, "an options record", "$")?;
         let mut options = Self::new();
         // A pattern and an explicit opening are the same setting spelled two
@@ -1272,7 +1272,7 @@ impl TextLineOptions {
         // caller changes a pattern and wrong here - a document naming a
         // capture that does not exist must be refused, not quietly dropped.
         let mut capture_types: Vec<(SmolStr, DataType)> = Vec::new();
-        let mut custom_fields: Vec<(SmolStr, Value)> = Vec::new();
+        let mut custom_fields: Vec<(SmolStr, Scalar)> = Vec::new();
         let mut timestamp_capture: Option<SmolStr> = None;
 
         for (name, held) in entries {
@@ -1356,23 +1356,23 @@ impl TextLineOptions {
     }
 }
 
-impl From<&TextLineOptions> for Value {
+impl From<&TextLineOptions> for Scalar {
     fn from(value: &TextLineOptions) -> Self {
         value.into_value()
     }
 }
 
 fn named_entries<'value>(
-    value: &'value Value,
+    value: &'value Scalar,
     expectation: &str,
     path: &str,
-) -> Result<Vec<(&'value str, &'value Value)>> {
+) -> Result<Vec<(&'value str, &'value Scalar)>> {
     match value {
-        Value::Record(entries) => Ok(entries
+        Scalar::Record(entries) => Ok(entries
             .iter()
             .map(|(name, value)| (name.as_str(), value))
             .collect()),
-        Value::Mapping(entries) => entries
+        Scalar::Mapping(entries) => entries
             .iter()
             .map(|(name, value)| {
                 name.as_str()
@@ -1390,31 +1390,31 @@ fn named_entries<'value>(
     }
 }
 
-impl TryFrom<Value> for TextLineOptions {
+impl TryFrom<Scalar> for TextLineOptions {
     type Error = Error;
 
-    fn try_from(value: Value) -> Result<Self> {
+    fn try_from(value: Scalar) -> Result<Self> {
         Self::from_value(value)
     }
 }
 
 /// Read a string option, or report what it was.
-fn text<'value>(held: &'value Value, name: &str) -> Result<&'value str> {
+fn text<'value>(held: &'value Scalar, name: &str) -> Result<&'value str> {
     held.as_str()
         .ok_or_else(|| unexpected(name, "a string", held.kind()))
 }
 
 /// Read a count option, accepting every width a document may carry it in.
-fn count(held: &Value, name: &str) -> Result<usize> {
+fn count(held: &Scalar, name: &str) -> Result<usize> {
     let value = match held {
-        Value::U8(value) => u64::from(*value),
-        Value::U16(value) => u64::from(*value),
-        Value::U32(value) => u64::from(*value),
-        Value::U64(value) => *value,
-        Value::I8(value) => nonnegative(i64::from(*value), name)?,
-        Value::I16(value) => nonnegative(i64::from(*value), name)?,
-        Value::I32(value) => nonnegative(i64::from(*value), name)?,
-        Value::I64(value) => nonnegative(*value, name)?,
+        Scalar::U8(value) => u64::from(*value),
+        Scalar::U16(value) => u64::from(*value),
+        Scalar::U32(value) => u64::from(*value),
+        Scalar::U64(value) => *value,
+        Scalar::I8(value) => nonnegative(i64::from(*value), name)?,
+        Scalar::I16(value) => nonnegative(i64::from(*value), name)?,
+        Scalar::I32(value) => nonnegative(i64::from(*value), name)?,
+        Scalar::I64(value) => nonnegative(*value, name)?,
         other => return Err(unexpected(name, "a count", other.kind())),
     };
     usize::try_from(value)

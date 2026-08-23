@@ -510,8 +510,8 @@ fn public_field_collections_validate_children_without_clone_helpers() {
 /// The three v3-era datatypes: variant, geometry, and geography.
 mod semi_structured_and_geospatial {
     use super::super::{DataType, GeospatialType};
-    use crate::enums::{DataTypeId, DataTypeKind, EdgeAlgorithm};
-    use crate::{Field, Value};
+    use crate::generic::{DataTypeId, DataTypeKind, EdgeAlgorithm};
+    use crate::{Field, Scalar};
 
     #[test]
     fn bare_variant_and_the_member_sugar_parse_to_different_types() {
@@ -680,13 +680,13 @@ mod semi_structured_and_geospatial {
         // encoding can spell, not an absence - so a required variant column
         // has a default.
         let variant = DataType::Variant.required_field("payload");
-        assert_eq!(variant.default_value().unwrap(), Value::Null);
+        assert_eq!(variant.default_value().unwrap(), Scalar::Null);
 
         // The geospatial default is the conventional empty geometry, in the
         // canonical value spelling.
         let geometry = DataType::geometry(None).unwrap().required_field("shape");
         let default = geometry.default_value().unwrap();
-        assert!(matches!(default, Value::Geospatial(_)), "{default:?}");
+        assert!(matches!(default, Scalar::Geospatial(_)), "{default:?}");
         let bytes = default.as_wkb().expect("a WKB payload");
         assert_eq!(
             crate::generic::wkb::into_wkt(bytes).unwrap(),
@@ -702,18 +702,18 @@ mod semi_structured_and_geospatial {
                 .unwrap()
                 .required_field("row")
         };
-        let row = |value: Value| Value::from_sequence([value]);
+        let row = |value: Scalar| Scalar::from_sequence([value]);
 
         // A variant column validates any value, null included: the variant
         // null is a value the encoding can spell, so a required variant
         // holding it is present, not absent.
         let variant = root(DataType::Variant.required_field("payload"));
-        variant.validate_value(&row(Value::Null)).unwrap();
-        variant.validate_value(&row(Value::from(12_i64))).unwrap();
+        variant.validate_value(&row(Scalar::Null)).unwrap();
+        variant.validate_value(&row(Scalar::from(12_i64))).unwrap();
         variant
-            .validate_value(&row(Value::from_mapping([(
-                Value::from("a"),
-                Value::from(1_i64),
+            .validate_value(&row(Scalar::from_mapping([(
+                Scalar::from("a"),
+                Scalar::from(1_i64),
             )])
             .unwrap()))
             .unwrap();
@@ -727,15 +727,15 @@ mod semi_structured_and_geospatial {
             bytes.extend_from_slice(&2.0_f64.to_le_bytes());
             bytes
         };
-        geometry.validate_value(&row(Value::from(point))).unwrap();
+        geometry.validate_value(&row(Scalar::from(point))).unwrap();
 
         let refusal = geometry
-            .validate_value(&row(Value::from(vec![0x01_u8, 0xFF])))
+            .validate_value(&row(Scalar::from(vec![0x01_u8, 0xFF])))
             .unwrap_err()
             .to_string();
         assert!(refusal.contains("geometry"), "{refusal}");
         let not_bytes = geometry
-            .validate_value(&row(Value::from("POINT (1 2)")))
+            .validate_value(&row(Scalar::from("POINT (1 2)")))
             .unwrap_err()
             .to_string();
         assert!(not_bytes.contains("geometry"), "{not_bytes}");

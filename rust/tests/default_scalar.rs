@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, TimeUnit, Timezone, TypedValue, UnionMode, Value};
+use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, TypedScalar, UnionMode};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -87,7 +87,7 @@ fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
 
         // The same array decodes as a typed pairing, which re-projects to an
         // equal one-row array: the default is closed under both directions.
-        let typed = TypedValue::from_arrow_array(data_type.clone(), array.as_ref())
+        let typed = TypedScalar::from_arrow_array(data_type.clone(), array.as_ref())
             .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", data_type.kind()));
         assert_eq!(typed.data_type(), &data_type);
         assert!(
@@ -115,7 +115,7 @@ fn field_defaults_preserve_exact_identity_and_nullability() {
     let array = field.default_arrow_array().unwrap();
     assert_eq!(array.len(), 1);
     assert!(array.is_null(0));
-    assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), Value::Null);
+    assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), Scalar::Null);
 
     assert!(
         Field::new("never", DataType::Null, false)
@@ -146,7 +146,7 @@ fn foreign_arrays_reject_wrong_lengths_types_and_recursive_nullability() {
         )
         .is_err()
     );
-    assert!(scalar_array(&Field::new("child", DataType::Int32, false), &Value::Null).is_err());
+    assert!(scalar_array(&Field::new("child", DataType::Int32, false), &Scalar::Null).is_err());
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
         assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), expected);
         // ...and the typed pairing projects the same null-only default out
         // through its synthetic non-nullable Field.
-        let typed = TypedValue::from_parts(data_type, expected).unwrap();
+        let typed = TypedScalar::from_parts(data_type, expected).unwrap();
         assert_eq!(typed.into_arrow_array().unwrap().as_ref(), array.as_ref());
     }
 
@@ -206,7 +206,7 @@ fn nullable_dictionary_null_keys_decode_as_native_null() {
     );
     assert_eq!(
         scalar_value(&Field::new("encoded", data_type, true), array.as_ref()).unwrap(),
-        Value::Null
+        Scalar::Null
     );
 }
 

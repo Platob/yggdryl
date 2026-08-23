@@ -10,7 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Field;
 use crate::datatype::serde::{integer, invalid, key};
-use crate::generic::Value;
+use crate::generic::Scalar;
 use crate::{DataType, Error, Metadata, Result};
 
 impl Field {
@@ -130,7 +130,7 @@ impl<'de> Deserialize<'de> for Field {
 }
 
 // ---------------------------------------------------------------------------
-// The one structural mapping between a `Field` and the shared `Value`.
+// The one structural mapping between a `Field` and the shared `Scalar`.
 //
 // A companion to the datatype conversion: together they are the *only*
 // structural model of a schema in the tree. JSON, YAML, and TOML are three
@@ -141,7 +141,7 @@ impl<'de> Deserialize<'de> for Field {
 // ---------------------------------------------------------------------------
 
 impl Field {
-    /// Project this field onto the shared structural [`Value`].
+    /// Project this field onto the shared structural [`Scalar`].
     ///
     /// The mapping carries `name`, `data_type`, `nullable`, then
     /// `dictionary_id` only when it is non-zero and `dictionary_is_ordered`
@@ -167,34 +167,34 @@ impl Field {
     /// # }
     /// ```
     #[must_use]
-    pub fn into_value(self) -> Value {
-        let mut entries: Vec<(Value, Value)> = Vec::with_capacity(6);
-        entries.push((key("name"), Value::String(self.name.clone())));
+    pub fn into_value(self) -> Scalar {
+        let mut entries: Vec<(Scalar, Scalar)> = Vec::with_capacity(6);
+        entries.push((key("name"), Scalar::String(self.name.clone())));
         entries.push((key("data_type"), self.data_type.clone().into_value()));
-        entries.push((key("nullable"), Value::Bool(self.nullable)));
+        entries.push((key("nullable"), Scalar::Bool(self.nullable)));
         if self.dictionary_id != 0 {
             // Decimal text, as the JSON path emits it: a 64-bit identifier
             // does not survive every reader as a number.
             entries.push((
                 key("dictionary_id"),
-                Value::String(format_smolstr!("{}", self.dictionary_id)),
+                Scalar::String(format_smolstr!("{}", self.dictionary_id)),
             ));
         }
         if self.dictionary_is_ordered {
-            entries.push((key("dictionary_is_ordered"), Value::Bool(true)));
+            entries.push((key("dictionary_is_ordered"), Scalar::Bool(true)));
         }
         entries.push((
             key("metadata"),
-            Value::from_mapping(
+            Scalar::from_mapping(
                 self.metadata_iter()
-                    .map(|(name, value)| (key(name), Value::String(SmolStr::new(value)))),
+                    .map(|(name, value)| (key(name), Scalar::String(SmolStr::new(value)))),
             )
-            .unwrap_or(Value::Null),
+            .unwrap_or(Scalar::Null),
         ));
-        Value::from_mapping(entries).unwrap_or(Value::Null)
+        Scalar::from_mapping(entries).unwrap_or(Scalar::Null)
     }
 
-    /// Read a field back from the shared structural [`Value`].
+    /// Read a field back from the shared structural [`Scalar`].
     ///
     /// Fallible and validating, raising the same typed errors the JSON path
     /// raises: the datatype is rebuilt through [`DataType::from_value`], the
@@ -221,13 +221,13 @@ impl Field {
     /// Returns an error naming the path and the expectation when the value is
     /// not a field mapping, a required key is missing or wrongly typed, or the
     /// assembled field does not validate.
-    pub fn from_value(value: Value) -> Result<Self> {
+    pub fn from_value(value: Scalar) -> Result<Self> {
         if value.as_mapping().is_none() && value.as_record().is_none() {
             return Err(invalid("$", "a field mapping", value.kind()));
         }
         let at = |name: &str| value.get_key_str(name);
         let name = at("name")
-            .and_then(Value::as_str)
+            .and_then(Scalar::as_str)
             .ok_or_else(|| invalid("$.name", "a field name", "nothing"))?;
         let data_type = DataType::from_value(
             at("data_type")
@@ -235,12 +235,12 @@ impl Field {
                 .clone(),
         )?;
         let nullable = match at("nullable") {
-            Some(Value::Bool(held)) => *held,
+            Some(Scalar::Bool(held)) => *held,
             other => {
                 return Err(invalid(
                     "$.nullable",
                     "a boolean",
-                    other.map_or("nothing", Value::kind),
+                    other.map_or("nothing", Scalar::kind),
                 ));
             }
         };
@@ -248,16 +248,16 @@ impl Field {
         let mut field = Self::new(name, data_type, nullable);
         // Only a dictionary carries the pair, and both settle together so a
         // half-declared state can never reach the field.
-        let dictionary_id = match at("dictionary_id").filter(|held| !matches!(held, Value::Null)) {
+        let dictionary_id = match at("dictionary_id").filter(|held| !matches!(held, Scalar::Null)) {
             Some(held) => i64::from(integer(Some(held), "dictionary_id")?),
             None => 0,
         };
-        let dictionary_is_ordered = matches!(at("dictionary_is_ordered"), Some(Value::Bool(true)));
+        let dictionary_is_ordered = matches!(at("dictionary_is_ordered"), Some(Scalar::Bool(true)));
         if dictionary_id != 0 || dictionary_is_ordered {
             field.set_dictionary_options(dictionary_id, dictionary_is_ordered)?;
         }
 
-        if let Some(held) = at("metadata").filter(|held| !matches!(held, Value::Null)) {
+        if let Some(held) = at("metadata").filter(|held| !matches!(held, Scalar::Null)) {
             let mut collected = Vec::with_capacity(held.len());
             if let Some(pairs) = held.as_record() {
                 for (name, value) in pairs {
@@ -299,29 +299,29 @@ impl Field {
     }
 }
 
-impl From<&Field> for Value {
+impl From<&Field> for Scalar {
     fn from(value: &Field) -> Self {
         value.clone().into_value()
     }
 }
 
-impl TryFrom<Value> for Field {
+impl TryFrom<Scalar> for Field {
     type Error = Error;
 
-    fn try_from(value: Value) -> Result<Self> {
+    fn try_from(value: Scalar) -> Result<Self> {
         Self::from_value(value)
     }
 }
 
 // ---------------------------------------------------------------------------
-// The three formats, all over the one `Value` conversion.
+// The three formats, all over the one `Scalar` conversion.
 //
 // `into_json` keeps the Serde path because `Field` is `Serialize`/`Deserialize`
 // for the serde ecosystem - it is nested inside other derived structures
 // across the tree, and AGENTS.md requires those traits on a native value. The
 // two are not a second structural model: the parity test in
 // `tests/field/serde.rs` dumps every shape through both routes and compares the
-// bytes, so the Serde impl cannot drift from the `Value` mapping without
+// bytes, so the Serde impl cannot drift from the `Scalar` mapping without
 // failing a test. Every *other* format goes through `into_value` alone.
 // ---------------------------------------------------------------------------
 

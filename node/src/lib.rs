@@ -45,13 +45,13 @@ pub use avro::{
     avro_dumps_native, avro_loads_native,
 };
 pub use codec::{
-    CodecLimitsInput, JsCodecValue, JsCodecValueIterator, codec_infer_format,
-    codec_loads_inferred_native, codec_normalize_format, json_dump_path_native, json_dumps_native,
-    json_lines_dump_all_native, json_lines_dump_path_native, json_lines_load_path_native,
-    json_lines_loads_native, json_load_path_native, json_loads_native, toml_dump_path_native,
-    toml_dumps_native, toml_load_path_native, toml_loads_native, yaml_dump_all_native,
-    yaml_dump_all_path_native, yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native,
-    yaml_load_path_native, yaml_loads_all_native, yaml_loads_native,
+    CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
+    codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
+    json_lines_dump_path_native, json_lines_load_path_native, json_lines_loads_native,
+    json_load_path_native, json_loads_native, toml_dump_path_native, toml_dumps_native,
+    toml_load_path_native, toml_loads_native, yaml_dump_all_native, yaml_dump_all_path_native,
+    yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native, yaml_load_path_native,
+    yaml_loads_all_native, yaml_loads_native,
 };
 pub use datatype::JsDataType;
 pub use expression::{

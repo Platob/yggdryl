@@ -1,6 +1,6 @@
-//! Python's native view of the shared [`Value`] tree.
+//! Python's native view of the shared [`Scalar`] tree.
 //!
-//! [`PyValue`] owns only the core value. The conversion helpers here are also
+//! [`PyScalar`] owns only the core value. The conversion helpers here are also
 //! the one boundary used by codecs, expressions, and record adapters.
 
 use std::collections::HashSet;
@@ -24,7 +24,7 @@ use yggdryl::arrow::{
 };
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32,
-    Float64, I256, TimeUnit, Timezone, Value,
+    Float64, I256, Scalar, TimeUnit, Timezone,
 };
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
@@ -49,21 +49,21 @@ const MICROSECONDS_PER_DAY: i64 = 86_400_000_000;
 /// Native Python wrapper over the shared Rust value tree.
 #[derive(Clone)]
 #[pyclass(
-    name = "Value",
+    name = "Scalar",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
 )]
-pub(crate) struct PyValue {
-    pub(crate) inner: Value,
+pub(crate) struct PyScalar {
+    pub(crate) inner: Scalar,
 }
 
-impl PyValue {
-    pub(crate) const fn from_inner(inner: Value) -> Self {
+impl PyScalar {
+    pub(crate) const fn from_inner(inner: Scalar) -> Self {
         Self { inner }
     }
 
-    fn child_at(&self, index: isize) -> Option<&Value> {
+    fn child_at(&self, index: isize) -> Option<&Scalar> {
         let length = self.inner.as_sequence()?.len();
         let index = if index < 0 {
             length.checked_sub(index.unsigned_abs())?
@@ -76,7 +76,7 @@ impl PyValue {
     fn child_for_key<'value>(
         &'value self,
         key: &Bound<'_, PyAny>,
-    ) -> PyResult<Option<&'value Value>> {
+    ) -> PyResult<Option<&'value Scalar>> {
         if self.inner.as_record().is_some() {
             let key = key
                 .cast::<PyString>()
@@ -102,7 +102,7 @@ fn timezone_or_naive(value: Option<&Bound<'_, PyAny>>) -> PyResult<Timezone> {
     value.map_or(Ok(Timezone::NAIVE), core_timezone_from_value)
 }
 
-fn i256_from_python(value: &Bound<'_, PyAny>) -> PyResult<I256> {
+fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<I256> {
     if value.is_instance_of::<PyBool>()
         || !(value.is_instance_of::<PyInt>() || value.is_instance_of::<PyString>())
     {
@@ -153,7 +153,7 @@ fn exact_or_inferred_array_field(
     Ok(CoreField::new(name, data_type, array.null_count() != 0))
 }
 
-fn extend_rows(rows: &mut Vec<Value>, value: &Value) -> PyResult<()> {
+fn extend_rows(rows: &mut Vec<Scalar>, value: &Scalar) -> PyResult<()> {
     let values = value.as_sequence().ok_or_else(|| {
         PyValueError::new_err("Arrow record conversion must produce an outer Sequence")
     })?;
@@ -161,16 +161,16 @@ fn extend_rows(rows: &mut Vec<Value>, value: &Value) -> PyResult<()> {
     Ok(())
 }
 
-fn value_into_arrow_array(field: &CoreField, value: &Value) -> PyResult<ArrayRef> {
+fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
     array_from_value(field, value).map_err(value_error)
 }
 
-fn value_into_arrow_batch(field: &CoreField, value: &Value) -> PyResult<RecordBatch> {
+fn value_into_arrow_batch(field: &CoreField, value: &Scalar) -> PyResult<RecordBatch> {
     batch_from_value(field, value).map_err(value_error)
 }
 
 /// Preserve the arithmetic failure categories Python's numeric protocol uses.
-fn arithmetic_error(error: CoreError) -> PyErr {
+fn arithmetic_error(error: &CoreError) -> PyErr {
     let message = error.to_string();
     match error {
         CoreError::InvalidArithmetic { .. } => PyTypeError::new_err(message),
@@ -183,24 +183,24 @@ fn arithmetic_error(error: CoreError) -> PyErr {
 
 /// Convert one inferred Python operand and run one core checked operation.
 fn binary_arithmetic(
-    left: &Value,
+    left: &Scalar,
     right: &Bound<'_, PyAny>,
-    operation: fn(&Value, &Value) -> yggdryl::Result<Value>,
-) -> PyResult<PyValue> {
+    operation: fn(&Scalar, &Scalar) -> yggdryl::Result<Scalar>,
+) -> PyResult<PyScalar> {
     operation(left, &from_py(right)?)
-        .map(PyValue::from_inner)
-        .map_err(arithmetic_error)
+        .map(PyScalar::from_inner)
+        .map_err(|error| arithmetic_error(&error))
 }
 
 /// Run one reflected operation with the inferred Python value on the left.
 fn reflected_arithmetic(
     left: &Bound<'_, PyAny>,
-    right: &Value,
-    operation: fn(&Value, &Value) -> yggdryl::Result<Value>,
-) -> PyResult<PyValue> {
+    right: &Scalar,
+    operation: fn(&Scalar, &Scalar) -> yggdryl::Result<Scalar>,
+) -> PyResult<PyScalar> {
     operation(&from_py(left)?, right)
-        .map(PyValue::from_inner)
-        .map_err(arithmetic_error)
+        .map(PyScalar::from_inner)
+        .map_err(|error| arithmetic_error(&error))
 }
 
 /// Build one Python tuple used only by the exact pickle/repr protocol.
@@ -219,8 +219,46 @@ fn tagged_pickle_state(
     pickle_tuple(py, items)
 }
 
-/// Convert every `Value` variant into a lossless, Python-pickle-safe tree.
-pub(crate) fn value_pickle_state(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+fn decimal_pickle_state(
+    py: Python<'_>,
+    tag: &str,
+    coefficient: &str,
+    scale: i8,
+) -> PyResult<Py<PyAny>> {
+    let coefficient = PyString::new(py, coefficient).into_any().unbind();
+    let scale = scale.into_pyobject(py)?.clone().into_any().unbind();
+    tagged_pickle_state(py, tag, Some(pickle_tuple(py, vec![coefficient, scale])?))
+}
+
+fn temporal_i32_pickle_state(
+    py: Python<'_>,
+    tag: &str,
+    count: i32,
+    unit: TimeUnit,
+    zone: &Timezone,
+) -> PyResult<Py<PyAny>> {
+    let count = count.into_pyobject(py)?.clone().into_any().unbind();
+    let unit = PyString::new(py, unit.as_str()).into_any().unbind();
+    let zone = PyString::new(py, zone.as_str()).into_any().unbind();
+    tagged_pickle_state(py, tag, Some(pickle_tuple(py, vec![count, unit, zone])?))
+}
+
+fn temporal_i64_pickle_state(
+    py: Python<'_>,
+    tag: &str,
+    count: i64,
+    unit: TimeUnit,
+    zone: &Timezone,
+) -> PyResult<Py<PyAny>> {
+    let count = count.into_pyobject(py)?.clone().into_any().unbind();
+    let unit = PyString::new(py, unit.as_str()).into_any().unbind();
+    let zone = PyString::new(py, zone.as_str()).into_any().unbind();
+    tagged_pickle_state(py, tag, Some(pickle_tuple(py, vec![count, unit, zone])?))
+}
+
+/// Convert every `Scalar` variant into a lossless, Python-pickle-safe tree.
+#[allow(clippy::too_many_lines)] // One exhaustive match keeps the private wire auditable.
+pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     macro_rules! scalar {
         ($tag:literal, $value:expr) => {{
             let payload = ($value).into_pyobject(py)?.to_owned().into_any().unbind();
@@ -228,113 +266,87 @@ pub(crate) fn value_pickle_state(py: Python<'_>, value: &Value) -> PyResult<Py<P
         }};
     }
 
-    fn decimal_state(
-        py: Python<'_>,
-        tag: &str,
-        coefficient: String,
-        scale: i8,
-    ) -> PyResult<Py<PyAny>> {
-        let coefficient = PyString::new(py, &coefficient).into_any().unbind();
-        let scale = scale.into_pyobject(py)?.to_owned().into_any().unbind();
-        tagged_pickle_state(py, tag, Some(pickle_tuple(py, vec![coefficient, scale])?))
-    }
-
-    fn temporal_i32_state(
-        py: Python<'_>,
-        tag: &str,
-        count: i32,
-        unit: TimeUnit,
-        zone: &Timezone,
-    ) -> PyResult<Py<PyAny>> {
-        let count = count.into_pyobject(py)?.to_owned().into_any().unbind();
-        let unit = PyString::new(py, unit.as_str()).into_any().unbind();
-        let zone = PyString::new(py, zone.as_str()).into_any().unbind();
-        tagged_pickle_state(py, tag, Some(pickle_tuple(py, vec![count, unit, zone])?))
-    }
-
-    fn temporal_i64_state(
-        py: Python<'_>,
-        tag: &str,
-        count: i64,
-        unit: TimeUnit,
-        zone: &Timezone,
-    ) -> PyResult<Py<PyAny>> {
-        let count = count.into_pyobject(py)?.to_owned().into_any().unbind();
-        let unit = PyString::new(py, unit.as_str()).into_any().unbind();
-        let zone = PyString::new(py, zone.as_str()).into_any().unbind();
-        tagged_pickle_state(py, tag, Some(pickle_tuple(py, vec![count, unit, zone])?))
-    }
-
     match value {
-        Value::Null => tagged_pickle_state(py, "null", None),
-        Value::Bool(value) => scalar!("bool", *value),
-        Value::I8(value) => scalar!("i8", *value),
-        Value::I16(value) => scalar!("i16", *value),
-        Value::I32(value) => scalar!("i32", *value),
-        Value::I64(value) => scalar!("i64", *value),
-        Value::U8(value) => scalar!("u8", *value),
-        Value::U16(value) => scalar!("u16", *value),
-        Value::U32(value) => scalar!("u32", *value),
-        Value::U64(value) => scalar!("u64", *value),
-        Value::I128(value) => scalar!("i128", *value),
-        Value::U128(value) => scalar!("u128", *value),
-        Value::F16(value) => scalar!("f16", value.as_f16().to_bits()),
-        Value::F32(value) => scalar!("f32", value.as_f32().to_bits()),
-        Value::F64(value) => scalar!("f64", value.as_f64().to_bits()),
-        Value::D128(coefficient, scale) => {
-            decimal_state(py, "d128", coefficient.to_string(), *scale)
+        Scalar::Null => tagged_pickle_state(py, "null", None),
+        Scalar::Bool(value) => scalar!("bool", *value),
+        Scalar::I8(value) => scalar!("i8", *value),
+        Scalar::I16(value) => scalar!("i16", *value),
+        Scalar::I32(value) => scalar!("i32", *value),
+        Scalar::I64(value) => scalar!("i64", *value),
+        Scalar::U8(value) => scalar!("u8", *value),
+        Scalar::U16(value) => scalar!("u16", *value),
+        Scalar::U32(value) => scalar!("u32", *value),
+        Scalar::U64(value) => scalar!("u64", *value),
+        Scalar::I128(value) => scalar!("i128", *value),
+        Scalar::U128(value) => scalar!("u128", *value),
+        Scalar::F16(value) => scalar!("f16", value.as_f16().to_bits()),
+        Scalar::F32(value) => scalar!("f32", value.as_f32().to_bits()),
+        Scalar::F64(value) => scalar!("f64", value.as_f64().to_bits()),
+        Scalar::D128(coefficient, scale) => {
+            decimal_pickle_state(py, "d128", &coefficient.to_string(), *scale)
         }
-        Value::D256(coefficient, scale) => {
-            decimal_state(py, "d256", coefficient.to_string(), *scale)
+        Scalar::D256(coefficient, scale) => {
+            decimal_pickle_state(py, "d256", &coefficient.to_string(), *scale)
         }
-        Value::String(value) => tagged_pickle_state(
+        Scalar::String(value) => tagged_pickle_state(
             py,
             "string",
             Some(PyString::new(py, value).into_any().unbind()),
         ),
-        Value::Bytes(value) => tagged_pickle_state(
+        Scalar::Bytes(value) => tagged_pickle_state(
             py,
             "bytes",
             Some(PyBytes::new(py, value).into_any().unbind()),
         ),
-        Value::Geospatial(value) => tagged_pickle_state(
+        Scalar::Geospatial(value) => tagged_pickle_state(
             py,
             "geospatial",
             Some(PyBytes::new(py, value).into_any().unbind()),
         ),
-        Value::Date32(count, unit, zone) => temporal_i32_state(py, "date32", *count, *unit, zone),
-        Value::Date64(count, unit, zone) => temporal_i64_state(py, "date64", *count, *unit, zone),
-        Value::Time32(count, unit, zone) => temporal_i32_state(py, "time32", *count, *unit, zone),
-        Value::Time64(count, unit, zone) => temporal_i64_state(py, "time64", *count, *unit, zone),
-        Value::DateTime64(count, unit, zone) => {
-            temporal_i64_state(py, "datetime64", *count, *unit, zone)
+        Scalar::Date32(count, unit, zone) => {
+            temporal_i32_pickle_state(py, "date32", *count, *unit, zone)
         }
-        Value::Duration32(count, unit, zone) => {
-            temporal_i32_state(py, "duration32", *count, *unit, zone)
+        Scalar::Date64(count, unit, zone) => {
+            temporal_i64_pickle_state(py, "date64", *count, *unit, zone)
         }
-        Value::Duration64(count, unit, zone) => {
-            temporal_i64_state(py, "duration64", *count, *unit, zone)
+        Scalar::Time32(count, unit, zone) => {
+            temporal_i32_pickle_state(py, "time32", *count, *unit, zone)
         }
-        Value::Sequence(values) => {
+        Scalar::Time64(count, unit, zone) => {
+            temporal_i64_pickle_state(py, "time64", *count, *unit, zone)
+        }
+        Scalar::DateTime64(count, unit, zone) => {
+            temporal_i64_pickle_state(py, "datetime64", *count, *unit, zone)
+        }
+        Scalar::Duration32(count, unit, zone) => {
+            temporal_i32_pickle_state(py, "duration32", *count, *unit, zone)
+        }
+        Scalar::Duration64(count, unit, zone) => {
+            temporal_i64_pickle_state(py, "duration64", *count, *unit, zone)
+        }
+        Scalar::Sequence(values) => {
             let values = values
                 .iter()
-                .map(|value| value_pickle_state(py, value))
+                .map(|value| scalar_pickle_state(py, value))
                 .collect::<PyResult<Vec<_>>>()?;
             tagged_pickle_state(py, "sequence", Some(pickle_tuple(py, values)?))
         }
-        Value::Mapping(entries) => {
+        Scalar::Mapping(entries) => {
             let entries = entries
                 .iter()
                 .map(|(key, value)| {
                     pickle_tuple(
                         py,
-                        vec![value_pickle_state(py, key)?, value_pickle_state(py, value)?],
+                        vec![
+                            scalar_pickle_state(py, key)?,
+                            scalar_pickle_state(py, value)?,
+                        ],
                     )
                 })
                 .collect::<PyResult<Vec<_>>>()?;
             tagged_pickle_state(py, "mapping", Some(pickle_tuple(py, entries)?))
         }
-        Value::Record(entries) => {
+        Scalar::Record(entries) => {
             let entries = entries
                 .iter()
                 .map(|(name, value)| {
@@ -342,7 +354,7 @@ pub(crate) fn value_pickle_state(py: Python<'_>, value: &Value) -> PyResult<Py<P
                         py,
                         vec![
                             PyString::new(py, name).into_any().unbind(),
-                            value_pickle_state(py, value)?,
+                            scalar_pickle_state(py, value)?,
                         ],
                     )
                 })
@@ -352,19 +364,47 @@ pub(crate) fn value_pickle_state(py: Python<'_>, value: &Value) -> PyResult<Py<P
     }
 }
 
-/// Rebuild one exact native value from the private pickle/repr state.
-pub(crate) fn value_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+fn pickle_bytes(payload: &Bound<'_, PyAny>) -> PyResult<Arc<[u8]>> {
+    payload
+        .cast::<PyBytes>()
+        .map(|bytes| Arc::from(bytes.as_bytes()))
+        .map_err(|_| PyTypeError::new_err("Scalar byte state must be bytes"))
+}
+
+fn pickle_decimal(payload: &Bound<'_, PyAny>) -> PyResult<(String, i8)> {
+    payload
+        .extract::<(String, i8)>()
+        .map_err(|_| PyTypeError::new_err("Scalar decimal state must be (coefficient, scale)"))
+}
+
+fn pickle_temporal<T>(payload: &Bound<'_, PyAny>) -> PyResult<(T, TimeUnit, Timezone)>
+where
+    for<'py> T: FromPyObject<'py, 'py>,
+{
+    let (count, unit, zone) = payload.extract::<(T, String, String)>().map_err(|_| {
+        PyTypeError::new_err("Scalar temporal state must be (count, unit, timezone)")
+    })?;
+    Ok((
+        count,
+        time_unit(&unit)?,
+        Timezone::from_str(&zone).map_err(value_error)?,
+    ))
+}
+
+/// Rebuild one exact native scalar from the private pickle/repr state.
+#[allow(clippy::too_many_lines)] // One exhaustive match keeps the private wire auditable.
+pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
     if depth > MAX_PYTHON_DEPTH {
         return Err(PyValueError::new_err(format!(
-            "Value pickle state exceeds {MAX_PYTHON_DEPTH} levels"
+            "Scalar pickle state exceeds {MAX_PYTHON_DEPTH} levels"
         )));
     }
     let state = state
         .cast::<PyTuple>()
-        .map_err(|_| PyTypeError::new_err("Value pickle state must be a tagged tuple"))?;
+        .map_err(|_| PyTypeError::new_err("Scalar pickle state must be a tagged tuple"))?;
     if state.is_empty() || state.len() > 2 {
         return Err(PyValueError::new_err(
-            "Value pickle state must contain a tag and optional payload",
+            "Scalar pickle state must contain a tag and optional payload",
         ));
     }
     let tag = state.get_item(0)?.extract::<String>()?;
@@ -373,174 +413,147 @@ pub(crate) fn value_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) ->
             state.get_item(1)
         } else {
             Err(PyValueError::new_err(format!(
-                "Value pickle tag {tag:?} requires a payload"
+                "Scalar pickle tag {tag:?} requires a payload"
             )))
         }
     };
 
-    fn bytes(payload: &Bound<'_, PyAny>) -> PyResult<Arc<[u8]>> {
-        payload
-            .cast::<PyBytes>()
-            .map(|bytes| Arc::from(bytes.as_bytes()))
-            .map_err(|_| PyTypeError::new_err("Value byte state must be bytes"))
-    }
-
-    fn decimal(payload: &Bound<'_, PyAny>) -> PyResult<(String, i8)> {
-        payload
-            .extract::<(String, i8)>()
-            .map_err(|_| PyTypeError::new_err("Value decimal state must be (coefficient, scale)"))
-    }
-
-    fn temporal<T>(payload: &Bound<'_, PyAny>) -> PyResult<(T, TimeUnit, Timezone)>
-    where
-        for<'py> T: FromPyObject<'py, 'py>,
-    {
-        let (count, unit, zone) = payload.extract::<(T, String, String)>().map_err(|_| {
-            PyTypeError::new_err("Value temporal state must be (count, unit, timezone)")
-        })?;
-        Ok((
-            time_unit(&unit)?,
-            Timezone::from_str(&zone).map_err(value_error)?,
-        ))
-        .map(|(unit, zone)| (count, unit, zone))
-    }
-
     match tag.as_str() {
-        "null" if state.len() == 1 => Ok(Value::Null),
-        "null" => Err(PyValueError::new_err("null Value state has no payload")),
-        "bool" => payload()?.extract::<bool>().map(Value::Bool),
-        "i8" => payload()?.extract::<i8>().map(Value::I8),
-        "i16" => payload()?.extract::<i16>().map(Value::I16),
-        "i32" => payload()?.extract::<i32>().map(Value::I32),
-        "i64" => payload()?.extract::<i64>().map(Value::I64),
-        "u8" => payload()?.extract::<u8>().map(Value::U8),
-        "u16" => payload()?.extract::<u16>().map(Value::U16),
-        "u32" => payload()?.extract::<u32>().map(Value::U32),
-        "u64" => payload()?.extract::<u64>().map(Value::U64),
-        "i128" => payload()?.extract::<i128>().map(Value::I128),
-        "u128" => payload()?.extract::<u128>().map(Value::U128),
+        "null" if state.len() == 1 => Ok(Scalar::Null),
+        "null" => Err(PyValueError::new_err("null Scalar state has no payload")),
+        "bool" => payload()?.extract::<bool>().map(Scalar::Bool),
+        "i8" => payload()?.extract::<i8>().map(Scalar::I8),
+        "i16" => payload()?.extract::<i16>().map(Scalar::I16),
+        "i32" => payload()?.extract::<i32>().map(Scalar::I32),
+        "i64" => payload()?.extract::<i64>().map(Scalar::I64),
+        "u8" => payload()?.extract::<u8>().map(Scalar::U8),
+        "u16" => payload()?.extract::<u16>().map(Scalar::U16),
+        "u32" => payload()?.extract::<u32>().map(Scalar::U32),
+        "u64" => payload()?.extract::<u64>().map(Scalar::U64),
+        "i128" => payload()?.extract::<i128>().map(Scalar::I128),
+        "u128" => payload()?.extract::<u128>().map(Scalar::U128),
         "f16" => payload()?
             .extract::<u16>()
-            .map(|bits| Value::F16(Float16::from_f16(half::f16::from_bits(bits)))),
+            .map(|bits| Scalar::F16(Float16::from_f16(half::f16::from_bits(bits)))),
         "f32" => payload()?
             .extract::<u32>()
-            .map(|bits| Value::F32(Float32::from_f32(f32::from_bits(bits)))),
+            .map(|bits| Scalar::F32(Float32::from_f32(f32::from_bits(bits)))),
         "f64" => payload()?
             .extract::<u64>()
-            .map(|bits| Value::F64(Float64::from_f64(f64::from_bits(bits)))),
+            .map(|bits| Scalar::F64(Float64::from_f64(f64::from_bits(bits)))),
         "d128" => {
-            let (coefficient, scale) = decimal(&payload()?)?;
+            let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
                 .parse::<i128>()
-                .map(|coefficient| Value::d128(coefficient, scale))
+                .map(|coefficient| Scalar::d128(coefficient, scale))
                 .map_err(|_| PyOverflowError::new_err("D128 coefficient is out of range"))
         }
         "d256" => {
-            let (coefficient, scale) = decimal(&payload()?)?;
+            let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
                 .parse::<I256>()
-                .map(|coefficient| Value::d256(coefficient, scale))
+                .map(|coefficient| Scalar::d256(coefficient, scale))
                 .map_err(|error| PyOverflowError::new_err(error.to_string()))
         }
-        "string" => payload()?.extract::<String>().map(Value::from),
-        "bytes" => bytes(&payload()?).map(Value::Bytes),
-        "geospatial" => bytes(&payload()?).map(Value::Geospatial),
+        "string" => payload()?.extract::<String>().map(Scalar::from),
+        "bytes" => pickle_bytes(&payload()?).map(Scalar::Bytes),
+        "geospatial" => pickle_bytes(&payload()?).map(Scalar::Geospatial),
         "date32" => {
-            let (count, unit, zone) = temporal::<i32>(&payload()?)?;
-            Value::date32_in(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i32>(&payload()?)?;
+            Scalar::date32_in(count, unit, zone).map_err(value_error)
         }
         "date64" => {
-            let (count, unit, zone) = temporal::<i64>(&payload()?)?;
-            Value::date64_in(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i64>(&payload()?)?;
+            Scalar::date64_in(count, unit, zone).map_err(value_error)
         }
         "time32" => {
-            let (count, unit, zone) = temporal::<i32>(&payload()?)?;
-            Value::time32(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i32>(&payload()?)?;
+            Scalar::time32(count, unit, zone).map_err(value_error)
         }
         "time64" => {
-            let (count, unit, zone) = temporal::<i64>(&payload()?)?;
-            Value::time64(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i64>(&payload()?)?;
+            Scalar::time64(count, unit, zone).map_err(value_error)
         }
         "datetime64" => {
-            let (count, unit, zone) = temporal::<i64>(&payload()?)?;
-            Value::datetime64(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i64>(&payload()?)?;
+            Scalar::datetime64(count, unit, zone).map_err(value_error)
         }
         "duration32" => {
-            let (count, unit, zone) = temporal::<i32>(&payload()?)?;
-            Value::duration32_in(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i32>(&payload()?)?;
+            Scalar::duration32_in(count, unit, zone).map_err(value_error)
         }
         "duration64" => {
-            let (count, unit, zone) = temporal::<i64>(&payload()?)?;
-            Value::duration64_in(count, unit, zone).map_err(value_error)
+            let (count, unit, zone) = pickle_temporal::<i64>(&payload()?)?;
+            Scalar::duration64_in(count, unit, zone).map_err(value_error)
         }
         "sequence" => {
             let payload = payload()?;
             let values = payload
                 .cast::<PyTuple>()
-                .map_err(|_| PyTypeError::new_err("Value sequence state must be a tuple"))?;
+                .map_err(|_| PyTypeError::new_err("Scalar sequence state must be a tuple"))?;
             values
                 .iter()
-                .map(|value| value_from_pickle_state(&value, depth + 1))
+                .map(|value| scalar_from_pickle_state(&value, depth + 1))
                 .collect::<PyResult<Vec<_>>>()
-                .map(Value::from_sequence)
+                .map(Scalar::from_sequence)
         }
         "mapping" => {
             let payload = payload()?;
             let entries = payload
                 .cast::<PyTuple>()
-                .map_err(|_| PyTypeError::new_err("Value mapping state must be a tuple"))?;
+                .map_err(|_| PyTypeError::new_err("Scalar mapping state must be a tuple"))?;
             let entries = entries
                 .iter()
                 .map(|entry| {
-                    let entry = entry
-                        .cast::<PyTuple>()
-                        .map_err(|_| PyTypeError::new_err("Value mapping entries must be pairs"))?;
+                    let entry = entry.cast::<PyTuple>().map_err(|_| {
+                        PyTypeError::new_err("Scalar mapping entries must be pairs")
+                    })?;
                     if entry.len() != 2 {
                         return Err(PyValueError::new_err(
-                            "Value mapping entries must have length two",
+                            "Scalar mapping entries must have length two",
                         ));
                     }
                     Ok((
-                        value_from_pickle_state(&entry.get_item(0)?, depth + 1)?,
-                        value_from_pickle_state(&entry.get_item(1)?, depth + 1)?,
+                        scalar_from_pickle_state(&entry.get_item(0)?, depth + 1)?,
+                        scalar_from_pickle_state(&entry.get_item(1)?, depth + 1)?,
                     ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Value::from_mapping(entries).map_err(value_error)
+            Scalar::from_mapping(entries).map_err(value_error)
         }
         "record" => {
             let payload = payload()?;
             let entries = payload
                 .cast::<PyTuple>()
-                .map_err(|_| PyTypeError::new_err("Value record state must be a tuple"))?;
+                .map_err(|_| PyTypeError::new_err("Scalar record state must be a tuple"))?;
             let entries = entries
                 .iter()
                 .map(|entry| {
                     let entry = entry
                         .cast::<PyTuple>()
-                        .map_err(|_| PyTypeError::new_err("Value record entries must be pairs"))?;
+                        .map_err(|_| PyTypeError::new_err("Scalar record entries must be pairs"))?;
                     if entry.len() != 2 {
                         return Err(PyValueError::new_err(
-                            "Value record entries must have length two",
+                            "Scalar record entries must have length two",
                         ));
                     }
                     Ok((
                         entry.get_item(0)?.extract::<String>()?,
-                        value_from_pickle_state(&entry.get_item(1)?, depth + 1)?,
+                        scalar_from_pickle_state(&entry.get_item(1)?, depth + 1)?,
                     ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Value::from_record(entries).map_err(value_error)
+            Scalar::from_record(entries).map_err(value_error)
         }
         _ => Err(PyValueError::new_err(format!(
-            "unknown Value pickle tag {tag:?}"
+            "unknown Scalar pickle tag {tag:?}"
         ))),
     }
 }
 
 #[pymethods]
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
-impl PyValue {
+impl PyScalar {
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         from_py(value).map(Self::from_inner)
@@ -549,41 +562,41 @@ impl PyValue {
     /// Rebuild exact private state used by pickle and reconstructible repr.
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyAny>) -> PyResult<Self> {
-        value_from_pickle_state(state, 0).map(Self::from_inner)
+        scalar_from_pickle_state(state, 0).map(Self::from_inner)
     }
 
     /// Convert a Python-native value without a text intermediate.
     #[staticmethod]
-    fn from_python(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         from_py(value).map(Self::from_inner)
     }
 
     #[staticmethod]
     fn f16(value: f64) -> Self {
-        Self::from_inner(Value::F16(Float16::from_f16(half::f16::from_f64(value))))
+        Self::from_inner(Scalar::F16(Float16::from_f16(half::f16::from_f64(value))))
     }
 
     #[staticmethod]
     fn f32(value: f32) -> Self {
-        Self::from_inner(Value::F32(Float32::from_f32(value)))
+        Self::from_inner(Scalar::F32(Float32::from_f32(value)))
     }
 
     #[staticmethod]
     fn f64(value: f64) -> Self {
-        Self::from_inner(Value::F64(Float64::from_f64(value)))
+        Self::from_inner(Scalar::F64(Float64::from_f64(value)))
     }
 
     #[staticmethod]
     #[pyo3(signature = (coefficient, scale=0))]
     fn d128(coefficient: i128, scale: i8) -> Self {
-        Self::from_inner(Value::d128(coefficient, scale))
+        Self::from_inner(Scalar::d128(coefficient, scale))
     }
 
     #[staticmethod]
     #[pyo3(signature = (coefficient, scale=0))]
     fn d256(coefficient: &Bound<'_, PyAny>, scale: i8) -> PyResult<Self> {
-        Ok(Self::from_inner(Value::d256(
-            i256_from_python(coefficient)?,
+        Ok(Self::from_inner(Scalar::d256(
+            i256_from_py(coefficient)?,
             scale,
         )))
     }
@@ -591,7 +604,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit="d", timezone=None))]
     fn date32(count: i32, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::date32_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::date32_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -599,7 +612,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit="ms", timezone=None))]
     fn date64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::date64_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::date64_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -607,7 +620,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
     fn time32(count: i32, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::time32(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::time32(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -615,7 +628,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
     fn time64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::time64(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::time64(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -623,7 +636,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
     fn datetime64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::datetime64(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::datetime64(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -631,7 +644,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
     fn duration32(count: i32, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::duration32_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::duration32_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -639,7 +652,7 @@ impl PyValue {
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
     fn duration64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Value::duration64_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+        Scalar::duration64_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -715,11 +728,11 @@ impl PyValue {
             };
             extend_rows(&mut rows, &batch_to_value(&batch).map_err(value_error)?)?;
         }
-        Ok(Self::from_inner(Value::from_sequence(rows)))
+        Ok(Self::from_inner(Scalar::from_sequence(rows)))
     }
 
     /// Convert back to Python's native scalar and collection types.
-    fn into_python(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+    fn as_py(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         as_py(py, &self.inner)
     }
 
@@ -912,27 +925,27 @@ impl PyValue {
 
     /// Add an inferred Python/native value through the core's checked rules.
     fn add(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_arithmetic(&self.inner, other, Value::checked_add)
+        binary_arithmetic(&self.inner, other, Scalar::checked_add)
     }
 
     /// Subtract an inferred Python/native value through the core's checked rules.
     fn subtract(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_arithmetic(&self.inner, other, Value::checked_sub)
+        binary_arithmetic(&self.inner, other, Scalar::checked_sub)
     }
 
     /// Multiply by an inferred Python/native value through the core's checked rules.
     fn multiply(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_arithmetic(&self.inner, other, Value::checked_mul)
+        binary_arithmetic(&self.inner, other, Scalar::checked_mul)
     }
 
     /// Divide by an inferred Python/native value through the core's checked rules.
     fn divide(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_arithmetic(&self.inner, other, Value::checked_div)
+        binary_arithmetic(&self.inner, other, Scalar::checked_div)
     }
 
     /// Return the checked remainder for an inferred Python/native divisor.
     fn remainder(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        binary_arithmetic(&self.inner, other, Value::checked_rem)
+        binary_arithmetic(&self.inner, other, Scalar::checked_rem)
     }
 
     /// Return the checked numeric negation.
@@ -940,7 +953,7 @@ impl PyValue {
         self.inner
             .checked_neg()
             .map(Self::from_inner)
-            .map_err(arithmetic_error)
+            .map_err(|error| arithmetic_error(&error))
     }
 
     /// Return the checked absolute numeric value.
@@ -948,7 +961,7 @@ impl PyValue {
         self.inner
             .checked_abs()
             .map(Self::from_inner)
-            .map_err(arithmetic_error)
+            .map_err(|error| arithmetic_error(&error))
     }
 
     fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -956,7 +969,7 @@ impl PyValue {
     }
 
     fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        reflected_arithmetic(other, &self.inner, Value::checked_add)
+        reflected_arithmetic(other, &self.inner, Scalar::checked_add)
     }
 
     fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -964,7 +977,7 @@ impl PyValue {
     }
 
     fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        reflected_arithmetic(other, &self.inner, Value::checked_sub)
+        reflected_arithmetic(other, &self.inner, Scalar::checked_sub)
     }
 
     fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -972,7 +985,7 @@ impl PyValue {
     }
 
     fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        reflected_arithmetic(other, &self.inner, Value::checked_mul)
+        reflected_arithmetic(other, &self.inner, Scalar::checked_mul)
     }
 
     fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -980,7 +993,7 @@ impl PyValue {
     }
 
     fn __rtruediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        reflected_arithmetic(other, &self.inner, Value::checked_div)
+        reflected_arithmetic(other, &self.inner, Scalar::checked_div)
     }
 
     fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -988,7 +1001,7 @@ impl PyValue {
     }
 
     fn __rmod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        reflected_arithmetic(other, &self.inner, Value::checked_rem)
+        reflected_arithmetic(other, &self.inner, Scalar::checked_rem)
     }
 
     fn __neg__(&self) -> PyResult<Self> {
@@ -1010,8 +1023,8 @@ impl PyValue {
     }
 
     /// Iterate over sequence children, mapping keys, or record values.
-    fn __iter__(&self) -> PyValueIterator {
-        PyValueIterator::new(self.inner.iter().cloned())
+    fn __iter__(&self) -> PyScalarIterator {
+        PyScalarIterator::new(self.inner.iter().cloned())
     }
 
     /// Return a sequence child, accepting Python's negative indexes.
@@ -1067,19 +1080,19 @@ impl PyValue {
     }
 
     /// Iterate over every mapping/record key as an exact value.
-    fn keys(&self) -> PyValueIterator {
+    fn keys(&self) -> PyScalarIterator {
         let keys = if let Some(entries) = self.inner.as_mapping() {
             entries.iter().map(|(key, _)| key.clone()).collect()
         } else if let Some(entries) = self.inner.as_record() {
-            entries.keys().cloned().map(Value::from).collect()
+            entries.keys().cloned().map(Scalar::from).collect()
         } else {
             Vec::new()
         };
-        PyValueIterator::new(keys)
+        PyScalarIterator::new(keys)
     }
 
     /// Iterate over every mapping/record child as an exact value.
-    fn values(&self) -> PyValueIterator {
+    fn values(&self) -> PyScalarIterator {
         let values = if let Some(entries) = self.inner.as_mapping() {
             entries.iter().map(|(_, value)| value.clone()).collect()
         } else if let Some(entries) = self.inner.as_record() {
@@ -1087,22 +1100,22 @@ impl PyValue {
         } else {
             Vec::new()
         };
-        PyValueIterator::new(values)
+        PyScalarIterator::new(values)
     }
 
     /// Iterate over mapping/record entries without natural-type lowering.
-    fn items(&self) -> PyValueEntryIterator {
+    fn items(&self) -> PyScalarEntryIterator {
         let entries = if let Some(entries) = self.inner.as_mapping() {
             entries.to_vec()
         } else if let Some(entries) = self.inner.as_record() {
             entries
                 .iter()
-                .map(|(key, value)| (Value::from(key.clone()), value.clone()))
+                .map(|(key, value)| (Scalar::from(key.clone()), value.clone()))
                 .collect()
         } else {
             Vec::new()
         };
-        PyValueEntryIterator::new(entries)
+        PyScalarEntryIterator::new(entries)
     }
 
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -1128,9 +1141,9 @@ impl PyValue {
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        let state = value_pickle_state(py, &self.inner)?;
+        let state = scalar_pickle_state(py, &self.inner)?;
         Ok(format!(
-            "Value._from_pickle({})",
+            "Scalar._from_pickle({})",
             state.bind(py).repr()?.to_str()?
         ))
     }
@@ -1153,7 +1166,7 @@ impl PyValue {
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
         Ok((
             py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (value_pickle_state(py, &self.inner)?,),
+            (scalar_pickle_state(py, &self.inner)?,),
         ))
     }
 
@@ -1167,13 +1180,13 @@ impl PyValue {
 }
 
 /// Owning lazy iterator over exact native children.
-#[pyclass(name = "ValueIterator", module = "yggdryl._native")]
-pub(crate) struct PyValueIterator {
-    inner: std::vec::IntoIter<Value>,
+#[pyclass(name = "ScalarIterator", module = "yggdryl._native")]
+pub(crate) struct PyScalarIterator {
+    inner: std::vec::IntoIter<Scalar>,
 }
 
-impl PyValueIterator {
-    fn new(values: impl IntoIterator<Item = Value>) -> Self {
+impl PyScalarIterator {
+    fn new(values: impl IntoIterator<Item = Scalar>) -> Self {
         Self {
             inner: values.into_iter().collect::<Vec<_>>().into_iter(),
         }
@@ -1181,7 +1194,7 @@ impl PyValueIterator {
 }
 
 #[pymethods]
-impl PyValueIterator {
+impl PyScalarIterator {
     // Consumption changes iterator state.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
@@ -1190,8 +1203,8 @@ impl PyValueIterator {
         slf
     }
 
-    fn __next__(&mut self) -> Option<PyValue> {
-        self.inner.next().map(PyValue::from_inner)
+    fn __next__(&mut self) -> Option<PyScalar> {
+        self.inner.next().map(PyScalar::from_inner)
     }
 
     fn __length_hint__(&self) -> usize {
@@ -1201,12 +1214,12 @@ impl PyValueIterator {
 
 /// Owning lazy iterator over exact native mapping/record entries.
 #[pyclass(name = "ValueEntryIterator", module = "yggdryl._native")]
-pub(crate) struct PyValueEntryIterator {
-    inner: std::vec::IntoIter<(Value, Value)>,
+pub(crate) struct PyScalarEntryIterator {
+    inner: std::vec::IntoIter<(Scalar, Scalar)>,
 }
 
-impl PyValueEntryIterator {
-    fn new(values: impl IntoIterator<Item = (Value, Value)>) -> Self {
+impl PyScalarEntryIterator {
+    fn new(values: impl IntoIterator<Item = (Scalar, Scalar)>) -> Self {
         Self {
             inner: values.into_iter().collect::<Vec<_>>().into_iter(),
         }
@@ -1214,7 +1227,7 @@ impl PyValueEntryIterator {
 }
 
 #[pymethods]
-impl PyValueEntryIterator {
+impl PyScalarEntryIterator {
     // Consumption changes iterator state.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
@@ -1223,10 +1236,10 @@ impl PyValueEntryIterator {
         slf
     }
 
-    fn __next__(&mut self) -> Option<(PyValue, PyValue)> {
+    fn __next__(&mut self) -> Option<(PyScalar, PyScalar)> {
         self.inner
             .next()
-            .map(|(key, value)| (PyValue::from_inner(key), PyValue::from_inner(value)))
+            .map(|(key, value)| (PyScalar::from_inner(key), PyScalar::from_inner(value)))
     }
 
     fn __length_hint__(&self) -> usize {
@@ -1241,7 +1254,7 @@ impl PyValueEntryIterator {
 /// Returns an error for a cyclic graph, a graph deeper than the codec limit, a
 /// mapping whose distinct Python keys collide as values, or an object that has
 /// no value shape at all.
-pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     Encoder::default().convert(value, 0)
 }
 
@@ -1253,44 +1266,44 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Value> {
 /// microsecond, when a date or time falls outside the range `datetime`
 /// represents, or when distinct encoded mapping keys collide under Python
 /// equality.
-pub(crate) fn as_py(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        Value::Null => Ok(py.None()),
-        Value::Bool(value) => Ok(value.into_pyobject(py)?.to_owned().into_any().unbind()),
-        Value::I8(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::I16(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::I32(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::I64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::U8(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::U16(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::U32(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::U64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::I128(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::U128(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
-        Value::F16(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Value::F32(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Value::F64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Value::D128(unscaled, scale) => decimal_into_python(py, &unscaled.to_string(), *scale),
-        Value::D256(unscaled, scale) => decimal_into_python(py, &unscaled.to_string(), *scale),
-        Value::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::Null => Ok(py.None()),
+        Scalar::Bool(value) => Ok(value.into_pyobject(py)?.to_owned().into_any().unbind()),
+        Scalar::I8(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::I16(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::I32(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::I64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::U8(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::U16(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::U32(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::U64(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::I128(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::U128(value) => Ok(value.into_pyobject(py)?.into_any().unbind()),
+        Scalar::F16(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Scalar::F32(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Scalar::F64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Scalar::D128(unscaled, scale) => decimal_as_py(py, &unscaled.to_string(), *scale),
+        Scalar::D256(unscaled, scale) => decimal_as_py(py, &unscaled.to_string(), *scale),
+        Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
-        Value::Bytes(value) | Value::Geospatial(value) => {
+        Scalar::Bytes(value) | Scalar::Geospatial(value) => {
             Ok(PyBytes::new(py, value).into_any().unbind())
         }
-        Value::Date32(..) | Value::Date64(..) => date_into_python(py, value),
-        Value::Time32(..) | Value::Time64(..) => time_into_python(py, value),
-        Value::DateTime64(..) => datetime_into_python(py, value),
-        Value::Duration32(..) | Value::Duration64(..) => duration_into_python(py, value),
-        Value::Sequence(items) => {
+        Scalar::Date32(..) | Scalar::Date64(..) => date_as_py(py, value),
+        Scalar::Time32(..) | Scalar::Time64(..) => time_as_py(py, value),
+        Scalar::DateTime64(..) => datetime_as_py(py, value),
+        Scalar::Duration32(..) | Scalar::Duration64(..) => duration_as_py(py, value),
+        Scalar::Sequence(items) => {
             let items = items
                 .iter()
                 .map(|item| as_py(py, item))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, items)?.into_any().unbind())
         }
-        Value::Mapping(entries) => mapping_to_python(py, entries),
-        Value::Record(entries) => {
+        Scalar::Mapping(entries) => mapping_to_python(py, entries),
+        Scalar::Record(entries) => {
             let output = PyDict::new(py);
             for (name, value) in entries.iter() {
                 output.set_item(name.as_str(), as_py(py, value)?)?;
@@ -1303,7 +1316,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
 /// Convert a typed value while restoring named struct objects at the boundary.
 pub(crate) fn as_py_with_field(
     py: Python<'_>,
-    value: &Value,
+    value: &Scalar,
     field: &CoreField,
 ) -> PyResult<Py<PyAny>> {
     if value.is_null() {
@@ -1313,12 +1326,12 @@ pub(crate) fn as_py_with_field(
         CoreDataType::Struct(fields) => {
             let output = PyDict::new(py);
             match value {
-                Value::Sequence(values) if values.len() == fields.len() => {
+                Scalar::Sequence(values) if values.len() == fields.len() => {
                     for (child, value) in fields.iter().zip(values.iter()) {
                         output.set_item(child.name(), as_py_with_field(py, value, child)?)?;
                     }
                 }
-                Value::Record(values) => {
+                Scalar::Record(values) => {
                     for child in fields {
                         let value = values.get(child.name()).ok_or_else(|| {
                             PyValueError::new_err(format!(
@@ -1410,7 +1423,7 @@ pub(crate) fn as_py_with_field(
 }
 
 /// Build the Python dictionary one core mapping names.
-fn mapping_to_python(py: Python<'_>, entries: &[(Value, Value)]) -> PyResult<Py<PyAny>> {
+fn mapping_to_python(py: Python<'_>, entries: &[(Scalar, Scalar)]) -> PyResult<Py<PyAny>> {
     let output = PyDict::new(py);
     for (key, value) in entries {
         let key = as_py_key(py, key)?;
@@ -1430,23 +1443,23 @@ fn mapping_to_python(py: Python<'_>, entries: &[(Value, Value)]) -> PyResult<Py<
 /// because those are the hashable spellings of the same shapes. This is the one
 /// place the two directions deliberately disagree: the typed value conversion
 /// reads a tuple of pairs back as a mapping.
-fn as_py_key(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        Value::Sequence(items) => {
+        Scalar::Sequence(items) => {
             let items = items
                 .iter()
                 .map(|item| as_py_key(py, item))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyTuple::new(py, items)?.into_any().unbind())
         }
-        Value::Mapping(entries) => {
+        Scalar::Mapping(entries) => {
             let entries = entries
                 .iter()
                 .map(|(key, value)| Ok((as_py_key(py, key)?, as_py_key(py, value)?)))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyTuple::new(py, entries)?.into_any().unbind())
         }
-        Value::Record(entries) => {
+        Scalar::Record(entries) => {
             let entries = entries
                 .iter()
                 .map(|(name, value)| {
@@ -1470,7 +1483,7 @@ struct Encoder {
 
 impl Encoder {
     /// Convert one object, refusing to recurse past the codec's depth limit.
-    fn convert(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    fn convert(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
         if depth >= MAX_PYTHON_DEPTH {
             return Err(PyValueError::new_err(format!(
                 "Python value exceeds the {MAX_PYTHON_DEPTH}-level codec limit"
@@ -1491,7 +1504,7 @@ impl Encoder {
         let identity = type_identity(value)?;
         match identity.as_str() {
             "decimal.Decimal" => decimal_to_value(value),
-            "uuid.UUID" => Ok(Value::String(value.str()?.to_str()?.into())),
+            "uuid.UUID" => Ok(Scalar::String(value.str()?.to_str()?.into())),
             "datetime.datetime" => datetime_to_value(value),
             "datetime.time" => time_to_value(value),
             "datetime.date" => date_to_value(value),
@@ -1515,12 +1528,12 @@ impl Encoder {
         &mut self,
         value: &Bound<'_, PyAny>,
         depth: usize,
-    ) -> PyResult<Option<Value>> {
+    ) -> PyResult<Option<Scalar>> {
         if value.is_none() {
-            return Ok(Some(Value::Null));
+            return Ok(Some(Scalar::Null));
         }
         if is_exact_type::<PyBool>(value) {
-            return value.extract::<bool>().map(Value::Bool).map(Some);
+            return value.extract::<bool>().map(Scalar::Bool).map(Some);
         }
         if is_exact_type::<PyInt>(value) {
             return integer_to_value(value).map(Some);
@@ -1529,23 +1542,23 @@ impl Encoder {
             return value
                 .extract::<f64>()
                 .map(Float64::from_f64)
-                .map(Value::F64)
+                .map(Scalar::F64)
                 .map(Some);
         }
         if is_exact_type::<PyString>(value) {
-            return Ok(Some(Value::String(
+            return Ok(Some(Scalar::String(
                 value.cast::<PyString>()?.to_str()?.into(),
             )));
         }
         if is_exact_type::<PyBytes>(value) {
-            return Ok(Some(Value::from(value.cast::<PyBytes>()?.as_bytes())));
+            return Ok(Some(Scalar::from(value.cast::<PyBytes>()?.as_bytes())));
         }
         if is_exact_type::<PyByteArray>(value) {
-            return Ok(Some(Value::from(value.cast::<PyByteArray>()?.to_vec())));
+            return Ok(Some(Scalar::from(value.cast::<PyByteArray>()?.to_vec())));
         }
         if is_exact_type::<PyMemoryView>(value) {
             let bytes = value.call_method0("tobytes")?.cast_into::<PyBytes>()?;
-            return Ok(Some(Value::from(bytes.as_bytes())));
+            return Ok(Some(Scalar::from(bytes.as_bytes())));
         }
         if is_exact_type::<PyList>(value) {
             let items = value.cast::<PyList>()?;
@@ -1583,7 +1596,7 @@ impl Encoder {
         value: &Bound<'_, PyAny>,
         identity: &str,
         depth: usize,
-    ) -> PyResult<Value> {
+    ) -> PyResult<Scalar> {
         if let Some(value) = self.convert_scalar_subclass(value, depth)? {
             return Ok(value);
         }
@@ -1615,7 +1628,7 @@ impl Encoder {
         &mut self,
         value: &Bound<'_, PyAny>,
         depth: usize,
-    ) -> PyResult<Option<Value>> {
+    ) -> PyResult<Option<Scalar>> {
         let py = value.py();
         // An enum member is the value it names: the member's class is the
         // identity being dropped, and its value is what a schema declares.
@@ -1626,7 +1639,7 @@ impl Encoder {
             return complex_to_value(value).map(Some);
         }
         if let Ok(bytes) = value.cast::<PyByteArray>() {
-            return Ok(Some(Value::from(bytes.to_vec())));
+            return Ok(Some(Scalar::from(bytes.to_vec())));
         }
         if value.is_instance(&py.import("decimal")?.getattr("Decimal")?)? {
             return decimal_to_value(value).map(Some);
@@ -1649,13 +1662,13 @@ impl Encoder {
             return integer_to_value(value).map(Some);
         }
         if value.is_instance_of::<PyFloat>() {
-            return Ok(Some(Value::F64(Float64::from_f64(value.extract()?))));
+            return Ok(Some(Scalar::F64(Float64::from_f64(value.extract()?))));
         }
         if let Ok(text) = value.cast::<PyString>() {
-            return Ok(Some(Value::String(text.to_str()?.into())));
+            return Ok(Some(Scalar::String(text.to_str()?.into())));
         }
         if let Ok(bytes) = value.cast::<PyBytes>() {
-            return Ok(Some(Value::from(bytes.as_bytes())));
+            return Ok(Some(Scalar::from(bytes.as_bytes())));
         }
         Ok(None)
     }
@@ -1665,7 +1678,7 @@ impl Encoder {
         &mut self,
         value: &Bound<'_, PyAny>,
         depth: usize,
-    ) -> PyResult<Option<Value>> {
+    ) -> PyResult<Option<Scalar>> {
         let py = value.py();
         if value.is_instance(&py.import("collections")?.getattr("deque")?)? {
             return self.convert_iterator(value, depth).map(Some);
@@ -1714,7 +1727,7 @@ impl Encoder {
         items: I,
         depth: usize,
         sort: bool,
-    ) -> PyResult<Value>
+    ) -> PyResult<Scalar>
     where
         I: Iterator<Item = Bound<'py, PyAny>>,
     {
@@ -1725,38 +1738,38 @@ impl Encoder {
             if sort {
                 values.sort_unstable();
             }
-            Ok(Value::from_sequence(values))
+            Ok(Scalar::from_sequence(values))
         })
     }
 
     /// Convert anything that only knows how to iterate into a sequence.
-    fn convert_iterator(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    fn convert_iterator(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
         self.with_cycle_check(value, |encoder| {
             let items = value
                 .try_iter()?
                 .map(|item| encoder.convert(&item?, depth + 1))
                 .collect::<PyResult<Vec<_>>>()?;
-            Ok(Value::from_sequence(items))
+            Ok(Scalar::from_sequence(items))
         })
     }
 
     /// Convert a `range` or a `slice` into its start, stop, and step.
-    fn convert_triple(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    fn convert_triple(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
         let values = ["start", "stop", "step"]
             .into_iter()
             .map(|name| self.convert(&value.getattr(name)?, depth + 1))
             .collect::<PyResult<Vec<_>>>()?;
-        Ok(Value::from_sequence(values))
+        Ok(Scalar::from_sequence(values))
     }
 
     /// Convert any dictionary, including a subclass, into a mapping.
-    fn convert_dict(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    fn convert_dict(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
         let entries = value.cast::<PyDict>()?;
         self.convert_entries(value, entries, depth)
     }
 
     /// Convert any Mapping implementation without materializing a dict first.
-    fn convert_mapping(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    fn convert_mapping(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
         self.with_cycle_check(value, |encoder| {
             let entries = value
                 .call_method0("items")?
@@ -1774,7 +1787,7 @@ impl Encoder {
                     ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Value::from_mapping(entries).map_err(value_error)
+            Scalar::from_mapping(entries).map_err(value_error)
         })
     }
 
@@ -1784,7 +1797,7 @@ impl Encoder {
         owner: &Bound<'_, PyAny>,
         entries: &Bound<'_, PyDict>,
         depth: usize,
-    ) -> PyResult<Value> {
+    ) -> PyResult<Scalar> {
         self.with_cycle_check(owner, |encoder| {
             let entries = entries
                 .iter()
@@ -1795,7 +1808,7 @@ impl Encoder {
                     ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Value::from_mapping(entries).map_err(value_error)
+            Scalar::from_mapping(entries).map_err(value_error)
         })
     }
 
@@ -1804,7 +1817,7 @@ impl Encoder {
         &mut self,
         value: &Bound<'_, PyAny>,
         depth: usize,
-    ) -> PyResult<Option<Value>> {
+    ) -> PyResult<Option<Scalar>> {
         let attributes = value
             .getattr("__dict__")
             .ok()
@@ -1843,13 +1856,13 @@ impl Encoder {
                     ));
                 }
             }
-            Value::from_record(entries).map_err(value_error)
+            Scalar::from_record(entries).map_err(value_error)
         })
         .map(Some)
     }
 
     /// Convert a named tuple into the record its field names describe.
-    fn convert_named_tuple(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Value> {
+    fn convert_named_tuple(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
         let names = value.getattr("_fields")?;
         self.with_cycle_check(value, |encoder| {
             let entries = names
@@ -1860,7 +1873,7 @@ impl Encoder {
                     Ok((name, encoder.convert(&item, depth + 1)?))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Value::from_record(entries).map_err(value_error)
+            Scalar::from_record(entries).map_err(value_error)
         })
     }
 
@@ -1874,7 +1887,7 @@ impl Encoder {
         value: &Bound<'_, PyAny>,
         depth: usize,
         dataclasses: &Bound<'_, PyModule>,
-    ) -> PyResult<Value> {
+    ) -> PyResult<Scalar> {
         self.with_cycle_check(value, |encoder| {
             let mut entries = Vec::new();
             let cached_fields = value
@@ -1900,14 +1913,14 @@ impl Encoder {
                     }
                 }
             }
-            Value::from_record(entries).map_err(value_error)
+            Scalar::from_record(entries).map_err(value_error)
         })
     }
 
     /// Run one conversion with this object marked as being on the stack.
-    fn with_cycle_check<F>(&mut self, value: &Bound<'_, PyAny>, convert: F) -> PyResult<Value>
+    fn with_cycle_check<F>(&mut self, value: &Bound<'_, PyAny>, convert: F) -> PyResult<Scalar>
     where
-        F: FnOnce(&mut Self) -> PyResult<Value>,
+        F: FnOnce(&mut Self) -> PyResult<Scalar>,
     {
         let identity = value.as_ptr() as usize;
         if !self.active.insert(identity) {
@@ -1927,7 +1940,7 @@ fn push_dataclass_field(
     value: &Bound<'_, PyAny>,
     field: &Bound<'_, PyAny>,
     depth: usize,
-    entries: &mut Vec<(String, Value)>,
+    entries: &mut Vec<(String, Scalar)>,
 ) -> PyResult<()> {
     let name = field.getattr("name")?.extract::<String>()?;
     entries.push((
@@ -1941,30 +1954,30 @@ fn push_dataclass_field(
 ///
 /// Each of these round-trips through its own `from_str`, so the text is the
 /// whole value; what a document loses is only which wrapper class held it.
-fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Value> {
-    if let Ok(value) = value.extract::<PyRef<'_, PyValue>>() {
+fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
+    if let Ok(value) = value.extract::<PyRef<'_, PyScalar>>() {
         return Some(value.inner.clone());
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyDataType>>() {
-        return Some(Value::String(value.inner.to_string().into()));
+        return Some(Scalar::String(value.inner.to_string().into()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
-        return Some(Value::String(value.inner.to_string().into()));
+        return Some(Scalar::String(value.inner.to_string().into()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {
-        return Some(Value::String(value.inner.to_string().into()));
+        return Some(Scalar::String(value.inner.to_string().into()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyUrl>>() {
-        return Some(Value::String(value.inner.to_string().into()));
+        return Some(Scalar::String(value.inner.to_string().into()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
-        return Some(Value::String(value.inner.to_string().into()));
+        return Some(Scalar::String(value.inner.to_string().into()));
     }
     None
 }
 
 /// Convert any path-like object into the string its file system uses.
-fn path_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn path_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let py = value.py();
     let os = py.import("os")?;
     let path = os.getattr("fspath")?.call1((value,))?;
@@ -1975,46 +1988,46 @@ fn path_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
     } else {
         path
     };
-    Ok(Value::String(path.cast::<PyString>()?.to_str()?.into()))
+    Ok(Scalar::String(path.cast::<PyString>()?.to_str()?.into()))
 }
 
 /// Convert a Python integer into the narrowest native integer that holds it.
-fn integer_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn integer_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     if let Ok(value) = value.extract::<i64>() {
-        return Ok(Value::I64(value));
+        return Ok(Scalar::I64(value));
     }
     if let Ok(value) = value.extract::<u64>() {
-        return Ok(Value::U64(value));
+        return Ok(Scalar::U64(value));
     }
     if let Ok(value) = value.extract::<i128>() {
-        return Ok(Value::I128(value));
+        return Ok(Scalar::I128(value));
     }
     if let Ok(value) = value.extract::<u128>() {
-        return Ok(Value::U128(value));
+        return Ok(Scalar::U128(value));
     }
     // Python's integers are unbounded and no native integer is. The decimal
     // text is the only exact shape left, so the magnitude survives and the type
     // does not: an integer wider than 128 bits reads back as a string.
-    Ok(Value::String(value.str()?.to_str()?.into()))
+    Ok(Scalar::String(value.str()?.to_str()?.into()))
 }
 
 /// Convert a complex number into the pair of floats it is.
-fn complex_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn complex_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let complex = value.cast::<PyComplex>()?;
-    Ok(Value::from_sequence([
-        Value::F64(Float64::from_f64(complex.real())),
-        Value::F64(Float64::from_f64(complex.imag())),
+    Ok(Scalar::from_sequence([
+        Scalar::F64(Float64::from_f64(complex.real())),
+        Scalar::F64(Float64::from_f64(complex.imag())),
     ]))
 }
 
 /// Convert a `decimal.Decimal` into the exact coefficient and scale it names.
-fn decimal_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn decimal_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let parts = value.call_method0("as_tuple")?;
     let Ok(exponent) = parts.getattr("exponent")?.extract::<i32>() else {
         // A non-finite decimal spells its exponent `n`, `N`, or `F`. No exact
         // decimal names an infinity or a NaN, so the float that does is the
         // honest shape and the document says so.
-        return Ok(Value::F64(Float64::from_f64(value.extract::<f64>()?)));
+        return Ok(Scalar::F64(Float64::from_f64(value.extract::<f64>()?)));
     };
     let scale = exponent
         .checked_neg()
@@ -2037,13 +2050,13 @@ fn decimal_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
         PyOverflowError::new_err("decimal coefficient exceeds the 256 bits D256 holds")
     })?;
     if let Some(unscaled) = unscaled.as_i128() {
-        return Ok(Value::d128(unscaled, scale));
+        return Ok(Scalar::d128(unscaled, scale));
     }
-    Ok(Value::d256(unscaled, scale))
+    Ok(Scalar::d256(unscaled, scale))
 }
 
 /// Build the `decimal.Decimal` one coefficient and scale name.
-fn decimal_into_python(py: Python<'_>, unscaled: &str, scale: i8) -> PyResult<Py<PyAny>> {
+fn decimal_as_py(py: Python<'_>, unscaled: &str, scale: i8) -> PyResult<Py<PyAny>> {
     // `<coefficient>E<-scale>` is exact and keeps the written precision, so a
     // value at scale 2 comes back as `10.50`. `Decimal(unscaled).scaleb(-scale)`
     // would instead round the coefficient at the active context's precision.
@@ -2055,15 +2068,15 @@ fn decimal_into_python(py: Python<'_>, unscaled: &str, scale: i8) -> PyResult<Py
 }
 
 /// Convert a `datetime.date` into its day count since the Unix epoch.
-fn date_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn date_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let ordinal = value.call_method0("toordinal")?.extract::<i64>()?;
     let days = i32::try_from(ordinal - EPOCH_ORDINAL)
         .map_err(|_| PyOverflowError::new_err("date is outside the days a date value counts"))?;
-    Ok(Value::date32(days))
+    Ok(Scalar::date32(days))
 }
 
 /// Build the `datetime.date` one epoch day count names.
-fn date_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+fn date_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let days = value.temporal_count_at(TimeUnit::Day).ok_or_else(|| {
         PyValueError::new_err(format!(
             "a {} does not name an exact whole-day date",
@@ -2081,8 +2094,8 @@ fn date_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
 ///
 /// Time32/64 has no Arrow timezone parameter, so a zoned Python time is
 /// refused by the core rather than losing its zone during type inference.
-fn time_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
-    Value::time64(
+fn time_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    Scalar::time64(
         microseconds_of_day(value)?,
         TimeUnit::Microsecond,
         temporal_zone(value)?,
@@ -2102,7 +2115,7 @@ fn temporal_zone(value: &Bound<'_, PyAny>) -> PyResult<Timezone> {
 }
 
 /// Build the `datetime.time` one microsecond count since midnight names.
-fn time_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+fn time_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let count = exact_microseconds(value)?;
     if !(0..MICROSECONDS_PER_DAY).contains(&count) {
         return Err(PyValueError::new_err(format!(
@@ -2129,12 +2142,12 @@ fn time_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
 }
 
 /// Convert a `datetime.timedelta` into its elapsed microsecond count.
-fn duration_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
-    Value::duration64(timedelta_microseconds(value)?, TimeUnit::Microsecond).map_err(value_error)
+fn duration_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    Scalar::duration64(timedelta_microseconds(value)?, TimeUnit::Microsecond).map_err(value_error)
 }
 
 /// Build the `datetime.timedelta` one elapsed microsecond count names.
-fn duration_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+fn duration_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let kwargs = PyDict::new(py);
     kwargs.set_item("microseconds", exact_microseconds(value)?)?;
     py.import("datetime")?
@@ -2149,7 +2162,7 @@ fn duration_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
 /// by the offset in force at that instant - which is exactly the offset Python
 /// computes, daylight saving and `fold` included. A naive value has no offset
 /// to apply and carries no zone.
-fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let days = value.call_method0("toordinal")?.extract::<i64>()? - EPOCH_ORDINAL;
     let time_of_day = microseconds_of_day(value)?;
     let local = days
@@ -2158,14 +2171,14 @@ fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
         .ok_or_else(overflowing_timestamp)?;
     let offset = value.call_method0("utcoffset")?;
     if offset.is_none() {
-        return Value::datetime64(local, TimeUnit::Microsecond, Timezone::NAIVE)
+        return Scalar::datetime64(local, TimeUnit::Microsecond, Timezone::NAIVE)
             .map_err(value_error);
     }
     let count = local
         .checked_sub(timedelta_microseconds(&offset)?)
         .ok_or_else(overflowing_timestamp)?;
     let zone = core_timezone_from_value(&value.getattr("tzinfo")?)?;
-    Value::datetime64(count, TimeUnit::Microsecond, zone).map_err(value_error)
+    Scalar::datetime64(count, TimeUnit::Microsecond, zone).map_err(value_error)
 }
 
 /// The error a datetime beyond a 64-bit microsecond count reports.
@@ -2174,7 +2187,7 @@ fn overflowing_timestamp() -> PyErr {
 }
 
 /// Build the `datetime.datetime` one UTC-relative count and zone name.
-fn datetime_into_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+fn datetime_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let count = exact_microseconds(value)?;
     let (_, _, zone) = value.as_datetime64().ok_or_else(|| {
         PyValueError::new_err(format!("expected a datetime64, got {}", value.kind()))
@@ -2280,7 +2293,7 @@ fn timedelta_microseconds(value: &Bound<'_, PyAny>) -> PyResult<i64> {
 }
 
 /// Restate one temporal at Python's microsecond resolution, or refuse.
-fn exact_microseconds(value: &Value) -> PyResult<i64> {
+fn exact_microseconds(value: &Scalar) -> PyResult<i64> {
     value.temporal_count_at(TimeUnit::Microsecond).ok_or_else(|| {
         PyValueError::new_err(format!(
             "a {} at this resolution has no exact microsecond count, which is all datetime holds",

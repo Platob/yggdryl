@@ -180,15 +180,15 @@ test('structured values use the inferred format, field, and content coding', (t)
   const handle = new IOBase(file)
   const expected = { quantity: 2, symbol: 'AAPL' }
 
-  handle.writeValue(expected)
+  handle.writeScalar(expected)
 
   assert.equal(
     zlib.gunzipSync(fs.readFileSync(file)).toString(),
     '{"quantity":2,"symbol":"AAPL"}',
   )
-  assert.deepEqual(handle.readValue(), expected)
+  assert.deepEqual(handle.readScalar(), expected)
   assert.deepEqual(
-    handle.readValue(
+    handle.readScalar(
       'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null',
     ),
     expected,
@@ -202,13 +202,13 @@ test('structured values use the inferred format, field, and content coding', (t)
       )
     }
   }
-  assert.deepEqual(handle.readValue(Trade), expected)
-  assert.deepEqual(handle.readValue(new Trade()), expected)
+  assert.deepEqual(handle.readScalar(Trade), expected)
+  assert.deepEqual(handle.readScalar(new Trade()), expected)
 
   const invalid = new IOBase(path.join(root, 'invalid.json'))
   invalid.writeText('{"quantity":"many","symbol":"AAPL"}')
   assert.throws(
-    () => invalid.readValue(
+    () => invalid.readScalar(
       'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null',
     ),
     /quantity/,

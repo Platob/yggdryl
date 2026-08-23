@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::Value;
+use yggdryl::Scalar;
 
 pub fn value_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("codec/value");
@@ -10,7 +10,7 @@ pub fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("mapping_8", |bencher| {
         bencher.iter_batched(
             || narrow.clone(),
-            |entries| black_box(Value::from_mapping(entries).unwrap()),
+            |entries| black_box(Scalar::from_mapping(entries).unwrap()),
             BatchSize::SmallInput,
         );
     });
@@ -19,7 +19,7 @@ pub fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("mapping_1024", |bencher| {
         bencher.iter_batched(
             || wide.clone(),
-            |entries| black_box(Value::from_mapping(entries).unwrap()),
+            |entries| black_box(Scalar::from_mapping(entries).unwrap()),
             BatchSize::LargeInput,
         );
     });
@@ -31,12 +31,12 @@ pub fn value_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-fn entries(length: u64) -> Vec<(Value, Value)> {
+fn entries(length: u64) -> Vec<(Scalar, Scalar)> {
     (0..length)
-        .map(|index| (Value::from(index), Value::from(index.to_string())))
+        .map(|index| (Scalar::from(index), Scalar::from(index.to_string())))
         .collect()
 }
 
-fn nested(depth: usize) -> Value {
-    (0..depth).fold(Value::Null, |value, _| Value::from_sequence([value]))
+fn nested(depth: usize) -> Scalar {
+    (0..depth).fold(Scalar::Null, |value, _| Scalar::from_sequence([value]))
 }

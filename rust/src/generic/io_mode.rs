@@ -1,4 +1,4 @@
-//! Explicit intent for a record write.
+//! Generic intent for an IO operation.
 
 use std::fmt;
 use std::str::FromStr;
@@ -8,23 +8,33 @@ use smol_str::format_smolstr;
 
 use crate::{Error, Result};
 
-/// The operation a generic record-write entry point performs.
-///
-/// The mode is required: schema settings and merge keys refine a write but
-/// never choose its intent.
+/// The operation an IO API entry point performs.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum WriteMode {
+pub enum IOMode {
     /// Replace every stored row.
     Overwrite,
     /// Retain stored rows and add incoming rows after them.
     Append,
     /// Update rows matching the declared keys and append misses.
     Merge,
+    /// Read-only access; no write intent and no mutation side effects.
+    ReadOnly,
+    /// Random-access operation class.
+    Random,
 }
 
-impl WriteMode {
+impl IOMode {
     /// Every supported intent in canonical order.
-    pub const ALL: [Self; 3] = [Self::Overwrite, Self::Append, Self::Merge];
+    pub const ALL: [Self; 5] = [
+        Self::Overwrite,
+        Self::Append,
+        Self::Merge,
+        Self::ReadOnly,
+        Self::Random,
+    ];
+
+    /// Write-class modes only.
+    pub const WRITE: [Self; 3] = [Self::Overwrite, Self::Append, Self::Merge];
 
     /// Parse one canonical mode name.
     ///
@@ -42,23 +52,25 @@ impl WriteMode {
             Self::Overwrite => "overwrite",
             Self::Append => "append",
             Self::Merge => "merge",
+            Self::ReadOnly => "readonly",
+            Self::Random => "random",
         }
     }
 }
 
-impl AsRef<str> for WriteMode {
+impl AsRef<str> for IOMode {
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl fmt::Display for WriteMode {
+impl fmt::Display for IOMode {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-impl FromStr for WriteMode {
+impl FromStr for IOMode {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
@@ -67,7 +79,7 @@ impl FromStr for WriteMode {
             .into_iter()
             .find(|mode| normalized.eq_ignore_ascii_case(mode.as_str()))
             .ok_or_else(|| Error::Parse {
-                target: "write mode",
+                target: "mode",
                 position: 0,
                 reason: format_smolstr!(
                     "expected one of {}, got {value:?}",
@@ -81,13 +93,13 @@ impl FromStr for WriteMode {
     }
 }
 
-impl Serialize for WriteMode {
+impl Serialize for IOMode {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())
     }
 }
 
-impl<'de> Deserialize<'de> for WriteMode {
+impl<'de> Deserialize<'de> for IOMode {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         let value = <&str>::deserialize(deserializer)?;
         Self::from_str(value).map_err(serde::de::Error::custom)

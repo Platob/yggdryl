@@ -8,17 +8,17 @@
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::io::{Buffer, IOBase};
-use yggdryl::{Limits, Value, avro, json};
+use yggdryl::{Limits, Scalar, avro, json};
 
 /// Rows per fixture.
 const ROWS: usize = 10_000;
 
 /// A generator producing one row per index.
-type RowMaker = Box<dyn Fn(usize) -> Value>;
+type RowMaker = Box<dyn Fn(usize) -> Scalar>;
 
 /// One family: a schema and a row generator.
-fn families() -> Vec<(&'static str, Value, RowMaker)> {
-    let record = |fields: &str| -> Value {
+fn families() -> Vec<(&'static str, Scalar, RowMaker)> {
+    let record = |fields: &str| -> Scalar {
         json::from_utf8(&format!(
             r#"{{"type":"record","name":"row","fields":[{fields}]}}"#
         ))
@@ -31,10 +31,10 @@ fn families() -> Vec<(&'static str, Value, RowMaker)> {
                 r#"{"name":"a","type":"long"},{"name":"b","type":"double"},{"name":"c","type":"boolean"}"#,
             ),
             Box::new(|index| {
-                Value::from_mapping([
-                    (Value::from("a"), Value::from(index as i64 - 5_000)),
-                    (Value::from("b"), Value::from(index as f64 * 0.5)),
-                    (Value::from("c"), Value::Bool(index % 2 == 0)),
+                Scalar::from_mapping([
+                    (Scalar::from("a"), Scalar::from(index as i64 - 5_000)),
+                    (Scalar::from("b"), Scalar::from(index as f64 * 0.5)),
+                    (Scalar::from("c"), Scalar::Bool(index % 2 == 0)),
                 ])
                 .expect("unique keys")
             }),
@@ -43,11 +43,14 @@ fn families() -> Vec<(&'static str, Value, RowMaker)> {
             "strings",
             record(r#"{"name":"symbol","type":"string"},{"name":"venue","type":"string"}"#),
             Box::new(|index| {
-                Value::from_mapping([
-                    (Value::from("symbol"), Value::from(format!("SYM{index:06}"))),
+                Scalar::from_mapping([
                     (
-                        Value::from("venue"),
-                        Value::from(["XNAS", "XNYS", "XLON", "XETR"][index % 4]),
+                        Scalar::from("symbol"),
+                        Scalar::from(format!("SYM{index:06}")),
+                    ),
+                    (
+                        Scalar::from("venue"),
+                        Scalar::from(["XNAS", "XNYS", "XLON", "XETR"][index % 4]),
                     ),
                 ])
                 .expect("unique keys")
@@ -59,9 +62,9 @@ fn families() -> Vec<(&'static str, Value, RowMaker)> {
                 r#"{"name":"price","type":{"type":"bytes","logicalType":"decimal","precision":18,"scale":4}}"#,
             ),
             Box::new(|index| {
-                Value::from_mapping([(
-                    Value::from("price"),
-                    Value::d128(1_000_000 + index as i128 * 13, 4),
+                Scalar::from_mapping([(
+                    Scalar::from("price"),
+                    Scalar::d128(1_000_000 + index as i128 * 13, 4),
                 )])
                 .expect("unique keys")
             }),
@@ -77,22 +80,22 @@ fn families() -> Vec<(&'static str, Value, RowMaker)> {
             ),
             Box::new(|index| {
                 let leg = |qty: i64| {
-                    Value::from_mapping([
-                        (Value::from("qty"), Value::from(qty)),
+                    Scalar::from_mapping([
+                        (Scalar::from("qty"), Scalar::from(qty)),
                         (
-                            Value::from("fills"),
-                            Value::from_mapping([
-                                (Value::from("open"), Value::from(1.5_f64)),
-                                (Value::from("close"), Value::from(2.5_f64)),
+                            Scalar::from("fills"),
+                            Scalar::from_mapping([
+                                (Scalar::from("open"), Scalar::from(1.5_f64)),
+                                (Scalar::from("close"), Scalar::from(2.5_f64)),
                             ])
                             .expect("unique keys"),
                         ),
                     ])
                     .expect("unique keys")
                 };
-                Value::from_mapping([(
-                    Value::from("legs"),
-                    Value::from_sequence((0..index % 3 + 1).map(|qty| leg(qty as i64))),
+                Scalar::from_mapping([(
+                    Scalar::from("legs"),
+                    Scalar::from_sequence((0..index % 3 + 1).map(|qty| leg(qty as i64))),
                 )])
                 .expect("unique keys")
             }),
@@ -104,7 +107,7 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("codec/avro_types");
 
     for (label, schema, row) in families() {
-        let rows: Vec<Value> = (0..ROWS).map(&row).collect();
+        let rows: Vec<Scalar> = (0..ROWS).map(&row).collect();
         let mut stored = Buffer::new();
         avro::write_container(&mut stored, &schema, &[], &rows).expect("the fixture encodes");
         // Proven once outside the timers: the fixture round-trips.
@@ -135,7 +138,7 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     // The varint floor: one single-object long per iteration isolates the
     // zig-zag encode and decode from every container concern above it.
     let long = avro::Schema::from_str("\"long\"").expect("a long schema");
-    let value = Value::I64(-123_456_789);
+    let value = Scalar::I64(-123_456_789);
     let framed = avro::into_single_object_vec(&long, &value).expect("the frame encodes");
     assert_eq!(
         avro::from_single_object_slice(&framed, &long).expect("the frame decodes"),
@@ -152,9 +155,9 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     // Opening blocks parses only the header. The owning shape includes the
     // byte copy a language-runtime iterator needs in order to outlive its
     // factory call; neither path reads or decompresses the payload.
-    let rows = (0..10_000).map(Value::I64).collect::<Vec<_>>();
+    let rows = (0..10_000).map(Scalar::I64).collect::<Vec<_>>();
     let mut stored = Buffer::new();
-    avro::write_container(&mut stored, &Value::from("long"), &[], &rows)
+    avro::write_container(&mut stored, &Scalar::from("long"), &[], &rows)
         .expect("the streaming fixture encodes");
     let encoded = stored.read_all_bytes().expect("the fixture reads");
     group.throughput(Throughput::Bytes(encoded.len() as u64));

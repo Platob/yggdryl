@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, TimeUnit, Value};
+use yggdryl::{DataType, Field as CoreField, Scalar, TimeUnit};
 
 use crate::napi_error;
 
@@ -127,7 +127,7 @@ pub(crate) fn field_value_schema(field: &CoreField) -> Result<CoreField> {
 pub(crate) fn field_value_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
 ) -> Result<Unknown<'env>> {
     value_to_js(env, field, value, root_schema, &[0])
@@ -136,7 +136,7 @@ pub(crate) fn field_value_to_js<'env>(
 fn value_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {
@@ -146,13 +146,13 @@ fn value_to_js<'env>(
 fn data_type_to_js<'env>(
     env: &'env Env,
     data_type: &DataType,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {
     use DataType as D;
 
-    if matches!(value, Value::Null) {
+    if matches!(value, Scalar::Null) {
         return Null.into_unknown(env);
     }
     if let Some(value) = numeric_to_js(env, data_type, value)? {
@@ -197,7 +197,7 @@ fn data_type_to_js<'env>(
 fn numeric_to_js<'env>(
     env: &'env Env,
     data_type: &DataType,
-    value: &Value,
+    value: &Scalar,
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
@@ -255,7 +255,7 @@ fn numeric_to_js<'env>(
 fn temporal_to_js<'env>(
     env: &'env Env,
     data_type: &DataType,
-    value: &Value,
+    value: &Scalar,
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
@@ -292,7 +292,7 @@ fn temporal_to_js<'env>(
 fn temporal32_to_js<'env>(
     env: &'env Env,
     temporal: Option<i32>,
-    value: &Value,
+    value: &Scalar,
 ) -> Result<Unknown<'env>> {
     temporal
         .or_else(|| value.as_i128().and_then(|count| i32::try_from(count).ok()))
@@ -303,7 +303,7 @@ fn temporal32_to_js<'env>(
 fn temporal64_to_js<'env>(
     env: &'env Env,
     temporal: Option<i64>,
-    value: &Value,
+    value: &Scalar,
 ) -> Result<Unknown<'env>> {
     BigInt::from(
         temporal
@@ -316,7 +316,7 @@ fn temporal64_to_js<'env>(
 fn text_or_binary_to_js<'env>(
     env: &'env Env,
     data_type: &DataType,
-    value: &Value,
+    value: &Scalar,
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
@@ -349,7 +349,7 @@ fn text_or_binary_to_js<'env>(
 
 fn integer_tuple_to_js<'env>(
     env: &'env Env,
-    value: &Value,
+    value: &Scalar,
     unit: TimeUnit,
 ) -> Result<Unknown<'env>> {
     let values = value
@@ -378,7 +378,7 @@ fn integer_tuple_to_js<'env>(
 fn sequence_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {
@@ -400,11 +400,11 @@ fn sequence_to_js<'env>(
 fn projected_value_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {
-    if matches!(value, Value::Null) {
+    if matches!(value, Scalar::Null) {
         return Null.into_unknown(env);
     }
     value_to_js(env, field, value, root_schema, path)
@@ -414,7 +414,7 @@ fn projected_value_to_js<'env>(
 fn struct_to_js<'env>(
     env: &'env Env,
     fields: &yggdryl::Fields,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {
@@ -444,7 +444,7 @@ fn struct_to_js<'env>(
 fn union_to_js<'env>(
     env: &'env Env,
     fields: &yggdryl::UnionFields,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {
@@ -477,7 +477,7 @@ fn union_to_js<'env>(
     output.into_unknown(env)
 }
 
-fn decimal256_to_js<'env>(env: &'env Env, value: &Value) -> Result<Unknown<'env>> {
+fn decimal256_to_js<'env>(env: &'env Env, value: &Scalar) -> Result<Unknown<'env>> {
     let encoded = value
         .as_d256()
         .map(|(unscaled, _)| unscaled.to_string())
@@ -492,7 +492,7 @@ fn decimal256_to_js<'env>(env: &'env Env, value: &Value) -> Result<Unknown<'env>
 fn map_to_js<'env>(
     env: &'env Env,
     map: &yggdryl::MapType,
-    value: &Value,
+    value: &Scalar,
     root_schema: &CoreField,
     path: &[usize],
 ) -> Result<Unknown<'env>> {

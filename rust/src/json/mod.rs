@@ -12,7 +12,7 @@ mod wire;
 use crate::text::position::{LineOffsets, line_column_to_byte_offset};
 use crate::text::wire::from_raw;
 use crate::text::{
-    Formatting, Limits, Value, ValueIter, apply_field, check_encode_depth, check_input_size,
+    Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
 };
 use crate::{Error, Field, Result};
 
@@ -38,22 +38,22 @@ pub const MAX_PARSER_DEPTH: usize = 384;
 /// This delegates through the string's borrowed bytes without an intermediate
 /// UTF-8/byte input buffer. The returned owned value still allocates or shares
 /// storage for strings and collections.
-pub fn from_utf8(input: &str) -> Result<Value> {
+pub fn from_utf8(input: &str) -> Result<Scalar> {
     from_utf8_with_limits(input, Limits::default())
 }
 
 /// Decode exactly one JSON value from borrowed UTF-8 text with explicit limits.
-pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Value> {
+pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar> {
     from_bytes_with_limits(input.as_bytes(), limits)
 }
 
 /// Decode exactly one JSON value from bytes.
-pub fn from_bytes(input: &[u8]) -> Result<Value> {
+pub fn from_bytes(input: &[u8]) -> Result<Scalar> {
     from_bytes_with_limits(input, Limits::default())
 }
 
 /// Decode exactly one JSON value from bytes with explicit limits.
-pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Value> {
+pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar> {
     check_input_size(input, limits, "json")?;
     if limits.max_documents() == 0 {
         return Err(codec_error(0, "document limit exceeded"));
@@ -63,7 +63,7 @@ pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Value> {
 }
 
 /// Decode JSON and interpret the natural value under `field`.
-pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Value> {
+pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar> {
     from_utf8_with_field_and_limits(input, field, Limits::default())
 }
 
@@ -72,12 +72,12 @@ pub fn from_utf8_with_field_and_limits(
     input: &str,
     field: &Field,
     limits: Limits,
-) -> Result<Value> {
+) -> Result<Scalar> {
     from_bytes_with_field_and_limits(input.as_bytes(), field, limits)
 }
 
 /// Decode JSON bytes and interpret the natural value under `field`.
-pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Value> {
+pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar> {
     from_bytes_with_field_and_limits(input, field, Limits::default())
 }
 
@@ -86,17 +86,17 @@ pub fn from_bytes_with_field_and_limits(
     input: &[u8],
     field: &Field,
     limits: Limits,
-) -> Result<Value> {
+) -> Result<Scalar> {
     field.from_natural_value(from_bytes_with_limits(input, limits)?)
 }
 
 /// Decode exactly one JSON value from a streaming reader.
-pub fn from_reader<R: Read>(reader: R) -> Result<Value> {
+pub fn from_reader<R: Read>(reader: R) -> Result<Scalar> {
     from_reader_with_limits(reader, Limits::default())
 }
 
 /// Decode exactly one JSON value from a streaming reader with explicit limits.
-pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value> {
+pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar> {
     let mut iterator = Reader::with_limits(reader, limits);
     let Some(value) = iterator.next() else {
         return Err(codec_error(0, "expected one JSON value"));
@@ -113,7 +113,7 @@ pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Val
 }
 
 /// Decode JSON from a reader under `field`.
-pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Value> {
+pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar> {
     from_reader_with_field_and_limits(reader, field, Limits::default())
 }
 
@@ -122,28 +122,28 @@ pub fn from_reader_with_field_and_limits<R: Read>(
     reader: R,
     field: &Field,
     limits: Limits,
-) -> Result<Value> {
+) -> Result<Scalar> {
     field.from_natural_value(from_reader_with_limits(reader, limits)?)
 }
 
 /// Decode every whitespace-separated JSON value from bytes.
-pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Value>> {
+pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>> {
     from_bytes_all_with_limits(input, Limits::default())
 }
 
 /// Decode every whitespace-separated JSON value from borrowed UTF-8 text.
-pub fn from_utf8_all(input: &str) -> Result<Vec<Value>> {
+pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>> {
     from_utf8_all_with_limits(input, Limits::default())
 }
 
 /// Decode every whitespace-separated JSON value from borrowed UTF-8 text with
 /// explicit limits.
-pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>> {
+pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>> {
     from_bytes_all_with_limits(input.as_bytes(), limits)
 }
 
 /// Decode every whitespace-separated JSON value from bytes with explicit limits.
-pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>> {
+pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>> {
     check_input_size(input, limits, "json")?;
     let mut deserializer = serde_json::Deserializer::from_slice(input);
     deserializer.disable_recursion_limit();
@@ -162,7 +162,7 @@ pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Va
 }
 
 /// Decode every JSON value from UTF-8 under one field.
-pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Value>> {
+pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>> {
     from_utf8_all_with_field_and_limits(input, field, Limits::default())
 }
 
@@ -171,12 +171,12 @@ pub fn from_utf8_all_with_field_and_limits(
     input: &str,
     field: &Field,
     limits: Limits,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Scalar>> {
     from_bytes_all_with_field_and_limits(input.as_bytes(), field, limits)
 }
 
 /// Decode every JSON value from bytes under one field.
-pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Value>> {
+pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>> {
     from_bytes_all_with_field_and_limits(input, field, Limits::default())
 }
 
@@ -185,22 +185,22 @@ pub fn from_bytes_all_with_field_and_limits(
     input: &[u8],
     field: &Field,
     limits: Limits,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Scalar>> {
     apply_field(from_bytes_all_with_limits(input, limits)?, field)
 }
 
 /// Decode every JSON value from a reader.
-pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>> {
+pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>> {
     from_reader_all_with_limits(reader, Limits::default())
 }
 
 /// Decode every JSON value from a reader with explicit limits.
-pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>> {
+pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>> {
     Reader::with_limits(reader, limits).collect()
 }
 
 /// Decode every JSON value from a reader under one field.
-pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Value>> {
+pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>> {
     from_reader_all_with_field_and_limits(reader, field, Limits::default())
 }
 
@@ -209,12 +209,12 @@ pub fn from_reader_all_with_field_and_limits<R: Read>(
     reader: R,
     field: &Field,
     limits: Limits,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Scalar>> {
     apply_field(from_reader_all_with_limits(reader, limits)?, field)
 }
 
 /// Lazily decode JSON values from a borrowed reader.
-pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
+pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ScalarIter<'a> {
     from_reader_iter_with_limits(reader, Limits::default())
 }
 
@@ -222,15 +222,15 @@ pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
 pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
     reader: &'a mut R,
     limits: Limits,
-) -> ValueIter<'a> {
-    ValueIter::new(Reader::with_limits(reader, limits))
+) -> ScalarIter<'a> {
+    ScalarIter::new(Reader::with_limits(reader, limits))
 }
 
 /// Lazily decode schema-directed JSON values from a reader.
 pub fn from_reader_iter_with_field<'a, R: Read + 'a>(
     reader: &'a mut R,
     field: &'a Field,
-) -> ValueIter<'a> {
+) -> ScalarIter<'a> {
     from_reader_iter_with_field_and_limits(reader, field, Limits::default())
 }
 
@@ -239,8 +239,8 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
     reader: &'a mut R,
     field: &'a Field,
     limits: Limits,
-) -> ValueIter<'a> {
-    ValueIter::new(Reader::with_limits(reader, limits)).with_field(field)
+) -> ScalarIter<'a> {
+    ScalarIter::new(Reader::with_limits(reader, limits)).with_field(field)
 }
 
 /// An owning, lazy iterator over whitespace-separated JSON values.
@@ -290,7 +290,7 @@ impl<R: Read> Reader<R> {
 }
 
 impl<R: Read> Iterator for Reader<R> {
-    type Item = Result<Value>;
+    type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -326,23 +326,23 @@ impl<R: Read> Iterator for Reader<R> {
 }
 
 /// Decode strict newline-delimited JSON bytes.
-pub fn from_lines_bytes(input: &[u8]) -> Result<Vec<Value>> {
+pub fn from_lines_bytes(input: &[u8]) -> Result<Vec<Scalar>> {
     from_lines_bytes_with_limits(input, Limits::default())
 }
 
 /// Decode strict newline-delimited JSON from borrowed UTF-8 text.
-pub fn from_lines_utf8(input: &str) -> Result<Vec<Value>> {
+pub fn from_lines_utf8(input: &str) -> Result<Vec<Scalar>> {
     from_lines_utf8_with_limits(input, Limits::default())
 }
 
 /// Decode strict newline-delimited JSON from borrowed UTF-8 text with
 /// explicit limits.
-pub fn from_lines_utf8_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>> {
+pub fn from_lines_utf8_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>> {
     from_lines_bytes_with_limits(input.as_bytes(), limits)
 }
 
 /// Decode strict newline-delimited JSON bytes with explicit limits.
-pub fn from_lines_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>> {
+pub fn from_lines_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>> {
     check_input_size(input, limits, "json")?;
     let mut values = Vec::new();
     let mut offset = 0_usize;
@@ -364,17 +364,17 @@ pub fn from_lines_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Vec<
 }
 
 /// Decode strict newline-delimited JSON from a byte reader.
-pub fn from_lines_reader<R: Read>(reader: R) -> Result<Vec<Value>> {
+pub fn from_lines_reader<R: Read>(reader: R) -> Result<Vec<Scalar>> {
     from_lines_reader_with_limits(reader, Limits::default())
 }
 
 /// Decode strict newline-delimited JSON from a reader with explicit limits.
-pub fn from_lines_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>> {
+pub fn from_lines_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>> {
     LinesReader::with_limits(reader, limits).collect()
 }
 
 /// Lazily decode strict newline-delimited JSON from a borrowed reader.
-pub fn from_lines_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
+pub fn from_lines_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ScalarIter<'a> {
     from_lines_reader_iter_with_limits(reader, Limits::default())
 }
 
@@ -382,8 +382,8 @@ pub fn from_lines_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<
 pub fn from_lines_reader_iter_with_limits<'a, R: Read + 'a>(
     reader: &'a mut R,
     limits: Limits,
-) -> ValueIter<'a> {
-    ValueIter::new(LinesReader::with_limits(reader, limits))
+) -> ScalarIter<'a> {
+    ScalarIter::new(LinesReader::with_limits(reader, limits))
 }
 
 /// An owning, lazy iterator over strict newline-delimited JSON values.
@@ -421,7 +421,7 @@ impl<R: Read> LinesReader<R> {
 }
 
 impl<R: Read> Iterator for LinesReader<R> {
-    type Item = Result<Value>;
+    type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -465,7 +465,7 @@ impl<R: Read> Iterator for LinesReader<R> {
 }
 
 /// Encode one value as compact JSON bytes.
-pub fn into_bytes(value: &Value) -> Result<Vec<u8>> {
+pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
     into_bytes_with_formatting(value, Formatting::default())
 }
 
@@ -476,11 +476,11 @@ pub fn into_bytes(value: &Value) -> Result<Vec<u8>> {
 /// exactly as another JSON formatter's `indent=n` option reads.
 ///
 /// ```
-/// use yggdryl::generic::Value;
+/// use yggdryl::generic::Scalar;
 /// use yggdryl::text::Formatting;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let value = Value::from_record([("id", Value::I64(1))])?;
+/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
 /// assert_eq!(yggdryl::json::into_bytes(&value)?, br#"{"id":1}"#);
 /// assert_eq!(
 ///     yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(2))?,
@@ -493,19 +493,19 @@ pub fn into_bytes(value: &Value) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns the encoder's failure, including the published depth cap.
-pub fn into_bytes_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
+pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
     into_writer_with_formatting(value, &mut output, formatting)?;
     Ok(output)
 }
 
 /// Encode one value as compact JSON UTF-8.
-pub fn into_utf8(value: &Value) -> Result<String> {
+pub fn into_utf8(value: &Scalar) -> Result<String> {
     into_utf8_with_formatting(value, Formatting::default())
 }
 
 /// Encode one value as JSON UTF-8 with explicit formatting.
-pub fn into_utf8_with_formatting(value: &Value, formatting: Formatting) -> Result<String> {
+pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String> {
     String::from_utf8(into_bytes_with_formatting(value, formatting)?).map_err(|error| {
         Error::Codec {
             format: "json",
@@ -516,7 +516,7 @@ pub fn into_utf8_with_formatting(value: &Value, formatting: Formatting) -> Resul
 }
 
 /// Encode one value to a byte writer.
-pub fn into_writer<W: Write>(value: &Value, writer: W) -> Result<()> {
+pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()> {
     into_writer_with_formatting(value, writer, Formatting::default())
 }
 
@@ -526,7 +526,7 @@ pub fn into_writer<W: Write>(value: &Value, writer: W) -> Result<()> {
 ///
 /// Returns the encoder's or the sink's failure.
 pub fn into_writer_with_formatting<W: Write>(
-    value: &Value,
+    value: &Scalar,
     writer: W,
     formatting: Formatting,
 ) -> Result<()> {
@@ -535,7 +535,7 @@ pub fn into_writer_with_formatting<W: Write>(
 }
 
 /// Encode values as newline-delimited JSON bytes.
-pub fn into_bytes_all(values: &[Value]) -> Result<Vec<u8>> {
+pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>> {
     into_bytes_all_with_formatting(values, Formatting::default())
 }
 
@@ -549,19 +549,22 @@ pub fn into_bytes_all(values: &[Value]) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns the encoder's failure.
-pub fn into_bytes_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>> {
+pub fn into_bytes_all_with_formatting(
+    values: &[Scalar],
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
     let mut output = Vec::new();
     into_writer_all_with_formatting(values, &mut output, formatting)?;
     Ok(output)
 }
 
 /// Encode values as newline-delimited JSON UTF-8.
-pub fn into_utf8_all(values: &[Value]) -> Result<String> {
+pub fn into_utf8_all(values: &[Scalar]) -> Result<String> {
     into_utf8_all_with_formatting(values, Formatting::default())
 }
 
 /// Encode values as newline-delimited JSON UTF-8 with explicit formatting.
-pub fn into_utf8_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<String> {
+pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String> {
     String::from_utf8(into_bytes_all_with_formatting(values, formatting)?).map_err(|error| {
         Error::Codec {
             format: "json",
@@ -576,7 +579,7 @@ pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
-    V: Borrow<Value>,
+    V: Borrow<Scalar>,
 {
     into_writer_all_with_formatting(values, writer, Formatting::default())
 }
@@ -594,7 +597,7 @@ pub fn into_writer_all_with_formatting<W, I, V>(
 where
     W: Write,
     I: IntoIterator<Item = V>,
-    V: Borrow<Value>,
+    V: Borrow<Scalar>,
 {
     for value in values {
         let value = value.borrow();
@@ -606,7 +609,7 @@ where
 }
 
 /// Emit one already-depth-checked value under `formatting`.
-fn write_one<W: Write>(writer: W, value: &Value, formatting: Formatting) -> Result<()> {
+fn write_one<W: Write>(writer: W, value: &Scalar, formatting: Formatting) -> Result<()> {
     match formatting.indent().unit() {
         // Compact is the default and the only shape JSON Lines can carry.
         None => serde_json::to_writer(writer, &JsonRef(value))
@@ -620,7 +623,7 @@ fn write_one<W: Write>(writer: W, value: &Value, formatting: Formatting) -> Resu
     }
 }
 
-fn parse_raw_document(input: &[u8], limits: Limits, base: usize) -> Result<Value> {
+fn parse_raw_document(input: &[u8], limits: Limits, base: usize) -> Result<Scalar> {
     from_bytes_with_limits(input, limits).map_err(|error| offset_error(error, base))
 }
 

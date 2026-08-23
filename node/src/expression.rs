@@ -15,10 +15,10 @@ use yggdryl::expression::{
     Bound as CoreBound, BoundStatement as CoreBoundStatement, Direction, NullsOrder, Operator,
     Selector, Statement as CoreStatement,
 };
-use yggdryl::{Expression as CoreExpression, Value};
+use yggdryl::{Expression as CoreExpression, Scalar};
 
 use crate::arrow::JsBatchReader;
-use crate::codec::JsCodecValue;
+use crate::codec::JsScalar;
 use crate::field::JsField;
 use crate::napi_error;
 
@@ -39,12 +39,12 @@ const fn nulls_name(nulls: NullsOrder) -> &'static str {
 }
 
 /// Read a native Record of late-bound values once before binding.
-fn supplied_parameters(parameters: Option<&JsCodecValue>) -> Result<Vec<(String, Value)>> {
+fn supplied_parameters(parameters: Option<&JsScalar>) -> Result<Vec<(String, Scalar)>> {
     let Some(parameters) = parameters else {
         return Ok(Vec::new());
     };
     let entries = parameters.inner.as_record().ok_or_else(|| {
-        Error::from_reason("statement parameters must be a Value record keyed by parameter name")
+        Error::from_reason("statement parameters must be a Scalar record keyed by parameter name")
     })?;
     Ok(entries
         .iter()
@@ -53,7 +53,7 @@ fn supplied_parameters(parameters: Option<&JsCodecValue>) -> Result<Vec<(String,
 }
 
 /// Borrow the core parameter shape for exactly one bind call.
-fn parameter_refs(parameters: &[(String, Value)]) -> Vec<(&str, Value)> {
+fn parameter_refs(parameters: &[(String, Scalar)]) -> Vec<(&str, Scalar)> {
     parameters
         .iter()
         .map(|(name, value)| (name.as_str(), value.clone()))
@@ -172,12 +172,12 @@ impl JsExpression {
 
     /// Hold one constant.
     ///
-    /// The constant is a `Value`, which is the JavaScript spelling of the
+    /// The constant is a `Scalar`, which is the JavaScript spelling of the
     /// values JavaScript itself has none of - an exact decimal, a date, a
-    /// timestamp at a resolution a `Date` cannot hold. `Value.fromJs` makes
+    /// timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
     /// one out of an ordinary JavaScript value.
     #[napi(factory)]
-    pub fn literal(value: &JsCodecValue) -> Self {
+    pub fn literal(value: &JsScalar) -> Self {
         Self {
             inner: CoreExpression::literal(value.inner.clone()),
         }
@@ -444,10 +444,10 @@ impl JsBound {
 
     /// Evaluate this expression for one row of column values, in schema order.
     #[napi]
-    pub fn eval(&self, row: &JsCodecValue) -> Result<JsCodecValue> {
+    pub fn eval(&self, row: &JsScalar) -> Result<JsScalar> {
         self.inner
             .eval(&row.inner)
-            .map(JsCodecValue::from_core)
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
@@ -456,7 +456,7 @@ impl JsBound {
     /// Unknown is not true, so a row whose value is null does not pass a
     /// comparison against it.
     #[napi]
-    pub fn matches(&self, row: &JsCodecValue) -> Result<bool> {
+    pub fn matches(&self, row: &JsScalar) -> Result<bool> {
         self.inner.matches(&row.inner).map_err(napi_error)
     }
 
@@ -556,12 +556,12 @@ impl JsStatement {
     /// Resolve every statement expression against one struct root schema.
     ///
     /// The loader converts an ordinary JavaScript parameter object into the
-    /// shared native `Value::Record` before this redirect.
+    /// shared native `Scalar::Record` before this redirect.
     #[napi(js_name = "_bindNative", skip_typescript)]
     pub fn bind_native(
         &self,
         schema: &JsField,
-        parameters: Option<&JsCodecValue>,
+        parameters: Option<&JsScalar>,
     ) -> Result<JsBoundStatement> {
         let supplied = supplied_parameters(parameters)?;
         let borrowed = parameter_refs(&supplied);

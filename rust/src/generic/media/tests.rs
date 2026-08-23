@@ -271,7 +271,7 @@ fn holder_media_promotion_preserves_wrapper_idempotence_and_plain_bytes() {
     let text = handle("retained.txt").into_media().into_media();
     assert!(matches!(text, Holder::Text(_)));
 
-    // Structured text codecs are atomic Value documents, not row media. The
+    // Structured text codecs are atomic Scalar documents, not row media. The
     // best-fitting conversion therefore leaves them as ordinary bytes, and
     // opening them cannot manufacture an unsupported-media error.
     let mut json = Holder::buffer(

@@ -22,7 +22,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::FormatVersion;
 use super::partition::PartitionSpec;
 use crate::io::IOBase;
-use crate::{Error, Field, Result, Value};
+use crate::{Error, Field, Result, Scalar};
 
 /// What a manifest's entries describe.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -149,7 +149,7 @@ pub struct DataFile {
     /// The encoding the file uses.
     pub file_format: FileFormat,
     /// One value per partition field of the spec, in spec order.
-    pub partition: Vec<Value>,
+    pub partition: Vec<Scalar>,
     /// Rows in the file.
     pub record_count: i64,
     /// Size of the file in bytes.
@@ -179,7 +179,7 @@ struct DataFileIdentity<'a> {
     content: i32,
     file_path: &'a SmolStr,
     file_format: FileFormat,
-    partition: &'a [Value],
+    partition: &'a [Scalar],
     record_count: i64,
     file_size_in_bytes: i64,
     column_sizes: Vec<&'a (i32, i64)>,
@@ -523,23 +523,23 @@ pub fn write_manifest_list<H: IOBase + ?Sized>(
 /// # Errors
 ///
 /// Returns an error only when a mapping cannot be built.
-fn manifest_entry_schema(version: FormatVersion, partition: &Field) -> Result<Value> {
+fn manifest_entry_schema(version: FormatVersion, partition: &Field) -> Result<Scalar> {
     let mut data_file = Vec::new();
     if version >= FormatVersion::V2 {
-        data_file.push(required("content", 134, Value::from("int"))?);
+        data_file.push(required("content", 134, Scalar::from("int"))?);
     }
-    data_file.push(required("file_path", 100, Value::from("string"))?);
-    data_file.push(required("file_format", 101, Value::from("string"))?);
+    data_file.push(required("file_path", 100, Scalar::from("string"))?);
+    data_file.push(required("file_format", 101, Scalar::from("string"))?);
     data_file.push(required(
         "partition",
         102,
         partition_record(partition, "r102")?,
     )?);
-    data_file.push(required("record_count", 103, Value::from("long"))?);
-    data_file.push(required("file_size_in_bytes", 104, Value::from("long"))?);
+    data_file.push(required("record_count", 103, Scalar::from("long"))?);
+    data_file.push(required("file_size_in_bytes", 104, Scalar::from("long"))?);
     if version == FormatVersion::V1 {
         // v1 required a block size that no reader has ever used.
-        data_file.push(required("block_size_in_bytes", 105, Value::from("long"))?);
+        data_file.push(required("block_size_in_bytes", 105, Scalar::from("long"))?);
     }
     data_file.push(optional("column_sizes", 108, avro_map(117, 118, "long")?)?);
     data_file.push(optional("value_counts", 109, avro_map(119, 120, "long")?)?);
@@ -555,46 +555,50 @@ fn manifest_entry_schema(version: FormatVersion, partition: &Field) -> Result<Va
     )?);
     data_file.push(optional("lower_bounds", 125, avro_map(126, 127, "bytes")?)?);
     data_file.push(optional("upper_bounds", 128, avro_map(129, 130, "bytes")?)?);
-    data_file.push(optional("key_metadata", 131, Value::from("bytes"))?);
+    data_file.push(optional("key_metadata", 131, Scalar::from("bytes"))?);
     data_file.push(optional(
         "split_offsets",
         132,
-        avro_array(133, Value::from("long"))?,
+        avro_array(133, Scalar::from("long"))?,
     )?);
     if version >= FormatVersion::V2 {
         data_file.push(optional(
             "equality_ids",
             135,
-            avro_array(136, Value::from("long"))?,
+            avro_array(136, Scalar::from("long"))?,
         )?);
     }
-    data_file.push(optional("sort_order_id", 140, Value::from("int"))?);
+    data_file.push(optional("sort_order_id", 140, Scalar::from("int"))?);
     if version >= FormatVersion::V3 {
-        data_file.push(optional("first_row_id", 142, Value::from("long"))?);
+        data_file.push(optional("first_row_id", 142, Scalar::from("long"))?);
         data_file.push(optional(
             "referenced_data_file",
             143,
-            Value::from("string"),
+            Scalar::from("string"),
         )?);
-        data_file.push(optional("content_offset", 144, Value::from("long"))?);
-        data_file.push(optional("content_size_in_bytes", 145, Value::from("long"))?);
+        data_file.push(optional("content_offset", 144, Scalar::from("long"))?);
+        data_file.push(optional(
+            "content_size_in_bytes",
+            145,
+            Scalar::from("long"),
+        )?);
     }
 
-    let mut fields = vec![required("status", 0, Value::from("int"))?];
+    let mut fields = vec![required("status", 0, Scalar::from("int"))?];
     if version == FormatVersion::V1 {
-        fields.push(required("snapshot_id", 1, Value::from("long"))?);
+        fields.push(required("snapshot_id", 1, Scalar::from("long"))?);
     } else {
-        fields.push(optional("snapshot_id", 1, Value::from("long"))?);
-        fields.push(optional("sequence_number", 3, Value::from("long"))?);
-        fields.push(optional("file_sequence_number", 4, Value::from("long"))?);
+        fields.push(optional("snapshot_id", 1, Scalar::from("long"))?);
+        fields.push(optional("sequence_number", 3, Scalar::from("long"))?);
+        fields.push(optional("file_sequence_number", 4, Scalar::from("long"))?);
     }
     fields.push(required(
         "data_file",
         2,
-        record("r2", Value::from_sequence(data_file))?,
+        record("r2", Scalar::from_sequence(data_file))?,
     )?);
 
-    record("manifest_entry", Value::from_sequence(fields))
+    record("manifest_entry", Scalar::from_sequence(fields))
 }
 
 /// Build the Avro schema a manifest list is written against.
@@ -602,28 +606,28 @@ fn manifest_entry_schema(version: FormatVersion, partition: &Field) -> Result<Va
 /// # Errors
 ///
 /// Returns an error only when a mapping cannot be built.
-fn manifest_list_schema(version: FormatVersion) -> Result<Value> {
+fn manifest_list_schema(version: FormatVersion) -> Result<Scalar> {
     let summary = record(
         "r508",
-        Value::from_sequence(vec![
-            required("contains_null", 509, Value::from("boolean"))?,
-            optional("contains_nan", 518, Value::from("boolean"))?,
-            optional("lower_bound", 510, Value::from("bytes"))?,
-            optional("upper_bound", 511, Value::from("bytes"))?,
+        Scalar::from_sequence(vec![
+            required("contains_null", 509, Scalar::from("boolean"))?,
+            optional("contains_nan", 518, Scalar::from("boolean"))?,
+            optional("lower_bound", 510, Scalar::from("bytes"))?,
+            optional("upper_bound", 511, Scalar::from("bytes"))?,
         ]),
     )?;
 
     let mut fields = vec![
-        required("manifest_path", 500, Value::from("string"))?,
-        required("manifest_length", 501, Value::from("long"))?,
-        required("partition_spec_id", 502, Value::from("int"))?,
+        required("manifest_path", 500, Scalar::from("string"))?,
+        required("manifest_length", 501, Scalar::from("long"))?,
+        required("partition_spec_id", 502, Scalar::from("int"))?,
     ];
     if version >= FormatVersion::V2 {
-        fields.push(required("content", 517, Value::from("int"))?);
-        fields.push(required("sequence_number", 515, Value::from("long"))?);
-        fields.push(required("min_sequence_number", 516, Value::from("long"))?);
+        fields.push(required("content", 517, Scalar::from("int"))?);
+        fields.push(required("sequence_number", 515, Scalar::from("long"))?);
+        fields.push(required("min_sequence_number", 516, Scalar::from("long"))?);
     }
-    fields.push(required("added_snapshot_id", 503, Value::from("long"))?);
+    fields.push(required("added_snapshot_id", 503, Scalar::from("long"))?);
     let counts: [(&str, i32, &str); 6] = [
         ("added_files_count", 504, "int"),
         ("existing_files_count", 505, "int"),
@@ -635,22 +639,22 @@ fn manifest_list_schema(version: FormatVersion) -> Result<Value> {
     for (name, id, kind) in counts {
         // v1 left every count optional; v2 made them all required.
         if version == FormatVersion::V1 {
-            fields.push(optional(name, id, Value::from(kind))?);
+            fields.push(optional(name, id, Scalar::from(kind))?);
         } else {
-            fields.push(required(name, id, Value::from(kind))?);
+            fields.push(required(name, id, Scalar::from(kind))?);
         }
     }
     fields.push(optional("partitions", 507, avro_array(508, summary)?)?);
-    fields.push(optional("key_metadata", 519, Value::from("bytes"))?);
+    fields.push(optional("key_metadata", 519, Scalar::from("bytes"))?);
     if version >= FormatVersion::V3 {
-        fields.push(optional("first_row_id", 520, Value::from("long"))?);
+        fields.push(optional("first_row_id", 520, Scalar::from("long"))?);
     }
 
-    record("manifest_file", Value::from_sequence(fields))
+    record("manifest_file", Scalar::from_sequence(fields))
 }
 
 /// Build the Avro record a partition tuple is stored as.
-fn partition_record(partition: &Field, name: &str) -> Result<Value> {
+fn partition_record(partition: &Field, name: &str) -> Result<Scalar> {
     let mut fields = Vec::with_capacity(partition.field_len());
     for child in partition.fields() {
         let id = child.parquet_field_id()?.ok_or_else(|| {
@@ -664,103 +668,103 @@ fn partition_record(partition: &Field, name: &str) -> Result<Value> {
         fields.push(optional(
             child.name(),
             id,
-            Value::from(super::PrimitiveType::from_data_type(child.data_type())?.to_string()),
+            Scalar::from(super::PrimitiveType::from_data_type(child.data_type())?.to_string()),
         )?);
     }
-    record(name, Value::from_sequence(fields))
+    record(name, Scalar::from_sequence(fields))
 }
 
 /// Build one Avro record schema.
-fn record(name: &str, fields: Value) -> Result<Value> {
-    Value::from_mapping([
-        (Value::from("type"), Value::from("record")),
-        (Value::from("name"), Value::from(name)),
-        (Value::from("fields"), fields),
+fn record(name: &str, fields: Scalar) -> Result<Scalar> {
+    Scalar::from_mapping([
+        (Scalar::from("type"), Scalar::from("record")),
+        (Scalar::from("name"), Scalar::from(name)),
+        (Scalar::from("fields"), fields),
     ])
 }
 
 /// Build one required Avro record field carrying its Iceberg field id.
-fn required(name: &str, id: i32, schema: Value) -> Result<Value> {
-    Value::from_mapping([
-        (Value::from("name"), Value::from(name)),
-        (Value::from("field-id"), Value::from(i64::from(id))),
-        (Value::from("type"), schema),
+fn required(name: &str, id: i32, schema: Scalar) -> Result<Scalar> {
+    Scalar::from_mapping([
+        (Scalar::from("name"), Scalar::from(name)),
+        (Scalar::from("field-id"), Scalar::from(i64::from(id))),
+        (Scalar::from("type"), schema),
     ])
 }
 
 /// Build one optional Avro record field: a null-first union defaulting to null.
-fn optional(name: &str, id: i32, schema: Value) -> Result<Value> {
-    Value::from_mapping([
-        (Value::from("name"), Value::from(name)),
-        (Value::from("field-id"), Value::from(i64::from(id))),
+fn optional(name: &str, id: i32, schema: Scalar) -> Result<Scalar> {
+    Scalar::from_mapping([
+        (Scalar::from("name"), Scalar::from(name)),
+        (Scalar::from("field-id"), Scalar::from(i64::from(id))),
         (
-            Value::from("type"),
-            Value::from_sequence([Value::from("null"), schema]),
+            Scalar::from("type"),
+            Scalar::from_sequence([Scalar::from("null"), schema]),
         ),
-        (Value::from("default"), Value::Null),
+        (Scalar::from("default"), Scalar::Null),
     ])
 }
 
 /// Build an Avro array with the element id a reader needs.
-fn avro_array(element_id: i32, items: Value) -> Result<Value> {
-    Value::from_mapping([
-        (Value::from("type"), Value::from("array")),
+fn avro_array(element_id: i32, items: Scalar) -> Result<Scalar> {
+    Scalar::from_mapping([
+        (Scalar::from("type"), Scalar::from("array")),
         (
-            Value::from("element-id"),
-            Value::from(i64::from(element_id)),
+            Scalar::from("element-id"),
+            Scalar::from(i64::from(element_id)),
         ),
-        (Value::from("items"), items),
+        (Scalar::from("items"), items),
     ])
 }
 
 /// Build the array-of-pairs Iceberg uses where Avro cannot key a map by an int.
-fn avro_map(key_id: i32, value_id: i32, value_type: &str) -> Result<Value> {
-    let entry = Value::from_mapping([
-        (Value::from("type"), Value::from("record")),
+fn avro_map(key_id: i32, value_id: i32, value_type: &str) -> Result<Scalar> {
+    let entry = Scalar::from_mapping([
+        (Scalar::from("type"), Scalar::from("record")),
         (
-            Value::from("name"),
-            Value::from(format_smolstr!("k{key_id}_v{value_id}")),
+            Scalar::from("name"),
+            Scalar::from(format_smolstr!("k{key_id}_v{value_id}")),
         ),
         (
-            Value::from("fields"),
-            Value::from_sequence([
-                Value::from_mapping([
-                    (Value::from("name"), Value::from("key")),
-                    (Value::from("type"), Value::from("int")),
-                    (Value::from("field-id"), Value::from(i64::from(key_id))),
+            Scalar::from("fields"),
+            Scalar::from_sequence([
+                Scalar::from_mapping([
+                    (Scalar::from("name"), Scalar::from("key")),
+                    (Scalar::from("type"), Scalar::from("int")),
+                    (Scalar::from("field-id"), Scalar::from(i64::from(key_id))),
                 ])?,
-                Value::from_mapping([
-                    (Value::from("name"), Value::from("value")),
-                    (Value::from("type"), Value::from(value_type)),
-                    (Value::from("field-id"), Value::from(i64::from(value_id))),
+                Scalar::from_mapping([
+                    (Scalar::from("name"), Scalar::from("value")),
+                    (Scalar::from("type"), Scalar::from(value_type)),
+                    (Scalar::from("field-id"), Scalar::from(i64::from(value_id))),
                 ])?,
             ]),
         ),
     ])?;
-    Value::from_mapping([
-        (Value::from("type"), Value::from("array")),
-        (Value::from("items"), entry),
-        (Value::from("logicalType"), Value::from("map")),
+    Scalar::from_mapping([
+        (Scalar::from("type"), Scalar::from("array")),
+        (Scalar::from("items"), entry),
+        (Scalar::from("logicalType"), Scalar::from("map")),
     ])
 }
 
 /// Render an integer-keyed statistics map as the pair array Avro stores.
-fn pairs<V: Clone + Into<Value>>(entries: &[(i32, V)]) -> Result<Value> {
+fn pairs<V: Clone + Into<Scalar>>(entries: &[(i32, V)]) -> Result<Scalar> {
     if entries.is_empty() {
-        return Ok(Value::Null);
+        return Ok(Scalar::Null);
     }
     let mut rows = Vec::with_capacity(entries.len());
     for (key, value) in entries {
-        rows.push(Value::from_mapping([
-            (Value::from("key"), Value::from(i64::from(*key))),
-            (Value::from("value"), value.clone().into()),
+        rows.push(Scalar::from_mapping([
+            (Scalar::from("key"), Scalar::from(i64::from(*key))),
+            (Scalar::from("value"), value.clone().into()),
         ])?);
     }
-    Ok(Value::from_sequence(rows))
+    Ok(Scalar::from_sequence(rows))
 }
 
 /// Read a pair array back into an integer-keyed statistics map.
-fn from_pairs(value: Option<&Value>) -> Vec<(i32, Value)> {
+fn from_pairs(value: Option<&Scalar>) -> Vec<(i32, Scalar)> {
     value
         .map(|value| {
             value
@@ -779,7 +783,7 @@ fn entry_to_value(
     entry: &ManifestEntry,
     version: FormatVersion,
     partition: &Field,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let file = &entry.data_file;
     if file.partition.len() != partition.field_len() {
         return Err(invalid(format_smolstr!(
@@ -791,96 +795,108 @@ fn entry_to_value(
     }
     let mut tuple = Vec::with_capacity(file.partition.len());
     for (column, value) in partition.fields().iter().zip(&file.partition) {
-        tuple.push((Value::from(column.name()), value.clone()));
+        tuple.push((Scalar::from(column.name()), value.clone()));
     }
 
     let mut data_file = Vec::new();
     if version >= FormatVersion::V2 {
-        data_file.push((Value::from("content"), Value::from(i64::from(file.content))));
+        data_file.push((
+            Scalar::from("content"),
+            Scalar::from(i64::from(file.content)),
+        ));
     }
     data_file.push((
-        Value::from("file_path"),
-        Value::from(file.file_path.clone()),
+        Scalar::from("file_path"),
+        Scalar::from(file.file_path.clone()),
     ));
     data_file.push((
-        Value::from("file_format"),
-        Value::from(file.file_format.to_string()),
+        Scalar::from("file_format"),
+        Scalar::from(file.file_format.to_string()),
     ));
-    data_file.push((Value::from("partition"), Value::from_mapping(tuple)?));
-    data_file.push((Value::from("record_count"), Value::from(file.record_count)));
+    data_file.push((Scalar::from("partition"), Scalar::from_mapping(tuple)?));
     data_file.push((
-        Value::from("file_size_in_bytes"),
-        Value::from(file.file_size_in_bytes),
+        Scalar::from("record_count"),
+        Scalar::from(file.record_count),
+    ));
+    data_file.push((
+        Scalar::from("file_size_in_bytes"),
+        Scalar::from(file.file_size_in_bytes),
     ));
     if version == FormatVersion::V1 {
-        data_file.push((Value::from("block_size_in_bytes"), Value::from(0_i64)));
+        data_file.push((Scalar::from("block_size_in_bytes"), Scalar::from(0_i64)));
     }
-    data_file.push((Value::from("column_sizes"), pairs(&file.column_sizes)?));
-    data_file.push((Value::from("value_counts"), pairs(&file.value_counts)?));
+    data_file.push((Scalar::from("column_sizes"), pairs(&file.column_sizes)?));
+    data_file.push((Scalar::from("value_counts"), pairs(&file.value_counts)?));
     data_file.push((
-        Value::from("null_value_counts"),
+        Scalar::from("null_value_counts"),
         pairs(&file.null_value_counts)?,
     ));
     data_file.push((
-        Value::from("nan_value_counts"),
+        Scalar::from("nan_value_counts"),
         pairs(&file.nan_value_counts)?,
     ));
-    data_file.push((Value::from("lower_bounds"), pairs(&file.lower_bounds)?));
-    data_file.push((Value::from("upper_bounds"), pairs(&file.upper_bounds)?));
-    data_file.push((Value::from("key_metadata"), Value::Null));
+    data_file.push((Scalar::from("lower_bounds"), pairs(&file.lower_bounds)?));
+    data_file.push((Scalar::from("upper_bounds"), pairs(&file.upper_bounds)?));
+    data_file.push((Scalar::from("key_metadata"), Scalar::Null));
     data_file.push((
-        Value::from("split_offsets"),
+        Scalar::from("split_offsets"),
         if file.split_offsets.is_empty() {
-            Value::Null
+            Scalar::Null
         } else {
-            Value::from_sequence(file.split_offsets.iter().map(|offset| Value::from(*offset)))
+            Scalar::from_sequence(
+                file.split_offsets
+                    .iter()
+                    .map(|offset| Scalar::from(*offset)),
+            )
         },
     ));
     if version >= FormatVersion::V2 {
-        data_file.push((Value::from("equality_ids"), Value::Null));
+        data_file.push((Scalar::from("equality_ids"), Scalar::Null));
     }
     data_file.push((
-        Value::from("sort_order_id"),
+        Scalar::from("sort_order_id"),
         file.sort_order_id
-            .map_or(Value::Null, |id| Value::from(i64::from(id))),
+            .map_or(Scalar::Null, |id| Scalar::from(i64::from(id))),
     ));
     if version >= FormatVersion::V3 {
         data_file.push((
-            Value::from("first_row_id"),
-            file.first_row_id.map_or(Value::Null, Value::from),
+            Scalar::from("first_row_id"),
+            file.first_row_id.map_or(Scalar::Null, Scalar::from),
         ));
-        data_file.push((Value::from("referenced_data_file"), Value::Null));
-        data_file.push((Value::from("content_offset"), Value::Null));
-        data_file.push((Value::from("content_size_in_bytes"), Value::Null));
+        data_file.push((Scalar::from("referenced_data_file"), Scalar::Null));
+        data_file.push((Scalar::from("content_offset"), Scalar::Null));
+        data_file.push((Scalar::from("content_size_in_bytes"), Scalar::Null));
     }
 
     let mut row = vec![(
-        Value::from("status"),
-        Value::from(i64::from(entry.status.code())),
+        Scalar::from("status"),
+        Scalar::from(i64::from(entry.status.code())),
     )];
     row.push((
-        Value::from("snapshot_id"),
-        entry.snapshot_id.map_or(Value::Null, Value::from),
+        Scalar::from("snapshot_id"),
+        entry.snapshot_id.map_or(Scalar::Null, Scalar::from),
     ));
     if version >= FormatVersion::V2 {
         row.push((
-            Value::from("sequence_number"),
-            entry.sequence_number.map_or(Value::Null, Value::from),
+            Scalar::from("sequence_number"),
+            entry.sequence_number.map_or(Scalar::Null, Scalar::from),
         ));
         row.push((
-            Value::from("file_sequence_number"),
-            entry.file_sequence_number.map_or(Value::Null, Value::from),
+            Scalar::from("file_sequence_number"),
+            entry
+                .file_sequence_number
+                .map_or(Scalar::Null, Scalar::from),
         ));
     }
-    row.push((Value::from("data_file"), Value::from_mapping(data_file)?));
-    Value::from_mapping(row)
+    row.push((Scalar::from("data_file"), Scalar::from_mapping(data_file)?));
+    Scalar::from_mapping(row)
 }
 
 /// Read one manifest entry back from its Avro record.
-fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
+fn entry_from_value(row: &Scalar) -> Result<ManifestEntry> {
     let status = EntryStatus::from_code(
         row.get_key_str("status")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .ok_or_else(|| invalid(SmolStr::new_static("expected a manifest entry \"status\"")))?,
     )?;
     let file = row.get_key_str("data_file").ok_or_else(|| {
@@ -891,7 +907,7 @@ fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
 
     let file_path = file
         .get_key_str("file_path")
-        .and_then(Value::as_str)
+        .and_then(Scalar::as_str)
         .ok_or_else(|| invalid(SmolStr::new_static("expected a data file \"file_path\"")))?;
     let partition = file
         .get_key_str("partition")
@@ -909,31 +925,31 @@ fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
 
     Ok(ManifestEntry {
         status,
-        snapshot_id: row.get_key_str("snapshot_id").and_then(Value::as_i64),
-        sequence_number: row.get_key_str("sequence_number").and_then(Value::as_i64),
+        snapshot_id: row.get_key_str("snapshot_id").and_then(Scalar::as_i64),
+        sequence_number: row.get_key_str("sequence_number").and_then(Scalar::as_i64),
         file_sequence_number: row
             .get_key_str("file_sequence_number")
-            .and_then(Value::as_i64),
+            .and_then(Scalar::as_i64),
         data_file: DataFile {
             content: file
                 .get_key_str("content")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|code| i32::try_from(code).ok())
                 .unwrap_or_default(),
             file_path: SmolStr::new(file_path),
             file_format: FileFormat::from_str(
                 file.get_key_str("file_format")
-                    .and_then(Value::as_str)
+                    .and_then(Scalar::as_str)
                     .unwrap_or("PARQUET"),
             )?,
             partition,
             record_count: file
                 .get_key_str("record_count")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .unwrap_or_default(),
             file_size_in_bytes: file
                 .get_key_str("file_size_in_bytes")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .unwrap_or_default(),
             column_sizes: counts(file.get_key_str("column_sizes")),
             value_counts: counts(file.get_key_str("value_counts")),
@@ -943,19 +959,19 @@ fn entry_from_value(row: &Value) -> Result<ManifestEntry> {
             upper_bounds: bounds(file.get_key_str("upper_bounds")),
             split_offsets: file
                 .get_key_str("split_offsets")
-                .map(|offsets| offsets.sequence_iter().filter_map(Value::as_i64).collect())
+                .map(|offsets| offsets.sequence_iter().filter_map(Scalar::as_i64).collect())
                 .unwrap_or_default(),
             sort_order_id: file
                 .get_key_str("sort_order_id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|id| i32::try_from(id).ok()),
-            first_row_id: file.get_key_str("first_row_id").and_then(Value::as_i64),
+            first_row_id: file.get_key_str("first_row_id").and_then(Scalar::as_i64),
         },
     })
 }
 
 /// Read a pair array as integer counts.
-fn counts(value: Option<&Value>) -> Vec<(i32, i64)> {
+fn counts(value: Option<&Scalar>) -> Vec<(i32, i64)> {
     from_pairs(value)
         .into_iter()
         .filter_map(|(key, value)| Some((key, value.as_i64()?)))
@@ -963,7 +979,7 @@ fn counts(value: Option<&Value>) -> Vec<(i32, i64)> {
 }
 
 /// Read a pair array as serialized bounds.
-fn bounds(value: Option<&Value>) -> Vec<(i32, Vec<u8>)> {
+fn bounds(value: Option<&Scalar>) -> Vec<(i32, Vec<u8>)> {
     from_pairs(value)
         .into_iter()
         .filter_map(|(key, value)| Some((key, value.as_bytes()?.to_vec())))
@@ -971,82 +987,82 @@ fn bounds(value: Option<&Value>) -> Vec<(i32, Vec<u8>)> {
 }
 
 /// Render one manifest list row as the Avro record it is stored as.
-fn manifest_to_value(manifest: &ManifestFile, version: FormatVersion) -> Result<Value> {
+fn manifest_to_value(manifest: &ManifestFile, version: FormatVersion) -> Result<Scalar> {
     let mut row = vec![
         (
-            Value::from("manifest_path"),
-            Value::from(manifest.manifest_path.clone()),
+            Scalar::from("manifest_path"),
+            Scalar::from(manifest.manifest_path.clone()),
         ),
         (
-            Value::from("manifest_length"),
-            Value::from(manifest.manifest_length),
+            Scalar::from("manifest_length"),
+            Scalar::from(manifest.manifest_length),
         ),
         (
-            Value::from("partition_spec_id"),
-            Value::from(i64::from(manifest.partition_spec_id)),
+            Scalar::from("partition_spec_id"),
+            Scalar::from(i64::from(manifest.partition_spec_id)),
         ),
     ];
     if version >= FormatVersion::V2 {
         row.push((
-            Value::from("content"),
-            Value::from(i64::from(manifest.content.code())),
+            Scalar::from("content"),
+            Scalar::from(i64::from(manifest.content.code())),
         ));
         row.push((
-            Value::from("sequence_number"),
-            Value::from(manifest.sequence_number),
+            Scalar::from("sequence_number"),
+            Scalar::from(manifest.sequence_number),
         ));
         row.push((
-            Value::from("min_sequence_number"),
-            Value::from(manifest.min_sequence_number),
+            Scalar::from("min_sequence_number"),
+            Scalar::from(manifest.min_sequence_number),
         ));
     }
     row.push((
-        Value::from("added_snapshot_id"),
-        Value::from(manifest.added_snapshot_id),
+        Scalar::from("added_snapshot_id"),
+        Scalar::from(manifest.added_snapshot_id),
     ));
     row.push((
-        Value::from("added_files_count"),
-        Value::from(i64::from(manifest.added_files_count)),
+        Scalar::from("added_files_count"),
+        Scalar::from(i64::from(manifest.added_files_count)),
     ));
     row.push((
-        Value::from("existing_files_count"),
-        Value::from(i64::from(manifest.existing_files_count)),
+        Scalar::from("existing_files_count"),
+        Scalar::from(i64::from(manifest.existing_files_count)),
     ));
     row.push((
-        Value::from("deleted_files_count"),
-        Value::from(i64::from(manifest.deleted_files_count)),
+        Scalar::from("deleted_files_count"),
+        Scalar::from(i64::from(manifest.deleted_files_count)),
     ));
     row.push((
-        Value::from("added_rows_count"),
-        Value::from(manifest.added_rows_count),
+        Scalar::from("added_rows_count"),
+        Scalar::from(manifest.added_rows_count),
     ));
     row.push((
-        Value::from("existing_rows_count"),
-        Value::from(manifest.existing_rows_count),
+        Scalar::from("existing_rows_count"),
+        Scalar::from(manifest.existing_rows_count),
     ));
     row.push((
-        Value::from("deleted_rows_count"),
-        Value::from(manifest.deleted_rows_count),
+        Scalar::from("deleted_rows_count"),
+        Scalar::from(manifest.deleted_rows_count),
     ));
     row.push((
-        Value::from("partitions"),
+        Scalar::from("partitions"),
         summaries_to_value(&manifest.partitions)?,
     ));
-    row.push((Value::from("key_metadata"), Value::Null));
+    row.push((Scalar::from("key_metadata"), Scalar::Null));
     if version >= FormatVersion::V3 {
         row.push((
-            Value::from("first_row_id"),
-            manifest.first_row_id.map_or(Value::Null, Value::from),
+            Scalar::from("first_row_id"),
+            manifest.first_row_id.map_or(Scalar::Null, Scalar::from),
         ));
     }
-    Value::from_mapping(row)
+    Scalar::from_mapping(row)
 }
 
 /// Read one manifest list row back from its Avro record.
-fn manifest_from_value(row: &Value) -> Result<ManifestFile> {
+fn manifest_from_value(row: &Scalar) -> Result<ManifestFile> {
     let manifest_path = row
         .get_key_str("manifest_path")
-        .and_then(Value::as_str)
+        .and_then(Scalar::as_str)
         .ok_or_else(|| {
             invalid(SmolStr::new_static(
                 "expected a manifest list \"manifest_path\"",
@@ -1056,7 +1072,7 @@ fn manifest_from_value(row: &Value) -> Result<ManifestFile> {
     let count = |primary: &str, legacy: &str| -> i32 {
         row.get_key_str(primary)
             .or_else(|| row.get_key_str(legacy))
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .and_then(|value| i32::try_from(value).ok())
             .unwrap_or_default()
     };
@@ -1064,84 +1080,84 @@ fn manifest_from_value(row: &Value) -> Result<ManifestFile> {
         manifest_path: SmolStr::new(manifest_path),
         manifest_length: row
             .get_key_str("manifest_length")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         partition_spec_id: row
             .get_key_str("partition_spec_id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .unwrap_or_default(),
         content: ManifestContent::from_code(
             row.get_key_str("content")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .unwrap_or_default(),
         )?,
         sequence_number: row
             .get_key_str("sequence_number")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         min_sequence_number: row
             .get_key_str("min_sequence_number")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         added_snapshot_id: row
             .get_key_str("added_snapshot_id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         added_files_count: count("added_files_count", "added_data_files_count"),
         existing_files_count: count("existing_files_count", "existing_data_files_count"),
         deleted_files_count: count("deleted_files_count", "deleted_data_files_count"),
         added_rows_count: row
             .get_key_str("added_rows_count")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         existing_rows_count: row
             .get_key_str("existing_rows_count")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         deleted_rows_count: row
             .get_key_str("deleted_rows_count")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .unwrap_or_default(),
         partitions: summaries_from_value(row.get_key_str("partitions")),
-        first_row_id: row.get_key_str("first_row_id").and_then(Value::as_i64),
+        first_row_id: row.get_key_str("first_row_id").and_then(Scalar::as_i64),
     })
 }
 
 /// Render the per-partition-field summaries a manifest list row carries.
-fn summaries_to_value(summaries: &[FieldSummary]) -> Result<Value> {
+fn summaries_to_value(summaries: &[FieldSummary]) -> Result<Scalar> {
     if summaries.is_empty() {
-        return Ok(Value::Null);
+        return Ok(Scalar::Null);
     }
     let mut rows = Vec::with_capacity(summaries.len());
     for summary in summaries {
         let bound = |bytes: Option<&Vec<u8>>| {
-            bytes.map_or(Value::Null, |bytes| Value::from(bytes.as_slice()))
+            bytes.map_or(Scalar::Null, |bytes| Scalar::from(bytes.as_slice()))
         };
-        rows.push(Value::from_mapping([
+        rows.push(Scalar::from_mapping([
             (
-                Value::from("contains_null"),
-                Value::Bool(summary.contains_null),
+                Scalar::from("contains_null"),
+                Scalar::Bool(summary.contains_null),
             ),
             (
-                Value::from("contains_nan"),
-                summary.contains_nan.map_or(Value::Null, Value::Bool),
+                Scalar::from("contains_nan"),
+                summary.contains_nan.map_or(Scalar::Null, Scalar::Bool),
             ),
             (
-                Value::from("lower_bound"),
+                Scalar::from("lower_bound"),
                 bound(summary.lower_bound.as_ref()),
             ),
             (
-                Value::from("upper_bound"),
+                Scalar::from("upper_bound"),
                 bound(summary.upper_bound.as_ref()),
             ),
         ])?);
     }
-    Ok(Value::from_sequence(rows))
+    Ok(Scalar::from_sequence(rows))
 }
 
 /// Read the per-partition-field summaries back, in spec order.
-fn summaries_from_value(value: Option<&Value>) -> Vec<FieldSummary> {
+fn summaries_from_value(value: Option<&Scalar>) -> Vec<FieldSummary> {
     value
         .map(|value| {
             value
@@ -1149,16 +1165,16 @@ fn summaries_from_value(value: Option<&Value>) -> Vec<FieldSummary> {
                 .map(|row| FieldSummary {
                     contains_null: row
                         .get_key_str("contains_null")
-                        .and_then(Value::as_bool)
+                        .and_then(Scalar::as_bool)
                         .unwrap_or_default(),
-                    contains_nan: row.get_key_str("contains_nan").and_then(Value::as_bool),
+                    contains_nan: row.get_key_str("contains_nan").and_then(Scalar::as_bool),
                     lower_bound: row
                         .get_key_str("lower_bound")
-                        .and_then(Value::as_bytes)
+                        .and_then(Scalar::as_bytes)
                         .map(<[u8]>::to_vec),
                     upper_bound: row
                         .get_key_str("upper_bound")
-                        .and_then(Value::as_bytes)
+                        .and_then(Scalar::as_bytes)
                         .map(<[u8]>::to_vec),
                 })
                 .collect()
@@ -1323,7 +1339,7 @@ fn planning_plan(
 ///
 /// A schema whose shape is not the expected entry record is returned whole,
 /// so an unusual writer degrades to a full decode rather than an error.
-fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
+fn planning_schema(writer_json: &Scalar, with_stats: bool) -> Scalar {
     const ENTRY_KEEP: [&str; 4] = [
         "status",
         "snapshot_id",
@@ -1348,13 +1364,13 @@ fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
     let whole = || writer_json.clone();
     let Some(fields) = writer_json
         .get_key_str("fields")
-        .and_then(Value::as_sequence)
+        .and_then(Scalar::as_sequence)
     else {
         return whole();
     };
     let mut kept = Vec::new();
     for field in fields {
-        let Some(name) = field.get_key_str("name").and_then(Value::as_str) else {
+        let Some(name) = field.get_key_str("name").and_then(Scalar::as_str) else {
             return whole();
         };
         if name == "data_file" {
@@ -1379,7 +1395,7 @@ fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
             kept.push(field.clone());
         }
     }
-    let fields = Value::from_sequence(kept);
+    let fields = Scalar::from_sequence(kept);
     if writer_json.as_record().is_some() {
         writer_json.with_field("fields", fields)
     } else {
@@ -1389,7 +1405,7 @@ fn planning_schema(writer_json: &Value, with_stats: bool) -> Value {
 }
 
 /// Rebuild a record schema JSON keeping only the fields `keep` accepts.
-fn filter_record_fields(record: &Value, keep: &dyn Fn(&str) -> bool) -> Option<Value> {
+fn filter_record_fields(record: &Scalar, keep: &dyn Fn(&str) -> bool) -> Option<Scalar> {
     let fields = record.get_key_str("fields")?.as_sequence()?;
     let mut kept = Vec::new();
     for field in fields {
@@ -1397,7 +1413,7 @@ fn filter_record_fields(record: &Value, keep: &dyn Fn(&str) -> bool) -> Option<V
             kept.push(field.clone());
         }
     }
-    let fields = Value::from_sequence(kept);
+    let fields = Scalar::from_sequence(kept);
     if record.as_record().is_some() {
         record.with_field("fields", fields)
     } else {

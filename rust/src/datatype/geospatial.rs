@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::enums::EdgeAlgorithm;
+use crate::generic::EdgeAlgorithm;
 use crate::{DataType, Error, Result};
 
 /// The coordinate reference system both formats fill when none is given.
@@ -205,7 +205,7 @@ impl DataType {
     /// Creates the self-describing semi-structured Variant type.
     ///
     /// It takes no parameters - shredding is a physical layout, not part of
-    /// the logical type - and a variant *value* is a [`crate::Value`]: a
+    /// the logical type - and a variant *value* is a [`crate::Scalar`]: a
     /// self-describing tree, so the binary form is an encoding of the one
     /// value model, never a second one. The finite union of declared members
     /// is [`Self::dense_union`]; in the grammar the parenthesis

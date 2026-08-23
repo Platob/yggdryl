@@ -18,7 +18,7 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Value};
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
 pub const FIRST_PARTITION_ID: i32 = 1000;
@@ -213,22 +213,22 @@ impl PartitionField {
     ///
     /// Returns an error when a required key is missing or a transform is not
     /// one Iceberg names.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         let name = document
             .get_key_str("name")
-            .and_then(Value::as_str)
+            .and_then(Scalar::as_str)
             .ok_or_else(|| invalid(SmolStr::new_static("expected a partition field \"name\"")))?;
         let source_id = narrow(document.get_key_str("source-id"), "source-id", name)?;
         // v1 wrote no field-id, because a v1 spec numbers its fields in order.
         let field_id = document
             .get_key_str("field-id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .map(|id| i32::try_from(id).unwrap_or(FIRST_PARTITION_ID))
             .unwrap_or(FIRST_PARTITION_ID);
         let transform = Transform::from_str(
             document
                 .get_key_str("transform")
-                .and_then(Value::as_str)
+                .and_then(Scalar::as_str)
                 .ok_or_else(|| {
                     invalid(format_smolstr!(
                         "expected a partition field \"transform\" on {name:?}"
@@ -248,20 +248,20 @@ impl PartitionField {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn into_json(self) -> Result<Value> {
-        Value::from_mapping([
-            (Value::from("name"), Value::from(self.name.clone())),
+    pub fn into_json(self) -> Result<Scalar> {
+        Scalar::from_mapping([
+            (Scalar::from("name"), Scalar::from(self.name.clone())),
             (
-                Value::from("transform"),
-                Value::from(self.transform.to_string()),
+                Scalar::from("transform"),
+                Scalar::from(self.transform.to_string()),
             ),
             (
-                Value::from("source-id"),
-                Value::from(i64::from(self.source_id)),
+                Scalar::from("source-id"),
+                Scalar::from(i64::from(self.source_id)),
             ),
             (
-                Value::from("field-id"),
-                Value::from(i64::from(self.field_id)),
+                Scalar::from("field-id"),
+                Scalar::from(i64::from(self.field_id)),
             ),
         ])
     }
@@ -505,7 +505,7 @@ impl PartitionSpec {
     /// # Errors
     ///
     /// Returns an error when the tuple is not one value per partition field.
-    pub fn partition_path(&self, values: &[Value]) -> Result<String> {
+    pub fn partition_path(&self, values: &[Scalar]) -> Result<String> {
         if values.len() != self.fields.len() {
             return Err(invalid(format_smolstr!(
                 "expected {} partition values for spec {}, got {}",
@@ -532,7 +532,7 @@ impl PartitionSpec {
     ///
     /// Returns an error when the document is neither a spec object nor the
     /// bare field array a v1 table writes.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         // v1 wrote `partition-spec` as a bare array of fields with no id.
         if let Some(entries) = document.as_sequence() {
             let mut fields = Vec::with_capacity(entries.len());
@@ -548,12 +548,12 @@ impl PartitionSpec {
 
         let spec_id = document
             .get_key_str("spec-id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .unwrap_or_default();
         let entries = document
             .get_key_str("fields")
-            .and_then(Value::as_sequence)
+            .and_then(Scalar::as_sequence)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a \"fields\" array in partition spec {spec_id}"
@@ -575,14 +575,17 @@ impl PartitionSpec {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn into_json(self) -> Result<Value> {
+    pub fn into_json(self) -> Result<Scalar> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
             fields.push(field.clone().into_json()?);
         }
-        Value::from_mapping([
-            (Value::from("spec-id"), Value::from(i64::from(self.spec_id))),
-            (Value::from("fields"), Value::from_sequence(fields)),
+        Scalar::from_mapping([
+            (
+                Scalar::from("spec-id"),
+                Scalar::from(i64::from(self.spec_id)),
+            ),
+            (Scalar::from("fields"), Scalar::from_sequence(fields)),
         ])
     }
 
@@ -591,12 +594,12 @@ impl PartitionSpec {
     /// # Errors
     ///
     /// Returns an error only when a field mapping cannot be built.
-    pub fn into_v1_json(self) -> Result<Value> {
+    pub fn into_v1_json(self) -> Result<Scalar> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
             fields.push(field.clone().into_json()?);
         }
-        Ok(Value::from_sequence(fields))
+        Ok(Scalar::from_sequence(fields))
     }
 }
 
@@ -610,9 +613,9 @@ fn source_column(schema: &Field, source_id: i32) -> Result<&Field> {
 }
 
 /// Narrow one required integer key of a partition field.
-fn narrow(value: Option<&Value>, key: &str, name: &str) -> Result<i32> {
+fn narrow(value: Option<&Scalar>, key: &str, name: &str) -> Result<i32> {
     value
-        .and_then(Value::as_i64)
+        .and_then(Scalar::as_i64)
         .and_then(|id| i32::try_from(id).ok())
         .ok_or_else(|| {
             invalid(format_smolstr!(

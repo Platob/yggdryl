@@ -17,7 +17,7 @@ const {
 
 // A record crossing is far more work than a schema lookup, so this target
 // counts in thousands rather than tens of thousands by default. It also keeps
-// Parquet footer and projected-WKB Value crossings beside the record surface.
+// Parquet footer and projected-WKB Scalar crossings beside the record surface.
 // Smoke mode keeps fixtures and loops small enough for package verification.
 const smoke = process.env.YGGDRYL_BENCH_SMOKE === '1'
 const iterations = Number.parseInt(

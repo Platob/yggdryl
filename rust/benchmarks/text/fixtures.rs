@@ -1,33 +1,36 @@
 use std::str::FromStr;
 
-use yggdryl::{DataType, Field, I256, TimeUnit, Timezone, Value};
+use yggdryl::{DataType, Field, I256, Scalar, TimeUnit, Timezone};
 
-pub(crate) fn nested(depth: usize) -> Value {
-    (0..depth).fold(Value::Null, |value, _| Value::from_sequence([value]))
+pub(crate) fn nested(depth: usize) -> Scalar {
+    (0..depth).fold(Scalar::Null, |value, _| Scalar::from_sequence([value]))
 }
 
-pub(crate) fn representative() -> Value {
-    Value::from_record([
-        ("symbol", Value::from("MSFT")),
-        ("quantity", Value::from(120_i64)),
-        ("price", Value::from(413.75_f64)),
+pub(crate) fn representative() -> Scalar {
+    Scalar::from_record([
+        ("symbol", Scalar::from("MSFT")),
+        ("quantity", Scalar::from(120_i64)),
+        ("price", Scalar::from(413.75_f64)),
         (
             "tags",
-            Value::from_sequence([Value::from("closing"), Value::from("auction")]),
+            Scalar::from_sequence([Scalar::from("closing"), Scalar::from("auction")]),
         ),
     ])
     .unwrap()
 }
 
 /// Exact values projected through natural scalars and restored by one field.
-pub(crate) fn typed() -> (Value, Field) {
-    let value = Value::from_record([
-        ("amount", Value::d256(I256::from_str("1234500").unwrap(), 4)),
+pub(crate) fn typed() -> (Scalar, Field) {
+    let value = Scalar::from_record([
+        (
+            "amount",
+            Scalar::d256(I256::from_str("1234500").unwrap(), 4),
+        ),
         (
             "at",
-            Value::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap(),
+            Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap(),
         ),
-        ("payload", Value::from(vec![0, 1, 255])),
+        ("payload", Scalar::from(vec![0, 1, 255])),
     ])
     .unwrap();
     let field = Field::new(

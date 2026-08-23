@@ -1,7 +1,7 @@
-//! The `Value` conversion is the one structural model of a schema, and every
+//! The `Scalar` conversion is the one structural model of a schema, and every
 //! serialized form is expressed over it.
 
-use yggdryl::generic::Value;
+use yggdryl::generic::Scalar;
 use yggdryl::{DataType, Field, Metadata, TimeUnit};
 
 /// One representative field per shape the model can carry.
@@ -128,19 +128,20 @@ fn the_value_shape_matches_the_json_structure_exactly() {
 #[test]
 fn a_malformed_mapping_is_refused_by_path() {
     let missing =
-        Value::from_mapping([(Value::String("name".into()), Value::String("id".into()))]).unwrap();
+        Scalar::from_mapping([(Scalar::String("name".into()), Scalar::String("id".into()))])
+            .unwrap();
     let refused = Field::from_value(missing).expect_err("no datatype");
     assert!(refused.to_string().contains("data_type"), "{refused}");
 
-    let unknown = Value::from_mapping([(
-        Value::String("type".into()),
-        Value::String("quaternion".into()),
+    let unknown = Scalar::from_mapping([(
+        Scalar::String("type".into()),
+        Scalar::String("quaternion".into()),
     )])
     .unwrap();
     let refused = DataType::from_value(unknown).expect_err("no such datatype");
     assert!(refused.to_string().contains("quaternion"), "{refused}");
 
-    let not_a_mapping = Value::String("int64".into());
+    let not_a_mapping = Scalar::String("int64".into());
     let refused = DataType::from_value(not_a_mapping).expect_err("not a mapping");
     assert!(
         refused.to_string().contains("datatype mapping"),
@@ -154,10 +155,10 @@ fn metadata_entries_must_be_strings() {
     let mut value = field.into_value().as_mapping().unwrap().to_vec();
     value.pop();
     value.push((
-        Value::String("metadata".into()),
-        Value::from_mapping([(Value::String("count".into()), Value::I64(7))]).unwrap(),
+        Scalar::String("metadata".into()),
+        Scalar::from_mapping([(Scalar::String("count".into()), Scalar::I64(7))]).unwrap(),
     ));
-    let refused = Field::from_value(Value::from_mapping(value).unwrap())
+    let refused = Field::from_value(Scalar::from_mapping(value).unwrap())
         .expect_err("a non-string metadata value");
     assert!(refused.to_string().contains("count"), "{refused}");
 }
@@ -165,11 +166,11 @@ fn metadata_entries_must_be_strings() {
 #[test]
 fn the_trait_forms_sit_beside_the_inherent_ones() {
     let field = DataType::Int64.required_field("id");
-    let value: Value = (&field).into();
+    let value: Scalar = (&field).into();
     assert_eq!(Field::try_from(value).unwrap(), field);
 
     let data_type = DataType::Utf8;
-    let value: Value = (&data_type).into();
+    let value: Scalar = (&data_type).into();
     assert_eq!(DataType::try_from(value).unwrap(), data_type);
 
     // Metadata keeps its own entries type; this is only the schema route.
@@ -238,7 +239,7 @@ fn natural_text_objects_feed_record_aware_structural_readers() {
 
 #[test]
 fn the_three_formats_parse_back_to_equal_values() {
-    // Cross-format agreement is by construction - one `Value` mapping feeds
+    // Cross-format agreement is by construction - one `Scalar` mapping feeds
     // all three - and this is the test that pins it.
     for field in shapes() {
         let from_json = Field::from_json(&field.clone().into_json().unwrap()).unwrap();
@@ -331,14 +332,14 @@ fn formatting_changes_bytes_never_meaning() {
 fn indentation_reads_literally_in_every_format() {
     use yggdryl::text::Formatting;
 
-    let value = yggdryl::generic::Value::from_mapping([
+    let value = yggdryl::generic::Scalar::from_mapping([
         (
-            yggdryl::generic::Value::String("id".into()),
-            yggdryl::generic::Value::I64(1),
+            yggdryl::generic::Scalar::String("id".into()),
+            yggdryl::generic::Scalar::I64(1),
         ),
         (
-            yggdryl::generic::Value::String("tags".into()),
-            yggdryl::generic::Value::from_sequence([yggdryl::generic::Value::String("a".into())]),
+            yggdryl::generic::Scalar::String("tags".into()),
+            yggdryl::generic::Scalar::from_sequence([yggdryl::generic::Scalar::String("a".into())]),
         ),
     ])
     .unwrap();

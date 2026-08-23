@@ -3,7 +3,7 @@
 use std::io::{Cursor, Read};
 
 use crate::io::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
-use crate::text::{Format, Formatting, Limits, Loading, Value};
+use crate::text::{Format, Formatting, Limits, Loading, Scalar};
 use crate::{Codec, Error, Field, Level, MediaType, MimeType, Result};
 
 /// The structured format and content coding used by a handle.
@@ -87,18 +87,18 @@ fn unknown_format(media_type: &MediaType) -> Error {
 }
 
 /// Read one natural structured value from a Yggdryl handle.
-pub fn from_io<H: IOBase + ?Sized>(source: &H) -> Result<Value> {
+pub fn from_io<H: IOBase + ?Sized>(source: &H) -> Result<Scalar> {
     from_io_with_limits(source, Limits::default())
 }
 
 /// Read one value from a handle with explicit parser limits.
-pub fn from_io_with_limits<H: IOBase + ?Sized>(source: &H, limits: Limits) -> Result<Value> {
+pub fn from_io_with_limits<H: IOBase + ?Sized>(source: &H, limits: Limits) -> Result<Scalar> {
     let (decoded, plan) = decoded(source)?;
     crate::text::from_reader_with_limits(decoded, plan.format(), limits)
 }
 
 /// Read one handle value under `field`.
-pub fn from_io_with_field<H: IOBase + ?Sized>(source: &H, field: &Field) -> Result<Value> {
+pub fn from_io_with_field<H: IOBase + ?Sized>(source: &H, field: &Field) -> Result<Scalar> {
     from_io_with_field_and_limits(source, field, Limits::default())
 }
 
@@ -107,19 +107,19 @@ pub fn from_io_with_field_and_limits<H: IOBase + ?Sized>(
     source: &H,
     field: &Field,
     limits: Limits,
-) -> Result<Value> {
+) -> Result<Scalar> {
     let (decoded, plan) = decoded(source)?;
     crate::text::from_reader_with_field_and_limits(decoded, plan.format(), field, limits)
 }
 
 /// Read one value from a handle under placeholder loading options.
-pub fn from_io_with<H: IOBase + ?Sized>(source: &H, loading: &Loading) -> Result<Value> {
+pub fn from_io_with<H: IOBase + ?Sized>(source: &H, loading: &Loading) -> Result<Scalar> {
     let (decoded, plan) = decoded(source)?;
     crate::text::from_reader_with(decoded, plan.format(), loading)
 }
 
 /// Read every natural structured value from a handle.
-pub fn from_io_all<H: IOBase + ?Sized>(source: &H) -> Result<Vec<Value>> {
+pub fn from_io_all<H: IOBase + ?Sized>(source: &H) -> Result<Vec<Scalar>> {
     from_io_all_with_limits(source, Limits::default())
 }
 
@@ -127,19 +127,19 @@ pub fn from_io_all<H: IOBase + ?Sized>(source: &H) -> Result<Vec<Value>> {
 pub fn from_io_all_with_limits<H: IOBase + ?Sized>(
     source: &H,
     limits: Limits,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Scalar>> {
     let (decoded, plan) = decoded(source)?;
     crate::text::from_reader_all_with_limits(decoded, plan.format(), limits)
 }
 
 /// Replace a handle with one natural structured value.
-pub fn into_io<H: IOBase + ?Sized>(value: &Value, target: &mut H) -> Result<()> {
+pub fn into_io<H: IOBase + ?Sized>(value: &Scalar, target: &mut H) -> Result<()> {
     into_io_with_formatting(value, target, Formatting::default())
 }
 
 /// Replace a handle with one value at an explicit compression level.
 pub fn into_io_with_level<H: IOBase + ?Sized>(
-    value: &Value,
+    value: &Scalar,
     target: &mut H,
     level: Level,
 ) -> Result<()> {
@@ -148,7 +148,7 @@ pub fn into_io_with_level<H: IOBase + ?Sized>(
 
 /// Replace a handle with one value under explicit formatting.
 pub fn into_io_with_formatting<H: IOBase + ?Sized>(
-    value: &Value,
+    value: &Scalar,
     target: &mut H,
     formatting: Formatting,
 ) -> Result<()> {
@@ -165,13 +165,13 @@ pub fn into_io_with_formatting<H: IOBase + ?Sized>(
 }
 
 /// Replace a handle with encoded values.
-pub fn into_io_all<H: IOBase + ?Sized>(values: &[Value], target: &mut H) -> Result<()> {
+pub fn into_io_all<H: IOBase + ?Sized>(values: &[Scalar], target: &mut H) -> Result<()> {
     into_io_all_with_formatting(values, target, Formatting::default())
 }
 
 /// Replace a handle with encoded values under explicit formatting.
 pub fn into_io_all_with_formatting<H: IOBase + ?Sized>(
-    values: &[Value],
+    values: &[Scalar],
     target: &mut H,
     formatting: Formatting,
 ) -> Result<()> {
@@ -217,9 +217,9 @@ fn decoded_with_format<H: IOBase + ?Sized>(
     format: Option<Format>,
 ) -> Result<(Box<dyn Read + '_>, Plan)> {
     let mut encoded = source.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
-    let mut head = Vec::with_capacity(crate::enums::MAGIC_PROBE_LEN);
+    let mut head = Vec::with_capacity(crate::generic::MAGIC_PROBE_LEN);
     {
-        let mut probe = std::io::Read::take(&mut encoded, crate::enums::MAGIC_PROBE_LEN as u64);
+        let mut probe = std::io::Read::take(&mut encoded, crate::generic::MAGIC_PROBE_LEN as u64);
         probe.read_to_end(&mut head)?;
     }
     let plan = match format {
@@ -240,7 +240,7 @@ mod tests {
     use super::{Plan, from_io, from_io_all, into_io, into_io_all};
     use crate::io::{Buffer, IOBase};
     use crate::text::Format;
-    use crate::{Codec, Url, Value};
+    use crate::{Codec, Scalar, Url};
 
     #[test]
     fn plans_have_complete_value_traits() {
@@ -251,10 +251,10 @@ mod tests {
         assert_eq!(crate::stable_hash_of(&plan), crate::stable_hash_of(&plan));
     }
 
-    fn sample() -> Value {
-        Value::from_record([
-            ("quantity", Value::I64(100)),
-            ("symbol", Value::from("AAPL")),
+    fn sample() -> Scalar {
+        Scalar::from_record([
+            ("quantity", Scalar::I64(100)),
+            ("symbol", Scalar::from("AAPL")),
         ])
         .unwrap()
     }
@@ -312,9 +312,9 @@ mod tests {
                 alphabet[state as usize % alphabet.len()] as char
             })
             .collect::<String>();
-        let value = Value::from_record([
-            ("quantity", Value::I64(100)),
-            ("message", Value::from(message)),
+        let value = Scalar::from_record([
+            ("quantity", Scalar::I64(100)),
+            ("message", Scalar::from(message)),
         ])
         .unwrap();
         let cases = [

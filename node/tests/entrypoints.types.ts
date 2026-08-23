@@ -7,7 +7,7 @@ import {
   RecordOptions,
   type RecordSource,
   type StructRecord,
-  type WriteMode,
+  type IOMode,
 } from '..'
 
 const handle: IOBase = IOBase.fromBytes()
@@ -17,7 +17,7 @@ const reader: BatchReader = BatchReader.from(table)
 const options: RecordOptions = handle.recordOptions()
 options.field = Field.from('row: struct<id: int32> not null')
 const merging: RecordOptions = options.withMergeByNames(['id'])
-const overwriteMode: WriteMode = 'overwrite'
+const overIOMode: IOMode = 'overwrite'
 
 const read: BatchReader = handle.readArrowReader()
 const readWithOptions: BatchReader = handle.readArrowReader(options)
@@ -30,7 +30,7 @@ const appendReader: void = handle.appendArrowReader(BatchReader.from(table), opt
 const mergeReader: void = handle.mergeArrowReader(BatchReader.from(table), merging)
 const writeReader: void = handle.writeArrowReader(
   BatchReader.from(table),
-  overwriteMode,
+  overIOMode,
   options,
 )
 

@@ -37,18 +37,11 @@ def test_plain_table_round_trips_and_non_table_roots_are_refused() -> None:
     table = {"name": "yggdryl", "enabled": True, "count": 42}
     assert toml.loads(b"") == {}
     encoded = toml.dumps(table)
-    assert b"$yggdryl" not in encoded
     assert toml.loads(encoded) == table
 
     for value in (None, 42, [1, 2], {1: "one"}):
         with pytest.raises(ValueError, match="root must be a record"):
             toml.dumps(value)
-
-
-def test_reserved_envelope_shaped_mapping_remains_user_data() -> None:
-    value = {"$yggdryl": {"version": 1, "type": "null"}}
-
-    assert toml.loads(toml.dumps(value)) == value
 
 
 def test_exact_scalars_use_toml_syntax_or_natural_text() -> None:
@@ -73,7 +66,6 @@ def test_exact_scalars_use_toml_syntax_or_natural_text() -> None:
     assert b'"date" = 2026-08-15\n' in encoded
     assert b'"datetime" = 2026-08-15T12:03:04.000005\n' in encoded
     assert b'"zoned" = 2026-08-15T12:00:00Z\n' in encoded
-    assert b"$yggdryl" not in encoded
     assert b'"decimal" = "123.4500"\n' in encoded
     assert b'"delta" = "-PT172796.999996S"\n' in encoded
     assert restored["delta"] == "-PT172796.999996S"

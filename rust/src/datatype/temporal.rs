@@ -1,7 +1,7 @@
 //! Temporal units and validated time-of-day construction.
 
 use crate::Result;
-use crate::enums::TimeUnit;
+use crate::generic::TimeUnit;
 
 use super::DataType;
 use super::scalar::invalid;
