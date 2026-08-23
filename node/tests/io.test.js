@@ -257,6 +257,13 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   assert.equal(handle.rowSize, 4)
   assert.equal(handle.columnSize, 2)
 
+  // A publication through this handle invalidates and repopulates its cache.
+  handle.open()
+  handle.overwriteArrowTable(rows([10n, 11n], ['XNAS', 'XNYS']))
+  assert.equal(handle.rowSize, 2)
+  assert.equal(handle.columnSize, 2)
+  handle.close()
+
   // Open state keeps successful metadata answers stable across an external
   // replacement; close releases that cache and the next access computes
   // fresh. Windows cannot resize a file while another handle owns a mapped
@@ -264,24 +271,17 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   // tests there rather than pretending the OS permits it.
   if (process.platform !== 'win32') {
     handle.open()
-    assert.equal(handle.rowSize, 4)
+    assert.equal(handle.rowSize, 2)
     assert.equal(handle.columnSize, 2)
     const replacement = path.join(root, 'replacement.arrows')
     new IOBase(replacement).overwriteArrowTable(wider([9n]))
     fs.renameSync(replacement, path.join(root, 'dimensions.arrows'))
-    assert.equal(handle.rowSize, 4)
+    assert.equal(handle.rowSize, 2)
     assert.equal(handle.columnSize, 2)
     handle.close()
     assert.equal(handle.rowSize, 1)
     assert.equal(handle.columnSize, 3)
   }
-
-  // A publication through this handle invalidates and repopulates its cache.
-  handle.open()
-  handle.overwriteArrowTable(rows([10n, 11n], ['XNAS', 'XNYS']))
-  assert.equal(handle.rowSize, 2)
-  assert.equal(handle.columnSize, 2)
-  handle.close()
 
   // An empty typed value reports zero rows without losing its schema.
   const empty = new IOBase(path.join(root, 'empty.arrows'))
