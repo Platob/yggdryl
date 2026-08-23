@@ -168,6 +168,23 @@ mod mapped {
             .expect("a removable leaf");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn closing_a_read_only_mapping_does_not_restore_replaced_bytes() {
+        let path = path("read-only-close");
+        std::fs::write(&path, b"before").unwrap();
+
+        let mut reader = File::new(&path).unwrap();
+        reader.open().unwrap();
+        assert_eq!(reader.read_all_bytes().unwrap(), b"before");
+
+        std::fs::write(&path, b"after!").unwrap();
+        reader.close().unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"after!");
+
+        File::new(&path).unwrap().remove(false).unwrap();
+    }
+
     #[test]
     fn a_mapped_file_zero_fills_a_write_gap() {
         let path = path("gap");

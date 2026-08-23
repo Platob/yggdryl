@@ -586,7 +586,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
     group.sample_size(10);
     group.throughput(Throughput::Elements(STATEFUL_ROWS as u64));
 
-    for mode in IOMode::ALL {
+    for mode in IOMode::WRITE {
         let options = if mode == IOMode::Merge {
             &merging
         } else {
