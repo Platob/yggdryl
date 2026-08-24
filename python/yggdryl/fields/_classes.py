@@ -28,6 +28,8 @@ from typing import Any, Callable, Literal, Mapping, TypeVar, get_args, get_origi
 from .._native import DataType, Field, Field as NativeField
 from .nested import StructField
 
+_T = TypeVar("_T")
+
 _typing_extensions: types.ModuleType | None
 try:
     import typing_extensions as _typing_extensions_module
