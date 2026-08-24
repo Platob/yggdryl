@@ -617,7 +617,7 @@ impl PyIOBase {
 
     /// Decode inferred JSON, YAML, or TOML into natural Python or exact `Scalar`.
     #[pyo3(signature = (field = None, *, cls = None))]
-    fn read_value(
+    fn read_scalar(
         &self,
         py: Python<'_>,
         field: Option<&Bound<'_, PyAny>>,
@@ -629,7 +629,10 @@ impl PyIOBase {
             Some(_) => return Err(PyTypeError::new_err("cls must be Scalar or None")),
         };
         let field = field.map(core_field_from_value).transpose()?;
-        let value = self.inner.read_value(field.as_ref()).map_err(value_error)?;
+        let value = self
+            .inner
+            .read_scalar(field.as_ref())
+            .map_err(value_error)?;
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
 
@@ -645,9 +648,9 @@ impl PyIOBase {
     }
 
     /// Encode one Python value as inferred JSON, YAML, or TOML.
-    fn write_value(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn write_scalar(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner
-            .write_value(&from_py(value)?)
+            .write_scalar(&from_py(value)?)
             .map_err(value_error)
     }
 

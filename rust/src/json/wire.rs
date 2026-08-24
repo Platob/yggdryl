@@ -39,6 +39,7 @@ impl Serialize for JsonRef<'_> {
                 serializer.serialize_str(&crate::generic::decimal::decimal_text(*unscaled, *scale))
             }
             Scalar::String(value) => serializer.serialize_str(value),
+            Scalar::Enum(value) => serializer.serialize_str(value.as_str()),
             Scalar::Bytes(value) | Scalar::Geospatial(value) => {
                 serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(value))
             }

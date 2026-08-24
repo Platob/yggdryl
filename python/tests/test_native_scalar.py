@@ -100,6 +100,21 @@ def test_precise_factories_keep_width_scale_unit_and_zone() -> None:
         Scalar.duration64(1, "us", "UTC")
 
 
+def test_enum_scalar_preserves_identity_and_compact_ordinal() -> None:
+    value = Scalar.from_enum("io_mode", "append")
+
+    assert value.kind == "enum"
+    assert value.enum_kind == "io_mode"
+    assert value.enum_value == "append"
+    assert value.enum_ordinal == 1
+    assert value.as_py() == "append"
+    assert value.as_utf8() == "append"
+    assert hash(value) == hash(copy.copy(value))
+    assert pickle.loads(pickle.dumps(value)) == value
+    with pytest.raises(ValueError, match="unknown"):
+        Scalar.from_enum("io_mode", "missing")
+
+
 def test_value_is_hashable_and_has_typed_byte_accessors() -> None:
     assert Scalar.f32(1.0) == Scalar.f64(1.0)
     assert hash(Scalar.f32(1.0)) == hash(Scalar.f64(1.0))

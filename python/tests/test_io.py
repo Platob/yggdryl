@@ -820,24 +820,24 @@ class TestStructuredValues:
         handle = IOBase(path)
         expected = {"quantity": 2, "symbol": "AAPL"}
 
-        handle.write_value(expected)
+        handle.write_scalar(expected)
 
         assert stdlib_gzip.decompress(path.read_bytes()) == (
             b'{"quantity":2,"symbol":"AAPL"}'
         )
-        assert handle.read_value() == expected
+        assert handle.read_scalar() == expected
 
     def test_a_field_directs_the_native_parse(self, tmp_path: pathlib.Path) -> None:
         handle = IOBase(tmp_path / "trade.yaml.zst")
-        handle.write_value({"quantity": 2, "symbol": "AAPL"})
+        handle.write_scalar({"quantity": 2, "symbol": "AAPL"})
         field = (
             "trade: struct<quantity: int32 not null, "
             "symbol: utf8 not null> not null"
         )
 
-        assert handle.read_value(field) == {"quantity": 2, "symbol": "AAPL"}
+        assert handle.read_scalar(field) == {"quantity": 2, "symbol": "AAPL"}
 
         invalid = IOBase(tmp_path / "invalid.json")
         invalid.write_text('{"quantity":"many","symbol":"AAPL"}')
         with pytest.raises(ValueError, match="quantity"):
-            invalid.read_value(field)
+            invalid.read_scalar(field)

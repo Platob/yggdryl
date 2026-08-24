@@ -28,6 +28,7 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::str::FromStr;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
 use crate::{Error, MediaType, MimeType, Result, Url, gzip, zlib, zstd};
@@ -296,6 +297,19 @@ impl FromStr for Codec {
 impl fmt::Display for Codec {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for Codec {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Codec {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        let value = <&str>::deserialize(deserializer)?;
+        Self::from_str(value).map_err(serde::de::Error::custom)
     }
 }
 

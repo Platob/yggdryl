@@ -184,10 +184,8 @@ console.assert(trade.dataType.kind === 'struct')
 `intoField(value, name?)` is the one dynamic field converter. A class exposes
 its root through the actual static getter `intoStructField`; the loader validates
 both its property descriptor and its non-null native Struct `Field` result, then
-memoizes that result per class. Static methods and stored static Fields are
-rejected. There is no static `FIELD` property and no JavaScript-side schema
-model. Passing a different `name` returns a renamed clone and leaves the cached
-root untouched.
+memoizes that result per class. Passing a different `name` returns a renamed
+clone and leaves the cached root untouched.
 
 Apache Arrow JS conversion is an explicit copied IPC boundary. `Scalar` exposes
 `fromArrowScalar`, `fromArrowArray`, `fromArrowRecordBatch`, and

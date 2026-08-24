@@ -77,11 +77,7 @@ const source: BatchSource = fromTable
 const readerField: Field = fromTable.field
 const consumed: boolean = fromTable.consumed
 const ipc: Buffer = fromTable.intoIpc()
-// @ts-expect-error project conversions use into*, with no legacy alias
-fromTable.toIpc()
 const asTable: ArrowTable = fromBatch.intoTable()
-// @ts-expect-error consuming conversions use into*, with no legacy alias
-fromBatch.toTable()
 const batches: ArrowRecordBatch[] = [...fromBatches]
 
 const handle = IOBase.fromBytes()

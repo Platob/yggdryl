@@ -133,7 +133,7 @@ class Order:
     price: Decimal
 
 order = Order(42, Decimal("12.50"))
-payload = toml.dumps(order)  # UTF-8 bytes with a collision-safe envelope
+payload = toml.dumps(order)  # ordinary UTF-8 TOML bytes
 
 assert Order.field().name == "Order"
 assert toml.loads(payload, cls=Order) == order
@@ -183,10 +183,8 @@ builds a normal dataclass whose cached static `field()` result is that
 native shape; it does not inject row conversion, codec, or Arrow methods into
 the class.
 
-The field-class API is intentionally breaking: `FIELD`, `field_of`,
-`Field.from_dataclass`, `into_field`, and `into_struct_field` are removed with
-no aliases. Use the cached `Class.field()` staticmethod or the general
-`field(value)` conversion function. `Field.into_dataclass` is unchanged.
+Use cached `Class.field()` for decorated dataclasses and `field(value)` for the
+general conversion funnel. See the project migration notes for renamed APIs.
 
 `DataType.cast_arrow_array` and `Field.cast_arrow_array` use the native Arrow
 kernel plan; their `cast_arrow_batch` forms reconcile Struct columns by

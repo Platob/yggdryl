@@ -399,8 +399,9 @@ assert len(schema.without_partition_fields().data_type) == 1
 
 ## Field classes
 
-The `@scalar` decorator compiles class annotations into one native Struct
-`Field` while leaving the result a genuine standard-library dataclass.
+The `@scalar` decorator lives beside the Python `Scalar` boundary and compiles
+class annotations into one native Struct `Field` while leaving a standard
+dataclass.
 
 ```python
 import dataclasses
@@ -430,10 +431,8 @@ methods are injected into the class. An undecorated subclass reuses the
 nearest decorated base's root; decorate the subclass to make it a distinct
 schema owner.
 
-This is an intentionally breaking rename: `FIELD`, `field_of`,
-`Field.from_dataclass`, `into_field`, and `into_struct_field` are removed with
-no aliases. Use `Class.field()` for a decorated class and `field(value)` for
-the general conversion funnel. `Field.into_dataclass` is unchanged.
+See [migration notes](../migration.md#field-classes-and-declared-record-shape)
+for removed field-class names.
 
 The [core field guide](../field.md#converting-to-one-native-field) owns the
 canonical cross-runtime signatures and error contract. Python's global
@@ -729,23 +728,11 @@ handle.overwrite_records([], options=empty)
 ```
 
 `read_records()` lowers only the current Arrow batch. With no class it yields plain mappings; with
-a stdlib or `@scalar` dataclass type it constructs one instance per row. It never revives a separate
-`Record` or `RecordSchema` model.
+a stdlib or `@scalar` dataclass type it constructs one instance per row.
 
 ### Record API migration
 
-The old catch-all names are removed rather than retained as aliases. Choose the replacement from
-the value Python actually holds and the write intent:
-
-| Removed public name | Replacement |
-| --- | --- |
-| `read_arrow_batch_reader` | `read_arrow_reader` |
-| `read_arrow` | `read_arrow_reader` |
-| `write_arrow_batch_reader` | `overwrite_arrow_reader` |
-| `append_arrow_batch_reader` | `append_arrow_reader` |
-| `write_arrow` | `overwrite_arrow_reader`, `overwrite_arrow_table`, `overwrite_arrow_record_batch`, or `overwrite_records` |
-| `append_arrow` | the matching `append_*` representation method |
-| mode-less `write_records(records)` | `overwrite_records(records)` or `write_records(records, mode)` |
+The complete rename table lives in [migration notes](../migration.md#generic-write-mode).
 | mode-less `write_pandas` / `write_pandas_frame` | the matching explicit-intent method or the same name with required `mode` |
 | mode-less `write_polars` / `write_polars_frame` | the matching explicit-intent method or the same name with required `mode` |
 | `options.schema` | `options.field` |

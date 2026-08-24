@@ -43,19 +43,9 @@ is cached once and returned by the `Class.field()` staticmethod. The
 decorator does not add conversion, serialization, or Arrow methods to the
 dataclass.
 
-This is a breaking API: `FIELD`, `field_of`, `Field.from_dataclass`,
-`into_field`, and `into_struct_field` are removed with no aliases. Use
-`Class.field()` for a decorated class's cached Struct field and `field(value)`
-for general conversion.
-`Field.into_dataclass` is unchanged.
-
-| Removed | Replacement |
-| --- | --- |
-| `Class.FIELD` or `instance.FIELD` | `Class.field()` |
-| `Class.into_struct_field()` | `Class.field()` |
-| `into_field(value, name)` | `field(value, name)` |
-| `field_of(value, name)` | `field(value, name)` |
-| `Field.from_dataclass(value, name)` | `field(value, name)` |
+Use `Class.field()` for the cached Struct field and `field(value)` for general
+conversion. Removed names are listed once in the
+[migration notes](../docs/migration.md#field-classes-and-declared-record-shape).
 
 An undecorated subclass inherits its nearest decorated base's cached root.
 Apply `@scalar` to the subclass when its annotations should declare a distinct

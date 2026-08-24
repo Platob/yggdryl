@@ -554,7 +554,7 @@ impl JsIOBase {
     ) -> Result<Either<JsScalar, serde_json::Value>> {
         let value = self
             .inner
-            .read_value(field.as_ref().map(|field| &field.inner))
+            .read_scalar(field.as_ref().map(|field| &field.inner))
             .map_err(napi_error)?;
         decoded_value_for_field(
             value,
@@ -583,7 +583,7 @@ impl JsIOBase {
     /// Encode one native structured value through the inferred text codec.
     #[napi(js_name = "_writeScalarNative", skip_typescript)]
     pub fn write_scalar_native(&mut self, value: &JsScalar) -> Result<()> {
-        self.inner.write_value(&value.inner).map_err(napi_error)
+        self.inner.write_scalar(&value.inner).map_err(napi_error)
     }
 
     /// Read `length` bytes from `offset`, which a path cannot do.

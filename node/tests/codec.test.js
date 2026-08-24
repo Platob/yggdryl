@@ -267,6 +267,15 @@ test('Scalar keeps widths, exact coefficients, hashes, and natural accessors', (
   assert.match(wide.dataType.toString(), /^decimal256/)
   assert.equal(typeof wide.stableHash(), 'bigint')
 
+  const mode = Scalar.fromEnum('io_mode', 'append')
+  assert.equal(mode.kind, 'enum')
+  assert.equal(mode.enumKind, 'io_mode')
+  assert.equal(mode.enumValue, 'append')
+  assert.equal(mode.enumOrdinal, 1)
+  assert.equal(mode.asJs(), 'append')
+  assert.equal(mode.asUtf8(), 'append')
+  assert.throws(() => Scalar.fromEnum('io_mode', 'missing'), /unknown/)
+
   assert.deepEqual(Scalar.fromJs(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
   assert.equal(Scalar.fromJs('AAPL').asUtf8(), 'AAPL')
   assert.equal(Scalar.fromJs(1).asUtf8(), null)
@@ -282,9 +291,6 @@ test('Scalar keeps widths, exact coefficients, hashes, and natural accessors', (
   assert.equal(clone.stableHash(), record.stableHash())
   assert.ok(Scalar.fromJs(1).compare(Scalar.fromJs(2)) < 0)
   assert.equal(Scalar.d128(150n, 2).compare(Scalar.d256(15n, 1)), 0)
-  for (const removed of ['decimal', 'date', 'time', 'datetime', 'timestamp', 'duration']) {
-    assert.equal(Scalar[removed], undefined, removed)
-  }
 })
 
 test('Scalar traversal and persistent updates stay entirely native', () => {

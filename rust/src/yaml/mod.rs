@@ -640,6 +640,7 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::F32(_)
             | Scalar::F64(_)
             | Scalar::String(_)
+            | Scalar::Enum(_)
     )
 }
 
@@ -683,6 +684,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             &crate::generic::decimal::decimal_text(*unscaled, *scale),
         )?,
         Scalar::String(value) => write_scalar_string(writer, value)?,
+        Scalar::Enum(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Bytes(value) | Scalar::Geospatial(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.
             writer.write_all(b"!!binary ")?;

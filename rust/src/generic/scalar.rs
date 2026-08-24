@@ -42,7 +42,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
-use crate::{Error, I256, Result, TimeUnit, Timezone};
+use crate::{EnumScalar, Error, I256, Result, TimeUnit, Timezone};
 
 use super::decimal;
 use super::temporal::temporal_key;
@@ -567,6 +567,8 @@ pub enum Scalar {
     D256(I256, i8),
     /// A Unicode string.
     String(SmolStr),
+    /// One identity-preserving member of a shared static enum.
+    Enum(EnumScalar),
     /// Arbitrary bytes.
     Bytes(Arc<[u8]>),
     /// A geometry or geography value, as Well-Known Binary.
@@ -673,6 +675,7 @@ impl Serialize for Scalar {
             Self::D128(unscaled, scale) => tagged(serializer, "d128", &Pair(unscaled, scale)),
             Self::D256(unscaled, scale) => tagged(serializer, "d256", &Pair(unscaled, scale)),
             Self::String(value) => tagged(serializer, "string", value),
+            Self::Enum(value) => tagged(serializer, "enum", value),
             Self::Bytes(value) => tagged(serializer, "bytes", value),
             Self::Geospatial(value) => tagged(serializer, "geospatial", value),
             // A temporal is its classic ISO spelling wherever it has one; a
@@ -804,6 +807,7 @@ impl<'de> Deserialize<'de> for Scalar {
             D128(i128, i8),
             D256(I256, i8),
             String(SmolStr),
+            Enum(EnumScalar),
             Bytes(Arc<[u8]>),
             Geospatial(Arc<[u8]>),
             Date32(Temporal32),
@@ -838,6 +842,7 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::D128(unscaled, scale) => Ok(Self::D128(unscaled, scale)),
             StructuralValue::D256(unscaled, scale) => Ok(Self::D256(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::String(value)),
+            StructuralValue::Enum(value) => Ok(Self::Enum(value)),
             StructuralValue::Bytes(value) => Ok(Self::from(value)),
             StructuralValue::Geospatial(value) => Ok(Self::Geospatial(value)),
             StructuralValue::Date32(Temporal32::Triple(count, unit, zone)) => {
@@ -1002,6 +1007,7 @@ impl Ord for Scalar {
                 unreachable!("both decimal widths returned above")
             }
             Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
+            Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
             Self::Date32(..)
@@ -1058,6 +1064,7 @@ impl Hash for Scalar {
             }
             Self::D128(..) | Self::D256(..) => unreachable!("decimal values returned above"),
             Self::String(value) => value.hash(state),
+            Self::Enum(value) => value.hash(state),
             Self::Bytes(value) | Self::Geospatial(value) => value.hash(state),
             Self::Date32(..)
             | Self::Date64(..)
@@ -1186,6 +1193,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Mapping(_) => 12,
         Scalar::Record(_) => 13,
         Scalar::Geospatial(_) => 14,
+        Scalar::Enum(_) => 15,
     }
 }
 
@@ -1215,6 +1223,7 @@ impl Scalar {
             Self::D128(..) => "d128",
             Self::D256(..) => "d256",
             Self::String(_) => "string",
+            Self::Enum(_) => "enum",
             Self::Bytes(_) => "bytes",
             Self::Geospatial(_) => "geospatial",
             Self::Date32(..) => "date32",
@@ -1387,6 +1396,15 @@ impl Scalar {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Self::String(value) => Some(value.as_str()),
+            Self::Enum(value) => Some(value.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Return the retained generic enum member.
+    pub const fn as_enum(&self) -> Option<&EnumScalar> {
+        match self {
+            Self::Enum(value) => Some(value),
             _ => None,
         }
     }

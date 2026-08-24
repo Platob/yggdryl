@@ -165,6 +165,7 @@ impl Scalar {
             }
             Self::D256(unscaled, scale) => decimal_data_type(*unscaled, *scale, DecimalWidth::D256),
             Self::String(_) => Ok(DataType::Utf8),
+            Self::Enum(_) => Ok(DataType::Utf8),
             // The datatype model has no geospatial family yet, so a geometry
             // names what it stores: the WKB bytes.
             Self::Bytes(_) | Self::Geospatial(_) => Ok(DataType::Binary),

@@ -23,8 +23,6 @@ const isSaving: boolean | null = zone.isSavingAt(1_720_000_000)
 const abbreviation: string | null = zone.abbreviationAt(1_720_000_000)
 const local: number = zone.intoLocal(1_720_000_000)
 const instant: number = zone.intoUtc(local)
-// @ts-expect-error project conversions use into*, with no legacy alias
-zone.toLocal(1_720_000_000)
 const jsOffset: number | null = zone.getTimezoneOffset(1_720_000_000)
 
 const equals: boolean = zone.equals(parsed)

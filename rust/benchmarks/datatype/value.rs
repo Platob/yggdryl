@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{Float16, Float32, Float64, I256, Scalar, TimeUnit, TypedScalar};
+use yggdryl::{EnumScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, TypedScalar};
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let record = Scalar::from_record([
@@ -38,6 +38,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);
+    let enum_member = EnumScalar::IOMode(IOMode::Append);
 
     let mut group = criterion.benchmark_group("value");
     group.bench_function("stable_hash_record", |bencher| {
@@ -57,6 +58,18 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("stable_hash_float64", |bencher| {
         bencher.iter(|| black_box(&float64).stable_hash());
+    });
+    group.bench_function("enum_from_parts", |bencher| {
+        bencher.iter(|| EnumScalar::from_parts(black_box("io_mode"), black_box("append")).unwrap());
+    });
+    group.bench_function("enum_kind", |bencher| {
+        bencher.iter(|| black_box(enum_member).kind());
+    });
+    group.bench_function("enum_value", |bencher| {
+        bencher.iter(|| black_box(enum_member).as_str());
+    });
+    group.bench_function("enum_ordinal", |bencher| {
+        bencher.iter(|| black_box(enum_member).ordinal());
     });
     group.bench_function("infer_record_datatype", |bencher| {
         bencher.iter(|| black_box(&record).data_type().unwrap());

@@ -212,11 +212,11 @@ assert avro_value == 1
 assert avro_rows == [1]
 
 value_handle = IOBase("value.json.gz")
-value_handle.write_value({"id": 1})
-loaded_value: Any = value_handle.read_value()
-typed_loaded_value: Any = value_handle.read_value("row: struct<id: int64 not null> not null")
-native_loaded_value: Scalar = value_handle.read_value(cls=Scalar)
-native_typed_loaded_value: Scalar = value_handle.read_value(
+value_handle.write_scalar({"id": 1})
+loaded_value: Any = value_handle.read_scalar()
+typed_loaded_value: Any = value_handle.read_scalar("row: struct<id: int64 not null> not null")
+native_loaded_value: Scalar = value_handle.read_scalar(cls=Scalar)
+native_typed_loaded_value: Scalar = value_handle.read_scalar(
     "row: struct<id: int64 not null> not null",
     cls=Scalar,
 )
@@ -226,6 +226,7 @@ typed_struct_data_type_value: object | Mapping[str, object] = (
 )
 native_instant = Scalar.datetime64(0, "us", "UTC")
 native_decimal = Scalar.d256("1234567890123456789012345678901234567890", 2)
+native_enum = Scalar.from_enum("io_mode", "append")
 native_scalar_field: Field = Scalar.from_py(1).into_field()
 native_array_field: Field = Scalar.from_py([1]).into_array_field()
 native_struct_field: Field = Scalar.from_py([{"id": 1}]).into_struct_field()
@@ -234,6 +235,9 @@ temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone
 decimal_coefficient: int | None = native_decimal.unscaled
 decimal_scale: int | None = native_decimal.scale
+enum_kind: str | None = native_enum.enum_kind
+enum_value: str | None = native_enum.enum_value
+enum_ordinal: int | None = native_enum.enum_ordinal
 dense_union_data_type: DataType = DataType.variant(
     [
         fields.int64("integer", nullable=False),

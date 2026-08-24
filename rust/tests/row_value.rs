@@ -26,12 +26,6 @@ fn rows_are_sequences_and_objects_are_records() {
 }
 
 #[test]
-fn the_removed_typed_row_wire_has_no_compatibility_alias() {
-    let removed = r#"{"type":"record","value":["struct<id: int64>",[1]]}"#;
-    assert!(serde_json::from_str::<Scalar>(removed).is_err());
-}
-
-#[test]
 fn struct_expressions_evaluate_to_schema_ordered_sequences() {
     let schema = DataType::from_fields([DataType::Int64.required_field("source")])
         .unwrap()

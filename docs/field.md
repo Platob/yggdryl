@@ -698,8 +698,7 @@ A scalar-decorated or otherwise structured class exposes its root separately. Py
 zero-argument cached staticmethod `Class.field() -> StructField`; JavaScript requires the actual
 static getter `Class.intoStructField`. It must answer a non-null Struct field. Python's `@scalar`
 decorator installs the owner-capturing accessor; JavaScript's global `intoField` validates the
-getter descriptor and memoizes its result, rejecting static methods and stored static Fields, so the
-class never needs a static `FIELD` value. Rust stays precise rather than dynamically inferring: `TypedField<K>::into_field(self)`
+getter descriptor and memoizes its result. Rust stays precise rather than dynamically inferring: `TypedField<K>::into_field(self)`
 returns the generic field, and `StructField::into_struct_field(self)` is the return-typed Struct
 spelling. None of these accessors introduces a second schema object.
 

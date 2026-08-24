@@ -31,8 +31,6 @@ uri.setMediaType(MediaType.fromParts('text/csv', ['application/gzip']))
 
 const url = Url.fromUri(uri)
 const inferredUrl: Url = uri.intoUrl()
-// @ts-expect-error project conversions use into*, with no legacy alias
-uri.toUrl()
 const urlClone: Url = Url.from(url)
 const fileUrl: Url = Url.fromPath('C:\\data\\file.parquet')
 const fileUrlPath: string = fileUrl.intoPath()

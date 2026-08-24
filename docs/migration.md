@@ -81,6 +81,7 @@ variants and factories have no aliases:
 | Removed | Replacement |
 | --- | --- |
 | Rust `generic::Value` / `TypedValue`; Python and JavaScript `Value` | `generic::Scalar` / `TypedScalar`; Python and JavaScript `Scalar` |
+| Rust/Python `IOBase::read_value` / `write_value` | `read_scalar` / `write_scalar`; JavaScript already uses `readScalar` / `writeScalar` |
 | `Decimal` / `decimal` | `D128` / `d128`; use `D256` / `d256` for a 256-bit coefficient |
 | one generic float value | `F16`, `F32`, or `F64` |
 | `Date` | `Date32` or `Date64` |
@@ -94,6 +95,11 @@ hashable and expose `as_bytes`, `as_utf8`, `as_json_bytes`, and
 `as_json_utf8` (camelCase in JavaScript). Python and JavaScript expose exact
 temporal components as `count` / `unit` / `zone` and decimal components as
 `unscaled` / `scale`; unrelated kinds return `None` / `null`.
+
+Static generic enum members now retain their vocabulary in `Scalar::Enum`.
+Rust converts enums directly; Python uses `Scalar.from_enum(kind, value)` and
+JavaScript uses `Scalar.fromEnum(kind, value)`. Their natural host/text
+projection is the canonical member spelling.
 
 Container values now expose native persistent traversal in both extensions:
 length/emptiness, iteration, indexed or keyed lookup, dotted paths, membership,
@@ -126,7 +132,7 @@ UTF-8 text explicitly, or write the same result directly to a destination.
 
 Field-directed JavaScript Struct loads now return named objects rather than
 positional arrays, matching Python while Rust retains its canonical ordered
-`Scalar::Sequence`. New `IOBase::read_value` / `write_value` methods expose the
+`Scalar::Sequence`. `IOBase::read_scalar` / `write_scalar` expose the
 same Scalar path directly on handles (`readScalar` / `writeScalar` in JavaScript),
 including inferred gzip, zlib, and zstd content coding.
 

@@ -1066,12 +1066,12 @@ pub trait IOBase: Send + IOMedia {
     /// let media = Url::from_str("file:///trade.json.gz")?.media_type();
     /// let mut handle = Buffer::new().with_media_type(media);
     /// let value = Scalar::from_record([("quantity", Scalar::I64(2))])?;
-    /// handle.write_value(&value)?;
+    /// handle.write_scalar(&value)?;
     ///
     /// let field = Field::from_str("trade: struct<quantity: int64 not null> not null")?;
-    /// assert_eq!(handle.read_value(None)?, value);
+    /// assert_eq!(handle.read_scalar(None)?, value);
     /// assert_eq!(
-    ///     handle.read_value(Some(&field))?,
+    ///     handle.read_scalar(Some(&field))?,
     ///     Scalar::from_sequence([Scalar::I64(2)])
     /// );
     /// # Ok(())
@@ -1081,7 +1081,7 @@ pub trait IOBase: Send + IOMedia {
     /// # Errors
     ///
     /// Returns a read, decompression, format, parse, or field-cast failure.
-    fn read_value(&self, field: Option<&crate::Field>) -> Result<crate::Scalar> {
+    fn read_scalar(&self, field: Option<&crate::Field>) -> Result<crate::Scalar> {
         match field {
             Some(field) => crate::text::from_io_with_field(self, field),
             None => crate::text::from_io(self),
@@ -1095,7 +1095,7 @@ pub trait IOBase: Send + IOMedia {
     /// # Errors
     ///
     /// Returns a format, representation, compression, or write failure.
-    fn write_value(&mut self, value: &crate::Scalar) -> Result<()> {
+    fn write_scalar(&mut self, value: &crate::Scalar) -> Result<()> {
         crate::text::into_io(value, self)
     }
 

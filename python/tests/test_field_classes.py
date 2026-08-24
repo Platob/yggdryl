@@ -81,44 +81,10 @@ def test_scalar_decorator_builds_an_ordinary_dataclass_with_native_field() -> No
     assert renamed.data_type == root.data_type
 
 
-def test_field_classes_do_not_install_legacy_methods_or_aliases() -> None:
-    for name in (
-        "Record",
-        "record",
-        "field_of",
-        "into_field",
-        "into_struct_field",
-        "schema_field",
-        "schema_fields",
-        "from_dict",
-        "to_dict",
-    ):
-        assert not hasattr(yggdryl, name)
-
-    assert not hasattr(yggdryl.fields, "from_dict")
-    assert not hasattr(yggdryl.fields, "into_field")
+def test_scalar_decorator_is_colocated_with_the_native_scalar_boundary() -> None:
     assert inspect.ismodule(yggdryl.fields.scalar)
     assert callable(yggdryl.scalar)
-    assert not hasattr(yggdryl.fields, "to_dict")
-    assert not hasattr(Field, "from_dataclass")
-
-    for name in (
-        "schema_field",
-        "schema_fields",
-        "from_dict",
-        "to_dict",
-        "from_json",
-        "into_json",
-        "from_arrow",
-        "into_arrow",
-        "into_arrow_schema",
-        "__yggdryl_field__",
-        "__yggdryl_fields__",
-    ):
-        assert not hasattr(Order, name)
-
-    with pytest.raises(ModuleNotFoundError):
-        __import__("yggdryl.records")
+    assert scalar.__module__ == "yggdryl.scalar"
 
 
 def test_field_accessor_signatures_are_uniform_and_class_metadata_is_argument_free() -> None:

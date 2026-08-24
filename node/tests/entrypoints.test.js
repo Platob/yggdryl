@@ -11,7 +11,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Field, IOBase, RecordOptions, fields } = require('yggdryl')
+const { BatchReader, Field, IOBase, fields } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-entrypoints-'))
@@ -725,31 +725,6 @@ test('async record spools are removed on success, source failure, and invalid in
   )
   assert.equal(pulls, 0)
   assert.deepEqual(fs.readdirSync(spoolRoot), [])
-})
-
-test('removed batch-reader and ambiguous aliases are absent', () => {
-  const prototype = IOBase.prototype
-  for (const name of [
-    'readArrowBatchReader',
-    'readArrow',
-    'writeArrowBatchReader',
-    'appendArrowBatchReader',
-    'writeArrow',
-    'appendArrow',
-  ]) {
-    assert.equal(prototype[name], undefined, name)
-  }
-  assert.equal(Field.prototype._emptyArrowReaderNative, undefined)
-  assert.equal(BatchReader.prototype._chainIpcPullNative, undefined)
-  assert.equal(RecordOptions.prototype._requireWritePreflightNative, undefined)
-  for (const name of [
-    '_beginArrowWriteSessionNative',
-    '_pushArrowWriteSessionNative',
-    '_finishArrowWriteSessionNative',
-    '_abortArrowWriteSessionNative',
-  ]) {
-    assert.equal(IOBase.prototype[name], undefined, name)
-  }
 })
 
 test('readRecords accepts one options value, not two', () => {

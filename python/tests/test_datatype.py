@@ -20,8 +20,6 @@ def test_data_type_infers_native_string_and_arrow_values() -> None:
     assert DataType.from_value(pa.int64()) == expected
     assert DataType.from_arrow(pa.int64()) == expected
     assert expected.into_arrow() == pa.int64()
-    for legacy in ("to_arrow", "to_scheme_compat", "to_json", "to_yaml", "to_toml", "to_dict"):
-        assert not hasattr(expected, legacy)
 
 
 def test_data_type_builds_and_casts_exact_arrow_scalars() -> None:

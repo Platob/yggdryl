@@ -504,7 +504,7 @@ carries the media type across. It is `copy_into` in Python and `copyInto` in Jav
 
 ## Structured values
 
-`read_value` and `write_value` use the handle's media type to select JSON,
+`read_scalar` and `write_scalar` use the handle's media type to select JSON,
 YAML, or TOML and any outer gzip, zlib, or zstd coding. Reads feed the parser
 from `pstream_bytes`, so decoded pages are not retained. An optional `Field`
 directs native parsing and casting; omitting it infers the natural value.
@@ -525,12 +525,12 @@ core value instead.
         ("quantity", Scalar::I64(2)),
         ("symbol", Scalar::from("AAPL")),
     ])?;
-    handle.write_value(&value)?;
+    handle.write_scalar(&value)?;
 
     let field = Field::from_str(
         "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null",
     )?;
-    assert_eq!(handle.read_value(Some(&field))?[0], Scalar::I64(2));
+    assert_eq!(handle.read_scalar(Some(&field))?[0], Scalar::I64(2));
     ```
 
 === "Python"
@@ -543,10 +543,10 @@ core value instead.
 
     path = pathlib.Path(tempfile.mkdtemp()) / "trade.json.gz"
     handle = IOBase(path)
-    handle.write_value({"quantity": 2, "symbol": "AAPL"})
+    handle.write_scalar({"quantity": 2, "symbol": "AAPL"})
     field = "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null"
-    assert handle.read_value(field) == {"quantity": 2, "symbol": "AAPL"}
-    value = handle.read_value(field, cls=Scalar)
+    assert handle.read_scalar(field) == {"quantity": 2, "symbol": "AAPL"}
+    value = handle.read_scalar(field, cls=Scalar)
     assert value.kind == "sequence"
     ```
 
@@ -576,7 +576,7 @@ methods on Windows 11 x86_64, an AMD Ryzen 5 150 (6 cores/12 threads), and
 rustc 1.96.1 on 2026-08-23. The table uses Criterion's reported point
 estimate; each compressed case includes coding and parsing or rendering.
 
-| representation | `read_value` | read throughput | `write_value` | write throughput |
+| representation | `read_scalar` | read throughput | `write_scalar` | write throughput |
 | --- | ---: | ---: | ---: | ---: |
 | JSON | 71.445 ms | 11.880 MiB/s | 19.137 ms | 44.352 MiB/s |
 | JSON + gzip | 81.427 ms | 10.424 MiB/s | 394.83 ms | 2.150 MiB/s |

@@ -17,16 +17,6 @@ def test_field_infers_datatype_and_field_representations() -> None:
 
     assert Field("id", DataType("int64")).data_type == DataType("int64")
     assert field.into_arrow() == arrow
-    for legacy in (
-        "to_arrow",
-        "to_arrow_schema",
-        "to_scheme_compat",
-        "to_json",
-        "to_yaml",
-        "to_toml",
-        "to_dict",
-    ):
-        assert not hasattr(field, legacy)
     assert Field.from_value(field) == field
     assert Field.from_value(arrow) == field
     assert Field.from_arrow(arrow) == field

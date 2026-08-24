@@ -1,6 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use yggdryl::{I256, Scalar, TimeUnit, Timezone};
+use yggdryl::{I256, IOMode, Scalar, TimeUnit, Timezone};
 
 /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.
 ///
@@ -38,6 +38,7 @@ fn one_of_every_kind() -> Vec<Scalar> {
         Scalar::from_mapping([(Scalar::from("k"), Scalar::Null)]).unwrap(),
         Scalar::from_record([("k", Scalar::Null)]).unwrap(),
         Scalar::Geospatial([1_u8, 1, 0, 0, 0].as_slice().into()),
+        Scalar::from(IOMode::Append),
     ]
 }
 
@@ -161,6 +162,7 @@ fn every_accessor_tolerates_every_kind() {
         let _ = value.as_sequence();
         let _ = value.as_mapping();
         let _ = value.as_record();
+        let _ = value.as_enum();
         let _ = value.record_iter().count();
         let _ = value.as_json_bytes();
         let _ = value.as_json_utf8();

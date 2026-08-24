@@ -34,8 +34,6 @@ const parameters: Array<string> = filter.parameters
 const conjuncts: Array<Expression> = filter.conjuncts()
 const depth: number = filter.depth
 const document: string = filter.intoJson()
-// @ts-expect-error project conversions use into*, with no legacy alias
-filter.toJson()
 const text: string = filter.toString()
 const same: boolean = filter.equals("ccy = 'EUR' and price > 100")
 const expressionClone: Expression = filter.clone()

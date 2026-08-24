@@ -111,8 +111,7 @@ same core `joinpath` implementation as Rust's and Python's `/` idiom.
 JavaScript follows the [canonical field-conversion contract](../field.md#converting-to-one-native-field)
 with `intoField(value, name?)` and the class-level `intoStructField` spelling. The canonical class
 form is an actual static getter; `intoField` validates its native non-null Struct result and memoizes
-that result per class. A static method or stored static Field is rejected rather than treated as a
-compatibility form. The class never needs or exposes a static `FIELD` property.
+that result per class. Other class member forms are rejected.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -637,13 +636,7 @@ rejected. None of these paths inspects the ignored source. Otherwise async recor
 `Promise<void>`; synchronous record input and all Arrow methods return `void`.
 
 An empty record iterable carries no inferable columns and therefore requires `options.field`.
-
-The former `readArrowBatchReader`, `readArrow`, `writeArrowBatchReader`,
-`appendArrowBatchReader`, `writeArrow`, and `appendArrow` spellings were removed
-without aliases. The old mode-less `writeRecords(records)` call was also
-removed; `writeRecords(records, mode, options?)` is the new configurable
-surface. Use `readArrowReader`, the explicit matrix, or the required-mode
-dispatchers above.
+See [migration notes](../migration.md#generic-write-mode) for removed entry points.
 
 ## Iceberg is a namespace
 

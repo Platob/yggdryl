@@ -136,10 +136,10 @@ fn structured_values_follow_the_declared_format_and_content_coding() {
             .media_type();
         let mut handle = Buffer::new().with_media_type(media);
         handle
-            .write_value(&expected)
+            .write_scalar(&expected)
             .unwrap_or_else(|error| panic!("{name}: {error}"));
         let actual = handle
-            .read_value(None)
+            .read_scalar(None)
             .unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(actual, expected, "{name}");
     }
@@ -152,11 +152,11 @@ fn structured_value_fields_direct_parsing_and_casting() {
     let field = Field::from_str("trade: struct<quantity: int32 not null> not null").unwrap();
     let expected = Scalar::from_sequence([Scalar::I64(2)]);
 
-    assert_eq!(source.read_value(Some(&field)).unwrap(), expected);
+    assert_eq!(source.read_scalar(Some(&field)).unwrap(), expected);
 
     let invalid = Buffer::from_bytes(br#"{"quantity":"many"}"#.to_vec())
         .with_media_type(Url::from_str("file:///trade.json").unwrap().media_type());
-    let message = invalid.read_value(Some(&field)).unwrap_err().to_string();
+    let message = invalid.read_scalar(Some(&field)).unwrap_err().to_string();
     assert!(message.contains("quantity"), "{message}");
     assert!(message.contains("int32"), "{message}");
 }

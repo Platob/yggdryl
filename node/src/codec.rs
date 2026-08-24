@@ -21,8 +21,9 @@ use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, Field as CoreField, Fields as CoreFields, Float16,
-    Float32, Float64, I256, MapType as CoreMapType, TimeUnit, Timezone, json, text, toml, yaml,
+    ArrowCast, DataType as CoreDataType, EnumScalar, Field as CoreField, Fields as CoreFields,
+    Float16, Float32, Float64, I256, MapType as CoreMapType, TimeUnit, Timezone, json, text, toml,
+    yaml,
 };
 
 use crate::timezone::{TimezoneInput, timezone_from_input};
@@ -144,6 +145,15 @@ impl JsScalar {
     #[napi(js_name = "_asJsNative", skip_typescript)]
     pub fn as_js_native(&self, max_depth: Option<u32>) -> Result<JsonValue> {
         value_to_transport(&self.inner, 0, checked_depth(max_depth)?)
+    }
+
+    /// Build an identity-preserving member of a core enum.
+    #[napi(factory)]
+    pub fn from_enum(kind: String, value: String) -> Result<Self> {
+        EnumScalar::from_parts(&kind, &value)
+            .map(Scalar::from)
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// Build a 16-bit float, rounding once to IEEE binary16.
@@ -310,6 +320,24 @@ impl JsScalar {
     #[napi(getter)]
     pub fn kind(&self) -> String {
         self.inner.kind().to_owned()
+    }
+
+    /// The enum vocabulary name, when this scalar is an enum.
+    #[napi(getter)]
+    pub fn enum_kind(&self) -> Option<String> {
+        self.inner.as_enum().map(|value| value.kind().to_owned())
+    }
+
+    /// The canonical enum member spelling, when this scalar is an enum.
+    #[napi(getter)]
+    pub fn enum_value(&self) -> Option<String> {
+        self.inner.as_enum().map(|value| value.as_str().to_owned())
+    }
+
+    /// The compact zero-based member index, when this scalar is an enum.
+    #[napi(getter)]
+    pub fn enum_ordinal(&self) -> Option<u8> {
+        self.inner.as_enum().map(|value| value.ordinal())
     }
 
     /// The number of direct sequence children, mapping entries, or record fields.
@@ -2343,6 +2371,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::F32(value) => float_transport(value.as_f64()),
         Scalar::F64(value) => float_transport(value.as_f64()),
         Scalar::String(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
         Scalar::Bytes(value) | Scalar::Geospatial(value) => Ok(marker(

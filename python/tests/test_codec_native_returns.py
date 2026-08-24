@@ -76,14 +76,14 @@ def test_single_reader_and_path_return_native_scalars(
     assert path_value.kind == "u64"
 
 
-def test_iobase_read_value_selects_exact_value_without_changing_default() -> None:
+def test_iobase_read_scalar_selects_exact_scalar_without_changing_default() -> None:
     handle = IOBase.from_bytes(b"1")
     handle.media_type = "application/json"
 
-    assert handle.read_value() == 1
-    native = handle.read_value(cls=Scalar)
+    assert handle.read_scalar() == 1
+    native = handle.read_scalar(cls=Scalar)
     assert isinstance(native, Scalar)
     assert native.kind == "u64"
 
     with pytest.raises(TypeError, match="cls must be Scalar or None"):
-        handle.read_value(cls=float)
+        handle.read_scalar(cls=float)

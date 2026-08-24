@@ -678,6 +678,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::D128(..)
             | Scalar::D256(..)
             | Scalar::String(_)
+            | Scalar::Enum(_)
             | Scalar::Bytes(_)
             | Scalar::Geospatial(_)
             | Scalar::Date32(..)

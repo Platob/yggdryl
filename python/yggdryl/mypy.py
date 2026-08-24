@@ -10,8 +10,7 @@ from mypy.types import LiteralType
 
 _SCALAR_DECORATORS = {
     "yggdryl.scalar",
-    "yggdryl.fields.scalar",
-    "yggdryl.fields._classes.scalar",
+    "yggdryl.scalar.scalar",
 }
 
 

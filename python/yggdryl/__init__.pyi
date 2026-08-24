@@ -14,7 +14,6 @@ from ._native import (
     Uri as Uri,
     Url as Url,
     Urn as Urn,
-    Scalar as Scalar,
     __version__ as __version__,
     combined as combined,
     field_from_pattern as field_from_pattern,
@@ -33,6 +32,6 @@ from . import (
     zstd as zstd,
 )
 from .fields import field as field
-from .fields._classes import scalar as scalar
+from .scalar import Scalar as Scalar, scalar as scalar
 
 __all__: list[str]

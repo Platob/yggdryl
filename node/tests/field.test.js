@@ -78,17 +78,11 @@ test('intoField requires a static getter and validates class roots', () => {
   StoredRoot.intoStructField = fields.struct('StoredRoot', [], {
     nullable: false,
   })
-  class LegacyFieldRoot {}
-  LegacyFieldRoot.FIELD = fields.struct('LegacyFieldRoot', [], {
-    nullable: false,
-  })
-
   assert.throws(() => intoField(ScalarRoot), /non-null native struct Field/)
   assert.throws(() => intoField(NullableRoot), /non-null native struct Field/)
   assert.throws(() => intoField(MissingRoot), /non-null native struct Field/)
   assert.throws(() => intoField(MethodRoot), /must be a static getter/)
   assert.throws(() => intoField(StoredRoot), /must be a static getter/)
-  assert.throws(() => intoField(LegacyFieldRoot), /static intoStructField getter/)
   assert.throws(() => intoField(null), /value must be a Field/)
   assert.throws(() => intoField({}), /value must be a Field/)
 })

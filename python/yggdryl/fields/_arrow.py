@@ -43,7 +43,7 @@ _RESERVED_NAMES = frozenset(
         "__weakref__",
         "__yggdryl_class_schema__",
         "__yggdryl_field_class__",
-        "__yggdryl_value_fields__",
+        "__yggdryl_scalar_fields__",
     }
 )
 

@@ -82,9 +82,9 @@ benchmark('io/buffered_idempotent_redirect', () => cachedMemory.buffered({
   maxBytes: 64 * 1_024,
 }))
 benchmark('io/memory_pwrite', () => memory.pwrite(0, payload))
-benchmark('io/read_value', () => structured.readScalar())
-benchmark('io/read_exact_value', () => structured.readScalar({ scalar: true }))
-benchmark('io/write_value', () => structured.writeScalar(structuredValue))
+benchmark('io/read_scalar', () => structured.readScalar())
+benchmark('io/read_exact_scalar', () => structured.readScalar({ scalar: true }))
+benchmark('io/write_scalar', () => structured.writeScalar(structuredValue))
 benchmark('io/kind', () => dimensions.kind)
 benchmark('io/is_io', () => dimensions.isIo())
 benchmark('io/row_size_open_cached', () => dimensions.rowSize)

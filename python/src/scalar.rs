@@ -23,8 +23,8 @@ use yggdryl::arrow::{
     array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
 };
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32,
-    Float64, I256, Scalar, TimeUnit, Timezone,
+    ArrowCast, DataType as CoreDataType, EnumScalar, Error as CoreError, Field as CoreField,
+    Float16, Float32, Float64, I256, Scalar, TimeUnit, Timezone,
 };
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
@@ -293,6 +293,17 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "string",
             Some(PyString::new(py, value).into_any().unbind()),
         ),
+        Scalar::Enum(value) => tagged_pickle_state(
+            py,
+            "enum",
+            Some(pickle_tuple(
+                py,
+                vec![
+                    PyString::new(py, value.kind()).into_any().unbind(),
+                    PyString::new(py, value.as_str()).into_any().unbind(),
+                ],
+            )?),
+        ),
         Scalar::Bytes(value) => tagged_pickle_state(
             py,
             "bytes",
@@ -456,6 +467,12 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map_err(|error| PyOverflowError::new_err(error.to_string()))
         }
         "string" => payload()?.extract::<String>().map(Scalar::from),
+        "enum" => {
+            let (kind, value) = payload()?.extract::<(String, String)>()?;
+            EnumScalar::from_parts(&kind, &value)
+                .map(Scalar::Enum)
+                .map_err(value_error)
+        }
         "bytes" => pickle_bytes(&payload()?).map(Scalar::Bytes),
         "geospatial" => pickle_bytes(&payload()?).map(Scalar::Geospatial),
         "date32" => {
@@ -569,6 +586,15 @@ impl PyScalar {
     #[staticmethod]
     fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         from_py(value).map(Self::from_inner)
+    }
+
+    /// Build an identity-preserving member of a core enum.
+    #[staticmethod]
+    fn from_enum(kind: &str, value: &str) -> PyResult<Self> {
+        EnumScalar::from_parts(kind, value)
+            .map(Scalar::from)
+            .map(Self::from_inner)
+            .map_err(value_error)
     }
 
     #[staticmethod]
@@ -820,6 +846,24 @@ impl PyScalar {
     #[getter]
     fn kind(&self) -> &'static str {
         self.inner.kind()
+    }
+
+    /// The enum vocabulary name, or `None`.
+    #[getter]
+    fn enum_kind(&self) -> Option<&'static str> {
+        self.inner.as_enum().map(|value| value.kind())
+    }
+
+    /// The canonical enum member spelling, or `None`.
+    #[getter]
+    fn enum_value(&self) -> Option<&'static str> {
+        self.inner.as_enum().map(|value| value.as_str())
+    }
+
+    /// The compact zero-based enum member index, or `None`.
+    #[getter]
+    fn enum_ordinal(&self) -> Option<u8> {
+        self.inner.as_enum().map(|value| value.ordinal())
     }
 
     /// The count carried by a temporal value, or `None`.
@@ -1286,6 +1330,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::D128(unscaled, scale) => decimal_as_py(py, &unscaled.to_string(), *scale),
         Scalar::D256(unscaled, scale) => decimal_as_py(py, &unscaled.to_string(), *scale),
         Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
         Scalar::Bytes(value) | Scalar::Geospatial(value) => {
@@ -1892,7 +1937,7 @@ impl Encoder {
             let mut entries = Vec::new();
             let cached_fields = value
                 .get_type()
-                .getattr("__yggdryl_value_fields__")
+                .getattr("__yggdryl_scalar_fields__")
                 .ok()
                 .and_then(|cached| cached.cast_into::<PyTuple>().ok())
                 .and_then(|cached| cached.get_item(1).ok())

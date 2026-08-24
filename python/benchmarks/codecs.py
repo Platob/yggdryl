@@ -128,7 +128,7 @@ def _write_toml_stream() -> None:
 
 
 def _write_json_handle() -> None:
-    JSON_WRITE_HANDLE.write_value(VALUE)
+    JSON_WRITE_HANDLE.write_scalar(VALUE)
 
 
 def _decode_first_avro_block() -> object:
@@ -278,10 +278,10 @@ def main() -> None:
             _decode_yaml_document_reader,
             args.iterations,
         )
-        _measure("IOBase read Scalar", JSON_HANDLE.read_value, args.iterations)
+        _measure("IOBase read Scalar", JSON_HANDLE.read_scalar, args.iterations)
         _measure(
             "IOBase read exact Scalar",
-            lambda: JSON_HANDLE.read_value(cls=Scalar),
+            lambda: JSON_HANDLE.read_scalar(cls=Scalar),
             args.iterations,
         )
         _measure("IOBase write Scalar", _write_json_handle, args.iterations)

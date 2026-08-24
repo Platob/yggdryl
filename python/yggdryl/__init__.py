@@ -22,14 +22,13 @@ from ._native import (
     Uri,
     Url,
     Urn,
-    Scalar,
     __version__,
     combined,
     field_from_pattern,
 )
 from . import avro, codec, enums, fields, gzip, iceberg, json, toml, yaml, zlib, zstd
 from .fields import field
-from .fields._classes import scalar
+from .scalar import Scalar, scalar
 
 __all__ = [
     "Bound",

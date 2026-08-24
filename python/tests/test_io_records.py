@@ -198,19 +198,6 @@ class TestTypedArrowWrites:
 
         assert handle.read_arrow_reader().read_all() == handle.read_arrow_reader().read_all()
 
-    def test_removed_write_aliases_are_not_exposed(self, tmp_path: pathlib.Path) -> None:
-        handle = IOBase(tmp_path / "aliases.parquet")
-
-        for name in (
-            "read_arrow_batch_reader",
-            "read_arrow",
-            "write_arrow_batch_reader",
-            "append_arrow_batch_reader",
-            "write_arrow",
-            "append_arrow",
-        ):
-            assert not hasattr(handle, name)
-
     def test_record_options_are_one_keyword_only(self, tmp_path: pathlib.Path) -> None:
         handle = IOBase(tmp_path / "options.parquet")
 

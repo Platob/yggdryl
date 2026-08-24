@@ -287,6 +287,7 @@ fn write_value<W: Write>(
             )?;
         }
         Scalar::String(value) => write_quoted(writer, value)?,
+        Scalar::Enum(value) => write_quoted(writer, value.as_str())?,
         Scalar::Bytes(value) | Scalar::Geospatial(value) => write_quoted(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value),

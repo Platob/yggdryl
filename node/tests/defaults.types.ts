@@ -50,8 +50,6 @@ const unknownFieldDefault: unknown = genericField.defaultJSValue()
 const arrowScalar: unknown = fixed.defaultArrowScalar()
 const sparkDataType: DataType = fixed.dataType.intoSchemeCompat('spark')
 const arrowField: Field = fixed.intoSchemeCompat('arrow')
-// @ts-expect-error project conversions use into*, with no legacy alias
-fixed.toSchemeCompat('arrow')
 
 // @ts-expect-error nullable Field defaults are not narrowed to bigint
 const nonNullableFieldValue: bigint = nullableId.defaultJSValue()

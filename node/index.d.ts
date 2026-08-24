@@ -1855,6 +1855,8 @@ export type JsRecordOptions = RecordOptions
  * resolution or zone a `Date` cannot hold.
  */
 export declare class Scalar {
+  /** Build an identity-preserving member of a core enum. */
+  static fromEnum(kind: string, value: string): Scalar
   /** Build a 16-bit float, rounding once to IEEE binary16. */
   static f16(value: number): Scalar
   /** Build a real 32-bit float. */
@@ -1881,6 +1883,12 @@ export declare class Scalar {
   static duration64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
   /** The canonical width-specific vocabulary name. */
   get kind(): string
+  /** The enum vocabulary name, when this scalar is an enum. */
+  get enumKind(): string | null
+  /** The canonical enum member spelling, when this scalar is an enum. */
+  get enumValue(): string | null
+  /** The compact zero-based member index, when this scalar is an enum. */
+  get enumOrdinal(): number | null
   /** The number of direct sequence children, mapping entries, or record fields. */
   get length(): number
   /** Whether this is an empty sequence, mapping, or record. */

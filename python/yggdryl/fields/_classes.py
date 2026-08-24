@@ -44,12 +44,6 @@ except ImportError:  # pragma: no cover - Python before 3.14
 else:
     _annotationlib = _annotationlib_module
 
-if sys.version_info >= (3, 11):
-    from typing import dataclass_transform as _dataclass_transform
-else:  # pragma: no cover - parsed on modern Python, executed on Python 3.10
-    from typing_extensions import dataclass_transform as _dataclass_transform
-
-_T = TypeVar("_T")
 _ErrorPolicy = Literal["raise", "default"]
 _NONE_TYPE = type(None)
 _MISSING_KEY = object()
@@ -595,7 +589,7 @@ def _member_docs(cls: type[Any]) -> dict[str, str]:
 
 
 def _value_fields(cls: type[Any]) -> tuple[dc.Field[Any], ...]:
-    cached = getattr(cls, "__yggdryl_value_fields__", None)
+    cached = getattr(cls, "__yggdryl_scalar_fields__", None)
     if (
         isinstance(cached, tuple)
         and len(cached) == 2
@@ -604,7 +598,7 @@ def _value_fields(cls: type[Any]) -> tuple[dc.Field[Any], ...]:
     ):
         return cached[1]
     with _SCHEMA_LOCK:
-        cached = getattr(cls, "__yggdryl_value_fields__", None)
+        cached = getattr(cls, "__yggdryl_scalar_fields__", None)
         if (
             isinstance(cached, tuple)
             and len(cached) == 2
@@ -613,7 +607,7 @@ def _value_fields(cls: type[Any]) -> tuple[dc.Field[Any], ...]:
         ):
             return cached[1]
         fields = dc.fields(cls)
-        setattr(cls, "__yggdryl_value_fields__", (id(cls), fields))
+        setattr(cls, "__yggdryl_scalar_fields__", (id(cls), fields))
         return fields
 
 
@@ -2909,32 +2903,6 @@ def _decorate_field_class(
     return decorated
 
 
-@typing.overload
-def scalar(cls: type[_T], /, **options: Any) -> type[_T]: ...
-
-
-@typing.overload
-def scalar(
-    cls: None = None, /, **options: Any
-) -> Callable[[type[_T]], type[_T]]: ...
-
-
-@_dataclass_transform(field_specifiers=(dc.field, dc.Field))
-def scalar(
-    cls: type[_T] | None = None, /, **options: Any
-) -> type[_T] | Callable[[type[_T]], type[_T]]:
-    """Wrap a class as a dataclass with a cached native ``field`` accessor."""
-
-    def decorate(candidate: type[_T]) -> type[_T]:
-        localns, token = _capture_context()
-        return _decorate_field_class(candidate, options, localns, token)
-
-    if cls is None:
-        return decorate
-    localns, token = _capture_context()
-    return _decorate_field_class(cls, options, localns, token)
-
-
 def iter_records(reader: Any, cls: type[Any] | None = None) -> typing.Iterator[Any]:
     """Yield mappings or dataclass instances from an Arrow batch reader.
 
@@ -2954,4 +2922,4 @@ def iter_records(reader: Any, cls: type[Any] | None = None) -> typing.Iterator[A
     return rows()
 
 
-__all__ = ["field", "scalar"]
+__all__ = ["field"]

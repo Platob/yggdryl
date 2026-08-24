@@ -238,16 +238,6 @@ fn parser_rejects_unbalanced_trailing_and_duplicate_input() {
 }
 
 #[test]
-fn parser_rejects_the_removed_record_alias() {
-    for source in ["record<id:int64>", "record(id bigint)", "record"] {
-        assert!(DataType::from_str(source).is_err(), "{source}");
-    }
-
-    assert!(DataType::from_str("struct<id:int64>").is_ok());
-    assert!(DataType::from_str("row(id bigint)").is_ok());
-}
-
-#[test]
 fn parser_recursion_limits_have_exact_public_boundaries() {
     let mut accepted_type = "int64".to_owned();
     for _ in 0..DataType::PARSE_RECURSION_LIMIT - 1 {

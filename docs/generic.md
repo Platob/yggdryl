@@ -48,14 +48,61 @@ Write entry points reject the two non-write modes.
     assert.deepEqual(enums.ioModes, ['overwrite', 'append', 'merge', 'readonly', 'random'])
     ```
 
+`EnumScalar` retains the vocabulary, spelling, and compact member index. Natural
+JSON/YAML/TOML and host projections emit the spelling.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{EnumScalar, IOMode, Scalar};
+
+    let value = Scalar::from(IOMode::Append);
+    let member = value.as_enum().expect("an enum scalar");
+    assert_eq!(member, &EnumScalar::IOMode(IOMode::Append));
+    assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("io_mode", "append", 1));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar
+
+    value = Scalar.from_enum("io_mode", "append")
+    assert (value.enum_kind, value.enum_value, value.enum_ordinal) == ("io_mode", "append", 1)
+    assert value.as_py() == "append"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar } = require('yggdryl')
+
+    const value = Scalar.fromEnum('io_mode', 'append')
+    assert.deepEqual([value.enumKind, value.enumValue, value.enumOrdinal], ['io_mode', 'append', 1])
+    assert.equal(value.asJs(), 'append')
+    ```
+
+Release measurements on Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1,
+CPython 3.12.13, and Node 24.18.0 (2026-08-24):
+
+| boundary | construct | kind | spelling | ordinal |
+| --- | ---: | ---: | ---: | ---: |
+| Rust | 28.9 ns | 2.59 ns | 5.01 ns | 3.94 ns |
+| Python | 200 ns | 98.8 ns | 100 ns | 73.7 ns |
+| JavaScript | 3 us | 2 us | 2 us | 1 us |
+
+Regenerate with `cargo bench --bench datatype --all-features -- "value/enum_"`,
+`python benchmarks/scalars.py --iterations 10000`, and
+`node benchmarks/codec.js`.
+
 `MAGIC_PROBE_LEN` bounds content inference. `Codec`, `MimeType`, and
 `MediaType` own suffix and coding inference; consumers do not duplicate it.
 
 !!! note "Mostly Rust"
-    The bindings hold one handle class and one record settings value rather
-    than the enums behind them; `RecordOptions` crosses, and the [static enum
-    vocabularies cross as `yggdryl.enums` in Python and the `enums` export in
-    JavaScript. `TypedScalar` and the
+    The bindings expose static vocabularies through `yggdryl.enums` in Python
+    and `enums` in JavaScript; `Scalar.from_enum` / `Scalar.fromEnum` preserves
+    a member's core identity. `TypedScalar` and the
     `wkb` reader are Rust-only; a geospatial value crosses the bindings as
     its plain WKB bytes.
 

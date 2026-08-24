@@ -45,13 +45,15 @@ const sinceMidnight: Scalar = Scalar.time64(45296000000n, unit, 'NAIVE')
 const shortTime: Scalar = Scalar.time32(1000, 'ms', Timezone.from('NAIVE'))
 const took: Scalar = Scalar.duration32(90, 's', 'NAIVE')
 const longTook: Scalar = Scalar.duration64(90n, 's', Timezone.from('NAIVE'))
-// @ts-expect-error the untyped decimal factory was removed
-Scalar.decimal(1n, 0)
 const price: Scalar = Scalar.d128(-1050n, 2)
 const widePrice: Scalar = Scalar.d256(-(2n ** 200n), 2)
 const half: Scalar = Scalar.f16(1.5)
 const single: Scalar = Scalar.f32(1.5)
 const double: Scalar = Scalar.f64(1.5)
+const enumScalar: Scalar = Scalar.fromEnum('io_mode', 'append')
+const enumKind: string | null = enumScalar.enumKind
+const enumValue: string | null = enumScalar.enumValue
+const enumOrdinal: number | null = enumScalar.enumOrdinal
 const kind: string = at.kind
 const count: bigint | null = at.count
 const zone: string | null = at.zone
@@ -98,6 +100,9 @@ void hasChild
 void replacedValue
 void removedValue
 void iteratedValues
+void enumKind
+void enumValue
+void enumOrdinal
 
 const arrowVector = vectorFromArray([1, 2], new Int32())
 const arrowValue: Scalar = Scalar.fromArrowArray(arrowVector)
