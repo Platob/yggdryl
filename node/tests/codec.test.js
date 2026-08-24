@@ -541,7 +541,7 @@ test('Scalar Arrow record and table interop uses the native schema engine', () =
   assert.equal(restored.numRows, 2)
   assert.deepEqual([...restored.getChild('id')], [1, 2])
 
-  const inferred = Scalar.fromJs([{ id: 1 }, { id: 2 }]).intoArrowRecordBatch()
+  const inferred = Scalar.fromJs([{ id: 1 }, { id: 2 }]).intoArrowBatch()
   assert.deepEqual([...inferred.getChild('id')], [1n, 2n])
   assert.throws(
     () => Scalar.fromJs([]).intoArrowTable(),

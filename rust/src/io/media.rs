@@ -369,7 +369,7 @@ pub trait IOMedia: Send {
     /// Returns the same field, cast, encoding, and write failures as the
     /// reader primitive.
     #[cfg(feature = "arrow")]
-    fn overwrite_arrow_record_batch(
+    fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
@@ -389,7 +389,7 @@ pub trait IOMedia: Send {
     /// Returns the selected held-batch adapter's validation, cast, encoding,
     /// or publication failure.
     #[cfg(feature = "arrow")]
-    fn write_arrow_record_batch(
+    fn write_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         mode: crate::IOMode,
@@ -397,13 +397,13 @@ pub trait IOMedia: Send {
     ) -> Result<()> {
         options.require_write_mode(mode)?;
         match mode {
-            crate::IOMode::Overwrite => self.overwrite_arrow_record_batch(batch, options),
-            crate::IOMode::Append => self.append_arrow_record_batch(batch, options),
-            crate::IOMode::Merge => self.merge_arrow_record_batch(batch, options),
+            crate::IOMode::Overwrite => self.overwrite_arrow_batch(batch, options),
+            crate::IOMode::Append => self.append_arrow_batch(batch, options),
+            crate::IOMode::Merge => self.merge_arrow_batch(batch, options),
             crate::IOMode::ReadOnly | crate::IOMode::Random => Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.mode"),
                 reason: smol_str::SmolStr::new_static(
-                    "write mode readonly or random is not supported for write_arrow_record_batch",
+                    "write mode readonly or random is not supported for write_arrow_batch",
                 ),
             }),
         }
@@ -461,7 +461,7 @@ pub trait IOMedia: Send {
     /// Returns the same intent, cast, encoding, and write failures as the
     /// reader primitive.
     #[cfg(feature = "arrow")]
-    fn append_arrow_record_batch(
+    fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
@@ -504,7 +504,7 @@ pub trait IOMedia: Send {
     /// Returns the same key, cast, merge, encoding, and write failures as the
     /// reader primitive.
     #[cfg(feature = "arrow")]
-    fn merge_arrow_record_batch(
+    fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
@@ -848,12 +848,12 @@ macro_rules! __delegate_iomedia_arrow {
             )
         }
 
-        fn overwrite_arrow_record_batch(
+        fn overwrite_arrow_batch(
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::overwrite_arrow_record_batch(&mut self.$handle, batch, options)
+            $crate::io::IOMedia::overwrite_arrow_batch(&mut self.$handle, batch, options)
         }
 
         fn append_arrow_reader(
@@ -864,12 +864,12 @@ macro_rules! __delegate_iomedia_arrow {
             $crate::io::IOMedia::append_arrow_reader(&mut self.$handle, batches, options)
         }
 
-        fn append_arrow_record_batch(
+        fn append_arrow_batch(
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::append_arrow_record_batch(&mut self.$handle, batch, options)
+            $crate::io::IOMedia::append_arrow_batch(&mut self.$handle, batch, options)
         }
 
         fn merge_arrow_reader(
@@ -880,12 +880,12 @@ macro_rules! __delegate_iomedia_arrow {
             $crate::io::IOMedia::merge_arrow_reader(&mut self.$handle, batches, options)
         }
 
-        fn merge_arrow_record_batch(
+        fn merge_arrow_batch(
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::merge_arrow_record_batch(&mut self.$handle, batch, options)
+            $crate::io::IOMedia::merge_arrow_batch(&mut self.$handle, batch, options)
         }
 
         fn overwrite_records<I, R>(

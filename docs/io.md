@@ -1432,7 +1432,7 @@ It has two other spellings, for two other shapes:
     options = handle.record_options()
 
     # The write path takes a batch reader and nothing else.
-    handle.overwrite_arrow_record_batch(batch, options=options)
+    handle.overwrite_arrow_batch(batch, options=options)
     assert handle.read_arrow_field(options=options).name == "row"
 
     # The read path returns one. Batches arrive one at a time, never as a vector.
@@ -1515,16 +1515,16 @@ overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) 
 append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
 merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
 
-overwrite_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
-append_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
-merge_arrow_record_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
+overwrite_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
+append_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
+merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
 
 overwrite_records(&mut self, records, options: &RecordOptions) -> Result<()>
 append_records(&mut self, records, options: &RecordOptions) -> Result<()>
 merge_records(&mut self, records, options: &RecordOptions) -> Result<()>
 
 write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
-write_arrow_record_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
+write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
 write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<()>
 ```
 
@@ -1543,7 +1543,7 @@ estimates; regenerate on the deployment host):
 | generic dispatcher | overwrite | append | merge |
 | --- | ---: | ---: | ---: |
 | `write_arrow_reader` | 255 us (16.1M rows/s) | 703 us (5.83M rows/s) | 3.27 ms (1.25M rows/s) |
-| `write_arrow_record_batch` | 92.0 us (44.5M rows/s) | 637 us (6.43M rows/s) | 4.14 ms (989k rows/s) |
+| `write_arrow_batch` | 92.0 us (44.5M rows/s) | 637 us (6.43M rows/s) | 4.14 ms (989k rows/s) |
 | `write_records` | 3.00 ms (1.36M rows/s) | 4.44 ms (922k rows/s) | 8.96 ms (457k rows/s) |
 
 The mode branch itself is shared by all three columns in a row. The larger
@@ -1562,11 +1562,11 @@ read_arrow_reader(*, options=None) -> pyarrow.RecordBatchReader
 read_records(cls=None, *, options=None) -> Iterator[dict | dataclass]
 overwrite|append|merge_arrow_reader(reader, *, options=None) -> None
 overwrite|append|merge_arrow_table(table, *, options=None) -> None
-overwrite|append|merge_arrow_record_batch(batch, *, options=None) -> None
+overwrite|append|merge_arrow_batch(batch, *, options=None) -> None
 overwrite|append|merge_records(records, *, options=None) -> None
 write_arrow_reader(reader, mode, *, options=None) -> None
 write_arrow_table(table, mode, *, options=None) -> None
-write_arrow_record_batch(batch, mode, *, options=None) -> None
+write_arrow_batch(batch, mode, *, options=None) -> None
 write_records(records, mode, *, options=None) -> None
 ```
 
@@ -1578,11 +1578,11 @@ readRecords(options?) -> Iterable<object>
 readRecords(cls, options?) -> Iterable<object>
 overwrite|append|mergeArrowReader(reader, options?) -> void
 overwrite|append|mergeArrowTable(table, options?) -> void
-overwrite|append|mergeArrowRecordBatch(batch, options?) -> void
+overwrite|append|mergeArrowBatch(batch, options?) -> void
 overwrite|append|mergeRecords(records, options?) -> void | Promise<void>
 writeArrowReader(reader, mode, options?) -> void
 writeArrowTable(table, mode, options?) -> void
-writeArrowRecordBatch(batch, mode, options?) -> void
+writeArrowBatch(batch, mode, options?) -> void
 writeRecords(records, mode, options?) -> void | Promise<void>
 ```
 
@@ -1930,7 +1930,7 @@ where the bytes live.
     )
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.overwrite_arrow_record_batch(batch)
+    handle.overwrite_arrow_batch(batch)
 
     # One of the three columns, declared as this read's schema.
     options = handle.record_options()
@@ -2239,17 +2239,17 @@ the authority; `merge_by_names` supplies keys only to the merge method.
     options.field = schema
 
     # No match key: the resource is replaced.
-    handle.overwrite_arrow_record_batch(rows([1, 2], ["AAPL", "MSFT"]), options=options)
+    handle.overwrite_arrow_batch(rows([1, 2], ["AAPL", "MSFT"]), options=options)
 
     # Appending reads what is there, chains the new batches after it, and rewrites.
-    handle.append_arrow_record_batch(rows([3], ["NVDA"]), options=options)
+    handle.append_arrow_batch(rows([3], ["NVDA"]), options=options)
     assert handle.read_arrow_reader(options=options).read_all().num_rows == 3
 
     # A match key merges: `2` is already stored and updates, `9` is new and appends.
     merging = handle.record_options()
     merging.field = schema
     merging.merge_by_names = ["id"]
-    handle.merge_arrow_record_batch(rows([2, 9], ["MSFT.O", "AMD"]), options=merging)
+    handle.merge_arrow_batch(rows([2, 9], ["MSFT.O", "AMD"]), options=merging)
     assert handle.read_arrow_reader(options=options).read_all().num_rows == 4
     ```
 
@@ -4116,7 +4116,7 @@ each row of a write to the leaf its values name.
     lake = IOBase(root)
     options = RecordOptions("part.arrows")
     options.field = schema
-    lake.overwrite_arrow_record_batch(batch, options=options)
+    lake.overwrite_arrow_batch(batch, options=options)
 
     # Only `price` reached the leaf; the other two are the directory names.
     leaf = lake / "year=2024" / "month=01" / "part-0.arrows"

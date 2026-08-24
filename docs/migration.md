@@ -237,14 +237,17 @@ spellings:
 | Rust keyed `IOBase::write_arrow_batch_reader(reader, options.with_merge_by_names(keys))` | `IOMedia::merge_arrow_reader(reader, options.with_merge_by_names(keys))` |
 | Rust `IOBase::append_arrow_batch_reader(reader, options)` | `IOMedia::append_arrow_reader(reader, options)` |
 | Stateful `Ipc::write_batch_reader`, `Parquet::write_batch_reader`, `Avro::write_batch_reader`, `Media::write_batch_reader` | the matching `overwrite_arrow_reader(reader)` method |
-| Free `ipc::write_batch_reader`, `parquet::write_batch_reader`, `avro::write_batch_reader` | the matching `overwrite_batch_reader` encoding seam |
+| Free `ipc::write_batch_reader`, `parquet::write_batch_reader`, `avro::write_batch_reader` | the matching `overwrite_arrow_reader` encoding seam |
+| Free `ipc::overwrite_batch_reader`, `parquet::overwrite_batch_reader`, `avro::overwrite_batch_reader` | the matching `overwrite_arrow_reader` encoding seam |
+| Rust/Python `*_arrow_record_batch` | `*_arrow_batch`; `cast_arrow_record_batch` collapses into the existing `cast_arrow_batch` |
+| JavaScript `*ArrowRecordBatch` methods | the matching `*ArrowBatch` method |
 | Python `read_arrow_batch_reader` / `read_arrow` | `read_arrow_reader` |
-| Python `write_arrow_batch_reader` / `write_arrow` | the matching explicit `overwrite_arrow_reader`, `overwrite_arrow_table`, `overwrite_arrow_record_batch`, or `overwrite_records` method |
+| Python `write_arrow_batch_reader` / `write_arrow` | the matching explicit `overwrite_arrow_reader`, `overwrite_arrow_table`, `overwrite_arrow_batch`, or `overwrite_records` method |
 | Python keyed `write_arrow*` | the matching explicit `merge_arrow_*` method with keys in `options.merge_by_names` |
 | Python `append_arrow_batch_reader` / `append_arrow` | the matching explicit `append_arrow_*` method |
 | Python mode-less `write_records(records)` | `overwrite_records(records)` or `write_records(records, mode)` |
 | JavaScript `readArrowBatchReader` / `readArrow` | `readArrowReader` |
-| JavaScript `writeArrowBatchReader` / `writeArrow` | the matching explicit `overwriteArrowReader`, `overwriteArrowTable`, `overwriteArrowRecordBatch`, or `overwriteRecords` method |
+| JavaScript `writeArrowBatchReader` / `writeArrow` | the matching explicit `overwriteArrowReader`, `overwriteArrowTable`, `overwriteArrowBatch`, or `overwriteRecords` method |
 | JavaScript keyed `writeArrow*` | the matching explicit `mergeArrow*` method with keys in `options.mergeByNames` |
 | JavaScript `appendArrowBatchReader` / `appendArrow` | the matching explicit `appendArrow*` method |
 | JavaScript mode-less `writeRecords(records)` | `overwriteRecords(records)` or `writeRecords(records, mode)` |
@@ -297,16 +300,16 @@ The generic core dispatchers are:
 
 ```text
 write_arrow_reader(reader, mode, options)
-write_arrow_record_batch(batch, mode, options)
+write_arrow_batch(batch, mode, options)
 write_records(records, mode, options)
 ```
 
 Python and JavaScript keep the runtime representation in the method name and
 place the required mode immediately after the input. Python uses
-`write_arrow_reader`, `write_arrow_table`, `write_arrow_record_batch`,
+`write_arrow_reader`, `write_arrow_table`, `write_arrow_batch`,
 `write_records`, `write_pandas[_frame]`, and `write_polars[_frame]` with a
 keyword-only `options=`. JavaScript uses `writeArrowReader`,
-`writeArrowTable`, `writeArrowRecordBatch`, and `writeRecords`, followed by
+`writeArrowTable`, `writeArrowBatch`, and `writeRecords`, followed by
 one optional `options` value.
 
 These are new required-mode APIs, not compatibility overloads. An omitted or

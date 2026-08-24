@@ -752,7 +752,7 @@ class TestGenericCast:
         cast_batch = root.cast_arrow(batch)
         assert isinstance(cast_batch, pa.RecordBatch)
         assert cast_batch.schema.field("id").type == pa.int64()
-        assert root.cast_arrow_record_batch(batch).equals(cast_batch)
+        assert root.cast_arrow_batch(batch).equals(cast_batch)
 
         table = pa.Table.from_batches([batch])
         cast_table = root.cast_arrow(table)

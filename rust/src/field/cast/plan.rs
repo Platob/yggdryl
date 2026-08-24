@@ -80,16 +80,6 @@ pub trait ArrowCast {
         }
         Ok(ArrowScalar::new(self.cast_arrow_array(array, safe)?))
     }
-
-    /// The full name of [`cast_arrow_batch`](Self::cast_arrow_batch), for
-    /// callers spelling out what the batch is.
-    ///
-    /// # Errors
-    ///
-    /// Returns exactly what `cast_arrow_batch` returns.
-    fn cast_arrow_record_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch> {
-        self.cast_arrow_batch(batch, safe)
-    }
 }
 
 impl ArrowCast for DataType {

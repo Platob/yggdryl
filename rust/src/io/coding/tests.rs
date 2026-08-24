@@ -412,7 +412,7 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
     )
     .unwrap();
     let mut plain = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    crate::ipc::overwrite_batch_reader(
+    crate::ipc::overwrite_arrow_reader(
         &mut plain,
         crate::arrow::batch_reader(schema, [batch]),
         &crate::ipc::IpcOptions::new(),

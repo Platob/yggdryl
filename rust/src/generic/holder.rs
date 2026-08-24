@@ -403,12 +403,12 @@ impl crate::io::IOMedia for Holder {
     }
 
     #[cfg(feature = "arrow")]
-    fn overwrite_arrow_record_batch(
+    fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_record_batch(self.as_media_mut(), batch, options)
+        crate::io::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -421,12 +421,12 @@ impl crate::io::IOMedia for Holder {
     }
 
     #[cfg(feature = "arrow")]
-    fn append_arrow_record_batch(
+    fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_record_batch(self.as_media_mut(), batch, options)
+        crate::io::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -439,12 +439,12 @@ impl crate::io::IOMedia for Holder {
     }
 
     #[cfg(feature = "arrow")]
-    fn merge_arrow_record_batch(
+    fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_record_batch(self.as_media_mut(), batch, options)
+        crate::io::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }
 

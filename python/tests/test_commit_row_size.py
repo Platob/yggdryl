@@ -34,7 +34,7 @@ def ids_at(path: pathlib.Path) -> list[int]:
 def seed(handle: IOBase, intent: str) -> list[int]:
     """Publish the state an interrupted operation must build on or replace."""
     stored = [1, 9] if intent == "merge" else [9]
-    handle.overwrite_arrow_record_batch(id_batch(stored))
+    handle.overwrite_arrow_batch(id_batch(stored))
     return stored
 
 
@@ -68,7 +68,7 @@ def expected_prefix(intent: str) -> list[int]:
 WRITE_SHAPES = (
     "arrow_reader",
     "arrow_table",
-    "arrow_record_batch",
+    "arrow_batch",
     "records",
     "pandas",
     "pandas_frame",
@@ -133,7 +133,7 @@ def test_a_zero_limit_overwrite_uses_the_declared_field_without_input_inspection
     """Typed empty overwrite needs no schema export from its Python value."""
     path = tmp_path / f"zero-overwrite-{bound}-{shape}.parquet"
     handle = IOBase(path)
-    handle.overwrite_arrow_record_batch(id_batch([9]))
+    handle.overwrite_arrow_batch(id_batch([9]))
     options = write_options(handle, "overwrite", None)
     options.field = ID_SCHEMA
     setattr(options, bound, 0)
@@ -154,7 +154,7 @@ def test_a_zero_limit_append_is_a_noop_without_input_inspection(
     """No input or destination publication is needed when append admits zero."""
     path = tmp_path / f"zero-append-{bound}-{shape}.parquet"
     handle = IOBase(path)
-    handle.overwrite_arrow_record_batch(id_batch([9]))
+    handle.overwrite_arrow_batch(id_batch([9]))
     options = write_options(handle, "append", None)
     setattr(options, bound, 0)
     source = Untouched()
@@ -173,7 +173,7 @@ def test_a_zero_limit_overwrite_requires_a_field_without_input_inspection(
     """An input schema cannot be inferred without inspecting the forbidden input."""
     path = tmp_path / f"zero-overwrite-untyped-{shape}.parquet"
     handle = IOBase(path)
-    handle.overwrite_arrow_record_batch(id_batch([9]))
+    handle.overwrite_arrow_batch(id_batch([9]))
     options = write_options(handle, "overwrite", None)
     options.max_row_size = 0
     source = Untouched()
@@ -192,7 +192,7 @@ def input_for(shape: str, table: pa.Table) -> object:
         return table.to_reader()
     if shape == "arrow_table":
         return table
-    if shape == "arrow_record_batch":
+    if shape == "arrow_batch":
         return table.to_batches()[0]
     if shape == "records":
         return table.to_pylist()
@@ -215,7 +215,7 @@ def test_every_python_adapter_honours_every_intent_with_a_one_row_cadence(
     """Reader, held Arrow, rows, and frame adapters share the core splitter."""
     path = tmp_path / f"matrix-{intent}-{shape}.parquet"
     handle = IOBase(path)
-    handle.overwrite_arrow_record_batch(id_batch([10]))
+    handle.overwrite_arrow_batch(id_batch([10]))
     incoming = pa.Table.from_batches([id_batch([10, 2])])
     options = write_options(handle, intent, 1)
 
@@ -346,7 +346,7 @@ def test_a_cadence_larger_than_the_stream_publishes_only_the_final_remainder(
     """No incomplete prefix becomes visible before successful EOF."""
     path = tmp_path / "large-cadence.parquet"
     handle = IOBase(path)
-    handle.overwrite_arrow_record_batch(id_batch([9]))
+    handle.overwrite_arrow_batch(id_batch([9]))
     options = write_options(handle, "overwrite", 10)
     observed: list[list[int]] = []
 
@@ -368,7 +368,7 @@ def test_a_commit_crossing_batch_boundaries_does_not_read_ahead(
     """The splitter slices one batch and publishes before asking for another."""
     path = tmp_path / "cross-batch.parquet"
     handle = IOBase(path)
-    handle.overwrite_arrow_record_batch(id_batch([9]))
+    handle.overwrite_arrow_batch(id_batch([9]))
     options = write_options(handle, "overwrite", 3)
     observed: list[list[int]] = []
 
@@ -396,7 +396,7 @@ def test_limits_apply_once_before_the_stream_is_split_into_commits(
     options = write_options(handle, "overwrite", 2)
     options.max_row_size = 3
 
-    handle.overwrite_arrow_record_batch(id_batch([1, 2, 3, 4, 5]), options=options)
+    handle.overwrite_arrow_batch(id_batch([1, 2, 3, 4, 5]), options=options)
 
     assert ids_at(path) == [1, 2, 3]
 

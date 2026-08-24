@@ -39,10 +39,10 @@ const appendTable: void = handle.appendArrowTable(table, options)
 const mergeTable: void = handle.mergeArrowTable(table, merging)
 const writeTable: void = handle.writeArrowTable(table, 'append', options)
 
-const overwriteBatch: void = handle.overwriteArrowRecordBatch(batch, options)
-const appendBatch: void = handle.appendArrowRecordBatch(batch, options)
-const mergeBatch: void = handle.mergeArrowRecordBatch(batch, merging)
-const writeBatch: void = handle.writeArrowRecordBatch(batch, 'merge', merging)
+const overwriteBatch: void = handle.overwriteArrowBatch(batch, options)
+const appendBatch: void = handle.appendArrowBatch(batch, options)
+const mergeBatch: void = handle.mergeArrowBatch(batch, merging)
+const writeBatch: void = handle.writeArrowBatch(batch, 'merge', merging)
 
 const record: StructRecord = { id: 1, venue: 'XNAS' }
 const records: RecordSource = [record]
@@ -71,6 +71,6 @@ handle.writeArrowReader(BatchReader.from(table), options)
 // @ts-expect-error the public mode vocabulary is closed
 handle.writeArrowTable(table, 'replace')
 // @ts-expect-error the public mode vocabulary is closed
-handle.writeArrowRecordBatch(batch, 'upsert')
+handle.writeArrowBatch(batch, 'upsert')
 // @ts-expect-error records use the same closed mode vocabulary
 handle.writeRecords(records, 'update')

@@ -4,7 +4,7 @@ Read and write Apache Parquet files, and their footer statistics, over any handl
 
 At handle level, overwrite, append, and keyed merge use the shared
 [canonical record-write signatures](io.md#canonical-record-write-signatures).
-The free `parquet::overwrite_batch_reader` function below remains the one
+The free `parquet::overwrite_arrow_reader` function below remains the one
 complete-file encoder those intents publish through; the stateful wrapper uses
 `overwrite_arrow_reader` like every other media handle.
 
@@ -97,12 +97,12 @@ complete-file encoder those intents publish through; the stateful wrapper uses
 
     path = pathlib.Path(tempfile.mkdtemp()) / "trades.parquet"
     with IOBase(path) as handle:
-        handle.overwrite_arrow_record_batch(batch([1, 2], ["AAPL", "MSFT"]))
-        handle.append_arrow_record_batch(batch([3], ["GOOG"]))
+        handle.overwrite_arrow_batch(batch([1, 2], ["AAPL", "MSFT"]))
+        handle.append_arrow_batch(batch([3], ["GOOG"]))
 
         merging = handle.record_options()
         merging.merge_by_names = ["id"]
-        handle.merge_arrow_record_batch(
+        handle.merge_arrow_batch(
             batch([2, 4], ["NVDA", None]), options=merging
         )
 
@@ -257,7 +257,7 @@ checked against the reader's field and errors name its index.
 
 The specialized `read_arrow_schema` returns the Arrow schema and
 `read_statistics` returns the footer. The encoding seams also exist as free functions - `parquet::read_arrow_schema`,
-`read_field`, `read_batch_reader`, `overwrite_batch_reader`, `read_statistics` - taking the handle
+`read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics` - taking the handle
 explicitly, and a `&ParquetOptions` where the settings matter.
 
 Both bindings call the same operations on the handle itself - Python's
@@ -349,7 +349,7 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     )
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
-    handle.overwrite_arrow_record_batch(batch)
+    handle.overwrite_arrow_batch(batch)
 
     # Two of the four columns, declared through the centralized options field.
     options = handle.record_options()
@@ -515,7 +515,7 @@ types, so a caller wanting a different shape casts afterwards.
     assert options.root_name == "trade"
     assert not options.safe
 
-    handle.overwrite_arrow_record_batch(batch, options=options)
+    handle.overwrite_arrow_batch(batch, options=options)
 
     # batch_size bounds the reader, so no batch holds all 1,000 rows.
     counts = [part.num_rows for part in handle.read_arrow_reader(options=options)]
@@ -782,7 +782,7 @@ recorded in the file's own metadata, so a reader recovers it from the footer and
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet.gz")
 
     with pytest.raises(ValueError, match="parquet compresses"):
-        handle.overwrite_arrow_record_batch(pa.record_batch({"id": [1]}, schema=schema))
+        handle.overwrite_arrow_batch(pa.record_batch({"id": [1]}, schema=schema))
 
     # Nothing was published.
     assert handle.size == 0
@@ -888,7 +888,7 @@ handle untouched.
     batch = pa.record_batch({"id": [1], "symbol": ["AAPL"]}, schema=schema)
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
-    handle.overwrite_arrow_record_batch(batch)
+    handle.overwrite_arrow_batch(batch)
 
     # The ids went into the file, so the recovered Field answers by id rather
     # than by position.
@@ -1267,7 +1267,7 @@ let batch = RecordBatch::try_new(
 // The free functions take a handle and options; nothing is bound.
 let options = ParquetOptions::new();
 let mut handle = Buffer::new().with_media_type(MimeType::PARQUET.into());
-parquet::overwrite_batch_reader(
+parquet::overwrite_arrow_reader(
     &mut handle,
     arrow::batch_reader(arrow_schema, [batch]),
     &options,

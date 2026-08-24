@@ -346,9 +346,7 @@ fn avro_only_options_validate_codec_and_sync_marker_in_the_core() {
     assert_eq!(options.avro_sync_marker(), Some(&marker));
 
     let mut handle = Buffer::new().with_media_type(media_type);
-    handle
-        .overwrite_arrow_record_batch(batch(0..2), &options)
-        .unwrap();
+    handle.overwrite_arrow_batch(batch(0..2), &options).unwrap();
     assert!(handle.as_slice().ends_with(&marker));
     assert_eq!(rows(handle.read_arrow_reader(&options).unwrap()), 2);
 

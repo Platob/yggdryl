@@ -716,7 +716,7 @@ impl PyScalar {
     /// Decode one `PyArrow` `RecordBatch` as an outer Sequence of rows.
     #[staticmethod]
     #[pyo3(signature = (value, field=None))]
-    fn from_arrow_record_batch(
+    fn from_arrow_batch(
         value: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
@@ -818,7 +818,7 @@ impl PyScalar {
 
     /// Materialize an outer Sequence of rows as one `PyArrow` `RecordBatch`.
     #[pyo3(signature = (field=None))]
-    fn into_arrow_record_batch<'py>(
+    fn into_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         field: Option<&Bound<'_, PyAny>>,
@@ -837,7 +837,7 @@ impl PyScalar {
         py: Python<'py>,
         field: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let batch = self.into_arrow_record_batch(py, field)?;
+        let batch = self.into_arrow_batch(py, field)?;
         py.import("pyarrow")?
             .getattr("Table")?
             .call_method1("from_batches", (PyList::new(py, [batch])?,))

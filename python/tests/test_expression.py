@@ -206,7 +206,7 @@ def test_bound_statement_preserves_each_arrow_holder() -> None:
     first = statement_batch(["A", "B", "C", "D"], [1, 4, 3, None])
     second = statement_batch(["E", "F"], [5, 6])
 
-    projected_batch = bound.project_arrow_record_batch(first)
+    projected_batch = bound.project_arrow_batch(first)
     assert isinstance(projected_batch, pa.RecordBatch)
     assert projected_batch.schema.names == ["ccy", "quantity"]
     assert projected_batch.column("quantity").to_pylist() == [4, 3]
@@ -237,7 +237,7 @@ def test_bound_statement_sorts_one_materialized_batch() -> None:
         statement_schema()
     )
     source = statement_batch(["A", "B", "C", "D"], [None, 2, 5, 3])
-    sorted_batch = bound.sort_arrow_record_batch(source)
+    sorted_batch = bound.sort_arrow_batch(source)
     assert isinstance(sorted_batch, pa.RecordBatch)
     assert sorted_batch.column("ccy").to_pylist() == ["C", "D"]
     assert sorted_batch.column("size").to_pylist() == [5, 3]

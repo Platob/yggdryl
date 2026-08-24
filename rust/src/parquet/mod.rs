@@ -9,7 +9,7 @@
 //! could open.
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
-//! [`overwrite_batch_reader`] - over any [`IOBase`] handle, which is what
+//! [`overwrite_arrow_reader`] - over any [`IOBase`] handle, which is what
 //! [`crate::io::IOMedia::read_arrow_reader`] and its two siblings call. They are the
 //! encoding and nothing more: the `field` they take is a column pushdown, and
 //! the casting, merging, and partition routing a caller sees belong to
@@ -448,7 +448,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 ///
 /// Returns a schema, encoding, or write failure, or an error when the handle
 /// declares an outer content coding.
-pub fn overwrite_batch_reader<H>(
+pub fn overwrite_arrow_reader<H>(
     handle: &mut H,
     batches: BatchReader,
     options: &ParquetOptions,
@@ -844,7 +844,7 @@ impl<H: IOBase> Parquet<H> {
 
     /// Read the file's Arrow schema without decoding any rows.
     ///
-    /// Field identifiers written by [`overwrite_batch_reader`] are present in
+    /// Field identifiers written by [`overwrite_arrow_reader`] are present in
     /// the returned schema's field metadata.
     ///
     /// # Errors

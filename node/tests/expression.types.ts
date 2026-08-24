@@ -87,7 +87,7 @@ const boundStatementPredicate: Bound | null = boundStatement.predicate
 const boundStatementIsAll: boolean = boundStatement.isAll
 const arrowTable: ArrowTable = tableFromArrays({ ccy: ['EUR'] })
 const arrowBatch: ArrowRecordBatch = arrowTable.batches[0]
-const projectedBatch: ArrowRecordBatch = boundStatement.projectArrowRecordBatch(arrowBatch)
+const projectedBatch: ArrowRecordBatch = boundStatement.projectArrowBatch(arrowBatch)
 const projectedBatchInferred: ArrowRecordBatch = boundStatement.projectArrow(arrowBatch)
 const projectedTable: ArrowTable = boundStatement.projectArrowTable(arrowTable)
 const projectedTableInferred: ArrowTable = boundStatement.projectArrow(arrowTable)
@@ -95,7 +95,7 @@ const projectedReader: BatchReader = boundStatement.projectArrowReader(BatchRead
 const projectedReaderInferred: BatchReader = boundStatement.projectArrow(BatchReader.from(arrowTable))
 const sortedBatch: ArrowRecordBatch = orderedStatement
   .bind(schema)
-  .sortArrowRecordBatch(arrowBatch)
+  .sortArrowBatch(arrowBatch)
 const statementText: string = statement.toString()
 
 const handle = new IOBase('file:///lake')

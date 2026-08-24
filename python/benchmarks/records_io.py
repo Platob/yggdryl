@@ -191,7 +191,7 @@ def _arrow_input(shape: str) -> object:
         return pa.RecordBatchReader.from_batches(SCHEMA, iter(BATCHES))
     if shape == "arrow_table":
         return TABLE
-    if shape == "arrow_record_batch":
+    if shape == "arrow_batch":
         return RECORD_BATCH
     if shape == "records":
         return iter(ROW_MAPPINGS)
@@ -317,7 +317,7 @@ INTENT_BENCHMARKS = tuple(
         "row",
         _prepare_existing if intent != "overwrite" else None,
     )
-    for shape in ("arrow_reader", "arrow_table", "arrow_record_batch", "records")
+    for shape in ("arrow_reader", "arrow_table", "arrow_batch", "records")
     for intent in ("overwrite", "append", "merge")
 )
 
@@ -357,7 +357,7 @@ MODE_BENCHMARKS = tuple(
         "row",
         _prepare_existing if mode != "overwrite" else None,
     )
-    for shape in ("arrow_reader", "arrow_table", "arrow_record_batch", "records")
+    for shape in ("arrow_reader", "arrow_table", "arrow_batch", "records")
     for mode in ("overwrite", "append", "merge")
 )
 

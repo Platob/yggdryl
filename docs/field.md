@@ -1122,7 +1122,7 @@ no rows, and the cast is mapped over the engine's batches, so nothing is collect
 collect; and a `pandas` `DataFrame` or `Series`, which crosses through Arrow and comes back as
 itself. Streams are cast batch by batch. `field.cast(value)` is the same dispatch with plain Python
 values allowed - a bare `5` becomes the typed scalar the field declares. `cast_arrow_scalar` and
-`cast_arrow_record_batch` are the spelled-out single-kind names.
+`cast_arrow_batch` are the spelled-out single-kind names.
 
 === "Python"
 

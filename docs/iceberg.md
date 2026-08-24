@@ -1496,13 +1496,13 @@ have replaced, so both raise and leave the caller to re-plan.
     # options come from the metadata, before a single data file exists.
     folder = IOBase(path)
     options = folder.record_options()
-    folder.overwrite_arrow_record_batch(rows([1, 2], ["XNAS", "XNYS"]), options=options)
-    folder.append_arrow_record_batch(rows([3], ["XLON"]), options=options)
+    folder.overwrite_arrow_batch(rows([1, 2], ["XNAS", "XNYS"]), options=options)
+    folder.append_arrow_batch(rows([3], ["XLON"]), options=options)
 
     # A match key upserts: `2` is stored and updates, `9` is new and appends.
     merging = folder.record_options()
     merging.merge_by_names = ["id"]
-    folder.merge_arrow_record_batch(rows([2, 9], ["XNYS", "XLON"]), options=merging)
+    folder.merge_arrow_batch(rows([2, 9], ["XNYS", "XLON"]), options=merging)
 
     assert folder.read_arrow_reader(options=options).read_all().num_rows == 4
 

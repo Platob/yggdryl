@@ -30,7 +30,7 @@ function rowsOf(handle) {
 
 function sourceFor(suffix, value) {
   if (suffix === 'ArrowReader') return BatchReader.from(value)
-  if (suffix === 'ArrowRecordBatch') return value.batches[0]
+  if (suffix === 'ArrowBatch') return value.batches[0]
   return value
 }
 
@@ -86,7 +86,7 @@ test('reader, table, and record-batch entry points preserve explicit intent', (t
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowRecordBatch']) {
+  for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch']) {
     const handle = new IOBase(path.join(root, `${suffix}.arrows`))
     handle[`overwrite${suffix}`](sourceFor(suffix, table()))
     handle[`append${suffix}`](sourceFor(suffix, table([3n], ['XLON'])))
@@ -110,7 +110,7 @@ test('generic write entry points dispatch every representation by mode', (t) => 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowRecordBatch', 'Records']) {
+  for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
     const handle = new IOBase(path.join(root, `generic-${suffix}.arrows`))
     handle[`write${suffix}`](
       committedSourceFor(suffix, [1n, 2n], ['XNAS', 'XNYS']),
@@ -153,7 +153,7 @@ test('generic write mode is required and validated before input inspection', (t)
     )
     assert.equal(reader.consumed, false, `reader mode=${String(mode)}`)
 
-    for (const suffix of ['ArrowTable', 'ArrowRecordBatch', 'Records']) {
+    for (const suffix of ['ArrowTable', 'ArrowBatch', 'Records']) {
       let accesses = 0
       const untouched = new Proxy({}, {
         get() {
@@ -193,7 +193,7 @@ test('commit cadence has parity across every synchronous representation and inte
   // 1 publishes every row, 8 is larger than the stream, and 3 neither
   // divides the five rows nor the two-row conversion batch.
   for (const cadence of [1, 8, 3]) {
-    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowRecordBatch', 'Records']) {
+    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
       for (const intent of ['overwrite', 'append', 'merge']) {
         const label = `${suffix} ${intent} commit=${cadence}`
         const handle = new IOBase(path.join(root, `${suffix}-${intent}-${cadence}.arrows`))
@@ -257,7 +257,7 @@ test('invalid intent does not convert or consume any adapter input', (t) => {
     assert.throws(() => handle[`${intent}ArrowReader`](reader, options), message)
     assert.equal(reader.consumed, false, `${intent} reader`)
 
-    for (const suffix of ['ArrowTable', 'ArrowRecordBatch']) {
+    for (const suffix of ['ArrowTable', 'ArrowBatch']) {
       let accesses = 0
       const throwing = new Proxy({}, {
         get() {
@@ -297,7 +297,7 @@ test('zero write limits never inspect any representation source', (t) => {
   const declared = BatchReader.from(table()).field
 
   for (const bound of ['maxRowSize', 'maxByteSize']) {
-    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowRecordBatch', 'Records']) {
+    for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
       for (const intent of ['overwrite', 'append', 'merge']) {
         const handle = new IOBase(path.join(root, `${bound}-${suffix}-${intent}.arrows`))
         let options = handle.recordOptions().withField(declared)
@@ -354,7 +354,7 @@ test('zero commit cadence is rejected without inspecting any source', (t) => {
     },
   })
 
-  for (const suffix of ['ArrowTable', 'ArrowRecordBatch', 'Records']) {
+  for (const suffix of ['ArrowTable', 'ArrowBatch', 'Records']) {
     assert.throws(
       () => handle[`overwrite${suffix}`](source, options),
       /commit_row_size|commitRowSize/,
@@ -371,7 +371,7 @@ test('representation-specific methods reject a different representation', (t) =>
 
   assert.throws(() => handle.overwriteArrowReader(rows), /native BatchReader/)
   assert.throws(() => handle.overwriteArrowTable(rows.batches[0]), /Arrow JS Table/)
-  assert.throws(() => handle.overwriteArrowRecordBatch(rows), /Arrow JS RecordBatch/)
+  assert.throws(() => handle.overwriteArrowBatch(rows), /Arrow JS RecordBatch/)
 })
 
 test('plain records infer a field and support all three intents', (t) => {

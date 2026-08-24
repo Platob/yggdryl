@@ -83,12 +83,12 @@ no Avro crate underneath.
     )
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.avro")
-    handle.overwrite_arrow_record_batch(batch([1, 2], ["XNAS", "XNYS"]))
-    handle.append_arrow_record_batch(batch([3], ["XLON"]))
+    handle.overwrite_arrow_batch(batch([1, 2], ["XNAS", "XNYS"]))
+    handle.append_arrow_batch(batch([3], ["XLON"]))
 
     merging = handle.record_options()
     merging.merge_by_names = ["id"]
-    handle.merge_arrow_record_batch(batch([2, 4], ["XPAR", None]), options=merging)
+    handle.merge_arrow_batch(batch([2, 4], ["XPAR", None]), options=merging)
 
     assert handle.read_arrow_reader().read_all().num_rows == 4
     ```

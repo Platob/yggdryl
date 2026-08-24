@@ -457,10 +457,10 @@ fn empty_no_op_benchmarks(criterion: &mut Criterion) {
                 .expect("an empty append is a no-op");
         });
     });
-    no_op.bench_function("append_arrow_record_batch", |bencher| {
+    no_op.bench_function("append_arrow_batch", |bencher| {
         bencher.iter(|| {
             append_target
-                .append_arrow_record_batch(empty_batch.clone(), black_box(&append_options))
+                .append_arrow_batch(empty_batch.clone(), black_box(&append_options))
                 .expect("an empty batch append is a no-op");
         });
     });
@@ -483,10 +483,10 @@ fn empty_no_op_benchmarks(criterion: &mut Criterion) {
                 .expect("an empty merge is a no-op");
         });
     });
-    no_op.bench_function("merge_arrow_record_batch", |bencher| {
+    no_op.bench_function("merge_arrow_batch", |bencher| {
         bencher.iter(|| {
             merge_target
-                .merge_arrow_record_batch(empty_batch.clone(), black_box(&merge_options))
+                .merge_arrow_batch(empty_batch.clone(), black_box(&merge_options))
                 .expect("an empty batch merge is a no-op");
         });
     });
@@ -611,7 +611,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
                 BatchSize::LargeInput,
             );
         });
-        group.bench_function(format!("write_arrow_record_batch/{name}"), |bencher| {
+        group.bench_function(format!("write_arrow_batch/{name}"), |bencher| {
             bencher.iter_batched(
                 || {
                     if mode == IOMode::Overwrite {
@@ -622,11 +622,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
                 },
                 |mut target| {
                     target
-                        .write_arrow_record_batch(
-                            black_box(source.clone()),
-                            mode,
-                            black_box(options),
-                        )
+                        .write_arrow_batch(black_box(source.clone()), mode, black_box(options))
                         .expect("the generic held-batch write must dispatch");
                 },
                 BatchSize::LargeInput,

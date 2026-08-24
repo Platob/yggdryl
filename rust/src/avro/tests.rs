@@ -1621,7 +1621,7 @@ mod records {
         let (_, batch) = batch();
         let mut handle = handle();
         let options = AvroOptions::new();
-        avro::overwrite_batch_reader(
+        avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
             &options,
@@ -2091,7 +2091,7 @@ mod records {
         )
         .unwrap();
         let mut handle = handle();
-        avro::overwrite_batch_reader(
+        avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch]),
             &AvroOptions::new(),
@@ -2126,7 +2126,7 @@ mod records {
         )
         .unwrap();
         let mut handle = handle();
-        let message = avro::overwrite_batch_reader(
+        let message = avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch]),
             &AvroOptions::new(),
@@ -2197,7 +2197,7 @@ mod records {
 
         let mut handle = handle();
         let options = AvroOptions::new();
-        avro::overwrite_batch_reader(
+        avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
             &options,

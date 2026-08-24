@@ -521,17 +521,6 @@ impl PyField {
         self.arrow_scalar(py, value, safe)
     }
 
-    /// The full name of [`cast_arrow_batch`](Self::cast_arrow_batch).
-    #[pyo3(signature = (value, *, safe=true))]
-    fn cast_arrow_record_batch<'py>(
-        &self,
-        py: Python<'py>,
-        value: &Bound<'py, PyAny>,
-        safe: bool,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        self.cast_arrow_batch(py, value, safe)
-    }
-
     /// Casts whatever Arrow-shaped thing `value` is to this exact Field.
     ///
     /// The kind is inferred and the result keeps it: a `pyarrow` `Scalar`,

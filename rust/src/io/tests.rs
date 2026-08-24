@@ -769,7 +769,7 @@ mod records {
             .with_field(schema())
             .with_commit_row_size(1);
         batch_handle
-            .overwrite_arrow_record_batch(rows_batch(&[1, 2]), &options)
+            .overwrite_arrow_batch(rows_batch(&[1, 2]), &options)
             .unwrap();
         assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
 
@@ -1404,14 +1404,12 @@ mod records {
         let mut handle = handle("record-batch-adapters.arrows");
         let options = handle.record_options().unwrap().with_field(schema());
 
-        handle
-            .overwrite_arrow_record_batch(batch(), &options)
-            .unwrap();
-        handle.append_arrow_record_batch(batch(), &options).unwrap();
+        handle.overwrite_arrow_batch(batch(), &options).unwrap();
+        handle.append_arrow_batch(batch(), &options).unwrap();
         assert_eq!(rows(&handle, &options), 4);
 
         let merging = options.clone().with_merge_by_names(["id"]);
-        handle.merge_arrow_record_batch(batch(), &merging).unwrap();
+        handle.merge_arrow_batch(batch(), &merging).unwrap();
         // Both stored copies of each key update in place; merge does not turn
         // either incoming row into a third copy.
         assert_eq!(rows(&handle, &options), 4);
@@ -1445,7 +1443,7 @@ mod records {
             .write_arrow_reader(reader(), IOMode::Overwrite, &options)
             .unwrap();
         handle
-            .write_arrow_record_batch(rows_batch(&[3]), IOMode::Append, &options)
+            .write_arrow_batch(rows_batch(&[3]), IOMode::Append, &options)
             .unwrap();
         handle
             .write_records(
@@ -1485,7 +1483,7 @@ mod records {
         let mut batch_handle =
             PublicationProbe::new("generic-batch-commits.arrows", Arc::clone(&pulls));
         batch_handle
-            .write_arrow_record_batch(batch(), IOMode::Overwrite, &options)
+            .write_arrow_batch(batch(), IOMode::Overwrite, &options)
             .unwrap();
         assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
 
@@ -1566,7 +1564,7 @@ mod records {
             Ok(())
         }
 
-        fn overwrite_arrow_record_batch(
+        fn overwrite_arrow_batch(
             &mut self,
             _batch: RecordBatch,
             _options: &RecordOptions,
@@ -1575,7 +1573,7 @@ mod records {
             Ok(())
         }
 
-        fn append_arrow_record_batch(
+        fn append_arrow_batch(
             &mut self,
             _batch: RecordBatch,
             _options: &RecordOptions,
@@ -1584,7 +1582,7 @@ mod records {
             Ok(())
         }
 
-        fn merge_arrow_record_batch(
+        fn merge_arrow_batch(
             &mut self,
             _batch: RecordBatch,
             _options: &RecordOptions,
@@ -1658,9 +1656,7 @@ mod records {
                 plain.clone()
             };
             probe.write_arrow_reader(reader(), mode, &options).unwrap();
-            probe
-                .write_arrow_record_batch(batch(), mode, &options)
-                .unwrap();
+            probe.write_arrow_batch(batch(), mode, &options).unwrap();
             probe
                 .write_records(std::iter::empty::<NativeRow>(), mode, &options)
                 .unwrap();
@@ -1681,7 +1677,7 @@ mod records {
             .write_arrow_reader(reader(), IOMode::Overwrite, &options)
             .unwrap();
         media
-            .write_arrow_record_batch(batch(), IOMode::Append, &options)
+            .write_arrow_batch(batch(), IOMode::Append, &options)
             .unwrap();
 
         assert_eq!(probe.reader_calls, [1, 0, 0]);
@@ -1711,7 +1707,7 @@ mod records {
         // not reach the destination or silently select merge.
         let before = handle.as_slice().to_vec();
         let error = handle
-            .write_arrow_record_batch(
+            .write_arrow_batch(
                 rows_batch(&[6]),
                 IOMode::Overwrite,
                 &options.clone().with_merge_by_names(["id"]),
@@ -2098,9 +2094,7 @@ mod records {
         let empty =
             RecordBatch::new_empty(crate::arrow::arrow_schema_from_field(&schema()).unwrap());
 
-        handle
-            .overwrite_arrow_record_batch(empty, &options)
-            .unwrap();
+        handle.overwrite_arrow_batch(empty, &options).unwrap();
 
         assert_eq!(rows(&handle, &options), 0);
         assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());

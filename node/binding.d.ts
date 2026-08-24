@@ -355,7 +355,7 @@ declare module './index' {
     /** Lazily filter, project, and limit one native reader. */
     projectArrowReader(reader: BatchReader): BatchReader
     /** Filter and project one Apache Arrow JS RecordBatch. */
-    projectArrowRecordBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+    projectArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
     /** Filter, project, and limit one Apache Arrow JS Table. */
     projectArrowTable(table: ArrowTable): ArrowTable
     /** Infer an Arrow holder and preserve its runtime type. */
@@ -363,7 +363,7 @@ declare module './index' {
     projectArrow(batch: ArrowRecordBatch): ArrowRecordBatch
     projectArrow(table: ArrowTable): ArrowTable
     /** Sort one materialized batch by this statement's native ordering. */
-    sortArrowRecordBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+    sortArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
   }
 
   interface DataType {
@@ -1477,7 +1477,7 @@ declare module './index' {
     /** Materialize this sequence as an Apache Arrow Vector. */
     intoArrowArray(field?: Field): ArrowVector
     /** Materialize record values as one Apache Arrow RecordBatch. */
-    intoArrowRecordBatch(field?: Field): ArrowRecordBatch
+    intoArrowBatch(field?: Field): ArrowRecordBatch
     /** Materialize record values as an Apache Arrow Table. */
     intoArrowTable(field?: Field): ArrowTable
   }
@@ -1489,7 +1489,7 @@ declare module './index' {
     /** Read an Apache Arrow Vector through native Arrow IPC. */
     function fromArrowArray(value: ArrowVector, field?: Field): Scalar
     /** Read an Apache Arrow RecordBatch through native Arrow IPC. */
-    function fromArrowRecordBatch(
+    function fromArrowBatch(
       value: ArrowRecordBatch,
       field?: Field,
     ): Scalar
@@ -1649,22 +1649,22 @@ declare module './index' {
     ): void
 
     /** Replace this resource's rows with one Apache Arrow JS record batch. */
-    overwriteArrowRecordBatch(
+    overwriteArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | null,
     ): void
     /** Append one Apache Arrow JS record batch after this resource's rows. */
-    appendArrowRecordBatch(
+    appendArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | null,
     ): void
     /** Merge one Apache Arrow JS record batch by `options.mergeByNames`. */
-    mergeArrowRecordBatch(
+    mergeArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | null,
     ): void
     /** Write one Apache Arrow JS record batch using the explicit mode. */
-    writeArrowRecordBatch(
+    writeArrowBatch(
       batch: ArrowRecordBatch,
       mode: IOMode,
       options?: RecordOptionsInput | null,

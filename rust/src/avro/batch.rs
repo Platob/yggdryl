@@ -1,7 +1,7 @@
 //! Avro object containers as a record encoding over any byte handle.
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
-//! [`overwrite_batch_reader`] - that take any [`IOBase`] handle and one
+//! [`overwrite_arrow_reader`] - that take any [`IOBase`] handle and one
 //! [`AvroOptions`]. That is what [`crate::io::IOMedia::read_arrow_reader`] and its
 //! two siblings call, so reading a container needs nothing but a handle whose
 //! media type says `avro`. These functions are the encoding and nothing more -
@@ -276,7 +276,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 /// # Errors
 ///
 /// Returns a schema, encoding, or write failure.
-pub fn overwrite_batch_reader<H>(
+pub fn overwrite_arrow_reader<H>(
     handle: &mut H,
     batches: BatchReader,
     options: &AvroOptions,

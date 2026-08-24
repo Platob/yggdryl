@@ -207,15 +207,15 @@ const nativeScalarFromArrowScalar =
   NativeScalar._fromArrowScalarIpcNative.bind(NativeScalar)
 const nativeScalarFromArrowArray =
   NativeScalar._fromArrowArrayIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowRecordBatch =
-  NativeScalar._fromArrowRecordBatchIpcNative.bind(NativeScalar)
+const nativeScalarFromArrowBatch =
+  NativeScalar._fromArrowBatchIpcNative.bind(NativeScalar)
 const nativeScalarFromArrowTable =
   NativeScalar._fromArrowTableIpcNative.bind(NativeScalar)
 const nativeScalarIntoArrowScalar =
   NativeScalar.prototype._intoArrowScalarIpcNative
 const nativeScalarIntoArrowArray = NativeScalar.prototype._intoArrowArrayIpcNative
-const nativeScalarIntoArrowRecordBatch =
-  NativeScalar.prototype._intoArrowRecordBatchIpcNative
+const nativeScalarIntoArrowBatch =
+  NativeScalar.prototype._intoArrowBatchIpcNative
 const nativeScalarIntoArrowTable = NativeScalar.prototype._intoArrowTableIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
@@ -266,7 +266,7 @@ for (const nativeName of [
 }
 delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
-delete NativeScalar.prototype._intoArrowRecordBatchIpcNative
+delete NativeScalar.prototype._intoArrowBatchIpcNative
 delete NativeScalar.prototype._intoArrowTableIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
@@ -358,7 +358,7 @@ const Scalar = publicNativeClass(
     '_fromJsNative',
     '_fromArrowScalarIpcNative',
     '_fromArrowArrayIpcNative',
-    '_fromArrowRecordBatchIpcNative',
+    '_fromArrowBatchIpcNative',
     '_fromArrowTableIpcNative',
   ]),
 )
@@ -1148,10 +1148,10 @@ Object.defineProperties(Scalar, {
       )
     },
   },
-  fromArrowRecordBatch: {
+  fromArrowBatch: {
     value(value, field) {
-      return nativeScalarFromArrowRecordBatch(
-        arrowBatchIntoIPC(value, 'Scalar.fromArrowRecordBatch input'),
+      return nativeScalarFromArrowBatch(
+        arrowBatchIntoIPC(value, 'Scalar.fromArrowBatch input'),
         field,
       )
     },
@@ -1246,11 +1246,11 @@ Object.defineProperties(Scalar.prototype, {
       )
     },
   },
-  intoArrowRecordBatch: {
+  intoArrowBatch: {
     value(field) {
       return arrowBatchFromIPC(
-        Reflect.apply(nativeScalarIntoArrowRecordBatch, this, [field]),
-        'Scalar.intoArrowRecordBatch output',
+        Reflect.apply(nativeScalarIntoArrowBatch, this, [field]),
+        'Scalar.intoArrowBatch output',
       )
     },
   },
@@ -2585,14 +2585,14 @@ const nativeStatementBind = NativeStatement.prototype._bindNative
 const nativeStatementProjectReader =
   BoundStatement.prototype._projectArrowReaderNative
 const nativeStatementProjectBatch =
-  BoundStatement.prototype._projectArrowRecordBatchNative
+  BoundStatement.prototype._projectArrowBatchNative
 const nativeStatementSortBatch =
-  BoundStatement.prototype._sortArrowRecordBatchNative
+  BoundStatement.prototype._sortArrowBatchNative
 for (const [owner, name, method] of [
   [NativeStatement.prototype, '_bindNative', nativeStatementBind],
   [BoundStatement.prototype, '_projectArrowReaderNative', nativeStatementProjectReader],
-  [BoundStatement.prototype, '_projectArrowRecordBatchNative', nativeStatementProjectBatch],
-  [BoundStatement.prototype, '_sortArrowRecordBatchNative', nativeStatementSortBatch],
+  [BoundStatement.prototype, '_projectArrowBatchNative', nativeStatementProjectBatch],
+  [BoundStatement.prototype, '_sortArrowBatchNative', nativeStatementSortBatch],
 ]) {
   if (typeof method !== 'function') {
     throw new TypeError(`native binding is missing ${owner.constructor.name}.${name}`)
@@ -2625,15 +2625,15 @@ Object.defineProperties(BoundStatement.prototype, {
       return nativeStatementProjectReader.call(this, reader)
     },
   },
-  projectArrowRecordBatch: {
+  projectArrowBatch: {
     configurable: true,
     value(batch) {
       const reader = BatchReader.fromIpc(
-        arrowBatchIntoIPC(batch, 'BoundStatement.projectArrowRecordBatch input'),
+        arrowBatchIntoIPC(batch, 'BoundStatement.projectArrowBatch input'),
       )
       return arrowBatchFromIPC(
         nativeStatementProjectBatch.call(this, reader).intoIpc(),
-        'BoundStatement.projectArrowRecordBatch output',
+        'BoundStatement.projectArrowBatch output',
       )
     },
   },
@@ -2652,7 +2652,7 @@ Object.defineProperties(BoundStatement.prototype, {
       if (value instanceof BatchReader) return this.projectArrowReader(value)
       const runtime = arrow()
       if (runtime.isArrowRecordBatch(value)) {
-        return this.projectArrowRecordBatch(value)
+        return this.projectArrowBatch(value)
       }
       if (runtime.isArrowTable(value)) return this.projectArrowTable(value)
       throw new TypeError(
@@ -2660,15 +2660,15 @@ Object.defineProperties(BoundStatement.prototype, {
       )
     },
   },
-  sortArrowRecordBatch: {
+  sortArrowBatch: {
     configurable: true,
     value(batch) {
       const reader = BatchReader.fromIpc(
-        arrowBatchIntoIPC(batch, 'BoundStatement.sortArrowRecordBatch input'),
+        arrowBatchIntoIPC(batch, 'BoundStatement.sortArrowBatch input'),
       )
       return arrowBatchFromIPC(
         nativeStatementSortBatch.call(this, reader).intoIpc(),
-        'BoundStatement.sortArrowRecordBatch output',
+        'BoundStatement.sortArrowBatch output',
       )
     },
   },

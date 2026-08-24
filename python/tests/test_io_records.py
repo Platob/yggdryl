@@ -58,7 +58,7 @@ class TestTypedArrowWrites:
     ) -> None:
         for name, write in (
             ("table", lambda handle: handle.overwrite_arrow_table(table)),
-            ("batch", lambda handle: handle.overwrite_arrow_record_batch(batch)),
+            ("batch", lambda handle: handle.overwrite_arrow_batch(batch)),
             ("reader", lambda handle: handle.overwrite_arrow_reader(table.to_reader())),
         ):
             handle = IOBase(tmp_path / f"{name}.parquet")
@@ -186,7 +186,7 @@ class TestTypedArrowWrites:
         handle = IOBase(tmp_path / "appended.parquet")
         handle.overwrite_arrow_table(table)
         handle.append_records([{"id": 3, "venue": "XLON"}])
-        handle.append_arrow_record_batch(batch)
+        handle.append_arrow_batch(batch)
 
         assert len(rows_of(handle)) == 5
 
@@ -243,12 +243,12 @@ class TestExplicitIntent:
 
         assert rows_of(handle) == [(1, "XNAS"), (2, "XLON"), (3, "XPAR")]
 
-    def test_arrow_record_batch_triplet(self, tmp_path: pathlib.Path) -> None:
+    def test_arrow_batch_triplet(self, tmp_path: pathlib.Path) -> None:
         handle = IOBase(tmp_path / "batch.parquet")
 
-        handle.overwrite_arrow_record_batch(rows_batch([1], ["XNAS"]))
-        handle.append_arrow_record_batch(rows_batch([2], ["XNYS"]))
-        handle.merge_arrow_record_batch(
+        handle.overwrite_arrow_batch(rows_batch([1], ["XNAS"]))
+        handle.append_arrow_batch(rows_batch([2], ["XNYS"]))
+        handle.merge_arrow_batch(
             rows_batch([2, 3], ["XLON", "XPAR"]),
             options=self.merge_options(handle),
         )
@@ -265,12 +265,12 @@ class TestExplicitIntent:
             ("append_arrow_table", ["id"], "write mode append does not accept"),
             ("merge_arrow_table", [], "write mode merge requires at least one"),
             (
-                "overwrite_arrow_record_batch",
+                "overwrite_arrow_batch",
                 ["id"],
                 "write mode overwrite does not accept",
             ),
-            ("append_arrow_record_batch", ["id"], "write mode append does not accept"),
-            ("merge_arrow_record_batch", [], "write mode merge requires at least one"),
+            ("append_arrow_batch", ["id"], "write mode append does not accept"),
+            ("merge_arrow_batch", [], "write mode merge requires at least one"),
         ],
     )
     def test_invalid_arrow_intent_does_not_inspect_input(
@@ -310,7 +310,7 @@ class TestGenericIOMode:
 
     @pytest.mark.parametrize(
         "method",
-        ["write_arrow_reader", "write_arrow_table", "write_arrow_record_batch"],
+        ["write_arrow_reader", "write_arrow_table", "write_arrow_batch"],
     )
     def test_each_arrow_shape_dispatches_all_modes(
         self, tmp_path: pathlib.Path, method: str
@@ -399,7 +399,7 @@ class TestGenericIOMode:
         with pytest.raises(TypeError, match="pyarrow.Table"):
             getattr(handle, f"{intent}_arrow_table")(batch, options=options)
         with pytest.raises(TypeError, match="pyarrow.RecordBatch"):
-            getattr(handle, f"{intent}_arrow_record_batch")(table, options=options)
+            getattr(handle, f"{intent}_arrow_batch")(table, options=options)
 
     @pytest.mark.parametrize(
         ("method", "keys", "message"),

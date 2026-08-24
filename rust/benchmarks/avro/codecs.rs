@@ -69,7 +69,7 @@ pub(crate) fn codec_benchmarks(criterion: &mut Criterion) {
                 .map(|index| batch(index * block_rows, block_rows))
                 .collect();
             let schema = batches[0].schema();
-            avro::overwrite_batch_reader(
+            avro::overwrite_arrow_reader(
                 &mut stored,
                 yggdryl::arrow::batch_reader(schema, batches),
                 &options,

@@ -697,11 +697,8 @@ impl JsBoundStatement {
     }
 
     /// Filter and project the one batch carried by this private Arrow bridge.
-    #[napi(js_name = "_projectArrowRecordBatchNative", skip_typescript)]
-    pub fn project_arrow_record_batch_native(
-        &self,
-        reader: &mut JsBatchReader,
-    ) -> Result<JsBatchReader> {
+    #[napi(js_name = "_projectArrowBatchNative", skip_typescript)]
+    pub fn project_arrow_batch_native(&self, reader: &mut JsBatchReader) -> Result<JsBatchReader> {
         let projected = self
             .inner
             .project(&one_batch(reader)?)
@@ -714,11 +711,8 @@ impl JsBoundStatement {
     }
 
     /// Sort the one batch carried by this private Arrow bridge.
-    #[napi(js_name = "_sortArrowRecordBatchNative", skip_typescript)]
-    pub fn sort_arrow_record_batch_native(
-        &self,
-        reader: &mut JsBatchReader,
-    ) -> Result<JsBatchReader> {
+    #[napi(js_name = "_sortArrowBatchNative", skip_typescript)]
+    pub fn sort_arrow_batch_native(&self, reader: &mut JsBatchReader) -> Result<JsBatchReader> {
         let sorted = self.inner.sort(&one_batch(reader)?).map_err(napi_error)?;
         let schema = sorted.schema();
         Ok(JsBatchReader::from_core(

@@ -1351,7 +1351,7 @@ impl PyIOBase {
 
     /// Replace this resource from one held `pyarrow.RecordBatch`.
     #[pyo3(signature = (batch, *, options = None))]
-    fn overwrite_arrow_record_batch(
+    fn overwrite_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
@@ -1361,13 +1361,13 @@ impl PyIOBase {
         };
         let batch = record_batch_from_value(batch)?;
         self.inner
-            .write_arrow_record_batch(batch, IOMode::Overwrite, &options)
+            .write_arrow_batch(batch, IOMode::Overwrite, &options)
             .map_err(value_error)
     }
 
     /// Append one held `pyarrow.RecordBatch` after this resource's rows.
     #[pyo3(signature = (batch, *, options = None))]
-    fn append_arrow_record_batch(
+    fn append_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
@@ -1377,13 +1377,13 @@ impl PyIOBase {
         };
         let batch = record_batch_from_value(batch)?;
         self.inner
-            .write_arrow_record_batch(batch, IOMode::Append, &options)
+            .write_arrow_batch(batch, IOMode::Append, &options)
             .map_err(value_error)
     }
 
     /// Merge one held `pyarrow.RecordBatch` by `merge_by_names`.
     #[pyo3(signature = (batch, *, options = None))]
-    fn merge_arrow_record_batch(
+    fn merge_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
@@ -1393,13 +1393,13 @@ impl PyIOBase {
         };
         let batch = record_batch_from_value(batch)?;
         self.inner
-            .write_arrow_record_batch(batch, IOMode::Merge, &options)
+            .write_arrow_batch(batch, IOMode::Merge, &options)
             .map_err(value_error)
     }
 
     /// Write exactly one `pyarrow.RecordBatch` using an explicit mode.
     #[pyo3(signature = (batch, mode, *, options = None))]
-    fn write_arrow_record_batch(
+    fn write_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         mode: &str,
@@ -1411,7 +1411,7 @@ impl PyIOBase {
         };
         let batch = record_batch_from_value(batch)?;
         self.inner
-            .write_arrow_record_batch(batch, mode, &options)
+            .write_arrow_batch(batch, mode, &options)
             .map_err(value_error)
     }
 

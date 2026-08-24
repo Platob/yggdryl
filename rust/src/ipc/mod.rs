@@ -1,7 +1,7 @@
 //! Arrow IPC streams over any byte handle.
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
-//! [`overwrite_batch_reader`] - that take any [`IOBase`] handle and one
+//! [`overwrite_arrow_reader`] - that take any [`IOBase`] handle and one
 //! [`IpcOptions`]. That is what [`crate::io::IOMedia::read_arrow_reader`] and its
 //! three write siblings call, so reading an IPC stream needs nothing but a handle whose
 //! media type says `arrow.stream`. Streaming is the only shape here: a read
@@ -552,7 +552,7 @@ fn empty_batch_reader(field: Option<&Field>, options: &IpcOptions) -> Result<Bat
 /// # Errors
 ///
 /// Returns a schema, encoding, or write failure.
-pub fn overwrite_batch_reader<H>(
+pub fn overwrite_arrow_reader<H>(
     handle: &mut H,
     batches: BatchReader,
     options: &IpcOptions,

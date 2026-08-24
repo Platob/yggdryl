@@ -4,7 +4,7 @@
 
 At handle level, overwrite, append, and keyed merge use the shared
 [canonical record-write signatures](io.md#canonical-record-write-signatures).
-The free `ipc::overwrite_batch_reader` below is the one complete-stream encoder
+The free `ipc::overwrite_arrow_reader` below is the one complete-stream encoder
 those intents ultimately publish through.
 
 !!! note "All three"
@@ -93,12 +93,12 @@ those intents ultimately publish through.
 
     # The name says Arrow IPC, so no call names an encoding.
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.overwrite_arrow_record_batch(batch([1, 2], ["XNAS", "XNYS"]))
-    handle.append_arrow_record_batch(batch([3], ["XLON"]))
+    handle.overwrite_arrow_batch(batch([1, 2], ["XNAS", "XNYS"]))
+    handle.append_arrow_batch(batch([3], ["XLON"]))
 
     merging = handle.record_options()
     merging.merge_by_names = ["id"]
-    handle.merge_arrow_record_batch(batch([2, 4], ["XPAR", None]), options=merging)
+    handle.merge_arrow_batch(batch([2, 4], ["XPAR", None]), options=merging)
 
     assert handle.read_arrow_field().name == "row"
     assert handle.read_arrow_reader().read_all().num_rows == 4
@@ -141,7 +141,7 @@ merge updates matching `id` values and inserts misses. `merge_by_names` supplies
 it never selects merge implicitly.
 
 IPC itself stays one batch-native seam: `read_field`, `read_batch_reader`, and
-`overwrite_batch_reader` operate over any `IOBase` handle and `IpcOptions`. Runtime row,
+`overwrite_arrow_reader` operate over any `IOBase` handle and `IpcOptions`. Runtime row,
 table, and record-batch adapters widen into the same reader before encoding. Python crosses
 that seam through Arrow C Stream; JavaScript uses the documented copied IPC boundary.
 
@@ -267,7 +267,7 @@ fresh/opened `column_size` at 6.25 us/7.04 ns. Regenerate with
 
     // `batch_reader` turns whatever is already in hand - a Vec, an array, an
     // iterator - into the one shape a write takes.
-    ipc::overwrite_batch_reader(
+    ipc::overwrite_arrow_reader(
         &mut handle,
         arrow::batch_reader(arrow_schema, batches),
         &options,
@@ -350,7 +350,7 @@ stream's Arrow schema is available from the reader itself, ahead of the first ba
 Batches come back exactly as they were written. `ipc::read_batch_reader` does not cast them to
 a declared schema, so what goes in is what comes out, block boundaries included.
 
-The write side is the same type facing the other way: `ipc::overwrite_batch_reader` consumes a
+The write side is the same type facing the other way: `ipc::overwrite_arrow_reader` consumes a
 `BatchReader` and encodes each batch as it pulls it, so a reader that computes its batches
 lazily is never materialized.
 
@@ -381,7 +381,7 @@ lazily is never materialized.
             .expect("batch")
         }
     });
-    ipc::overwrite_batch_reader(
+    ipc::overwrite_arrow_reader(
         &mut handle,
         arrow::batch_reader(arrow_schema, produced),
         &IpcOptions::new(),
@@ -469,7 +469,7 @@ lazily is never materialized.
 
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
     let options = IpcOptions::new();
-    ipc::overwrite_batch_reader(&mut handle, arrow::batch_reader(arrow_schema, [batch]), &options)?;
+    ipc::overwrite_arrow_reader(&mut handle, arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // One of the three columns, named by a root Field of its own.
     let wanted = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -504,7 +504,7 @@ lazily is never materialized.
     )
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.overwrite_arrow_record_batch(batch)
+    handle.overwrite_arrow_batch(batch)
 
     # One of the three columns, declared through the centralized options field.
     options = handle.record_options()
@@ -659,7 +659,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-    handle.overwrite_arrow_record_batch(pa.record_batch({"id": [7]}, schema=schema))
+    handle.overwrite_arrow_batch(pa.record_batch({"id": [7]}, schema=schema))
 
     # A reader that declares nothing recovers the schema from the bytes.
     assert handle.read_arrow_field().name == "row"
@@ -759,7 +759,7 @@ cannot recover.
     written = []
     for name in ("trades.arrows", "trades.arrows.gz", "trades.arrows.zst"):
         handle = IOBase(root / name)
-        handle.overwrite_arrow_record_batch(pa.record_batch({"id": [1, 2]}, schema=schema))
+        handle.overwrite_arrow_batch(pa.record_batch({"id": [1, 2]}, schema=schema))
 
         # Identical calls on both sides, whatever the coding is.
         assert handle.read_arrow_reader().read_all().num_rows == 2, name
@@ -858,7 +858,7 @@ handle declared. It does nothing when the handle declares none.
 
     options = handle.record_options()
     options.level = 9
-    handle.overwrite_arrow_record_batch(
+    handle.overwrite_arrow_batch(
         pa.record_batch({"id": list(range(512))}, schema=schema), options=options
     )
 
@@ -1143,7 +1143,7 @@ Anything that is not a stream fails on the spot rather than being guessed at.
 
 The other record encoding in this build is [parquet.md](parquet.md), behind the non-default
 `parquet` feature. It has the same `read_field`, `read_batch_reader`, and
-`overwrite_batch_reader` shape over the same shared settings, and adds the three a file
+`overwrite_arrow_reader` shape over the same shared settings, and adds the three a file
 format needs that a stream does not. [`generic::Media`](generic.md) holds either one
 without naming which.
 

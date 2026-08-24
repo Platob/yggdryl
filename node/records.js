@@ -9,7 +9,7 @@
 // stays native; nothing here reads a datatype.
 //
 // Write intent and representation are both explicit. Each of ArrowReader,
-// ArrowTable, ArrowRecordBatch, and Records has overwrite/append/merge entry
+// ArrowTable, ArrowBatch, and Records has overwrite/append/merge entry
 // points. The representation-specific adapter widens to one native reader and
 // the intent-specific call redirects to the matching Rust primitive.
 
@@ -713,7 +713,7 @@ function installRecords({
   const representations = [
     ['ArrowReader', nativeArrowReader],
     ['ArrowTable', arrowTableReader],
-    ['ArrowRecordBatch', arrowRecordBatchReader],
+    ['ArrowBatch', arrowRecordBatchReader],
   ]
   for (const intent of intents) {
     const native = nativeWrites[intent]

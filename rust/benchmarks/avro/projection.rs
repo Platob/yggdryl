@@ -73,7 +73,7 @@ pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
     // The null codec isolates the skip itself: with compression on, the
     // whole block is decompressed either way and the decompression dominates.
     let options = AvroOptions::new().with_codec("null");
-    avro::overwrite_batch_reader(
+    avro::overwrite_arrow_reader(
         &mut stored,
         yggdryl::arrow::batch_reader(arrow_schema, [batch]),
         &options,

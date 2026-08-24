@@ -521,7 +521,7 @@ The explicit method name carries both facts:
 | --- | --- | --- | --- |
 | native `BatchReader` | `overwriteArrowReader` | `appendArrowReader` | `mergeArrowReader` |
 | Arrow JS `Table` | `overwriteArrowTable` | `appendArrowTable` | `mergeArrowTable` |
-| Arrow JS `RecordBatch` | `overwriteArrowRecordBatch` | `appendArrowRecordBatch` | `mergeArrowRecordBatch` |
+| Arrow JS `RecordBatch` | `overwriteArrowBatch` | `appendArrowBatch` | `mergeArrowBatch` |
 | plain objects or field-class instances | `overwriteRecords` | `appendRecords` | `mergeRecords` |
 
 When mode comes from configuration, each shape also has one dispatcher. The
@@ -530,7 +530,7 @@ canonical order is input, required mode, then the one optional settings value:
 ```text
 writeArrowReader(reader, mode, options?)
 writeArrowTable(table, mode, options?)
-writeArrowRecordBatch(batch, mode, options?)
+writeArrowBatch(batch, mode, options?)
 writeRecords(records, mode, options?)
 ```
 

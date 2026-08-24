@@ -93,7 +93,7 @@ class TestBatchesCrossAsReaders:
     ) -> None:
         batch = _batch()
         writes = [
-            lambda handle: handle.overwrite_arrow_record_batch(batch),
+            lambda handle: handle.overwrite_arrow_batch(batch),
             lambda handle: handle.overwrite_arrow_table(pa.Table.from_batches([batch])),
             lambda handle: handle.overwrite_arrow_reader(_reader(batch)),
         ]
@@ -232,7 +232,7 @@ class TestWritesAndMerges:
     def test_a_write_stores_the_declared_root(self, stream: IOBase) -> None:
         options = stream.record_options()
         options.field = "row:struct<id:int64 not null> not null"
-        stream.overwrite_arrow_record_batch(
+        stream.overwrite_arrow_batch(
             pa.record_batch(
                 {"id": [1, 2]},
                 schema=pa.schema([pa.field("id", pa.int64(), nullable=False)]),
@@ -266,7 +266,7 @@ class TestPartitionColumns:
         lake = IOBase(tmp_path)
         options = RecordOptions("part.arrows")
         options.field = schema
-        lake.overwrite_arrow_record_batch(rows, options=options)
+        lake.overwrite_arrow_batch(rows, options=options)
 
         # Only `price` reached the leaf; the other two are the directory names.
         leaf = lake / "year=2024" / "month=01" / "part-0.arrows"

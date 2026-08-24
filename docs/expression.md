@@ -341,7 +341,7 @@ Arrow projection is streamed where the holder permits it. `project_reader` wraps
 applies the predicate and projection batch by batch, and enforces one limit across the stream. Python's
 `project_arrow` and JavaScript's `projectArrow` preserve a record batch, table, or reader input; their
 spelled-out methods make the return type explicit. Global ordering cannot be correct without seeing
-all rows, so `sort` / `sort_arrow_record_batch` / `sortArrowRecordBatch` intentionally sort one
+all rows, so `sort` / `sort_arrow_batch` / `sortArrowBatch` intentionally sort one
 materialized batch.
 
 === "Rust"

@@ -90,7 +90,7 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
             },
             |(mut target, options)| {
                 target
-                    .overwrite_arrow_record_batch(black_box(source.clone()), &options)
+                    .overwrite_arrow_batch(black_box(source.clone()), &options)
                     .expect("the fixture batch must overwrite");
             },
             BatchSize::LargeInput,
@@ -109,7 +109,7 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
             },
             |(mut target, options)| {
                 target
-                    .append_arrow_record_batch(black_box(source.clone()), &options)
+                    .append_arrow_batch(black_box(source.clone()), &options)
                     .expect("the fixture batch must append");
             },
             BatchSize::LargeInput,
@@ -129,7 +129,7 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
             },
             |(mut target, options)| {
                 target
-                    .merge_arrow_record_batch(black_box(source.clone()), &options)
+                    .merge_arrow_batch(black_box(source.clone()), &options)
                     .expect("the fixture batch must merge");
             },
             BatchSize::LargeInput,

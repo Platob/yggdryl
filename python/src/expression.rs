@@ -745,7 +745,7 @@ impl PyBoundStatement {
     }
 
     /// Filter and project one `pyarrow.RecordBatch` through the native plan.
-    fn project_arrow_record_batch<'py>(
+    fn project_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         batch: &Bound<'_, PyAny>,
@@ -795,7 +795,7 @@ impl PyBoundStatement {
     ) -> PyResult<Bound<'py, PyAny>> {
         let pyarrow = py.import("pyarrow")?;
         if value.is_instance(&pyarrow.getattr("RecordBatch")?)? {
-            return self.project_arrow_record_batch(py, value);
+            return self.project_arrow_batch(py, value);
         }
         if value.is_instance(&pyarrow.getattr("Table")?)? {
             return self.project_arrow_table(py, value);
@@ -804,7 +804,7 @@ impl PyBoundStatement {
     }
 
     /// Sort one `pyarrow.RecordBatch` through Arrow's native kernels.
-    fn sort_arrow_record_batch<'py>(
+    fn sort_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         batch: &Bound<'_, PyAny>,

@@ -491,10 +491,10 @@ record_handle.overwrite_arrow_table(arrow_table)
 record_handle.append_arrow_table(arrow_table)
 record_handle.merge_arrow_table(arrow_table, options=record_options)
 record_handle.write_arrow_table(arrow_table, "append")
-record_handle.overwrite_arrow_record_batch(arrow_batch)
-record_handle.append_arrow_record_batch(arrow_batch)
-record_handle.merge_arrow_record_batch(arrow_batch, options=record_options)
-record_handle.write_arrow_record_batch(arrow_batch, "overwrite")
+record_handle.overwrite_arrow_batch(arrow_batch)
+record_handle.append_arrow_batch(arrow_batch)
+record_handle.merge_arrow_batch(arrow_batch, options=record_options)
+record_handle.write_arrow_batch(arrow_batch, "overwrite")
 record_options.merge_by_names = []
 record_handle.overwrite_records([{"id": 1}], options=record_options)
 record_handle.append_records([{"id": 2}], options=record_options)
@@ -798,7 +798,7 @@ projected_statement_table: pa.Table = bound_statement.project_arrow(pa.Table.fro
 projected_statement_reader: pa.RecordBatchReader = bound_statement.project_arrow(
     pa.RecordBatchReader.from_batches(statement_batch.schema, [statement_batch])
 )
-sorted_statement_batch: pa.RecordBatch = bound_statement.sort_arrow_record_batch(statement_batch)
+sorted_statement_batch: pa.RecordBatch = bound_statement.sort_arrow_batch(statement_batch)
 
 expression_matched: list[IOBase] = list(
     IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")

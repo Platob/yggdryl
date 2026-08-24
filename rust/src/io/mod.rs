@@ -2679,12 +2679,12 @@ pub(crate) fn leaf_writer(
     options: &RecordOptions,
 ) -> Result<()> {
     match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::overwrite_batch_reader(handle, batches, ipc)?,
+        RecordOptions::Ipc(ipc) => crate::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => {
-            crate::parquet::overwrite_batch_reader(handle, batches, parquet)?;
+            crate::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
         }
-        RecordOptions::Avro(avro) => crate::avro::overwrite_batch_reader(handle, batches, avro)?,
+        RecordOptions::Avro(avro) => crate::avro::overwrite_arrow_reader(handle, batches, avro)?,
         RecordOptions::Text(text) => {
             crate::text::line::arrow::write_arrow_lines(handle, batches, text)?;
         }
@@ -2965,12 +2965,12 @@ impl IOMedia for Box<dyn IOBase> {
     }
 
     #[cfg(feature = "arrow")]
-    fn overwrite_arrow_record_batch(
+    fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::overwrite_arrow_record_batch(self.as_mut(), batch, options)
+        IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -2983,12 +2983,12 @@ impl IOMedia for Box<dyn IOBase> {
     }
 
     #[cfg(feature = "arrow")]
-    fn append_arrow_record_batch(
+    fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::append_arrow_record_batch(self.as_mut(), batch, options)
+        IOMedia::append_arrow_batch(self.as_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -3001,12 +3001,12 @@ impl IOMedia for Box<dyn IOBase> {
     }
 
     #[cfg(feature = "arrow")]
-    fn merge_arrow_record_batch(
+    fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
     ) -> Result<()> {
-        IOMedia::merge_arrow_record_batch(self.as_mut(), batch, options)
+        IOMedia::merge_arrow_batch(self.as_mut(), batch, options)
     }
 }
 

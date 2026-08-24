@@ -457,7 +457,7 @@ let batch = |ids: Vec<i64>, symbols: Vec<Option<&str>>| {
 
 let mut handle = Buffer::new();
 let options = IpcOptions::new();
-ipc::overwrite_batch_reader(
+ipc::overwrite_arrow_reader(
     &mut handle,
     yggdryl::arrow::batch_reader(
         Arc::clone(&projected),

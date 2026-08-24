@@ -394,9 +394,9 @@ def test_record_batch_and_table_round_trip_through_native_rows() -> None:
         names=["id", "symbol"],
     )
     field = Field.from_arrow_schema(batch.schema)
-    rows = Scalar.from_arrow_record_batch(batch)
+    rows = Scalar.from_arrow_batch(batch)
     assert rows.as_py() == [[1, "A"], [2, "B"]]
-    restored_batch = rows.into_arrow_record_batch(field)
+    restored_batch = rows.into_arrow_batch(field)
     assert restored_batch.equals(batch)
 
     table = pa.Table.from_batches([batch, batch])
@@ -407,7 +407,7 @@ def test_record_batch_and_table_round_trip_through_native_rows() -> None:
 
 def test_record_rows_infer_struct_field_names() -> None:
     rows = Scalar.from_py([Quote("AAPL", 12.5), Quote("MSFT", 9.0)])
-    batch = rows.into_arrow_record_batch()
+    batch = rows.into_arrow_batch()
     assert batch.schema.names == ["price", "symbol"]
     assert batch.to_pylist() == [
         {"price": 12.5, "symbol": "AAPL"},
@@ -415,7 +415,7 @@ def test_record_rows_infer_struct_field_names() -> None:
     ]
 
     nullable = Scalar.from_py([Venue(1, None), Venue(2, "XNAS")])
-    nullable_batch = nullable.into_arrow_record_batch()
+    nullable_batch = nullable.into_arrow_batch()
     assert nullable_batch.schema.field("name").nullable
     assert nullable_batch.column("name").to_pylist() == [None, "XNAS"]
 
@@ -446,7 +446,7 @@ def test_value_field_accessors_redirect_to_core_inference() -> None:
 
 def test_empty_rows_require_the_known_arrow_root_on_output() -> None:
     batch = pa.record_batch([pa.array([], type=pa.int32())], names=["id"])
-    rows = Scalar.from_arrow_record_batch(batch)
+    rows = Scalar.from_arrow_batch(batch)
     with pytest.raises(ValueError, match="empty rows"):
-        rows.into_arrow_record_batch()
-    assert rows.into_arrow_record_batch(Field.from_arrow_schema(batch.schema)).equals(batch)
+        rows.into_arrow_batch()
+    assert rows.into_arrow_batch(Field.from_arrow_schema(batch.schema)).equals(batch)

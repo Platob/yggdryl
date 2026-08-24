@@ -189,7 +189,7 @@ test('bound statement projection preserves each Arrow holder', () => {
   const first = statementBatch(['A', 'B', 'C', 'D'], [1n, 4n, 3n, null])
   const second = statementBatch(['E', 'F'], [5n, 6n])
 
-  const projectedBatch = bound.projectArrowRecordBatch(first)
+  const projectedBatch = bound.projectArrowBatch(first)
   assert.ok(arrow.isArrowRecordBatch(projectedBatch))
   assert.deepEqual([...projectedBatch.getChild('quantity')], [4n, 3n])
   assert.ok(arrow.isArrowRecordBatch(bound.projectArrow(first)))
@@ -220,11 +220,11 @@ test('bound statement sorts one materialized batch', () => {
     STATEMENT_SCHEMA,
   )
   const source = statementBatch(['A', 'B', 'C', 'D'], [null, 2n, 5n, 3n])
-  const sorted = bound.sortArrowRecordBatch(source)
+  const sorted = bound.sortArrowBatch(source)
   assert.ok(arrow.isArrowRecordBatch(sorted))
   assert.deepEqual([...sorted.getChild('ccy')], ['C', 'D'])
   assert.deepEqual([...sorted.getChild('size')], [5n, 3n])
-  assert.equal(bound._sortArrowRecordBatchNative, undefined)
+  assert.equal(bound._sortArrowBatchNative, undefined)
 })
 
 test('a lake is filtered by the same predicate the rows are', () => {

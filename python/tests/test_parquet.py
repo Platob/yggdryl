@@ -316,7 +316,7 @@ class TestWhatAnotherReaderSees:
         rows = pa.record_batch({"id": [1, 2]}, schema=identified)
 
         with file as handle:
-            handle.overwrite_arrow_record_batch(rows)
+            handle.overwrite_arrow_batch(rows)
 
         stored = file.read_arrow_field().data_type[0]
         assert stored.parquet_field_id == 17
@@ -333,13 +333,13 @@ class TestWritesAndMerges:
             {"id": [1], "symbol": ["AAPL"], "venue": ["XNAS"]}, schema=SCHEMA
         )
 
-        file.append_arrow_record_batch(rows)
-        file.append_arrow_record_batch(rows)
+        file.append_arrow_batch(rows)
+        file.append_arrow_batch(rows)
 
         assert file.read_arrow_reader().read_all().num_rows == 2
 
     def test_a_match_key_merges_into_the_file(self, file: IOBase) -> None:
-        file.overwrite_arrow_record_batch(
+        file.overwrite_arrow_batch(
             pa.record_batch(
                 {"id": [1, 2], "symbol": ["AAPL", "MSFT"], "venue": ["XNAS", "XNAS"]},
                 schema=SCHEMA,
@@ -348,7 +348,7 @@ class TestWritesAndMerges:
         options = file.record_options()
         options.merge_by_names = ["id"]
 
-        file.merge_arrow_record_batch(
+        file.merge_arrow_batch(
             pa.record_batch(
                 {"id": [2, 3], "symbol": ["MSFT.O", "NVDA"], "venue": ["XNAS", "XNAS"]},
                 schema=SCHEMA,
@@ -374,7 +374,7 @@ class TestWritesAndMerges:
         for venue in ("XNAS", "XNYS"):
             (tmp_path / f"venue={venue}").mkdir()
         lake = IOBase(tmp_path)
-        lake.overwrite_arrow_record_batch(
+        lake.overwrite_arrow_batch(
             pa.record_batch(
                 {"price": [10, 20, 30], "venue": ["XNAS", "XNAS", "XNYS"]},
                 schema=schema,

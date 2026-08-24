@@ -732,8 +732,8 @@ impl JsScalar {
     }
 
     /// Decode Arrow JS record batches from standard IPC.
-    #[napi(factory, js_name = "_fromArrowRecordBatchIpcNative", skip_typescript)]
-    pub fn from_arrow_record_batch_ipc_native(
+    #[napi(factory, js_name = "_fromArrowBatchIpcNative", skip_typescript)]
+    pub fn from_arrow_batch_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
     ) -> Result<Self> {
@@ -781,8 +781,8 @@ impl JsScalar {
     }
 
     /// Encode record values as one Arrow IPC record batch.
-    #[napi(js_name = "_intoArrowRecordBatchIpcNative", skip_typescript)]
-    pub fn into_arrow_record_batch_ipc_native(
+    #[napi(js_name = "_intoArrowBatchIpcNative", skip_typescript)]
+    pub fn into_arrow_batch_ipc_native(
         &self,
         field: Option<ClassInstance<'_, JsField>>,
     ) -> Result<Buffer> {

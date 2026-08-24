@@ -46,7 +46,7 @@ ARROW_BATCH = pa.record_batch(
     [ARROW_ARRAY, pa.array(["AAPL"] * len(ARROW_ARRAY))], names=["id", "symbol"]
 )
 ROOT = Field.from_arrow_schema(ARROW_BATCH.schema)
-NATIVE_ROWS = Scalar.from_arrow_record_batch(ARROW_BATCH)
+NATIVE_ROWS = Scalar.from_arrow_batch(ARROW_BATCH)
 ARROW_TABLE = pa.Table.from_batches([ARROW_BATCH])
 URL_TEXT = "https://example.com/archive/data.json"
 URL_VALUE = Url(URL_TEXT)
@@ -130,8 +130,8 @@ def main() -> None:
             ("into Arrow scalar", NATIVE_SCALAR.into_arrow_scalar, small),
             ("from Arrow array (4096)", lambda: Scalar.from_arrow_array(ARROW_ARRAY), bulk),
             ("into Arrow array (4096)", NATIVE_ARRAY.into_arrow_array, bulk),
-            ("from Arrow batch (4096)", lambda: Scalar.from_arrow_record_batch(ARROW_BATCH), bulk),
-            ("into Arrow batch (4096)", lambda: NATIVE_ROWS.into_arrow_record_batch(ROOT), bulk),
+            ("from Arrow batch (4096)", lambda: Scalar.from_arrow_batch(ARROW_BATCH), bulk),
+            ("into Arrow batch (4096)", lambda: NATIVE_ROWS.into_arrow_batch(ROOT), bulk),
             ("from Arrow table (4096)", lambda: Scalar.from_arrow_table(ARROW_TABLE), bulk),
             ("into Arrow table (4096)", lambda: NATIVE_ROWS.into_arrow_table(ROOT), bulk),
         ):

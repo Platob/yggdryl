@@ -103,7 +103,7 @@ assert tree["legs"][0]["id"].as_py() == 1
 assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 ```
 
-`from_arrow_scalar`, `from_arrow_array`, `from_arrow_record_batch`, and
+`from_arrow_scalar`, `from_arrow_array`, `from_arrow_batch`, and
 `from_arrow_table` import through Arrow C Data/C Stream. Their `into_arrow_*`
 counterparts preserve exact physical types. Pass `field=` to cast to a declared
 shape; empty output collections require it because they cannot infer a type.
@@ -597,7 +597,7 @@ The write name says both what Python is holding and what the operation means:
 | --- | --- | --- | --- |
 | `RecordBatchReader` or foreign Arrow C stream reader | `overwrite_arrow_reader` | `append_arrow_reader` | `merge_arrow_reader` |
 | one `pyarrow.Table` | `overwrite_arrow_table` | `append_arrow_table` | `merge_arrow_table` |
-| one `pyarrow.RecordBatch` | `overwrite_arrow_record_batch` | `append_arrow_record_batch` | `merge_arrow_record_batch` |
+| one `pyarrow.RecordBatch` | `overwrite_arrow_batch` | `append_arrow_batch` | `merge_arrow_batch` |
 | iterable of mappings, sequences, or dataclass instances | `overwrite_records` | `append_records` | `merge_records` |
 
 The same shapes have one configurable entry point when mode comes from
@@ -607,7 +607,7 @@ keyword-only options value:
 ```text
 write_arrow_reader(reader, mode, *, options=None)
 write_arrow_table(table, mode, *, options=None)
-write_arrow_record_batch(batch, mode, *, options=None)
+write_arrow_batch(batch, mode, *, options=None)
 write_records(records, mode, *, options=None)
 write_pandas(frames, mode, *, options=None)
 write_pandas_frame(frame, mode, *, options=None)
@@ -643,7 +643,7 @@ root = pathlib.Path(tempfile.mkdtemp())
 handle = IOBase(root / "trades.parquet")
 
 # The handle's name picks the encoding; no call takes a format argument.
-handle.overwrite_arrow_record_batch(first)
+handle.overwrite_arrow_batch(first)
 handle.append_arrow_table(more)
 
 merge = handle.record_options()

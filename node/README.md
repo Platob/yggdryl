@@ -188,7 +188,7 @@ memoizes that result per class. Passing a different `name` returns a renamed
 clone and leaves the cached root untouched.
 
 Apache Arrow JS conversion is an explicit copied IPC boundary. `Scalar` exposes
-`fromArrowScalar`, `fromArrowArray`, `fromArrowRecordBatch`, and
+`fromArrowScalar`, `fromArrowArray`, `fromArrowBatch`, and
 `fromArrowTable`, with matching `intoArrow*` methods; an optional native
 `Field` selects and casts through the Rust Arrow engine. Empty or positional
 values need a Field when their schema cannot be inferred. A `BatchReader`
@@ -338,7 +338,7 @@ C Data consumer. The encoding is never an argument: `recordOptions()` derives
 it from the handle's media type, covering Arrow IPC and Apache Parquet.
 
 Configured intent uses `writeArrowReader`, `writeArrowTable`,
-`writeArrowRecordBatch`, or `writeRecords` with `(input, mode, options?)`.
+`writeArrowBatch`, or `writeRecords` with `(input, mode, options?)`.
 The required mode is `'overwrite'`, `'append'`, or `'merge'` and is checked
 before a one-shot reader, exporter, or iterable is inspected.
 

@@ -39,7 +39,7 @@ mod single;
 pub(crate) use batch::row_size;
 #[cfg(feature = "arrow")]
 pub use batch::{
-    Avro, AvroOptions, DEFAULT_ROOT_NAME, overwrite_batch_reader, read_batch_reader, read_field,
+    Avro, AvroOptions, DEFAULT_ROOT_NAME, overwrite_arrow_reader, read_batch_reader, read_field,
 };
 pub use container::{
     Block, Blocks, Container, read_blocks, read_blocks_owned, read_blocks_owned_with_limits,

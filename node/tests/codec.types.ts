@@ -122,8 +122,8 @@ const instanceFieldOptions: CodecOptions = { field: new TypedOrder() }
 const classTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', classFieldOptions)
 const instanceTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', instanceFieldOptions)
 const nativeTable = tableValue.intoArrowTable(rowField)
-const batchValue: Scalar = Scalar.fromArrowRecordBatch(arrowTable.batches[0], rowField)
-const nativeBatch = batchValue.intoArrowRecordBatch(rowField)
+const batchValue: Scalar = Scalar.fromArrowBatch(arrowTable.batches[0], rowField)
+const nativeBatch = batchValue.intoArrowBatch(rowField)
 const narrowNative: Scalar = json.loads('7', {
   field: new Field('value', 'int16', false),
   scalar: true,

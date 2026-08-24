@@ -194,7 +194,7 @@ class declarations remain schema definitions rather than a second row I/O
 surface.
 
 Record writes name both their Python representation and intent:
-`overwrite_arrow_reader`, `append_arrow_table`, `merge_arrow_record_batch`,
+`overwrite_arrow_reader`, `append_arrow_table`, `merge_arrow_batch`,
 and the corresponding `*_records`, pandas, and polars adapters all redirect to
 the same streamed Rust pipeline. Every call takes one keyword-only `options=`
 value. Set `options.commit_row_size = N` to publish each complete group of `N`

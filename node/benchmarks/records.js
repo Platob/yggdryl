@@ -181,15 +181,15 @@ benchmark('records/merge_arrow_table', () => {
   handle.mergeArrowTable(table, keyed(handle))
 })
 
-benchmark('records/overwrite_arrow_record_batch', () =>
-  stored().overwriteArrowRecordBatch(table.batches[0]),
+benchmark('records/overwrite_arrow_batch', () =>
+  stored().overwriteArrowBatch(table.batches[0]),
 )
-benchmark('records/append_arrow_record_batch', () =>
-  stored().appendArrowRecordBatch(table.batches[0]),
+benchmark('records/append_arrow_batch', () =>
+  stored().appendArrowBatch(table.batches[0]),
 )
-benchmark('records/merge_arrow_record_batch', () => {
+benchmark('records/merge_arrow_batch', () => {
   const handle = stored()
-  handle.mergeArrowRecordBatch(table.batches[0], keyed(handle))
+  handle.mergeArrowBatch(table.batches[0], keyed(handle))
 })
 
 benchmark('records/overwrite_records', () => stored().overwriteRecords(records))
@@ -236,9 +236,9 @@ for (const mode of ['overwrite', 'append', 'merge']) {
       mode === 'merge' ? keyed(handle) : undefined,
     )
   })
-  benchmark(`records/write_arrow_record_batch/${mode}`, () => {
+  benchmark(`records/write_arrow_batch/${mode}`, () => {
     const handle = stored()
-    handle.writeArrowRecordBatch(
+    handle.writeArrowBatch(
       table.batches[0],
       mode,
       mode === 'merge' ? keyed(handle) : undefined,
