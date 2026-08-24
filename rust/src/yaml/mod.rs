@@ -339,8 +339,8 @@ pub fn into_writer_with_formatting<W: Write>(
     formatting: Formatting,
 ) -> Result<()> {
     check_encode_depth(value, "yaml")?;
-    // `write_value` terminates the document, so nothing is added here.
-    write_value(&mut writer, value, Layout::from(formatting))
+    // `write_scalar` terminates the document, so nothing is added here.
+    write_scalar(&mut writer, value, Layout::from(formatting))
 }
 
 /// Encode YAML documents to a byte vector.
@@ -410,7 +410,7 @@ where
         }
         let value = value.borrow();
         check_encode_depth(value, "yaml")?;
-        write_value(&mut writer, value, layout)?;
+        write_scalar(&mut writer, value, layout)?;
     }
     Ok(())
 }
@@ -458,7 +458,7 @@ impl From<Formatting> for Layout {
 }
 
 /// Write one document, block or flow as the layout asks.
-fn write_value<W: Write>(writer: &mut W, value: &Scalar, layout: Layout) -> Result<()> {
+fn write_scalar<W: Write>(writer: &mut W, value: &Scalar, layout: Layout) -> Result<()> {
     match layout.width {
         Some(width) => write_node(writer, value, 0, Position::Root, width)?,
         // Flow style, spelled the way the block writer spells its scalars so

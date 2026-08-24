@@ -141,7 +141,7 @@ const CORE_PAGES = [
     read: 'rust/src/uri.rs, rust/tests/uri.rs, python/src/uri.rs, python/tests/test_uri.py, node/src/uri.rs, node/tests/uri.test.js',
     cover: 'Parsing and canonical syntax, components, path segments and extensions, compound-filename media inference, joinpath/parent/parents/parts, default_port, and Path/PathBuf interop (from_path, into_path, TryFrom, join_path, is_local, exists, is_dir, is_file, local_mime_type). All three languages expose this.' },
   { module: 'text', title: 'Structured text values', bindings: true,
-    read: 'rust/src/text/ (mod.rs, codec.rs, format.rs, limits.rs, display.rs, io.rs), rust/src/generic/value.rs, rust/tests/text/, python/src/codec.rs, node/src/codec.rs',
+    read: 'rust/src/text/ (mod.rs, codec.rs, format.rs, limits.rs, display.rs, io.rs), rust/src/generic/scalar.rs, rust/tests/text/, python/src/codec.rs, node/src/codec.rs',
     cover: 'The shared Scalar tree - variants, floats, limits, byte positions, format inference - and then the four format types Json/Jsonl/Toml/Yaml behind one TextCodec surface, including reading and writing through an IOBase handle with its content coding. Python and JavaScript expose scalar conversion and the codecs, so those examples get three tabs.' },
   { module: 'json', title: 'JSON', bindings: true,
     read: 'rust/src/json/, rust/tests/json.rs, python/yggdryl/json/, node/tests/codec.test.js',

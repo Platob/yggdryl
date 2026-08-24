@@ -203,7 +203,7 @@ pub(super) fn write_document<W: Write>(
             for (name, value) in entries.iter() {
                 write_quoted(writer, name)?;
                 writer.write_all(b" = ")?;
-                write_value(writer, value, layout, 0)?;
+                write_scalar(writer, value, layout, 0)?;
                 writer.write_all(b"\n")?;
             }
             Ok(())
@@ -215,7 +215,7 @@ pub(super) fn write_document<W: Write>(
                     .ok_or_else(|| codec_error("TOML table keys must be strings"))?;
                 write_quoted(writer, key)?;
                 writer.write_all(b" = ")?;
-                write_value(writer, value, layout, 0)?;
+                write_scalar(writer, value, layout, 0)?;
                 writer.write_all(b"\n")?;
             }
             Ok(())
@@ -237,7 +237,7 @@ impl From<crate::text::Formatting> for Layout {
     }
 }
 
-fn write_value<W: Write>(
+fn write_scalar<W: Write>(
     writer: &mut W,
     value: &Scalar,
     layout: Layout,
@@ -310,7 +310,7 @@ fn write_value<W: Write>(
                 }
                 write_quoted(writer, name)?;
                 writer.write_all(b" = ")?;
-                write_value(writer, value, layout, depth)?;
+                write_scalar(writer, value, layout, depth)?;
             }
             writer.write_all(b"}")?;
         }
@@ -325,7 +325,7 @@ fn write_value<W: Write>(
                     .ok_or_else(|| codec_error("TOML table keys must be strings"))?;
                 write_quoted(writer, key)?;
                 writer.write_all(b" = ")?;
-                write_value(writer, value, layout, depth)?;
+                write_scalar(writer, value, layout, depth)?;
             }
             writer.write_all(b"}")?;
         }
@@ -346,7 +346,7 @@ fn write_sequence<W: Write>(
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
-                write_value(writer, value, layout, depth)?;
+                write_scalar(writer, value, layout, depth)?;
             }
             writer.write_all(b"]")?;
         }
@@ -354,7 +354,7 @@ fn write_sequence<W: Write>(
             writer.write_all(b"[\n")?;
             for value in values.iter() {
                 write_units(writer, unit, depth + 1)?;
-                write_value(writer, value, layout, depth + 1)?;
+                write_scalar(writer, value, layout, depth + 1)?;
                 writer.write_all(b",\n")?;
             }
             write_units(writer, unit, depth)?;

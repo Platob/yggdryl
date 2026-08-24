@@ -517,6 +517,13 @@
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
 
+### yggdryl::generic::enum_scalar  [rust\src\generic\enum_scalar.rs]
+  pub enum EnumScalar
+  pub fn from_parts(kind: &str, value: &str) -> Result<Self>
+  pub const fn kind(self) -> &'static str
+  pub const fn as_str(self) -> &'static str
+  pub fn ordinal(self) -> u8
+
 ### yggdryl::error  [rust\src\error.rs]
   pub enum Error
   pub type Result<T> = std::result::Result<T, Error>;
@@ -1351,8 +1358,8 @@
   pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
-  fn read_value(&self, field: Option<&Field>) -> Result<Scalar>
-  fn write_value(&mut self, value: &Scalar) -> Result<()>
+  fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
+  fn write_scalar(&mut self, value: &Scalar) -> Result<()>
   fn is_io(&self) -> bool
   pub struct ArrowWriteSession
   pub fn overwrite(options: &RecordOptions) -> Result<Self>
@@ -1771,6 +1778,7 @@
   pub const fn as_f16(&self) -> Option<half::f16>
   pub fn as_str(&self) -> Option<&str>
   pub fn as_utf8(&self) -> Option<&str>
+  pub const fn as_enum(&self) -> Option<&EnumScalar>
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn as_json_bytes(&self) -> Result<Vec<u8>>
   pub fn as_json_utf8(&self) -> Result<String>
